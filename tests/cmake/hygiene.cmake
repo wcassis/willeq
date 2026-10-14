@@ -436,3 +436,13 @@ SET_TESTS_PROPERTIES(RenderedZoneFinalVisit PROPERTIES LABELS "hygiene")
 ADD_TEST(NAME RenderedZoneSummarizeGlDriver
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/pi/test_rendered_zone_gl_driver.py)
 SET_TESTS_PROPERTIES(RenderedZoneSummarizeGlDriver PROPERTIES LABELS "hygiene")
+
+# B1057 (#377): the oracle driver's lane gate (lane 5 accepted, 0/6 refused,
+# lock and create-name safety) and the remote stop path that must never kill
+# a display it did not start (lane 5's :99 is a real Xorg). Offline stubs.
+ADD_TEST(NAME OracleSessionSafety
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/session_safety.sh)
+SET_TESTS_PROPERTIES(OracleSessionSafety PROPERTIES LABELS "hygiene")
+ADD_TEST(NAME OracleRemoteStopSafety
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/remote_stop_safety.sh)
+SET_TESTS_PROPERTIES(OracleRemoteStopSafety PROPERTIES LABELS "hygiene")

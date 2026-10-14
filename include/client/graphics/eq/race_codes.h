@@ -72,16 +72,9 @@ std::string getGenderedRaceCode(const std::string& maleCode, uint8_t gender);
 // -- getZoneSpecificRaceCode() is gone; the row's own code is the answer.
 std::string getFallbackRaceCode(uint16_t raceId, uint8_t gender);
 
-// Get the animation source code for a race from JSON config
-// Returns empty string if not specified (use getAnimationSourceCode from animation_mapping.h)
-std::string getAnimationSourceFromConfig(uint16_t raceId);
-
 // Get the S3D file containing the animation source for a race
 // Returns empty string if not specified (animation source is in global_chr.s3d)
 std::string getAnimationSourceS3DFile(uint16_t raceId);
-
-// Get the animation source S3D file by race code (e.g., "ARM" -> "qeynos_chr.s3d" for RAT)
-std::string getAnimationSourceS3DFileByCode(const std::string& raceCode);
 
 // Get the S3D filename for a race (for loading from zone archives)
 std::string getRaceModelFilename(uint16_t raceId, uint8_t gender);

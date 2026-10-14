@@ -330,7 +330,6 @@ private:
     void updateGemCooldowns(float delta_time);
     void updateMemorization(float delta_time);
     uint32_t calculateMemorizeTime(uint32_t spell_id) const;
-    uint8_t findGemSlotForSpell(uint32_t spell_id) const;
 
     // Spell message display
     void showSpellMessages(const SpellData* spell, uint16_t caster_id,

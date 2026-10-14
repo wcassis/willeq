@@ -63,6 +63,44 @@ TARGET_INCLUDE_DIRECTORIES(test_drm_mode_select PRIVATE ${CMAKE_SOURCE_DIR})
 TARGET_LINK_LIBRARIES(test_drm_mode_select GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_drm_mode_select DISCOVERY_TIMEOUT 120)
 
+# B1054 (#374): DRM card-selection decision logic
+# (docker/irrlicht-drm/drm_card_select.h) -- the first card that both
+# OPENS and has a connected connector + CRTC wins; WILLEQ_DRM_DEVICE is an
+# explicit single-path override. Like test_drm_mode_select it is pure and
+# header-only (no libdrm/gbm/EGL/Irrlicht dependency); it additionally
+# exercises the directory enumeration against a temp dir, so it is
+# Linux-only (POSIX dirent/mkdtemp/setenv), like the other DRM tests.
+IF(UNIX AND NOT APPLE)
+    ADD_EXECUTABLE(test_drm_card_select
+        test_drm_card_select.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_drm_card_select PRIVATE ${CMAKE_SOURCE_DIR})
+    TARGET_LINK_LIBRARIES(test_drm_card_select GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_drm_card_select DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1049 (#373): the pure evdev-key -> key-event decision (drm_key_translation.h)
+# -- needs Irrlicht's key types, so it is gated on the graphics/Irrlicht tree,
+# Linux-only like the DRM device it belongs to.
+IF(EQT_GRAPHICS AND EQT_GLES2 AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    ADD_EXECUTABLE(test_drm_key_translation test_drm_key_translation.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_drm_key_translation PRIVATE
+        ${CMAKE_SOURCE_DIR} ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_drm_key_translation GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_drm_key_translation DISCOVERY_TIMEOUT 120)
+
+    ADD_EXECUTABLE(test_drm_flip_tracker test_drm_flip_tracker.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_drm_flip_tracker PRIVATE ${CMAKE_SOURCE_DIR})
+    TARGET_LINK_LIBRARIES(test_drm_flip_tracker GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_drm_flip_tracker DISCOVERY_TIMEOUT 120)
+
+    # B961: the device's scanout-framebuffer tally (header-only, no GBM).
+    ADD_EXECUTABLE(test_scanout_buffer_tally test_scanout_buffer_tally.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_scanout_buffer_tally PRIVATE ${CMAKE_SOURCE_DIR})
+    TARGET_LINK_LIBRARIES(test_scanout_buffer_tally GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_scanout_buffer_tally DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # Test packet serialization - packet.cpp uses fmt
 ADD_EXECUTABLE(test_packet
     test_packet.cpp
@@ -336,6 +374,7 @@ IF(NOT APPLE)
     ADD_EXECUTABLE(test_memory_ledger
         test_memory_ledger.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
     )
@@ -408,6 +447,7 @@ ENDIF()
 ADD_EXECUTABLE(test_gpu_buffer_census
     test_gpu_buffer_census.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
 )

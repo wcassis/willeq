@@ -543,14 +543,11 @@ EXEMPT_GROUPS = {
     # reused VBO (a zero in production, which keeps the handle itself tests-
     # only in the sense the check looks for, not dead: the draw reads it).
     ("UnifiedParticleRenderer", "vertexBuffer"): "B972",
-    ("(free)", "getAnimationSourceFromConfig"): "B491",
-    ("(free)", "getAnimationSourceS3DFileByCode"): "B491",
     ("(free)", "getRobeClkTextureNumber"): "B491",
     ("(free)", "getRobeIndex"): "B491",
     ("(free)", "isNPCOnlyTexture"): "B491",
     ("(free)", "isPlayerRaceTexture"): "B491",
     ("(free)", "isVeliousTexture"): "B491",
-    ("(free)", "normalToColor"): "B491",
     ("EQAnimatedMeshSceneNode", "getBoneIndexByName"): "B491",
     ("EQAnimatedMeshSceneNode", "getInstanceMeshIndexCount"): "B491",
     # B824 (kanban t_20a88e62): getMappingCount and loadItemModelMappingStatic
@@ -592,12 +589,6 @@ EXEMPT_GROUPS = {
     ("SkyLoader", "getCelestialBodyCount"): "B491",
     ("SkyLoader", "getLayerCount"): "B491",
     ("WldLoader", "getTrackRef"): "B491",
-    ("ZoneMeshBuilder", "buildAtlasedMesh"): "B491",
-    ("ZoneMeshBuilder", "buildCompositeMesh"): "B491",
-    ("ZoneMeshBuilder", "buildTexturedMeshFromUploaded"): "B491",
-    ("ZoneMeshBuilder", "getConstrainedTextureCache"): "B491",
-    ("ZoneMeshBuilder", "getFallbackBufferMap"): "B491",
-    ("ZoneMeshBuilder", "registerLazyTexture"): "B491",
     ("DetailChunk", "applyWindAndDisturbance"): "B492",
     ("DetailChunk", "getBounds"): "B492",
     ("DetailChunk", "getKey"): "B492",
@@ -688,9 +679,7 @@ EXEMPT_GROUPS = {
     ("FrameBudgetGovernor", "canStartTask"): "B494",
     ("FrameBudgetGovernor", "hasTimeBudget"): "B494",
     ("GLES2EGLHelper", "uploadETC1AsSharedTexture"): "B494",
-    ("GraphicsArchiveIndex", "getCachedArchive"): "B494",
     ("PlayerCameraComponent", "getFirstPersonVerticalFov"): "B494",
-    ("RDPServer", "isAudioReady"): "B494",
     ("RendererContext", "Slash"): "B494",
     ("SimulationWorker", "updateObjectLightData"): "B494",
     ("SimulationWorker", "updateTreeData"): "B494",
@@ -714,14 +703,6 @@ EXEMPT_GROUPS = {
     ("SpellVisualFX", "setParticleMultiplier"): "B494",
     ("TextBatch", "addText3D"): "B494",
     ("TextBatch", "addTextW"): "B494",
-    ("TextureAtlas", "finalizePreload"): "B494",
-    ("TextureAtlas", "getAtlasHeight"): "B494",
-    ("TextureAtlas", "getAtlasWidth"): "B494",
-    ("TextureAtlas", "getGPUMemoryUsage"): "B494",
-    ("TextureAtlas", "getPageCount"): "B494",
-    ("TextureAtlas", "getTileCount"): "B494",
-    ("TextureAtlas", "preloadFromFile"): "B494",
-    ("TextureAtlas", "uploadPreloadedPage"): "B494",
     ("TextureUploadLedger", "uploads"): "B494",
     ("TreeWindController", "getCurrentStrength"): "B494",
     ("TreeWindController", "getWeather"): "B494",
@@ -743,15 +724,6 @@ EXEMPT_GROUPS = {
     ("WeatherSystem", "removeListener"): "B494",
     ("WeatherSystem", "setSimulationEnabled"): "B494",
     ("WeatherSystem", "transitionToWeather"): "B494",
-    ("ZoneShaderManager", "appendAtlasPageTextures"): "B494",
-    ("ZoneShaderManager", "atlasTileScale"): "B494",
-    ("ZoneShaderManager", "clearPointLights"): "B494",
-    ("ZoneShaderManager", "getMaterialTypeLWWindAlphaTestRGBA"): "B494",
-    ("ZoneShaderManager", "getMaterialTypeLWWindSolid"): "B494",
-    ("ZoneShaderManager", "getMaterialTypeWindAlphaTestRGBA"): "B494",
-    ("ZoneShaderManager", "getMaterialTypeWindSolid"): "B494",
-    ("ZoneShaderManager", "setAtlasPageTextures"): "B494",
-    ("ZoneShaderManager", "setAtlasTileScale"): "B494",
     ("(free)", "calcSharedBankBagSlotId"): "B495",
     ("(free)", "getBankBagIndexAny"): "B495",
     ("(free)", "getClassAbbrev"): "B495",
@@ -866,6 +838,13 @@ EXEMPT_GROUPS = {
 
 EXEMPT_TESTS_GROUPS = {
     ("(free)", "ComputeHelpCoverage"): "seam",
+    # B976 (#294): the zone depth tie-break's pure C++ decision -- the C++
+    # mirror of the GLSL line EQT_DEPTH_TIE_VS_LINES that production executes
+    # in the region vertex programs. Its only caller is the unit test
+    # (tests/test_zone_depth_tie_break.cpp), which drives it without a GPU;
+    # the production counterpart is the GLSL splice plus uDepthTieBiasForFlag
+    # (live in zone_shader_callbacks.h). A test seam, like ComputeHelpCoverage.
+    ("(free)", "biasedStoredDepth"): "seam",
     # B430/B433: the Options window's per-control classification table is a
     # CENSUS, not a runtime input -- its reader is the test that fails on an
     # unclassified control row (OptionsClassification.*), which is the point.
@@ -1247,6 +1226,9 @@ EXEMPT_TESTS_GROUPS = {
     ("(free)", "calcBankBagSlotId"): "seam",
     ("HotbarModel", "assignSlot"): "seam",
     ("HotbarModel", "clearSlot"): "seam",
+    # B1025-H1: only the page-switch tests call this until H-4 (#345) wires
+    # production page keys. One no-grow seam; H-4 removes this exact row.
+    ("HotbarModel", "setCurrentPage"): "seam",
     ("CommandProcessor", "setDefaultChannel"): "B605",
     ("CommandProcessor", "setEchoEnabled"): "B605",
     ("CommandProcessor", "unregisterCommand"): "B605",

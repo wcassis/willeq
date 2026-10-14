@@ -47,6 +47,8 @@
 #include "ICursorControl.h"
 
 #include <EGL/egl.h>
+#include "drm_flip_tracker.h"
+#include "scanout_buffer_tally.h"  // B961: the client-side scanout source
 #ifndef __APPLE__
 #include <xf86drm.h>
 #include <xf86drmMode.h>
@@ -103,6 +105,13 @@ public:
     EGLContext getEGLContext() const { return eglContext_; }
     EGLConfig getEGLConfig() const { return eglConfig_; }
     struct gbm_device* getGBMDevice() const { return gbmDevice_; }
+
+    // B961 (GitLab #279): the ownership points, public wrappers so the TU's
+    // free gbm_bo callbacks (getOrCreateFb / drmFbDestroyCallback) can drive
+    // the private tally -- and each one publishes the new (bufs, bytes) pair
+    // into the memory ledger (the core's publishScanoutTally).
+    void scanoutRegisterBo(void* bo, uint32_t stride, uint32_t height);
+    void scanoutUnregisterBo(void* bo);
 
     // GLES2 mode flag
     bool isGLES2() const { return useGLES2_; }
@@ -174,7 +183,8 @@ private:
     // GBM
     struct gbm_device* gbmDevice_;
     struct gbm_surface* gbmSurface_;
-    struct gbm_bo* previousBo_;
+    eqt_drm::FlipTracker<gbm_bo> flipTracker_;
+    eqt_drm::ScanoutBufferTally scanoutTally_;  // B961: locked scanout bos
 
     // EGL
     EGLDisplay eglDisplay_;
@@ -209,8 +219,7 @@ private:
     bool firstFrame_;
 
     // Page flip synchronization
-    bool flipPending_;          // True if a page flip event hasn't been received yet
-    void waitForFlipComplete(); // Poll DRM fd for page flip completion event
+    bool waitForFlipComplete(); // True only after the page flip event
 
     // GLES2 mode (set before construction, affects EGL init and driver creation)
     bool useGLES2_;

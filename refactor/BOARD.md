@@ -506,9 +506,22 @@ it without taking that measurement first.
   10298, and a −Y `w1` underlayer, draw entries 158–163, whose near corners
   clip behind the near plane) at a depth near-tie; the depth buffer picks a
   different winner per platform (x86 D16 z-fights per row; x86 D24S8 → +Y;
-  Lima depth=24 → −Y, uniform), so the player light lights the plane on x86-D24S8
-  only. No production fix applied — any fix (per-region depth bias, or upstream
-  WLD data for the double floor) moves goldens and is blocked for Will's bless.
+  Lima depth=24 → −Y, uniform).
+  **FIXED in code (2026-10-14, MR open DRAFT awaiting bless of the goldens):
+  the top-facing region wins a depth tie** — a per-vertex clip-space depth
+  bias of 2 D16 cells in the zone REGION vertex programs, gated by
+  `SMaterial::MaterialTypeParam2` (stamped for region geometry only;
+  `include/client/graphics/zone_depth_tie_break.h` states the rule,
+  `tests/test_zone_depth_tie_break.cpp` pins it GPU-less). Will's ruling
+  covers the finding that the double floor is NOT timorous-specific: the
+  gate's other four zones also carry a −Y underlayer under a +Y top layer,
+  so the fix lights their floors too (qeynos2 f0 134 444 px, iceclad f1
+  124 677 px, … — delta table in `refactor/B976/README.md`); draws/state/
+  poly counts are identical before/after on all five zones, the before run
+  is 0 px vs the blessed goldens on all 15 frames, and 100% of the changed
+  pixels are clean −Y→+Y flips (debug5 mechanism check). The bless scope is
+  therefore all five zones' floor pixels on both platforms (Will's call);
+  the Pi leg of the fix is a follow-up card after the bless.
 
 - **B981** (B) → issue #300. `tests/goldens/manifest.json`'s
   `memory.textureCacheBytesLimit` is 67,108,864 (64 MiB) in all five gate zones;
@@ -1674,8 +1687,25 @@ it without taking that measurement first.
   23.5 ms of growthplane's frame). The benchmark half (#247) is branch
   `task/B936b-bench-shared-objects` (MR !55); the five memory-coverage
   `placeableObjectsBytes` baselines were BLESSED by Will in chat 2026-09-30
-  ("bless placeableObjectsBytes", `docs/decisions.md`). #247 acceptance 1 is in;
-  acceptance 2 (the census job) remains.
+  ("bless placeableObjectsBytes", `docs/decisions.md`). #247 acceptance 1 is
+  in; acceptance 2 (the census job) is **B929**, closed 2026-10-14.
+- ~~**B929** (A, memory) → issue #247. growthplane's `placeableObjectsBytes`
+  is 28,687,788 B against the 24 MiB budget, and the gate never runs the
+  zone.~~ **DONE 2026-10-14** (branch `task/kb-b929-placed-object-sharing`,
+  `refactor/B929/README.md`): the fix the issue asked for (share placed-object
+  geometry per model) is B936/B936b, already in fable and blessed — growthplane
+  re-measured at 111,348 B (0.4 % of budget), 4,333 placements of 11 distinct
+  meshes. This unit is the net: `scripts/ci/zone_budget_census.py` fails on
+  ANY of the 118 era zones over ANY estimate or ledger budget, run by the
+  blocking gate-stage CI job `zone-budget-census` (4 m 46 s measured; first
+  sweeps the self-heal's LOCAL pack tree — `zone_census_pack_selfheal.sh`
+  hard-links or rebuilds the mandatory packs, because the runner's NFS tree
+  is read-only and its B930/#248 soldunga v1 would FATAL the sweep on an
+  asset, never assert the zone) and by the ctest legs `test_zone_budget_census`,
+  `test_zone_census_pack_selfheal` + `zone_budget_census_smoke` (the
+  synthetic over-budget row must fail the checker; the three smoke zones must
+  be inside every budget). Full 118-zone census GREEN on the current tree.
+  Budgets and goldens untouched.
 - **B938** (A, memory) → issue #256. RESOLVED (MR pending): the per-placement
   `IMeshSceneNode` (~2.2 KB) and the four renderer-parallel vectors are
   replaced by a 168 B `PlacedObjectRecord` read by both draw paths; PVS zones
@@ -2266,6 +2296,12 @@ it without taking that measurement first.
 
   **WILL RULED 2026-09-06:** leave /bug on the report channel. CLOSED as ruled.
 ## P — process and documentation
+
+- **B1048** (P, oracle automation) → issue #368. One-command official-client
+  capture/decode/summary driver and two replay plans are on
+  `task/kb-b1048-oracle-driver`; closes only when both live plans, disconnect
+  code 67, byte-identical restore, released locks, and MR hygiene are proven.
+  Driver contract: `docs/oracle_driver.md`.
 
 - ~~**B024** (P)~~ **CLOSED 2026-09-04 (M00 merge): the structural programme is complete.** Batch K (K00–K16: `eq.h` 2,025 → 899, twelve components + four context services, the transition handle measured down to 83 uses = B038), Batch L (L01–L13: `irrlicht_renderer.h` 1,914 → 1,343, eleven components, residue 151 = B050 closed), Batch G (six of eight oversize methods decomposed and golden-pinned; `createDefaultConfig` ruled out; the variant loader parked as B052), M00 (no allowlist; the 1,500 ceiling enforced tree-wide by ctest). Original text: Component extraction of `class EverQuest` (2,025-line header, 685
   member functions, 178 data members, 37 flat `src/client/eq_*.cpp` TUs) and of
@@ -5299,27 +5335,15 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   +34/+71/+32% (B431) -- so a lamp-shaped term is back on the table for that spot,
   which is what B110 originally proposed and T408 measured away in grey.
 
-- **B326** (B) `src/client/graphics/eq/zone_geometry.cpp` → issue #121
-  `ZoneMeshBuilder::buildTexturedMeshFromUploaded` / `buildCompositeMesh` /
-  `zone_geometry_atlased.cpp` `buildAtlasedMesh` -- **three of the four zone
-  mesh builders have ZERO callers, and T408 wired the baked colours into only
-  the one that is reached.** Census over `src/ include/ tests/ tools/
-  benchmarks/ docker/`: `buildTexturedMesh` is called from
-  `renderer_zone_draw.cpp` (the zone), `renderer_zone_stream.cpp` and
-  `door_manager.cpp` (objects and doors) and `variant_loading.cpp` /
-  `race_model_loader.cpp` (characters, `flipV=true`); the other three are
-  called by nothing outside their own declarations. The atlased builder cannot
-  take the baked flag as things stand anyway -- `AtlasShaderCallback` already
-  uses `SMaterial::MaterialTypeParam` for the atlas page index and
-  `MaterialTypeParam2` for the alpha page, which is the field T408 uses as the
-  flag on the main callback. Closes when the three are deleted, or wired and
-  reached with a test. Found by T408 while looking for "the three mesh
-  builders" the plan named -- the plan named the ENTITY builders
-  (`entity_mesh_build.cpp`, `entity_build_step.cpp`), which must NOT get the
-  zone's baked light: they draw character models, and character WLD meshes
-  carry no colour array at all (T408 measured `colorCount == 0` for every one,
-  which is why the memory baselines moved by exactly one empty vector header
-  per geometry). Prov: T408 Review §5.
+- ~~**B326** (B)~~ **CLOSED by B494+B491** (MR closing #121, 2026-10-14): the three
+  unreached zone mesh builders are gone -- `ZoneMeshBuilder::buildTexturedMeshFromUploaded`
+  and `buildCompositeMesh` (zone_geometry.cpp) and the whole `zone_geometry_atlased.cpp`
+  (`buildAtlasedMesh` + `splitTriangleToUVCells`) -- each confirmed zero-caller by the
+  wave-9 census and re-grepped at the merge head, then deleted with their members. The
+  one reached builder (`buildTexturedMesh`) already carries T408's baked colours; the
+  entity builders it must NOT touch are untouched. The B950 `sizeof(ZoneMeshBuilder)`
+  layout net (B1019's `test_zone_geometry_atlas_layout`) stays green: the guarded atlas
+  members are gone, so both sides of the net agree.
 
 - **B281** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp` / → issue #16
   `SkyRenderer::updateTimeOfDay` -- **fable's night frame gets steadily
@@ -11133,8 +11157,8 @@ B672–B679 unused.
     `include/client/graphics/gpu_upload_thread.h` and
     `include/client/graphics/work_priority.h` and use nothing from either (pre-existing; the last use in the cache went
     with T326).
-  - `src/client/graphics/texture_atlas.cpp` includes the fmt format header for
-    the deleted async page upload alone.
+  - the texture_atlas.cpp source file (deleted wholesale by B494) includes the
+    fmt format header for the deleted async page upload alone.
   - Enumerators and includes are not in `ZeroCallers` or `WriteOnlyFields`.
     Fix: delete, or decide the enumerator is kept for `WorkPriorityKey`'s
     ordering contract (its test pins the order).
@@ -13612,3 +13636,14 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
   - Evidence: `~/kb-evidence/b945-event-staging/{x86-before,x86-after,pi-before-ej,pi-after-ej}`; full tables and the verdict: `refactor/B945/README.md`.
   - Open: none. Recommend closing #263 as not-a-retention (see the README verdict).
   - **Re-review findings fixed 2026-10-06** (review card t_0d1891b6, CHANGES REQUESTED, doc-only): README steady_60s `game_state` row re-cited to the `point=steady_60s` lines (28,450,392 / 28,457,392, delta +7,000 — the previously cited pair was the `zone_change_before_unload` point); "Not verified" section added; the "Repeatable test" pipeline citation now names pipeline #531 on the code head 428f0ff3 (hygiene/build/test/gate success; build-arm and client-ledger-live manual) instead of the pre-README pipeline #512. The final head's docs-only delta is re-verified by its own pipeline (id recorded on the fix card). MR !85 description now carries `Closes #263`.
+
+## Added 2026-10-13 by task/kb-b1053-options-window (issue #373)
+
+- **B1053** (A, UI) → issue #373. Will's XU4 play test reports that the
+  1280x720 Options window does not show all controls. The XML-backed table
+  audit at the branch's starting head found no control rectangle outside its
+  page/window at 1280x720 or 1024x768. A constrained DRM XU4 capture at
+  1280x720 likewise shows the General page fitting the XML-sized window;
+  the report remains open because the original failing still and affected tab
+  are unknown. See `refactor/B1053/README.md` for the exact audit and the
+  explicit unverified items.
