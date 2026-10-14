@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <sys/stat.h>
@@ -151,9 +152,9 @@ TEST(ZoneLineSweep, ThinRegionBetweenTwoSamplesIsFound) {
     ASSERT_EQ(n, 1u);
     ZoneLines none;
     // The renderer's ~250 ms samples: x = 5 then x = 15. Neither is inside.
-    auto pointOnly = ZoneLineCrossingFinder::Find(tree.get(), n, &none, 5, 0, 3, 15, 0, 3, 0, false);
+    auto pointOnly = ZoneLineCrossingFinder::FindCrossing(tree.get(), n, &none, 5, 0, 3, 15, 0, 3, 0, false);
     EXPECT_FALSE(pointOnly.has_value()) << "the end point alone steps over the line (the B1068 miss)";
-    auto swept = ZoneLineCrossingFinder::Find(tree.get(), n, &none, 5, 0, 3, 15, 0, 3, 0, true);
+    auto swept = ZoneLineCrossingFinder::FindCrossing(tree.get(), n, &none, 5, 0, 3, 15, 0, 3, 0, true);
     ASSERT_TRUE(swept.has_value());
     EXPECT_EQ(swept->source, ZoneLineCrossing::Source::Bsp);
     EXPECT_EQ(swept->regionIndex, 1u);
@@ -168,7 +169,7 @@ TEST(ZoneLineSweep, ThinRegionBetweenTwoSamplesIsFound) {
 TEST(ZoneLineSweep, AWarpIsNotSwept) {
     auto tree = slabTree(absoluteTo(2, 0, 0, 0));
     ZoneLines none;
-    auto r = ZoneLineCrossingFinder::Find(tree.get(), 1, &none, 0, 0, 3,
+    auto r = ZoneLineCrossingFinder::FindCrossing(tree.get(), 1, &none, 0, 0, 3,
                                           ZoneLineCrossingFinder::kTeleportDistance + 20.0f, 0, 3, 0, true);
     EXPECT_FALSE(r.has_value());
 }
@@ -176,7 +177,7 @@ TEST(ZoneLineSweep, AWarpIsNotSwept) {
 TEST(ZoneLineSweep, StandingInsideIsFoundWithoutMovementHistory) {
     auto tree = slabTree(absoluteTo(2, 0, 0, 0));
     ZoneLines none;
-    auto r = ZoneLineCrossingFinder::Find(tree.get(), 1, &none, 10.2f, 0, 3, 10.2f, 0, 3, 0, false);
+    auto r = ZoneLineCrossingFinder::FindCrossing(tree.get(), 1, &none, 10.2f, 0, 3, 10.2f, 0, 3, 0, false);
     ASSERT_TRUE(r.has_value());
 }
 
@@ -260,11 +261,11 @@ protected:
 TEST_F(ZoneLinePrecedence, BspPresentMeansBspUsed) {
     auto tree = slabTree(absoluteTo(1, 464, -440, 999999));
     const size_t n = ZoneLineCrossingFinder::CountBspZoneLineRegions(*tree);
-    auto viaBsp = ZoneLineCrossingFinder::Find(tree.get(), n, &lines_, 5, 0, 3, 15, 0, 3, 0, true);
+    auto viaBsp = ZoneLineCrossingFinder::FindCrossing(tree.get(), n, &lines_, 5, 0, 3, 15, 0, 3, 0, true);
     ASSERT_TRUE(viaBsp.has_value());
     EXPECT_EQ(viaBsp->source, ZoneLineCrossing::Source::Bsp);
     // The curated box is NOT consulted while the BSP has zone lines.
-    auto curatedSpot = ZoneLineCrossingFinder::Find(tree.get(), n, &lines_, 95, 0, 3, 105, 0, 3, 0, true);
+    auto curatedSpot = ZoneLineCrossingFinder::FindCrossing(tree.get(), n, &lines_, 95, 0, 3, 105, 0, 3, 0, true);
     EXPECT_FALSE(curatedSpot.has_value());
 }
 
@@ -273,11 +274,11 @@ TEST_F(ZoneLinePrecedence, NoBspZoneLinesMeansCuratedUsedAndSwept) {
     tree->regions[1]->regionTypes = {RegionType::Normal};
     tree->regions[1]->zoneLineInfo.reset();
     ASSERT_EQ(ZoneLineCrossingFinder::CountBspZoneLineRegions(*tree), 0u);
-    auto r = ZoneLineCrossingFinder::Find(tree.get(), 0, &lines_, 95, 0, 3, 105, 0, 3, 0, true);
+    auto r = ZoneLineCrossingFinder::FindCrossing(tree.get(), 0, &lines_, 95, 0, 3, 105, 0, 3, 0, true);
     ASSERT_TRUE(r.has_value());
     EXPECT_EQ(r->source, ZoneLineCrossing::Source::Curated);
     EXPECT_EQ(r->result.targetZoneId, 1);
-    EXPECT_FALSE(ZoneLineCrossingFinder::Find(tree.get(), 0, &lines_, 95, 0, 3, 105, 0, 3, 0, false).has_value())
+    EXPECT_FALSE(ZoneLineCrossingFinder::FindCrossing(tree.get(), 0, &lines_, 95, 0, 3, 105, 0, 3, 0, false).has_value())
         << "the end point alone misses the 1-unit box";
 }
 
@@ -302,6 +303,19 @@ RegionCensus census(const std::string& zone) {
     auto tree = loader.getBspTree();
     if (!tree) return c;
     c.zoneLines = ZoneLineCrossingFinder::CountBspZoneLineRegions(*tree);
+    // Where the lines are (client coords): review/B1068/README.md quotes this.
+    const EQT::Graphics::BspBounds world(-6000, -6000, -2000, 6000, 6000, 2000);
+    for (size_t i = 0; i < tree->regions.size(); ++i) {
+        const auto& r = tree->regions[i];
+        if (!r->zoneLineInfo) continue;
+        auto b = tree->computeRegionBounds(i, world);
+        const auto& zi = *r->zoneLineInfo;
+        std::cout << "  " << zone << " region " << i
+                  << (zi.type == ZoneLineType::Absolute ? " abs zone=" : " ref zp=")
+                  << (zi.type == ZoneLineType::Absolute ? zi.zoneId : zi.zonePointIndex)
+                  << " bounds x[" << b.minX << "," << b.maxX << "] y[" << b.minY << "," << b.maxY
+                  << "] z[" << b.minZ << "," << b.maxZ << "]\n";
+    }
     for (const auto& r : tree->regions) {
         for (auto t : r->regionTypes) {
             if (t == RegionType::Water) { ++c.water; break; }

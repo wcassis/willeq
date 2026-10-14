@@ -939,7 +939,7 @@ void eqt::zone::ZoneComponent::CheckZoneLine()
 	// itself and tests the end point only.
 	const bool sweep = m_zone_line_sweep_primed;
 	m_zone_line_sweep_primed = true;
-	std::optional<EQT::ZoneLineCrossing> crossing = EQT::ZoneLineCrossingFinder::Find(
+	std::optional<EQT::ZoneLineCrossing> crossing = EQT::ZoneLineCrossingFinder::FindCrossing(
 		tree, m_bsp_zone_line_regions, m_zone_lines.get(),
 		old_x, old_y, old_z, cur_x, cur_y, cur_z, ctx_.self.GetHeading(), sweep);
 

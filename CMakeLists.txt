@@ -537,6 +537,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/scenario/scenario_camp.cpp  # B1005 (#324)
     src/client/scenario/scenario_world_app_camp.cpp  # B1005
     src/client/scenario/scenario_fall_damage.cpp  # B893 (#209)
+    src/client/scenario/scenario_zone_line_walk.cpp  # B1068 (#388)
     src/client/scenario/scenario_ranged_single_shot.cpp  # B900 (#216)
     src/client/scenario/scenario_application_wiring.cpp
     # Bridge sources

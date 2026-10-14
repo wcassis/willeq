@@ -915,6 +915,32 @@ net: `test_zone_budget_census` (pure python, every pipeline),
 `test_zone_census_pack_selfheal` (the self-heal's exit-code contract on stub
 verify/builder binaries, pure bash+python).
 
+## The walked zone-line crossing (B1068, issue #388)
+
+A live lane scenario, not a pipeline stage: it needs an eqemu lane and a
+display. `scripts/scenario.sh zone_line_walk` seeds Testchar in qeynos 20
+units short of the qeynos -> qeynos2 gate's BSP zone-line region
+(`scripts/scenario_configs/zone_line_walk_seed.sql`), starts a private Xvfb,
+runs the client `--egl-x11`, and its sidecar holds the forward key with
+xdotool -- the renderer's own keyboard movement, the path a player walks.
+The client passes when it is fully zoned in to a different zone
+(`src/client/scenario/scenario_zone_line_walk.cpp`); the post-check
+(`zone_line_walk.post.sh`) requires the client's `Zone line triggered!` line
+and the source zone log's `zoning to [qeynos2]` line for the character
+(eqemu's `Client::Handle_OP_ZoneChange`).
+
+```bash
+EQEMU_LANE=1 bash scripts/scenario.sh zone_line_walk --timeout 180 --unit B1068
+```
+
+Like every `scenario.sh` run it brings the lane's server up and stops its
+container for the restore -- never point it at a stack someone is playing on.
+The offline half is `test_zone_line_crossing` (every pipeline): the 0x29
+body-string decode on the zone files' own DRNTP strings, the swept segment
+test, and BSP-over-curated precedence. `scripts/tools/wld_zonelines.py
+--table <eq_dir> data/zone_lines` prints the per-zone BSP-vs-curated census
+(review/B1068/README.md).
+
 ## `review/` citations
 
 The `DocCitations` hygiene test resolves a `review/...` citation against

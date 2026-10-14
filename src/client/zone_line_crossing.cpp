@@ -79,7 +79,7 @@ ZoneLineCrossing ZoneLineCrossingFinder::ResolveBsp(const Graphics::ZoneLineInfo
     return c;
 }
 
-std::optional<ZoneLineCrossing> ZoneLineCrossingFinder::Find(const Graphics::BspTree* tree,
+std::optional<ZoneLineCrossing> ZoneLineCrossingFinder::FindCrossing(const Graphics::BspTree* tree,
                                                              size_t bspZoneLineRegions,
                                                              const ZoneLines* lines,
                                                              float fromX, float fromY, float fromZ,

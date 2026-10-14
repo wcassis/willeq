@@ -314,6 +314,41 @@ TEST(ZoneInScenario, ZonedInWithNoZoneNameIsAFailureNotAPass) {
 }
 
 // ===========================================================================
+// zone_line_walk (B1068, issue #388)
+// ===========================================================================
+
+TEST(ZoneLineWalkScenario, PassesOnlyOnceZonedInToADifferentZone) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "qeynos";
+    ScenarioRunner runner(MakeScenario("zone_line_walk", DefaultOptions()), world,
+                          /*timeout=*/60.0, /*startDeadline=*/30.0);
+    Advance(runner, 5.0);
+    EXPECT_FALSE(runner.finished()) << "standing in the start zone is not a pass";
+    // The zone change: out of the zone (not zoned in), then into qeynos2.
+    world.zonedIn = false;
+    world.zone = "qeynos2";
+    Advance(runner, 2.0);
+    EXPECT_FALSE(runner.finished()) << "not fully zoned in yet";
+    world.zonedIn = true;
+    Advance(runner, 1.0);
+    ASSERT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    EXPECT_NE(runner.reason().find("'qeynos' -> 'qeynos2'"), std::string::npos);
+}
+
+TEST(ZoneLineWalkScenario, NeverZoningEndsOnTheTimeoutNotAPass) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "qeynos";
+    ScenarioRunner runner(MakeScenario("zone_line_walk", DefaultOptions()), world,
+                          /*timeout=*/20.0, /*startDeadline=*/30.0);
+    Advance(runner, 30.0);
+    ASSERT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioTimeout);
+}
+
+// ===========================================================================
 // create_character (B888, issue #204)
 // ===========================================================================
 

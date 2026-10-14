@@ -213,6 +213,7 @@ cleanup() {
     kill ${PEER_PID:-} ${CLIENT_PID:-} >/dev/null 2>&1
     sleep 2
     kill -9 ${PEER_PID:-} ${CLIENT_PID:-} >/dev/null 2>&1
+    [ -n "${XVFB_PID:-}" ] && kill "$XVFB_PID" >/dev/null 2>&1
     # The restore runs on EVERY path now, --keep-server included: it is what
     # leaves the database as the run found it, and leaving a moved character
     # behind for the next unit is the whole point of B784. It stops the
@@ -381,6 +382,12 @@ esac
 if [ "$SCENARIO" = "ranged_single_shot" ] && [ -z "$SEED_SQL" ]; then
     SEED_SQL="$REPO/scripts/scenario_configs/ranged_single_shot_seed.sql"
 fi
+# B1068 (#388): the walked zone-line crossing starts a few units short of
+# qeynos -> qeynos2's BSP zone-line region, facing it; the restore moves the
+# character back.
+if [ "$SCENARIO" = "zone_line_walk" ] && [ -z "$SEED_SQL" ]; then
+    SEED_SQL="$REPO/scripts/scenario_configs/zone_line_walk_seed.sql"
+fi
 if [ -n "$SEED_SQL" ]; then
     [ -f "$SEED_SQL" ] || { say "no --seed-sql file at $SEED_SQL"; exit 64; }
     eqemu_sql "$(cat "$SEED_SQL")" >/dev/null || { say "--seed-sql failed"; exit 65; }
@@ -530,6 +537,21 @@ esac
 # <scenario>.sidecar.sh), sourced in a background subshell for the length of
 # the client run so it can use eqemu_sql -- pickup_roundtrip's 1 Hz poll of
 # the moving item's `inventory` row is the database half of its assertion.
+# B1068 (#388): zone_line_walk walks with the KEYBOARD -- the renderer's own
+# movement path -- so its client runs X11-windowed under a private Xvfb that
+# the sidecar's xdotool drives. Every other scenario stays surfaceless.
+XVFB_PID=""
+if [ "$SCENARIO" = "zone_line_walk" ]; then
+    command -v Xvfb >/dev/null 2>&1 && command -v xdotool >/dev/null 2>&1 \
+        || { say "zone_line_walk needs Xvfb and xdotool on this host"; exit 64; }
+    export DISPLAY=":${ZONE_LINE_WALK_DISPLAY:-68}"
+    Xvfb "$DISPLAY" -screen 0 1024x768x24 -nolisten tcp > "$OUT/${SCENARIO}_xvfb.log" 2>&1 &
+    XVFB_PID=$!
+    sleep 2
+    kill -0 "$XVFB_PID" 2>/dev/null || { say "Xvfb $DISPLAY did not start (see $OUT/${SCENARIO}_xvfb.log)"; exit 64; }
+    SCENARIO_CLIENT_ARGS="${SCENARIO_CLIENT_ARGS:-} --egl-x11 -r 1024 768"
+    say "Xvfb $DISPLAY up (pid $XVFB_PID); client runs --egl-x11"
+fi
 SIDECAR="$REPO/scripts/scenario_configs/${SCENARIO}.sidecar.sh"
 SIDECAR_PID=""
 if [ -f "$SIDECAR" ]; then

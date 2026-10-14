@@ -73,7 +73,7 @@ public:
     // The crossing between (fromX..) and (toX..), or nullopt. `tree` may be
     // null; `bspZoneLineRegions` is CountBspZoneLineRegions(*tree), passed in
     // so the caller caches it per zone. `sweep` false = test `to` only.
-    static std::optional<ZoneLineCrossing> Find(const Graphics::BspTree* tree,
+    static std::optional<ZoneLineCrossing> FindCrossing(const Graphics::BspTree* tree,
                                                 size_t bspZoneLineRegions,
                                                 const ZoneLines* lines,
                                                 float fromX, float fromY, float fromZ,
