@@ -133,7 +133,12 @@ cp "$DRM_SRC/COGLES2MaterialRenderer.h" "$DEST_SRC/COGLES2MaterialRenderer.h"
 cp "$DRM_SRC/COGLES2MaterialRenderer.cpp" "$DEST_SRC/COGLES2MaterialRenderer.cpp"
 cp "$DRM_SRC/gl_call_counters.h"        "$DEST_SRC/gl_call_counters.h"
 cp "$DRM_SRC/gpu_sync_probe.h"          "$DEST_SRC/gpu_sync_probe.h"
+cp "$DRM_SRC/drm_key_translation.h"     "$DEST_SRC/drm_key_translation.h"
+cp "$DRM_SRC/drm_flip_tracker.h"         "$DEST_SRC/drm_flip_tracker.h"
 cp "$DRM_SRC/t122_texprobe.h"           "$DEST_SRC/t122_texprobe.h"
+# B1054: card-selection decision, shared by both device forks (the ARM fork
+# gets it the same way as drm_mode_select.h: a plain cp next to the TU).
+cp "$DRM_SRC/drm_card_select.h"         "$DEST_SRC/drm_card_select.h"
 # x86 fork (surfaceless EGL fallback) instead of the ARM DRM-only version
 cp "$DRM_X86_SRC/CIrrDeviceFB.h"        "$DEST_SRC/CIrrDeviceFB.h"
 cp "$DRM_X86_SRC/CIrrDeviceFB.cpp"      "$DEST_SRC/CIrrDeviceFB.cpp"

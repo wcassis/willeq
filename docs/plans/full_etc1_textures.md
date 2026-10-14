@@ -124,8 +124,18 @@ a host's pack directory for exactly that:
 for f in <dir>/*.eqe1; do ./build/bin/verify_eqe1 --require-v3 "$f"; done
 ```
 
-prints the version on every line and exits non-zero (reporting `STALE`) on
-any v1/v2 pack. Pinned by the `test_eqe1_verify_stale_pack` ctest test.
+prints the version on every line and exits non-zero (reporting `STALE`)
+**only when a v1/v2 pack HOLDS A 31-CHAR NAME** — the truncation signature
+of a longer original that a pre-B910 builder's silent `strncpy` produced
+(B1017, #338). A structurally-clean v1/v2 pack whose names all fit prints
+`OK`; the audit cannot tell stale from fine by version alone. One named
+exception: a 31-char `_alpha` companion is a truncation candidate only when
+its base name (the name minus the `_alpha` suffix) is ABSENT from the same
+pack or was itself 31+ chars — a base that is present AND shorter is a real
+entry, so the 31-char companion name it holds is complete, not a chopped
+base (frozenshadow's `bricktrimflorish&protrait_alpha`: 25-char base +
+`_alpha`, both in the pack → passes). Pinned by the
+`test_eqe1_verify_stale_pack` ctest test.
 
 ### File Mapping
 

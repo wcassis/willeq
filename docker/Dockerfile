@@ -76,6 +76,7 @@ RUN mkdir -p /tmp/irrlicht-build && cd /tmp/irrlicht-build \
     && cp /src/docker/irrlicht-drm/COGLES2Shaders.cpp        irrlicht-1.8.5/source/Irrlicht/ \
     && cp /src/docker/irrlicht-drm/COGLES2MaterialRenderer.h   irrlicht-1.8.5/source/Irrlicht/ \
     && cp /src/docker/irrlicht-drm/COGLES2MaterialRenderer.cpp irrlicht-1.8.5/source/Irrlicht/ \
+    && cp /src/docker/irrlicht-drm/drm_card_select.h           irrlicht-1.8.5/source/Irrlicht/ \
     && cp /src/docker/irrlicht-drm-x86/CIrrDeviceFB.h        irrlicht-1.8.5/source/Irrlicht/ \
     && cp /src/docker/irrlicht-drm-x86/CIrrDeviceFB.cpp      irrlicht-1.8.5/source/Irrlicht/ \
     && cp /src/docker/irrlicht-drm-x86/CIrrDeviceFB_X11.cpp  irrlicht-1.8.5/source/Irrlicht/ \

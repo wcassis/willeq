@@ -297,31 +297,21 @@ void InputActionBridge::processHotbarRequests() {
         // also the index into HotbarModel.
         const int slotIndex = hotbarReq->slot;
 
-        // T174: without a model wired we cannot know a slot's content type, so
-        // fall back to the pre-T174 behavior: treat every hotbar button as a
-        // spell gem (0-based position -> 1-based gem). This also keeps the
-        // bridge safe if it is ever constructed without a hotbar model.
-        if (!m_hotbarModel) {
-            reportAction("CastSpell",
-                m_dispatcher.castSpell(static_cast<uint8_t>(slotIndex + 1)));
-            continue;
-        }
+        if (!m_hotbarModel) continue;
 
         // T174: route by the slot's ACTUAL content type, read from the one
         // HotbarModel the rest of the client uses (the mouse path in
         // eq_bridge.cpp switches on this same enum). No default: -Wswitch then
         // catches the next enumerator that grows a keyboard route.
-        const eqt::HotbarSlot& slot = m_hotbarModel->getSlot(slotIndex);
+        const eqt::HotbarSlot& slot = m_hotbarModel->getSlot({m_hotbarModel->currentPage(), slotIndex});
         switch (slot.type) {
             case eqt::HotbarSlotType::Spell:
-                // Preserve the legacy position->gem mapping for spells: the
-                // hotbar position (0-based) selects the memorized gem
-                // (1-based), matching the dispatcher's 1-based castSpell
-                // contract. NOTE this diverges from the mouse path, which
-                // resolves the memorized gem from slot.id (a spell id); see
-                // refactor/T174_keyboard_hotbar.md.
-                reportAction("CastSpell",
-                    m_dispatcher.castSpell(static_cast<uint8_t>(slotIndex + 1)));
+                // A hotbar Spell stores a spell ID, not a gem position.
+                // HotbarModel::findSpellGem is shared with HotbarActivateIntent.
+                if (const int gem = m_hotbarModel->findSpellGem(slot.id); gem >= 0) {
+                    reportAction("CastSpell",
+                        m_dispatcher.beginCastFromGem(static_cast<uint8_t>(gem + 1)));
+                }
                 break;
             case eqt::HotbarSlotType::Skill:
                 // slot.id is a skill id; passed straight through, no offset.

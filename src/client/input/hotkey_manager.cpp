@@ -650,8 +650,9 @@ void HotkeyManager::setupDefaults() {
     // T466) name no volume key; the official route is the slider. The Options
     // General sliders and /musicvolume /effectsvolume remain (docs/decisions.md
     // "Volumes round-trip", CLAUDE.md). The MusicVolume*/EffectsVolume*
-    // receiver arms in renderer_event_receiver.cpp are kept: they serve the
-    // Options window's volume step intents.
+    // receiver arms in renderer_event_receiver.cpp are kept for a key the user
+    // binds on the Options Keys page (options_keys.cpp:57); the sliders push
+    // their intents directly (renderer_frame_options.cpp:67,77).
 
     rebuildIndex();
 }

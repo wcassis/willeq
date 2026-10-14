@@ -50,7 +50,9 @@ keep both build trees (`-e build-arm-noble -e build-arm64-noble`). `build-arm` i
 `willeq-arm-noble`) then `scripts/pi/publish_arm_build.sh`, which publishes the stripped client plus that
 commit's tracked `config/` + `data/` to **`/mnt/projects/fable/ci-arm/<sha>/`** (`by-branch/<branch>` symlinks;
 newest 12 kept). The job is automatic on `fable` and a manual, non-blocking job everywhere else
-(`glab ci trigger build-arm`), and refuses any host but `dev-u24`.
+(`glab ci trigger build-arm`), and refuses any host but `dev-u24`. Both ARM jobs write the whole build to
+`build-<arch>-noble.log`, kept as a job artifact (14 days); a failure prints the `error:` lines and the tail,
+so an ARM-only compile error reaches the trace (B1054's did not through the old `| tail -n 40`).
 
 Why there: hermes-ext has no docker and no NFS; the Orange Pi mounts the same NFS share as the dev host. A
 hermes-ext worker therefore runs a Pi leg entirely over ssh — NFS paths exist **on the Pi**, not on the worker:
@@ -161,7 +163,20 @@ on the Pi are never touched.
   A `willeq-nollvm` whose baked-in prefix directory is missing logs an ERROR
   variant naming the missing directory and the fallback (the default search
   path, i.e. the system Mesa) before the INFO line, and continues — a hand
-  run on a fresh Pi must still work. The sweep's summarizer reads the line
+  run on a fresh Pi must still work. (B1016/#337: the check tests the
+  prefix's `lib/` directory itself — the rpath entry the publish bakes in is
+  `<prefix>/lib`, and it is returned as-is, not stripped — so a PARTIAL
+  deploy that lost only `lib/` is caught instead of passing and silently
+  falling back to system Mesa. The real-run net is
+  `test_gl_driver_census`'s `RealRunPrintsTheGlDriverLine` (spawns `willeq`),
+  the format contract is `GldriverLineFormatContract`
+  (`scripts/ci/test_gldriver_line_format.py` round-tripping
+  `tests/gldriver_line_emit` through `mesa_driver_field`), and the CI gate's
+  own run proves it too: the `gate:` job's `gles2_zone_benchmark` now emits
+  the same one-time line and `visual_gate.py`'s `assert_gldriver_line`
+  requires it to be present and parseable in every zone's benchmark stdout.
+  `src/client/core/gl_driver_census.cpp` is linked into the benchmark for
+  this.) The sweep's summarizer reads the line
   back and reports `driver=` in the result row (`mesa_driver` TSV column,
   additive — the maps-snapshot proof above stays the primary evidence).
 - **By hand** (Pi lock held): `bash scripts/pi/deploy_mesa_prefix.sh`, then run `$D/bin/willeq-nollvm`, or a setcap'd
@@ -198,6 +213,7 @@ longer downloads them: SourceForge returned HTTP 522 for ~3 h on 2026-10-01 and 
 | `build` (`build-headless`, B1038) | the same Release build with `EQT_GRAPHICS=OFF` into `build-headless/ref/<slug>`, then `ctest -LE hygiene` in the same job ("The headless build" below) | not yet measured on a runner; dev-u24 `-j4`: ~1,920 s cold (B1038) | not measured |
 | `gate` | `visual_gate` (T80/T291) over `build-gles2/ref/<slug>/bin/gles2_zone_benchmark` (B1012) | 363 s | 18 s |
 | | B813 (2026-09-20): the manifest names FIVE zones (qeynos2, gfaydark, befallen + iceclad + timorous); `gate` verifies all five (`--zones`, B903/B904 2026-09-29) | — | 40 s for all five in one job (measured back-to-back on a quiet hermes-ext: 10.6 s wall for three zones, 19.6 s wall for five; +9.0 s wall) |
+| | B929 (#247): `zone-budget-census`, the full 118-zone sweep + `zone_budget_census.py --check-budgets` ("The zone-content sweep" below) | not yet measured on a runner; hermes-ext: 4 m 46 s of zone time + benchmark build | 4 m 46 s of zone time (warm benchmark build) |
 
 (T502's own measurements on hermes-ext, when build and suite were still two
 jobs; the suite does the same work either way — only the two build trees are
@@ -344,7 +360,8 @@ that will never get an MR (an experiment you want CI on) is pushed without it.
 
 ### Docs-only pipelines run hygiene only (B1042, #362)
 
-`build-test`, `gate` and `client-ledger-live` (and `build-headless`, B1038)
+`build-test`, `gate`, `zone-budget-census` (B929) and `client-ledger-live`
+(and `build-headless`, B1038)
 carry `rules:` (the `.code_rules` anchor in `.gitlab-ci.yml`) that add the job
 only when **at least one changed path does not end in `.md`**. `hygiene` has no
 rules and always runs, so a pipeline whose diff is only `*.md` files — anywhere,
@@ -764,7 +781,16 @@ drivers can never render byte-identical frames:
 
 - **x86** (the CI `gate` job): llvmpipe, 16-bit depth (B971), goldens at
   `tests/goldens/<zone>_f<n>.png`, section `manifest["zones"]`. The CI
-  job passes no `--platform`; nothing about it changed.
+  job passes no `--platform`; nothing about it changed. The runners take
+  the x86 device fork's surfaceless-EGL path (no /dev/dri grant), so the
+  goldens are driver-stable. On a multi-GPU x86 box (lane 5, the
+  ThinkPad: a headless NVIDIA Quadro on card0, the Intel UHD 630 eDP
+  panel on card1) `--drm` card selection tries every `/dev/dri/card*` in
+  numeric order and skips a card that opens without a connected
+  connector and a CRTC, landing on the card that actually has a display
+  (B1054, #374); `WILLEQ_DRM_DEVICE=/dev/dri/cardN` is an explicit
+  single-path override whose failure is an error, never a silent
+  fallback.
 - **Pi** (by hand, never a CI job): Mali-400 under the Lima driver on the
   Orange Pi with the shipped LLVM-less Mesa prefix, goldens at
   `tests/goldens/pi/<zone>/f<n>.png`, section
@@ -837,6 +863,37 @@ cited in the notes column). The ctest leg (`zone_content_sweep_smoke`, label
 absent; CI's `build-test` job re-makes the symlinks and sets `WILLEQ_REQUIRE_ASSETS=1`,
 so a skip there is impossible. `--zones` names that are not in the list fail
 loudly (exit 3) instead of sweeping zero zones.
+
+**The sweep also asserts the budgets: the `zone-budget-census` gate-stage
+job** (B929, #247). The sweep's own "clean" row is load-cleanness plus the
+256 MB RssAnon ceiling; a zone that loads fine but exceeds a memory budget
+was invisible to CI (B929's growthplane: 28,687,788 B of
+`placeableObjectsBytes` against 25,165,824 — fixed in the loader by B936b,
+asserted here). The job first runs
+`scripts/ci/zone_census_pack_selfheal.sh` before the sweep: the runners read
+the shared NFS pack tree, and a STALE pack (B930/#248's soldunga v1
+signature) FATALs the benchmark's all-or-nothing texture load — the sweep
+would then die on an asset, never asserting that zone's budget. The
+runner cannot repair the NFS tree (read-only for it), so the script builds
+a LOCAL pack tree the sweep reads with `--eqe1-path`: every swept zone's
+three packs plus the loader's fixed pack list (re-read from
+`zone_bench_loader.cpp` each run — the sweep's mandatory set) is
+`verify_eqe1 --require-v3`-verified and hard-linked when clean, or
+rebuilt with `eqe1_builder` from the `.s3d` when STALE (the client FATAL's
+own named remedy); a mandatory pack that is missing or does not come back
+clean fails the job. Then the full
+118-zone sweep (4 m 46 s measured, refactor/B929/README.md; the benchmark
+is the per-ref tree's binary, passed with `--bench-bin`) and then
+`scripts/ci/zone_budget_census.py --check-budgets`, which fails on ANY zone
+over ANY budget: every estimate pair the `gate` job asserts
+(`visual_gate.py`'s `MEMORY_BUDGET_PAIRS` minus the two also-baselined,
+against the budgets the benchmark read out of the shipped orangepi preset)
+and every `memoryLedgerBudgets` category. Blocking, no retries (the figures
+are load-invariant, unlike the gate's CPU-p95). The ctest legs of the same
+net: `test_zone_budget_census` (pure python, every pipeline),
+`zone_budget_census_smoke` (the 3-zone smoke, label `slow`) and
+`test_zone_census_pack_selfheal` (the self-heal's exit-code contract on stub
+verify/builder binaries, pure bash+python).
 
 ## `review/` citations
 

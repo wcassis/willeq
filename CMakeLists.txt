@@ -336,6 +336,7 @@ SET(COMMON_SOURCES
 SET(CLIENT_CORE_SOURCES
     src/client/core/everquest.cpp
     src/client/core/memory_ledger.cpp
+    src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
     src/client/core/memory_ledger_trace.cpp
     src/client/core/gpu_buffer_census.cpp
     src/client/core/gl_driver_census.cpp  # B946 (GitLab #264): the [gldriver] line
@@ -473,6 +474,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/inventory/inventory_bags.cpp
     src/client/inventory/inventory_packets.cpp
     src/client/hotbar/hotbar_model.cpp
+    src/client/hotbar/hotbar_persistence.cpp
     src/client/chat/chat_message_buffer.cpp
     src/client/chat/chat_text_colors.cpp  # B993: [TextColors] User_1..86
     src/client/graphics/ui/command_registry.cpp
@@ -624,7 +626,6 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/sky_loader.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/eq/zone_geometry.cpp
-        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/race_codes.cpp
         src/client/graphics/eq/animation_mapping.cpp
         src/client/graphics/eq/equipment_textures.cpp
@@ -777,7 +778,6 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/frame_budget_governor.cpp
         src/client/graphics/entity_build_scheduler.cpp
-        src/client/graphics/texture_atlas.cpp
         src/client/graphics/eqe1_loader.cpp
     src/client/graphics/eqe1_texture_index.cpp
         src/client/graphics/constrained_texture_cache.cpp
@@ -979,19 +979,24 @@ SET(ALL_CORE_SOURCES
 # Create a static library for the core client code (used by both executable and tests)
 ADD_LIBRARY(willeq_core STATIC ${ALL_CORE_SOURCES})
 # B950 (GitLab #268): PUBLIC, not PRIVATE. ZoneMeshBuilder's member layout in
-# zone_geometry.h depends on EQT_HAS_TEXTURE_ATLAS (four #ifdef blocks in the
-# header; only the two data-member blocks -- the shaderMaterialAtlas*
-# members -- change sizeof, 8 bytes total on x86-64), so
+# zone_geometry.h USED to depend on EQT_HAS_TEXTURE_ATLAS (the two #ifdef
+# data-member blocks -- the shaderMaterialAtlas* members -- changed sizeof,
+# 8 bytes total on x86-64), so
 # every TU that constructs one must see the same
 # layout the core's constructor was generated against. PRIVATE left every
 # consumer of willeq_core one sizeof smaller (B944's ASan stack-buffer-
-# overflow; test_placed_object_meshes by construction). No target links
+# overflow; test_placed_object_meshes by construction). B494 (this MR)
+# deleted the guarded members: zone_geometry.h now has zero #ifdef blocks,
+# so the define gates nothing in the header and the layout no longer depends
+# on it. The define and the net are KEPT but vacuous (retirement is a
+# FOLLOW-UP); the net still asserts consumer and core agree. No target links
 # willeq_core and compiles zone_geometry.cpp itself, so the define
 # propagate through the link cannot shadow a local copy -- the per-target
 # PRIVATE copies in the three tests that linked willeq_core
 # (renderer_guards.cmake) are deleted as now-redundant. The three gles2
 # tools below still declare it PRIVATE: they do NOT link willeq_core and
-# compile the atlas TUs themselves, so for them the PRIVATE copy is the only
+# compile the zone TUs themselves (zone_geometry.cpp, mesh_building.cpp),
+# so for them the PRIVATE copy is the only
 # one and stays.
 # Pinned by test_zone_geometry_atlas_layout.
 TARGET_COMPILE_DEFINITIONS(willeq_core PUBLIC EQT_HAS_TEXTURE_ATLAS)
@@ -1221,7 +1226,6 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
-        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
@@ -1244,6 +1248,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/model_loading_chr.cpp
         src/client/graphics/eq/model_loading_search.cpp
         src/client/core/memory_ledger.cpp  # T500: model_loading_search.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/graphics/eq/mesh_building.cpp
@@ -1381,6 +1386,7 @@ IF(EQT_GRAPHICS)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
@@ -1391,7 +1397,6 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
-        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
@@ -1461,6 +1466,7 @@ IF(EQT_GRAPHICS)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
@@ -1471,7 +1477,6 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
-        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
@@ -1667,6 +1672,7 @@ IF(EQT_GRAPHICS)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
@@ -1677,7 +1683,6 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
-        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
@@ -1746,6 +1751,7 @@ IF(EQT_GRAPHICS)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
@@ -1756,7 +1762,6 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
-        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
@@ -2286,8 +2291,10 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_zone_benchmark
         tools/hwcaps/gles2_zone_benchmark.cpp
         src/client/core/memory_ledger.cpp
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
+        src/client/core/gl_driver_census.cpp   # B1016: the gate's [gldriver] net
         tools/hwcaps/zone_bench_options.cpp
         tools/hwcaps/zone_bench_frame.cpp
         tools/hwcaps/zone_bench_modes.cpp
@@ -2324,7 +2331,6 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
-        src/client/graphics/eq/zone_geometry_atlased.cpp
         # B936: the client's per-geometry object mesh table + keyframe pose.
         src/client/graphics/placed_object_meshes.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -2347,7 +2353,6 @@ IF(EQT_GRAPHICS)
         src/client/raycast_mesh.cpp
         src/client/graphics/zone_shader.cpp
         src/client/graphics/vision_ambient.cpp
-        src/client/graphics/texture_atlas.cpp
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/eq/race_model_loader.cpp
         src/client/graphics/eq/model_source_residency.cpp
@@ -2394,7 +2399,7 @@ IF(EQT_GRAPHICS)
         # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
-    # GPU upload thread (GLES2 only — needed by texture_atlas.cpp)
+    # GPU upload thread (GLES2 only — legacy per-region VBO upload path)
     IF(EQT_GLES2)
         TARGET_SOURCES(gles2_zone_benchmark PRIVATE src/client/graphics/gpu_upload_thread.cpp)
     ENDIF()
@@ -2453,7 +2458,7 @@ IF(EQT_GRAPHICS)
             LIST(APPEND ZONE_BENCH_LIBS X11)
         ENDIF()
     ENDIF()
-    # P30: desktop-GL-only ELSE() (plain "GL" for texture_atlas.cpp
+    # P30: desktop-GL-only ELSE() (plain "GL" for the GLES2 driver's
     # glGenTextures etc.) removed — the mandatory-Irrlicht gate guarantees
     # EQT_DRM OR EQT_GLES2 whenever IRRLICHT_LIBRARY is set
     # (refactor/desktop_gl_elimination_plan.md §5/§6 Phase 3).
@@ -2491,8 +2496,10 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_shader_diagnostic
         tools/hwcaps/gles2_shader_diagnostic.cpp
         src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
+        src/client/core/gl_driver_census.cpp  # B1016: zone_bench_loader.cpp emits the [gldriver] line
         tools/hwcaps/zone_bench_loader.cpp
         tools/hwcaps/zone_bench_draw.cpp
         tools/hwcaps/zone_bench_entities.cpp
@@ -2519,7 +2526,6 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
-        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/placed_object_meshes.cpp   # B936: zone_bench_loader's object mesh table
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
@@ -2541,7 +2547,6 @@ IF(EQT_GRAPHICS)
         src/client/raycast_mesh.cpp
         src/client/graphics/zone_shader.cpp
         src/client/graphics/vision_ambient.cpp
-        src/client/graphics/texture_atlas.cpp
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/eq/race_model_loader.cpp
         src/client/graphics/eq/model_source_residency.cpp
@@ -2616,8 +2621,10 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_composite_audit
         tools/hwcaps/gles2_composite_audit.cpp
         src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
+        src/client/core/gl_driver_census.cpp  # B1016: zone_bench_loader.cpp emits the [gldriver] line
         tools/hwcaps/zone_bench_loader.cpp
         tools/hwcaps/zone_bench_draw.cpp
         tools/hwcaps/zone_bench_entities.cpp
@@ -2644,7 +2651,6 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
-        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/placed_object_meshes.cpp   # B936: zone_bench_loader's object mesh table
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
@@ -2666,7 +2672,6 @@ IF(EQT_GRAPHICS)
         src/client/raycast_mesh.cpp
         src/client/graphics/zone_shader.cpp
         src/client/graphics/vision_ambient.cpp
-        src/client/graphics/texture_atlas.cpp
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/eq/race_model_loader.cpp
         src/client/graphics/eq/model_source_residency.cpp

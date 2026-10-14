@@ -161,7 +161,7 @@ specifically.
 ## Build Commands
 
 **`-j$(nproc)` does not expand reliably in a Bash tool command. Pass a hardcoded
-value, e.g. `cmake --build build -j24`** (hermes-ext workers: 4 GiB cgroup, so `-j3`, B1046). From a script
+value, e.g. `cmake --build build -j24`** (hermes-ext workers: 4 GiB cgroup, `-j3`, B1046). From a script
 (e.g. `scripts/build-arm-noble.sh`), `$(nproc)` works fine.
 
 **Desktop-GL Irrlicht support has been removed (P30,
@@ -453,10 +453,10 @@ generator arithmetic defined.
 
 ## The eqemu lane
 
-**eqemu runs on dedicated VMs, not on this machine: FOUR lanes** (B1008,
+**eqemu runs on dedicated hosts, not here: 5 lanes** (B1008,
 2026-10-08; `docs/decisions.md`). `scripts/eqemu/env.sh` is the one place that
-knows: `EQEMU_LANE=1..4` picks the eqemu VM and its paired official-client
-oracle VM (lane 1 = `172.16.200.99`, the default), every docker/compose/`.env`
+knows: `EQEMU_LANE=1..5` picks the eqemu host and its paired official-client
+oracle host (lane 1 = `172.16.200.99`, the default; lane 5 = ThinkPad, B1055), every docker/compose/`.env`
 access goes through `eq_remote` (ssh to `EQEMU_SSH`), and `AKK_DIR` is the
 akk-stack path ON that host. `EQEMU_HOST=local` drives a stack on this machine.
 A card names its LANE, never an address. Each lane's exclusive lock lives on its

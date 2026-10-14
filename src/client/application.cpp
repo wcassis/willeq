@@ -962,7 +962,10 @@ void Application::gameThreadLoop() {
                 // other T43 fixes -- gate removed, matches the unconditional
                 // eq.h declaration.
                 if (m_eqClient) {
-                    m_eqClient->Bridge().LoadHotbarConfig();
+                    if (m_eqClient->Bridge().LoadHotbarConfig() ==
+                        eqt::HotbarLoadResult::Error) {
+                        LOG_ERROR(MOD_CONFIG, "Hotbar assignments remain at defaults after load failure");
+                    }
                     // T171: same config file, same moment. It must be loaded
                     // before anyone can inspect us, and being in the zone is
                     // the first point at which that is possible.

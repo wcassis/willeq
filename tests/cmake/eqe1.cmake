@@ -27,22 +27,25 @@ ADD_EXECUTABLE(test_eqe1_stale_pack
 TARGET_INCLUDE_DIRECTORIES(test_eqe1_stale_pack PRIVATE ${CMAKE_SOURCE_DIR}/include)
 ADD_TEST(NAME test_eqe1_stale_pack COMMAND test_eqe1_stale_pack)
 
-# B930 (#248), criterion 2: tools/verify_eqe1 prints the version on every
-# line and --require-v3 flags a structurally-clean v1/v2 pack as STALE
-# (exit 1) so a host's pack directory is one audit loop. Pure python + the
-# built tool. The tool lives in the build tree UNDER TEST (${CMAKE_BINARY_DIR}/bin),
-# which is what the script is pointed at: CI (B1012) configures per-ref trees
-# at build/ref/<ref-slug>, so a hardcoded <repo>/build/bin default — the
-# pre-B1012 layout — found nothing there and this leg silently SKIPped
-# (exit 125) in every CI pipeline until the B930 follow-up pinned the path
-# here. BUILD_DEPENDS guarantees the tool is built before ctest runs it, so
-# the leg RUNS (not skips) in CI. The test is registered only when the
-# target exists (EQT_GRAPHICS=OFF trees, e.g. build/hygiene, have no tool);
-# within that the script still SKIPs (125) if the binary is somehow missing.
+# B930 (#248) + B1017 (#338): tools/verify_eqe1 prints the version on every
+# line and --require-v3 flags ONLY a v1/v2 pack that HOLDS A 31-CHAR NAME
+# (the truncation candidate; a structurally-clean v1/v2 pack -- every name
+# fits the field -- reports OK). Pure python + the built tool. The tool
+# lives in the build tree UNDER TEST (${CMAKE_BINARY_DIR}/bin), which is
+# what the script is pointed at through WILLEQ_BUILD_DIR: CI (B1012)
+# configures per-ref trees at build/ref/<ref-slug>, so a hardcoded
+# <repo>/build/bin default — the pre-B1012 layout — found nothing there and
+# this leg silently SKIPped (exit 125) in every CI pipeline until the B930
+# follow-up pinned the path here. The tool is part of the default `all`
+# target, so the build stage has already produced it before ctest runs
+# (there is no add_test build-dependency keyword; the pre-B1017
+# `BUILD_DEPENDS` keyword here was argv, not a dependency). The test is
+# registered only when the target exists (EQT_GRAPHICS=OFF trees, e.g.
+# build/hygiene, have no tool); within that the script still SKIPs (125) if
+# the binary is somehow missing.
 IF(TARGET verify_eqe1)
     ADD_TEST(NAME test_eqe1_verify_stale_pack
         COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_eqe1_verify_stale_pack.py
-        BUILD_DEPENDS verify_eqe1
     )
     SET_TESTS_PROPERTIES(test_eqe1_verify_stale_pack PROPERTIES
         SKIP_RETURN_CODE 125
@@ -142,6 +145,47 @@ ENDIF()
 ADD_TEST(NAME zone_content_sweep_smoke
     COMMAND ${CMAKE_SOURCE_DIR}/scripts/ci/zone_content_sweep_smoke.sh)
 SET_TESTS_PROPERTIES(zone_content_sweep_smoke PROPERTIES
+    LABELS "slow"
+    SKIP_RETURN_CODE 125
+    RUN_SERIAL TRUE
+    TIMEOUT 900)
+
+# B929 (#247): the zone budget census's unit leg. Pure python, no benchmark
+# binary, no assets: drives scripts/ci/zone_budget_census.py through its real
+# exit-code contract on synthetic sweep output (over-budget estimate -> 1
+# naming the figure, in-budget -> 0, zero budget skipped, no-JSON zone not
+# ok, unknown --zones name -> 3) and pins the checker's estimate-pair set
+# against visual_gate.py's MEMORY_BUDGET_PAIRS (minus the two also-baselined).
+# Unlabelled: it is a fast suite member, not a slow zone-load test.
+ADD_TEST(NAME test_zone_budget_census
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/test_zone_budget_census.py)
+
+# B929 (#247): the pack self-heal unit test (zone_census_pack_selfheal.sh's
+# exit-code contract with stub verify/builder binaries -- no build tree,
+# no assets): every mandatory pack (each zone's three + the fixed list,
+# re-parsed from zone_bench_loader.cpp) is hard-linked or, when STALE,
+# rebuilt and re-verified; a still-stale rebuild, a stale pack with no
+# .s3d, a missing mandatory pack or a missing mandatory zone fails the
+# script; a non-mandatory pack is never linked or rebuilt; the list's
+# header row is skipped.
+ADD_TEST(NAME test_zone_census_pack_selfheal
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/test_zone_census_pack_selfheal.py)
+
+# B929 (#247): the zone budget census's ctest leg. The full 118-zone run is
+# the CI gate-stage job zone-budget-census (one gles2_zone_benchmark per
+# zone, ~3 s each, ~5 min of zone time measured, refactor/B929/README.md);
+# this smoke is its net:
+#   RED half   -- a synthetic sweep row carrying B927's measured over-budget
+#                 figure (growthplane placeableObjectsBytes 28,687,788
+#                 against 25,165,824) MUST be failed by
+#                 scripts/ci/zone_budget_census.py;
+#   GREEN half -- the sweep's three smoke zones (one per expansion) swept
+#                 fresh and inside every budget.
+# Same skip convention as the B852 smoke: no benchmark binary or asset root
+# -> exit 125 -> ctest SKIP, loud.
+ADD_TEST(NAME zone_budget_census_smoke
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/ci/zone_budget_census_smoke.sh)
+SET_TESTS_PROPERTIES(zone_budget_census_smoke PROPERTIES
     LABELS "slow"
     SKIP_RETURN_CODE 125
     RUN_SERIAL TRUE

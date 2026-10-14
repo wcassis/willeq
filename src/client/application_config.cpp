@@ -370,6 +370,8 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "                           [memledger] lifecycle points (needs --log-level=INFO or higher)\n";
             std::cout << "                           Env: WILLEQ_BASELINE=1 (original-client feature parity), WILLEQ_LEDGER_TRACE=<category>[:<point>],\n";
             std::cout << "                           WILLEQ_LEDGER_IDLE_EVERY=<s>, WILLEQ_LEDGER_OWNERS=<category>\n";
+            std::cout << "                           WILLEQ_FPS_CAP=<fps> (B924: pace the render loop, measurement only),\n";
+            std::cout << "                           WILLEQ_IDLE_MEMMAP=1 (B924: the smaps census at every idle point)\n";
             std::cout << "  --log-module=MOD:LEVEL   Set per-module log level; comma-separated list (e.g., NET:DEBUG,GRAPHICS:TRACE)\n";
             std::cout << "                           Unparseable level names are rejected with an error (never mapped silently)\n";
             std::cout << "                           Modules: NET, NET_PACKET, LOGIN, WORLD, ZONE, ENTITY,\n";
@@ -520,7 +522,16 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
                 }
                 if (audio_config.isMember("vendor_music")) {
                     config.audioVendorMusic = audio_config["vendor_music"].asString();
-                    LOG_INFO(MOD_AUDIO, "Vendor music from config: {}", config.audioVendorMusic);
+                    // B1018 (GitLab #339): the "parsed but ignored" WARN lives
+                    // HERE -- this arm runs only when a config actually named
+                    // the key. B344 put it in SetVendorMusic()'s body, which
+                    // Application::initEverQuestClient() calls unconditionally
+                    // with the default "gl.xmi", so it fired on every
+                    // WITH_AUDIO run. No config sets the key, hence nobody
+                    // noticed. Pinned by test_vendor_music_config_warn (0
+                    // absent / exactly 1 present).
+                    LOG_WARN(MOD_AUDIO, "audio.vendor_music is parsed but ignored: {}",
+                             config.audioVendorMusic);
                 }
                 // K15 (board B037)
                 if (audio_config.isMember("use_3d")) {

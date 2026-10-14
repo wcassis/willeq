@@ -109,7 +109,8 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 
 # T301 Leg D: the UI-hide toggle, from the paths a user or a capture script
-# reaches (/hideui and the F11 hotkey), plus source pins on the two single-site
+# reaches (/hideui and the F10 hotkey -- F11 at T301's time, moved to the
+# official F10 by B582), plus source pins on the two single-site
 # steps that need a GL device to execute.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_ui_hide_command
@@ -755,7 +756,10 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         test_b972_stream_buffers.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/texture_generators.cpp
     )
-    TARGET_COMPILE_DEFINITIONS(test_b972_stream_buffers PRIVATE EQT_HAS_GLES2)
+    # B1019: the PRIVATE EQT_HAS_GLES2 copy here was deleted -- the define
+    # flows in globally (ADD_DEFINITIONS at CMakeLists.txt:1027, every
+    # EQT_GLES2 configuration), exactly as the other graphics test targets
+    # already rely on.
     TARGET_INCLUDE_DIRECTORIES(test_b972_stream_buffers PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_b972_stream_buffers GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_b972_stream_buffers DISCOVERY_TIMEOUT 120)
@@ -839,6 +843,25 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eqe1_alpha_companion_mip PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_eqe1_alpha_companion_mip GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_eqe1_alpha_companion_mip DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1017 (#338), criteria (d)+(e): the test that REACHES THE STALE-PACK FATAL
+# through the real ConstrainedTextureCache::getOrLoad() miss path (a fork
+# child runs the LOG_FATAL + std::exit(1) site; the parent greps its
+# stdout) and the mixed-case .BMP request that still gets the diagnosis.
+# The pre-B1017 B930 leg (test_eqe1_stale_pack) drives
+# diagnoseStaleEQE1Pack() and _exit(1)s unconditionally -- deleting the
+# diagnosis CALL at the FATAL site left it green (audit finding 7).
+# Links willeq_core (which carries constrained_texture_cache*.cpp +
+# eqe1_loader.cpp, the client's own TU set); no GL device is needed -- the
+# miss path never touches a driver.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_eqe1_real_miss
+        test_eqe1_real_miss.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_eqe1_real_miss PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_eqe1_real_miss GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_eqe1_real_miss DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # B948 (GitLab #266): getGpuTextureMemoryUsage() counts each ETC1 alpha chain

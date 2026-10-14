@@ -139,12 +139,6 @@ bool eqt::bridge::BridgeComponent::InitGraphics(int width, int height,
 	// the same helper so both paths agree).
 	wireBridgeToSubsystems(bridge);
 
-	// U07b: Wire hotbar model's save callback (bridge pointer itself is
-	// wired by wireBridgeToSubsystems() above).
-	if (ctx_.hotbar_model) {
-		ctx_.hotbar_model->setSaveCallback([this]() { SaveHotbarConfig(); });
-	}
-
 	EQT::Graphics::RendererConfig config;
 	config.width = width;
 	config.height = height;
@@ -272,6 +266,7 @@ void eqt::bridge::BridgeComponent::wireBridgeToSubsystems(eqt::bridge::GameState
 	}
 	if (ctx_.hotbar_model) {
 		ctx_.hotbar_model->setBridge(bridge);
+		ctx_.hotbar_model->setSaveCallback([this]() { SaveHotbarConfig(); });
 	}
 }
 
