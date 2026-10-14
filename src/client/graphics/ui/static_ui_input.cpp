@@ -703,10 +703,20 @@ ScrollTarget StaticUIInput::scrollTargetAt(int mouseX, int mouseY,
     }
 
     // Popups first, topmost first -- the same precedence processKey()'s ESC
-    // handler uses. Both draw into layout.centerPopup.
+    // handler uses. Both draw into layout.centerPopup. B1025-H2: the stock
+    // hotbar window sits bottom-left and the chat panel beside it, so at
+    // 800x600 the chat's TOP STRIP falls inside layout.centerPopup -- the
+    // old bottom-left chat and the centre popup never touched. An open
+    // popup, drawn on top, still wins; with no popup open the chat
+    // underneath owns the point, so its tab strip scrolls again. A zero-area
+    // panel (an uninitialised layout, whose rects are all (0,0,0,0) --
+    // isPointInside answers true for (0,0) there) owns no pixels and is not
+    // a target.
     if (layout.centerPopup.isPointInside(p)) {
         if (loot.isOpen) return ScrollTarget::Loot;
         if (skills.isOpen) return ScrollTarget::Skills;
+        if (layout.chatPanel.getArea() > 0 && layout.chatPanel.isPointInside(p))
+            return ScrollTarget::Chat;
         return ScrollTarget::None;
     }
 
