@@ -2000,6 +2000,11 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(particle_atlas_builder
         tools/particle_atlas_builder.cpp
         src/client/graphics/texture_generators.cpp
+        # B961: links ${IRRLICHT_LIBRARY} whole-archive, so the device's
+        # scanout publish (CIrrDeviceFB.o -> eqt::memory::publishScanoutTally)
+        # must resolve here as well -- the core census TU, self-contained, the
+        # same way gles2_zone_benchmark carries it.
+        src/client/core/gpu_buffer_census.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(particle_atlas_builder PRIVATE
         ${CMAKE_SOURCE_DIR}/tools
@@ -2029,6 +2034,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/detail/detail_texture_atlas.cpp
         src/client/graphics/detail/detail_texture_atlas_flora.cpp
         src/client/graphics/detail/detail_texture_atlas_grass.cpp
+        # B961: same device->core reference as particle_atlas_builder (see there).
+        src/client/core/gpu_buffer_census.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(generate_textures PRIVATE
         ${CMAKE_SOURCE_DIR}/tools
@@ -2464,35 +2471,32 @@ IF(EQT_GRAPHICS)
     # the driver's built-in alpha-test program and through raw copies of it
     # (freshly compiled and program-binary round-tripped), pixel counts only.
     # B959: data_paths.cpp resolves the driver's shader-cache directory.
+    # B961: compiles the core census TU in (as gles2_zone_benchmark does) so the
+    # device's scanout publish (CIrrDeviceFB.o -> eqt::memory::publishScanoutTally)
+    # resolves in this self-contained tool's link line.
     ADD_EXECUTABLE(gles2_alpha_test_probe tools/hwcaps/gles2_alpha_test_probe.cpp
-        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp)
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp)
     TARGET_INCLUDE_DIRECTORIES(gles2_alpha_test_probe PRIVATE ${IRRLICHT_INCLUDE_DIR}
         ${CMAKE_SOURCE_DIR}/include)
     IF(EQT_DRM)
         TARGET_COMPILE_DEFINITIONS(gles2_alpha_test_probe PRIVATE EQT_HAS_DRM)
     ENDIF()
-    # B961: the device's scanout publish (CIrrDeviceFB.o, inside
-    # ${IRRLICHT_LIBRARY}) calls into eqt::memory::publishScanoutTally, defined
-    # in willeq_core -- the main willeq target links both archives, this probe
-    # only ${ZONE_BENCH_LIBS} (no willeq_core), so the reference is unresolved
-    # unless the core archive is on its link line (ARM's build-arm job is the
-    # first to link the probe; the x86 gate tree pre-dates the change).
-    TARGET_LINK_LIBRARIES(gles2_alpha_test_probe willeq_core ${ZONE_BENCH_LIBS})
+    TARGET_LINK_LIBRARIES(gles2_alpha_test_probe ${ZONE_BENCH_LIBS})
 
     # B965 (GitLab #283): the per-pixel player light probe -- the production
     # uAttenLUT math and its precision variants drawn as intensity curves over
     # 0..400 world units, read back per pixel.
+    # B961: core census TU compiled in, as the alpha probe above.
     ADD_EXECUTABLE(gles2_player_light_probe tools/hwcaps/gles2_player_light_probe.cpp
-        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp)
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp)
     TARGET_INCLUDE_DIRECTORIES(gles2_player_light_probe PRIVATE ${IRRLICHT_INCLUDE_DIR}
         ${CMAKE_SOURCE_DIR}/include)
     IF(EQT_DRM)
         TARGET_COMPILE_DEFINITIONS(gles2_player_light_probe PRIVATE EQT_HAS_DRM)
     ENDIF()
-    # B961: same device->core reference as the alpha probe -- ${IRRLICHT_LIBRARY}'s
-    # CIrrDeviceFB.o calls publishScanoutTally (willeq_core); this probe does not
-    # compile the core TU in, so the core archive goes on its link line.
-    TARGET_LINK_LIBRARIES(gles2_player_light_probe willeq_core ${ZONE_BENCH_LIBS})
+    TARGET_LINK_LIBRARIES(gles2_player_light_probe ${ZONE_BENCH_LIBS})
 
     # Shader diagnostic tool — renders test modules through all debug shader modes
     ADD_EXECUTABLE(gles2_shader_diagnostic
