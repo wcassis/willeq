@@ -11,6 +11,8 @@
 #include <cstring>
 #include <chrono>
 #include <ctime>
+#include <algorithm>
+#include <atomic>
 
 // miniaudio implementation — only in this .cpp
 #define MA_IMPLEMENTATION
@@ -51,12 +53,135 @@ static void t130WriteAudioTidOnce() {
 namespace EQT {
 namespace Audio {
 
+// ─── DeviceRateAdapter (B1069) ──────────────────────────────────────────────
+
+// Largest device-rate pull rendered in one resampler pass. A callback asking
+// for more is split into chunks, so the scratch below never grows on the
+// audio thread.
+static constexpr uint32_t kAdapterChunkFrames = 2048;
+
+struct DeviceRateAdapter::Impl {
+    AudioMixer* mixer = nullptr;
+    uint32_t mixRate = 0;
+    uint32_t deviceRate = 0;
+    bool passthrough = true;
+    bool resamplerInitialized = false;
+    ma_resampler resampler;
+    std::vector<float> mixScratch;  // mixer-rate frames, interleaved stereo
+    std::atomic<uint64_t> mixerFrames{0};
+
+    ~Impl() {
+        if (resamplerInitialized) ma_resampler_uninit(&resampler, nullptr);
+    }
+};
+
+DeviceRateAdapter::DeviceRateAdapter() : impl_(std::make_unique<Impl>()) {}
+DeviceRateAdapter::~DeviceRateAdapter() = default;
+
+bool DeviceRateAdapter::init(AudioMixer* mixer, uint32_t mixRate, uint32_t deviceRate) {
+    if (impl_->resamplerInitialized) {
+        ma_resampler_uninit(&impl_->resampler, nullptr);
+        impl_->resamplerInitialized = false;
+    }
+    impl_->mixer = mixer;
+    impl_->mixRate = mixRate;
+    impl_->deviceRate = deviceRate;
+    impl_->mixerFrames.store(0, std::memory_order_relaxed);
+    impl_->passthrough = (mixRate == deviceRate) || mixRate == 0 || deviceRate == 0;
+    if (impl_->passthrough) {
+        impl_->mixScratch.clear();
+        return mixRate == deviceRate;
+    }
+
+    ma_resampler_config rc = ma_resampler_config_init(
+        ma_format_f32, 2, mixRate, deviceRate, ma_resample_algorithm_linear);
+    if (ma_resampler_init(&rc, nullptr, &impl_->resampler) != MA_SUCCESS) {
+        LOG_ERROR(MOD_AUDIO, "DeviceRateAdapter: ma_resampler_init {} -> {} Hz failed",
+                  mixRate, deviceRate);
+        impl_->passthrough = true;
+        return false;
+    }
+    impl_->resamplerInitialized = true;
+
+    // The most mixer frames one chunk can need: ask the resampler itself,
+    // plus a margin for its fractional state at any later point.
+    ma_uint64 need = 0;
+    ma_resampler_get_required_input_frame_count(&impl_->resampler, kAdapterChunkFrames, &need);
+    const size_t maxIn = static_cast<size_t>(need) + 8;
+    impl_->mixScratch.assign(maxIn * 2, 0.0f);
+    return true;
+}
+
+void DeviceRateAdapter::render(float* output, uint32_t frameCount) {
+    if (!impl_->mixer) {
+        std::memset(output, 0, static_cast<size_t>(frameCount) * 2 * sizeof(float));
+        return;
+    }
+    if (impl_->passthrough) {
+        impl_->mixer->render(output, static_cast<int>(frameCount));
+        impl_->mixerFrames.fetch_add(frameCount, std::memory_order_relaxed);
+        return;
+    }
+
+    const size_t maxIn = impl_->mixScratch.size() / 2;
+    uint32_t done = 0;
+    while (done < frameCount) {
+        const uint32_t chunk = std::min(frameCount - done, kAdapterChunkFrames);
+        ma_uint64 need = 0;
+        ma_resampler_get_required_input_frame_count(&impl_->resampler, chunk, &need);
+        if (need > maxIn) need = maxIn;  // cannot happen (sized in init); never overrun
+        if (need > 0) {
+            impl_->mixer->render(impl_->mixScratch.data(), static_cast<int>(need));
+        }
+        ma_uint64 inFrames = need;
+        ma_uint64 outFrames = chunk;
+        float* dst = output + static_cast<size_t>(done) * 2;
+        ma_resampler_process_pcm_frames(&impl_->resampler, impl_->mixScratch.data(), &inFrames,
+                                        dst, &outFrames);
+        impl_->mixerFrames.fetch_add(inFrames, std::memory_order_relaxed);
+        if (outFrames < chunk) {
+            // The resampler produced less than it said it would: pad with
+            // silence rather than hand the device stale memory.
+            std::memset(dst + outFrames * 2, 0,
+                        static_cast<size_t>(chunk - outFrames) * 2 * sizeof(float));
+        }
+        done += chunk;
+    }
+}
+
+bool DeviceRateAdapter::isPassthrough() const { return impl_->passthrough; }
+uint32_t DeviceRateAdapter::mixRate() const { return impl_->mixRate; }
+uint32_t DeviceRateAdapter::deviceRate() const { return impl_->deviceRate; }
+uint64_t DeviceRateAdapter::mixerFramesPulled() const {
+    return impl_->mixerFrames.load(std::memory_order_relaxed);
+}
+
 // ─── MiniaudioBackend ───────────────────────────────────────────────────────
 
+// B1069: short, space-free names for the init log (ma_get_format_name()'s
+// "16-bit Signed Integer" does not grep as one token). "s24" is miniaudio's
+// tightly packed 24-bit; how it maps an ALSA S24_LE (24-in-32) device is
+// miniaudio's call, so read this field, not the ALSA name, off the log.
+static const char* shortFormatName(ma_format f) {
+    switch (f) {
+        case ma_format_u8:  return "u8";
+        case ma_format_s16: return "s16";
+        case ma_format_s24: return "s24";
+        case ma_format_s32: return "s32";
+        case ma_format_f32: return "f32";
+        default:            return "unknown";
+    }
+}
+
 struct MiniaudioBackend::Impl {
+    ma_context context;
+    bool contextInitialized = false;
     ma_device device;
     bool deviceInitialized = false;
     AudioMixer* mixer = nullptr;
+    DeviceRateAdapter adapter;
+    uint32_t mixRate = 0;
+    uint32_t requestedRate = 0;
 };
 
 // T130: monotonic timestamp for AudioCallbackProbe. clock_gettime(CLOCK_MONOTONIC)
@@ -94,9 +219,11 @@ static void miniaudioDataCallback(ma_device* pDevice, void* pOutput, const void*
     t130WriteAudioTidOnce();
 #endif
     AudioCallbackProbe::onCallback(t130MonotonicNs());
-    auto* mixer = static_cast<AudioMixer*>(pDevice->pUserData);
-    if (mixer) {
-        mixer->render(static_cast<float*>(pOutput), static_cast<int>(frameCount));
+    // B1069: frames are delivered at the device's configured rate; the
+    // adapter renders the mixer at its own rate and resamples once.
+    auto* adapter = static_cast<DeviceRateAdapter*>(pDevice->pUserData);
+    if (adapter) {
+        adapter->render(static_cast<float*>(pOutput), frameCount);
     }
 }
 
@@ -108,29 +235,64 @@ MiniaudioBackend::~MiniaudioBackend() {
     stop();
 }
 
+// The mixer-rate period the T130 probe and the latency were tuned on
+// (512 frames at 22050 Hz, ~23.2 ms). B1069 keeps that DURATION at any device
+// rate rather than the frame count, so 48000 Hz gets ~1115-frame periods and
+// the callback cadence (and the probe's "late" threshold) is unchanged.
+static constexpr uint32_t kMixerPeriodFrames = 512;
+
 bool MiniaudioBackend::init(AudioMixer* mixer, uint32_t sampleRate) {
     impl_->mixer = mixer;
+    impl_->mixRate = sampleRate;
+    impl_->requestedRate = requestedDeviceRate_;
 
     ma_device_config config = ma_device_config_init(ma_device_type_playback);
     config.playback.format   = ma_format_f32;
     config.playback.channels = 2;
-    config.sampleRate        = sampleRate;
+    // B1069 (#389): the DEVICE rate, not the mixer's. 0 = native.
+    config.sampleRate        = requestedDeviceRate_;
     config.dataCallback      = miniaudioDataCallback;
-    config.pUserData         = mixer;
-    config.periodSizeInFrames = 512;
+    config.pUserData         = &impl_->adapter;
+    if (requestedDeviceRate_ > 0 && sampleRate > 0) {
+        config.periodSizeInFrames = static_cast<ma_uint32>(
+            (static_cast<uint64_t>(kMixerPeriodFrames) * requestedDeviceRate_ + sampleRate / 2) / sampleRate);
+    } else if (sampleRate > 0) {
+        config.periodSizeInMilliseconds = std::max<ma_uint32>(1, (kMixerPeriodFrames * 1000u) / sampleRate);
+    } else {
+        config.periodSizeInFrames = kMixerPeriodFrames;
+    }
 
-    ma_result result = ma_device_init(nullptr, &config, &impl_->device);
+    ma_context* ctx = nullptr;
+    if (useNullBackend_) {
+        ma_backend backends[] = { ma_backend_null };
+        if (ma_context_init(backends, 1, nullptr, &impl_->context) != MA_SUCCESS) {
+            LOG_ERROR(MOD_AUDIO, "Failed to initialize miniaudio null context");
+            return false;
+        }
+        impl_->contextInitialized = true;
+        ctx = &impl_->context;
+    }
+
+    ma_result result = ma_device_init(ctx, &config, &impl_->device);
     if (result != MA_SUCCESS) {
         LOG_ERROR(MOD_AUDIO, "Failed to initialize miniaudio device: {}", static_cast<int>(result));
+        if (impl_->contextInitialized) {
+            ma_context_uninit(&impl_->context);
+            impl_->contextInitialized = false;
+        }
         return false;
     }
 
+    // B1069: ma_device.sampleRate is the rate the callback must deliver at
+    // (the requested one, or the device's native one when 0 was asked).
+    impl_->adapter.init(mixer, sampleRate, impl_->device.sampleRate);
+
     // T130: configure the callback-timing probe's expected period so it can
     // classify "late" callbacks. sampleRate is validated >0 by the caller
-    // chain (AudioManager); config.periodSizeInFrames is the literal 512 set
-    // above.
+    // chain (AudioManager); the period is kMixerPeriodFrames of mixer time
+    // whatever the device rate (see above).
     if (sampleRate > 0) {
-        int64_t periodNs = (static_cast<int64_t>(config.periodSizeInFrames) * 1000000000LL) /
+        int64_t periodNs = (static_cast<int64_t>(kMixerPeriodFrames) * 1000000000LL) /
                             static_cast<int64_t>(sampleRate);
         AudioCallbackProbe::configure(periodNs);
     }
@@ -140,8 +302,19 @@ bool MiniaudioBackend::init(AudioMixer* mixer, uint32_t sampleRate) {
                              ma_log_callback_init(miniaudioLogCallback, nullptr));
 
     impl_->deviceInitialized = true;
-    LOG_INFO(MOD_AUDIO, "Miniaudio backend initialized ({}Hz, stereo)", sampleRate);
+    LOG_INFO(MOD_AUDIO, "Miniaudio backend initialized ({}Hz mixer, {}Hz device, stereo)",
+             sampleRate, impl_->device.sampleRate);
     return true;
+}
+
+uint32_t MiniaudioBackend::configuredSampleRate() const {
+    return impl_->deviceInitialized ? impl_->device.sampleRate : 0;
+}
+uint32_t MiniaudioBackend::internalSampleRate() const {
+    return impl_->deviceInitialized ? impl_->device.playback.internalSampleRate : 0;
+}
+bool MiniaudioBackend::isResampling() const {
+    return impl_->deviceInitialized && !impl_->adapter.isPassthrough();
 }
 
 void MiniaudioBackend::start() {
@@ -149,7 +322,21 @@ void MiniaudioBackend::start() {
         ma_result result = ma_device_start(&impl_->device);
         if (result != MA_SUCCESS) {
             LOG_ERROR(MOD_AUDIO, "Failed to start miniaudio device: {}", static_cast<int>(result));
+            return;
         }
+        // B1069 (#389): the one line that says what the hardware is really
+        // doing. The XU4 case was "client asked 22050, ALSA ran 32000, the
+        // HDMI monitor dropped 32 kHz" and nothing in the log said 32000.
+        const ma_device& d = impl_->device;
+        LOG_INFO(MOD_AUDIO,
+                 "Audio device: requested={}Hz configured={}Hz native={}Hz format={} "
+                 "channels={} period={} backend={} device=\"{}\" mixer={}Hz resample={}",
+                 impl_->requestedRate, d.sampleRate, d.playback.internalSampleRate,
+                 shortFormatName(d.playback.internalFormat), d.playback.internalChannels,
+                 d.playback.internalPeriodSizeInFrames,
+                 d.pContext ? ma_get_backend_name(d.pContext->backend) : "?",
+                 d.playback.name, impl_->mixRate,
+                 impl_->adapter.isPassthrough() ? "off" : "linear");
     }
 }
 
@@ -157,6 +344,10 @@ void MiniaudioBackend::stop() {
     if (impl_->deviceInitialized) {
         ma_device_uninit(&impl_->device);
         impl_->deviceInitialized = false;
+    }
+    if (impl_->contextInitialized) {
+        ma_context_uninit(&impl_->context);
+        impl_->contextInitialized = false;
     }
 }
 

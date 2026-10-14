@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 
 #include "client/audio/sound_buffer_cache.h"
+#include "client/audio/audio_device_rate.h"  // B1069
 
 #include <memory>
 #include <string>
@@ -139,6 +140,15 @@ public:
     // config by BridgeComponent::InitializeAudio().
     void setUse3DAudio(bool enabled) { use3DAudio_ = enabled; }
 
+    // B1069 (#389): the playback DEVICE rate the miniaudio backend opens at
+    // (the mixer renders at AudioMixer::SAMPLE_RATE and is resampled once).
+    // Defaults to the process-wide configured value (audio_device_rate.h,
+    // published by main.cpp); takes effect at initialize(); 0 = the
+    // backend's native rate. The loopback (RDP) path is unaffected: it
+    // streams at LOOPBACK_SAMPLE_RATE.
+    void setDeviceSampleRate(uint32_t hz) { deviceSampleRate_ = hz; }
+    uint32_t getDeviceSampleRate() const { return deviceSampleRate_; }
+
     // RDP audio streaming callback
     void setAudioOutputCallback(AudioOutputCallback callback);
 
@@ -213,6 +223,7 @@ private:
     bool initialized_ = false;
     bool audioEnabled_ = true;
     bool use3DAudio_ = true;  // K15 (B037)
+    uint32_t deviceSampleRate_ = configuredDeviceSampleRate();  // B1069
     std::string eqPath_;
     std::function<void()> tickCallback_;
     std::string soundFontPath_;
