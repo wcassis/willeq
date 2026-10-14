@@ -487,11 +487,13 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (33 tests: `FileSizeCeiling`, `DocCitations` (+ B1020's
+`hygiene` (35 tests: `FileSizeCeiling`, `DocCitations` (+ B1020's
 `DocCitationsSelfTest`, the anchored-citation probes), B1030's
 `DockerfileArm64Derived` (the arm64 Dockerfile stays arch-swapped armhf) and
 `PiEnvLaneResolution` (`scripts/pi/env_selftest.sh`: a PI_LANE that disagrees
-with a listed PI_HOST is refused, never rewritten), `DocClaims` and
+with a listed PI_HOST is refused, never rewritten), B1057's
+`OracleSessionSafety` + `OracleRemoteStopSafety` (the oracle driver's lane
+gate and its never-kill-a-foreign-display stop path), `DocClaims` and
 `DocCounts` from T371/T373, plus `CommentClaims`, `TexturesReproducible`,
 `PackReproducible`, `WriteOnlyFields` (T414 Leg C, the field half of the
 reachability ratchet), B1018's `WriteOnlyFieldsSelfTest` (`check_write_only_fields.py --self-test`, the multi-declarator split's own probes) and T450's `DbReproducible`, T455's

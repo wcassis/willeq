@@ -229,8 +229,13 @@ stop_capture() {
         touch "$DIR/character-restored"
     fi
     rm -f "$DIR/drive-login.sh"
+    # Kill only the Xvfb this session started (xvfb.pid). Lane 5's :99 is a
+    # real Xorg (oracle-xorg.service) that run found up, so no pid is saved;
+    # a stale or reused pid that is not an Xvfb is left alone.
     p=$(cat "$DIR/xvfb.pid" 2>/dev/null || :)
-    if [[ $p =~ ^[0-9]+$ ]]; then kill -TERM "$p" 2>/dev/null || :; fi
+    if [[ $p =~ ^[0-9]+$ && $(ps -o comm= -p "$p" 2>/dev/null) == Xvfb ]]; then
+        kill -TERM "$p" 2>/dev/null || :
+    fi
 }
 if [[ $ACTION == stop ]]; then stop_capture; exit $?; fi
 [[ $ACTION == run ]] || exit 65
@@ -252,7 +257,15 @@ if [[ -n $INI_UNSET ]]; then
 fi
 cp "$CLIENT/${CHARACTER}_"*.ini "$DIR/before-character.ini" 2>/dev/null || :
 # Capture starts before even launching Wine. Save PIDs for interrupted cleanup.
-sudo -n tcpdump -i any -s 0 -U -Z user -w "$DIR/capture.pcap" 'udp and (port 5998 or port 5999 or portrange 9000-9001 or portrange 7000-7030)' >"$DIR/pcap.log" 2>&1 &
+# B1057: on lane 5 the eqemu containers run on this box, so `-i any` records
+# every packet twice, on the docker bridge and on the container's veth
+# (attempt 2: each opcode doubled, "expected one OP_CharacterCreate, got 2").
+# Drop the veth copies; an oracle VM with no veth keeps the plain filter.
+filter='udp and (port 5998 or port 5999 or portrange 9000-9001 or portrange 7000-7030)'
+veths=$(ip -o link show type veth 2>/dev/null | awk -F': ' '{printf "%sifindex %s", (n++ ? " or " : ""), $1}')
+[[ -z $veths ]] || filter="$filter and not ($veths)"
+printf '%s\n' "$filter" >"$DIR/pcap.filter"
+sudo -n tcpdump -i any -s 0 -U -Z user -w "$DIR/capture.pcap" "$filter" >"$DIR/pcap.log" 2>&1 &
 echo $! >"$DIR/pcap.pid"
 date -u +%s.%N >"$DIR/video.mp4.t0"
 ffmpeg -nostdin -loglevel error -f x11grab -framerate 10 -video_size 1280x800 -i :99+0,30 -c:v libx264 -preset ultrafast -crf 23 -pix_fmt yuv420p "$DIR/video.mp4" >"$DIR/video.log" 2>&1 &
@@ -262,9 +275,21 @@ kill -0 "$(cat "$DIR/pcap.pid")" 2>/dev/null || exit 65
 kill -0 "$(cat "$DIR/video.pid")" 2>/dev/null || exit 65
 # A visible onset lets the report reject a wall-clock/video mapping that is
 # more than one frame off. The marker is removed before Wine launches.
-xmessage -title ORACLE_TIMING_MARKER -geometry 420x80+400+350 'ORACLE TIMING MARKER' >"$DIR/marker.log" 2>&1 &
-marker_pid=$!
-xdotool search --sync --name '^ORACLE_TIMING_MARKER$' >/dev/null || exit 65
+# B1057: lane 5's :99 is a long-lived Xorg whose screen saver is usually
+# active when a session starts (Xvfb on lanes 1-4 is fresh); reset it so the
+# capture starts on a live screen. The marker wait is bounded: lane-5 attempt
+# 1 drew the marker on screen but xdotool never found its window and the
+# unbounded --sync hung the session. One relaunch, then fail cleanly.
+xset s reset 2>/dev/null || :
+for marker_try in 1 2; do
+    xmessage -title ORACLE_TIMING_MARKER -geometry 420x80+400+350 'ORACLE TIMING MARKER' >>"$DIR/marker.log" 2>&1 &
+    marker_pid=$!
+    timeout 20 xdotool search --sync --name '^ORACLE_TIMING_MARKER$' >/dev/null && break
+    echo "timing marker not found (try $marker_try)" >>"$DIR/marker.log"
+    kill "$marker_pid" 2>/dev/null || :
+    wait "$marker_pid" 2>/dev/null || :
+    [[ $marker_try == 2 ]] && exit 65
+done
 printf '%s\n' "$(stamp)" >"$DIR/video.marker.epoch"
 shot timeline_begin || exit 65
 sleep 3

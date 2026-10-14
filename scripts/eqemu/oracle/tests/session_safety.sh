@@ -54,4 +54,21 @@ for PROBE_CASE in ${PROBE_CASES:-held existing query_failure}; do
         [[ ! -s $OUT/absent-names.tsv ]] || { echo 'cleanup armed before validation'; exit 1; }
     fi
 done
-echo 'PASS: held lock untouched; existing and failed-query names never arm cleanup or DELETE'
+# B1057 (#377): lane 5 (the ThinkPad) is a valid oracle lane; 0 and 6 are not.
+# A refused lane must stop at usage, before any output dir or lock.
+export PROBE_CASE=held ORACLE_OWNER=oracle_safety_probe
+for lane in 0 6 5; do
+    OUT="$FIXTURE/lane$lane"; export OUT
+    set +e
+    bash "$FIXTURE/scripts/eqemu/oracle/oracle_session.sh" "$lane" "$FIXTURE/plan.tsv" "$OUT" >"$FIXTURE/lane$lane.log" 2>&1
+    rc=$?
+    set -e
+    [[ $rc == 64 ]] || { echo "lane $lane returned $rc, expected 64"; exit 1; }
+    if [[ $lane == 5 ]]; then
+        grep -q 'lane lock held' "$FIXTURE/lane$lane.log" || { echo 'lane 5 refused before the lock'; exit 1; }
+    else
+        grep -q '^usage: ' "$FIXTURE/lane$lane.log" || { echo "lane $lane not refused at usage"; exit 1; }
+        [[ ! -e $OUT ]] || { echo "lane $lane created its output dir"; exit 1; }
+    fi
+done
+echo 'PASS: held lock untouched; existing and failed-query names never arm cleanup or DELETE; lane 5 accepted, lanes 0/6 refused'
