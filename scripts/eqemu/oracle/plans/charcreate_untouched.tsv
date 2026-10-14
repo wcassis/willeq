@@ -1,0 +1,5 @@
+# action	target	hold_ms	still_name
+login	Testchar	0	char_select
+create	Oraclebface	Human	Warrior	Male	untouched_created
+still	after_create	0	after_create
+# Barbarian-male example: use charcreate_barbarian_male.tsv for the full plan.
