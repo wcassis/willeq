@@ -336,6 +336,7 @@ SET(COMMON_SOURCES
 SET(CLIENT_CORE_SOURCES
     src/client/core/everquest.cpp
     src/client/core/memory_ledger.cpp
+    src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
     src/client/core/memory_ledger_trace.cpp
     src/client/core/gpu_buffer_census.cpp
     src/client/core/gl_driver_census.cpp  # B946 (GitLab #264): the [gldriver] line
@@ -1247,6 +1248,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/model_loading_chr.cpp
         src/client/graphics/eq/model_loading_search.cpp
         src/client/core/memory_ledger.cpp  # T500: model_loading_search.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/graphics/eq/mesh_building.cpp
@@ -1384,6 +1386,7 @@ IF(EQT_GRAPHICS)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
@@ -1463,6 +1466,7 @@ IF(EQT_GRAPHICS)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
@@ -1668,6 +1672,7 @@ IF(EQT_GRAPHICS)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
@@ -1746,6 +1751,7 @@ IF(EQT_GRAPHICS)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
@@ -2000,6 +2006,11 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(particle_atlas_builder
         tools/particle_atlas_builder.cpp
         src/client/graphics/texture_generators.cpp
+        # B961: links ${IRRLICHT_LIBRARY} whole-archive, so the device's
+        # scanout publish (CIrrDeviceFB.o -> eqt::memory::publishScanoutTally)
+        # must resolve here as well -- the core census TU, self-contained, the
+        # same way gles2_zone_benchmark carries it.
+        src/client/core/gpu_buffer_census.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(particle_atlas_builder PRIVATE
         ${CMAKE_SOURCE_DIR}/tools
@@ -2029,6 +2040,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/detail/detail_texture_atlas.cpp
         src/client/graphics/detail/detail_texture_atlas_flora.cpp
         src/client/graphics/detail/detail_texture_atlas_grass.cpp
+        # B961: same device->core reference as particle_atlas_builder (see there).
+        src/client/core/gpu_buffer_census.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(generate_textures PRIVATE
         ${CMAKE_SOURCE_DIR}/tools
@@ -2285,6 +2298,7 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_zone_benchmark
         tools/hwcaps/gles2_zone_benchmark.cpp
         src/client/core/memory_ledger.cpp
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/core/gl_driver_census.cpp   # B1016: the gate's [gldriver] net
@@ -2464,8 +2478,12 @@ IF(EQT_GRAPHICS)
     # the driver's built-in alpha-test program and through raw copies of it
     # (freshly compiled and program-binary round-tripped), pixel counts only.
     # B959: data_paths.cpp resolves the driver's shader-cache directory.
+    # B961: compiles the core census TU in (as gles2_zone_benchmark does) so the
+    # device's scanout publish (CIrrDeviceFB.o -> eqt::memory::publishScanoutTally)
+    # resolves in this self-contained tool's link line.
     ADD_EXECUTABLE(gles2_alpha_test_probe tools/hwcaps/gles2_alpha_test_probe.cpp
-        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp)
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp)
     TARGET_INCLUDE_DIRECTORIES(gles2_alpha_test_probe PRIVATE ${IRRLICHT_INCLUDE_DIR}
         ${CMAKE_SOURCE_DIR}/include)
     IF(EQT_DRM)
@@ -2476,8 +2494,10 @@ IF(EQT_GRAPHICS)
     # B965 (GitLab #283): the per-pixel player light probe -- the production
     # uAttenLUT math and its precision variants drawn as intensity curves over
     # 0..400 world units, read back per pixel.
+    # B961: core census TU compiled in, as the alpha probe above.
     ADD_EXECUTABLE(gles2_player_light_probe tools/hwcaps/gles2_player_light_probe.cpp
-        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp)
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp)
     TARGET_INCLUDE_DIRECTORIES(gles2_player_light_probe PRIVATE ${IRRLICHT_INCLUDE_DIR}
         ${CMAKE_SOURCE_DIR}/include)
     IF(EQT_DRM)
@@ -2489,6 +2509,7 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_shader_diagnostic
         tools/hwcaps/gles2_shader_diagnostic.cpp
         src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/core/gl_driver_census.cpp  # B1016: zone_bench_loader.cpp emits the [gldriver] line
@@ -2613,6 +2634,7 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_composite_audit
         tools/hwcaps/gles2_composite_audit.cpp
         src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/core/gl_driver_census.cpp  # B1016: zone_bench_loader.cpp emits the [gldriver] line

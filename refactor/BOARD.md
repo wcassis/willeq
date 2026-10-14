@@ -1687,8 +1687,25 @@ it without taking that measurement first.
   23.5 ms of growthplane's frame). The benchmark half (#247) is branch
   `task/B936b-bench-shared-objects` (MR !55); the five memory-coverage
   `placeableObjectsBytes` baselines were BLESSED by Will in chat 2026-09-30
-  ("bless placeableObjectsBytes", `docs/decisions.md`). #247 acceptance 1 is in;
-  acceptance 2 (the census job) remains.
+  ("bless placeableObjectsBytes", `docs/decisions.md`). #247 acceptance 1 is
+  in; acceptance 2 (the census job) is **B929**, closed 2026-10-14.
+- ~~**B929** (A, memory) → issue #247. growthplane's `placeableObjectsBytes`
+  is 28,687,788 B against the 24 MiB budget, and the gate never runs the
+  zone.~~ **DONE 2026-10-14** (branch `task/kb-b929-placed-object-sharing`,
+  `refactor/B929/README.md`): the fix the issue asked for (share placed-object
+  geometry per model) is B936/B936b, already in fable and blessed — growthplane
+  re-measured at 111,348 B (0.4 % of budget), 4,333 placements of 11 distinct
+  meshes. This unit is the net: `scripts/ci/zone_budget_census.py` fails on
+  ANY of the 118 era zones over ANY estimate or ledger budget, run by the
+  blocking gate-stage CI job `zone-budget-census` (4 m 46 s measured; first
+  sweeps the self-heal's LOCAL pack tree — `zone_census_pack_selfheal.sh`
+  hard-links or rebuilds the mandatory packs, because the runner's NFS tree
+  is read-only and its B930/#248 soldunga v1 would FATAL the sweep on an
+  asset, never assert the zone) and by the ctest legs `test_zone_budget_census`,
+  `test_zone_census_pack_selfheal` + `zone_budget_census_smoke` (the
+  synthetic over-budget row must fail the checker; the three smoke zones must
+  be inside every budget). Full 118-zone census GREEN on the current tree.
+  Budgets and goldens untouched.
 - **B938** (A, memory) → issue #256. RESOLVED (MR pending): the per-placement
   `IMeshSceneNode` (~2.2 KB) and the four renderer-parallel vectors are
   replaced by a 168 B `PlacedObjectRecord` read by both draw paths; PVS zones

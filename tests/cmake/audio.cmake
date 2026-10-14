@@ -24,6 +24,7 @@ SET(AUDIO_COMMON_TEST_SOURCES
     # header-only. Every AudioManager test therefore links the ledger TU, the
     # way test_audio_startup_peak always did.
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
 )
@@ -384,6 +385,7 @@ IF(WITH_AUDIO)
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
         ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
     )
