@@ -623,6 +623,10 @@ bool IrrlichtRenderer::isSkyEnabled() const {
 void IrrlichtRenderer::createEntityRenderer() {
     // S05: Called once from initLoadingScreen(). No lazy-init guard needed.
     entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
+    // B1051 (GitLab #371): the GL_RENDERER string captured by
+    // glDriverInitLog() earlier in initLoadingScreen() — feeds
+    // isPanfrostRenderer() in the entity renderer's material selection.
+    entityRenderer_->setGlRendererString(glRendererString_);
     entityRenderer_->setClientPath(config_.eqClientPath);
     entityRenderer_->setNameTagsVisible(config_.constrainedConfig.nameTagsEnabled);
     entityRenderer_->setRenderDistance(renderDistance_);

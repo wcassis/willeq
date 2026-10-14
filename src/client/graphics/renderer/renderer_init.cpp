@@ -214,7 +214,7 @@ static void logDriverDetails(irr::video::IVideoDriver* driver, irr::IrrlichtDevi
 // the [memmap] census reads smaps, a different file, for the T491 fold)
 // for the mapped driver; the nollvm decision's ERROR fires FIRST here, and
 // only then does the INFO line name what actually got loaded instead.
-static void glDriverInitLog(irr::video::IVideoDriver* driver) {
+static void glDriverInitLog(irr::video::IVideoDriver* driver, std::string* outRenderer) {
     std::string renderer;
 #ifdef EQT_HAS_GLES2
     {
@@ -248,6 +248,9 @@ static void glDriverInitLog(irr::video::IVideoDriver* driver) {
     }
     const eqt::memory::GlDriverInfo info = eqt::memory::glDriverInfo(renderer);
     LOG_INFO(MOD_GRAPHICS, "{}", eqt::memory::makeGlDriverLine(info));
+    if (outRenderer)
+        *outRenderer = renderer;  // B1051: hand the GL_RENDERER string to the
+                                   // entity renderer (isPanfrostRenderer gate)
 }
 
 // --- IrrlichtRenderer Implementation ---
@@ -537,7 +540,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // reload reuses this device). The client never said which driver it
     // loaded before this; a willeq-nollvm run with a missing prefix now says
     // so (the decision's ERROR) and then names what it actually loaded.
-    glDriverInitLog(driver_);
+    glDriverInitLog(driver_, &glRendererString_);
 
     // In DRM mode, enable and create software cursor (no hardware cursor available)
     if (config_.constrainedConfig.useDRM && device_->getCursorControl()) {

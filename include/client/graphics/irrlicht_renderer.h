@@ -637,6 +637,12 @@ private:
     // rare non-PVS scene-graph node.
     irr::IrrlichtDevice* device_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
+    // B1051 (GitLab #371): the GL_RENDERER string captured once at GL init
+    // (glDriverInitLog, B946's [gldriver] capture) and handed to the entity
+    // renderer in createEntityRenderer(). Feeds isPanfrostRenderer() — the
+    // gate that routes ETC1-masked entity materials to the single-sampler
+    // alpha variant on Panfrost. Empty until the first GL init.
+    std::string glRendererString_;
     irr::scene::ISceneManager* smgr_ = nullptr;
     irr::scene::ICameraSceneNode* camera_ = nullptr;
 

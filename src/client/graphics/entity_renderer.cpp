@@ -1,5 +1,6 @@
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/corpse_death_pose.h"  // T486: the ONE death-pose ladder
+#include "client/graphics/panfrost_gate.h"      // B1051: the ETC1 companion-alpha gate
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/constrained_renderer_config.h"
@@ -135,9 +136,20 @@ void EntityRenderer::applyAlphaTestMaterialType(irr::video::SMaterial& mat) cons
     // variant there reads whatever the driver's opaque-white fallback puts on
     // unit 1, which never discards — the RGBA variant reads uTexture.a
     // directly instead.
+    //
+    // B1051 (GitLab #371): on Panfrost the companion variant is NOT used for
+    // ETC1 textures either — the single-sampler RGBA variant (which on ETC1
+    // storage reads uTexture.a == 1.0 and thus draws opaque, no discard —
+    // the working behaviour) is preferred. The WILLEQ_B1051_TRACE readback
+    // showed the per-buffer GL binds are correct (distinct unit-0 + unit-1
+    // objects per buffer), so the fault is the dual-sampler stage itself; the
+    // single-sampler variant is the one render-path difference from the
+    // correct RGBA config. See panfrost_gate.h and test_b1051_panfrost_gate.
     irr::video::ITexture* tex = mat.getTexture(0);
     bool isETC1 = constrainedTextureCache_ && tex && constrainedTextureCache_->isETC1Texture(tex);
-    if (isETC1) {
+    const AlphaVariant variant = selectAlphaVariant(
+        glRendererString_, isETC1, shaderMaterialAlphaTestRGBA_ >= 0);
+    if (variant == AlphaVariant::Companion) {
         if (shaderMaterialAlphaTest_ >= 0) {
             mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
         }
@@ -147,12 +159,16 @@ void EntityRenderer::applyAlphaTestMaterialType(irr::video::SMaterial& mat) cons
                 mat.setTexture(1, alphaTex);
             }
         }
-    } else if (shaderMaterialAlphaTestRGBA_ >= 0) {
-        mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTestRGBA_);
-    } else if (shaderMaterialAlphaTest_ >= 0) {
-        // No RGBA variant wired — fall back to the companion variant (pre-P21
-        // behavior) rather than leaving MaterialType unset.
-        mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+    } else {  // AlphaVariant::MainAlpha
+        if (shaderMaterialAlphaTestRGBA_ >= 0) {
+            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTestRGBA_);
+        } else if (shaderMaterialAlphaTest_ >= 0) {
+            // No RGBA variant wired — fall back to the companion variant's
+            // type only (no companion bound: either the texture is not ETC1,
+            // or on Panfrost the gate fell through). Identical to the
+            // pre-B1051 else-if chain.
+            mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
+        }
     }
 }
 

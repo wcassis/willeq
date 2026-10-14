@@ -124,6 +124,16 @@ IF(EQT_GRAPHICS)
     TARGET_INCLUDE_DIRECTORIES(test_hotkey_manager PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_hotkey_manager GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES})
     GTEST_DISCOVER_TESTS(test_hotkey_manager DISCOVERY_TIMEOUT 120)
+
+    # B1051 (GitLab #371): the Panfrost ETC1 companion-alpha gate — header-only
+    # decision functions (isPanfrostRenderer + selectAlphaVariant) in
+    # panfrost_gate.h. Pins the non-Panfrost arm to byte-identical pre-B1051
+    # behaviour and the Panfrost arm to the single-sampler routing.
+    ADD_EXECUTABLE(test_b1051_panfrost_gate
+        test_b1051_panfrost_gate.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_b1051_panfrost_gate GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_b1051_panfrost_gate DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # Test asset loading (equipment, race models, textures, animations, lights)
