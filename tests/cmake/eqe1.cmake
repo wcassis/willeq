@@ -149,3 +149,44 @@ SET_TESTS_PROPERTIES(zone_content_sweep_smoke PROPERTIES
     SKIP_RETURN_CODE 125
     RUN_SERIAL TRUE
     TIMEOUT 900)
+
+# B929 (#247): the zone budget census's unit leg. Pure python, no benchmark
+# binary, no assets: drives scripts/ci/zone_budget_census.py through its real
+# exit-code contract on synthetic sweep output (over-budget estimate -> 1
+# naming the figure, in-budget -> 0, zero budget skipped, no-JSON zone not
+# ok, unknown --zones name -> 3) and pins the checker's estimate-pair set
+# against visual_gate.py's MEMORY_BUDGET_PAIRS (minus the two also-baselined).
+# Unlabelled: it is a fast suite member, not a slow zone-load test.
+ADD_TEST(NAME test_zone_budget_census
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/test_zone_budget_census.py)
+
+# B929 (#247): the pack self-heal unit test (zone_census_pack_selfheal.sh's
+# exit-code contract with stub verify/builder binaries -- no build tree,
+# no assets): every mandatory pack (each zone's three + the fixed list,
+# re-parsed from zone_bench_loader.cpp) is hard-linked or, when STALE,
+# rebuilt and re-verified; a still-stale rebuild, a stale pack with no
+# .s3d, a missing mandatory pack or a missing mandatory zone fails the
+# script; a non-mandatory pack is never linked or rebuilt; the list's
+# header row is skipped.
+ADD_TEST(NAME test_zone_census_pack_selfheal
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/test_zone_census_pack_selfheal.py)
+
+# B929 (#247): the zone budget census's ctest leg. The full 118-zone run is
+# the CI gate-stage job zone-budget-census (one gles2_zone_benchmark per
+# zone, ~3 s each, ~5 min of zone time measured, refactor/B929/README.md);
+# this smoke is its net:
+#   RED half   -- a synthetic sweep row carrying B927's measured over-budget
+#                 figure (growthplane placeableObjectsBytes 28,687,788
+#                 against 25,165,824) MUST be failed by
+#                 scripts/ci/zone_budget_census.py;
+#   GREEN half -- the sweep's three smoke zones (one per expansion) swept
+#                 fresh and inside every budget.
+# Same skip convention as the B852 smoke: no benchmark binary or asset root
+# -> exit 125 -> ctest SKIP, loud.
+ADD_TEST(NAME zone_budget_census_smoke
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/ci/zone_budget_census_smoke.sh)
+SET_TESTS_PROPERTIES(zone_budget_census_smoke PROPERTIES
+    LABELS "slow"
+    SKIP_RETURN_CODE 125
+    RUN_SERIAL TRUE
+    TIMEOUT 900)
