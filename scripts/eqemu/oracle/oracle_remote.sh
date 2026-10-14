@@ -71,15 +71,24 @@ selected_at() {
     awk -v mean="$mean" 'BEGIN {exit !(mean < 0.98)}'
 }
 select_once() {
-    # ONE click, then verify -- never a second click. The race and class lists
-    # share one selection cursor, and the screen restores the previous
-    # session's selection: a retry click mid-re-render moves the cursor to a
-    # different row (measured: fix2e's retry left race=HalfElf, class=Warrior,
-    # and the decoded packet was (1,0,7), not the requested (1,0,2)). A missed
-    # click therefore FAILS the run and gets re-driven, instead of silently
-    # creating the wrong identity; the decoded create packet
-    # (oracle_create.py) is the final authority either way.
+    # ONE click, then verify -- never a rapid re-click. The race and class
+    # lists share one selection cursor, and the screen restores the previous
+    # session's selection: the old select_at re-clicked while the first
+    # click's re-render was still settling, moving the cursor to a different
+    # row (fix2e's retry left race=HalfElf, class=Warrior; the decoded packet
+    # was (1,0,7), not the requested (1,0,2)). A missed click therefore
+    # fails the verification instead of silently creating the wrong identity;
+    # the decoded create packet (oracle_create.py) is the final authority
+    # either way.
+    # If the first click misses (measured in barbarian-fix2j: the class click
+    # landed on Rogue 555 instead of Warrior 627, a live-rig click loss),
+    # wait for any re-render to fully settle, then ONE more click+verify.
+    # The 8 s settle is what the old loop never had -- it re-clicked within
+    # 3 s, mid-render, which is exactly the failure mode that broke it.
     local label=$1 x=$2 y=$3
+    jclick "$x" "$y"; sleep 3
+    if selected_at "$label" "$x" "$y"; then return 0; fi
+    sleep 8
     jclick "$x" "$y"; sleep 3
     if ! selected_at "$label" "$x" "$y"; then
         shot "select-failed-$label" || :
@@ -175,20 +184,22 @@ if [[ $ACTION == selftest ]]; then
     done
     SCREEN_TEXT='Character Creation Random Accept Cancel'
     if assert_action_state random "$(expected_for random face 'Missing Window')" override-random; then exit 1; fi
-    # select_once: a missed click FAILS after exactly one click (never a
-    # re-click -- the old retry loop moved the shared race/class selection
-    # cursor: fix4 created class=16, fix2e created race=7, both rejected by
-    # validate_create), and a verified selection issues no further click.
+    # select_once: a missed click gets ONE settled retry (8 s before the
+    # second click -- the old select_at re-clicked within 3 s mid-re-render
+    # and moved the shared cursor: fix4 created class=16, fix2e race=7, both
+    # rejected by validate_create) and then FAILS at 2 clicks; a verified
+    # selection issues no further click.
+    sleep() { :; }
     CLICKS=0
     jclick() { CLICKS=$((CLICKS+1)); }
     shot() { :; }
     selected_at() { [[ $SELECTION_OK == 1 ]]; }
     SELECTION_OK=0
     if select_once Barbarian 53 291; then exit 1; fi
-    [[ $CLICKS == 1 ]] || { echo "missed click re-driven ($CLICKS clicks), expected 1"; exit 1; }
+    [[ $CLICKS == 2 ]] || { echo "missed click used $CLICKS clicks, expected 2 (one settled retry)"; exit 1; }
     SELECTION_OK=1
     select_once Barbarian 53 291 || exit 1
-    [[ $CLICKS == 2 ]] || { echo "verified selection clicked again ($CLICKS clicks), expected 2"; exit 1; }
+    [[ $CLICKS == 3 ]] || { echo "verified selection clicked again ($CLICKS clicks), expected 3"; exit 1; }
     echo 'PASS: selected coordinates and random/accept/cancel missed-action and override assertions'
     exit 0
 fi
