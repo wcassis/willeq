@@ -43,6 +43,13 @@ for index, row in enumerate(actions, 1):
             raise RuntimeError('create row requires name, race, class, gender, still_name')
         _, target, race, klass, gender, label = row
         hold_ms = '0'
+    if verb == 'facepick-rows':
+        # B888-CC1 (#204): same 6-field shape as create, but race/gender only
+        # (no class); nothing is submitted, so no create packet is expected.
+        if len(row) != 6:
+            raise RuntimeError('facepick-rows row requires race, gender, still_name')
+        _, target, _, _, gender, label = row
+        hold_ms = '0'
     name = f'{index:02d}_{label or verb}'
     window = marks.get(name, {})
     if 'BEGIN' not in window or 'END' not in window:
