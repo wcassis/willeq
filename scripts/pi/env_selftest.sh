@@ -28,6 +28,10 @@ expect "listed PI_HOST alone picks lane" "rc=0 2 172.16.200.204 rock64" \
 # land on it, and a lane-1 shell must not reach it (nor it a lane-1 run).
 expect "PI_LANE=5 alone"                 "rc=0 5 172.16.200.207 orangepizero armhf lima" \
     "export PI_LANE=5; source \"\$ENV_SH\"; $P \$PI_LANE_ARCH \$PI_LANE_GPU"
+expect "lane 5 runs on a virtual KMS card" "rc=0 5 1 /dev/dri/card1 -D /dev/dri/card1" \
+    "export PI_LANE=5; source \"\$ENV_SH\"; echo rc=\$? \$PI_LANE \$PI_DRM_VIRTUAL \$PI_DRM_CARD \$PI_KMSCUBE_ARGS"
+expect "lane 1 keeps its real connector" "rc=0 1 0 /sys/class/drm/card0-HDMI-A-1" \
+    "source \"\$ENV_SH\"; echo rc=\$? \$PI_LANE \$PI_DRM_VIRTUAL \$PI_DRM_CARD\$PI_KMSCUBE_ARGS \$PI_HDMI_CONN"
 expect "lane 5 PI_HOST alone picks lane" "rc=0 5 172.16.200.207 orangepizero" \
     "export PI_HOST=172.16.200.207; source \"\$ENV_SH\"; $P"
 expect "lane 5 vs lane-1 host refused" \
