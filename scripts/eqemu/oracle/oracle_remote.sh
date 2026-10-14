@@ -566,16 +566,17 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             # slots (OCR-reliable on the lane-5 stills -- the only page
             # signature that reads across all psm/mode combinations).
             # Close the modal FIRST, with retries: a single Cancel click can
-            # be dropped by the rig (the 2026-10-14 full26 run: the modal
-            # stayed open, covered the heading, so the Back sweep below was
-            # skipped and the next pair's slot click missed). The button-row
-            # y is uncertain by one coordinate space (root y 515-540 per the
-            # face_buttons_text comment, but the modal window is 175x215 at
-            # root (0,404) so its bottom sits near root ~585 -- the full26b
-            # run missed at 539), so the first pass sweeps BOTH rows of
-            # candidates; clicking between the buttons is harmless. Poll
+            # be dropped by the rig. The button ROW was MEASURED from the
+            # full26b/c stills (bright-run scan, image space): the text
+            # Random/Accept/Cancel sits at image y ~486-492 -- Random
+            # centre ~(47,489), Accept ~(115,489), Cancel ~(132,489) -- so
+            # the button bodies centre at ROOT y ~520 (the still crop is
+            # +0+30-offset). The earlier 539/569 sweeps were ~20-45 px BELOW
+            # the buttons, which is why every click missed. Sweep the three
+            # measured centres at the measured row (plus one 6 px low for
+            # the body height); clicking between buttons is harmless. Poll
             # face_open (the modal's own button strip) after every click.
-            for coord in '50 539' '140 539' '225 539' '50 569' '140 569' '225 569'; do
+            for coord in '47 520' '115 520' '132 520' '47 526' '115 526' '132 526' '50 539' '140 539'; do
                 face_open || break
                 set -- $coord; cxb=$1; cby=$2
                 jclick "$cxb" "$cby"; sleep 3
