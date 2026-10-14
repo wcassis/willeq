@@ -162,9 +162,12 @@ ADD_TEST(NAME test_zone_budget_census
 
 # B929 (#247): the pack self-heal unit test (zone_census_pack_selfheal.sh's
 # exit-code contract with stub verify/builder binaries -- no build tree,
-# no assets): a clean pack passes through, a STALE pack is rebuilt and
-# re-verified, a still-stale rebuild or a missing .s3d fails the script,
-# an absent pack is skipped, and the list's header row is skipped.
+# no assets): every mandatory pack (each zone's three + the fixed list,
+# re-parsed from zone_bench_loader.cpp) is hard-linked or, when STALE,
+# rebuilt and re-verified; a still-stale rebuild, a stale pack with no
+# .s3d, a missing mandatory pack or a missing mandatory zone fails the
+# script; a non-mandatory pack is never linked or rebuilt; the list's
+# header row is skipped.
 ADD_TEST(NAME test_zone_census_pack_selfheal
     COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/test_zone_census_pack_selfheal.py)
 

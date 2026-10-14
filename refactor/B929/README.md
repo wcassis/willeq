@@ -104,20 +104,51 @@ What was missing was the NET — acceptance 2:
   the runner's was not). A stale pack FATALs the benchmark's all-or-nothing
   texture load, so that zone could never be asserted against the budgets,
   and the sweep's exit-1-on-NOT-CLEAN would then fail the job on an asset,
-  not a budget. The self-heal verifies every swept zone's pack with
-  `verify_eqe1 --require-v3` (B930/B1017: flags exactly the
-  truncation-signature packs, so the 117 clean packs pass through) and
-  rebuilds a STALE one with `eqe1_builder --archive <zone>.s3d --output
-  <pack-dir>` (the client FATAL's own named remedy; the builder emits v3
-  only when a name is >31 chars, so it cannot downgrade a clean pack).
-  Still-stale-after-rebuild or missing `.s3d` fails the job (exit 1); an
-  absent pack is skipped, not failed — the sweep's own row names it.
-  Measured end-to-end on this host: synthetic stale v1 soldunga → `verify`
-  flags it (`STALE: format v1' ... 31-char name(s)`) → rebuilt from
-  `soldunga.s3d` → `verify` clean → the zone loads (sweep row `ok`, 2 s)
-  and is inside every budget. The rebuild overwrites the runner's NFS pack
-  in place — the same bytes the hermes-ext tree already carries, which is
-  what closes B930's open item for the x86 runners.
+  not a budget. The runner CANNOT repair the NFS tree in place: it is
+  read-only for the runner (measured, pipeline 1174 job 6273:
+  `eqe1_builder` "Cannot open output: data/eqe1_client/soldunga.eqe1" after
+  90 s of a successful .s3d read + ETC1 encode).
+  So the self-heal builds a LOCAL pack tree the sweep reads
+  (`--eqe1-path`, the sweep's existing option). The sweep runs WITHOUT
+  `--composite-entities`, so the benchmark opens packs only by the
+  loader's fixed names — every swept zone's three packs (`zone`,
+  `zone_obj`, `zone_chr`) plus the fixed pack list. That MANDATORY set is
+  exactly what the local tree holds (379 packs today: 118 × 3 + 25):
+  - the fixed list is `tools/hwcaps/zone_bench_loader.cpp`'s `eqe1Names`
+    array, re-read from the source on every run (25 entries today: the
+    `global_chr` globals, the `gequip`/`gatesequip`/... equipment packs,
+    `willeq`; the array's `_obj`/`_chr` literals are zone-derived and are
+    excluded) so no hand-kept copy can drift; the script FATALs if the
+    extraction no longer names `global_chr`, which the loader is
+    guaranteed to keep.
+  - each mandatory pack is verified with `verify_eqe1 --require-v3`
+    (B930/B1017: flags exactly the truncation-signature packs, so a clean
+    v1/v2 whose names all fit passes) and hard-LINKED into the tree when
+    it is clean (a second name for the same inode — nothing is copied,
+    nothing is written in the source tree).
+  - a STALE mandatory pack is REBUILT with
+    `eqe1_builder --archive <name>.s3d` (the client FATAL's own named
+    remedy) into the local tree, where the write succeeds; the builder
+    emits v3 only when a name is >31 chars, so a rebuild of a clean pack
+    would be byte-identical and this path is taken only for the ones that
+    are not.
+  - a mandatory pack that is MISSING, or stale with no `.s3d`, fails the
+    job (exit 1) — the sweep would die on it.
+  Packs OUTSIDE the mandatory set (the other ~1,127 in the NFS tree) are
+  NOT linked: the runner's out dir is a different filesystem from the NFS
+  mount, so `ln` falls back to `cp` and linking them all would copy
+  gigabytes for packs the sweep never opens.
+  The NFS tree is left exactly as it was — B930's open item for the
+  runner/Pi/dev-u24 copies stays open (it needs the tree's own writer),
+  while this job no longer dies on the asset. E2E on this host with the
+  REAL `verify_eqe1`/`eqe1_builder`: the full mandatory set (379) linked
+  in ~11 s, a synthetic stale v1 `arena` pack rebuilt to a clean v1
+  (7 textures), a missing mandatory pack failing with its name, a stale
+  non-mandatory pack left alone (not linked, not rebuilt). A 3-zone sweep
+  (qeynos2/arena/iceclad) run against the local tree is CLEAN and the
+  budget checker PASSES all three. The stub-driven contract is
+  `test_zone_census_pack_selfheal` (9 cases, ~5 s; its fixed list is
+  re-parsed from `zone_bench_loader.cpp` the same way the script does).
 - ctest legs (in `build-test`, so they run on every code pipeline):
   - `test_zone_budget_census` — pure python, no benchmark/assets: drives
     the checker through its real exit-code contract on synthetic sweep
@@ -184,9 +215,16 @@ same run (`ledger objects` 1,648,640 / 41,943,040 = 3.9 %).
 
 - `test_zone_budget_census` 9/9 (unittest, direct + ctest);
   `zone_budget_census_smoke` ctest PASS (6.4 s: RED half + 3-zone GREEN
-  half); `test_zone_census_pack_selfheal` ctest PASS (0.2 s: the self-heal's
-  exit-code contract on stub verify/builder binaries); all three run in the
-  MR pipeline's `build-test`.
+  half); `test_zone_census_pack_selfheal` ctest PASS (~5 s: the self-heal's
+  exit-code contract on stub verify/builder binaries, the fixed list
+  re-parsed from `zone_bench_loader.cpp`); all three run in the MR
+  pipeline's `build-test`.
+- Self-heal e2e on this host with the REAL tools (2026-10-14): hard-linked
+  inodes for clean packs, a synthetic stale v1 rebuild to a clean pack,
+  the missing-mandatory and stale-non-mandatory contracts — E2E PASS
+  (the scratch evidence under
+  `/home/user/kb-evidence/kb-b929-placed-object-sharing/` does not survive
+  on this host; the stub test is the durable net).
 - Full 118-zone sweep + checker: PASS, 2026-10-14, this host (runtime
   cited above).
 - **MR !182 pipeline 1166, 2026-10-14 (the runners):** `hygiene`,
@@ -211,9 +249,15 @@ same run (`ledger objects` 1,648,640 / 41,943,040 = 3.9 %).
 - **The re-run of `zone-budget-census` on the runners after the self-heal**
   is the one unmeasured leg: expected to be 4 m 46 s of zone time + the
   `verify_eqe1`/`eqe1_builder` tool build (ccache-warm on the runner trees)
-  + one `soldunga` rebuild (~10 s of the builder's single-archive pass) —
-  the first pass heals the NFS tree, every later pipeline pass is a
-  verify-no-op for all 118 packs.
+  + the self-heal pass (measured on this host against the real NFS tree:
+  379 mandatory packs linked in ~11 s, 0 rebuilt — the tree's
+  `soldunga.eqe1` here is already v3; on the runners' stale copy expect
+  the one `soldunga` rebuild, ~90 s of the builder's single-archive pass)
+  + the 3-zone sweep on the local tree (this host, 2026-10-14:
+  qeynos2/arena/iceclad all CLEAN, the budget checker PASS on all three).
+  The rebuild lands in the runner's per-pipeline build tree, NOT
+  the NFS tree, so every pipeline pass pays the one rebuild; the link
+  pass over the 379 mandatory packs is the cheap part.
 - The Pi figures for this unit: none were needed. B936 measured the Pi's
   own `objects` ledger and frame rate after the fix (`refactor/B936/README.md`
   Orange Pi A/B table), and the census's asserted quantities

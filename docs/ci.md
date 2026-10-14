@@ -870,13 +870,18 @@ job** (B929, #247). The sweep's own "clean" row is load-cleanness plus the
 was invisible to CI (B929's growthplane: 28,687,788 B of
 `placeableObjectsBytes` against 25,165,824 — fixed in the loader by B936b,
 asserted here). The job first runs
-`scripts/ci/zone_census_pack_selfheal.sh` over the swept zones' EQE1 packs:
-the runners read the shared NFS pack tree, and a STALE pack (B930/#248's
-soldunga v1 signature) FATALs the benchmark's all-or-nothing texture load —
-the sweep would then die on an asset, never asserting that zone's budget.
-The self-heal rebuilds a `verify_eqe1 --require-v3` STALE pack with
-`eqe1_builder` from the zone's `.s3d` (the client FATAL's own named remedy)
-and fails the job if a rebuild does not come back clean. Then the full
+`scripts/ci/zone_census_pack_selfheal.sh` before the sweep: the runners read
+the shared NFS pack tree, and a STALE pack (B930/#248's soldunga v1
+signature) FATALs the benchmark's all-or-nothing texture load — the sweep
+would then die on an asset, never asserting that zone's budget. The
+runner cannot repair the NFS tree (read-only for it), so the script builds
+a LOCAL pack tree the sweep reads with `--eqe1-path`: every swept zone's
+three packs plus the loader's fixed pack list (re-read from
+`zone_bench_loader.cpp` each run — the sweep's mandatory set) is
+`verify_eqe1 --require-v3`-verified and hard-linked when clean, or
+rebuilt with `eqe1_builder` from the `.s3d` when STALE (the client FATAL's
+own named remedy); a mandatory pack that is missing or does not come back
+clean fails the job. Then the full
 118-zone sweep (4 m 46 s measured, refactor/B929/README.md; the benchmark
 is the per-ref tree's binary, passed with `--bench-bin`) and then
 `scripts/ci/zone_budget_census.py --check-budgets`, which fails on ANY zone
