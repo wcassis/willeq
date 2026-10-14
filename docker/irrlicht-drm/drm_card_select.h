@@ -160,13 +160,19 @@ inline DRMCardSelection selectDRMCard(
             continue;
         anyOpened = true;
         DRMCardState state = checkCard(fd, candidates[i]);
+        // B1061 (#381): the probe fd is closed on EVERY path, the winner's
+        // included. The caller re-opens the winning card for its own fd; if
+        // the probe fd stayed open it would be the FIRST open of that node
+        // and therefore hold DRM master, leaving the caller's fd without it
+        // -- every drmModeSetCrtc then fails (measured on the XU4 play rig
+        // after B1054: frames rendered, nothing reached the HDMI).
+        if (fd > 0)  // fd 0 is not a real card; closing it would close stdin
+            ::close(fd);
         if (state.hasConnectedConnector && state.hasCrtc) {
             result.index = static_cast<int>(i);
             result.ok = true;
             return result;
         }
-        if (fd > 0)  // fd 0 is not a real card; closing it would close stdin
-            ::close(fd);
     }
 
     if (override)
