@@ -41,12 +41,18 @@ selected_at() {
     # The selected label is yellow; enabled but unselected labels are white.
     # ImageMagick preserves import's root-screen virtual page offset (+0,+30).
     # Both click and crop therefore use the table's root-screen coordinates.
+    # Detection: make yellow transparent and read the box's mean alpha. A
+    # selected row measures 0.90-0.95 and a white-text row 1.0000 (both
+    # measured on real stills), so < 0.98 means the row holds the selection.
+    # The old negate-mean read ~0.99 in BOTH states (0.9919 unselected vs
+    # 1.0000 selected in fix2g) and could never tell them apart, which is how
+    # fix4 (class=16), fix2e (race=7) and fix2g (race=Iksar) slipped through.
     local label=$1 x=$2 y=$3
     local image="$DIR/selected-$label.png" mean
     import -window root -crop 1280x800+0+30 "$image" 2>/dev/null || return 65
     mean=$(convert "$image" -crop "95x18+$((x-45))+$((y-9))" +repage \
-        -fuzz 25% -fill black +opaque yellow -colorspace Gray -negate \
-        -format '%[fx:mean]' info:) || return 65
+        -fuzz 30% -transparent yellow \
+        -format '%[fx:mean.alpha]' info:) || return 65
     awk -v mean="$mean" 'BEGIN {exit !(mean < 0.98)}'
 }
 select_once() {
@@ -113,11 +119,19 @@ if [[ $ACTION == selftest ]]; then
     # "line 44: label: unbound variable" once a consolidated check called it
     # directly): stub only the imaging, use the real function.
     import() { local f; f=$(echo "$@" | awk '{print $NF}'); : >"$f"; }
-    convert() { echo 0.5; }
+    convert() { [[ $STUB_MEAN ]]; echo "${STUB_MEAN:-0.5}"; }
     race=Barbarian class=Warrior gender=Male race_row=291 class_row=627
+    STUB_MEAN=0.9
     selected_at "$race" 53 "$race_row" || { echo "selected_at crashed without caller label"; exit 1; }
     selected_at "$class" 153 "$class_row" || { echo "selected_at crashed without caller label"; exit 1; }
     selected_at "$gender" 105 252 || { echo "selected_at crashed without caller label"; exit 1; }
+    # The detector must REJECT a white-text (unselected) row: a selected row
+    # measures ~0.90-0.95 and an unselected one 1.0000 (measured on real
+    # stills); the old negate-mean read 0.9919 vs 1.0000 and let fix4/fix2e/
+    # fix2g through.
+    STUB_MEAN=1.0
+    if selected_at "$race" 53 "$race_row"; then echo "unselected row passed selected_at"; exit 1; fi
+    STUB_MEAN=
     SCREEN_TEXT='Character Creation'
     screen_text() { echo "$SCREEN_TEXT"; }
     assert_visible 'Character Creation' positive || exit 1

@@ -32,7 +32,13 @@ takes an xdotool keysym, `command` sends a slash command, `random`, `accept`,
 `cancel`, `create <name> <race> <class> <gender>`, `still <name>`, and `wait <ms>`
 are available. A create row has six columns: `create`, name, race, class,
 gender, still name. Its coordinates are selected from the in-script table,
-and the chosen race is OCR-asserted before submission. The shipped untouched
+one click per control (the race and class lists share one selection cursor,
+so a second click moves the selection; a missed click fails the run), and
+the selected race, class and gender are re-verified after the point
+allocation and again right before submit. The host report then decodes the
+step's `OP_CharacterCreate` and requires its class/gender/race fields to
+match the row (`scripts/eqemu/oracle/oracle_create.py`), so a wrong identity
+fails the report even if the screen looked right. The shipped untouched
 plans use Human-male and Barbarian-male Warrior paths without changing any
 appearance control. Other verbs may put an expected OCR regex in column five;
 the built-in verb assertions otherwise check the expected window or label.
