@@ -112,14 +112,12 @@ public:
     // vertex displacement. -1 if compilation failed (callers fall back to
     // the base wind alpha-test variant, matching the non-wind RGBA fallback
     // pattern).
-    irr::s32 getMaterialTypeWindAlphaTestRGBA() const { return materialWindAlphaTestRGBA_; }
     bool isWindAlphaTestRGBAAvailable() const { return materialWindAlphaTestRGBA_ >= 0; }
     // H02d (Option A): wind variant for NON-masked tree materials (e.g. tree
     // trunk textures that carry no alpha), so wind vertex displacement still
     // applies without dragging in alpha-test discard semantics. -1 if
     // compilation failed (callers fall back to the base wind alpha-test
     // variant, matching the other wind-family fallbacks).
-    irr::s32 getMaterialTypeWindSolid() const { return materialWindSolid_; }
     bool isWindSolidAvailable() const { return materialWindSolid_ >= 0; }
 
     // Lightweight material types (no per-pixel player light, 3 varyings)
@@ -128,8 +126,6 @@ public:
     irr::s32 getMaterialTypeLWAtlasSolid() const { return materialLWAtlasSolid_; }
     irr::s32 getMaterialTypeLWAtlasAlpha() const { return materialLWAtlasAlpha_; }
     irr::s32 getMaterialTypeLWWindAlphaTest() const { return materialLWWindAlphaTest_; }
-    irr::s32 getMaterialTypeLWWindAlphaTestRGBA() const { return materialLWWindAlphaTestRGBA_; }
-    irr::s32 getMaterialTypeLWWindSolid() const { return materialLWWindSolid_; }
     bool isLightweightAvailable() const { return materialLWSolid_ >= 0; }
 
     // Active material resolution — returns lightweight or per-pixel variant
@@ -214,18 +210,6 @@ public:
     void setNumPointLights(int count) {
         numPointLights_ = (count < 0) ? 0 : (count > MAX_POINT_LIGHTS ? MAX_POINT_LIGHTS : count);
     }
-    void clearPointLights() {
-        numPointLights_ = 0;
-        std::memset(lightPos_, 0, sizeof(lightPos_));
-        std::memset(lightColor_, 0, sizeof(lightColor_));
-        // Set default attenuation to (1,0,0) so inactive lights have atten=1/(1+epsilon)
-        // rather than 1/(0+epsilon)=10000 which wastes precision
-        for (int i = 0; i < MAX_POINT_LIGHTS; ++i) {
-            lightAtten_[i * 3] = 1.0f;
-            lightAtten_[i * 3 + 1] = 0.0f;
-            lightAtten_[i * 3 + 2] = 0.0f;
-        }
-    }
 
     // Accessors for current uniform state (for callback)
     float fogStart() const { return fogStart_; }
@@ -270,21 +254,12 @@ public:
     const float* fireGlowLightRadius() const { return fireGlowLightRadius_; }
     const float* fireGlowLightIntensity() const { return fireGlowLightIntensity_; }
 
-    // Atlas tile scale (TILE_INNER / ATLAS_WIDTH, e.g. 248.0/2048.0)
-    void setAtlasTileScale(float scale) { atlasTileScale_ = scale; }
-    float atlasTileScale() const { return atlasTileScale_; }
-
-    // Set atlas page texture handles for the shader callback to bind
-    void setAtlasPageTextures(const std::vector<uint32_t>& pageTextures) {
-        atlasPageTextures_ = pageTextures;
-    }
-    // Append additional atlas page textures (e.g. object atlas after zone atlas).
-    // Returns the starting offset for the appended pages.
-    int appendAtlasPageTextures(const std::vector<uint32_t>& pageTextures) {
-        int offset = static_cast<int>(atlasPageTextures_.size());
-        atlasPageTextures_.insert(atlasPageTextures_.end(), pageTextures.begin(), pageTextures.end());
-        return offset;
-    }
+    // B494 (#169): the atlas page texture handles used to be pushed here by the
+    // (now-deleted) zone-atlas object manager via setAtlasPageTextures()/
+    // appendAtlasPageTextures(); with those gone nothing writes atlasPageTextures_
+    // anymore, so getAtlasPageTexture() always returns 0. Kept (as a FOLLOW-UP
+    // residue with the atlas shader callback) until the AtlasShaderCallback and
+    // the driver's Atlas*3D programs are retired.
     uint32_t getAtlasPageTexture(uint16_t pageIndex) const {
         if (pageIndex < atlasPageTextures_.size()) return atlasPageTextures_[pageIndex];
         return 0;
@@ -342,9 +317,6 @@ private:
     float fireGlowLightColor_[MAX_FIRE_GLOW_LIGHTS * 3] = {};
     float fireGlowLightRadius_[MAX_FIRE_GLOW_LIGHTS] = {};
     float fireGlowLightIntensity_[MAX_FIRE_GLOW_LIGHTS] = {};
-
-    // Atlas tile scale uniform
-    float atlasTileScale_ = 248.0f / 2048.0f;
 
     // Shader debug mode
     int shaderDebug_ = 0;

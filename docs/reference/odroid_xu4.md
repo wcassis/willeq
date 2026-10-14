@@ -5,6 +5,21 @@ not set up for automated work; no `PI_LANE`, no lock, no board cards). This page
 records the device, how willeq runs on it, and the GPU clock defect that made the
 first session run at 12 fps. The fix and the tools live in `scripts/sbc/xu4/`.
 
+## Play-test defects (Will, 2026-10-13)
+
+| Issue | Observation | Code change | Device status |
+|---|---|---|---|
+| #369 / B1049 | Held keys did not repeat in chat. | evdev repeat value 2 now emits another key-down with a character. | Awaiting Will's XU4 play session after merge. |
+| #370 / B1050 | Camera pans tore; UI windows sometimes appeared partially drawn or disappeared. | GBM's displaced scanout buffer is retained until the DRM flip event; the synchronous SetCrtc path releases after completion. | Awaiting Will's XU4 play session after merge. |
+
+## Power-cycle caveat (Will, 2026-10-13)
+
+A soft power cycle does not take effect unless the HDMI cable is fully removed:
+the monitor back-feeds +5 V on HDMI pin 18, so the PMIC never sees a cold start.
+This also explains why `systemctl reboot` strands the board. The hardware
+remedy is a pin-18-isolated cable/adapter or a monitor/switch that does not
+source 5 V. This is Will's report, not a measurement made for this card.
+
 ## The device
 
 | | |

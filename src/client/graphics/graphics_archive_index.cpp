@@ -1,7 +1,6 @@
 #ifdef EQT_HAS_GRAPHICS
 
 #include "client/graphics/graphics_archive_index.h"
-#include "client/graphics/eq/pfs.h"
 #include "client/graphics/eq/race_codes.h"
 #include "common/logging.h"
 #include "client/data_paths.h"
@@ -56,14 +55,6 @@ std::string GraphicsArchiveIndex::getArchiveForRace(uint16_t raceId, uint8_t gen
         return eqPath_ + "/" + it->second;
     }
     return "";
-}
-
-PfsArchive* GraphicsArchiveIndex::getCachedArchive(const std::string& archivePath) {
-    auto it = cachedArchives_.find(archivePath);
-    if (it != cachedArchives_.end()) {
-        return it->second.get();
-    }
-    return nullptr;
 }
 
 bool GraphicsArchiveIndex::loadCache() {
@@ -186,7 +177,6 @@ void GraphicsArchiveIndex::saveCache() {
 void GraphicsArchiveIndex::scanArchives(std::function<void()> tickCallback) {
     raceIndex_.clear();
     archiveSizes_.clear();
-    cachedArchives_.clear();
 
     // Find all *_chr.s3d files in EQ path (filename + size only, NO archive opening)
     std::set<std::string> archiveFilenames;  // lowercase filenames that exist on disk

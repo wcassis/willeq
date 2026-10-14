@@ -568,7 +568,6 @@ RaceModelInfo WilleqDatabase::getRaceModel(uint16_t raceId) {
         info.neuterCode = colText(stmt, 5);
         info.s3dFile = colText(stmt, 6);
         info.fallbackCode = colText(stmt, 7);
-        info.animationSource = colText(stmt, 8);
         info.animationSourceS3d = colText(stmt, 9);
         info.scale = static_cast<float>(sqlite3_column_double(stmt, 10));
         info.genderVariants = sqlite3_column_int(stmt, 11) != 0;
@@ -605,7 +604,6 @@ RaceModelInfo WilleqDatabase::getRaceModelByCode(const std::string& code) {
         info.neuterCode = colText(stmt, 5);
         info.s3dFile = colText(stmt, 6);
         info.fallbackCode = colText(stmt, 7);
-        info.animationSource = colText(stmt, 8);
         info.animationSourceS3d = colText(stmt, 9);
         info.scale = static_cast<float>(sqlite3_column_double(stmt, 10));
         info.genderVariants = sqlite3_column_int(stmt, 11) != 0;

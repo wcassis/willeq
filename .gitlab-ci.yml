@@ -386,8 +386,16 @@ build-arm:
     - '[ "$(hostname)" = "dev-u24" ] || { echo "refusing to build on $(hostname)"; exit 1; }'
     # B970: verify/fill the vendored Irrlicht+libpng store first; fails naming the pin.
     - scripts/ci/vendor_fetch.sh --ensure
-    - nice -n 10 scripts/build-arm-noble.sh 2>&1 | tail -n 40
+    # Full log kept as an artifact; on failure print the compiler errors, not a
+    # blind tail (B1054's ARM-only compile error never reached the trace).
+    - nice -n 10 scripts/build-arm-noble.sh > build-arm-noble.log 2>&1 || { grep -nE 'error:|undefined reference|ERROR:' build-arm-noble.log | head -n 40; tail -n 40 build-arm-noble.log; exit 1; }
+    - tail -n 20 build-arm-noble.log
     - scripts/pi/publish_arm_build.sh "$CI_COMMIT_SHA" "${CI_COMMIT_BRANCH:-$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
+  artifacts:
+    when: always
+    expire_in: 14 days
+    paths:
+      - build-arm-noble.log
 
 # B1030 (#350): the aarch64 lanes' binary (Rock64 + ROCK 4D), the same runner
 # and the same shape as build-arm, published to ci-arm64/<sha>/. The runner is
@@ -414,8 +422,16 @@ build-arm64:
     - set -o pipefail
     - '[ "$(hostname)" = "dev-u24" ] || { echo "refusing to build on $(hostname)"; exit 1; }'
     - scripts/ci/vendor_fetch.sh --ensure
-    - nice -n 10 scripts/build-arm64-noble.sh 2>&1 | tail -n 40
+    # Full log kept as an artifact; on failure print the compiler errors, not a
+    # blind tail (B1054's ARM-only compile error never reached the trace).
+    - nice -n 10 scripts/build-arm64-noble.sh > build-arm64-noble.log 2>&1 || { grep -nE 'error:|undefined reference|ERROR:' build-arm64-noble.log | head -n 40; tail -n 40 build-arm64-noble.log; exit 1; }
+    - tail -n 20 build-arm64-noble.log
     - scripts/pi/publish_arm64_build.sh "$CI_COMMIT_SHA" "${CI_COMMIT_BRANCH:-$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
+  artifacts:
+    when: always
+    expire_in: 14 days
+    paths:
+      - build-arm64-noble.log
 
 # Stage 4: the visual gate (T80/T291) -- golden frames + CPU-p95 + memory ledger
 # over build-gles2/bin/gles2_zone_benchmark against real client assets.
