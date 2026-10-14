@@ -1,9 +1,10 @@
 /*
  * HotbarModel implementation.
- * U07b: Standalone hotbar data model with JSON + bridge events.
+ * U07b: Standalone hotbar data model with legacy JSON import + bridge events.
  */
 
 #include "client/hotbar/hotbar_model.h"
+#include "client/spell/spell_constants.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
 #include "common/logging.h"
@@ -12,20 +13,46 @@ namespace eqt {
 
 static HotbarSlot emptySlot;
 
-const HotbarSlot& HotbarModel::getSlot(int index) const {
-    if (index < 0 || index >= SLOT_COUNT) return emptySlot;
-    return slots_[index];
+static bool valid(HotbarAddress address) {
+    return address.page >= 0 && address.page < HotbarModel::PAGE_COUNT &&
+           address.slot >= 0 && address.slot < HotbarModel::SLOT_COUNT;
 }
 
-void HotbarModel::assignSlot(int index, HotbarSlotType type, uint32_t id,
-                              const std::string& emoteText, uint32_t iconId) {
-    if (index < 0 || index >= SLOT_COUNT) return;
+const HotbarSlot& HotbarModel::getSlot(HotbarAddress address) const {
+    if (!valid(address)) return emptySlot;
+    return slots_[address.page][address.slot];
+}
 
-    auto& slot = slots_[index];
+int HotbarModel::findSpellGem(uint32_t spellId) const {
+    if (!spellAtGem_ || spellId == 0 || spellId == EQ::SPELL_UNKNOWN) return -1;
+    for (int gem = 0; gem < EQT::VISIBLE_SPELL_GEM_COUNT; ++gem) {
+        if (spellAtGem_(static_cast<uint8_t>(gem)) == spellId) return gem;
+    }
+    return -1;
+}
+
+void HotbarModel::setCurrentPage(int page) {
+    if (page < 0 || page >= PAGE_COUNT || page == currentPage_) return;
+    currentPage_ = page;
+    publishAllSlots();
+    onChanged();
+}
+
+void HotbarModel::reset() {
+    slots_ = {};
+    currentPage_ = 0;
+}
+
+void HotbarModel::assignSlot(HotbarAddress address, HotbarSlotType type, uint32_t id,
+                              const std::string& emoteText, uint32_t iconId) {
+    if (!valid(address)) return;
+
+    auto& slot = slots_[address.page][address.slot];
     slot.type = type;
     slot.id = id;
     slot.emoteText = emoteText;
     slot.iconId = iconId;
+    slot.sourceCode.clear();
 
     // Resolve display name
     // T239: Emote and Macro slots are named by their command text; the
@@ -39,22 +66,33 @@ void HotbarModel::assignSlot(int index, HotbarSlotType type, uint32_t id,
         slot.name.clear();
     }
 
-    publishSlot(index);
+    publishSlot(address);
     onChanged();
 }
 
-void HotbarModel::clearSlot(int index) {
-    if (index < 0 || index >= SLOT_COUNT) return;
-    slots_[index] = {};
-    publishSlot(index);
+void HotbarModel::clearSlot(HotbarAddress address) {
+    if (!valid(address)) return;
+    slots_[address.page][address.slot] = {};
+    publishSlot(address);
     onChanged();
 }
 
 void HotbarModel::loadFromJson(const Json::Value& data) {
     if (!data.isObject()) return;
-
-    if (data.isMember("buttons") && data["buttons"].isArray()) {
-        const auto& buttons = data["buttons"];
+    reset();
+    const auto& pages = data["pages"];
+    if (pages.isArray()) {
+        const int page = data.get("currentPage", 0).asInt();
+        if (page >= 0 && page < PAGE_COUNT) currentPage_ = page;
+    }
+    for (int p = 0; p < PAGE_COUNT; ++p) {
+        // The old ten-button shape is imported as page zero.
+        if (pages.isArray() && p >= static_cast<int>(pages.size())) break;
+        const auto& buttons = pages.isArray() ? pages[p] : data["buttons"];
+        if (!buttons.isArray()) {
+            if (!pages.isArray()) break;
+            continue;
+        }
         for (Json::ArrayIndex i = 0; i < buttons.size() && i < SLOT_COUNT; ++i) {
             const auto& btn = buttons[i];
             int type = btn.get("type", 0).asInt();
@@ -64,7 +102,7 @@ void HotbarModel::loadFromJson(const Json::Value& data) {
             // clears the slot rather than becoming a bogus enumerator.
             if (type < 0 || !hotbarSlotTypeFromRaw(static_cast<uint32_t>(type), slotType)) {
                 LOG_WARN(MOD_CONFIG, "HotbarModel: slot {} has unknown type {}; clearing", i, type);
-                slots_[i] = {};
+                slots_[p][i] = {};
                 continue;
             }
             if (slotType != HotbarSlotType::Empty) {
@@ -72,55 +110,40 @@ void HotbarModel::loadFromJson(const Json::Value& data) {
                 std::string emoteText = btn.get("emoteText", "").asString();
                 uint32_t iconId = btn.get("iconId", 0).asUInt();
 
-                slots_[i].type = slotType;
-                slots_[i].id = id;
-                slots_[i].emoteText = emoteText;
-                slots_[i].iconId = iconId;
+                slots_[p][i].type = slotType;
+                slots_[p][i].id = id;
+                slots_[p][i].emoteText = emoteText;
+                slots_[p][i].iconId = iconId;
+                slots_[p][i].sourceCode = btn.get("sourceCode", "").asString();
 
                 if (slotType == HotbarSlotType::Emote || slotType == HotbarSlotType::Macro) {
-                    slots_[i].name = emoteText.empty() ? hotbarSlotTypeName(slotType) : emoteText.substr(0, 10);
+                    slots_[p][i].name = emoteText.empty() ? hotbarSlotTypeName(slotType) : emoteText.substr(0, 10);
                 } else if (nameResolver_) {
-                    slots_[i].name = nameResolver_(slotType, id);
+                    slots_[p][i].name = nameResolver_(slotType, id);
                 }
             } else {
-                slots_[i] = {};
+                slots_[p][i] = {};
             }
         }
+        if (!pages.isArray()) break;
     }
-
-    LOG_DEBUG(MOD_CONFIG, "HotbarModel: loaded {} slots from JSON", SLOT_COUNT);
-}
-
-Json::Value HotbarModel::saveToJson() const {
-    Json::Value hotbar;
-    Json::Value buttons(Json::arrayValue);
-
-    for (int i = 0; i < SLOT_COUNT; ++i) {
-        const auto& slot = slots_[i];
-        Json::Value btn;
-        btn["type"] = static_cast<int>(slot.type);
-        btn["id"] = slot.id;
-        btn["emoteText"] = slot.emoteText;
-        btn["iconId"] = slot.iconId;
-        buttons.append(btn);
-    }
-
-    hotbar["buttons"] = buttons;
-    return hotbar;
+    LOG_DEBUG(MOD_CONFIG, "HotbarModel: loaded hotbar from JSON");
 }
 
 void HotbarModel::publishAllSlots() {
     for (int i = 0; i < SLOT_COUNT; ++i) {
-        publishSlot(i);
+        publishSlot({currentPage_, i});
     }
 }
 
-void HotbarModel::publishSlot(int index) {
-    if (!bridge_ || index < 0 || index >= SLOT_COUNT) return;
+void HotbarModel::publishSlot(HotbarAddress address) {
+    if (!bridge_ || !valid(address)) return;
 
-    const auto& slot = slots_[index];
+    const auto& slot = slots_[address.page][address.slot];
     state::HotbarSlotAssignedData data;
-    data.index = index;
+    data.page = address.page;
+    data.currentPage = currentPage_;
+    data.index = address.slot;
     data.type = slot.type;
     data.id = slot.id;
     data.name = slot.name;

@@ -257,6 +257,9 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 
 	// U07b: Create standalone hotbar model
 	m_hotbar_model = std::make_unique<eqt::HotbarModel>();
+	m_hotbar_model->setSpellAtGem([this](uint8_t gem) {
+		return m_spell_manager->getMemorizedSpell(gem);
+	});
 	m_hotbar_model->setNameResolver([this](eqt::HotbarSlotType type, uint32_t id) -> std::string {
 		if (type == eqt::HotbarSlotType::Spell && m_spell_manager) {
 			const auto* spell = m_spell_manager->getSpell(id);
