@@ -70,6 +70,13 @@ struct CharCreateScreenState {
     FacePickData faceData;              // data/char_create_faces.tsv
     FacePickState facePick;             // modal draft, separate from committed picks
     std::array<uint32_t, kFacePickFeatures> appearance{};
+    // The model era the screen was opened in, mirroring
+    // RaceModelLoader::isUsingOldModels() (default: classic models). The
+    // FacePick modal gates its rows on this (finding 1): classic models read
+    // the visible_classic column, Luclin models read the visible (Luclin)
+    // column. The host sets it from the loader at open; device-free tests set
+    // it directly.
+    bool useOldModels = true;
 
     // CC0_Help / CC1_Help: an eqstr id (0 = none) and, for a deity or city,
     // nothing else -- the pane prints the string. helpTitle is the label shown
@@ -97,12 +104,13 @@ struct CharCreateAction {
     uint32_t race = 0, gender = 0;                // GetName
 };
 
-/** Open on page 0 with a random valid in-era selection (`seed`). */
+/** Open on page 0 with a random valid in-era selection (`seed`;
+ *  `useOldModels`: the model era the FacePick rows gate on). */
 void openCharCreate(CharCreateScreenState& s, const eqt::charcreate::CharCreateData& data,
-                    uint32_t seed);
+                    uint32_t seed, bool useOldModels = true);
 /** Open on a FIXED selection (captures, tests). False if it is not offered. */
 bool openCharCreateWith(CharCreateScreenState& s, const eqt::charcreate::CharCreateData& data,
-                        uint32_t race, uint32_t gender, uint32_t cls);
+                        uint32_t race, uint32_t gender, uint32_t cls, bool useOldModels = true);
 
 bool selectRace(CharCreateScreenState& s, uint32_t race);
 bool selectClass(CharCreateScreenState& s, uint32_t cls);

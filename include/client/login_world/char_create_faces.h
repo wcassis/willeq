@@ -22,8 +22,14 @@ constexpr size_t kFacePickFeatures = static_cast<size_t>(FacePickFeature::Count)
 
 struct FacePickRange {
     uint32_t min = 0, max = 0;
-    bool visible = false;
+    bool visible = false;         // the Luclin-mode row (UseLuclin=TRUE stills)
+    bool visibleClassic = false;  // the classic-mode row (stock UseLuclin=FALSE stills)
     std::string source;
+
+    // The model-era gate (MR !168 finding 1): classic models (the client's
+    // default, RaceModelLoader::isUsingOldModels()) consult the classic
+    // column; Luclin models consult the Luclin column.
+    bool visibleFor(bool oldModels) const { return oldModels ? visibleClassic : visible; }
 };
 
 using FacePickRanges = std::array<FacePickRange, kFacePickFeatures>;

@@ -63,12 +63,12 @@ bool CharacterSelectHost::frame(IrrlichtRenderer& renderer, eqt::login_world::Ch
             rx->setChatInputFocused(true);
             if (rx->wasLeftButtonClicked()) {
                 handle(applyCharSelectClick(state_, layout, rx->getClickMouseX(), rx->getClickMouseY(),
-                                            false, data_, ++seed_),
+                                            false, data_, ++seed_, renderer.Diagnostics().isUsingOldModels()),
                        channel);
             }
             if (rx->wasRightButtonClicked()) {
                 handle(applyCharSelectClick(state_, layout, rx->getClickMouseX(), rx->getClickMouseY(),
-                                            true, data_, ++seed_),
+                                            true, data_, ++seed_, renderer.Diagnostics().isUsingOldModels()),
                        channel);
             }
         }

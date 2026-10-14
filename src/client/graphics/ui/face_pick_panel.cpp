@@ -38,12 +38,17 @@ bool openFacePick(CharCreateScreenState& s) {
     if (!s.isOpen || s.page != 0 || s.submitting) return false;
     const FacePickRanges* ranges = s.faceData.find(s.race, s.gender);
     if (!ranges) return false;
+    // The model-era gate (finding 1): classic models show the visible_classic
+    // rows, Luclin models the Luclin rows. The modal's state copies the
+    // era-SELECTED column into its plain `visible` field, so drawing,
+    // hit-testing, stepping and Random all consume one era-consistent set.
     s.facePick.ranges = *ranges;
     s.facePick.values = s.appearance;
     for (size_t i = 0; i < kFacePickFeatures; ++i) {
         const auto& range = (*ranges)[i];
-        s.facePick.values[i] = range.visible
-            ? std::clamp(s.facePick.values[i], range.min, range.max) : 0;
+        const bool shown = range.visibleFor(s.useOldModels);
+        s.facePick.ranges[i].visible = shown;
+        s.facePick.values[i] = shown ? std::clamp(s.facePick.values[i], range.min, range.max) : 0;
     }
     s.facePick.isOpen = true;
     return true;

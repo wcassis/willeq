@@ -84,7 +84,8 @@ std::vector<uint32_t> CharCreateScreenState::offeredCities() const {
 bool CharCreateScreenState::deityOffered(uint32_t d) const { return contains(offeredDeities(), d); }
 bool CharCreateScreenState::cityOffered(uint32_t c) const { return contains(offeredCities(), c); }
 
-void openCharCreate(CharCreateScreenState& s, const CharCreateData& data, uint32_t seed) {
+void openCharCreate(CharCreateScreenState& s, const CharCreateData& data, uint32_t seed,
+                    bool useOldModels) {
     loadLists(s, data);
     std::vector<std::pair<uint32_t, uint32_t>> pairs;
     for (const auto& r : s.races) {
@@ -100,17 +101,19 @@ void openCharCreate(CharCreateScreenState& s, const CharCreateData& data, uint32
     }
     s.gender = (rng() & 1u) ? Gender::Female : Gender::Male;
     s.facePick.randomSeed = rng();
+    s.useOldModels = useOldModels;
     resetForOpen(s);
 }
 
 bool openCharCreateWith(CharCreateScreenState& s, const CharCreateData& data, uint32_t race,
-                        uint32_t gender, uint32_t cls) {
+                        uint32_t gender, uint32_t cls, bool useOldModels) {
     loadLists(s, data);
     if (!s.raceClassValid(race, cls)) return false;
     s.race = race;
     s.cls = cls;
     s.gender = gender == Gender::Female ? Gender::Female : Gender::Male;
     s.facePick.randomSeed = 1;
+    s.useOldModels = useOldModels;
     resetForOpen(s);
     return true;
 }

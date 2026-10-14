@@ -73,7 +73,11 @@ bool FacePickData::loadText(const std::string& text) {
         };
         // The shipped table adds independently measured counts and provenance.
         // Seven-column synthetic fixtures remain useful to exercise the parser.
-        if (f.size() != 7 && f.size() != 9) return bad("expected 7 or 9 columns");
+        // Finding 1 (MR !168) adds a 10th column, visible_classic, the stock
+        // (UseLuclin=FALSE) official-client row; 9-column rows (pre-capture
+        // fixtures) carry only the Luclin column and default classic to hidden.
+        if (f.size() != 7 && f.size() != 9 && f.size() != 10)
+            return bad("expected 7, 9 or 10 columns");
         uint32_t race = 0, gender = 0, lo = 0, hi = 0;
         if (!number(f[0], race) || !number(f[1], gender) || gender > 1 ||
             !number(f[3], lo) || !number(f[4], hi) || lo > hi)
@@ -82,19 +86,26 @@ bool FacePickData::loadText(const std::string& text) {
         if (it == std::end(kNames)) return bad("unknown picker " + f[2]);
         const size_t picker = static_cast<size_t>(it - std::begin(kNames));
         if (f[5] != "0" && f[5] != "1") return bad("visible must be 0 or 1");
-        if (f[6].empty()) return bad("missing oracle source");
-        if (f.size() == 9) {
+        bool visibleClassic = false;
+        if (f.size() == 10) {
+            if (f[6] != "0" && f[6] != "1") return bad("visible_classic must be 0 or 1");
+            visibleClassic = f[6] == "1";
+        }
+        const size_t sourceCol = f.size() == 10 ? 7 : 6;
+        const size_t countCol = sourceCol + 1, statusCol = sourceCol + 2;
+        if (f[sourceCol].empty()) return bad("missing oracle source");
+        if (f.size() >= 9) {
             uint32_t count = 0;
-            if (f[7] != "UNMEASURED" && (!number(f[7], count) || count == 0))
+            if (f[countCol] != "UNMEASURED" && (!number(f[countCol], count) || count == 0))
                 return bad("invalid measured count");
-            if (f[8] != "COUNT-MEASURED+SAMPLED" &&
-                f[8] != "COUNT-MEASURED" && f[8] != "UNMEASURED")
+            if (f[statusCol] != "COUNT-MEASURED+SAMPLED" &&
+                f[statusCol] != "COUNT-MEASURED" && f[statusCol] != "UNMEASURED")
                 return bad("invalid range status");
-            if ((f[7] == "UNMEASURED") != (f[8] == "UNMEASURED"))
+            if ((f[countCol] == "UNMEASURED") != (f[statusCol] == "UNMEASURED"))
                 return bad("count and status disagree");
         }
         if (!seen[{race, gender}].insert(picker).second) return bad("duplicate picker");
-        parsed[{race, gender}][picker] = {lo, hi, f[5] == "1", f[6]};
+        parsed[{race, gender}][picker] = {lo, hi, f[5] == "1", visibleClassic, f[sourceCol]};
     }
     for (const auto& entry : seen) {
         if (entry.second.size() != kFacePickFeatures) {

@@ -176,7 +176,8 @@ TEST(FacePick, TsvRangesAndModalAcceptCancelReachPacket) {
     ASSERT_TRUE(ranges.loadText(fixture)) << ranges.error();
 
     CharCreateScreenState s;
-    ASSERT_TRUE(openCharCreateWith(s, Data(), Race::Barbarian, Gender::Male, Class::Warrior));
+    ASSERT_TRUE(openCharCreateWith(s, Data(), Race::Barbarian, Gender::Male, Class::Warrior,
+                                   /*useOldModels=*/false));   // the fixture rows are the Luclin column
     s.faceData = ranges;
     const auto button = L::faceButtonRect(W, H).getCenter();
     const auto open = hitTestCharCreate(W, H, s, button.X, button.Y);
@@ -241,10 +242,82 @@ TEST(FacePick, ShippedRangesCoverEveryInEraRaceAndGender) {
     }
 }
 
+// B888-CC1 finding 1 (MR !168): the visible_classic column gates the CLASSIC
+// UI (useOldModels, the client's default) and the visible (Luclin) column
+// gates the Luclin UI. Drawing, hit-testing and Random all consume the
+// era-selected column, because openFacePick copies it into the modal's plain
+// `visible` field. The fixture rows: HAIR is visible in BOTH eras, WODE is
+// Luclin-only (a Barbarian's woad is classic-visible in the real table --
+// this fixture deliberately makes it Luclin-only to exercise the gate), EYES
+// is classic-only.
+TEST(FacePick, ClassicModelsGateTheRowsOnTheModelEra) {
+    const std::string fixture =
+        "2\t0\tface\t0\t7\t1\t1\tfixture\tUNMEASURED\tUNMEASURED\n"
+        "2\t0\thair\t0\t3\t1\t1\tfixture\tUNMEASURED\tUNMEASURED\n"
+        "2\t0\thaircolor\t0\t19\t0\t0\tfixture\tUNMEASURED\tUNMEASURED\n"
+        "2\t0\teyes\t0\t9\t0\t1\tfixture\tUNMEASURED\tUNMEASURED\n"
+        "2\t0\tbeard\t0\t5\t1\t1\tfixture\tUNMEASURED\tUNMEASURED\n"
+        "2\t0\tbeardcolor\t0\t19\t1\t1\tfixture\tUNMEASURED\tUNMEASURED\n"
+        "2\t0\twode\t0\t8\t1\t0\tfixture\tUNMEASURED\tUNMEASURED\n";
+    FacePickData ranges;
+    ASSERT_TRUE(ranges.loadText(fixture)) << ranges.error();
+    const auto* pair = ranges.find(Race::Barbarian, Gender::Male);
+    ASSERT_NE(pair, nullptr);
+    // The parser keeps both columns apart.
+    EXPECT_TRUE((*pair)[static_cast<size_t>(FacePickFeature::Hair)].visibleFor(true));
+    EXPECT_TRUE((*pair)[static_cast<size_t>(FacePickFeature::Hair)].visibleFor(false));
+    EXPECT_TRUE((*pair)[static_cast<size_t>(FacePickFeature::Eyes)].visibleFor(true));
+    EXPECT_FALSE((*pair)[static_cast<size_t>(FacePickFeature::Eyes)].visibleFor(false));
+    EXPECT_FALSE((*pair)[static_cast<size_t>(FacePickFeature::Wode)].visibleFor(true));
+    EXPECT_TRUE((*pair)[static_cast<size_t>(FacePickFeature::Wode)].visibleFor(false));
+    // A 10-column row with a bad visible_classic is refused (and a failed
+    // load clears the table, so reload the fixture before using it).
+    EXPECT_FALSE(ranges.loadText(fixture + "2\t0\tface\t0\t7\t1\t2\tfixture\tUNMEASURED\tUNMEASURED\n"));
+    ASSERT_TRUE(ranges.loadText(fixture)) << ranges.error();
+
+    const auto open = [&](bool oldModels, CharCreateScreenState& s) -> bool {
+        EXPECT_TRUE(openCharCreateWith(s, Data(), Race::Barbarian, Gender::Male, Class::Warrior, oldModels));
+        s.faceData = ranges;
+        EXPECT_TRUE(openFacePick(s));
+        return s.facePick.isOpen;
+    };
+    const auto rowCentre = [](int row) {
+        const auto r = FacePickLayout::upRect(W, H, row);
+        return r.getCenter();
+    };
+    {   // Classic models: EYES shown, WODE not; hitting the WODE row is blocked.
+        CharCreateScreenState s;
+        ASSERT_TRUE(open(true, s));
+        EXPECT_TRUE(s.facePick.ranges[static_cast<size_t>(FacePickFeature::Eyes)].visible);
+        EXPECT_FALSE(s.facePick.ranges[static_cast<size_t>(FacePickFeature::Wode)].visible);
+        EXPECT_EQ(hitTestFacePick(W, H, s.facePick, rowCentre(3).X, rowCentre(3).Y).hit, FacePickHit::Up);
+        EXPECT_EQ(hitTestFacePick(W, H, s.facePick, rowCentre(6).X, rowCentre(6).Y).hit, FacePickHit::Blocked);
+        // Stepping and Random honour the same gate.
+        stepFacePick(s.facePick, static_cast<int>(FacePickFeature::Wode), 1);
+        EXPECT_EQ(s.facePick.values[static_cast<size_t>(FacePickFeature::Wode)], 0u);
+        for (int n = 0; n < 100; ++n) {
+            randomFacePick(s.facePick);
+            EXPECT_EQ(s.facePick.values[static_cast<size_t>(FacePickFeature::Wode)], 0u);
+            EXPECT_GE(s.facePick.values[static_cast<size_t>(FacePickFeature::Eyes)], 0u);
+            EXPECT_LE(s.facePick.values[static_cast<size_t>(FacePickFeature::Eyes)], 9u);
+        }
+    }
+    {   // Luclin models: WODE shown, EYES not.
+        CharCreateScreenState s;
+        ASSERT_TRUE(open(false, s));
+        EXPECT_FALSE(s.facePick.ranges[static_cast<size_t>(FacePickFeature::Eyes)].visible);
+        EXPECT_TRUE(s.facePick.ranges[static_cast<size_t>(FacePickFeature::Wode)].visible);
+        EXPECT_EQ(hitTestFacePick(W, H, s.facePick, rowCentre(6).X, rowCentre(6).Y).hit, FacePickHit::Up);
+        EXPECT_EQ(hitTestFacePick(W, H, s.facePick, rowCentre(3).X, rowCentre(3).Y).hit, FacePickHit::Blocked);
+        stepFacePick(s.facePick, static_cast<int>(FacePickFeature::Eyes), 1);
+        EXPECT_EQ(s.facePick.values[static_cast<size_t>(FacePickFeature::Eyes)], 0u);
+    }
+}
+
 TEST(FacePick, NonzeroMinimumWrapsAtItsOwnEndpoints) {
     FacePickState draft;
     draft.isOpen = true;
-    draft.ranges[static_cast<size_t>(FacePickFeature::HairColor)] = {13, 18, true, "fixture"};
+    draft.ranges[static_cast<size_t>(FacePickFeature::HairColor)] = {13, 18, true, true, "fixture"};
     draft.values[static_cast<size_t>(FacePickFeature::HairColor)] = 13;
     stepFacePick(draft, static_cast<int>(FacePickFeature::HairColor), -1);
     EXPECT_EQ(draft.values[static_cast<size_t>(FacePickFeature::HairColor)], 18u);
@@ -269,7 +342,8 @@ TEST(FacePick, HiddenRowsCannotBeClickedOrRandomized) {
         "6\t1\twode\t0\t0\t0\tfixture\n";
     ASSERT_TRUE(data.loadText(fixture)) << data.error();
     CharCreateScreenState s;
-    ASSERT_TRUE(openCharCreateWith(s, Data(), Race::DarkElf, Gender::Female, Class::Necromancer));
+    ASSERT_TRUE(openCharCreateWith(s, Data(), Race::DarkElf, Gender::Female, Class::Necromancer,
+                                   /*useOldModels=*/false));   // the fixture rows are the Luclin column
     s.faceData = data;
     ASSERT_TRUE(openFacePick(s));
     const auto beard = FacePickLayout::upRect(W, H, 4).getCenter();
