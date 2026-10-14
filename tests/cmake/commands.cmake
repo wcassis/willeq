@@ -783,3 +783,37 @@ IF(EQT_LIVE_TESTS AND EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         TIMEOUT 900
         ENVIRONMENT "WILLEQ_BIN=$<TARGET_FILE:willeq>")
 ENDIF()
+
+# B924 / #243: the REPEATABLE NET for llvmpipe's post-ready gpu_driver growth
+# (the measurement leg of the issue; acceptance 3). A rendered client holds
+# gfaydark -- the zone with the worst B909 spread -- standing still for
+# ~5 minutes past `ready`; the client's own [memledger] lines (idle points
+# every 30 s) give gpu_driver at ready and at the last idle point, and
+# scripts/b924/b924_check_bound.py asserts the growth is at most the leg's
+# bound. Two legs (refactor/B924/README.md "The net"):
+#   B924IdleHoldLive         -- uncapped; bound 2883497060 = worst measured
+#                               uncapped growth (2306797648) x 1.25. GREEN
+#                               today: the growth is the driver's bounded
+#                               scene queue (64 x 36 MiB) at its ceiling.
+#   B924IdleHoldCappedLive   -- WILLEQ_FPS_CAP=10; tight bound 67108864 (64
+#                               MiB). The leak tripwire: at 10 fps the driver
+#                               queue drains, so a healthy tree holds ~0-20
+#                               MiB and a frames-correlated client leak trips.
+# Both need the eqemu lane (legs A/B take lanes 1/2), so live-only (T164),
+# like ClientLedgerLive. Exit 1 = growth over the bound (or no ready point).
+IF(EQT_LIVE_TESTS AND EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_TEST(NAME B924IdleHoldLive
+             COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/b924/b924_net_leg.sh
+                     uncapped ${CMAKE_CURRENT_BINARY_DIR}/b924_uncapped/$(date -u +%Y%m%dT%H%M%SZ) 420)
+    SET_TESTS_PROPERTIES(B924IdleHoldLive PROPERTIES
+        LABELS "live"
+        TIMEOUT 1800
+        ENVIRONMENT "WILLEQ_BIN=$<TARGET_FILE:willeq>;EQEMU_LANE=1")
+    ADD_TEST(NAME B924IdleHoldCappedLive
+             COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/b924/b924_net_leg.sh
+                     capped ${CMAKE_CURRENT_BINARY_DIR}/b924_capped/$(date -u +%Y%m%dT%H%M%SZ) 420)
+    SET_TESTS_PROPERTIES(B924IdleHoldCappedLive PROPERTIES
+        LABELS "live"
+        TIMEOUT 1800
+        ENVIRONMENT "WILLEQ_BIN=$<TARGET_FILE:willeq>;EQEMU_LANE=2")
+ENDIF()

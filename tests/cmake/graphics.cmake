@@ -36,6 +36,7 @@ IF(EQT_GRAPHICS)
         # T500: model_loading_search.cpp reads eqt::memory::stats() for the
         # [modelmem] split line, so the ledger TU comes with it.
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/mesh_building.cpp
@@ -157,6 +158,7 @@ IF(EQT_GRAPHICS)
         # T500: model_loading_search.cpp reads eqt::memory::stats() for the
         # [modelmem] split line, so the ledger TU comes with it.
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/mesh_building.cpp
