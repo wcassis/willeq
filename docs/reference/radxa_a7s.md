@@ -3,7 +3,7 @@
 Will added the board on 2026-10-13 ("let's get this device set up for willeq work"). It is `PI_LANE=4` in
 `scripts/pi/env.sh` and the first lane that is neither Ubuntu nor Mali: Debian 11 bullseye on Radxa's vendor
 kernel, with an Imagination PowerVR GPU driven by the IMG DDK blob. This page records the device, what was set up on
-it, the six traps that make it different from lanes 1-3, and how to build and run willeq there. The build script
+it, the seven traps that make it different from lanes 1-3, and how to build and run willeq there. The build script
 lives in `scripts/sbc/a7s/`.
 
 ## The device
@@ -34,7 +34,7 @@ lives in `scripts/sbc/a7s/`.
 - `/tmp` and `/mnt/ram` tmpfs, root `noatime` (fstab backup `/etc/fstab.pre-willeq`); ccache 6 G at
   `~/.cache/ccache`, `/usr/lib/ccache` on PATH.
 
-## The six traps
+## The seven traps
 
 1. **The `ci-arm64/` binary does not start.** It is linked against a noble sysroot and needs `GLIBC_2.38`
    (`objdump -T bin/willeq | grep GLIBC_`); the board has 2.31. Lane 4's binary is built on the device
@@ -54,6 +54,16 @@ lives in `scripts/sbc/a7s/`.
 6. **Symlinks through the sshfs mount.** The share is mounted `follow_symlinks`, so `symlink(2)` lands on the
    server but returns EIO and `unlink(2)` refuses ("Is a directory"). `build_native.sh` makes the by-branch
    link over ssh on the share host (`PUBLISH_SSH`, default `user@10.0.30.23`).
+7. **Reading a DRM fd's fdinfo panics the kernel.** `pvr_show_fdinfo` in the IMG module (pvrsrvkm, DDK 24.2)
+   dereferences NULL on any read of `/proc/<pid>/fdinfo/<drm fd>` -- from inside the process (willeq's GPU
+   buffer census, the impostor memory probe) or from outside (`proc_mem_snapshot.py` on kmscube, and so any
+   `nvtop`-style tool). Full trace: `review/B1056/lane4/bench60_local4.dmesg`. Every reader in the tree asks
+   `eqt::memory::drmFdinfoIsSafe()` (mirrored in the Python tool) and skips `pvrsrvkm`, so the lane's
+   `gpu_buffers` row comes from `drm_maps_lower_bound`, never `drm_fdinfo`. `kernel.panic_on_oops=1`,
+   `kernel.panic=10` are set on the board (`/etc/sysctl.d/90-willeq-panic.conf`) so an Oops reboots it instead of
+   wedging it; netconsole must NOT be loaded (its netpoll path freezes the box, trap recorded in memory).
+   The Oops-capture rig that found it is `review/B1056/scripts/oops_capture_run.sh` (non-blocking `/dev/kmsg`
+   reader on cpu7 + `kernel.printk_delay`).
 
 ## Building and running
 
@@ -77,7 +87,24 @@ under `~/build` (a debug tree does not fit the tmpfs); the publish has the `ci-a
 Filled in by the first-light smoke (`review/B1056/`): GL floor, qeynos2 frame times, owned memory. Nothing from
 the Lima cost sheet or the Panfrost findings transfers to this driver; re-measure before reasoning about it.
 
-**2026-10-13 19:07Z, first attempt:** the native build published fine (`ci-arm64-bullseye/e09ab815.../`), but the
-first `gles2_zone_benchmark --drm qeynos2` run took the board off the network within a minute (unreachable from
-the gateway, no `bench.log`); the board has no remote power control. The next run starts with `journalctl -b -1`
-for the cause. No number on this page is measured yet.
+**Thermal state as delivered (2026-10-14):** every SoC zone (cpul, cpub, gpu, npu, ddr) reads 60-62 °C within a
+minute of a cold boot with `pwm-fan` already at its top state, and the passive trips for the CPU clusters and the
+GPU are at exactly 60 °C: the little cluster idles throttled (`scaling_max_freq` 1196 of 1794 MHz, cooling state
+5/8) and the GPU zone sits on its trip. `skin_zone` reads 36 °C against a 50 °C *critical* (power-off) trip. Nothing
+in the sweeps below moved these numbers; a run on this board is a run on a throttled board until the cooling or
+the trip table changes (Will's call).
+
+**First-light smoke, 2026-10-14 (`review/B1056/lane4/`, build b0d551cf, 300 frames qeynos2 at 800x600, `--drm`):**
+
+| figure | value |
+|---|---|
+| Total frame avg / p95 / max | 3.52 / 4.77 / 4.97 ms (284 fps) |
+| GPU sync avg / p95 | 1.30 / 1.49 ms |
+| Draw calls avg / max | 10 / 14 |
+| VmRSS at steady | 60.2 MB (RssAnon 36.1 MB, RssFile 24.1 MB) |
+| gpu_buffers (drm_maps_lower_bound) | 15.8 MB; logical 7.2 MB |
+| Texture cache | 126 textures, 5.3 MB |
+
+The GL floor (kmscube under the IMG driver) is in `lane4/floor/` once the fdinfo-safe snapshot tool has run
+(the first floor attempt panicked the board, trap 7). The first two attempts (2026-10-13 19:07Z, 2026-10-14
+15:37Z) died at zone load from the census read; `bench60_local*.log` are the bisect runs.
