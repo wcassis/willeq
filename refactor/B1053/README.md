@@ -71,9 +71,10 @@ the Options panel; the panel regions match side by side in
 `xu4-fix/zoom_right_sidebyside.png`.) Finding for both platforms: NOT
 REPRODUCED.
 
-MR !174 pipeline 1031 passed at head
-`cac2f612ba2e9dd1cbb86b98ec794e54d0858aef` (including hygiene and
-build-test). The full pipeline record is in
+MR !174 pipeline 1159 passed at head
+`5b75317646059a9a46151ab9979346ba520b594a` (hygiene, build-headless,
+build-test and gate success; the arm/ledger/prune jobs are manual by
+design). The full pipeline record is in
 `/home/user/kb-evidence/kb-b1053-options-window/ci-final.json`. This line
 names the head the QA leg graded; if a later commit moves the MR head, this
 citation and a new MR-head pipeline are required.
