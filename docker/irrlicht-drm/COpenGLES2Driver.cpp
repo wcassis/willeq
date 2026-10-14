@@ -264,7 +264,7 @@ bool b1051WindowActive()
 // intended. The caller passes the unit-1 binding the same way (it switches
 // to TEXTURE1, reads, switches back).
 void b1051Note3DDraw(GLenum activeUnit, GLuint tex0, GLuint tex1, int matType,
-                     const char* tex0Name, const char* tex1Name)
+                     const char* tex0Name, int tex0Width, const char* tex1Name, int tex1Width)
 {
     ++g_b1051CurDraws;
     const bool changed = activeUnit != g_b1051LastUnit ||
@@ -278,9 +278,10 @@ void b1051Note3DDraw(GLenum activeUnit, GLuint tex0, GLuint tex1, int matType,
     if (!changed || !b1051WindowActive()) return;
     ++g_b1051RunSeq;
     std::fprintf(stderr,
-                 "[B1051] f%u r%lu unit=%u tex0=%u '%s' tex1=%u '%s' mat=%d\n",
+                 "[B1051] f%u r%lu unit=%u tex0=%u w=%d '%s' tex1=%u w=%d '%s' mat=%d\n",
                  g_b1051CurFrame, g_b1051RunSeq,
-                 activeUnit - GL_TEXTURE0, tex0, tex0Name, tex1, tex1Name, matType);
+                 activeUnit - GL_TEXTURE0, tex0, tex0Width, tex0Name,
+                 tex1, tex1Width, tex1Name, matType);
     std::fflush(stderr);
 }
 
@@ -1629,19 +1630,27 @@ void COpenGLES2Driver::b1051Trace3DDraw()
     const GLuint unit1 = state_.boundTexture[1];
     const GLenum saved = static_cast<GLenum>(state_.activeTextureUnit);
     const char* name0 = "(none)";
+    int w0 = 0;
     if (unit0) {
         glActiveTexture(GL_TEXTURE0);
+        // Panfrost/Mesa glGetString(GL_TEXTURE_BINDING_2D) can return just the
+        // texture ID, so the object's WIDTH is the real discriminator: the
+        // 13 Lieutenant ETC1 textures are all different sizes (64x128,
+        // 32x16, 128x64, ...).
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w0);
         name0 = reinterpret_cast<const char*>(glGetString(GL_TEXTURE_BINDING_2D));
     }
     const char* name1 = "(none)";
+    int w1 = 0;
     if (unit1) {
         glActiveTexture(GL_TEXTURE1);
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w1);
         name1 = reinterpret_cast<const char*>(glGetString(GL_TEXTURE_BINDING_2D));
     }
     glActiveTexture(saved);
     state_.activeTextureUnit = saved;
     b1051Note3DDraw(static_cast<GLenum>(state_.activeTextureUnit), unit0, unit1,
-                    LastMaterial.MaterialType, name0, name1);
+                    LastMaterial.MaterialType, name0, w0, name1, w1);
 }
 
 // ============================================================================
