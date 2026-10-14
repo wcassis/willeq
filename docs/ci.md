@@ -923,8 +923,10 @@ units short of the qeynos -> qeynos2 gate's BSP zone-line region
 (`scripts/scenario_configs/zone_line_walk_seed.sql`), starts a private Xvfb,
 runs the client `--egl-x11`, and its sidecar holds the forward key with
 xdotool -- the renderer's own keyboard movement, the path a player walks.
-The client passes when it is fully zoned in to a different zone
-(`src/client/scenario/scenario_zone_line_walk.cpp`); the post-check
+`--scenario` runs headless (no renderer), so this lane runs the ordinary
+windowed client and `scenario.sh` reads the verdict from its log with the same
+exit codes: 0 once the client is in qeynos2, 3 if qeynos never finished
+loading, 2 if it never zoned within `--timeout`. The post-check
 (`zone_line_walk.post.sh`) requires the client's `Zone line triggered!` line
 and the source zone log's `zoning to [qeynos2]` line for the character
 (eqemu's `Client::Handle_OP_ZoneChange`).

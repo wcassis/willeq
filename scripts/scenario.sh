@@ -549,7 +549,6 @@ if [ "$SCENARIO" = "zone_line_walk" ]; then
     XVFB_PID=$!
     sleep 2
     kill -0 "$XVFB_PID" 2>/dev/null || { say "Xvfb $DISPLAY did not start (see $OUT/${SCENARIO}_xvfb.log)"; exit 64; }
-    SCENARIO_CLIENT_ARGS="${SCENARIO_CLIENT_ARGS:-} --egl-x11 -r 1024 768"
     say "Xvfb $DISPLAY up (pid $XVFB_PID); client runs --egl-x11"
 fi
 SIDECAR="$REPO/scripts/scenario_configs/${SCENARIO}.sidecar.sh"
@@ -561,6 +560,31 @@ if [ -f "$SIDECAR" ]; then
 fi
 # UIGAP-live: SCENARIO_CLIENT_ARGS (environment) is appended to the MAIN
 # client's command line -- the review video passes --dump-frames-dir here.
+if [ "$SCENARIO" = "zone_line_walk" ]; then
+    # B1068 (#388): --scenario forces a headless Automated run (no renderer,
+    # application_config.cpp), and the defect lives in the RENDERER's movement
+    # path, so this lane runs the ordinary windowed client and reads the
+    # verdict from its log with the scenario.sh exit taxonomy: 0 = fully
+    # zoned in to qeynos2 (the client's "Zone lines for 'qeynos2'" line, written
+    # on the first zone-line check there), 3 = never finished loading qeynos,
+    # 2 = loaded but never zoned within --timeout. The post-check adds the
+    # server half.
+    # shellcheck disable=SC2086
+    "$BIN" -c "$CONFIG" --egl-x11 -r 1024 768 --log-level="$LOG_LEVEL" \
+        --log-module="ZONE:DEBUG" ${SCENARIO_CLIENT_ARGS:-} > "$LOG" 2>&1 &
+    CLIENT_PID=$!
+    CODE=2
+    for _ in $(seq 1 "$TIMEOUT"); do
+        if grep -q "Zone lines for 'qeynos2'" "$LOG" 2>/dev/null; then CODE=0; break; fi
+        kill -0 "$CLIENT_PID" 2>/dev/null || break
+        sleep 1
+    done
+    grep -q "zone load #1 ('qeynos') complete" "$LOG" 2>/dev/null || CODE=3
+    echo "SCENARIO zone_line_walk exit=${CODE} ($(grep -m1 -o "Zone line crossing:.*" "$LOG" || echo 'no crossing logged'))" >> "$LOG"
+    kill "$CLIENT_PID" >/dev/null 2>&1
+    wait "$CLIENT_PID" 2>/dev/null
+    CLIENT_PID=""
+else
 # shellcheck disable=SC2086
 "$BIN" -c "$CONFIG" --scenario "$SCENARIO" --timeout "$TIMEOUT" \
     --scenario-hold "$HOLD" \
@@ -573,6 +597,7 @@ CLIENT_PID=$!
 wait "$CLIENT_PID"
 CODE=$?
 CLIENT_PID=""
+fi
 say "client exit ${CODE}"
 grep -E '\[SCENARIO\]|^SCENARIO ' "$LOG" | tail -20 >&2
 if [ -n "$SIDECAR_PID" ]; then

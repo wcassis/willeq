@@ -76,9 +76,6 @@ const Entry kScenarios[] = {
     {"fall_damage", &MakeFallDamageScenario},
     // B900 (#216): the single ranged attack, live. The packet half's lane leg.
     {"ranged_single_shot", &MakeRangedSingleShotScenario},
-    // B1068 (#388): a walked (keyboard, render-thread) zone-line crossing
-    // zones the client; scripts/scenario.sh drives the key under Xvfb.
-    {"zone_line_walk", &MakeZoneLineWalkScenario},
 };
 
 }  // namespace

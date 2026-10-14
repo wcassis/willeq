@@ -146,8 +146,6 @@ std::unique_ptr<IScenario> MakeCampDesktopScenario(const ScenarioOptions& option
 /** A synthetic drop through the client's own fall-damage sender; Pass when
  *  the server's HP change arrives within fallWaitSeconds. */
 std::unique_ptr<IScenario> MakeFallDamageScenario(const ScenarioOptions& options);
-// B1068 (#388): a walked zone-line crossing zones the client.
-std::unique_ptr<IScenario> MakeZoneLineWalkScenario(const ScenarioOptions& options);
 
 // B900 (#216): the single ranged attack, live on the lane. GM-spawn a dummy,
 // target it, fire ONE /range and wait for the SERVER's hit-or-miss verdict
