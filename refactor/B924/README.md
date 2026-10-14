@@ -27,7 +27,7 @@ time:
 | run3 | iceclad | uncapped (~20 fps) | 123 MiB | 2323 MiB (idle_330) | **+2200 MiB** | flat |
 | run4 | gfaydark | uncapped (~23 fps, trace) | 137 MiB | 2270 MiB (idle_360) | **+2133 MiB** | flat |
 | run2 | gfaydark | **10 fps cap** | 137 MiB | 155 MiB (idle_360) | **+18 MiB** | flat |
-| run5 | gfaydark | **10 fps cap** | 137 MiB | 139 MiB (idle_270) | **−2.5 MiB** | flat |
+| run5 | gfaydark | **10 fps cap** | 137 MiB | 135 MiB (idle_270) | **−2.5 MiB** | flat |
 
 At 10 fps the growth is ~zero; uncapped it is ~2.1–2.2 GiB. It is therefore
 tied to **frames rendered**, not wall time — and it *stops* once the consumer
@@ -126,8 +126,8 @@ Per-run `ready → last-idle` growth (from each `summary.txt`):
 
 | run | zone | cap | peak RssAnon | gpu_driver @ready | @last idle | growth | frames Δ |
 |---|---|---|---:|---:|---:|---:|---:|
-| run1 | gfaydark | none | 2254.5 MiB | 137.2 MiB | 2271.9 MiB | **2135.5 MiB** | 5749 |
-| run3 | iceclad | none | 2057.1 MiB | 123.4 MiB | 2271.4 MiB | **2148.0 MiB** | 6560 |
+| run1 | gfaydark | none | 2254.5 MiB | 137.2 MiB | 2271.9 MiB | **2134.7 MiB** | 5749 |
+| run3 | iceclad | none | 2057.1 MiB | 123.4 MiB | 2323.3 MiB | **2199.9 MiB** | 6560 |
 | run4 | gfaydark | none | 2256.2 MiB | 137.0 MiB | 2270.1 MiB | **2133.1 MiB** | 8492 |
 | run2 | gfaydark | 10 | 196.8 MiB | 137.5 MiB | 155.5 MiB | **+18.3 MiB** | 3448 |
 | run5 | gfaydark | 10 | 197.7 MiB | 137.1 MiB | 134.6 MiB | **−2.5 MiB** | 2655 |
