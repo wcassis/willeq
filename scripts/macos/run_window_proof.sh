@@ -29,6 +29,8 @@ if ! touch "$OUT/.w" 2>/dev/null; then
     OUT="$HOME/willeq-b1044-out"; mkdir -p "$OUT"
 fi
 rm -f "$OUT/.w"
+# A previous run's results (they belong to whoever ran it).
+rm -f "$OUT"/*.png "$OUT"/*.log "$OUT"/summary.txt "$OUT"/willeq_window.json 2>/dev/null
 SUMMARY="$OUT/summary.txt"
 : > "$SUMMARY"
 note() { echo "$*"; echo "$*" >> "$SUMMARY"; }
@@ -62,50 +64,59 @@ mkdir -p "$WILLEQ_CACHE_DIR"
 export WILLEQ_INPUT_TRACE=1
 BIN="$BUNDLE/bin"
 
-# Wait for a [cocoa-window] line in $1 (up to $2 s); print the window number.
-wait_window() {
-    local log="$1" limit="$2" i=0
+# Wait (up to $3 s) for a line matching $2 in log $1; print the line.
+wait_line() {
+    local log="$1" pat="$2" limit="$3" i=0
     while [ "$i" -lt "$limit" ]; do
-        if grep -q '^\[cocoa-window\] created' "$log" 2>/dev/null; then
-            sed -n 's/^\[cocoa-window\] created window=\([0-9]*\).*/\1/p' "$log" | head -1
-            return 0
-        fi
+        if grep -q "$pat" "$log" 2>/dev/null; then grep -m1 "$pat" "$log"; return 0; fi
         sleep 1; i=$((i + 1))
     done
     return 1
 }
-shoot() {  # shoot <window number> <name>
+win_number() { sed -n 's/^\[cocoa-window\] created window=\([0-9]*\).*/\1/p' "$1" | head -1; }
+stamp() { date -u +%H:%M:%SZ; }
+# shoot <window number> <name>: full screen <name>.png + the window alone
+# <name>_only.png; notes each file that was written, with the time.
+shoot() {
+    local t; t="$(stamp)"
     screencapture -x "$OUT/$2.png" 2>/dev/null
-    [ -n "$1" ] && screencapture -x -o -l "$1" "$OUT/${2}_only.png" 2>/dev/null
+    [ -s "$OUT/$2.png" ] && note "  screenshot $t out/$2.png (full screen)"
+    if [ -n "$1" ]; then
+        screencapture -x -o -l "$1" "$OUT/${2}_only.png" 2>/dev/null
+        [ -s "$OUT/${2}_only.png" ] && note "  screenshot $t out/${2}_only.png (window $1 only)"
+    fi
+    return 0
 }
 
 # ---------------------------------------------------------------- leg A
 echo
-echo "=== Leg A: gles2_zone_benchmark in a window (about 30 s, no input needed) ==="
+echo "=== Leg A: gles2_zone_benchmark in a window (hands off, about 30 s) ==="
+echo "leg A: the window renders qeynos2, then HOLDS the last frame for 20 s and"
+echo "       closes by itself -- that close is the end of leg A, not a crash."
 BLOG="$OUT/benchmark.log"
-"$BIN/gles2_zone_benchmark" --egl-window --zone qeynos2 \
+note "benchmark start $(stamp)"
+"$BIN/gles2_zone_benchmark" --egl-window --hold-seconds 20 --zone qeynos2 \
     --eq-path "$ASSETS/EverQuestP1999" --eqe1-path "$ASSETS/EverQuest_ETC1" \
-    --frames 3000 --warmup 5 --res 1280 720 \
+    --frames 60 --warmup 5 --res 1280 720 \
     --occluder-budget 16 --adaptive-lighting --zone-pp-budget 20 --pp-budget-mode count \
     --player-light-level 9 --camera-pose 201.9,393.4,5.0,180.0,-5.0 \
     > "$BLOG" 2>&1 &
 BPID=$!
-WIN="$(wait_window "$BLOG" 60)"
-# The frame rate decides how long the 3000 frames last (vsync'd: about 50 s;
-# uncapped: a few s), so shoot every 2 s while it runs; the last one is kept.
-if [ -n "$WIN" ]; then
-    n=0
-    while [ "$n" -lt 10 ] && kill -0 "$BPID" 2>/dev/null; do
-        sleep 2; n=$((n + 1))
-        kill -0 "$BPID" 2>/dev/null && shoot "$WIN" "window_$n" && cp -f "$OUT/window_$n.png" "$OUT/window.png" \
-            && { [ -s "$OUT/window_${n}_only.png" ] && cp -f "$OUT/window_${n}_only.png" "$OUT/window_only.png"; true; }
-    done
+if wait_line "$BLOG" '^\[window-hold\] holding' 120 >/dev/null; then
+    WIN="$(win_number "$BLOG")"
+    note "benchmark frames presented; hold started $(stamp)"
+    sleep 2; shoot "$WIN" window
+    sleep 3; shoot "$WIN" window_2
+else
+    note "benchmark never reached its hold (see out/benchmark.log)"
 fi
 wait "$BPID"; BRC=$?
+note "benchmark end $(stamp)"
 BWIN="$(grep -m1 '^\[cocoa-window\] created' "$BLOG")"
 if [ -n "$BWIN" ]; then note "window created (benchmark): yes  ${BWIN#\[cocoa-window\] created }"
 else note "window created (benchmark): no  (see out/benchmark.log; EGL lines: $(grep -m2 'EGL (' "$BLOG" | tr '\n' ' '))"; fi
-note "benchmark exit code: $BRC  screenshot: $( [ -s "$OUT/window.png" ] && echo out/window.png || echo none)"
+note "benchmark frames: $(grep -m1 'Zone Benchmark Summary' "$BLOG")  $(grep -m1 'Avg FPS' "$BLOG" | sed 's/^ *//')"
+note "benchmark exit code: $BRC  screenshots: $(cd "$OUT" && ls window*.png 2>/dev/null | tr '\n' ' ')"
 
 # ---------------------------------------------------------------- leg B
 CFG="$OUT/willeq_window.json"
@@ -117,7 +128,7 @@ cat > "$CFG" <<EOF
       "host": "$HOST",
       "port": 5998,
       "user": "${WILLEQ_PROOF_USER:-willeq_test}",
-      "pass": "${WILLEQ_PROOF_PASS:-}",
+      "pass": "${WILLEQ_PROOF_PASS:-no-server-proof}",
       "server": "WillEQ",
       "character": "${WILLEQ_PROOF_CHAR:-Testchar}",
       "eq_client_path": "$ASSETS/EverQuestP1999",
@@ -137,19 +148,20 @@ echo "  4. left-click, right-click inside the window"
 echo "  5. scroll the wheel (or two-finger scroll) up and down"
 echo "  6. optionally drag the window corner to resize it"
 echo "  7. then quit: Command-Q in the window (or its red close button,"
-echo "     or Ctrl-C here). It stops by itself after 300 s."
+echo "     or Ctrl-C here). It stops by itself after 15 min."
 echo "(server: $HOST -- without a running server the login screen stays up; that is fine)"
 CLOG="$OUT/client.log"
 "$BIN/willeq" --egl-window -r 1280 720 -c "$CFG" --eqe1-path "$ASSETS/EverQuest_ETC1" \
     --log-level=INFO --log-module=INPUT:TRACE > "$CLOG" 2>&1 &
 CPID=$!
 trap 'kill -TERM "$CPID" 2>/dev/null' INT
-WIN="$(wait_window "$CLOG" 90)"
-if [ -n "$WIN" ]; then
+if wait_line "$CLOG" '^\[cocoa-window\] created' 90 >/dev/null; then
+    WIN="$(win_number "$CLOG")"
+    note "client window up $(stamp); waiting for you (Command-Q ends leg B)"
     sleep 8
     kill -0 "$CPID" 2>/dev/null && shoot "$WIN" client_window
 fi
-( sleep 300; kill -TERM "$CPID" 2>/dev/null ) &
+( sleep 900; kill -TERM "$CPID" 2>/dev/null ) &
 TPID=$!
 wait "$CPID"; CRC=$?
 kill "$TPID" 2>/dev/null
@@ -166,6 +178,6 @@ note "client device events: key_down=$(count '^\[cocoa-input\] key down') key_up
 note "client receiver lines ([INPUT-EVENT], MOD_INPUT TRACE): key=$(count 'INPUT-EVENT\] key') mouse=$(count 'INPUT-EVENT\] mouse')"
 note "device summary: $(grep -m1 '^\[cocoa-input\] summary' "$CLOG" | sed 's/^\[cocoa-input\] summary //')"
 note "keys seen (irr codes, down): $(sed -n 's/^\[cocoa-input\] key down code=0x\([0-9a-f]*\) irr=\([0-9]*\).*/\2/p' "$CLOG" | sort -n | uniq -c | awk '{printf "%s x%s, ", $2, $1}')"
-note "client exit code: $CRC  screenshot: $( [ -s "$OUT/client_window.png" ] && echo out/client_window.png || echo none)"
+note "client end $(stamp)  exit code: $CRC  screenshots: $(cd "$OUT" && ls client_window*.png 2>/dev/null | tr '\n' ' ')"
 echo
 echo "Done. Everything is in $OUT (summary.txt first)."

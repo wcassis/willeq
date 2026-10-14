@@ -51,5 +51,12 @@ done
 
 chmod -R a+rX "$S"
 chmod 1777 "$S/out"
-rm -rf "$DEST"; mv "$S" "$DEST"
+if [ -d "$DEST" ]; then
+    # Re-stage IN PLACE: out/ may hold the console user's files, which this
+    # (build) user cannot delete in the sticky directory; leave out/ alone.
+    rsync -a --delete --exclude /out/ "$S/" "$DEST/"
+    rm -rf "$S"
+else
+    mv "$S" "$DEST"
+fi
 echo "bundle staged at $DEST"

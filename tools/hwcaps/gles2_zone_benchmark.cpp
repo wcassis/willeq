@@ -206,6 +206,22 @@ int main(int argc, char** argv) {
         fprintf(stderr, "ERROR: Failed to load zone\n");
         return 1;
     }
+    // B1044: --hold-seconds N with --egl-window keeps the window on screen
+    // with its last presented frame for N s after the run (every return path
+    // below), pumping window events; closing the window ends it early. A run
+    // lasts milliseconds on Metal, too short to see or screenshot.
+    struct WindowHold {
+        irr::IrrlichtDevice* dev;
+        int seconds;
+        ~WindowHold() {
+            if (!dev || seconds <= 0 || !std::getenv("WILLEQ_EGL_X11")) return;
+            fprintf(stderr, "[window-hold] holding the last frame for %d s\n", seconds);
+            fflush(stderr);
+            const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+            while (std::chrono::steady_clock::now() < end && dev->run()) dev->sleep(16);
+            fprintf(stderr, "[window-hold] done\n");
+        }
+    } windowHold{data->device, opts.holdSeconds};
     if (opts.reportLoadTime) {
         double loadMs = std::chrono::duration<double, std::milli>(loadT1 - loadT0).count();
         printf("LOAD_PHASE_MS=%.2f\n", loadMs);
