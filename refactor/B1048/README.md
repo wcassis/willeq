@@ -14,14 +14,19 @@ reports `BROKEN REFERENCES: 0`.
 | Plan | Evidence |
 | --- | --- |
 | Hotbutton placement, lane 3 | `hotbutton-fix4/summary.md:7-16,25`; the frame stepper records the real click as video coordinate `26,585`, not `640,400` (`hotbutton-fix4/step_frames.tsv:2-3`); `video.calibration.tsv:2` records marker-calibrated t0. |
-| Untouched Human-male Warrior, lane 1 | `charcreate-fix4/summary.md:7-9`; `02_untouched_created.opcodes.tsv:5` is the client-to-server `OP_CharacterCreate`. |
-| Untouched Barbarian-male Warrior, lane 4 | `barbarian-fix4/summary.md:7-9`; `02_barbarian_male_untouched.opcodes.tsv:5` is the client-to-server `OP_CharacterCreate`. |
+| Untouched Human-male Warrior, lane 1 | `charcreate-fix4/summary.md:7-9`; `02_untouched_created.opcodes.tsv:5` is the client-to-server `OP_CharacterCreate`, decoded class/race/gender = 1/1/0 (Warrior/Human/Male) by `oracle_create.validate_create`. |
+| Untouched Barbarian-male Warrior, lane 4 | **Pending a green live rerun.** The original `barbarian-fix4` capture decoded class=16 (Berserker) for a requested Warrior and is NOT acceptance evidence. `barbarian-fix2h` verified the requested selection (Barbarian/Warrior/Male all yellow in `02_barbarian_male_untouched-before-submit.png`) and was correctly **rejected at submit** (`expected one OP_CharacterCreate, got 0`, exit 65) -- a wrong or incomplete capture can no longer be blessed. |
 
 Offline regressions under `scripts/eqemu/oracle/tests/` cover existing-name
 rejection and held-lock status, the Barbarian coordinate table and assertion
 failure still, marker calibration and action-target coordinates, and vendored
 provenance. The safety probes fail on the original `02a0b9d1` driver with
-`held lock returned 0` and `existing character deleted`.
+`held lock returned 0` and `existing character deleted`. The create-identity
+regression (`create_identity_test.py`) accepts a Barbarian/Warrior packet and
+rejects a Berserker packet, and the remote selftest now rejects an unselected
+(white-text) row in the real `selected_at` (the old negate-mean detector read
+0.99 in both selected and unselected states and is what let the wrong captures
+through).
 
 | Run | Observation | Source |
 | --- | --- | --- |

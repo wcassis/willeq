@@ -71,20 +71,24 @@ selected_at() {
     awk -v mean="$mean" 'BEGIN {exit !(mean < 0.98)}'
 }
 select_once() {
-    # ONE click, then verify -- never a rapid re-click. The race and class
-    # lists share one selection cursor, and the screen restores the previous
-    # session's selection: the old select_at re-clicked while the first
-    # click's re-render was still settling, moving the cursor to a different
-    # row (fix2e's retry left race=HalfElf, class=Warrior; the decoded packet
-    # was (1,0,7), not the requested (1,0,2)). A missed click therefore
-    # fails the verification instead of silently creating the wrong identity;
-    # the decoded create packet (oracle_create.py) is the final authority
-    # either way.
-    # If the first click misses (measured in barbarian-fix2j: the class click
-    # landed on Rogue 555 instead of Warrior 627, a live-rig click loss),
-    # wait for any re-render to fully settle, then ONE more click+verify.
-    # The 8 s settle is what the old loop never had -- it re-clicked within
-    # 3 s, mid-render, which is exactly the failure mode that broke it.
+    # Click the row, verify it is selected (yellow alpha, selected_at), and
+    # on a failed verification wait for the list to settle, then re-click
+    # once. The race and class lists share one selection cursor, the screen
+    # restores the previous session's selection, and the restore animation
+    # scrolls each list to center that cursor: the label at a fixed root row
+    # changes with the restored scroll state (measured: fix2j's class click
+    # at 627 landed on Rogue; fix2k's race list had scrolled so 291 showed
+    # the Froglok row). A RAPID re-click mid-re-render moves the shared
+    # cursor to a different row (fix4 class=16, fix2e race=7), so the retry
+    # waits 8 s for the restore scroll to settle before its one retry. A
+    # selected-label OCR read-back was considered and rejected: the small
+    # white labels on the dark list background do not survive the rig's
+    # screen_text preprocessing (gray, 200%, threshold 60%) even at psm 7,
+    # so it cannot gate reliably. What IS reliable, in order: (1) the
+    # yellow-alpha verification at the requested row, (2) one settled
+    # retry, (3) FAIL -- the run gets re-driven instead of creating the
+    # wrong identity; the decoded create packet (oracle_create.py) is the
+    # final authority.
     local label=$1 x=$2 y=$3
     jclick "$x" "$y"; sleep 3
     if selected_at "$label" "$x" "$y"; then return 0; fi
