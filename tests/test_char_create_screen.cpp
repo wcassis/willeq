@@ -615,5 +615,21 @@ TEST(CharCreateClicks, ButtonsResolveAndGreyedOnesAreNotHitTestable) {
 TEST(CharCreateClicks, PlainTextDropsTheMarkup) {
     EXPECT_EQ(charCreatePlainText("AGNOSTIC<BR><BR>Agnostics will <c \"#00A000\">not</c> commit."),
               "AGNOSTIC\n\nAgnostics will not commit.");
-    EXPECT_EQ(charCreatePlainText("NPC\xE2\x80\x99s"), "NPC's");   // eqstr 3334's apostrophe
+    EXPECT_EQ(charCreatePlainText("NPC\xe2\x80\x99s"), "NPC's");   // eqstr 3334's apostrophe
+}
+
+// B888-CC1 finding 6 (MR !168): the GREEN half of the genuine RED. The same
+// test body compiles and RUNS on the pre-feature baseline (origin/fable,
+// where CC0_Face_Button is greyed -- hitTestCharCreate returns
+// CharCreateHit::None, "greyed: no FacePick yet") and there FAILs (the RED
+// log, refactor/B888-CC1/finding6-RED-baseline-f8ead59d.log); here, at the
+// feature head, Set Face resolves to the FacePick modal, so it passes. Only
+// seam symbols present in BOTH trees are named (hitTestCharCreate,
+// CharCreateHit::None, OpenHumanWarrior), so the body is byte-identical.
+TEST(CharCreateClicks, SetFaceButtonIsNotGreyed) {
+    CharCreateScreenState s = OpenHumanWarrior();
+    const auto c = L::faceButtonRect(W, H).getCenter();
+    const auto hit = hitTestCharCreate(W, H, s, c.X, c.Y);
+    EXPECT_NE(hit.hit, CharCreateHit::None)
+        << "Set Face is greyed: the FacePick modal the feature adds is absent";
 }
