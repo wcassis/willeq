@@ -94,17 +94,18 @@ GPU are at exactly 60 °C: the little cluster idles throttled (`scaling_max_freq
 in the sweeps below moved these numbers; a run on this board is a run on a throttled board until the cooling or
 the trip table changes (Will's call).
 
-**First-light smoke, 2026-10-14 (`review/B1056/lane4/`, build b0d551cf, 300 frames qeynos2 at 800x600, `--drm`):**
+**First-light smoke PASS, 2026-10-14 18:43Z (`review/B1056/lane4/`, build 945e73b2, `scripts/pi/lane_smoke.sh`):**
 
 | figure | value |
 |---|---|
-| Total frame avg / p95 / max | 3.52 / 4.77 / 4.97 ms (284 fps) |
-| GPU sync avg / p95 | 1.30 / 1.49 ms |
-| Draw calls avg / max | 10 / 14 |
-| VmRSS at steady | 60.2 MB (RssAnon 36.1 MB, RssFile 24.1 MB) |
-| gpu_buffers (drm_maps_lower_bound) | 15.8 MB; logical 7.2 MB |
+| GL floor: kmscube under the IMG driver, 3 runs | VmRSS 22.5-24.2 MB, RssAnon 6.2-7.9 MB, RssFile 16.3 MB; no libgallium, no libLLVM |
+| qeynos2 300 frames at 800x600 `--drm`: total frame avg / p95 / max | 3.54 / 4.38 / 4.82 ms (282 fps) |
+| GPU sync avg / p95 | 1.30 / 1.44 ms |
+| Draw calls avg / max; polygons avg / max | 10 / 14; 48 / 74 |
+| VmRSS at steady | 58.9 MB (RssAnon 34.7 MB, RssFile 24.2 MB) |
+| gpu_buffers (`drm_maps_lower_bound`, never `drm_fdinfo` here) | 15.8 MB; logical 7.2 MB |
 | Texture cache | 126 textures, 5.3 MB |
 
-The GL floor (kmscube under the IMG driver) is in `lane4/floor/` once the fdinfo-safe snapshot tool has run
-(the first floor attempt panicked the board, trap 7). The first two attempts (2026-10-13 19:07Z, 2026-10-14
-15:37Z) died at zone load from the census read; `bench60_local*.log` are the bisect runs.
+The floor is a quarter of the Pi's (55-57 MB, `gl-floor-measured`): the IMG stack maps no LLVM and no gallium.
+The first three smoke attempts (2026-10-13 19:07Z, 2026-10-14 15:37Z and 17:08Z) panicked the board from the
+fdinfo read (trap 7); their logs and the bisect runs are in `review/B1056/lane4_attempts/`.
