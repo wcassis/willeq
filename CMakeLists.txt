@@ -2471,7 +2471,13 @@ IF(EQT_GRAPHICS)
     IF(EQT_DRM)
         TARGET_COMPILE_DEFINITIONS(gles2_alpha_test_probe PRIVATE EQT_HAS_DRM)
     ENDIF()
-    TARGET_LINK_LIBRARIES(gles2_alpha_test_probe ${ZONE_BENCH_LIBS})
+    # B961: the device's scanout publish (CIrrDeviceFB.o, inside
+    # ${IRRLICHT_LIBRARY}) calls into eqt::memory::publishScanoutTally, defined
+    # in willeq_core -- the main willeq target links both archives, this probe
+    # only ${ZONE_BENCH_LIBS} (no willeq_core), so the reference is unresolved
+    # unless the core archive is on its link line (ARM's build-arm job is the
+    # first to link the probe; the x86 gate tree pre-dates the change).
+    TARGET_LINK_LIBRARIES(gles2_alpha_test_probe willeq_core ${ZONE_BENCH_LIBS})
 
     # B965 (GitLab #283): the per-pixel player light probe -- the production
     # uAttenLUT math and its precision variants drawn as intensity curves over
@@ -2483,7 +2489,10 @@ IF(EQT_GRAPHICS)
     IF(EQT_DRM)
         TARGET_COMPILE_DEFINITIONS(gles2_player_light_probe PRIVATE EQT_HAS_DRM)
     ENDIF()
-    TARGET_LINK_LIBRARIES(gles2_player_light_probe ${ZONE_BENCH_LIBS})
+    # B961: same device->core reference as the alpha probe -- ${IRRLICHT_LIBRARY}'s
+    # CIrrDeviceFB.o calls publishScanoutTally (willeq_core); this probe does not
+    # compile the core TU in, so the core archive goes on its link line.
+    TARGET_LINK_LIBRARIES(gles2_player_light_probe willeq_core ${ZONE_BENCH_LIBS})
 
     # Shader diagnostic tool — renders test modules through all debug shader modes
     ADD_EXECUTABLE(gles2_shader_diagnostic
