@@ -135,6 +135,9 @@ cp "$DRM_SRC/gl_call_counters.h"        "$DEST_SRC/gl_call_counters.h"
 cp "$DRM_SRC/gpu_sync_probe.h"          "$DEST_SRC/gpu_sync_probe.h"
 cp "$DRM_SRC/drm_key_translation.h"     "$DEST_SRC/drm_key_translation.h"
 cp "$DRM_SRC/drm_flip_tracker.h"         "$DEST_SRC/drm_flip_tracker.h"
+# B961: the scanout-framebuffer tally (header-only; both device forks
+# #include it relative to the TU, exactly like drm_flip_tracker.h).
+cp "$DRM_SRC/scanout_buffer_tally.h"     "$DEST_SRC/scanout_buffer_tally.h"
 cp "$DRM_SRC/t122_texprobe.h"           "$DEST_SRC/t122_texprobe.h"
 # B1054: card-selection decision, shared by both device forks (the ARM fork
 # gets it the same way as drm_mode_select.h: a plain cp next to the TU).
