@@ -97,3 +97,73 @@ partial summary or a green process alone as a valid observation: inspect
 `ledger_check.txt`, the relevant step files, and the cleanup line in
 `driver.log`. The character-creation plan deletes its newly created character
 with the world stopped, then verifies the snapshot.
+
+## Template clicks (B1058)
+
+A fixed root coordinate lands on whatever the client drew there; a template
+lands on the control. `scripts/eqemu/oracle/oracle_locate.py` finds a
+template in a screenshot with OpenCV's `TM_CCOEFF_NORMED` on the 8-bit luma,
+via `cv2.matchTemplate` when OpenCV is importable and an equivalent NumPy FFT
+implementation otherwise (`ORACLE_LOCATE_FORCE_NUMPY=1` forces it). Every
+answer names the path that ran. Both paths agree to 1e-3 on the corpus.
+Matching is brightness-invariant, so one label template matches the label
+white (enabled), yellow (selected) or grey (disabled). The selected state is
+still verified by the yellow check at the located point.
+
+Plan verbs (the third column is the argument):
+
+| verb | target | column 3 | effect |
+| --- | --- | --- | --- |
+| `click-template` | template name | `0` or `dx,dy` | locate, then the 1 px drag click (`jclick`) at the centre plus the offset; fails 65 if the best score is below the template's `min_score` |
+| `wait-template` | template name | timeout ms | poll until the template scores at least `min_score` (ui-lib.sh RULE 2: never a fixed sleep) |
+
+The directive `# create-clicks=template` makes a `create` row locate the race,
+class and gender rows (`race_<Race>`, `class_<Class>`, `gender_<Gender>`) and
+the Name field (103 px left of `name_getname`) instead of using the in-script
+table. It also polls for page 2 with `wait-template name_getname`. The yellow
+state is polled at each located point. If the first check fails, the
+driver still makes one retry after an 8 s settle, and counts it in
+`settle-retries.txt`. Every located click is a row of `template-clicks.tsv`:
+step, template, root x/y, score, path, `first` / `retry`, retries. Example:
+`plans/charcreate_barbarian_male_templates.tsv`.
+
+**How a locate travels.** The oracle boxes have no NumPy, Pillow or OpenCV,
+so the remote only takes the shot and clicks. When a plan uses templates,
+`oracle_session.sh` starts `oracle_locate.py broker` on the driver host. The
+remote writes `locate/shot-N.png` + `req-N.tsv` and waits for `ans-N.tsv`. Each
+broker ssh exchange (`oracle_remote.sh broker`) does three things: it stores
+the previous answer, waits up to 20 s for the next request, and streams that
+request's PNG back. That is one exchange per locate. The broker's own table is
+`broker/locate.tsv` (score, `min_score`, runner-up score, path, ms). The shot
+is `import -window root -crop 1280x800+0+30`, so its PNG keeps a `+0+30` page
+offset. Pillow ignores that offset and ImageMagick honours it. The broker
+answers in Pillow (file) pixels, and the remote clicks root `(x, y + 30)`.
+
+**Adding a template.** Cut it with the tool, never by hand, so its manifest
+row is written for you:
+
+```bash
+python3 scripts/eqemu/oracle/oracle_locate.py cut-sheet \
+  /mnt/projects/EverQuestP1999/uifiles/default/window_pieces01.tga 100,220,14,16 \
+  scripts/eqemu/oracle/templates/sheet_plus_btn.png --name sheet_plus_btn \
+  --xml EQUI_Animations.xml:3981 --note '...'
+python3 scripts/eqemu/oracle/oracle_locate.py cut-frame <frame.png> x,y,w,h \
+  scripts/eqemu/oracle/templates/<name>.png --name <name> --note '...'
+```
+
+**The manifest rule.** Every row of `templates/manifest.tsv` names its source:
+the UI sheet plus the `EQUI_*.xml` line of its sub-rect (`kind=sheet`), or the
+capture it was cut from (`kind=frame`). The row also gives the rect and the
+sha256 of both the source and the template. Prefer a sheet sub-rect. When
+the composite differs from the sheet, cut from a known-good frame and say so in
+`note`. A control with font text is always in this case: the text is not on
+any sheet, and the buttons stretch `A_BtnNormal`. A template's `min_score` is
+never typed. To set it, add the template's positive and negative rows to
+`tests/locate_corpus.tsv`, measured independently of the matcher (the generator
+is `review/B1058/tools/build_library.py`), then run
+`python3 scripts/eqemu/oracle/tests/oracle_locate_test.py --write-thresholds`.
+That writes the midpoint of the gap between the highest negative and the
+lowest positive score. A template with no gap is `rejected`, and the driver
+refuses it. The `OracleLocateTemplates` hygiene test fails if a `min_score`
+is not that midpoint.
+

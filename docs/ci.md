@@ -14,7 +14,11 @@ A card body still says `-j3` for any direct `cmake --build`.
 
 Official-client oracle sessions are separate from CI. The one-command lane
 driver, plan vocabulary, evidence layout and exit codes are in
-[`oracle_driver.md`](oracle_driver.md).
+[`oracle_driver.md`](oracle_driver.md). Its template library is checked by the
+hygiene test `OracleLocateTemplates` (`scripts/eqemu/oracle/tests/oracle_locate_test.py`,
+B1058), which needs NumPy + Pillow and the archived corpus under
+`/mnt/projects/fable/review/B1058/corpus`; the runners have neither, so it
+SKIPs there and runs on dev-u24 / hermes-ext.
 
 | | |
 | --- | --- |
