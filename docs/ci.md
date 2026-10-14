@@ -74,7 +74,7 @@ for the rendered Kunark + Velious sweep (#102, `refactor/B854/RENDERED_SWEEP.md`
 
 ### The aarch64 SBC lanes (B1030, #350)
 
-The Orange Pi is **lane 1** of a three-lane table in `scripts/pi/env.sh`; `PI_LANE=N` picks the device the way
+The Orange Pi is **lane 1** of the lane table in `scripts/pi/env.sh` (lanes 1-3, B1030; 5, B1060); `PI_LANE=N` picks the device the way
 `EQEMU_LANE` picks an eqemu VM, and a card or a script names its LANE, never an address. Each lane is
 single-tenant with its own lock ON the device (`pi_lock_take`/`pi_lock_release` are unchanged; `PI_LANE=2 bash
 scripts/pi/lock_selftest.sh` is the per-lane net). A `PI_HOST` alone still picks its lane, so every pre-B1030
@@ -88,6 +88,7 @@ than here.
 | 1 | `orangepi` | armv7l | Mali-400, Lima | `ci-arm/<sha>/bin/willeq-nollvm` (the shipped prefix above) |
 | 2 | `rock64` (RK3328) | aarch64 | Mali-450, Lima (system Mesa) | `ci-arm64/<sha>/bin/willeq` |
 | 3 | `rock4d` (RK3576) | aarch64 | Mali-G52, Panfrost (system Mesa) | `ci-arm64/<sha>/bin/willeq` |
+| 5 | `orangepizero` (H2+) | armv7l | Mali-400, Lima, on a **vkms** card (no display output) | `ci-arm/<sha>/bin/willeq-nollvm` (as lane 1) |
 
 Lanes 2 and 3 run ONE generic `-march=armv8-a` binary from **`scripts/build-arm64-noble.sh`**
 (`docker/Dockerfile.arm64-noble`, a noble arm64 sysroot; lane 3's Armbian resolute runs it because glibc is
@@ -120,6 +121,15 @@ is the ledger rig for every lane: on an aarch64 lane it defaults to `ci-arm64/by
 measurements a per-lane preset ruling needs); the client runs in its own cgroup and zones in live against the
 eqemu lane, so the `[memgpu]` row and the rendered-zone TSV row are both device figures. Evidence from the
 first runs: `review/B1030/README.md`.
+
+**Lane 5, the Orange Pi Zero** (B1060, #380; `docs/reference/orangepizero.md`) is lane 1's sibling: the same armhf
+`ci-arm/` publish and shipped Mesa prefix, the same preset and ceilings, on Armbian **trixie** (glibc 2.41; the noble
+build runs unmodified once the GL runtime packages are installed). The board has no HDMI and its device tree leaves
+the display engine and TV encoder `disabled`, so `card0` is Lima, render-only, and the client's DRM device (there is
+no surfaceless path on ARM) finds no connector. On lane 5 `pi_hdmi_force_on` loads the stock **vkms** module instead
+(a connected `Virtual-1`; Mesa's kmsro pairs it with the Lima render node) and `pi_hdmi_restore` unloads it, so
+`lane_smoke.sh` and `pi_rendered_zone_sweep.sh` run there unchanged. The scanout goes nowhere: frames are rendered
+by Lima and flipped on a virtual CRTC, so lane 5 measures memory and GPU cost, never a picture on a screen.
 
 **Not a lane: the ODROID XU4** (B1045, #365) is Will's interactive play-test box. It runs the same armhf
 `ci-arm/by-branch/fable` publish on Panfrost, and needed a self-built Panfrost module whose power-on path

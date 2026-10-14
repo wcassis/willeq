@@ -1148,6 +1148,20 @@ it without taking that measurement first.
   Open: lane 2's 17.2 MiB of unnamed GEM fails the Pi rig's 10 MiB bound
   and the B962 owner-census shim is armhf-only (an aarch64 build of it is
   the next B item there).
+- **B1060** (B) → issue #380. The Orange Pi Zero (H2+, Mali-400/Lima, 484 MB,
+  Armbian trixie) joined as `PI_LANE=5`, lane 1's sibling (same armhf publish,
+  nollvm prefix, preset and ceilings). Done in the unit: NFS (pinned-port
+  NFSv3), the GL runtime packages, env.sh lane 5 (`env_selftest.sh`,
+  `lock_selftest.sh` PASS on lane 5), and the board's missing display: its DT
+  leaves the display engine disabled, so card0 is render-only Lima and the
+  client's DRM device refused; `pi_hdmi_force_on` loads the stock vkms module on
+  lane 5 (kmsro pairs it with Lima). `lane_smoke.sh` takes the armhf lane:
+  smoke PASS; ledger rows for qeynos2 + the four heavy zones
+  (`docs/reference/orangepizero.md`, `review/B1060/README.md`). Open: the
+  lane's `gpu_buffers` row is about twice lane 1's (qeynos2 fails the 10 MiB
+  unnamed-GEM bound at 10.27 MiB, timorous/iceclad at 35-39 MiB) -- unattributed
+  (vkms scanout path vs kernel 6.18 vs build); needs a same-build lane-1 row and
+  a `--bo-census` run.
 - ~~**B1033** (C) → issue #353.~~ RULED 2026-10-12 (Will, `docs/decisions.md`):
   the aarch64 lanes keep the `orangepi` preset, the same 256 MB bound and
   64 MB target, and get no goldens of their own until a lane runs the gate
