@@ -94,9 +94,10 @@ struct ApplicationConfig {
     // DRM/KMS settings (guarded by EQT_HAS_DRM at usage sites)
     bool useDRM = false;
 
-    // P25: X11-windowed EGL surface for the x86 GLES2 device (--egl-x11).
-    // Explicit opt-in only — never derived from $DISPLAY. No effect outside
-    // the x86 EQT_HAS_GLES2 build.
+    // P25: windowed EGL surface for the GLES2 device (--egl-window, alias
+    // --egl-x11): an X11 window on x86 Linux, a Cocoa window on macOS (B1044).
+    // Explicit opt-in only — never derived from $DISPLAY. No effect on the ARM
+    // DRM device.
     bool useEglX11 = false;
 
     // Constrained rendering

@@ -1432,6 +1432,8 @@ void CIrrDeviceFB::setWindowCaption(const wchar_t* text)
         buf[n] = '\0';
 #ifndef __APPLE__ // B1043: Linux-only
         XStoreName((Display*)x11Display_, x11Window_, buf);
+#else
+        setCocoaWindowCaption(buf); // B1044: the Cocoa window (CIrrDeviceFB_Cocoa.mm)
 #endif // !__APPLE__
     }
 }
@@ -1449,6 +1451,11 @@ bool CIrrDeviceFB::present(video::IImage* surface, void* windowId, core::rect<s3
 
     // P25: X11-windowed backend - swap the real window surface.
     if (x11Active_) {
+#ifdef __APPLE__
+        // B1044: a tool that never calls run() (gles2_zone_benchmark) still
+        // needs its Cocoa window's events pumped, or the window never paints.
+        pumpCocoaIfIdle();
+#endif
         if (probeOn) {
             const auto t0 = std::chrono::steady_clock::now();
             eglSwapBuffers(eglDisplay_, eglSurface_);

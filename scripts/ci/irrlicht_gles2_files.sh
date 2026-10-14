@@ -10,6 +10,7 @@ DRM_GLES2_FILES=(
 FB_GLES2_FILES=(
     CIrrDeviceFB.h CIrrDeviceFB.cpp CIrrDeviceFB_X11.cpp
     CIrrDeviceFB_Darwin.cpp x11_keysym_map.h
+    CIrrDeviceFB_Cocoa.mm cocoa_keycode_map.h
 )
 copy_irrlicht_gles2_files() {
     local f

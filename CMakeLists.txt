@@ -186,7 +186,8 @@ ENDIF()
 # links the literal names `EGL GLESv2 drm gbm` (+ `X11` on x86). On Darwin
 # those names become CMake targets: EGL/GLESv2 = ANGLE's dylibs, drm/gbm/X11 =
 # empty INTERFACE libraries (the patched Irrlicht's Darwin device has no
-# DRM/GBM/X11 code -- docker/irrlicht-drm-x86/CIrrDeviceFB_Darwin.cpp). No
+# DRM/GBM/X11 code -- docker/irrlicht-drm-x86/CIrrDeviceFB_Darwin.cpp; its
+# window is Cocoa, CIrrDeviceFB_Cocoa.mm). No
 # Linux/ARM configure sees any of this. Recipe: docs/macos.md,
 # scripts/build-gles2-darwin.sh.
 IF(APPLE AND EQT_GRAPHICS AND EQT_GLES2)
@@ -200,7 +201,12 @@ IF(APPLE AND EQT_GRAPHICS AND EQT_GLES2)
     ENDIF()
     INCLUDE_DIRECTORIES(SYSTEM "${EQT_ANGLE_DIR}/include")
     ADD_LIBRARY(EGL SHARED IMPORTED)
-    SET_TARGET_PROPERTIES(EGL PROPERTIES IMPORTED_LOCATION "${EQT_ANGLE_LIB_DIR}/libEGL.dylib")
+    # B1044: every target that links the patched Irrlicht links `EGL`, and the
+    # archive's device now carries the Cocoa window backend
+    # (CIrrDeviceFB_Cocoa.mm: AppKit, CAMetalLayer, CGSession), so the
+    # frameworks ride on EGL rather than on every tool's own link line.
+    SET_TARGET_PROPERTIES(EGL PROPERTIES IMPORTED_LOCATION "${EQT_ANGLE_LIB_DIR}/libEGL.dylib"
+        INTERFACE_LINK_LIBRARIES "-framework Cocoa;-framework QuartzCore;-framework CoreGraphics")
     ADD_LIBRARY(GLESv2 SHARED IMPORTED)
     SET_TARGET_PROPERTIES(GLESv2 PROPERTIES IMPORTED_LOCATION "${EQT_ANGLE_LIB_DIR}/libGLESv2.dylib")
     ADD_LIBRARY(drm INTERFACE)

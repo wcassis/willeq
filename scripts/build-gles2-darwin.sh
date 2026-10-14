@@ -7,6 +7,8 @@
 # (docker/irrlicht-drm-x86/), plus:
 #   - CIrrDeviceFB_Darwin.cpp (the Darwin member stubs: no DRM/GBM/evdev/X11;
 #     the device takes its surfaceless/pbuffer EGL path on ANGLE's display)
+#   - CIrrDeviceFB_Cocoa.mm (B1044: the opt-in NSWindow + CAMetalLayer window
+#     and NSEvent input, --egl-window; cocoa_keycode_map.h is its key map)
 #   - three Darwin-only config edits the x86 script does not need:
 #       * IrrCompileConfig.h selects the FB device + OGLES2 in the APPLE block
 #         (the patch script's edits land in the Linux-only block, so without
@@ -62,7 +64,10 @@ perl -pi -e 's|defined\(TARGET_OS_MAC\)|(defined(TARGET_OS_MAC) \&\& !defined(__
 echo "--- Patching Makefile ---"
 MAKEFILE="$DEST_SRC/Makefile"
 perl -pi -e 's|^IRRMESHOBJ = |IRRMESHOBJ = COpenGLES2Driver.o COGLES2Texture.o COGLES2Shaders.o COGLES2MaterialRenderer.o |' "$MAKEFILE"
-perl -pi -e 's|^IRROTHEROBJ = |IRROTHEROBJ = CIrrDeviceFB_X11.o CIrrDeviceFB_Darwin.o |' "$MAKEFILE"
+perl -pi -e 's|^IRROTHEROBJ = |IRROTHEROBJ = CIrrDeviceFB_X11.o CIrrDeviceFB_Darwin.o CIrrDeviceFB_Cocoa.o |' "$MAKEFILE"
+# B1044: the Cocoa window backend is Objective-C++ under ARC (the Makefile's
+# own %.o:%.mm rule compiles it; this target-specific flag adds ARC).
+printf '\nCIrrDeviceFB_Cocoa.o: CXXFLAGS += -fobjc-arc\n' >> "$MAKEFILE"
 perl -pi -e 's|^staticlib sharedlib: CXXINCS \+= -I/usr/X11R6/include||' "$MAKEFILE"
 
 echo "--- Building libIrrlicht.a (clang, make -j$JOBS) ---"

@@ -120,6 +120,18 @@ RendererEventReceiver::RendererEventReceiver() {
 }
 
 bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
+    // B1044 (#364): one line per raw key/mouse event the device delivers
+    // (X11, Cocoa or evdev), before any routing. Off by default; enable with
+    // --log-module=INPUT:TRACE.
+    if (event.EventType == irr::EET_KEY_INPUT_EVENT) {
+        LOG_TRACE(MOD_INPUT, "[INPUT-EVENT] key={} down={} char={} shift={} ctrl={}",
+                  static_cast<int>(event.KeyInput.Key), event.KeyInput.PressedDown,
+                  static_cast<int>(event.KeyInput.Char), event.KeyInput.Shift, event.KeyInput.Control);
+    } else if (event.EventType == irr::EET_MOUSE_INPUT_EVENT) {
+        LOG_TRACE(MOD_INPUT, "[INPUT-EVENT] mouse event={} x={} y={} wheel={} buttons={}",
+                  static_cast<int>(event.MouseInput.Event), event.MouseInput.X, event.MouseInput.Y,
+                  event.MouseInput.Wheel, event.MouseInput.ButtonStates);
+    }
     if (event.EventType == irr::EET_KEY_INPUT_EVENT) {
         keyIsDown_[event.KeyInput.Key].store(event.KeyInput.PressedDown,
                                             std::memory_order_relaxed);

@@ -30,6 +30,8 @@ void printUsage(const char* prog) {
     printf("\nDisplay options:\n");
     printf("  --drm             Use DRM/KMS framebuffer\n");
     printf("  --x11             Use X11/EGL\n");
+    printf("  --egl-window      Render in an on-screen window (X11 on Linux, Cocoa on macOS; B1044);\n"
+           "                    default: the headless pbuffer/surfaceless surface\n");
     printf("  --res W H         Resolution (default: 800 600)\n");
     printf("  --allow-mode-fallback  Run even if the achieved resolution != --res "
            "(DRM mode fallback, P43/P49); default: refuse. CSV always records the "
@@ -214,6 +216,10 @@ Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--drm") == 0) opts.useDRM = true;
         else if (strcmp(argv[i], "--report-load-time") == 0) opts.reportLoadTime = true;
         else if (strcmp(argv[i], "--x11") == 0) opts.forceX11 = true;
+        // B1044: the device reads the same opt-in the client's --egl-window sets
+        // (renderer_init.cpp); the benchmark only has to set it before
+        // createDeviceEx(), which runs after parsing.
+        else if (strcmp(argv[i], "--egl-window") == 0) setenv("WILLEQ_EGL_X11", "1", 1);
         else if (strcmp(argv[i], "--res") == 0 && i + 2 < argc) {
             opts.width = atoi(argv[++i]); opts.height = atoi(argv[++i]);
         }
