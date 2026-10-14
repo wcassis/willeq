@@ -1,0 +1,8 @@
+# B1059: rig -> atlas. review/B1059/README.md "Measurement": these rigs draw the same
+# string in the same control state with bit-identical glyphs, so they share one atlas.
+# A rig not listed has no atlas: the callers keep their legacy check.
+lane1	titanium	llvmpipe VM, 1280x800 (B1048 charcreate-fix4)
+lane3	titanium	llvmpipe VM, 1280x800 (B1048 charcreate-r726f)
+lane4	titanium	llvmpipe VM, 1280x800 (B1048 barbarian-fix*, diag-*)
+lane5	titanium	ThinkPad Quadro RTX 3000, 1280x800 (B1057, B1058)
+devu24	titanium	dev-u24 Xvfb, 1024x768 window (UIGAP-ORACLE/204, 318; T492)
