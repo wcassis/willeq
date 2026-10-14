@@ -136,6 +136,16 @@ assert_action_state() {
     case $verb in
         random)
             face_open || { shot "$name-face-missing"; echo 'random missed face dialog' >&2; return 65; } ;;
+        open-face)
+            # B888-CC1 (#204): on the lane-5 rig the modal (root (0,404)
+            # 175x215, measured) covers the creation screen's page text, and
+            # its button strip is what IS legible (full-frame OCR reads
+            # 'Randam Accent Cance!'), so the modal's button strip IS the
+            # postcondition -- the same gate open-face's own click check
+            # uses. A text assertion here can never see what the modal
+            # covers, so it must not gate the step.
+            face_open || { shot "$name-face-missing"; echo 'open-face: modal not open at assertion' >&2; return 65; }
+            return 0 ;;
         accept|cancel)
             if face_open; then
                 shot "$name-face-still-open"
