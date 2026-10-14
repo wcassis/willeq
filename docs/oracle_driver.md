@@ -167,3 +167,67 @@ lowest positive score. A template with no gap is `rejected`, and the driver
 refuses it. The `OracleLocateTemplates` hygiene test fails if a `min_score`
 is not that midpoint.
 
+
+## Reading text (B1059)
+
+`scripts/eqemu/oracle/oracle_glyphs.py` reads the official client's UI text
+from a frame rect with a glyph atlas instead of a tesseract subprocess:
+
+```bash
+python3 scripts/eqemu/oracle/oracle_glyphs.py read <frame.png> x,y,w,h [--rig lane5] [--font F] [--edit] [--expect TEXT]
+# -> "text<TAB>score<TAB>path"; exit 0 read (and matches --expect), 1 UNKNOWN,
+#    4 read but differs from --expect, 3 the rig has no atlas, 2 error
+```
+
+**What the atlas is.** Measured over 3,153 labelled crops of the archived
+frames (the B1059 evidence README under /mnt/projects/fable/review/B1059): one string in one control state over one
+background is the same binarised bitmap sequence on lanes 1, 3, 4 (llvmpipe),
+lane 5 (Quadro) and the dev-u24 Xvfb rig, at 1280x800 and 1024x768. What
+changes a glyph's bitmap is its colour state (white / yellow / grey / green)
+and the background under its anti-aliased edge, not the rig. So there is one
+atlas, `glyphs/titanium/` (`atlas.png` + `atlas.tsv`, every bitmap citing the
+frame, crop and glyph rect it was cut from and the pcap/DB/plan/XML source of
+its label), and `glyphs/rigs.tsv` names the rigs it was measured on. A rig not
+listed there (lane 2 today) has no atlas: every caller then keeps its legacy
+check unchanged.
+
+**How a read works.** Mask = luma above `med + 0.5 (max - med)` of the crop;
+8-connected components; components overlapping in columns are one cluster.
+Because the text is anti-aliased, a glyph can fall into two clusters ('M',
+'N', 'W') and two glyphs can touch ("rd", "rt"): the reader parses the
+clusters into tokens of 1..3 clusters, and an atlas entry is one character or
+a run of touching characters. Every token must match an atlas bitmap EXACTLY
+(the NCC tier is implemented, but its derived threshold is `off`: no score gap
+separates variants of one character from different characters). Parses that
+disagree, or any token the atlas lacks, make the read `UNKNOWN`, never a
+guess. 'I' and 'l' are one bitmap in this font: the read prints `[Il]` and
+`--expect` accepts either. `--edit` drops an edit field's caret.
+
+**Who uses it** (each records which reader decided):
+
+| caller | atlas read | fallback |
+| --- | --- | --- |
+| `oracle_remote.sh` Name check, `# create-clicks=template` | the Name field (165 px left of / 8 px above the Get Name centre) must read the typed name; a mismatch re-types | tesseract confirms only; otherwise the B1058 presence check `name_filled_at` |
+| `oracle_remote.sh` column-five check (`assert_visible`), template plans | the text regions of `glyphs/regions.tsv` (character-select title and slots, page-2 labels, the Name field, the name dialog line, the Tip caption) must match the regex | the box's tesseract `screen_text`, as before |
+| `scripts/llmbench/verify_labels.py` target window | the name line (910,476,113,15) of a window grab, font 3, rig `VERIFY_LABELS_GLYPH_RIG` (default `devu24`) | the four tesseract crops, as before |
+| `scripts/oracle/find_tip_dialog.py` OCR signal | the caption of the matched title bar, rig `FIND_TIP_GLYPH_RIG` (default `devu24`) | tesseract over the dialog rect, as before |
+
+The remote asks the same broker that answers template locates (driver host;
+`oracle_session.sh` passes `--rig lane<N>`): request
+`read:<edit|line|screen>:<x,y,w,h>:<expected as hex>`, answer
+`<seq> TEXT <atlas|tesseract|unknown> <ok> <score> <path> <text as hex>`.
+Each read is a row of `text-reads.tsv` (step, check, mode, decider, ok, text,
+score, path) and of `broker/text-reads.tsv`; `oracle_report.py` prints them as
+the summary's "Text reads" table. A plan without templates starts no broker
+and uses the legacy checks only.
+
+**Adding glyphs.** Labels never come from looking at the image. Add labelled
+crops to `review/B1059/tools/label_crops.py` (truth from the pcap, the server
+DB, the plan or the UI XML / `eqstr_us.txt`), regenerate `crops_all.tsv`, and
+rebuild: `python3 scripts/eqemu/oracle/oracle_glyphs.py build
+/mnt/projects/fable/review/B1059/crops_all.tsv --rigs lane1,lane3,lane4,lane5,devu24`.
+The build aligns each label with its clusters (one-to-one first, then a unique
+dynamic-programming alignment around known bitmaps), drops a crop whose
+alignment is outvoted, and logs every crop it could not align. Then
+regenerate `tests/glyph_corpus.tsv` (`review/B1059/tools/make_test_table.py`)
+and run `OracleGlyphReader` on both paths.

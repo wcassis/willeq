@@ -18,7 +18,9 @@ driver, plan vocabulary, evidence layout and exit codes are in
 hygiene test `OracleLocateTemplates` (`scripts/eqemu/oracle/tests/oracle_locate_test.py`,
 B1058), which needs NumPy + Pillow and the archived corpus under
 `/mnt/projects/fable/review/B1058/corpus`; the runners have neither, so it
-SKIPs there and runs on dev-u24 / hermes-ext.
+SKIPs there and runs on dev-u24 / hermes-ext. Its text reader is checked the same way by
+`OracleGlyphReader` (`scripts/eqemu/oracle/tests/oracle_glyphs_test.py`, B1059: pinned labelled
+crops under `/mnt/projects/fable/review`, read exactly or UNKNOWN, never wrong; same SKIP rule).
 
 | | |
 | --- | --- |

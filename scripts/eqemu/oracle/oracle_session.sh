@@ -131,9 +131,11 @@ REMOTE_STARTED=1
 # B1058: a plan with template clicks needs the locate broker on THIS host (the
 # oracle box has no NumPy/OpenCV): one ssh exchange per locate, shots and the
 # per-locate table in $OUT/broker/ (docs/oracle_driver.md "Template clicks").
+# B1059: the same broker answers text reads with lane$LANE's glyph atlas
+# (glyphs/rigs.tsv; none listed = tesseract / the legacy checks only).
 if grep -qE '^# create-clicks=template$|^(click|wait)-template'$'\t' "$PLAN"; then
     python3 "$REPO/scripts/eqemu/oracle/oracle_locate.py" broker --remote "user@$EQEMU_ORACLE_HOST" \
-        --remote-dir "$REMOTE_DIR" --out "$OUT/broker" 2>>"$OUT/broker.log" &
+        --remote-dir "$REMOTE_DIR" --out "$OUT/broker" --rig "lane$LANE" 2>>"$OUT/broker.log" &
     BROKER_PID=$!
 fi
 remote "bash ~/eq-oracle/uigap-scripts/oracle_remote.sh run '$REMOTE_DIR'" >"$OUT/remote.log" 2>&1
