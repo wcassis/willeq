@@ -328,9 +328,13 @@ expected_for() {
     if [[ -n $optional ]]; then echo "$optional"; return; fi
     case $verb in
         login) echo 'Character Select|Create a New Character' ;;
-        explore-open) echo 'Click on a character' ;;
+        # "Click on a character" mis-OCR'd on this rig ("Click an a
+        # character", measured on the a2 assertion-failed still, psm 6);
+        # the tail of the same line reads cleanly and is unique to the
+        # ExploreModeWindow (EXW_InfoLabel1, EQUI_CharacterSelect.xml).
+        explore-open) echo 'select that character' ;;
         explore-esc) echo 'Create a New Character' ;;
-        hold-d|orbit|wheel) echo 'Click on a character' ;;
+        hold-d|orbit|wheel) echo 'select that character' ;;
         enter-press|camp-quit) echo window:EverQuest ;;
         zone) echo window:EverQuest ;;
         open) case $target in
@@ -527,10 +531,10 @@ if [[ $ACTION == selftest ]]; then
     done
     [[ $(expected_for create Testname) == window:EverQuest ]] || exit 1
     # B888-CC3 (#204): the Explore-mode verbs' postconditions.
-    [[ $(expected_for explore-open 0) == 'Click on a character' ]] || exit 1
-    [[ $(expected_for hold-d 0) == 'Click on a character' ]] || exit 1
-    [[ $(expected_for orbit 0) == 'Click on a character' ]] || exit 1
-    [[ $(expected_for wheel 0) == 'Click on a character' ]] || exit 1
+    [[ $(expected_for explore-open 0) == 'select that character' ]] || exit 1
+    [[ $(expected_for hold-d 0) == 'select that character' ]] || exit 1
+    [[ $(expected_for orbit 0) == 'select that character' ]] || exit 1
+    [[ $(expected_for wheel 0) == 'select that character' ]] || exit 1
     [[ $(expected_for explore-esc 0) == 'Create a New Character' ]] || exit 1
     [[ $(expected_for enter-press 0) == window:EverQuest ]] || exit 1
     DIR=$2
