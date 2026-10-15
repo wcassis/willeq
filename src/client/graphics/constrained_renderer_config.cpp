@@ -805,7 +805,8 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         portalOcclusion = preset["portalOcclusion"].asBool();
     // B971 (Will, 2026-10-01: "orangepi uses a 16-bit depth buffer (no
     // stencil user there)"): /portal occlusion is the ONLY stencil consumer in
-    // the tree, so a config that turns it on MUST have the stencil buffer on
+    // the tree (B1064: the target outline was a second, uncounted one until it
+    // became an inverted hull with no stencil), so a config that turns it on MUST have the stencil buffer on
     // the surface -- otherwise it builds a portal system that can never render
     // (the pre-B971 defect: the shipped JSON had portalOcclusion off but
     // enableStencilBuffer on, paying for D24S8 for a feature that was off; the

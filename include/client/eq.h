@@ -17,6 +17,7 @@ namespace Json { class Value; }
 #include "client/zone_load_snapshot.h"
 #include "client/raid_update.h"
 #include "client/hotbar/hotbar_slot_type.h"  // T239: ActivateHotbarCommandSlot
+#include "client/zone/zone_connect_watchdog.h"  // B1072
 #include <openssl/des.h>
 #include <string>
 #include <map>
@@ -236,6 +237,24 @@ public:
 	// handshake seams that stood here moved with their flags into
 	// eqt::zone::ZoneComponent -- reach them through Zone().
 	bool Test_IsPendingLogoutDisconnect() const { return m_pending_logout_disconnect; }
+
+	// B1072 (#392): the bounded zone-IN connect (src/client/core/zone_connect.cpp).
+	// Called every game tick from MovementComponent::UpdateMovement() through
+	// ctx_.lifecycle.TickZoneConnect; public with an explicit clock so a test
+	// can step the deadline (tests/test_zone_connect_timeout.cpp).
+	void TickZoneConnect(std::chrono::steady_clock::time_point now);
+	const eqt::zone::ZoneConnectWatchdog& ZoneConnectWatchdog() const { return m_zone_connect_watchdog; }
+	// How many zone UDP sessions ConnectToZone/the retry opened this run
+	// (the zone_connect_timeout scenario and the unit test read it).
+	int ZoneConnectOpenCount() const { return m_zone_connect_opens; }
+	// Diagnostic lever for the scenario lane (zone_connect_timeout): the next
+	// `attempts` zone connects go to port `port` on the ZoneServerInfo host
+	// instead of the port world named -- a dead port, so the bound is the only
+	// way out. 0 attempts = off (the default; nothing else sets it).
+	void SimulateUnreachableZoneConnects(int attempts, uint16_t port) {
+		m_sim_dead_zone_attempts = attempts;
+		m_sim_dead_zone_port = port;
+	}
 
 	static void SetDebugLevel(int level) { s_debug_level = level; ::SetDebugLevel(level); }
 	static int GetDebugLevel() { return s_debug_level; }
@@ -636,6 +655,10 @@ private:
 
 	// Zone server connection
 	void ConnectToZone();
+	// B1072: open (or re-open, dropping the old manager) the zone UDP session.
+	void OpenZoneConnection(const std::string& host, uint16_t port);
+	// B1072: the bound ran out twice -- tear down and go back to character select.
+	void AbandonZoneConnect();
 	void ZoneOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection);
 	void ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
 	void ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet &p);
@@ -722,6 +745,13 @@ private:
 	// is still on the call stack — a use-after-free). Deferred the same way as
 	// m_game_state.world().zoneChangeApproved(): set here, processed at the top of UpdateMovement().
 	bool m_pending_logout_disconnect = false;
+
+	// B1072 (#392): the zone-IN connect bound (ZoneComponent::kZoneConnectTimeoutMs
+	// per attempt, kZoneConnectRetries retries), armed by ConnectToZone().
+	eqt::zone::ZoneConnectWatchdog m_zone_connect_watchdog;
+	int m_zone_connect_opens = 0;
+	int m_sim_dead_zone_attempts = 0;
+	uint16_t m_sim_dead_zone_port = 0;
 
 	// Combat manager
 	std::unique_ptr<CombatManager> m_combat_manager;

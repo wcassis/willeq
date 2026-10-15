@@ -981,6 +981,17 @@ bool CIrrDeviceFB::initEGLSurfaceless()
         return false;
     }
 
+    // B1064: the same config line initEGL() prints, so a headless x86 run can
+    // show which depth/stencil it got (B971: it follows the client's request).
+    {
+        EGLint depthBits = 0, stencilBits = 0;
+        eglGetConfigAttrib(eglDisplay_, eglConfig_, EGL_DEPTH_SIZE, &depthBits);
+        eglGetConfigAttrib(eglDisplay_, eglConfig_, EGL_STENCIL_SIZE, &stencilBits);
+        char buf[128];
+        snprintf(buf, sizeof(buf), "EGL (surfaceless): Config depth=%d stencil=%d", depthBits, stencilBits);
+        os::Printer::log(buf, ELL_INFORMATION);
+    }
+
     os::Printer::log("EGL (surfaceless): Context created and made current",
                      ELL_INFORMATION);
     return true;

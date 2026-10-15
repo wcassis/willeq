@@ -207,6 +207,18 @@ public:
 	// Public: MovementComponent::UpdateMovement() names it in the timeout WARN.
 	static constexpr int kZoneOutHandshakeTimeoutMs = 2000;
 
+	// B1072 (#392): the bound on the zone-IN connect, per attempt -- from
+	// ConnectToZone() (LoadingPhase::ZONE_CONNECTING) to the zone's
+	// PlayerProfile (ZONE_RECEIVING_PROFILE). MEASURED over 1,663 zone-ins in
+	// review/ client logs (review/B1072/zone_connect_interval_census.txt):
+	// median 0.6 s, p99 4.6 s, max 14.4 s (a loaded host). 30 s is twice the
+	// worst one seen. The official client's own bound is not measured (no
+	// capture of it against a dead zone exists); this is the conservative
+	// assumption. After the timeout ONE retry of the same ZoneServerInfo, then
+	// back to character select (EverQuest::TickZoneConnect, zone_connect.cpp).
+	static constexpr int kZoneConnectTimeoutMs = 30000;
+	static constexpr int kZoneConnectRetries = 1;
+
 	// T231 test seam: every RequestZoneChange() call is counted here BEFORE
 	// its live-connection gate, so a headless test can pin whether a server
 	// packet made the client decide to reply with OP_ZoneChange at all

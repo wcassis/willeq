@@ -232,7 +232,10 @@ void eqt::zone::ZoneComponent::ZoneProcessZoneChange(const EQ::Net::Packet &p)
 	// 1. Disconnect from current zone server
 	// 2. Reconnect to world server (with zoning=1 flag)
 	// 3. World server sends ZoneServerInfo for new zone
-	// 4. Connect to new zone server
+	// 4. Connect to new zone server -- bounded since B1072 (#392):
+	//    kZoneConnectTimeoutMs to the PlayerProfile, one retry of the same
+	//    ZoneServerInfo, then a fresh world login at character select
+	//    (EverQuest::TickZoneConnect, src/client/core/zone_connect.cpp)
 	// 5. Send WorldComplete, world disconnects (normal)
 
 	// Close vendor window if open (we're leaving the zone)

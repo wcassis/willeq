@@ -141,6 +141,12 @@ std::unique_ptr<IScenario> MakeCampToCharselectScenario(const ScenarioOptions& o
  *  logout reply (exit 0 through IScenario::OnClientStopped). */
 std::unique_ptr<IScenario> MakeCampDesktopScenario(const ScenarioOptions& options);
 
+// B1072 (#392): the zone-in bound. src/client/scenario/scenario_zone_connect_timeout.cpp.
+
+/** /camp, a dead zone port for two connects, Enter World: back at character
+ *  select after the attempt + one retry, then Enter World again and zone in. */
+std::unique_ptr<IScenario> MakeZoneConnectTimeoutScenario(const ScenarioOptions& options);
+
 // B893: fall damage. src/client/scenario/scenario_fall_damage.cpp.
 
 /** A synthetic drop through the client's own fall-damage sender; Pass when
