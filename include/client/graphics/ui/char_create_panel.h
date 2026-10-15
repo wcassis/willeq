@@ -10,9 +10,6 @@
 // NOT drawn, each flagged:
 //   * the 3D creation scene and the sample model (the issue's Leg M:
 //     CharacterModelView before a zone exists);
-//   * CC0_Face_Button is drawn GREYED and is not hit-testable -- fable has no
-//     FacePick window yet (the T363 rule: a control with nothing behind it is
-//     greyed, never a dead click). FacePick values are sent as 0;
 //   * CC_Help_Button opens CharacterCreationHelp (eqstr 5874/5875/5876) only
 //     as the help pane's text, not as its own 300x200 window;
 //   * the modal message box: the official one is a generic dialog whose XML
@@ -37,6 +34,8 @@ enum class CharCreateHit : uint8_t {
     None = 0,
     Back, Next, Help,
     Male, Female,
+    FacePick,      // open CC0_Face_Button
+    FacePickControl,  // popup input; facePick holds the modal target
     Race,          // index = slot, id = race
     Class,         // index = slot, id = class
     StatName,      // index = stat (left: help; right: spend max)
@@ -54,6 +53,7 @@ struct CharCreateClickTarget {
     CharCreateHit hit = CharCreateHit::None;
     int index = -1;
     uint32_t id = 0;
+    FacePickClickTarget facePick;
 };
 
 /** The modal message box (fable rect, flagged) and its Ok button. */

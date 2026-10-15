@@ -99,7 +99,8 @@ void applyCharacterSelectView(CharSelectScreenState& s, const CharacterSelectVie
 }
 
 CharSelectAction pressCharButton(CharSelectScreenState& s, int n,
-                                 const eqt::charcreate::CharCreateData& data, uint32_t seed) {
+                                 const eqt::charcreate::CharCreateData& data, uint32_t seed,
+                                 bool useOldModels) {
     CharSelectAction none;
     if (charSelectBlocked(s) || s.confirm.isOpen || s.create.isOpen) return none;
     if (n < 0 || n >= CharSelectLayout::kCharButtons) return none;
@@ -108,7 +109,7 @@ CharSelectAction pressCharButton(CharSelectScreenState& s, int n,
         s.selected = row;
         return none;
     }
-    openCharCreate(s.create, data, seed);
+    openCharCreate(s.create, data, seed, useOldModels);
     return none;
 }
 

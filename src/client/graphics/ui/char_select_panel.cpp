@@ -128,7 +128,7 @@ CharSelectClickTarget hitTestCharSelect(int sw, int sh, const CharSelectScreenSt
 
 CharSelectAction applyCharSelectClick(CharSelectScreenState& s, const UILayout& layout, int x, int y,
                                       bool rightButton, const eqt::charcreate::CharCreateData& data,
-                                      uint32_t seed) {
+                                      uint32_t seed, bool useOldModels) {
     CharSelectAction none;
     const int sw = layout.screenW, sh = layout.screenH;
     if (s.confirm.isOpen) {
@@ -150,7 +150,8 @@ CharSelectAction applyCharSelectClick(CharSelectScreenState& s, const UILayout& 
     if (rightButton) return none;
     const CharSelectClickTarget t = hitTestCharSelect(sw, sh, s, x, y);
     switch (t.hit) {
-    case CharSelectHit::CharButton: return pressCharButton(s, t.index, data, seed);
+    case CharSelectHit::CharButton:
+        return pressCharButton(s, t.index, data, seed, useOldModels);
     case CharSelectHit::EnterWorld: return pressEnterWorld(s);
     case CharSelectHit::Delete: pressDelete(s); return none;
     case CharSelectHit::Quit: {
