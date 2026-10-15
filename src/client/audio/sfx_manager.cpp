@@ -61,21 +61,14 @@ int SfxManager::play(const SoundBuffer* buffer, float volume, float pan,
     return handle;
 }
 
-int SfxManager::playSpatial(const SoundBuffer* buffer,
-                            const glm::vec3& pos,
-                            float maxDist, float fullVolDist) {
-    // Calculate distance-based volume and pan
+void SfxManager::spatialVolumePan(const glm::vec3& pos, float fullVolDist,
+                                  float& volume, float& pan) const {
     float dx = pos.x - listenerPos_.x;
     float dy = pos.y - listenerPos_.y;
     float dz = pos.z - listenerPos_.z;
     float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
 
-    if (distance > maxDist) {
-        return -1;  // Too far, don't play
-    }
-
     // Inverse distance attenuation
-    float volume;
     if (distance <= fullVolDist) {
         volume = 1.0f;
     } else {
@@ -84,21 +77,98 @@ int SfxManager::playSpatial(const SoundBuffer* buffer,
 
     // Simple stereo panning based on listener direction
     // Project sound direction onto listener's left-right axis
-    float pan = 0.0f;
+    pan = 0.0f;
     float dirLen = std::sqrt(dx * dx + dy * dy);
     if (dirLen > 0.001f) {
         // Cross product of forward and sound direction gives left-right
         float rightComponent = listenerForward_.x * (dy / dirLen) - listenerForward_.y * (dx / dirLen);
         pan = std::clamp(rightComponent, -1.0f, 1.0f);
     }
+}
 
-    int handle = play(buffer, volume, pan, false);
+int SfxManager::playSpatial(const SoundBuffer* buffer,
+                            const glm::vec3& pos,
+                            float maxDist, float fullVolDist, bool loop) {
+    if (glm::length(pos - listenerPos_) > maxDist) {
+        return -1;  // Too far, don't play
+    }
+
+    float volume = 1.0f;
+    float pan = 0.0f;
+    spatialVolumePan(pos, fullVolDist, volume, pan);
+
+    int handle = play(buffer, volume, pan, loop);
 
     if (handle >= 0) {
+        // B1074: an entry naming this channel index belongs to an earlier
+        // sound that ended on its own (one-shots are never stopChannel()ed),
+        // so the list only ever grew and a lookup by handle found the stale
+        // entry first. The channel was just re-allocated: drop them.
+        spatialChannels_.erase(
+            std::remove_if(spatialChannels_.begin(), spatialChannels_.end(),
+                           [handle](const SpatialInfo& s) { return s.handle == handle; }),
+            spatialChannels_.end());
         spatialChannels_.push_back({handle, pos, maxDist, fullVolDist});
     }
 
     return handle;
+}
+
+SfxLoopHandle SfxManager::playSpatialLoop(const SoundBuffer* buffer,
+                                          const glm::vec3& pos,
+                                          float maxDist, float fullVolDist) {
+    SfxLoopHandle loop;
+    int handle = playSpatial(buffer, pos, maxDist, fullVolDist, true);
+    if (handle >= 0) {
+        loop.handle = handle;
+        loop.samples = buffer->getSamples();
+        loop.spatial = true;
+    }
+    return loop;
+}
+
+SfxLoopHandle SfxManager::playLoop(const SoundBuffer* buffer, float volume) {
+    SfxLoopHandle loop;
+    int handle = play(buffer, volume, 0.0f, true);
+    if (handle >= 0) {
+        loop.handle = handle;
+        loop.samples = buffer->getSamples();
+        loop.baseVolume = volume;
+    }
+    return loop;
+}
+
+bool SfxManager::isLoopActive(const SfxLoopHandle& loop) const {
+    if (!mixer_ || !loop.valid() || loop.handle >= AudioMixer::MAX_SFX_CHANNELS) {
+        return false;
+    }
+    MixChannel* ch = mixer_->getChannel(loop.handle);
+    return ch && ch->active.load() && ch->looping && ch->samples == loop.samples;
+}
+
+void SfxManager::updateLoop(const SfxLoopHandle& loop, float gain) {
+    if (!isLoopActive(loop)) return;
+    MixChannel* ch = mixer_->getChannel(loop.handle);
+    gain = std::clamp(gain, 0.0f, 1.0f);
+    if (!loop.spatial) {
+        ch->volume = loop.baseVolume * gain;
+        return;
+    }
+    for (const auto& s : spatialChannels_) {
+        if (s.handle != loop.handle) continue;
+        float volume = 1.0f;
+        float pan = 0.0f;
+        spatialVolumePan(s.pos, s.fullVolDist, volume, pan);
+        ch->volume = volume * gain;
+        ch->pan = pan;
+        return;
+    }
+}
+
+void SfxManager::stopLoop(const SfxLoopHandle& loop) {
+    if (isLoopActive(loop)) {
+        stopChannel(loop.handle);
+    }
 }
 
 void SfxManager::stopChannel(int handle) {

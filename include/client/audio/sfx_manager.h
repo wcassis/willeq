@@ -14,6 +14,20 @@ namespace Audio {
 class AudioMixer;
 class SoundBuffer;
 
+// B1074 (#394): the owner token of a LOOPING channel. A looped channel never
+// ends by itself, so its owner (a zone emitter) must stop it; the handle alone
+// is not proof of ownership -- AudioManager::stopAllSounds() can free the
+// channel behind the owner's back and the mixer can hand the same index to
+// another sound. Every loop call below acts only while the channel is still
+// active, looping and reading `samples` (the buffer the loop was started on).
+struct SfxLoopHandle {
+    int handle = -1;                  // mixer channel, -1 = none
+    const float* samples = nullptr;   // ownership check (MixChannel::samples)
+    bool spatial = false;             // volume/pan follow the listener
+    float baseVolume = 1.0f;          // non-spatial loops: volume before gain
+    bool valid() const { return handle >= 0; }
+};
+
 // WAV playback and spatial positioning via AudioMixer channels.
 //
 // B1015 (#336): this class keeps NO cache. Before it (since T412) it held its
@@ -65,7 +79,26 @@ public:
     // Play with 3D spatial positioning (computes distance volume/pan and
     // calls play()).
     int playSpatial(const SoundBuffer* buffer, const glm::vec3& pos,
-                    float maxDist = 500.0f, float fullVolDist = 50.0f);
+                    float maxDist = 500.0f, float fullVolDist = 50.0f,
+                    bool loop = false);
+
+    // B1074 (#394): looping playback for zone ambient emitters. The loop
+    // never ends by itself: the owner keeps the returned token and calls
+    // stopLoop() (leave range, day/night variant switch, zone unload). The
+    // in-use pin keeps the buffer resident for exactly that long.
+    SfxLoopHandle playSpatialLoop(const SoundBuffer* buffer, const glm::vec3& pos,
+                                  float maxDist, float fullVolDist);
+    SfxLoopHandle playLoop(const SoundBuffer* buffer, float volume);
+    // True while the token's channel is still active, looping and on its
+    // buffer (false once anything else freed or reused the channel).
+    bool isLoopActive(const SfxLoopHandle& loop) const;
+    // Re-derive a spatial loop's volume/pan from the CURRENT listener (no
+    // maxDist cut-off: an owner fading out past its radius is still heard)
+    // and scale it by gain (the owner's fade envelope, 0..1). A non-spatial
+    // loop gets baseVolume * gain.
+    void updateLoop(const SfxLoopHandle& loop, float gain);
+    // Stop the token's channel if it is still the token's; no-op otherwise.
+    void stopLoop(const SfxLoopHandle& loop);
 
     // Stop a playing sound by channel handle
     void stopChannel(int handle);
@@ -82,6 +115,10 @@ public:
     void updateListener(const glm::vec3& pos, const glm::vec3& forward);
 
 private:
+    // Distance attenuation + stereo pan of pos for the current listener.
+    void spatialVolumePan(const glm::vec3& pos, float fullVolDist,
+                          float& volume, float& pan) const;
+
     AudioMixer* mixer_ = nullptr;
 
     // Listener state for spatial audio

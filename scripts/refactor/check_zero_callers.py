@@ -924,6 +924,12 @@ EXEMPT_TESTS_GROUPS = {
     # what was evicted without triggering a re-decode (getOrLoad re-loads on
     # a miss, so it cannot tell "evicted" from "resident").
     ("SoundBufferCache", "peek"): "observer",
+    # B1074 (#394): the emitter loop tests' observation window on the
+    # looping channel a zero-cooldown emitter owns (does it hold one, and
+    # which token -- the tests check the mixer channel behind it). The
+    # emitter reads loop_ itself; no production caller needs the accessors.
+    ("ZoneSoundEmitter", "isLooping"): "observer",
+    ("ZoneSoundEmitter", "getLoopHandle"): "observer",
     # B972 (#290): the bounded-VBO/EBO seams on the two self-contained cut
     # sites. setVboPathEnabled is the SEAM -- the pixel-identity test flips it
     # to prove the VBO and client-array paths render the same bytes; production
