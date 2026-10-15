@@ -1,0 +1,20 @@
+Running main() from ./googletest/src/gtest_main.cc
+Note: Google Test filter = CharCreateClicks.SetFaceButtonIsNotGreyed
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from CharCreateClicks
+[ RUN      ] CharCreateClicks.SetFaceButtonIsNotGreyed
+/home/user/scratch/b888-fix2-red/tests/test_char_create_screen.cpp:366: Failure
+Expected: (hit.hit) != (CharCreateHit::None), actual: 1-byte object <00> vs 1-byte object <00>
+Set Face is greyed: the FacePick modal the feature adds is absent
+
+[  FAILED  ] CharCreateClicks.SetFaceButtonIsNotGreyed (0 ms)
+[----------] 1 test from CharCreateClicks (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] CharCreateClicks.SetFaceButtonIsNotGreyed
+
+ 1 FAILED TEST

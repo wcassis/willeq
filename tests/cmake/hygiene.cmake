@@ -10,6 +10,13 @@ ADD_TEST(NAME FileSizeCeiling
             -C ${CMAKE_SOURCE_DIR} --all)
 SET_TESTS_PROPERTIES(FileSizeCeiling PROPERTIES LABELS "hygiene")
 
+# B888-CC1: XML geometry must be checked even by the source-only hygiene job.
+ADD_TEST(NAME FacePickXmlGeometry
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/b888/check_facepick_geometry.py
+            --source ${CMAKE_SOURCE_DIR}
+            --xml /mnt/projects/EverQuestP1999/uifiles/default/EQUI_FacePick.xml)
+SET_TESTS_PROPERTIES(FacePickXmlGeometry PROPERTIES LABELS "hygiene")
+
 ADD_TEST(NAME DocCitations
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_doc_citations.py
             --repo ${CMAKE_SOURCE_DIR})

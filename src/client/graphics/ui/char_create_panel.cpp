@@ -115,7 +115,8 @@ void drawHelpPane(UIRenderer& ui, TextBatch* tb, const Rect& pane, const CharCre
 void drawPage0(UIRenderer& ui, TextBatch* tb, int sw, int sh, const CharCreateScreenState& s) {
     drawScreen(ui, L::screen0aRect(sw, sh));
     drawLabelBox(ui, tb, L::characterTitleRect(sw, sh), "Character");
-    drawButton(ui, tb, L::faceButtonRect(sw, sh), "Set Face", ButtonState::Greyed);
+    drawButton(ui, tb, L::faceButtonRect(sw, sh), "Set Face",
+               s.faceData.find(s.race, s.gender) ? ButtonState::Normal : ButtonState::Greyed);
     drawButton(ui, tb, L::maleButtonRect(sw, sh), "Male",
                s.gender == Gender::Male ? ButtonState::Selected : ButtonState::Normal);
     drawButton(ui, tb, L::femaleButtonRect(sw, sh), "Female",
@@ -229,6 +230,10 @@ std::string charCreatePlainText(const std::string& in) {
 void renderCharCreateScreen(UIRenderer& ui, int sw, int sh, const CharCreateScreenState& s,
                             const EqstrResolver& eqstr) {
     if (!s.isOpen) return;
+    if (s.facePick.isOpen) {
+        renderFacePick(ui, sw, sh, s.facePick);
+        return;
+    }
     TextBatch* tb = ui.getTextBatch();
 
     drawScreen(ui, L::titleRect(sw, sh));
@@ -266,11 +271,19 @@ CharCreateClickTarget hitTestCharCreate(int sw, int sh, const CharCreateScreenSt
                                                               : CharCreateHit::Blocked;
         return t;
     }
+    if (s.facePick.isOpen) {
+        t.hit = CharCreateHit::FacePickControl;
+        t.facePick = hitTestFacePick(sw, sh, s.facePick, x, y);
+        return t;
+    }
     if (inside(L::backButtonRect(sw, sh), x, y)) { t.hit = CharCreateHit::Back; return t; }
     if (inside(L::nextButtonRect(sw, sh), x, y)) { t.hit = CharCreateHit::Next; return t; }
     if (inside(L::helpButtonRect(sw, sh), x, y)) { t.hit = CharCreateHit::Help; return t; }
 
     if (s.page == 0) {
+        if (inside(L::faceButtonRect(sw, sh), x, y) && s.faceData.find(s.race, s.gender)) {
+            t.hit = CharCreateHit::FacePick; return t;
+        }
         if (inside(L::maleButtonRect(sw, sh), x, y)) { t.hit = CharCreateHit::Male; return t; }
         if (inside(L::femaleButtonRect(sw, sh), x, y)) { t.hit = CharCreateHit::Female; return t; }
         for (int i = 0; i < static_cast<int>(s.races.size()) && i < L::kRaceSlots; ++i) {
@@ -330,6 +343,8 @@ CharCreateAction applyCharCreateClick(CharCreateScreenState& s, const CharCreate
         return none;
     case CharCreateHit::Male: selectGender(s, Gender::Male); return none;
     case CharCreateHit::Female: selectGender(s, Gender::Female); return none;
+    case CharCreateHit::FacePick: openFacePick(s); return none;
+    case CharCreateHit::FacePickControl: applyFacePickClick(s, t.facePick); return none;
     case CharCreateHit::Race: selectRace(s, t.id); return none;
     case CharCreateHit::Class: selectClass(s, t.id); return none;
     case CharCreateHit::StatName:

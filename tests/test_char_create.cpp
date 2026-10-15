@@ -300,6 +300,41 @@ TEST(CharCreateSpec, ParsesTheIssuesFormAndDefaultsTheStats) {
     EXPECT_EQ(r.stats, S(85, 85, 105, 75, 75, 75, 75));   // cc_06's allocation
 }
 
+TEST(CharCreateSpec, AppearanceKeysKeepDefaultStatsAndSetBothEyes) {
+    CharCreateRequest r;
+    std::string err;
+    ASSERT_TRUE(ParseCreateSpec(
+        "Ciface,Human,Male,Warrior,AGNOSTIC,QEYNOS,FACE=6,HAIR=2,HAIRCOLOR=3,EYES=4,BEARD=1,BEARDCOLOR=5",
+        Data(), r, err)) << err;
+    EXPECT_TRUE(checkCharCreateStats(r.race, r.cls, r.stats));
+    EXPECT_EQ(r.face, 6u);
+    EXPECT_EQ(r.hairstyle, 2u);
+    EXPECT_EQ(r.haircolor, 3u);
+    EXPECT_EQ(r.eyecolor1, 4u);
+    EXPECT_EQ(r.eyecolor2, 4u);
+    EXPECT_EQ(r.beard, 1u);
+    EXPECT_EQ(r.beardcolor, 5u);
+    const auto p = BuildCharacterCreate(r);
+    EXPECT_EQ(p.GetUInt32(2 + 64), 6u);
+    EXPECT_EQ(p.GetUInt32(2 + 28), 2u);
+    EXPECT_EQ(p.GetUInt32(2 + 4), 3u);
+    EXPECT_EQ(p.GetUInt32(2 + 68), 4u);
+    EXPECT_EQ(p.GetUInt32(2 + 72), 4u);
+    EXPECT_EQ(p.GetUInt32(2 + 12), 1u);
+    EXPECT_EQ(p.GetUInt32(2 + 8), 5u);
+    EXPECT_EQ(p.GetUInt32(2 + 76), 0u);
+
+    EXPECT_FALSE(ParseCreateSpec("Ciface,Human,Male,Warrior,AGNOSTIC,QEYNOS,FACE=-1", Data(), r, err));
+    EXPECT_FALSE(ParseCreateSpec("Ciface,Human,Male,Warrior,AGNOSTIC,QEYNOS,EYES=256", Data(), r, err));
+    EXPECT_FALSE(ParseCreateSpec("Ciface,Human,Male,Warrior,AGNOSTIC,QEYNOS,HAIR=x", Data(), r, err));
+    EXPECT_FALSE(ParseCreateSpec("Ciface,Human,Male,Warrior,AGNOSTIC,QEYNOS,FACE", Data(), r, err));
+    EXPECT_FALSE(ParseCreateSpec("Ciface,Human,Male,Warrior,AGNOSTIC,QEYNOS,STR", Data(), r, err));
+    EXPECT_FALSE(ParseCreateSpec("Ciface,Human,Male,Warrior,AGNOSTIC,QEYNOS,FACE=8", Data(), r, err));
+    EXPECT_FALSE(ParseCreateSpec("Ciface,Human,Male,Warrior,AGNOSTIC,QEYNOS,FACE=1,FACE=2", Data(), r, err));
+    EXPECT_FALSE(ParseCreateSpec("Ciface,DarkElf,Female,Necromancer,PRINCEOFHATE,NERIAK,BEARD=1",
+                                 Data(), r, err));
+}
+
 TEST(CharCreateSpec, RefusesWhatTheScreenWouldNotOffer) {
     CharCreateRequest r;
     std::string err;
@@ -353,6 +388,23 @@ TEST(CharCreatePackets, CharacterCreateIsTheEightyByteTitaniumStruct) {
     EXPECT_EQ(p.GetUInt16(0), HC_OP_CharacterCreate);
     const uint32_t expect[20] = {1, 2, 3, 4, 1, 128, 12, 5, 203, 80, 81, 82, 83, 84, 85, 86, 6, 7, 8, 0};
     for (size_t i = 0; i < 20; ++i) EXPECT_EQ(U32(p, 2 + 4 * i), expect[i]) << "field at +" << 4 * i;
+}
+
+TEST(CharCreatePackets, OfficialFacePickCreateMatchesCapturedWordsExceptTutorial) {
+    // oracle/facepick-nondefault.pcap, 06:00:41.501 C->S: Barbarian male
+    // Warrior, AGNOSTIC, HALAS after FacePick Accept. The official client
+    // sends tutorial=1 even through normal Next; Will requires fable's 0.
+    CharCreateRequest r;
+    r.cls = 1; r.haircolor = 10; r.beardcolor = 0; r.beard = 0;
+    r.gender = 0; r.race = 2; r.startZone = 2; r.hairstyle = 0; r.deity = 396;
+    r.stats = S(138, 105, 87, 70, 70, 60, 55);
+    r.face = 15; r.eyecolor1 = r.eyecolor2 = 10;
+    const auto p = BuildCharacterCreate(r);
+    ASSERT_EQ(p.Length(), 2u + 80u);
+    const uint32_t captured[20] = {
+        1, 10, 0, 0, 0, 2, 2, 0, 396, 138, 105, 87, 70, 70, 60, 55, 15, 10, 10, 0
+    };
+    for (size_t i = 0; i < 20; ++i) EXPECT_EQ(U32(p, 2 + 4 * i), captured[i]) << "offset +" << 4 * i;
 }
 
 TEST(CharCreatePackets, TutorialIsAlwaysZero) {

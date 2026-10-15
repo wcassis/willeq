@@ -1,0 +1,8 @@
+picker	samples	observed_min	observed_max	span	candidate_min	candidate_max	status
+face	6	3	7	4	0	7	NOT PROVEN
+hair	6	0	255	255	0	3	NOT PROVEN
+haircolor	6	0	255	255	0	19	NOT PROVEN
+eyes	6	1	209	208	0	9	NOT PROVEN
+beard	6	15	255	240	0	5	NOT PROVEN
+beardcolor	6	0	255	255	0	19	NOT PROVEN
+wode	6	0	0	0	0	8	NOT PROVEN

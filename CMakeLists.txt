@@ -373,10 +373,12 @@ SET(CLIENT_CORE_SOURCES
     src/client/core/data_paths.cpp
     src/client/login_world/login_world_component.cpp
     # B888 (#204): native character creation -- the server's rules, the era
-    # data (data/char_create.tsv), the four packets, the world-stage script.
+    # data (data/char_create.tsv and FacePick ranges), the four
+    # packets, and the world-stage script.
     src/client/login_world/login_world_char_create.cpp
     src/client/login_world/char_create_rules.cpp
     src/client/login_world/char_create_data.cpp
+    src/client/login_world/char_create_faces.cpp
     src/client/login_world/char_create_packets.cpp
     src/client/login_world/world_script.cpp
     # B998 (#318): the character-select screen -- the thread seam and Enter World.
@@ -841,9 +843,10 @@ IF(EQT_GRAPHICS)
         # B897: the Friends window (friends + ignore lists).
         src/client/graphics/ui/friends_panel.cpp
         src/client/graphics/ui/tip_window.cpp  # B834: the tip windows
-        # B888 (#204): the two-page Character Creation screen.
+        # B888 (#204): the two-page Character Creation screen and FacePick modal.
         src/client/graphics/ui/char_create_screen.cpp
         src/client/graphics/ui/char_create_panel.cpp
+        src/client/graphics/ui/face_pick_panel.cpp
         # B998 (#318): the Character Select screen and its pre-zone host.
         src/client/graphics/ui/char_select_screen.cpp
         src/client/graphics/ui/char_select_panel.cpp

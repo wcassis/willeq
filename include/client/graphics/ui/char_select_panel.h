@@ -53,11 +53,13 @@ CharSelectClickTarget hitTestCharSelect(int sw, int sh, const CharSelectScreenSt
 /**
  * One mouse click anywhere: the delete prompt first (it is modal), then the
  * creation screen when it is open, then the select window. `seed` is the
- * random pick creation opens on.
+ * random pick creation opens on; `useOldModels` is the model era the creation
+ * screen's FacePick rows gate on (finding 1: classic models read the
+ * visible_classic column, Luclin models the Luclin column).
  */
 CharSelectAction applyCharSelectClick(CharSelectScreenState& s, const UILayout& layout, int x, int y,
                                       bool rightButton, const eqt::charcreate::CharCreateData& data,
-                                      uint32_t seed);
+                                      uint32_t seed, bool useOldModels = true);
 
 }  // namespace Graphics
 }  // namespace EQT
