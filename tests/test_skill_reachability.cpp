@@ -36,6 +36,7 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/hotbar_layout.h"
 #include "client/graphics/ui/static_ui_input.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/hotbar/hotbar_model.h"
@@ -210,7 +211,7 @@ protected:
     // Run the real chain for one slot assignment, with nothing copied by hand.
     void assignAndPump(int slot, eqt::HotbarSlotType type, uint32_t id,
                        const std::string& emoteText = "") {
-        model.assignSlot(slot, type, id, emoteText);
+        model.assignSlot({0, slot}, type, id, emoteText);
         pumpEvents();
     }
 
@@ -225,12 +226,15 @@ protected:
         }
     }
 
-    // Click the centre of hotbar slot `slot` (800x600 layout: hotbar starts at
-    // x=222, y=556, slots 32px wide with a 4px margin).
+    // Click the centre of hotbar slot `slot`. B1025-H2: the hotbar is the
+    // stock 2x5 window, and the slot rects are HotbarLayout::slotRect() --
+    // the SAME rects hitTestHotbar() tests -- so the click lands inside the
+    // drawn slot whatever resolution the layout was computed for.
     void clickSlot(int slot) {
-        const int x = 222 + slot * (EQT::Graphics::UILayout::SLOT_SIZE +
-                                    EQT::Graphics::UILayout::MARGIN) + 4;
-        input.processInput(x, 570, /*leftClicked=*/true, layout, hotbar, gems,
+        const auto r = EQT::Graphics::HotbarLayout::slotRect(layout.hotbar, slot);
+        const int x = (r.UpperLeftCorner.X + r.LowerRightCorner.X) / 2;
+        const int y = (r.UpperLeftCorner.Y + r.LowerRightCorner.Y) / 2;
+        input.processInput(x, y, /*leftClicked=*/true, layout, hotbar, gems,
                            inventory, spellbook, skills, buffs, loot);
     }
 
@@ -322,7 +326,7 @@ TEST_F(HotbarReachabilityTest, EmptySlotPushesNothing) {
 
 TEST_F(HotbarReachabilityTest, ClearingASlotStopsItActivating) {
     assignAndPump(2, eqt::HotbarSlotType::Skill, 16);
-    model.clearSlot(2);
+    model.clearSlot({0, 2});
     pumpEvents();
     clickSlot(2);
     EXPECT_TRUE(drain().empty());
@@ -331,10 +335,11 @@ TEST_F(HotbarReachabilityTest, ClearingASlotStopsItActivating) {
 // The published event itself carries the enum, so the numbering cannot be
 // reinterpreted between HotbarModel and the renderer either.
 TEST_F(HotbarReachabilityTest, PublishedEventCarriesTheTypedEnumAndTheId) {
-    model.assignSlot(4, eqt::HotbarSlotType::Skill, 6);
+    model.assignSlot({0, 4}, eqt::HotbarSlotType::Skill, 6);
     auto events = bridge.drainEvents();
     ASSERT_FALSE(events.empty());
     const auto& d = std::get<eqt::state::HotbarSlotAssignedData>(events[0].data);
+    EXPECT_EQ(d.page, 0);
     EXPECT_EQ(d.index, 4);
     EXPECT_EQ(d.type, eqt::HotbarSlotType::Skill);
     EXPECT_EQ(d.id, 6u);
@@ -352,8 +357,8 @@ TEST_F(HotbarReachabilityTest, OutOfRangeConfigTypeClearsTheSlotInsteadOfCasting
     cfg["buttons"] = buttons;
 
     model.loadFromJson(cfg);
-    EXPECT_EQ(model.getSlot(0).type, eqt::HotbarSlotType::Empty);
-    EXPECT_EQ(model.getSlot(0).id, 0u);
+    EXPECT_EQ(model.getSlot({0, 0}).type, eqt::HotbarSlotType::Empty);
+    EXPECT_EQ(model.getSlot({0, 0}).id, 0u);
 }
 
 TEST_F(HotbarReachabilityTest, ValidConfigTypeRoundTripsThroughJson) {
@@ -366,8 +371,72 @@ TEST_F(HotbarReachabilityTest, ValidConfigTypeRoundTripsThroughJson) {
     cfg["buttons"] = buttons;
 
     model.loadFromJson(cfg);
-    EXPECT_EQ(model.getSlot(0).type, eqt::HotbarSlotType::Skill);
-    EXPECT_EQ(model.getSlot(0).id, 48u);
+    EXPECT_EQ(model.getSlot({0, 0}).type, eqt::HotbarSlotType::Skill);
+    EXPECT_EQ(model.getSlot({0, 0}).id, 48u);
+    EXPECT_EQ(model.getSlot({1, 0}).type, eqt::HotbarSlotType::Empty);
+}
+
+TEST_F(HotbarReachabilityTest, LegacyEleventhButtonIsIgnored) {
+    Json::Value config;
+    Json::Value buttons(Json::arrayValue);
+    for (int i = 0; i < 11; ++i) {
+        Json::Value button;
+        button["type"] = static_cast<int>(eqt::HotbarSlotType::Skill);
+        button["id"] = i + 1;
+        buttons.append(button);
+    }
+    config["buttons"] = buttons;
+    model.loadFromJson(config);
+    EXPECT_EQ(model.getSlot({0, 9}).id, 10u);
+    EXPECT_EQ(model.getSlot({0, 10}).type, eqt::HotbarSlotType::Empty);
+    EXPECT_EQ(model.getSlot({1, 0}).type, eqt::HotbarSlotType::Empty);
+}
+
+TEST_F(HotbarReachabilityTest, PageAddressPublishesActivePage) {
+    model.assignSlot({3, 7}, eqt::HotbarSlotType::Skill, 48);
+    auto assigned = bridge.drainEvents();
+    ASSERT_EQ(assigned.size(), 1u);
+    const auto& assignedData = std::get<eqt::state::HotbarSlotAssignedData>(assigned[0].data);
+    EXPECT_EQ(assignedData.page, 3);
+    EXPECT_EQ(assignedData.currentPage, 0);
+    EQT::Graphics::HotbarPanelState panel;
+    EQT::Graphics::applyHotbarSlotAssigned(panel, assignedData);
+    EXPECT_EQ(panel.slots[7].type, eqt::HotbarSlotType::Empty);
+    model.setCurrentPage(3);
+    auto events = bridge.drainEvents();
+    ASSERT_EQ(events.size(), 10u);
+    const auto& d = std::get<eqt::state::HotbarSlotAssignedData>(events[7].data);
+    EXPECT_EQ(d.page, 3);
+    EXPECT_EQ(d.index, 7);
+    EXPECT_EQ(d.id, 48u);
+
+    EXPECT_EQ(model.currentPage(), 3);
+    EXPECT_EQ(model.getSlot({3, 7}).id, 48u);
+    EXPECT_EQ(model.getSlot({0, 7}).type, eqt::HotbarSlotType::Empty);
+    model.setCurrentPage(10);
+    EXPECT_EQ(model.currentPage(), 3);
+    model.assignSlot({10, 7}, eqt::HotbarSlotType::Item, 999);
+    EXPECT_EQ(model.getSlot({3, 7}).id, 48u);
+}
+
+TEST_F(HotbarReachabilityTest, PageSwitchDoesNotCarryVisibleCooldown) {
+    model.assignSlot({0, 0}, eqt::HotbarSlotType::Item, 100);
+    pumpEvents();
+    hotbar.slots[0].cooldownDurationMs = 60000;
+    hotbar.slots[0].cooldownEndTime =
+        std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    model.assignSlot({1, 0}, eqt::HotbarSlotType::Item, 200);
+    pumpEvents();
+    model.setCurrentPage(1);
+    pumpEvents();
+    EXPECT_EQ(hotbar.slots[0].id, 200u);
+    EXPECT_FALSE(hotbar.slots[0].isOnCooldown());
+    model.setCurrentPage(0);
+    pumpEvents();
+    EXPECT_EQ(model.currentPage(), 0);
+    EXPECT_EQ(hotbar.currentPage, 0);
+    EXPECT_EQ(hotbar.slots[0].id, 100u);
+    EXPECT_FALSE(hotbar.slots[0].isOnCooldown());
 }
 
 // ===================================================================

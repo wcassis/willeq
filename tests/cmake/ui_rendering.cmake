@@ -386,6 +386,15 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_char_create_screen DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1025-H2 (#345): stock Titanium hotbar window, controls and three holders
+# for every slot, checked against EQUI_HotButtonWnd.xml when present.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_hotbar_layout test_hotbar_layout.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_hotbar_layout PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_hotbar_layout GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_hotbar_layout DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B998 (#318): the character-select screen -- layout vs EQUI_CharacterSelect.xml,
 # the list from a recorded OP_SendCharInfo, buttons -> requests -> packets
 # through the real service and the world replay seam, the configured-character
@@ -1080,4 +1089,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_COMPILE_DEFINITIONS(test_tracking_window PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     GTEST_DISCOVER_TESTS(test_tracking_window DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1066 (GitLab #386): a mouse press is owned by the static UI or the camera,
+# never both -- PressOwnership, the event receiver over real Irrlicht mouse
+# events, and the wiring (mouse-look reads the camera-owned view, the item
+# display the physical hold). No device, no server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_press_ownership
+        test_press_ownership.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_press_ownership PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_press_ownership GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_press_ownership DISCOVERY_TIMEOUT 120)
 ENDIF()

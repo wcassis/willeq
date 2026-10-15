@@ -34,6 +34,7 @@
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/hotbar_panel.h"  // B1025-H2: renderHotbar's home
 #include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/merchant_panel.h"
 #include "client/graphics/ui/combat_ability_panel.h"
@@ -436,19 +437,24 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
         openForge(containers_);
     };
     const std::vector<Row> rows = {
-        {"hud", [] {}, {4, 4, 6, 1}, {18, 18, 6, 1}},
-        {"inventory", [&] { inv_.activePopup = PopupType::Inventory; }, {31, 35, 7, 2}, {41, 43, 7, 2}},
+        // B1025-H2: the fallback (no-atlas, Will's Pi recipe) pins re-taken
+        // for the stock HotButtonWnd -- its page row, close box and the ten
+        // per-slot frames are solid draws there, so the HUD rose from 18 to
+        // 59 draws. The atlas pins are unchanged: every one of those is one
+        // atlas quad plus the shared panel texture.
+        {"hud", [] {}, {4, 4, 6, 1}, {59, 59, 6, 1}},
+        {"inventory", [&] { inv_.activePopup = PopupType::Inventory; }, {31, 35, 7, 2}, {82, 84, 7, 2}},
         // What B899's workaround drew for three open bags: the topmost only.
         // The Forge (350,100) also covers inventory text, so even one bag is a
         // real split (the shipped bleed was there too).
         {"inv+forge", [&] {
              inv_.activePopup = PopupType::Inventory;
              openForge(containers_);
-         }, {34, 42, 8, 3}, {51, 55, 8, 3}},
+         }, {34, 42, 8, 3}, {92, 96, 8, 3}},
         {"inv+3 bags", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
-         }, {47, 63, 10, 5}, {68, 76, 10, 5}},
+         }, {47, 63, 10, 5}, {109, 117, 10, 5}},
         {"full", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
@@ -459,7 +465,7 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
              cursor_.iconId = 1001;
              cursor_.mouseX = 560;
              cursor_.mouseY = 420;
-         }, {48, 64, 13, 5}, {84, 95, 13, 6}},
+         }, {48, 64, 13, 5}, {125, 136, 13, 6}},
     };
 
     for (bool fallback : {false, true}) {

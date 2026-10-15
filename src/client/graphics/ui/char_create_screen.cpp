@@ -62,6 +62,9 @@ void resetForOpen(CharCreateScreenState& s) {
     s.messageEqstr = 0;
     s.messageText.clear();
     s.submitting = false;
+    s.faceData.loadShipped();
+    s.facePick.isOpen = false;
+    s.appearance.fill(0);
 }
 
 }  // namespace
@@ -81,7 +84,8 @@ std::vector<uint32_t> CharCreateScreenState::offeredCities() const {
 bool CharCreateScreenState::deityOffered(uint32_t d) const { return contains(offeredDeities(), d); }
 bool CharCreateScreenState::cityOffered(uint32_t c) const { return contains(offeredCities(), c); }
 
-void openCharCreate(CharCreateScreenState& s, const CharCreateData& data, uint32_t seed) {
+void openCharCreate(CharCreateScreenState& s, const CharCreateData& data, uint32_t seed,
+                    bool useOldModels) {
     loadLists(s, data);
     std::vector<std::pair<uint32_t, uint32_t>> pairs;
     for (const auto& r : s.races) {
@@ -96,16 +100,20 @@ void openCharCreate(CharCreateScreenState& s, const CharCreateData& data, uint32
         s.cls = p.second;
     }
     s.gender = (rng() & 1u) ? Gender::Female : Gender::Male;
+    s.facePick.randomSeed = rng();
+    s.useOldModels = useOldModels;
     resetForOpen(s);
 }
 
 bool openCharCreateWith(CharCreateScreenState& s, const CharCreateData& data, uint32_t race,
-                        uint32_t gender, uint32_t cls) {
+                        uint32_t gender, uint32_t cls, bool useOldModels) {
     loadLists(s, data);
     if (!s.raceClassValid(race, cls)) return false;
     s.race = race;
     s.cls = cls;
     s.gender = gender == Gender::Female ? Gender::Female : Gender::Male;
+    s.facePick.randomSeed = 1;
+    s.useOldModels = useOldModels;
     resetForOpen(s);
     return true;
 }
@@ -114,6 +122,8 @@ bool selectRace(CharCreateScreenState& s, uint32_t race) {
     const EraEntry* r = find(s.races, race);
     if (!r || s.submitting) return false;
     s.race = race;
+    s.facePick.isOpen = false;
+    s.appearance.fill(0);
     if (!isValidRaceClass(race, s.cls)) {
         for (const auto& c : s.classes) {
             if (isValidRaceClass(race, c.id)) { s.cls = c.id; break; }
@@ -139,7 +149,12 @@ bool selectClass(CharCreateScreenState& s, uint32_t cls) {
 
 void selectGender(CharCreateScreenState& s, uint32_t gender) {
     if (s.submitting) return;
-    s.gender = gender == Gender::Female ? Gender::Female : Gender::Male;
+    const uint32_t next = gender == Gender::Female ? Gender::Female : Gender::Male;
+    if (s.gender != next) {
+        s.gender = next;
+        s.facePick.isOpen = false;
+        s.appearance.fill(0);
+    }
 }
 
 bool selectDeity(CharCreateScreenState& s, uint32_t deity) {
@@ -191,12 +206,20 @@ CharCreateRequest buildRequest(const CharCreateScreenState& s) {
     r.deity = s.deity;
     r.startZone = s.city;
     r.stats = s.alloc.stats();
+    r.face = s.appearance[static_cast<size_t>(FacePickFeature::Face)];
+    if (s.race == Race::Barbarian)
+        r.face += 10 * s.appearance[static_cast<size_t>(FacePickFeature::Wode)];
+    r.hairstyle = s.appearance[static_cast<size_t>(FacePickFeature::Hair)];
+    r.haircolor = s.appearance[static_cast<size_t>(FacePickFeature::HairColor)];
+    r.eyecolor1 = r.eyecolor2 = s.appearance[static_cast<size_t>(FacePickFeature::Eyes)];
+    r.beard = s.appearance[static_cast<size_t>(FacePickFeature::Beard)];
+    r.beardcolor = s.appearance[static_cast<size_t>(FacePickFeature::BeardColor)];
     return r;
 }
 
 CharCreateAction pressNext(CharCreateScreenState& s) {
     CharCreateAction a;
-    if (s.submitting) return a;
+    if (s.submitting || s.facePick.isOpen) return a;
     if (s.page == 0) {
         if (!s.alloc.allSpent()) {
             s.messageEqstr = kEqstrSpendAllPoints;
@@ -232,6 +255,7 @@ CharCreateAction pressNext(CharCreateScreenState& s) {
 CharCreateAction pressBack(CharCreateScreenState& s) {
     CharCreateAction a;
     if (s.submitting) return a;
+    if (s.facePick.isOpen) { cancelFacePick(s); return a; }
     if (s.page == 1) {
         s.page = 0;
         s.helpEqstr = kEqstrCreationIntro;

@@ -197,17 +197,6 @@ uint32_t SpellManager::calculateMemorizeTime(uint32_t spell_id) const
     return 8000;                    // 8 seconds for low levels
 }
 
-uint8_t SpellManager::findGemSlotForSpell(uint32_t spell_id) const
-{
-    // T483: a cast by spell id may only resolve to a gem the client offers.
-    for (uint8_t i = 0; i < EQT::VISIBLE_SPELL_GEM_COUNT; ++i) {
-        if (m_spell_gems[i] == spell_id) {
-            return i;
-        }
-    }
-    return 0xFF;  // Not found
-}
-
 // ============================================================================
 // Spellbook
 // ============================================================================

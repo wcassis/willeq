@@ -1,0 +1,14 @@
+# B888-CC1 (#204): one untouched creation per in-era pair, FacePick open,
+# stock UseLuclin=FALSE client (the lane-5 eqclient.ini is all-FALSE).
+# open-creation <race> <gender> <still_name> and open-face <x> <y>
+# <still_name> -- the character is NEVER submitted (page 0 only), so no DB
+# row is created and the driver's create-name arming does not apply.
+login	Testchar	0	char_select
+open-creation	Barbarian	Male	barbarian-male-pair
+open-face	0	0	barbarian-male
+open-creation	Barbarian	Female	barbarian-female-pair
+open-face	0	0	barbarian-female
+open-creation	DarkElf	Female	darkelf-female-pair
+open-face	0	0	darkelf-female
+open-creation	Iksar	Male	iksar-male-pair
+open-face	0	0	iksar-male

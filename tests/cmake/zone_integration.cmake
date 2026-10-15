@@ -77,6 +77,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_textures.cpp
@@ -86,7 +87,6 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_characters.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_skinning.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
-        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry_atlased.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/dds_decoder.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/door_manager.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/door_manager_mesh.cpp
@@ -322,6 +322,19 @@ TARGET_COMPILE_DEFINITIONS(test_camp PRIVATE
     WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
 GTEST_DISCOVER_TESTS(test_camp DISCOVERY_TIMEOUT 120)
+
+# B1072 (GitLab #392): the zone-IN connect bound -- ZoneConnectWatchdog on a
+# test clock, and a headless EverQuest whose ZoneServerInfo names a dead port:
+# timeout -> one retry of the same host:port -> a fresh world login at
+# character select (never a hang at 20 %, never an exit).
+ADD_EXECUTABLE(test_zone_connect_timeout
+    test_zone_connect_timeout.cpp
+)
+TARGET_LINK_LIBRARIES(test_zone_connect_timeout GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_zone_connect_timeout PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_zone_connect_timeout DISCOVERY_TIMEOUT 120)
 
 # T344 (BOARD B001): the split of MovementComponent::SetPositionState into a
 # user-initiated setter (state + OP_SpawnAppearance) and a server-forced one

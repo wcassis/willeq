@@ -1,0 +1,4 @@
+# action	target	race	class	gender	still_name (create only)
+login	Testchar	0	char_select
+create	Oraclebarmale	Barbarian	Warrior	Male	barbarian_male_untouched
+still	after_create	0	after_create

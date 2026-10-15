@@ -10,6 +10,13 @@ ADD_TEST(NAME FileSizeCeiling
             -C ${CMAKE_SOURCE_DIR} --all)
 SET_TESTS_PROPERTIES(FileSizeCeiling PROPERTIES LABELS "hygiene")
 
+# B888-CC1: XML geometry must be checked even by the source-only hygiene job.
+ADD_TEST(NAME FacePickXmlGeometry
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/b888/check_facepick_geometry.py
+            --source ${CMAKE_SOURCE_DIR}
+            --xml /mnt/projects/EverQuestP1999/uifiles/default/EQUI_FacePick.xml)
+SET_TESTS_PROPERTIES(FacePickXmlGeometry PROPERTIES LABELS "hygiene")
+
 ADD_TEST(NAME DocCitations
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_doc_citations.py
             --repo ${CMAKE_SOURCE_DIR})
@@ -429,3 +436,33 @@ SET_TESTS_PROPERTIES(RenderedZoneFinalVisit PROPERTIES LABELS "hygiene")
 ADD_TEST(NAME RenderedZoneSummarizeGlDriver
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/pi/test_rendered_zone_gl_driver.py)
 SET_TESTS_PROPERTIES(RenderedZoneSummarizeGlDriver PROPERTIES LABELS "hygiene")
+
+# B1057 (#377): the oracle driver's lane gate (lane 5 accepted, 0/6 refused,
+# lock and create-name safety) and the remote stop path that must never kill
+# a display it did not start (lane 5's :99 is a real Xorg). Offline stubs.
+ADD_TEST(NAME OracleSessionSafety
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/session_safety.sh)
+SET_TESTS_PROPERTIES(OracleSessionSafety PROPERTIES LABELS "hygiene")
+ADD_TEST(NAME OracleRemoteStopSafety
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/remote_stop_safety.sh)
+SET_TESTS_PROPERTIES(OracleRemoteStopSafety PROPERTIES LABELS "hygiene")
+
+# B1058 (#378): the oracle driver's template library located over the archived
+# corpus (review/B1058/corpus): every positive within 1 px of its measured
+# centre and above min_score, every negative below it, cv2 and numpy agreeing
+# to 1e-3. SKIPs (125) on a host without the corpus or NumPy/Pillow -- the CI
+# runners have neither.
+ADD_TEST(NAME OracleLocateTemplates
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/oracle_locate_test.py)
+SET_TESTS_PROPERTIES(OracleLocateTemplates PROPERTIES LABELS "hygiene"
+    SKIP_RETURN_CODE 125 TIMEOUT 900)
+
+# B1059 (#379): the glyph-atlas text reader over pinned, labelled crops of the
+# archived oracle frames (truth from the pcap/DB/plan/XML side): every
+# expect=read crop read exactly, every expect=unknown crop UNKNOWN, never a
+# wrong text; cv2 and numpy segmenting and reading identically. SKIPs (125)
+# without the review corpus or NumPy/Pillow -- the CI runners have neither.
+ADD_TEST(NAME OracleGlyphReader
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/oracle_glyphs_test.py)
+SET_TESTS_PROPERTIES(OracleGlyphReader PROPERTIES LABELS "hygiene"
+    SKIP_RETURN_CODE 125 TIMEOUT 900)

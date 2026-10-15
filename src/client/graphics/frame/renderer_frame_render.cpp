@@ -41,6 +41,7 @@
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/ui/static_ui_input.h"
+#include "client/graphics/ui/hotbar_panel.h"  // B1025-H2: renderHotbar's home
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/character_model_view.h"
 #include "client/graphics/draw_census.h"  // B997: per-site 3D-draw census

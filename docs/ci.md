@@ -12,6 +12,24 @@ A card body still says `-j3` for any direct `cmake --build`.
 
 ## What runs where
 
+Official-client oracle sessions are separate from CI. The one-command lane
+driver, plan vocabulary, evidence layout and exit codes are in
+[`oracle_driver.md`](oracle_driver.md). Its template library is checked by the
+hygiene test `OracleLocateTemplates` (`scripts/eqemu/oracle/tests/oracle_locate_test.py`,
+B1058), which needs NumPy + Pillow and the archived corpus under
+`/mnt/projects/fable/review/B1058/corpus`; the runners have neither, so it
+SKIPs there and runs on dev-u24 / hermes-ext. Its text reader is checked the same way by
+`OracleGlyphReader` (`scripts/eqemu/oracle/tests/oracle_glyphs_test.py`, B1059: pinned labelled
+crops under `/mnt/projects/fable/review`, read exactly or UNKNOWN, never wrong; same SKIP rule).
+
+Live scenarios are separate from CI too: `scripts/scenario.sh <name>` on an eqemu lane (CLAUDE.md,
+"The scenario lane"); their state machines run offline in the suite. `zone_connect_timeout` (B1072,
+#392) is the zone-IN bound's live leg: `/camp` to character select, a dead zone port for two
+connects, Enter World -- back at character select after the attempt plus ONE retry
+(`ZoneComponent::kZoneConnectTimeoutMs` each), then Enter World again and zone in
+(`EQEMU_LANE=2 bash scripts/scenario.sh zone_connect_timeout --unit B1072`; offline net
+`test_zone_connect_timeout`).
+
 | | |
 | --- | --- |
 | GitLab | `https://gitlab.goldfarm.local`, project `willeq/willeq` (id 1) |
@@ -50,7 +68,9 @@ keep both build trees (`-e build-arm-noble -e build-arm64-noble`). `build-arm` i
 `willeq-arm-noble`) then `scripts/pi/publish_arm_build.sh`, which publishes the stripped client plus that
 commit's tracked `config/` + `data/` to **`/mnt/projects/fable/ci-arm/<sha>/`** (`by-branch/<branch>` symlinks;
 newest 12 kept). The job is automatic on `fable` and a manual, non-blocking job everywhere else
-(`glab ci trigger build-arm`), and refuses any host but `dev-u24`.
+(`glab ci trigger build-arm`), and refuses any host but `dev-u24`. Both ARM jobs write the whole build to
+`build-<arch>-noble.log`, kept as a job artifact (14 days); a failure prints the `error:` lines and the tail,
+so an ARM-only compile error reaches the trace (B1054's did not through the old `| tail -n 40`).
 
 Why there: hermes-ext has no docker and no NFS; the Orange Pi mounts the same NFS share as the dev host. A
 hermes-ext worker therefore runs a Pi leg entirely over ssh — NFS paths exist **on the Pi**, not on the worker:
@@ -68,7 +88,7 @@ for the rendered Kunark + Velious sweep (#102, `refactor/B854/RENDERED_SWEEP.md`
 
 ### The aarch64 SBC lanes (B1030, #350)
 
-The Orange Pi is **lane 1** of a four-lane table in `scripts/pi/env.sh`; `PI_LANE=N` picks the device the way
+The Orange Pi is **lane 1** of the lane table in `scripts/pi/env.sh` (lanes 1-3, B1030; 4, B1056; 5, B1060); `PI_LANE=N` picks the device the way
 `EQEMU_LANE` picks an eqemu VM, and a card or a script names its LANE, never an address. Each lane is
 single-tenant with its own lock ON the device (`pi_lock_take`/`pi_lock_release` are unchanged; `PI_LANE=2 bash
 scripts/pi/lock_selftest.sh` is the per-lane net). A `PI_HOST` alone still picks its lane, so every pre-B1030
@@ -83,6 +103,7 @@ than here.
 | 2 | `rock64` (RK3328) | aarch64 | Mali-450, Lima (system Mesa) | `ci-arm64/<sha>/bin/willeq` |
 | 3 | `rock4d` (RK3576) | aarch64 | Mali-G52, Panfrost (system Mesa) | `ci-arm64/<sha>/bin/willeq` |
 | 4 | `a7s` (Allwinner A733) | aarch64 | PowerVR BXM-4-64, IMG DDK 24.2 blob (`pvr_dri.so` behind IMG's Mesa-derived EGL/GBM) | `ci-arm64-bullseye/<sha>/bin/willeq`, built ON the board (B1056) |
+| 5 | `orangepizero` (H2+) | armv7l | Mali-400, Lima, on a **vkms** card (no display output) | `ci-arm/<sha>/bin/willeq-nollvm` (as lane 1) |
 
 Lanes 2 and 3 run ONE generic `-march=armv8-a` binary from **`scripts/build-arm64-noble.sh`**
 (`docker/Dockerfile.arm64-noble`, a noble arm64 sysroot; lane 3's Armbian resolute runs it because glibc is
@@ -132,6 +153,15 @@ is the ledger rig for every lane: on an aarch64 lane it defaults to `ci-arm64/by
 measurements a per-lane preset ruling needs); the client runs in its own cgroup and zones in live against the
 eqemu lane, so the `[memgpu]` row and the rendered-zone TSV row are both device figures. Evidence from the
 first runs: `review/B1030/README.md`.
+
+**Lane 5, the Orange Pi Zero** (B1060, #380; `docs/reference/orangepizero.md`) is lane 1's sibling: the same armhf
+`ci-arm/` publish and shipped Mesa prefix, the same preset and ceilings, on Armbian **trixie** (glibc 2.41; the noble
+build runs unmodified once the GL runtime packages are installed). The board has no HDMI and its device tree leaves
+the display engine and TV encoder `disabled`, so `card0` is Lima, render-only, and the client's DRM device (there is
+no surfaceless path on ARM) finds no connector. On lane 5 `pi_hdmi_force_on` loads the stock **vkms** module instead
+(a connected `Virtual-1`; Mesa's kmsro pairs it with the Lima render node) and `pi_hdmi_restore` unloads it, so
+`lane_smoke.sh` and `pi_rendered_zone_sweep.sh` run there unchanged. The scanout goes nowhere: frames are rendered
+by Lima and flipped on a virtual CRTC, so lane 5 measures memory and GPU cost, never a picture on a screen.
 
 **Not a lane: the ODROID XU4** (B1045, #365) is Will's interactive play-test box. It runs the same armhf
 `ci-arm/by-branch/fable` publish on Panfrost, and needed a self-built Panfrost module whose power-on path
@@ -229,6 +259,7 @@ longer downloads them: SourceForge returned HTTP 522 for ~3 h on 2026-10-01 and 
 | `build` (`build-headless`, B1038) | the same Release build with `EQT_GRAPHICS=OFF` into `build-headless/ref/<slug>`, then `ctest -LE hygiene` in the same job ("The headless build" below) | not yet measured on a runner; dev-u24 `-j4`: ~1,920 s cold (B1038) | not measured |
 | `gate` | `visual_gate` (T80/T291) over `build-gles2/ref/<slug>/bin/gles2_zone_benchmark` (B1012) | 363 s | 18 s |
 | | B813 (2026-09-20): the manifest names FIVE zones (qeynos2, gfaydark, befallen + iceclad + timorous); `gate` verifies all five (`--zones`, B903/B904 2026-09-29) | — | 40 s for all five in one job (measured back-to-back on a quiet hermes-ext: 10.6 s wall for three zones, 19.6 s wall for five; +9.0 s wall) |
+| | B929 (#247): `zone-budget-census`, the full 118-zone sweep + `zone_budget_census.py --check-budgets` ("The zone-content sweep" below) | not yet measured on a runner; hermes-ext: 4 m 46 s of zone time + benchmark build | 4 m 46 s of zone time (warm benchmark build) |
 
 (T502's own measurements on hermes-ext, when build and suite were still two
 jobs; the suite does the same work either way — only the two build trees are
@@ -382,7 +413,8 @@ that will never get an MR (an experiment you want CI on) is pushed without it.
 
 ### Docs-only pipelines run hygiene only (B1042, #362)
 
-`build-test`, `gate` and `client-ledger-live` (and `build-headless`, B1038)
+`build-test`, `gate`, `zone-budget-census` (B929) and `client-ledger-live`
+(and `build-headless`, B1038)
 carry `rules:` (the `.code_rules` anchor in `.gitlab-ci.yml`) that add the job
 only when **at least one changed path does not end in `.md`**. `hygiene` has no
 rules and always runs, so a pipeline whose diff is only `*.md` files — anywhere,
@@ -802,7 +834,16 @@ drivers can never render byte-identical frames:
 
 - **x86** (the CI `gate` job): llvmpipe, 16-bit depth (B971), goldens at
   `tests/goldens/<zone>_f<n>.png`, section `manifest["zones"]`. The CI
-  job passes no `--platform`; nothing about it changed.
+  job passes no `--platform`; nothing about it changed. The runners take
+  the x86 device fork's surfaceless-EGL path (no /dev/dri grant), so the
+  goldens are driver-stable. On a multi-GPU x86 box (lane 5, the
+  ThinkPad: a headless NVIDIA Quadro on card0, the Intel UHD 630 eDP
+  panel on card1) `--drm` card selection tries every `/dev/dri/card*` in
+  numeric order and skips a card that opens without a connected
+  connector and a CRTC, landing on the card that actually has a display
+  (B1054, #374); `WILLEQ_DRM_DEVICE=/dev/dri/cardN` is an explicit
+  single-path override whose failure is an error, never a silent
+  fallback.
 - **Pi** (by hand, never a CI job): Mali-400 under the Lima driver on the
   Orange Pi with the shipped LLVM-less Mesa prefix, goldens at
   `tests/goldens/pi/<zone>/f<n>.png`, section
@@ -875,6 +916,117 @@ cited in the notes column). The ctest leg (`zone_content_sweep_smoke`, label
 absent; CI's `build-test` job re-makes the symlinks and sets `WILLEQ_REQUIRE_ASSETS=1`,
 so a skip there is impossible. `--zones` names that are not in the list fail
 loudly (exit 3) instead of sweeping zero zones.
+
+**The sweep also asserts the budgets: the `zone-budget-census` gate-stage
+job** (B929, #247). The sweep's own "clean" row is load-cleanness plus the
+256 MB RssAnon ceiling; a zone that loads fine but exceeds a memory budget
+was invisible to CI (B929's growthplane: 28,687,788 B of
+`placeableObjectsBytes` against 25,165,824 — fixed in the loader by B936b,
+asserted here). The job first runs
+`scripts/ci/zone_census_pack_selfheal.sh` before the sweep: the runners read
+the shared NFS pack tree, and a STALE pack (B930/#248's soldunga v1
+signature) FATALs the benchmark's all-or-nothing texture load — the sweep
+would then die on an asset, never asserting that zone's budget. The
+runner cannot repair the NFS tree (read-only for it), so the script builds
+a LOCAL pack tree the sweep reads with `--eqe1-path`: every swept zone's
+three packs plus the loader's fixed pack list (re-read from
+`zone_bench_loader.cpp` each run — the sweep's mandatory set) is
+`verify_eqe1 --require-v3`-verified and hard-linked when clean, or
+rebuilt with `eqe1_builder` from the `.s3d` when STALE (the client FATAL's
+own named remedy); a mandatory pack that is missing or does not come back
+clean fails the job. Then the full
+118-zone sweep (4 m 46 s measured, refactor/B929/README.md; the benchmark
+is the per-ref tree's binary, passed with `--bench-bin`) and then
+`scripts/ci/zone_budget_census.py --check-budgets`, which fails on ANY zone
+over ANY budget: every estimate pair the `gate` job asserts
+(`visual_gate.py`'s `MEMORY_BUDGET_PAIRS` minus the two also-baselined,
+against the budgets the benchmark read out of the shipped orangepi preset)
+and every `memoryLedgerBudgets` category. Blocking, no retries (the figures
+are load-invariant, unlike the gate's CPU-p95). The ctest legs of the same
+net: `test_zone_budget_census` (pure python, every pipeline),
+`zone_budget_census_smoke` (the 3-zone smoke, label `slow`) and
+`test_zone_census_pack_selfheal` (the self-heal's exit-code contract on stub
+verify/builder binaries, pure bash+python).
+
+## The walked zone-line crossing (B1068, issue #388)
+
+A live lane scenario, not a pipeline stage: it needs an eqemu lane and a
+display. `scripts/scenario.sh zone_line_walk` seeds Testchar in qeynos 20
+units short of the qeynos -> qeynos2 gate's BSP zone-line region
+(`scripts/scenario_configs/zone_line_walk_seed.sql`), starts a private Xvfb,
+runs the client `--egl-x11`, and its sidecar holds the forward key with
+xdotool -- the renderer's own keyboard movement, the path a player walks.
+`--scenario` runs headless (no renderer), so this lane runs the ordinary
+windowed client and `scenario.sh` reads the verdict from its log with the same
+exit codes: 0 once the client is in qeynos2, 3 if qeynos never finished
+loading, 2 if it never zoned within `--timeout`. The post-check
+(`zone_line_walk.post.sh`) requires the client's `Zone line triggered!` line
+and the source zone log's `zoning to [qeynos2]` line for the character
+(eqemu's `Client::Handle_OP_ZoneChange`).
+
+```bash
+EQEMU_LANE=1 bash scripts/scenario.sh zone_line_walk --timeout 180 --unit B1068
+```
+
+Like every `scenario.sh` run it brings the lane's server up and stops its
+container for the restore -- never point it at a stack someone is playing on.
+The offline half is `test_zone_line_crossing` (every pipeline): the 0x29
+body-string decode on the zone files' own DRNTP strings, the swept segment
+test, and BSP-over-curated precedence. `scripts/tools/wld_zonelines.py
+--table <eq_dir> data/zone_lines` prints the per-zone BSP-vs-curated census
+(review/B1068/README.md).
+
+## The keyboard step walk (B1067, #387)
+
+A live lane scenario, not a pipeline stage: it needs an eqemu lane, an X
+display and an x86 GLES2 build (`build-gles2/bin/willeq`,
+`scripts/build-gles2-x86.sh`). Keyboard movement is the only route through the
+renderer's region-triangle collision (`PlayerCameraComponent::
+resolveIrrlichtCollision`); `/move`, `--script` and `--scenario` resolve on the
+game thread against the zone map, so none of them can see a step defect there.
+
+```bash
+EQEMU_LANE=1 bash scripts/eqemu/step_walk.sh --leg both    # a VM lane: both legs
+EQEMU_HOST=local bash scripts/eqemu/step_walk.sh --leg rise   # the local lane: one leg per run
+```
+
+It seeds Testchar in qeynos2 beside the street curb at renderer Y 391.75 (a
+1.0 rise, coordinates and the map evidence in `review/B1067/README.md`), runs
+the client on Xvfb with `--egl-x11` and `--pose-log`, holds W with `xdotool`
+after the loader's `Game ready!` line, and `scripts/eqemu/step_walk_verdict.py`
+decides from the pose rows alone: PASS when the player's Y got at least 2 units
+past the edge and its Z changed by at least 0.75 of the rise in the right
+direction. Exit 0 every leg PASS, 1 a leg FAILED, 2 no verdict, 64 lock held,
+65 lane problem. **On the local lane it never stops the world or bounces a
+zone** (the XU4 play rig logs into that stack): the pose is put back with a
+plain `UPDATE` after logout. On a VM lane the seed is written with the world
+down (a zone hands back its LINKDEAD copy of a character's pose otherwise) and
+the standard snapshot restore runs at the end. The unit net for the same
+decision is `test_bsp_ground_step`.
+
+### Mouse press ownership: `scripts/eqemu/press_ownership_check.sh` (B1066)
+
+A mouse press belongs to the static UI or the camera, never both
+(`include/client/graphics/press_ownership.h`, #386). The rig drives REAL X
+button events with `xdotool` into an x86 GLES2 client on Xvfb (`--egl-x11`,
+`--pose-log`) on the local lane as Testbuddy, never touching the stack or the
+database: it opens the inventory, right-drags 20 px on an item (the item
+display opens), left-drags on the window's background, right-drags on the 3D
+view, and right-drags from the view into the window.
+`scripts/eqemu/press_ownership_verdict.py` reads the heading and the camera
+pitch around each gesture from the pose rows: the two UI gestures must leave
+both unchanged, the view drags must turn the camera (including the part after
+the pointer entered the window). Exit 0 PASS, 1 FAIL, 2 no verdict.
+
+```bash
+EQEMU_HOST=local bash scripts/eqemu/press_ownership_check.sh --bin build/bin/willeq --explore   # find the pixels
+bash scripts/eqemu/press_ownership_check.sh --bin build/bin/willeq --dismiss 754,460 \
+    --item 280,456 --window-bg 300,250 --view 650,80 --cross 520,300           # 800x600 window
+```
+
+Each run uses a fresh `WILLEQ_CACHE_DIR` (the per-character UI ini would
+otherwise remember an open inventory and the rig's `i` would close it). The
+unit net is `test_press_ownership`; the runs are in `review/B1066/`.
 
 ## `review/` citations
 

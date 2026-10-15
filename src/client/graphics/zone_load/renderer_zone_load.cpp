@@ -595,6 +595,11 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
 
             ZoneMeshBuilder builder(ctx_.smgr, ctx_.driver, ctx_.device->getFileSystem());
             builder.setUploadCategory("zone_region");  // P13
+            // B976 (#294): region geometry takes the depth tie-break (the
+            // top-facing region wins a depth tie). Inert on fixed-function
+            // (colored) buffers, effective on the zone shader's region
+            // programs; object/door builders deliberately do NOT set it.
+            builder.setZoneGeometryDepthTie(true);
             if (ctx_.constrainedTextureCache)
                 builder.setConstrainedTextureCache(ctx_.constrainedTextureCache);
             if (ctx_.zoneShader && ctx_.zoneShader->isAvailable()) {

@@ -1688,6 +1688,18 @@ Pi byte saving is "not achieved on the current rig, and not claimed."
 structurally correct and a future Mesa/Lima that exposes a 16-bit depth
 window config picks it up with no further code change.
 
+**Addendum 2026-10-14 (B1064, #384): the target outline was a stencil user
+nobody counted, and it no longer is.** B971's premise -- "/portal is the
+orangepi preset's only stencil user" -- missed `drawTargetOutline()`, a
+two-pass stencil rim (ref 128); on the stencil-less surface its second pass
+painted the whole 1.10-scaled model (Will's XU4 screenshot,
+`review/B1064/xu4_dionna_qeynos_2026-10-14.png`). The outline is now an
+inverted hull (one draw of the scaled mesh, front faces culled, depth
+LESSEQUAL, no depth write; `include/client/graphics/overlays/target_outline_pass.h`)
+and touches no stencil state on any surface, so **B971's stencil-off surface
+stands and is correct for the outline**; the preset does not get S8 back.
+Evidence: `refactor/B1064/README.md`.
+
 ## 2026-10-05 — the audio ledger is measured on the Pi; the budget is held at
 32 MiB (Will; B977, #295)
 
@@ -2027,3 +2039,30 @@ scope". Ruled:
 B1043 (PROVE) reached a running headless `gles2_zone_benchmark` on qeynos2;
 `docs/macos.md` carries the per-piece status and the recipe, the FIX card the
 rest (window + input, the remaining GLES2 targets, a ledger backend).
+
+## 2026-10-14 — B976: zone depth ties resolve to the top-facing region (Will; #294)
+
+B969/B976 measured the timorous_f2 gate pose: the floor there is TWO stacked
+real floor regions — a +Y `sand3` top over a −Y `w1` underlayer — at a
+sub-quantum depth tie, so the depth test's winner depends on the surface
+format and the driver's compare (x86 D24S8 → +Y, x86 D16 → per-row z-fight,
+Pi Lima depth=24 → −Y). Will RULED option 1, a client-side depth bias:
+
+**When two zone regions tie in depth at a pixel, the region whose face normal
+points UP (+Y in Irrlicht space) wins, on every platform.** Implemented as a
+per-vertex clip-space depth offset of 2 D16 cells in the zone REGION vertex
+programs, gated by a per-material flag so nothing outside zone-region
+geometry is ever touched (`include/client/graphics/zone_depth_tie_break.h`,
+`tests/test_zone_depth_tie_break.cpp`; `refactor/B976/README.md` "Fix").
+Draws, state changes and poly counts are identical before/after on all five
+gate zones.
+
+The fix's measurement also resolved the README's open question — the double
+floor is NOT timorous-specific: the other four gate zones carry the same
+−Y-underlayer/ +Y-top pattern on flat ground, and 100% of every changed
+pixel is a clean −Y→+Y normal flip (debug5 mechanism check). The bless
+scope is therefore the floor pixels of ALL FIVE zones, on BOTH platforms,
+not just timorous_f1/f2 (stated here; the MR stays DRAFT until Will blesses).
+The Pi leg of the fix (lane 1, same pose, debug5 + debug4 lit floor) is a
+separate card after the bless; the bias is in NDC-z and argues
+platform-independent, but Lima has not re-measured it.

@@ -741,24 +741,23 @@ void eqt::bridge::BridgeComponent::onHotbarActivateIntent(const eqt::events::Hot
 	switch (i.type) {
 	case eqt::HotbarSlotType::Spell: { // Spell
 		if (ctx_.spell_manager) {
-			for (uint8_t gem = 0; gem < EQT::VISIBLE_SPELL_GEM_COUNT; gem++) {  // T483: offered gems only
-				if (ctx_.spell_manager->getMemorizedSpell(gem) == i.id) {
-					uint16_t targetId = ctx_.combat_manager ? ctx_.combat_manager->GetTargetId() : 0;
-					EQ::CastResult result = ctx_.spell_manager->beginCastFromGem(gem, targetId);
-					if (result == EQ::CastResult::Success) {
-						const EQ::SpellData* spell = ctx_.spell_manager->getSpell(i.id);
-						if (spell) ctx_.out.System(fmt::format("Casting {}", spell->name));
-					} else if (std::string refusal = EQ::castRefusalMessage(ctx_, result); !refusal.empty()) {
-						// T253: third refusal site, same table/renderer as
-						// CastSpellIntent above and EqActionHandler::
-						// beginCastFromGem(). Was three literals (mana /
-						// cooldown / already casting) and silence for
-						// every other refusal.
-						ctx_.out.System(refusal);
-					} else if (result == EQ::CastResult::SpellNotReady) {
-						ctx_.out.System("Spell not ready");
-					}
-					break;
+			const int resolved = ctx_.hotbar_model ? ctx_.hotbar_model->findSpellGem(i.id) : -1;
+			if (resolved >= 0) {
+				const auto gem = static_cast<uint8_t>(resolved);
+				uint16_t targetId = ctx_.combat_manager ? ctx_.combat_manager->GetTargetId() : 0;
+				EQ::CastResult result = ctx_.spell_manager->beginCastFromGem(gem, targetId);
+				if (result == EQ::CastResult::Success) {
+					const EQ::SpellData* spell = ctx_.spell_manager->getSpell(i.id);
+					if (spell) ctx_.out.System(fmt::format("Casting {}", spell->name));
+				} else if (std::string refusal = EQ::castRefusalMessage(ctx_, result); !refusal.empty()) {
+					// T253: third refusal site, same table/renderer as
+					// CastSpellIntent above and EqActionHandler::
+					// beginCastFromGem(). Was three literals (mana /
+					// cooldown / already casting) and silence for
+					// every other refusal.
+					ctx_.out.System(refusal);
+				} else if (result == EQ::CastResult::SpellNotReady) {
+					ctx_.out.System("Spell not ready");
 				}
 			}
 		}
@@ -797,6 +796,14 @@ void eqt::bridge::BridgeComponent::onHotbarActivateIntent(const eqt::events::Hot
 	case eqt::HotbarSlotType::Empty:
 		break;
 	}
+}
+
+// B1025-H2: the hotbar window's page buttons. The page lives in HotbarModel
+// (the one source of truth); setCurrentPage() rejects out-of-range values and
+// republishes the whole page via HotbarSlotAssigned, so the panel state
+// follows on its own.
+void eqt::bridge::BridgeComponent::onHotbarPageChangedIntent(const eqt::events::HotbarPageChangedIntent& i) {
+	if (ctx_.hotbar_model) ctx_.hotbar_model->setCurrentPage(i.page);
 }
 
 // Tradeskill intents (D20b1)
@@ -1123,6 +1130,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::MusicVolumeChangeIntent& i) { onMusicVolumeChangeIntent(i); },
 			[this](const eqt::events::EffectsVolumeChangeIntent& i) { onEffectsVolumeChangeIntent(i); },
 			[this](const eqt::events::HotbarActivateIntent& i) { onHotbarActivateIntent(i); },
+			[this](const eqt::events::HotbarPageChangedIntent& i) { onHotbarPageChangedIntent(i); },
 			[this](const eqt::events::TradeskillCombineIntent& i) { onTradeskillCombineIntent(i); },
 			[this](const eqt::events::TradeskillCloseIntent& i) { onTradeskillCloseIntent(i); },
 			[this](const eqt::events::RecipeDetailsRequestIntent& i) { onRecipeDetailsRequestIntent(i); },
@@ -1157,4 +1165,3 @@ void eqt::bridge::BridgeComponent::ProcessBridgeEvents() {
 		ctx_.bridge->applyEvent(event);
 	}
 }
-

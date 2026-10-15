@@ -11,6 +11,7 @@
   - `zone_textures/` - Zone texture listings by expansion
   - `orangepione_noble.txt` - Orange Pi hardware diagnostics
   - `radxa_a7s.md` - Lane 4, the Radxa Cubie A7S (B1056): Allwinner A733 + PowerVR BXM-4-64 on the IMG DDK blob, Debian bullseye, sshfs share, on-device build (`scripts/sbc/a7s/`)
+  - `orangepizero.md` - The Orange Pi Zero, SBC lane 5 (B1060): device facts, the vkms display path, ledger rows, traps
   - `odroid_xu4.md` - The ODROID XU4 play-test box (B1045): device facts, the 24 MHz Panfrost clock-mux defect, its measurement chain and fix (`scripts/sbc/xu4/`)
   - `lima_cost_sheet.md` - What the Pi's Lima driver charges for (uploads, draws, jobs, memory), each fact with its Mesa function and measuring card (B1006). Read before any Pi draw-path or GPU-memory change.
 
@@ -22,6 +23,7 @@
   - `voodoo1_mode_prompt.md` - Retro rendering mode constraints
 
 - **`docs/macos.md`** - macOS headless dev platform (B1039): brew deps, configure/ctest recipe, the NAS mount, what is unsupported
+- **`docs/thinkpad.md`** - The ThinkPad (B1055): eqemu lane 5 and the x86 hardware-GL box (Intel iris for willeq `--drm`, NVIDIA + headless Xorg for the Wine oracle), what was set up and the rules
 - **`docs/plans/`** - Historical feature implementation plans and investigations
   - Implementation plans for detail system, trees, particles, weather, environment, surface maps
   - Bug investigations (spawn544, zone ClientUpdate)

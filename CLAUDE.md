@@ -161,7 +161,7 @@ specifically.
 ## Build Commands
 
 **`-j$(nproc)` does not expand reliably in a Bash tool command. Pass a hardcoded
-value, e.g. `cmake --build build -j24`** (hermes-ext workers: 4 GiB cgroup, so `-j3`, B1046). From a script
+value, e.g. `cmake --build build -j24`** (hermes-ext workers: 4 GiB cgroup, `-j3`, B1046). From a script
 (e.g. `scripts/build-arm-noble.sh`), `$(nproc)` works fine.
 
 **Desktop-GL Irrlicht support has been removed (P30,
@@ -453,10 +453,10 @@ generator arithmetic defined.
 
 ## The eqemu lane
 
-**eqemu runs on dedicated VMs, not on this machine: FOUR lanes** (B1008,
+**eqemu runs on dedicated hosts, not here: 5 lanes** (B1008,
 2026-10-08; `docs/decisions.md`). `scripts/eqemu/env.sh` is the one place that
-knows: `EQEMU_LANE=1..4` picks the eqemu VM and its paired official-client
-oracle VM (lane 1 = `172.16.200.99`, the default), every docker/compose/`.env`
+knows: `EQEMU_LANE=1..5` picks the eqemu host and its paired official-client
+oracle host (lane 1 = `172.16.200.99`, the default; lane 5 = ThinkPad, B1055), every docker/compose/`.env`
 access goes through `eq_remote` (ssh to `EQEMU_SSH`), and `AKK_DIR` is the
 akk-stack path ON that host. `EQEMU_HOST=local` drives a stack on this machine.
 A card names its LANE, never an address. Each lane's exclusive lock lives on its
@@ -659,8 +659,9 @@ open-source driver.
   textures (real 6:1 savings via `GL_ETC1_RGB8_OES`), and the shared path for
   the planned Android port. See `src/client/graphics/CLAUDE.md`.
 - **Display**: DRM/KMS direct rendering without X11 (`--drm`).
-- **Four single-tenant SBC lanes** (B1030/B1056, `docs/ci.md` "The aarch64 SBC lanes"): `PI_LANE=1` Orange Pi,
-  `2` Rock64, `3` ROCK 4D, `4` Radxa A7S (PowerVR; table in `scripts/pi/env.sh`; a card names its lane, never an address).
+- **Five single-tenant SBC lanes** (B1030/B1056/B1060, `docs/ci.md` "The aarch64 SBC lanes"): `PI_LANE=1` Orange Pi,
+`2` Rock64, `3` ROCK 4D, `4` Radxa A7S (PowerVR), `5` Orange Pi Zero (B1060, vkms only; table in
+`scripts/pi/env.sh`; a card names its lane, never an address).
   `pi_lock_take <owner>` before any run, `pi_lock_release <owner>` after (on the device; `lock_selftest.sh`).
 - **GL driver: the shipped LLVM-less Mesa prefix** (Will 2026-09-30, B935; `docs/ci.md` "The shipped Mesa
   prefix"): Pi rigs run `ci-arm/<sha>/bin/willeq-nollvm` (absolute DT_RPATH; `$ORIGIN` is dropped under setcap)

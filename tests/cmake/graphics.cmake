@@ -36,6 +36,7 @@ IF(EQT_GRAPHICS)
         # T500: model_loading_search.cpp reads eqt::memory::stats() for the
         # [modelmem] split line, so the ledger TU comes with it.
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/mesh_building.cpp
@@ -44,7 +45,6 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading_animation.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading_preload.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
-        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry_atlased.cpp
         # T490: BspRegion/BspTree PVS methods moved into zone_bsp.cpp (RLE store).
         ${CMAKE_SOURCE_DIR}/src/client/zone_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
@@ -147,7 +147,6 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_characters.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_skinning.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
-        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry_atlased.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/dds_decoder.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/race_codes.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/race_model_loader.cpp
@@ -159,6 +158,7 @@ IF(EQT_GRAPHICS)
         # T500: model_loading_search.cpp reads eqt::memory::stats() for the
         # [modelmem] split line, so the ledger TU comes with it.
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/mesh_building.cpp
@@ -253,6 +253,10 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         test_x11_numpad_e2e.cpp
         ${CMAKE_SOURCE_DIR}/src/client/input/hotkey_manager.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+        # B961: createDeviceEx(EDT_OGLES2) pulls CIrrDeviceFB.o in, whose scanout
+        # publish references eqt::memory::publishScanoutTally -- compile the core
+        # census TU in, the standalone-tool pattern gles2_zone_benchmark uses.
+        ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_x11_numpad_e2e PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_x11_numpad_e2e
@@ -367,4 +371,21 @@ GTEST_DISCOVER_TESTS(test_player_light_lut DISCOVERY_TIMEOUT 120)
 # reaching 40,000 units (gles2_player_light_probe --assert).
 IF(TARGET gles2_player_light_probe)
     ADD_TEST(NAME PlayerLightProbeMonotonic COMMAND gles2_player_light_probe --assert)
+ENDIF()
+
+# B976 (#294): the zone region depth tie-break (the top-facing region wins a
+# depth tie). Header-only decision + a source-scan of the region vertex
+# programs (the uniform declared in exactly the two region programs, nowhere
+# else) and of the header's GLSL macro (the +z/-Y form, not the +w/+-Y first
+# draft). No GPU, no build-tree artifact.
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(test_zone_depth_tie_break
+        test_zone_depth_tie_break.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_zone_depth_tie_break PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    TARGET_COMPILE_DEFINITIONS(test_zone_depth_tie_break PRIVATE
+        B976_ZONE_SHADER_SOURCES="${CMAKE_SOURCE_DIR}/src/client/graphics/zone_shader_sources_gles2.h"
+        B976_DEPTH_TIE_HEADER="${CMAKE_SOURCE_DIR}/include/client/graphics/zone_depth_tie_break.h")
+    TARGET_LINK_LIBRARIES(test_zone_depth_tie_break GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_zone_depth_tie_break DISCOVERY_TIMEOUT 120)
 ENDIF()

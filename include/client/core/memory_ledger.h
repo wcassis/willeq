@@ -326,6 +326,7 @@ struct Snapshot {
     uint64_t ledgerTotalBytes = 0;           // sum of live over every category
     uint64_t ledgerPeakBytes = 0;            // high-water mark of the total
     uint64_t allocCount = 0;                 // total charges since start
+    uint64_t renderedFrames = 0;             // B924: processFrame() calls since start
     uint64_t rssAnonBytes = 0;               // /proc/self/status RssAnon
     uint64_t rssFileBytes = 0;               // /proc/self/status RssFile
     // T500 (Will's addendum, 2026-09-17): file-backed and shared pages have
@@ -513,6 +514,26 @@ bool pollSteadyState();
 
 // Reset every category's peak (and the total peak) to its current live value.
 void resetPeaks();
+
+// B924 (#243): called once per rendered frame from the render thread. Bumps
+// the frame counter the [memledger] line prints as `frames=`, so an idle
+// point can be correlated with frames rendered, and -- when the
+// WILLEQ_FPS_CAP=<fps> environment is set -- paces the render loop (a sleep
+// to the target interval) so a hold run can be compared capped vs uncapped.
+// The cap is a measurement device for B924's attribution, off by default and
+// never used by any gate. Defined in src/client/core/memory_ledger_b924.cpp
+// (memory_ledger.cpp is at its line ceiling).
+void noteRenderedFrame();
+
+// B924 (#243): the rendered-frame count so far (processFrame() calls).
+uint64_t renderedFrames();
+
+// B924 (#243): when the WILLEQ_IDLE_MEMMAP=1 environment is set,
+// pollSteadyState() also prints the full [memmap] smaps census at every
+// idle_<s> point (not just at startup/ready), so a hold run shows which
+// mapping owner grows over minutes of idle rendering. A measurement switch
+// off by default; it never changes what a gate reads.
+bool idleMemmapEnabled();
 
 // ---------------------------------------------------------------------------
 // B841 (board, 2026-09-18): the arena-retention census. T496/T500 measured

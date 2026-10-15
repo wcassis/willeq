@@ -15,6 +15,8 @@
 //   - the item display's two lifetimes (rows 24-26): a RIGHT press shows it
 //     only while the button is held; ALT+LEFT keeps it until Escape.
 //   - the QuantityWnd box's keyboard (row 5), the friends window's gate shape.
+//   - B1066 (#386): who owns a mouse press, the UI or the camera
+//     (press_ownership.h), settled once per frame from the hit test.
 
 #include "client/graphics/frame/frame_component.h"
 #include "client/graphics/irrlicht_renderer.h"
@@ -25,6 +27,7 @@
 #include "client/graphics/ui/quantity_layout.h"
 #include "client/graphics/ui/static_ui_input.h"
 #include "client/graphics/ui/trade_panel.h"   // B896: classifyHeldItemWorldClick
+#include "client/graphics/ui/tip_window.h"    // B1066: hitTestTipWindow
 #include "client/graphics/overlays/overlays_component.h"
 #include "client/events/renderer_intents.h"
 #include "client/bridge/game_state_bridge.h"
@@ -49,8 +52,26 @@ bool FrameComponent::pointOverSelfConsumingWindow(int x, int y) const {
            uiLayout_.xpBar.isPointInside(p);
 }
 
+bool FrameComponent::pointerOwnedByUI(bool uiTook, int x, int y) const {
+    // A hidden UI (F10 / /hideui) owns nothing: its entry points still
+    // hit-test, but there is no window on screen to press.
+    if (allUIHidden_) return false;
+    if (uiTook || pointOverSelfConsumingWindow(x, y)) return true;
+    // The two windows whose entry points report nothing back to
+    // renderStaticUI(): the trade / give window and the tip window.
+    if (hitTestTradeWindow(uiLayout_, tradeState_, x, y).part != TradePart::None) return true;
+    return hitTestTipWindow(uiLayout_, tipState_, x, y) != TipHit::None;
+}
+
 void FrameComponent::processCursorGestureFrame(bool uiTook) {
     if (!staticUIInput_ || !ctx_.eventReceiver) return;
+
+    // --- B1066 (#386): press ownership ---
+    // A press that landed this frame is settled HERE, by the same hover hit
+    // test every entry point just ran: on a window it is the UI's until its
+    // release (mouse-look ignores it), on the 3D view it is the camera's.
+    ctx_.eventReceiver->resolvePendingPresses(pointerOwnedByUI(
+        uiTook, ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY()));
 
     // --- rows 24-26: the item display's lifetime ---
     switch (staticUIInput_->takeDisplayRequest()) {
@@ -64,7 +85,9 @@ void FrameComponent::processCursorGestureFrame(bool uiTook) {
         default:
             break;
     }
-    updateHeldItemDisplay(itemDisplayState_, ctx_.eventReceiver->isRightButtonDown());
+    // B1066: the PHYSICAL hold -- the press that opened the display is the
+    // UI's, so the camera-owned look view never sees it.
+    updateHeldItemDisplay(itemDisplayState_, ctx_.eventReceiver->isRightButtonHeld());
 
     // --- rows 31-33: a motionless world click with an item held ---
     const bool dialogUp = staticUIInput_->confirmationDialog().isOpen ||

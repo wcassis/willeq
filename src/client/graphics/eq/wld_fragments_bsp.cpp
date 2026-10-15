@@ -290,6 +290,24 @@ void WldLoader::parseFragment22(const char* fragBuffer, uint32_t fragLength, uin
     }
 }
 
+std::string WldLoader::regionTypeStringFromBody(const char* p, size_t remaining) {
+    // int32 size, then `size` XOR-encoded bytes (NUL padded).
+    if (!p || remaining < 4) {
+        return std::string();
+    }
+    int32_t size = read_val<int32_t>(p);
+    if (size <= 0 || static_cast<size_t>(size) > remaining - 4) {
+        return std::string();
+    }
+    std::string s(p + 4, static_cast<size_t>(size));
+    decodeStringHash(s.data(), s.size());
+    const size_t nul = s.find('\0');
+    if (nul != std::string::npos) {
+        s.resize(nul);
+    }
+    return s;
+}
+
 void WldLoader::parseFragment29(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                                  int32_t nameRef, const char* hash) {
     // Fragment 0x29 - Region Type
@@ -311,10 +329,19 @@ void WldLoader::parseFragment29(const char* fragBuffer, uint32_t fragLength, uin
         regionIndices.push_back(regionIdx);
     }
 
-    // Get the region type string from the fragment NAME (not body)
-    // nameRef is a negative offset into the string hash table
-    std::string regionTypeString;
-    if (nameRef < 0 && hash) {
+    // B1068: the region-type string is the XOR-encoded string in the
+    // fragment BODY (after the region list: int32 size + bytes), falling back
+    // to the fragment NAME only when the body carries none -- eqsage's
+    // BspRegionType order. The 1999-era zone files name every 0x29
+    // `Z####_ZONE` and put the meaning in the body
+    // (`DRNTP00002-00155-00007999999999___000000000000`, `WTN__...`);
+    // reading the name alone typed every one of them as a zone line with the
+    // fragment's SEQUENCE number as its zone point (qeynos: 144 such
+    // fragments, 6 of them real zone lines). scripts/tools/wld_zonelines.py
+    // prints both strings per fragment.
+    std::string regionTypeString = regionTypeStringFromBody(
+        ptr, static_cast<size_t>((fragBuffer + fragLength) - ptr));
+    if (regionTypeString.empty() && nameRef < 0 && hash) {
         regionTypeString = std::string(hash + (-nameRef));
     }
 
@@ -380,8 +407,23 @@ void WldLoader::parseFragment29(const char* fragBuffer, uint32_t fragLength, uin
     for (int32_t regionIdx : regionIndices) {
         if (regionIdx >= 0 && static_cast<size_t>(regionIdx) < bspTree_->regions.size()) {
             auto& region = bspTree_->regions[regionIdx];
-            region->regionTypes = types;
-            region->zoneLineInfo = zoneLineInfo;
+            // B1068: a region can be listed by more than one 0x29 (qeynos
+            // regions 4852/4853: WTNTP...022 -> qcat AND a later WTN__ water
+            // flag). Flags ACCUMULATE; overwriting dropped the zone line.
+            // A region's default is the single Normal 0x22 type.
+            if (region->regionTypes.size() == 1 && region->regionTypes[0] == RegionType::Normal) {
+                region->regionTypes.clear();
+            }
+            for (RegionType t : types) {
+                if (t == RegionType::Normal && !region->regionTypes.empty()) continue;
+                if (std::find(region->regionTypes.begin(), region->regionTypes.end(), t) ==
+                    region->regionTypes.end()) {
+                    region->regionTypes.push_back(t);
+                }
+            }
+            if (zoneLineInfo) {
+                region->zoneLineInfo = zoneLineInfo;
+            }
 
             // Debug output for zone lines
             for (auto type : types) {

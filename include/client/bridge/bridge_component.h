@@ -62,6 +62,7 @@
 #include "client/eq_enums.h"   // T341: LoadingPhase, this component's state now
 #include "client/pet_constants.h"
 #include "client/hotbar/hotbar_slot_type.h"
+#include "client/hotbar/hotbar_persistence.h"
 #include "client/zone_load_snapshot.h"
 #include "client/state/social_lists_io.h"  // B897: SocialListsSync
 // G02: the intent handlers below take one alternative of RendererIntent each,
@@ -211,8 +212,8 @@ public:
 	// ---- config paths and persistence ----
 	void SetRegionMapsPath(const std::string& path) { m_region_maps_path = path; }
 	void SetConfigPath(const std::string& path) { m_config_path = path; }
-	void SaveHotbarConfig();  // Save hotbar assignments to config file
-	void LoadHotbarConfig();  // Load hotbar assignments from config file
+	void SaveHotbarConfig();  // Save to per-character cache file
+	eqt::HotbarLoadResult LoadHotbarConfig();  // Load per-character file; import legacy config once
 	void SaveInspectMessage();  // T171: persist the inspect message
 	void LoadInspectMessage();  // T171: restore it at startup
 
@@ -401,6 +402,8 @@ private:
 	void onMusicVolumeChangeIntent(const eqt::events::MusicVolumeChangeIntent& i);
 	void onEffectsVolumeChangeIntent(const eqt::events::EffectsVolumeChangeIntent& i);
 	void onHotbarActivateIntent(const eqt::events::HotbarActivateIntent& i);
+	// B1025-H2: the hotbar window's page buttons (HotbarPageChangedIntent).
+	void onHotbarPageChangedIntent(const eqt::events::HotbarPageChangedIntent& i);
 	void onTradeskillCombineIntent(const eqt::events::TradeskillCombineIntent& i);
 	void onTradeskillCloseIntent(const eqt::events::TradeskillCloseIntent& i);
 	void onRecipeDetailsRequestIntent(const eqt::events::RecipeDetailsRequestIntent& i);
@@ -482,7 +485,7 @@ private:
 #endif
 
 	std::string m_region_maps_path = "data/region_maps";
-	std::string m_config_path;  // Path to per-character config file
+	std::string m_config_path;  // Client config path (legacy hotbar import and inspect message)
 
 	// T170/T171: what we send as our inspect message. eqemu never tells a
 	// Titanium client its own stored message, so this client keeps its own --

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "client/audio/audio_device_rate.h"  // B1069
 #include "client/state/game_state.h"
 #include "client/mode/game_mode.h"
 #include "client/mode/graphical_mode.h"
@@ -86,6 +87,18 @@ struct ApplicationConfig {
     std::string audioSoundfont;
     std::string audioVendorMusic = "gl.xmi";
     bool audioUse3D = true;  // K15 (B037): "audio.use_3d"
+    // B1069 (#389): "audio.device_sample_rate" / --audio-rate. The playback
+    // DEVICE rate (the mixer stays at 22050); 0 = the backend's native rate.
+    // main.cpp publishes it to EQT::Audio::setConfiguredDeviceSampleRate()
+    // (client/audio/audio_device_rate.h, which says why it is not a setter).
+    uint32_t audioDeviceSampleRate = EQT::Audio::kDefaultDeviceSampleRate;
+    // Set by --audio-rate: the config file (loaded AFTER the arguments) then
+    // leaves audioDeviceSampleRate alone, so the CLI mirror wins.
+    bool audioDeviceSampleRateFromCli = false;
+    // B1069: "audio.device_format" / --audio-format (s16 default; f32, s24,
+    // s32, native). Published by main.cpp like the rate; the CLI wins.
+    EQT::Audio::DeviceFormat audioDeviceFormat = EQT::Audio::kDefaultDeviceFormat;
+    bool audioDeviceFormatFromCli = false;
 
     // RDP settings (guarded by WITH_RDP at usage sites)
     bool rdpEnabled = false;
@@ -581,7 +594,7 @@ private:
     // for no effect. The publish side exists: HotbarModel's slot writers
     // call publishSlot() (HotbarSlotAssigned on the bridge) and Application
     // calls publishAllSlots() at zone-in; the only production writer is
-    // loadFromJson() at startup -- no command, intent or UI control assigns
+    // loadFromJson() from per-character storage at zone-in -- no command, intent or UI control assigns
     // a slot (B1025, #345). There is nothing left for a callback to carry.
     void setupRDPAudio(void* rdpServer);  // D20g: Wire RDP audio streaming
     // U07b: publishHotbarSnapshot removed — HotbarModel::publishAllSlots() handles this

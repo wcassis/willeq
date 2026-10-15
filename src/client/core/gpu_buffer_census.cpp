@@ -27,6 +27,12 @@ std::atomic<uint64_t> g_logicalDepthStencil{0};
 std::atomic<bool> g_logicalPublished{false};
 std::atomic<int> g_software{-1};
 
+// B961 (GitLab #279): the device's scanout-tally pair, published by the
+// device (both forks) on every change (buffer locked / freed) and reset to
+// {0, 0} at teardown.
+std::atomic<uint32_t> g_scanoutBufs{0};
+std::atomic<uint64_t> g_scanoutBytes{0};
+
 // Parse "<number> [KiB|MiB|GiB|kB]" after a key's colon.
 uint64_t parseScaled(const char* p) {
     while (*p == ' ' || *p == '\t') ++p;
@@ -144,6 +150,27 @@ void publishGpuLogicalTally(uint64_t textureBytes, uint64_t bufferBytes, uint64_
     g_logicalPublished.store(true, std::memory_order_release);
 }
 
+// B961 (GitLab #279): the publish side of the scanout tally. The device
+// (both forks) calls this STRONG core function on every tally change (a
+// buffer's first lock, its free) and with {0, 0} at teardown. A strong
+// device->core reference is the only symbol direction that binds across the
+// two static archives (libwilleq_core.a ... libIrrlicht.a): a weak DEFINITION
+// of a reader in this TU was measured to win over the device's strong one in
+// the willeq binary, and a weak REFERENCE stayed weak-undefined
+// (include/client/core/gpu_buffer_census.h, "WHY NOT A WEAK SYMBOL"). Same
+// shape as publishGpuLogicalTally / publishGpuSoftwareRasteriser.
+void publishScanoutTally(uint32_t bufs, uint64_t bytes) {
+    g_scanoutBufs.store(bufs, std::memory_order_relaxed);
+    g_scanoutBytes.store(bytes, std::memory_order_relaxed);
+}
+
+ScanoutTallyRead readScanoutTally() {
+    ScanoutTallyRead r;
+    r.bufs = g_scanoutBufs.load(std::memory_order_relaxed);
+    r.bytes = g_scanoutBytes.load(std::memory_order_relaxed);
+    return r;
+}
+
 void publishGpuSoftwareRasteriser(bool software) {
     g_software.store(software ? 1 : 0, std::memory_order_relaxed);
 }
@@ -253,7 +280,7 @@ MemcgStat parseMemcgStat(const std::string& text) {
         const std::string key = line.substr(0, sp);
         const uint64_t v = strtoull(line.c_str() + sp + 1, nullptr, 10);
         if (key == "shmem") { m.shmemBytes = v; m.ok = true; }
-        else if (key == "kernel") m.kernelBytes = v;
+        else if (key == "kernel") { m.kernelBytes = v; m.kernelSeen = true; }
         else if (key == "anon") m.anonBytes = v;
     }
     return m;
@@ -348,6 +375,11 @@ GpuBufferCensus readGpuBufferCensus() {
         closedir(d);
     }
     in.maps = readDrmMaps();
+    // B961: the display device's GBM scanout tally (the device's own
+    // published pair; zero where the process has no GBM device).
+    const ScanoutTallyRead scanout = readScanoutTally();
+    in.scanoutFbBufs = scanout.bufs;
+    in.scanoutFbBytes = scanout.bytes;
     const std::string cg = parseCgroupV2Path(readSmallFile("/proc/self/cgroup"));
     if (!cg.empty()) {
         const std::string base = "/sys/fs/cgroup" + cg;
@@ -378,6 +410,16 @@ std::string gpuBuffersToLogLine(const std::string& point, const std::string& zon
     appendKV(out, "fdinfo_total", c.in.fdinfoTotalBytes);
     appendKV(out, "fdinfo_resident", c.in.fdinfoResidentBytes);
     appendKV(out, "fdinfo_purgeable", c.in.fdinfoPurgeableBytes);
+    // B961: the two byte classes on no ledger row, named as their own rows
+    // (b961Rows() derives both from the census in one place). Neither is
+    // added to owned -- the counting question is Will's
+    // (refactor/B961/README.md). Inserted after fdinfo_purgeable, BEFORE the
+    // B978 owned fields, which must stay last for the pre-B961 parsers
+    // (owned_from_memgpu, rendered_zone_summarize.py).
+    const B961Rows b961 = b961Rows(c);
+    appendKV(out, "scanout_fb", b961.scanoutFbBytes);
+    appendKV(out, "scanout_fb_bufs", b961.scanoutFbBufs);
+    appendKV(out, "memcg_kernel_seen", b961.memcgKernelAvailable ? 1 : 0);
     // B978: owned = RssAnon - gpu_driver + gpu_buffers (outside RssAnon only).
     appendKV(out, "owned_rss_anon", ownedRssAnonBytes);
     appendKV(out, "owned", ownedPlusGpuBuffers(ownedRssAnonBytes, c));
@@ -404,6 +446,12 @@ std::string gpuBuffersToJson(const GpuBufferCensus& c, uint64_t ownedRssAnonByte
     out += ",\"fdinfoTotalBytes\":" + std::to_string(c.in.fdinfoTotalBytes);
     out += ",\"fdinfoResidentBytes\":" + std::to_string(c.in.fdinfoResidentBytes);
     out += ",\"fdinfoPurgeableBytes\":" + std::to_string(c.in.fdinfoPurgeableBytes);
+    // B961: the two unrowed byte classes, through the same b961Rows() the
+    // [memgpu] log line uses (one derivation site for both emitters).
+    const B961Rows b961 = b961Rows(c);
+    out += ",\"scanoutFbBytes\":" + std::to_string(b961.scanoutFbBytes);
+    out += ",\"scanoutFbBufs\":" + std::to_string(b961.scanoutFbBufs);
+    out += ",\"memcgKernelSeen\":" + std::string(b961.memcgKernelAvailable ? "true" : "false");
     out += ",\"ownedRssAnonBytes\":" + std::to_string(ownedRssAnonBytes);
     out += ",\"ownedBytes\":" + std::to_string(ownedPlusGpuBuffers(ownedRssAnonBytes, c));
     out += "}";
