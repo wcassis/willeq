@@ -395,6 +395,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_hotbar_layout DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1075 (#395): the layout table's required co-open sets -- every set, at
+# every supported resolution, no two members overlap and all are on screen,
+# plus the negative (a colliding table fails) and the 1x10 / 2x5 hotbar
+# orientation from the same table. Headless, header-only layout code.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_ui_layout_coopen test_ui_layout_coopen.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_ui_layout_coopen PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_ui_layout_coopen GTest::gtest_main)
+    TARGET_COMPILE_DEFINITIONS(test_ui_layout_coopen PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_ui_layout_coopen DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B998 (#318): the character-select screen -- layout vs EQUI_CharacterSelect.xml,
 # the list from a recorded OP_SendCharInfo, buttons -> requests -> packets
 # through the real service and the world replay seam, the configured-character

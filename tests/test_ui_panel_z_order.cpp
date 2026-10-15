@@ -360,14 +360,21 @@ TEST_F(UiPanelZOrderTest, ALowerBagsTextIsCoveredByTheBagOpenedOnTopOfIt) {
 TEST_F(UiPanelZOrderTest, ThePurseCountsAreCoveredByTheConfirmationDialog) {
     inv_.activePopup = PopupType::Inventory;
     confirm_.open(1, "ARE YOU SURE you wish to drop your Rusty Long Sword on the ground?");
+    // B1075 (#395): the layout table moved the inventory to the right half of
+    // the side-by-side pair, out from under the centred dialog at 800x600.
+    // This case is about TEXT LAYERING, not placement, so it stages the
+    // overlap it needs: the inventory in the pre-B1075 shared centre box
+    // {200,125,600,475}, where the purse counts sit under the dialog.
+    UILayout stacked = layout_;
+    stacked.inventoryPopup = {200, 125, 600, 475};
     expectLowerTextCovered(
         "inventory under confirmation",
         [&] {
-            renderInventoryPopup(ui_.layer(), layout_, inv_);
-            renderConfirmationDialog(ui_.layer(), layout_, confirm_);
+            renderInventoryPopup(ui_.layer(), stacked, inv_);
+            renderConfirmationDialog(ui_.layer(), stacked, confirm_);
         },
-        [&] { renderConfirmationDialog(ui_.layer(), layout_, confirm_); },
-        ConfirmationLayout::windowRect(layout_));
+        [&] { renderConfirmationDialog(ui_.layer(), stacked, confirm_); },
+        ConfirmationLayout::windowRect(stacked));
 }
 
 // All three of ui_panel_capture's containers open, the Forge newest: the two

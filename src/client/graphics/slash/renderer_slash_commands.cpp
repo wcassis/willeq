@@ -27,6 +27,7 @@
 #include "client/graphics/ui/static_ui_input.h"
 #include "client/graphics/ui/character_model_view.h"
 #include "client/graphics/ui/inventory_layout.h"
+#include "client/graphics/ui/ui_layout_table.h"  // B1075: closesOnOpen()
 #include "client/chat/chat_message_buffer.h"
 #include "client/graphics/sky_renderer.h"
 #include "client/graphics/eq/sky_loader.h"
@@ -440,8 +441,10 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
         chat(fmt::format("New static UI: {}", ctx_.Frame().newUIEnabled_ ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/newbook") {
         ctx_.Frame().spellbookState_.isOpen = !ctx_.Frame().spellbookState_.isOpen;
-        if (ctx_.Frame().spellbookState_.isOpen) {
-            ctx_.Frame().inventoryState_.activePopup = PopupType::None;  // Close other popups
+        // B1075: what opening the spellbook closes is the co-open table's call.
+        if (ctx_.Frame().spellbookState_.isOpen &&
+            closesOnOpen(UIWindow::Spellbook, UIWindow::Inventory)) {
+            ctx_.Frame().inventoryState_.activePopup = PopupType::None;
         }
         chat(fmt::format("New UI spellbook: {}", ctx_.Frame().spellbookState_.isOpen ? "OPEN" : "CLOSED"));
     } else if (cmd == "/newbookprev") {

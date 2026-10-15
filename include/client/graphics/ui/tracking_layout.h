@@ -122,12 +122,9 @@ constexpr Anchor DONE_BUTTON = {3, 22, true, 3, 2, true};
 
 /** The whole window: 150x460 (height clamped to the screen), CENTRED. */
 inline irr::core::rect<irr::s32> windowRect(const UILayout& layout) {
+    // B1075 (#395): the layout table's ScreenCentre anchor.
     const irr::s32 h = layout.screenH < WINDOW_H ? layout.screenH : WINDOW_H;
-    irr::s32 x = (layout.screenW - WINDOW_W) / 2;
-    irr::s32 y = (layout.screenH - h) / 2;
-    if (x < 0) x = 0;
-    if (y < 0) y = 0;
-    return irr::core::rect<irr::s32>(x, y, x + WINDOW_W, y + h);
+    return layout.placeScreenCentre(WINDOW_W, h);
 }
 
 /** Style_Titlebar. */
