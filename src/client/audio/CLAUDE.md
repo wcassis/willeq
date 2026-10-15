@@ -5,7 +5,7 @@
 Core:
 - `AudioManager` - Main audio manager, owns mixer/backend/sfx/midi subsystems
 - `AudioMixer` - Software stereo PCM mixer (16 SFX + 2 music channels)
-- `AudioBackend` - Output abstraction: MiniaudioBackend (direct) or RDPAudioBackend (streaming); MiniaudioBackend opens the device at `audio.device_sample_rate` (default 48000) and resamples the 22050 mix once through DeviceRateAdapter (B1069)
+- `AudioBackend` - Output abstraction: MiniaudioBackend (direct) or RDPAudioBackend (streaming); MiniaudioBackend opens the device at `audio.device_sample_rate` (default 48000) and resamples the 22050 mix once through DeviceRateAdapter -> `PolyphaseResampler` (Kaiser-windowed sinc, 48 taps; linear only as the >2048-phase fallback) (B1069)
 - `MidiPlayer` - TSF + TML MIDI/XMI synthesis (SoundFont-based)
 - `SfxManager` - SFX playback and spatial positioning over buffers it does not own (B1015: no cache of its own — the decoded PCM is the AudioManager's SoundBufferCache; the in-use pin (isInUse) keeps a playing buffer resident; play() hands the mixer a raw float* into the buffer's PCM)
 - `SoundBuffer` - Decoded float PCM data (loaded via dr_wav from files or PFS archives)
@@ -77,7 +77,8 @@ Options window declares no master control, so there is nothing to publish it to
 {
     "audio": {
         "enabled": true,
-        "device_sample_rate": 48000,   // playback DEVICE rate; the mixer stays 22050 and is resampled once (DeviceRateAdapter); 0 = backend native (B1069)
+        "device_sample_rate": 48000,
+        "device_format": "s16",        // s16 default; f32, s24, s32, native (B1069: HDMI sinks drop S24)   // playback DEVICE rate; the mixer stays 22050 and is resampled once (DeviceRateAdapter); 0 = backend native (B1069)
         "master_volume": 100,
         "music_volume": 70,
         "effects_volume": 100,
@@ -90,6 +91,8 @@ Command line options:
 ```bash
 --no-audio                    # Disable audio
 --audio-rate 48000            # Audio device sample rate (0 = native, B1069)
+--audio-format s16            # Audio device format (s16 default; f32, s24, s32, native)
+# WILLEQ_AUDIO_DUMP=<wav> dumps the device stream (+ <wav>.mix.wav, the 22050 mix) for N=WILLEQ_AUDIO_DUMP_SECONDS
 --audio-volume 80             # Master volume (0-100)
 --music-volume 50             # Music volume (0-100)
 --effects-volume 100          # Effects volume (0-100)
