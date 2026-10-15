@@ -121,6 +121,16 @@ if [[ -n $ZONE && -n $CHARACTER ]]; then
     ZONE_ID=$(eqemu_sql "SELECT zoneidnumber FROM zone WHERE short_name='$ZONE' LIMIT 1;")
     [[ $ZONE_ID =~ ^[0-9]+$ ]] || { STATUS=65; exit "$STATUS"; }
     eqemu_sql "UPDATE character_data SET zone_id=$ZONE_ID WHERE name='$CHARACTER';" >/dev/null || { STATUS=65; exit "$STATUS"; }
+    # B1065: `# pose=x,y,z,heading` (heading in EQ units, 0-512) seeds the
+    # login character's position with the zone, so a still is taken from a
+    # pose willeq can be put at byte-for-byte. x/y/z/heading are in
+    # eqemu_snapshot, so the restore puts the old row back.
+    POSE=$(awk '/^# pose=/ {sub(/^# pose=/, ""); print; exit}' "$PLAN")
+    if [[ -n $POSE ]]; then
+        [[ $POSE =~ ^-?[0-9.]+,-?[0-9.]+,-?[0-9.]+,[0-9.]+$ ]] || { STATUS=64; exit "$STATUS"; }
+        IFS=, read -r PX PY PZ PH <<<"$POSE"
+        eqemu_sql "UPDATE character_data SET x=$PX, y=$PY, z=$PZ, heading=$PH WHERE name='$CHARACTER';" >/dev/null || { STATUS=65; exit "$STATUS"; }
+    fi
 fi
 remote "mkdir -p ~/eq-oracle/uigap-scripts '$REMOTE_DIR'" || { STATUS=65; exit "$STATUS"; }
 scp -q "$REPO/scripts/eqemu/oracle/oracle_remote.sh" "user@$EQEMU_ORACLE_HOST:/home/user/eq-oracle/uigap-scripts/oracle_remote.sh" || { STATUS=65; exit "$STATUS"; }
