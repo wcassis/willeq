@@ -80,7 +80,7 @@ void EntityRenderer::attachEquipment(EntityVisual& visual) {
                 visual.primaryEquipNode->setScale(irr::core::vector3df(1.0f, 1.0f, 1.0f));
                 for (irr::u32 i = 0; i < visual.primaryEquipNode->getMaterialCount(); ++i) {
                     auto& mat = visual.primaryEquipNode->getMaterial(i);
-                    mat.BackfaceCulling = false;
+                    mat.BackfaceCulling = kHeldItemBackfaceCulling;  // B1065, bone_attachment.h
                     if (shaderMaterialSolid_ >= 0) {
                         if (mat.MaterialType == irr::video::EMT_SOLID) {
                             mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
@@ -114,7 +114,7 @@ void EntityRenderer::attachEquipment(EntityVisual& visual) {
                 visual.secondaryEquipNode->setScale(irr::core::vector3df(1.0f, 1.0f, 1.0f));
                 for (irr::u32 i = 0; i < visual.secondaryEquipNode->getMaterialCount(); ++i) {
                     auto& mat = visual.secondaryEquipNode->getMaterial(i);
-                    mat.BackfaceCulling = false;
+                    mat.BackfaceCulling = kHeldItemBackfaceCulling;  // B1065, bone_attachment.h
                     if (shaderMaterialSolid_ >= 0) {
                         if (mat.MaterialType == irr::video::EMT_SOLID) {
                             mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);

@@ -753,6 +753,24 @@ TEST_F(HeldItemTest, StandingNpcsHeldItemsFollowTheirBonesEveryFrame) {
         << "the idle moves the forearm, so the shield must move with it";
 }
 
+TEST_F(HeldItemTest, HeldItemsAreDrawnWithBackFaceCulling) {
+    // IT200's BACK skin lies on the +Y side of its painted face; only culling
+    // (which the official client does) shows the face from outside -- see
+    // kHeldItemBackfaceCulling in bone_attachment.h.
+    EXPECT_TRUE(kHeldItemBackfaceCulling);
+    EntityAppearance a;
+    a.equipment[7] = 58;
+    a.equipment[8] = 200;
+    ents_->clearEntities();
+    ASSERT_TRUE(ents_->createEntity(7, 1, "B1065", 100.0f, 200.0f, 3.0f, 112.5f, false, 0, a, true));
+    const EntityVisual& vis = ents_->getEntities().at(7);
+    for (irr::scene::IMeshSceneNode* item : {vis.primaryEquipNode, vis.secondaryEquipNode}) {
+        ASSERT_NE(item, nullptr);
+        ASSERT_GT(item->getMaterialCount(), 0u);
+        for (irr::u32 i = 0; i < item->getMaterialCount(); ++i) EXPECT_TRUE(item->getMaterial(i).BackfaceCulling);
+    }
+}
+
 TEST_F(HeldItemTest, FallbackModelRaceHoldsItsItemsAtItsOwnPointBones) {
     // Race 71 (Qeynos Citizen, QCM) with only global_chr.s3d loaded is drawn
     // with its fallback HUM skeleton (config/race_models.json fallback_code):

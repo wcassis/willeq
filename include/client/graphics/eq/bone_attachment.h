@@ -81,6 +81,17 @@ inline int findBoneIndex(const std::shared_ptr<CharacterSkeleton>& skeleton,
     return -1;
 }
 
+// B1065: held items are drawn with BACK-FACE CULLING ON. A shield is two
+// skins a few hundredths apart -- IT200's painted face (qguard-front.bmp,
+// winding normal +Y_item) and its back (qguard-back.bmp, winding -Y_item) --
+// and the BACK skin is the one on the +Y side (centre y 0.042 vs 0.015). With
+// culling off, depth alone decides and a shield whose face points away from
+// the body shows its BACK from outside: the dark shape beside the guards in
+// review/B1065/. The official client culls: from the guard's left it shows the
+// painted face (review/B1065/oracle/side_b_guard_crop_x2.png). Measured with
+// both settings on x86 (refactor/B1065/README.md).
+constexpr bool kHeldItemBackfaceCulling = true;
+
 // B1065 (#385) -- WHICH BONES THE TWO HELD ITEMS HANG FROM. Primary: R_POINT.
 // Secondary: SHIELD_POINT for a shield (IT200-IT299; on every Luclin-era
 // humanoid skeleton a child of the left FOREARM, e.g. QCMFO_L_DAG ->
