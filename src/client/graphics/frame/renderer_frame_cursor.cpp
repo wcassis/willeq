@@ -86,7 +86,7 @@ void FrameComponent::processCursorGestureFrame(bool uiTook) {
             break;
     }
     // B1066: the PHYSICAL hold -- the press that opened the display is the
-    // UI's, so the camera-owned view (isRightButtonDown()) never sees it.
+    // UI's, so the camera-owned look view never sees it.
     updateHeldItemDisplay(itemDisplayState_, ctx_.eventReceiver->isRightButtonHeld());
 
     // --- rows 31-33: a motionless world click with an item held ---
