@@ -86,14 +86,33 @@ the entity renderer's already-wired loader.
 
 ## Memory (acceptance D)
 
-The pre-zone preview adds ONE model (the selected / sample character) and its
-256x256 render target. No zone geometry, no zone scene. The `gpu_buffers` /
-`gpu_driver` rows are unchanged (the model's textures go through the same
-constrained cache as every other model); the one model's vertex/index data is
-charged to the `EntityModels` category by `getAnimatedMeshForRace`'s own
-`MemoryScope` (animated_mesh_creation.cpp:25), the same category a zone entity
-would use. I have NOT measured a live pre-zone RssAnon delta here (that needs a
-zoned-in baseline run against the visual gate's ledger); see "Not verified".
+The pre-zone preview stands up ONE body at a time (the view releases the
+previous model when the character changes), plus its 256x256 render target.
+No zone geometry, no zone scene.
+
+MEASURED live through the memory ledger by
+`test_char_preview.OneModelIsTheWholePreZoneDelta` (EDT_NULL, x86 dev tree,
+run 2026-10-15, `entity_models` category = the RaceModelLoader's own
+MemoryScope, the same one a zone entity's model is charged to):
+
+- first body (Human male): +28,654,160 B -- model data PLUS that race's
+  shared textures, loaded with the first body and then held;
+- re-stand-up of the same race+gender: +0 B (cache hit -- the host's
+  per-frame steady state charges nothing);
+- same-race gender switch: +0 B (old body released, new one stood up: the
+  category holds one body, never two);
+- after `releaseCharacterModel()`: still at the one-body level (the nodes
+  are gone; the loader's shared cache -- which zone entities also use --
+  holds the first body's data past the release, out of the preview's
+  control).
+
+The 256x256 render target (~131 KB RGBA8 on a GLES2 device) is charged
+separately to `textures_driver` and is below the test's resolution under
+EDT_NULL; the `gpu_buffers` / `gpu_driver` rows are unchanged (the model's
+textures go through the same constrained cache as every other model). Net:
+the pre-zone delta is bounded by ONE body -- 28,654,160 B plus 131 KB here,
+and the test fails if re-standing or switching ever charges a second full
+body.
 
 ## Not verified / left open
 
@@ -114,9 +133,6 @@ zoned-in baseline run against the visual gate's ledger); see "Not verified".
   (body variant) / `helm` (head variant) are the closest variant fields. The
   FacePick picks that DO map 1:1 (face, hair, haircolor, beard, beardcolor)
   are the ones that visibly change the classic model.
-- **The pre-zone RssAnon delta** was reasoned, not measured (no zoned-in
-  baseline was run this session). A one-model + one-256x256-RTT increase is
-  the expectation; the visual gate's ledger would gate a regression.
 
 ## Files
 
