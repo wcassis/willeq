@@ -1147,22 +1147,23 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
         command) xdotool key Return; xdotool type --delay 80 "$target"; xdotool key Return ;;
         explore-open)
             # B888-CC3 (#204): enter the character-select screen's Explore
-            # mode. CSW_Explore_Button is XML (2,60) 48x32. The button ROW's
-            # centre was measured from CC-2's 03_still.png (bright-text scan,
-            # image space): the button texts sit at image y ~236-245, so the
-            # button bodies centre at image y ~241 = display 211 = root 241
-            # (the still crop is +0+30). Explore's centre x: the row's left
-            # text run starts at image x 19 (= the window frame edge 8 +
-            # ~11), so the button body spans x ~8-55: centre display 40.
-            # Root = display + (0,30) -> (40,241). The postcondition is
-            # EXW_InfoLabel1's "Click on a character" (EQUI_CharacterSelect.xml).
-            jclick 40 241
+            # mode. CSW_Explore_Button is XML (2,60) 48x32. Location MEASURED
+            # by the y-sweep on this rig (oracle-diag run, 2026-10-15): clicks
+            # at root y 220/231/241/252 produced no state change (full-frame
+            # diff ~6 against the settle baseline), the click at ROOT (40,263)
+            # entered Explore (full-frame diff 56.4: the left window hides,
+            # the 3D scene changes, the ExploreModeWindow appears). The
+            # postcondition is EXW_InfoLabel1's "Click on a character"
+            # (EQUI_CharacterSelect.xml; the window sits bottom-LEFT over the
+            # 3D area on this rig, not centre).
+            jclick 40 263
             sleep 3 ;;
         explore-esc)
             # B888-CC3 (#204): leave Explore mode with Esc (EXW_InfoLabel2:
             # "Press Enter to enter the game, or press Esc to leave explore
-            # mode.").
-            xdotool key Esc
+            # mode."). Lowercase keysym: this rig's xdotool rejects `Esc`
+            # ("No such key name 'Esc'"), `esc` is the keysym.
+            xdotool key esc
             sleep 3 ;;
         hold-d)
             # B888-CC3 (#204): hold the d key (Explore camera forward) for

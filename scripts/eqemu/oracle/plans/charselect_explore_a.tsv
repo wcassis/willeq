@@ -17,9 +17,9 @@
 # the B-step plan, which seeds its own zone so the restore round-trips).
 # Plan column format: verb<TAB>target<TAB>hold_ms<TAB>still_name.
 # Coordinates: ROOT space (the driver's jclick space); stills crop +0+30.
-#   Explore button centre: measured from CC-2's 03_still.png (the button row's
-#   texts at image y 236-245; Explore's body centre display (40,211)) ->
-#   root (40,241).
+#   Explore button centre: MEASURED by the y-sweep diagnostic run
+#   (oracle-diag, 2026-10-15): root (40,263) -- y 220/231/241/252 misses,
+#   263 hit (full-frame diff 56.4 vs ~6 baseline).
 #   Char rows: the driver's own table -- Char1 (Testcaster) y 315,
 #   step 35 (Char2 350); x 123.
 #   Model area (CC-2 measured): x 400-898, y 160-698.
