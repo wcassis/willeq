@@ -20,11 +20,14 @@
 #   Explore button centre: MEASURED by the y-sweep diagnostic run
 #   (oracle-diag, 2026-10-15): root (40,263) -- y 220/231/241/252 misses,
 #   263 hit (full-frame diff 56.4 vs ~6 baseline).
-#   Explore-mode character click: the left window is HIDDEN in Explore
-#   (measured, oracle-diag), so the row coordinates do not apply -- the
-#   click goes to the 3D scene's centre (640,400), where the characters
-#   stand on their pedestals. The selection read-out is the top-left
-#   character-info line (EXW_CharInfoLabel; OCR'd off the stills).
+#   Explore-mode character clicks: the left window is HIDDEN in Explore
+#   (measured, oracle-diag), so the row coordinates do not apply. The
+#   characters stand in the scene at MEASURED positions (oracle-diag
+#   frame, yellow name-label + pedestal + body scan): left character
+#   label (304,373) with the body between label and pedestal -- click
+#   (300,500); right character label (1010,364) -- click (1005,500).
+#   The selection read-out is the character-info line (EXW_CharInfoLabel;
+#   OCR'd off the stills).
 
 login	Testchar	0
 wait	15000	0	select_settle
@@ -38,8 +41,10 @@ orbit	200,0	0	cam_orbit
 wait	3000	0	cam_orbit_settle
 wheel	0	3	0	cam_zoom
 wait	3000	0	cam_zoom_settle
-click	640,400	0	explore_click_scene_centre
-wait	4000	0	explore_click_scene_centre_settle
+click	300,500	0	explore_click_left_char
+wait	4000	0	explore_click_left_char_settle
+click	1005,500	0	explore_click_right_char
+wait	4000	0	explore_click_right_char_settle
 explore-esc	0	0	esc_leave_explore
 wait	5000	0	back_to_select
 still	back_to_select_2
