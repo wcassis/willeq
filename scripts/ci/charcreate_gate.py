@@ -124,16 +124,18 @@ def ocr(gray, x0, y0, x1, y1):
 
 def run_capture(out_dir, cap_bin, extra_args):
     cmd = [str(cap_bin), str(out_dir)] + list(extra_args)
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    # The capture tool's stdout mixes the tool's own "<state>\t<path>" lines with
+    # Irrlicht/driver noise that is not always valid UTF-8 (and, when piped,
+    # stdout is fully-buffered and the state names can interleave). The PNG file
+    # NAME is the authoritative state name (the tool writes <out_dir>/<state>.png
+    # and the state is the file stem), so glob the output dir rather than trust
+    # stdout. Decode the noise leniently for the error path only.
+    proc = subprocess.run(cmd, capture_output=True, timeout=300)
+    err = proc.stderr.decode("utf-8", "replace")
     if proc.returncode != 0:
-        raise RuntimeError(
-            f"charcreate_capture exited {proc.returncode}:\n{proc.stdout}\n{proc.stderr}")
-    # stdout is one "<state>\t<path>" per state
-    states = {}
-    for line in proc.stdout.splitlines():
-        if "\t" in line:
-            name, path = line.split("\t", 1)
-            states[name.strip()] = Path(path.strip())
+        out = proc.stdout.decode("utf-8", "replace")
+        raise RuntimeError(f"charcreate_capture exited {proc.returncode}:\n{out}\n{err}")
+    states = {p.stem: p for p in sorted(Path(out_dir).glob("*.png"))}
     return states
 
 
@@ -201,6 +203,21 @@ def main():
                          "green; the table is still printed for the README.")
     args = ap.parse_args()
 
+    # --bless-required is the ctest row's mode: the official-client reference
+    # set is a BLESS (Will's sign-off; the proposed stills live in
+    # /home/user/kb-evidence/kb-cc4-charcreate-oracle-gate/goldens_proposed/).
+    # Until it is blessed into tests/goldens/charcreate/, skip with 125 BEFORE
+    # the expensive willeq capture, so CI stays green.
+    if args.bless_required and not BLESS_GOLDENS.exists():
+        print(f"SKIP: reference set not blessed -- {BLESS_GOLDENS} is absent. "
+              f"The official-client stills are proposed as a bless under "
+              f"/home/user/kb-evidence/kb-cc4-charcreate-oracle-gate/"
+              f"goldens_proposed/; this row activates once they are blessed into "
+              f"tests/goldens/charcreate/. Run without --bless-required for the "
+              f"willeq-internal per-control gate (it runs on all states, no "
+              f"reference needed).")
+        return 125  # ctest SKIP_RETURN_CODE
+
     cap_bin = args.capture_bin
     if not cap_bin:
         for cand in ("build/bin/charcreate_capture", "build-gles2/bin/charcreate_capture"):
@@ -232,24 +249,15 @@ def main():
         with tempfile.TemporaryDirectory(prefix="cc4_capture_") as td:
             states = run_capture(td, cap_bin, [])
             # the ledger + scores are printed before the dir is torn down
-            return _score_and_report(states, ref_dir, labels, ref_labels, args.ledger,
-                                     bless_required=args.bless_required)
+            return _score_and_report(states, ref_dir, labels, ref_labels, args.ledger)
 
-    return _score_and_report(states, ref_dir, labels, ref_labels, args.ledger,
-                             bless_required=args.bless_required)
+    return _score_and_report(states, ref_dir, labels, ref_labels, args.ledger)
 
 
-def _score_and_report(states, ref_dir, labels, ref_labels, ledger_path, bless_required=False):
+def _score_and_report(states, ref_dir, labels, ref_labels, ledger_path):
     import numpy as np
     failures = []
     all_rows, all_ocr = [], []
-    if bless_required and not BLESS_GOLDENS.exists():
-        print(f"SKIP: reference set not blessed — {BLESS_GOLDENS} is absent. "
-              f"The official-client reference stills + labels.tsv are attached as "
-              f"goldens_proposed/ and are a BLESS (Will's sign-off); this row "
-              f"skips until they are blessed into tests/goldens/charcreate/. "
-              f"Run without --bless-required for the willeq-internal gate table.")
-        return 125  # ctest SKIP_RETURN_CODE
     print(f"{'state':22} {'controls':>8} {'present':>8} {'minIoU':>7} {'ocrOk':>7} {'ref':>10}  ok")
     blessed = 0
     for name in controls.GATE_STATES:
