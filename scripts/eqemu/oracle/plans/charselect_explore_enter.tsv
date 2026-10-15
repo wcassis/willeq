@@ -15,6 +15,6 @@ explore-open	0	0	explore_window
 wait	6000	0	explore_settle
 enter-press	0	0	enter_from_explore
 wait	60000	0	inworld_settle
-still	inworld_after_enter
+still	inworld_after_enter	0	inworld_after_enter
 camp-quit	0	0	camp_exit
 wait	10000	0	select_after_camp

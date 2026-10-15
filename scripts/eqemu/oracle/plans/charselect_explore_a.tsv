@@ -31,7 +31,7 @@
 
 login	Testchar	0
 wait	15000	0	select_settle
-still	select_backdrop
+still	select_backdrop	0	select_backdrop
 wait	8000	0	backdrop_settle_2
 explore-open	0	0	explore_window
 wait	6000	0	explore_settle
@@ -47,4 +47,4 @@ click	1005,500	0	explore_click_right_char
 wait	4000	0	explore_click_right_char_settle
 explore-esc	0	0	esc_leave_explore
 wait	5000	0	back_to_select
-still	back_to_select_2
+still	back_to_select_2	0	back_to_select_2
