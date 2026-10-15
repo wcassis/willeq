@@ -38,16 +38,21 @@ still	select_backdrop	0	select_backdrop
 wait	8000	0	backdrop_settle_2
 explore-open	0	0	explore_window
 wait	6000	0	explore_settle
+# Click the characters FIRST, at their measured positions, while the camera
+# is still at the Explore entry view (the forward/orbit/zoom below move the
+# camera PAST them, so a later click lands on empty scene -- A4 measured this:
+# the info label stayed on the login-selected character because the post-
+# camera clicks hit nothing).
+click	300,500	0	explore_click_left_char
+wait	4000	0	explore_click_left_char_settle
+click	1005,500	0	explore_click_right_char
+wait	4000	0	explore_click_right_char_settle
 hold-d	0	8000	cam_forward
 wait	3000	0	cam_forward_settle
 orbit	200,0	0	cam_orbit
 wait	3000	0	cam_orbit_settle
 wheel	0	3	cam_zoom
 wait	3000	0	cam_zoom_settle
-click	300,500	0	explore_click_left_char
-wait	4000	0	explore_click_left_char_settle
-click	1005,500	0	explore_click_right_char
-wait	4000	0	explore_click_right_char_settle
 explore-esc	0	0	esc_leave_explore
 wait	5000	0	back_to_select
 still	back_to_select_2	0	back_to_select_2
