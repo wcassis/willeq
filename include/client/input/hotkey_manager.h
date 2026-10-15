@@ -152,9 +152,26 @@ enum class HotkeyAction : uint32_t {
     SpellGem1, SpellGem2, SpellGem3, SpellGem4,
     SpellGem5, SpellGem6, SpellGem7, SpellGem8,
 
-    // Hotbar slots (Ctrl+1-0)
+    // Hotbar slots (1-0, no modifier): slot N of the hotbar window's
+    // CURRENT page (B1025-H4: the addressable activation; H-O measured
+    // "Hot buttons 1-10 are 1-0", pages.tsv:2, 27_keys_hb1.png).
     HotbarSlot1, HotbarSlot2, HotbarSlot3, HotbarSlot4, HotbarSlot5,
     HotbarSlot6, HotbarSlot7, HotbarSlot8, HotbarSlot9, HotbarSlot10,
+
+    // B1025-H4 (#345): the hotbar window's page keys and toggle. H-O
+    // MEASURED on the official Options > Keys > Hotbar 1 page
+    // (kb-h0-hotbar-oracle pages.tsv:2, still 27_keys_hb1.png; eqstr 6562-
+    // 6571 "Hot button page 1-10", eqstr 6587 "Toggle Hotbar 1 window"):
+    //   HotbarPage1-10    Shift+1 .. Shift+9, Shift+0
+    //   ToggleHotbar1Window   Alt+H
+    // Hotbars 2-4 are UNBOUND (pages.tsv:3-6, stills 28/26/29_keys_hb*.png),
+    // and the stock client cannot show Hotbars 2-4 at all (the XML gives
+    // HotButtonWnd2..4 zero size; H-O measured them invisible even forced
+    // on), so there is one toggle for the one window -- no dead-end
+    // HotbarPage*/ToggleHotbar2..4 actions.
+    HotbarPage1, HotbarPage2, HotbarPage3, HotbarPage4, HotbarPage5,
+    HotbarPage6, HotbarPage7, HotbarPage8, HotbarPage9, HotbarPage10,
+    ToggleHotbar1Window,
 
     // Camera zoom. T471: bound to the official Zoom in NPAD7 / INSERT and Zoom
     // out NPAD1 / DELETE (measured, T466) as well as fable's own +/-.
