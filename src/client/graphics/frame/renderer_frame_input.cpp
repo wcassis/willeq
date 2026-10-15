@@ -119,6 +119,11 @@ void FrameComponent::processFrameInput(float deltaTime) {
         }
     }
 
+    // B1066 (#386): with no static UI to hit-test (the legacy GUI), nothing
+    // in renderStaticUI() settles a new press, so every press is the
+    // camera's -- the pre-B1066 behaviour on that path.
+    if (!(newUIEnabled_ && staticUIInput_)) ctx_.eventReceiver->resolvePendingPresses(false);
+
     // Update camera and player movement
     ctx_.PlayerCamera().updatePlayerMovement(deltaTime);
 

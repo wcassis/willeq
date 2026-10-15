@@ -330,7 +330,9 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
     if (event.EventType == irr::EET_MOUSE_INPUT_EVENT) {
         switch (event.MouseInput.Event) {
             case irr::EMIE_LMOUSE_PRESSED_DOWN:
-                leftButtonDown_.store(true, std::memory_order_relaxed);
+                // B1066: a new press is PENDING until the frame's static-UI
+                // hit test gives it to the UI or the camera.
+                presses_.press(PressButton::Left);
                 // Record click position for targeting
                 clickMouseX_.store(event.MouseInput.X, std::memory_order_relaxed);
                 clickMouseY_.store(event.MouseInput.Y, std::memory_order_relaxed);
@@ -342,15 +344,22 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                 lastMouseY_ = event.MouseInput.Y;
                 break;
             case irr::EMIE_LMOUSE_LEFT_UP:
-                leftButtonDown_.store(false, std::memory_order_relaxed);
+                presses_.release(PressButton::Left);
                 leftButtonReleased_ = true;
                 break;
             case irr::EMIE_RMOUSE_PRESSED_DOWN:
-                rightButtonDown_.store(true, std::memory_order_relaxed);
+                presses_.press(PressButton::Right);  // B1066: pending
                 rightButtonClicked_.store(true, std::memory_order_relaxed);  // B442
+                // B1066: the look baseline restarts at the press, as the left
+                // press always did. Without it the first camera-owned frame
+                // turned by all the pointer travel since the last look ended.
+                mouseX_.store(event.MouseInput.X, std::memory_order_relaxed);
+                mouseY_.store(event.MouseInput.Y, std::memory_order_relaxed);
+                lastMouseX_ = event.MouseInput.X;
+                lastMouseY_ = event.MouseInput.Y;
                 break;
             case irr::EMIE_RMOUSE_LEFT_UP:
-                rightButtonDown_.store(false, std::memory_order_relaxed);
+                presses_.release(PressButton::Right);
                 break;
             case irr::EMIE_MOUSE_WHEEL:
                 // T313: this case did not exist. The switch fell through to
@@ -365,11 +374,13 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
             case irr::EMIE_MOUSE_MOVED:
                 mouseX_.store(event.MouseInput.X, std::memory_order_relaxed);
                 mouseY_.store(event.MouseInput.Y, std::memory_order_relaxed);
+                // B1066: a move that reports a button held with no press seen
+                // starts a pending press; an owned press keeps its owner.
                 if (event.MouseInput.isRightPressed()) {
-                    rightButtonDown_.store(true, std::memory_order_relaxed);
+                    presses_.heldSeen(PressButton::Right);
                 }
                 if (event.MouseInput.isLeftPressed()) {
-                    leftButtonDown_.store(true, std::memory_order_relaxed);
+                    presses_.heldSeen(PressButton::Left);
                 }
                 break;
             default:
