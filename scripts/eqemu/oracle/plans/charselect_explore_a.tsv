@@ -42,7 +42,7 @@ hold-d	0	8000	cam_forward
 wait	3000	0	cam_forward_settle
 orbit	200,0	0	cam_orbit
 wait	3000	0	cam_orbit_settle
-wheel	0	3	0	cam_zoom
+wheel	0	3	cam_zoom
 wait	3000	0	cam_zoom_settle
 click	300,500	0	explore_click_left_char
 wait	4000	0	explore_click_left_char_settle
