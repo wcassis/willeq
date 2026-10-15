@@ -1147,12 +1147,16 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
         command) xdotool key Return; xdotool type --delay 80 "$target"; xdotool key Return ;;
         explore-open)
             # B888-CC3 (#204): enter the character-select screen's Explore
-            # mode. CSW_Explore_Button is XML (2,60) 48x32 in the client
-            # origin measured in char_select_layout.h: (14, (800-484)/2+8) =
-            # (14,166) at 1280x800 -> centre (14+2+24, 166+60+16) =
-            # (40,242); root = display + (0,30) = (40,272). The postcondition
-            # is EXW_InfoLabel1's own text (EQUI_CharacterSelect.xml).
-            jclick 40 272
+            # mode. CSW_Explore_Button is XML (2,60) 48x32. The button ROW's
+            # centre was measured from CC-2's 03_still.png (bright-text scan,
+            # image space): the button texts sit at image y ~236-245, so the
+            # button bodies centre at image y ~241 = display 211 = root 241
+            # (the still crop is +0+30). Explore's centre x: the row's left
+            # text run starts at image x 19 (= the window frame edge 8 +
+            # ~11), so the button body spans x ~8-55: centre display 40.
+            # Root = display + (0,30) -> (40,241). The postcondition is
+            # EXW_InfoLabel1's "Click on a character" (EQUI_CharacterSelect.xml).
+            jclick 40 241
             sleep 3 ;;
         explore-esc)
             # B888-CC3 (#204): leave Explore mode with Esc (EXW_InfoLabel2:
