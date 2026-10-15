@@ -1176,19 +1176,22 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             sleep "$(awk -v ms="$hold_ms" 'BEGIN {printf "%.3f",ms/1000}')"
             xdotool keyup d ;;
         orbit)
-            # B888-CC3 (#204): a slow multi-step mouse drag over the model
-            # area (Explore camera orbit). target is the DELTA in px
-            # "dx,dy"; the drag starts at (640,400), the model area's centre
-            # (CC-2 measured the model at x 400-898, y 160-698). 40 steps,
-            # 100 ms apart (wine-oracle.md: DirectInput polls motion, an
-            # instant delta is dropped).
+            # B888-CC3 (#204): a slow multi-step mouse drag over the scene
+            # (Explore camera orbit) with the LEFT BUTTON HELD (mouse look
+            # samples motion only while pressed; wine-oracle.md's orbit()
+            # glides exactly this way). target is the DELTA in px "dx,dy";
+            # the drag starts at (640,400), inside the 3D scene. 40 steps,
+            # 100 ms apart (DirectInput polls motion; an instant delta is
+            # dropped).
             [[ $target =~ ^-?[0-9]+,-?[0-9]+$ ]] || exit 65
             IFS=, read -r dx dy <<<"$target"
             xdotool mousemove 640 400
+            xdotool mousedown 1
             for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
                 xdotool mousemove_relative -- "$((dx/40))" "$((dy/40))"
                 sleep 0.1
-            done ;;
+            done
+            xdotool mouseup 1 ;;
         wheel)
             # B888-CC3 (#204): the Explore camera zoom, N wheel-up clicks
             # (hold_ms, default 3).
