@@ -42,6 +42,7 @@ struct FakeCards {
     int attempts = 0;  // every open() call, success or not
     int opens = 0;     // successful opens
     int checks = 0;
+    std::vector<int> fds;  // every fd handed out, in order (B1061)
 
     int open(const std::string& path) {
         // Map basename "cardN" to a real fd when openable; unknown paths
@@ -54,7 +55,9 @@ struct FakeCards {
                 attempts++;
                 if (openable[n]) {
                     opens++;
-                    return ::open("/dev/null", O_RDONLY | O_CLOEXEC);
+                    int fd = ::open("/dev/null", O_RDONLY | O_CLOEXEC);
+                    fds.push_back(fd);
+                    return fd;
                 }
             }
         }
@@ -101,6 +104,44 @@ TEST(DRMCardSelect, OpenableCardWithoutConnectorIsSkipped) {
 
 // Both cards open, the second one has no connector and the first is the
 // connected one: the first usable card still wins (selection is ordered).
+// B1061 (#381): the probe fd must be closed on the SUCCESS path as well as
+// the reject path. The device re-opens the winner for its own fd; a leaked
+// probe fd is the first open of that node and keeps DRM master, so every
+// drmModeSetCrtc on the device's fd fails (measured on the XU4 after B1054).
+// fcntl(F_GETFD) on a closed fd fails with EBADF.
+static bool fdIsOpen(int fd) { return ::fcntl(fd, F_GETFD) != -1; }
+
+TEST(DRMCardSelect, ProbeFdOfWinnerIsClosed) {
+    FakeCards cards;
+    cards.openable[0] = true;
+    cards.state[0] = DRMCardState{false, false, 0};  // rejected
+    cards.openable[1] = true;
+    cards.state[1] = DRMCardState{true, true, 11};   // the winner
+    DRMCardSelection sel = selectDRMCard(
+        {"/dev/dri/card0", "/dev/dri/card1"},
+        [&](const std::string& p) { return cards.open(p); },
+        [&](int fd, const std::string& p) { return cards.check(fd, p); });
+    ASSERT_TRUE(sel.ok);
+    EXPECT_EQ(sel.index, 1);
+    ASSERT_EQ(cards.fds.size(), 2u);
+    // Only the LAST fd handed out can be checked by number: an earlier fd
+    // that was closed correctly gets its number reused by the next open.
+    EXPECT_FALSE(fdIsOpen(cards.fds[1])) << "winner's probe fd leaked (it would hold DRM master)";
+}
+
+TEST(DRMCardSelect, ProbeFdsClosedWhenNothingUsable) {
+    FakeCards cards;
+    cards.openable[0] = true;
+    cards.state[0] = DRMCardState{true, false, 0};
+    DRMCardSelection sel = selectDRMCard(
+        {"/dev/dri/card0"},
+        [&](const std::string& p) { return cards.open(p); },
+        [&](int fd, const std::string& p) { return cards.check(fd, p); });
+    EXPECT_FALSE(sel.ok);
+    ASSERT_EQ(cards.fds.size(), 1u);
+    EXPECT_FALSE(fdIsOpen(cards.fds[0]));
+}
+
 TEST(DRMCardSelect, FirstUsableCardWins) {
     FakeCards cards;
     cards.openable[0] = true;

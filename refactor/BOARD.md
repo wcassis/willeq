@@ -386,6 +386,11 @@ it without taking that measurement first.
   is not claimed there; gate poses vs B967 Pi frames: 0 px in all 15 (stencil
   drop is pixel-inert on Lima's shared 32-bit word). ARM benchmark now
   published by `publish_arm_build.sh`; runner `scripts/b971/run_gate_poses.sh`.
+  **B1064 (#384):** `/portal` was NOT the only stencil user -- the target
+  outline was a stencil rim and painted the whole inflated model on this
+  surface. It is now an inverted hull that touches no stencil
+  (`target_outline_pass.h`, `refactor/B1064/README.md`); the stencil-off
+  surface stands.
 - ~~**B967** (C) → issue #285. The player light is quantized at large world
   coordinates on BOTH GPUs: the mediump `vWorldPos` varying.~~ **FIXED**
   (`refactor/B967/README.md`, MR !74 **merged into fable `2c7d5be4`
@@ -1154,6 +1159,20 @@ it without taking that measurement first.
   Open: lane 2's 17.2 MiB of unnamed GEM fails the Pi rig's 10 MiB bound
   and the B962 owner-census shim is armhf-only (an aarch64 build of it is
   the next B item there).
+- **B1060** (B) → issue #380. The Orange Pi Zero (H2+, Mali-400/Lima, 484 MB,
+  Armbian trixie) joined as `PI_LANE=5`, lane 1's sibling (same armhf publish,
+  nollvm prefix, preset and ceilings). Done in the unit: NFS (pinned-port
+  NFSv3), the GL runtime packages, env.sh lane 5 (`env_selftest.sh`,
+  `lock_selftest.sh` PASS on lane 5), and the board's missing display: its DT
+  leaves the display engine disabled, so card0 is render-only Lima and the
+  client's DRM device refused; `pi_hdmi_force_on` loads the stock vkms module on
+  lane 5 (kmsro pairs it with Lima). `lane_smoke.sh` takes the armhf lane:
+  smoke PASS; ledger rows for qeynos2 + the four heavy zones
+  (`docs/reference/orangepizero.md`, `review/B1060/README.md`). Open: the
+  lane's `gpu_buffers` row is about twice lane 1's (qeynos2 fails the 10 MiB
+  unnamed-GEM bound at 10.27 MiB, timorous/iceclad at 35-39 MiB) -- unattributed
+  (vkms scanout path vs kernel 6.18 vs build); needs a same-build lane-1 row and
+  a `--bo-census` run.
 - ~~**B1033** (C) → issue #353.~~ RULED 2026-10-12 (Will, `docs/decisions.md`):
   the aarch64 lanes keep the `orangepi` preset, the same 256 MB bound and
   64 MB target, and get no goldens of their own until a lane runs the gate
@@ -2302,6 +2321,12 @@ it without taking that measurement first.
 
   **WILL RULED 2026-09-06:** leave /bug on the report channel. CLOSED as ruled.
 ## P — process and documentation
+
+- **B1048** (P, oracle automation) → issue #368. One-command official-client
+  capture/decode/summary driver and two replay plans are on
+  `task/kb-b1048-oracle-driver`; closes only when both live plans, disconnect
+  code 67, byte-identical restore, released locks, and MR hygiene are proven.
+  Driver contract: `docs/oracle_driver.md`.
 
 - ~~**B024** (P)~~ **CLOSED 2026-09-04 (M00 merge): the structural programme is complete.** Batch K (K00–K16: `eq.h` 2,025 → 899, twelve components + four context services, the transition handle measured down to 83 uses = B038), Batch L (L01–L13: `irrlicht_renderer.h` 1,914 → 1,343, eleven components, residue 151 = B050 closed), Batch G (six of eight oversize methods decomposed and golden-pinned; `createDefaultConfig` ruled out; the variant loader parked as B052), M00 (no allowlist; the 1,500 ceiling enforced tree-wide by ctest). Original text: Component extraction of `class EverQuest` (2,025-line header, 685
   member functions, 178 data members, 37 flat `src/client/eq_*.cpp` TUs) and of

@@ -661,6 +661,8 @@ IF(EQT_GRAPHICS)
         # (device-free) and its one draw call.
         src/client/graphics/overlays/target_ring.cpp
         src/client/graphics/overlays/target_ring_draw.cpp
+        # B1064 (#384): the target outline's GL state plan (inverted hull, no stencil).
+        src/client/graphics/overlays/target_outline_pass.cpp
         src/client/graphics/renderer/renderer_init.cpp  # J11
         src/client/graphics/renderer/renderer_pre_zone.cpp  # B998: the pre-zone UI frame
         # L06 (Batch L): the slash family -- the registry-3 renderer

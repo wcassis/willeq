@@ -1,0 +1,18 @@
+# B1059: text regions the broker reads with the glyph atlas for a screen check (the plan's
+# column-five regex): name, frame size, x,y,w,h (frame pixels of the remote shot), edit field.
+# Geometry as review/B1059/tools/label_crops.py (B1058 pinned centres / pixel profiles).
+charselect_title	1280x800	42,186,162,16	0
+charselect_slot0	1280x800	32,278,184,16	0
+charselect_slot1	1280x800	32,313,184,16	0
+charselect_slot2	1280x800	32,348,184,16	0
+charselect_slot3	1280x800	32,383,184,16	0
+charselect_slot4	1280x800	32,418,184,16	0
+charselect_slot5	1280x800	32,453,184,16	0
+charselect_slot6	1280x800	32,488,184,16	0
+charselect_slot7	1280x800	32,523,184,16	0
+cc_next	1280x800	1226,15,31,16	0
+cc_getname	1280x800	139,39,64,16	0
+cc_name_label	1280x800	62,15,90,14	0
+cc_name_field	1280x800	6,39,118,16	1
+name_dialog_line	1280x800	554,368,145,16	0
+tip_title	1280x800	1029,3,139,14	0

@@ -43,6 +43,11 @@ MARGIN = 1.5
 FRAME = re.compile(r"^(\d{2}:\d{2}:\d{2}\.\d{3})_(.+?)_(window|root)\.png$")
 LOGLINE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\].*$")
 TARGET_CROPS = ["140x24+885+470", "160x30+875+466", "200x34+865+462", "240x40+790+455"]
+# B1059: the target window's name line on a 1023x738 window grab (T492 profile:
+# name rows 479-487 from x 926; review/B1059/tools/label_crops.py), read first
+# with the glyph atlas (font 3 = EQUI_TargetWindow.xml Target_HP <Font>3).
+TARGET_NAME_RECT = (910, 476, 113, 15)
+GLYPH_RIG = os.environ.get("VERIFY_LABELS_GLYPH_RIG", "devu24")
 
 
 def kv(body):
@@ -69,6 +74,23 @@ def ocr(png, crop):
         f"-threshold 50% png:- 2>/dev/null | tesseract - - --psm 7 2>/dev/null"],
         capture_output=True, text=True)
     return re.sub(r"[^A-Za-z ]", "", p.stdout).strip()
+
+
+def atlas_read(png, rect, font=None, rig=GLYPH_RIG):
+    """B1059: the glyph-atlas read of one rect -> text, or None when the rig
+    has no atlas, NumPy/Pillow are missing, or the read is UNKNOWN (then the
+    tesseract reads decide, as before)."""
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                        "..", "eqemu", "oracle"))
+        import oracle_glyphs as og
+        name = og.rig_atlas(rig)
+        if name is None:
+            return None
+        r = og.read_crop(og.load_luma(png), rect, og.Atlas(name), font)
+        return None if r["text"] == og.UNKNOWN else r["text"]
+    except Exception:  # noqa: BLE001 -- any failure means: fall back
+        return None
 
 
 def load_log_events(path, offset=0.0):
@@ -208,13 +230,23 @@ def main():
                 # when the actor is the official client; otherwise it is
                 # recorded for context and the willeq log decides.
                 wof = frames[official].get((lab, "window"))
-                reads = [ocr(wof, c) for c in TARGET_CROPS] if wof else []
-                hit = next((r for r in reads if tgt in r), None)
+                # B1059: atlas first; tesseract only when the atlas cannot read
+                # the line. The measured string names which one decided.
+                aread = atlas_read(wof, TARGET_NAME_RECT, "3") if wof else None
+                if aread is not None:
+                    import oracle_glyphs as og
+                    reads = [aread]
+                    hit = aread if og.text_matches(aread, tgt) else None
+                    decider = "atlas"
+                else:
+                    reads = [ocr(wof, c) for c in TARGET_CROPS] if wof else []
+                    hit = next((r for r in reads if tgt in r), None)
+                    decider = "tesseract" if any(reads) else "unknown"
                 ev = before(logs[pid], t, re.escape(tgt), a.window) if logs[pid] else None
                 claims.append(f"target={tgt}")
                 shown = hit or (reads[0] if reads else "none")
                 checks.append(("official_target_window",
-                               shown + ("" if pid == official else " (p1's own target; context only)"),
+                               shown + f" [{decider}]" + ("" if pid == official else " (p1's own target; context only)"),
                                bool(hit) if pid == official else True))
                 checks.append(("willeq_log", (ev[1][-40:] if ev else "none"), bool(ev)))
 

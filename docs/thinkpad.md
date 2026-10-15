@@ -27,8 +27,13 @@ Provisioning evidence: `review/THINKPAD/README.md`.
   client runs under `wine-9.0` (win32 prefix `~/eq-oracle/wineprefix`, client copy
   `~/eq-oracle/client`, `eqhost.txt` pointed at lane 5) and reaches the EULA in
   about 10 s, against roughly two minutes on the llvmpipe oracle VMs. The B1048 oracle
-  session driver (MR !172, not yet merged) finds `:99` already up and skips its
-  own Xvfb.
+  session driver (MR !172) finds `:99` already up and skips its own Xvfb.
+- **The default oracle lane** (B1057, #377): oracle legs run
+  `scripts/eqemu/oracle/oracle_session.sh 5 <plan> <out>` (`docs/oracle_driver.md`)
+  unless lane 5's lock is held; lanes 1-4 are the fallback. The driver's stop
+  never touches the real Xorg (no `xvfb.pid` is written when `:99` is up), and
+  decoding/frame analysis run on the driver host because this box has no
+  NumPy/Pillow/OpenCV. Measured per-step times: `review/B1057/README.md`.
 
 ## Rules
 

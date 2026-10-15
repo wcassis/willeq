@@ -14,7 +14,11 @@ oracle frame and says, per frame, whether the dialog is present.
 
 Two independent signals, BOTH required for a `dialog` verdict
 -------------------------------------------------------------
-(a) OCR -- tesseract over the dialog rect, matched against
+(a) OCR -- B1059: the glyph atlas reads the caption of a matched title bar
+    first (scripts/eqemu/oracle/oracle_glyphs.py, rig FIND_TIP_GLYPH_RIG,
+    default devu24); when it cannot (UNKNOWN, no atlas), tesseract over the
+    dialog rect as before. The verdict row's ocr_by names which decided.
+    tesseract over the dialog rect, matched against
     /Tip of the Day|Show Another Tip|Don't show any tips/i.  Those three
     strings are the title bar, the button and the checkbox; all three are
     inside the rect.
@@ -234,12 +238,35 @@ def ocr_signal(im, rect):
         os.unlink(tmp)
 
 
+# --- B1059: the caption read by the glyph atlas first --------------------------
+
+GLYPH_RIG = os.environ.get("FIND_TIP_GLYPH_RIG", "devu24")
+
+
+def atlas_caption(path, pos):
+    """The title-bar caption (bar columns 110..248, the 14 rows under the top
+    border row; review/B1059/tools/label_crops.py tip_top) read by the glyph
+    atlas -> text, or None (no atlas for the rig, no NumPy path, UNKNOWN)."""
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                        "..", "eqemu", "oracle"))
+        import oracle_glyphs as og
+        name = og.rig_atlas(GLYPH_RIG)
+        if name is None or pos is None:
+            return None
+        x, y = pos
+        r = og.read_crop(og.load_luma(path), (x + 110, y + 1, 139, 14), og.Atlas(name))
+        return None if r["text"] in (og.UNKNOWN, "") else r["text"]
+    except Exception:  # noqa: BLE001 -- any failure means: tesseract decides
+        return None
+
+
 def classify(path, template_pair):
     try:
         im = np.array(Image.open(path).convert("RGB"))
     except Exception as exc:                                  # noqa: BLE001
         return dict(size="?", ocr="err", pixel="err", verdict="unreadable",
-                    note=str(exc)[:60])
+                    note=str(exc)[:60], ocr_by="unknown", frac="-")
     h, w, _ = im.shape
     pix, pos, frac = pixel_signal(im, template_pair)
     rect = default_rect((w, h))
@@ -247,7 +274,12 @@ def classify(path, template_pair):
         x, y = pos
         rect = (x, y, min(x + WINDOW_RECT[2], w),
                 min(y + WINDOW_RECT[3], h))
-    ocr, text = ocr_signal(im, rect)
+    caption = atlas_caption(path, pos) if pix else None
+    if caption is not None:
+        ocr, text, ocr_by = bool(OCR_RE.search(caption.replace("[Il]", "l"))), caption, "atlas"
+    else:
+        ocr, text = ocr_signal(im, rect)
+        ocr_by = "tesseract"
     if ocr is None:
         verdict = "unreadable"
         ocr_s = "err"
@@ -262,7 +294,7 @@ def classify(path, template_pair):
     note = ""
     if verdict != "clear":
         note = text[:90]
-    return dict(size="%dx%d" % (w, h), ocr=ocr_s,
+    return dict(size="%dx%d" % (w, h), ocr=ocr_s, ocr_by=ocr_by if ocr is not None else "unknown",
                 pixel="yes" if pix else "no",
                 verdict=verdict, frac="%.3f" % frac, note=note)
 
@@ -302,9 +334,9 @@ def self_test(review_base, template):
         r = classify(p, template)
         good = r["verdict"] == expect
         ok = ok and good
-        print("  %-4s %-30s expect=%-6s got=%-10s ocr=%-3s pixel=%-3s frac=%s"
+        print("  %-4s %-30s expect=%-6s got=%-10s ocr=%-3s (%s) pixel=%-3s frac=%s"
               % ("PASS" if good else "FAIL", label, expect, r["verdict"],
-                 r["ocr"], r["pixel"], r["frac"]))
+                 r["ocr"], r["ocr_by"], r["pixel"], r["frac"]))
         if r["note"]:
             print("       ocr text: %s" % r["note"])
     return ok
@@ -379,10 +411,10 @@ def main():
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w") as f:
         f.write("frame\tunit\tsize\tocr_hit\tpixel_hit\tverdict\t"
-                "template_frac\tocr_text\n")
+                "template_frac\tocr_text\tocr_by\n")
         for rel, unit, r in rows:
             f.write("\t".join([rel, unit, r["size"], r["ocr"], r["pixel"],
-                               r["verdict"], r["frac"], r["note"]]) + "\n")
+                               r["verdict"], r["frac"], r["note"], r["ocr_by"]]) + "\n")
 
         per = OrderedDict()
         for _rel, unit, r in rows:
