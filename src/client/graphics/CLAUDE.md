@@ -19,7 +19,7 @@
   |---|---|---|
   | `RdpComponent` | `rdp/` | the `WITH_RDP` server, capture and input path (L01, the pilot) |
   | `Eqe1ArchiveComponent` | `eqe1/` | EQE1 flat-pack open/resolve/index/report + the `EQT_HAS_DRM` fire-glow icospheres (L02) |
-  | `OverlaysComponent` | `overlays/` | map/navmesh overlays, target outline, mouse targeting/LOS, HUD, fog, loading screen, paperdoll (L03) |
+  | `OverlaysComponent` | `overlays/` | map/navmesh overlays, target outline (= inverted hull + depth pre-pass, no stencil, B1064, `target_outline_pass.h`), mouse targeting/LOS, HUD, fog, loading screen, paperdoll (L03) |
   | `DiagnosticsComponent` | `diagnostics/` | dumpScene, scene breakdown, frame-timing profiling, memory reports, the runtime debug toggles (L04) |
   | `PlayerCameraComponent` | `player/` | `updatePlayerMovement()`, movement collision and ground height, and the ONE first-person camera formula (L05) |
   | `SlashCommandsComponent` | `slash/` | `processSlashCommand()`, the registry-3 renderer command chain (L06) |
@@ -152,7 +152,7 @@ Benchmarked with `gles2_shader_perpixel_benchmark` and `gles2_program_switch_ben
 - `PortalSystem` (`portal_system.h/.cpp`) extracts portal quads from adjacent BSP region AABBs at zone load
 - Recursive stencil masking: INCR on portal quad → draw room → recurse → DECR (max depth 3)
 - Uses raw GL calls (`glStencilFunc`/`glStencilOp`/`glColorMask`) not driver wrapper, restores to defaults after (keeps `SOGLES2State` cache in sync)
-- D24S8 depth-stencil format configured in EGL (`CIrrDeviceFB.cpp`)
+- Depth-stencil format in EGL (`CIrrDeviceFB.cpp`): since B971 the surface is D24S8 only when `enableStencilBuffer` is set (portal on); otherwise D16 and no stencil -- nothing but the portal may depend on a stencil
 - Debug: `/stencil` overlays colored rects per stencil level, `/portal` shows portal wireframes
 
 ## GLES2 Performance Baseline (Orange Pi One, Mali 400)

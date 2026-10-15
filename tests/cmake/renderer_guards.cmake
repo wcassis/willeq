@@ -324,6 +324,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_overlays_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1064 (#384): the target outline needs no stencil buffer -- the pass plan
+# (inverted hull on every surface, stencil bits 0 included), the hull's
+# transform against hand-computed matrices, and a scan of drawTargetOutline()
+# for any stencil call. GL-free: compiles its one TU, no willeq_core.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_target_outline_pass
+        test_target_outline_pass.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/overlays/target_outline_pass.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_target_outline_pass PRIVATE
+        ${CMAKE_SOURCE_DIR}/include ${IRRLICHT_INCLUDE_DIR})
+    TARGET_COMPILE_DEFINITIONS(test_target_outline_pass PRIVATE
+        TARGET_OUTLINE_OVERLAY_SOURCE="${CMAKE_SOURCE_DIR}/src/client/graphics/overlays/overlays_component.cpp")
+    TARGET_LINK_LIBRARIES(test_target_outline_pass GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_target_outline_pass DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # L04 (Batch L, refactor/L04_diagnostics_component.md): the DiagnosticsComponent
 # extracted from IrrlichtRenderer, and the breadth test of RendererContext --
 # both the ctx_ path and the owner_ transition-handle path are pinned by
