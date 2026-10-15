@@ -56,7 +56,9 @@ Provisioning evidence: `review/THINKPAD/README.md`.
   `client_focus` (`xdotool windowfocus --sync --name '^EverQuest$'`, a no-op on
   failure) and, on lane 5, redefines `jclick`/`jrclick` (from
   `/mnt/projects/eq-oracle/scripts/ui-lib.sh`, which stays untouched) and the
-  raw-xdotool `face_open_click` / `hold` paths to focus first. No WM runs on
+  raw-xdotool `hold` path to focus first; the Set Face open
+  (`face_open_click`) uses the focus-wrapped `jclick` on lane 5 because
+  matrix3's net-zero drag does not open the modal on this rig. No WM runs on
   :99; every motion click carries its own focus. A lane-5 capture run logs
   each Set Face open attempt in `timeline.tsv` (`face-open attempt=N`), so a
   run proves whether the FIRST click opened the modal.

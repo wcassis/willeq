@@ -52,10 +52,15 @@ lanes 1-4 (the run passes its lane as the third argument to
   and does nothing. `oracle_remote.sh` defines `client_focus`
   (`xdotool windowfocus --sync --name '^EverQuest$'`, never fatal) and, on
   lane 5, redefines `jclick`/`jrclick` and focuses before the raw-xdotool
-  `face_open_click` and `hold` paths, so every motion click carries its own
-  focus. The rig-side `/mnt/projects/eq-oracle/scripts/ui-lib.sh` stays
-  untouched. The `facepick-rows` verb additionally logs each Set Face open
-  attempt to `timeline.tsv` (`face-open attempt=N at=37,251`), so a lane-5 run
+  `hold` path, so every motion click carries its own focus. The rig-side
+  `/mnt/projects/eq-oracle/scripts/ui-lib.sh` stays untouched.
+- **The Set Face open shape** (lane 5 only): matrix3's net-zero drag does not
+  open the modal on the re-provisioned rig (FINDINGS-setface-regression.txt
+  measured it "NO (5 tries)"); the focus-wrapped `jclick` 1px-net drag does.
+  `face_open_click` therefore delegates to the lane-5 `jclick` when
+  `ORACLE_LANE=5` and keeps matrix3's net-zero drag for lanes 1-4. The
+  `facepick-rows` verb additionally logs each Set Face open attempt to
+  `timeline.tsv` (`face-open attempt=N at=37,251`), so a lane-5 run
   proves whether the FIRST click opened the modal (the acceptance bar: a
   retry is a focus/sequence defect, not an acceptable settle).
 

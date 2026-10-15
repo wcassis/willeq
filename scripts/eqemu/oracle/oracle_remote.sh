@@ -404,13 +404,20 @@ face_open() { face_buttons_text '200x55+0+485' | grep -qiE 'Random|Accept|Cancel
 # with the picker LIST never rendered (the full26/pilot failure: all pairs
 # stilled showing only the FACE row). The net-zero drag is the one matrix3
 # proved renders the full list, so the open uses exactly its sequence.
-# B1073 (#393): the open sequence is raw xdotool (not jclick), so it takes
-# the lane-5 focus itself -- without it this drag never opens the modal on
-# the WM-less rig (the FINDINGS-setface-regression.txt "needs windowfocus"
-# finding).
+# B1073 (#393): the open shape. On lanes 1-4 this is matrix3's net-ZERO drag
+# (the sequence that reference capture used). On lane 5 it is the
+# focus-wrapped jclick instead: since the 2026-10-13 re-provision the
+# net-zero drag does NOT open Set Face on this rig (FINDINGS-setface-
+# regression.txt measured it "NO (5 tries)"), while the jclick 1px-net drag
+# WITH an explicit windowfocus DOES (the same table: "jclick WITH explicit
+# xdotool windowfocus -> YES"). The lane-5 jclick (defined above) already
+# takes the focus, so the open is just the focus-wrapped 1px click.
 face_open_click() {
     local x=$1 y=$2
-    client_focus
+    if [[ $ORACLE_LANE == 5 ]]; then
+        jclick "$x" "$y"
+        return 0
+    fi
     xdotool mousemove "$x" "$y"
     sleep 0.4
     xdotool mousemove "$((x+1))" "$y"
