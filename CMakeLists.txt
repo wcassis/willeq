@@ -335,6 +335,7 @@ SET(COMMON_SOURCES
 # Client sources (core - without main.cpp, for library)
 SET(CLIENT_CORE_SOURCES
     src/client/core/everquest.cpp
+    src/client/core/zone_connect.cpp  # B1072: the bounded zone-in connect
     src/client/core/memory_ledger.cpp
     src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
     src/client/core/memory_ledger_trace.cpp
@@ -534,6 +535,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/scenario/scenario_world_app_ui.cpp
     src/client/scenario/scenario_world_app_trade.cpp  # UIGAP-live2
     src/client/scenario/scenario_camp.cpp  # B1005 (#324)
+    src/client/scenario/scenario_zone_connect_timeout.cpp  # B1072 (#392)
     src/client/scenario/scenario_world_app_camp.cpp  # B1005
     src/client/scenario/scenario_fall_damage.cpp  # B893 (#209)
     src/client/scenario/scenario_ranged_single_shot.cpp  # B900 (#216)

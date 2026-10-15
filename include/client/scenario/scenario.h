@@ -177,6 +177,10 @@ public:
     virtual long long CharacterListGeneration() const { return -1; }
     /** Enter World for a listed name (the screen's button); false if refused. */
     virtual bool EnterWorldAs(const std::string& name) { (void)name; return false; }
+    /** B1072: zone UDP sessions opened this run (ConnectToZone + retries); -1 not readable. */
+    virtual long long ZoneConnectOpens() const { return -1; }
+    /** B1072: the next `attempts` zone connects go to `port` on the zone host; false if unsupported. */
+    virtual bool SimulateUnreachableZoneConnects(int attempts, int port) { (void)attempts; (void)port; return false; }
 
     // --- actions ---
     /** Dispatch one slash command line, exactly as --script would. */
