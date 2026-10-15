@@ -657,13 +657,56 @@ irr::video::ITexture* ZoneMeshBuilder::getOrLoadTexture(const std::string& name,
         return texture;
     }
 
+    // B1051 (GitLab #371): the texture's raw S3D bytes may have been released
+    // because the EQE1 pack is present ("EQE1 authoritative" — see
+    // RaceModelLoader::loadModelZone's releaseBytesIfEqe1Authoritative) while
+    // its GPU storage was already created by a Compressed-source upload
+    // (ConstrainedTextureCache::uploadCompressedETC1). buildTexturedMesh()
+    // handles exactly this with its constrainedCache_->getTexture() fallback
+    // (above), but this on-demand path did not — so a per-part texture for a
+    // MULTI-BUFFER character model (one mesh buffer per part) resolved to
+    // nullptr and the buffer fell to the textureless diffuse fallback
+    // (mesh_building.cpp, the flat (255,200,180,160) body that B1051's live
+    // runs show as the ETC1 "smear"), while single-buffer zone meshes and the
+    // raw-RGBA run (bytes not released, pendingTextures_ populated) rendered
+    // correctly. The guarded name is already lowercase (both callers lowercase
+    // before calling); try the original spelling too, mirroring the
+    // buildTexturedMesh() fallback.
+    if (constrainedCache_ && !name.empty()) {
+        std::string lowerName = name;
+        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        irr::video::ITexture* texture = constrainedCache_->getTexture(lowerName, applyPaletteMask);
+        if (!texture) {
+            texture = constrainedCache_->getTexture(name, applyPaletteMask);
+        }
+        if (texture) {
+            // Cache it so subsequent buffers/variants for the same texture
+            // (and hasTexture()) skip the constrained-cache lookup.
+            textureCache_[name] = texture;
+            if (constrainedCache_->hasAlpha(lowerName, applyPaletteMask) ||
+                constrainedCache_->hasAlpha(name, applyPaletteMask)) {
+                texturesWithAlpha_.insert(name);
+                texturesWithAlpha_.insert(lowerName);
+            }
+            return texture;
+        }
+    }
+
     // Not found
     return nullptr;
 }
 
 bool ZoneMeshBuilder::hasTexture(const std::string& name) const {
     return textureCache_.find(name) != textureCache_.end() ||
-           pendingTextures_.find(name) != pendingTextures_.end();
+           pendingTextures_.find(name) != pendingTextures_.end() ||
+           // B1051 (GitLab #371): same hole as getOrLoadTexture() above — the
+           // texture lives in the constrained cache (Compressed source, raw
+           // bytes released) without ever having been decoded through this
+           // builder. Without this, isTextureAvailable() (mesh_building.cpp)
+           // refuses the equipment-variant name and the buffer silently falls
+           // back to the base part's texture (or nothing).
+           (constrainedCache_ != nullptr && constrainedCache_->hasTexture(name));
 }
 
 void ZoneMeshBuilder::registerUploadedTexture(const std::string& name,
