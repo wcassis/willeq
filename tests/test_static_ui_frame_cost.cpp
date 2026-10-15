@@ -560,7 +560,7 @@ TEST_F(StaticUiFrameCostTest, TheHotbarDrawsPerKindSlotArt) {
     auto renderOneHotbarFrame = [&](const EQT::Graphics::HotbarPanelState& state,
                                     int slot) -> FrameCounts {
         FrameCounts out;
-        const auto r = EQT::Graphics::HotbarLayout::slotRect(layout_.hotbar, slot);
+        const auto r = EQT::Graphics::HotbarLayout::slotRect(layout_.hotbar, slot, layout_.hotbarColumns);
         driver_->beginScene(true, true, irr::video::SColor(255, 0, 0, 0));
         ui_.beginFrame();
         renderHotbar(ui_.layer(), layout_, state);

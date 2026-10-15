@@ -36,6 +36,8 @@
  */
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -118,6 +120,9 @@ int chatX(const UILayout& l) { return (l.chatPanel.UpperLeftCorner.X + l.chatPan
 int chatY(const UILayout& l) { return (l.chatPanel.UpperLeftCorner.Y + l.chatPanel.LowerRightCorner.Y) / 2; }
 int popX(const UILayout& l) { return (l.centerPopup.UpperLeftCorner.X + l.centerPopup.LowerRightCorner.X) / 2; }
 int popY(const UILayout& l) { return (l.centerPopup.UpperLeftCorner.Y + l.centerPopup.LowerRightCorner.Y) / 2; }
+// B1075 (#395): the loot window is the layout table's PairLeft popup.
+int lootX(const UILayout& l) { return (l.partnerPopup.UpperLeftCorner.X + l.partnerPopup.LowerRightCorner.X) / 2; }
+int lootY(const UILayout& l) { return (l.partnerPopup.UpperLeftCorner.Y + l.partnerPopup.LowerRightCorner.Y) / 2; }
 
 }  // namespace
 
@@ -165,9 +170,21 @@ TEST_F(ScrollRouterTest, OpenSkillsPopupTakesTheCentre) {
 TEST_F(ScrollRouterTest, LootWinsOverSkillsBecauseItIsDrawnOnTop) {
     p.skills.isOpen = true;
     p.loot.isOpen = true;
-    EXPECT_EQ(StaticUIInput::scrollTargetAt(popX(p.layout), popY(p.layout),
-                                            p.layout, p.skills, p.loot, p.itemDisplay),
+    // B1075: the two are separate anchors now (loot PairLeft, skills
+    // CentreSlot); at 800x600 they still overlap, and in the overlap the
+    // loot window -- drawn on top -- wins. Outside it each owns its own.
+    const auto& a = p.layout.partnerPopup;
+    const auto& b = p.layout.centerPopup;
+    ASSERT_TRUE(a.isRectCollided(b)) << "the overlap this case exists for";
+    const int ox = (std::max(a.UpperLeftCorner.X, b.UpperLeftCorner.X) +
+                    std::min(a.LowerRightCorner.X, b.LowerRightCorner.X)) / 2;
+    const int oy = (std::max(a.UpperLeftCorner.Y, b.UpperLeftCorner.Y) +
+                    std::min(a.LowerRightCorner.Y, b.LowerRightCorner.Y)) / 2;
+    EXPECT_EQ(StaticUIInput::scrollTargetAt(ox, oy, p.layout, p.skills, p.loot, p.itemDisplay),
               ScrollTarget::Loot);
+    EXPECT_EQ(StaticUIInput::scrollTargetAt(b.LowerRightCorner.X - 5, popY(p.layout),
+                                            p.layout, p.skills, p.loot, p.itemDisplay),
+              ScrollTarget::Skills);
 }
 
 TEST_F(ScrollRouterTest, ChatOffsetIsMeasuredFromTheBottomSoUpIsPositive) {
@@ -267,7 +284,7 @@ TEST_F(ScrollRouterTest, PageKeyMovesAWholePage) {
     for (int i = 0; i < 40; ++i) {
         p.loot.items.push_back({static_cast<uint8_t>(i), 1000u + i, "item"});
     }
-    EXPECT_TRUE(input.processScrollKey(/*up=*/false, popX(p.layout), popY(p.layout),
+    EXPECT_TRUE(input.processScrollKey(/*up=*/false, lootX(p.layout), lootY(p.layout),
                                        p.layout, p.chat, p.skills, p.loot, p.itemDisplay));
     EXPECT_EQ(p.loot.scrollOffset, LootPanelState::VISIBLE_ROWS);
 }
@@ -313,9 +330,9 @@ protected:
     // pad 8 + button 16 + pad 8 below the popup top, rows 22 high with a
     // 2px gap.
     void clickVisibleRow(int row) {
-        const int y = p.layout.centerPopup.UpperLeftCorner.Y + 20 + 8 + 16 + 8
+        const int y = p.layout.partnerPopup.UpperLeftCorner.Y + 20 + 8 + 16 + 8
                       + row * (22 + 2) + 4;
-        input.processInput(popX(p.layout), y, /*leftClicked=*/true, p.layout,
+        input.processInput(lootX(p.layout), y, /*leftClicked=*/true, p.layout,
                            hotbar, gems, inventory, spellbook, p.skills, buffs, p.loot);
     }
 
@@ -358,7 +375,7 @@ TEST_F(LootScrollTest, TheFix_ScrollingBringsSlot13OntoARowAndLootsIt) {
     // 14 items, 8 rows -> maxScrollOffset() == 6, so the last page shows
     // corpse slots 6..13 and slot 13 lands on the LAST visible row.
     ASSERT_EQ(p.loot.maxScrollOffset(), 6);
-    ASSERT_TRUE(input.processWheel(popX(p.layout), popY(p.layout), -2.0f,
+    ASSERT_TRUE(input.processWheel(lootX(p.layout), lootY(p.layout), -2.0f,
                                    p.layout, p.chat, p.skills, p.loot, p.itemDisplay));
     ASSERT_EQ(p.loot.scrollOffset, 6) << "two notches of 3 lines, clamped at the end";
 
@@ -372,9 +389,9 @@ TEST_F(LootScrollTest, TheVisibleRowSetChanges) {
     // The row set is what hitTestLootRow() -- renderLootPopup()'s twin --
     // says is on screen. Before and after, top row and bottom row.
     auto rowItem = [&](int row) {
-        const int y = p.layout.centerPopup.UpperLeftCorner.Y + 20 + 8 + 16 + 8
+        const int y = p.layout.partnerPopup.UpperLeftCorner.Y + 20 + 8 + 16 + 8
                       + row * (22 + 2) + 4;
-        return hitTestLootRow(p.layout, p.loot, popX(p.layout), y);
+        return hitTestLootRow(p.layout, p.loot, lootX(p.layout), y);
     };
     EXPECT_EQ(rowItem(0), 0);
     EXPECT_EQ(rowItem(7), 7);
@@ -818,7 +835,7 @@ protected:
         maybeCapture(driver_, shot, captureName);
         std::vector<uint32_t> px;
         if (shot) {
-            const auto& r = layout_.centerPopup;
+            const auto& r = layout_.partnerPopup;  // B1075: the loot window's anchor
             for (int y = r.UpperLeftCorner.Y; y < r.LowerRightCorner.Y; ++y) {
                 for (int x = r.UpperLeftCorner.X; x < r.LowerRightCorner.X; ++x) {
                     px.push_back(shot->getPixel(x, y).color);

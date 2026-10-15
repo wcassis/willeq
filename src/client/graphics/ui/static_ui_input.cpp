@@ -77,11 +77,23 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     skills.hoveredRow = -1;
     loot.hoveredRow = -1;
 
+    // B1075 (#395): the drawn-last rule. The centre popups are drawn AFTER
+    // the HUD (renderStaticUI()'s order), so where an open popup covers a HUD
+    // window the popup owns the point. Before B1075 no popup touched the
+    // hotbar or the gems; under the layout table the side-by-side pair fills
+    // an 800-wide screen and the inventory covers part of the gem column.
+    const irr::core::vector2di at(mouseX, mouseY);
+    const bool overOpenPopup =
+        (inventory.activePopup == PopupType::Inventory &&
+         layout.inventoryPopup.isPointInside(at)) ||
+        ((spellbook.isOpen || skills.isOpen) && layout.centerPopup.isPointInside(at)) ||
+        (loot.isOpen && layout.partnerPopup.isPointInside(at));
+
     // --- Hotbar window (B1025-H2): the stock HotButtonWnd, one window ---
     // The renderer and this test share HotbarLayout's rects, so a click lands
     // on the drawn control. The old horizontal-row hitTestSlotRow() is gone
     // with the old geometry.
-    {
+    if (!overOpenPopup) {
         const HotbarHit hbHit = hitTestHotbar(layout, hotbar, mouseX, mouseY);
         if (hbHit != HotbarHit::None) {
             consumed = true;
@@ -123,7 +135,7 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     }
 
     // --- Spell gem hit test (8 vertical slots) ---
-    {
+    if (!overOpenPopup) {
         int sx = layout.spellGems.UpperLeftCorner.X;
         int sy = layout.spellGems.UpperLeftCorner.Y;
         for (int i = 0; i < static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT); ++i) {
@@ -166,10 +178,10 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     // shared source also used by renderInventoryPopup() (T57). No
     // slot-position arithmetic here.
     if (inventory.activePopup == PopupType::Inventory) {
-        if (mouseX >= layout.centerPopup.UpperLeftCorner.X &&
-            mouseX < layout.centerPopup.LowerRightCorner.X &&
-            mouseY >= layout.centerPopup.UpperLeftCorner.Y &&
-            mouseY < layout.centerPopup.LowerRightCorner.Y) {
+        if (mouseX >= layout.inventoryPopup.UpperLeftCorner.X &&
+            mouseX < layout.inventoryPopup.LowerRightCorner.X &&
+            mouseY >= layout.inventoryPopup.UpperLeftCorner.Y &&
+            mouseY < layout.inventoryPopup.LowerRightCorner.Y) {
             consumed = true;
             for (int i = 0; i < InventoryLayout::TOTAL_SLOTS; ++i) {
                 irr::core::rect<irr::s32> r = InventoryLayout::slotRect(layout, i);
@@ -328,10 +340,10 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     // CombatManager::LootAll, CloseLootWindow), so there is one body per
     // action, not two (T230/T239).
     if (loot.isOpen) {
-        if (mouseX >= layout.centerPopup.UpperLeftCorner.X &&
-            mouseX < layout.centerPopup.LowerRightCorner.X &&
-            mouseY >= layout.centerPopup.UpperLeftCorner.Y &&
-            mouseY < layout.centerPopup.LowerRightCorner.Y) {
+        if (mouseX >= layout.partnerPopup.UpperLeftCorner.X &&
+            mouseX < layout.partnerPopup.LowerRightCorner.X &&
+            mouseY >= layout.partnerPopup.UpperLeftCorner.Y &&
+            mouseY < layout.partnerPopup.LowerRightCorner.Y) {
             consumed = true;
 
             LootButton btn = hitTestLootButton(layout, loot, mouseX, mouseY);
@@ -703,27 +715,27 @@ ScrollTarget StaticUIInput::scrollTargetAt(int mouseX, int mouseY,
     }
 
     // Popups first, topmost first -- the same precedence processKey()'s ESC
-    // handler uses. Both draw into layout.centerPopup. B1025-H2: the stock
-    // hotbar window sits bottom-left and the chat panel beside it, so at
-    // 800x600 the chat's TOP STRIP falls inside layout.centerPopup -- the
-    // old bottom-left chat and the centre popup never touched. An open
-    // popup, drawn on top, still wins; with no popup open the chat
-    // underneath owns the point, so its tab strip scrolls again. A zero-area
-    // panel (an uninitialised layout, whose rects are all (0,0,0,0) --
-    // isPointInside answers true for (0,0) there) owns no pixels and is not
-    // a target.
-    if (layout.centerPopup.isPointInside(p)) {
-        if (loot.isOpen) return ScrollTarget::Loot;
-        if (skills.isOpen) return ScrollTarget::Skills;
-        if (layout.chatPanel.getArea() > 0 && layout.chatPanel.isPointInside(p))
-            return ScrollTarget::Chat;
-        return ScrollTarget::None;
+    // handler uses (loot is drawn after skills). B1075 (#395): each popup is
+    // asked over ITS OWN layout-table anchor -- the loot window is the
+    // PairLeft popup (layout.partnerPopup), the skills window the CentreSlot
+    // (layout.centerPopup) -- and an open popup, drawn on top, wins over
+    // the chat underneath it. A zero-area panel (an uninitialised layout,
+    // whose rects are all (0,0,0,0) -- isPointInside answers true for (0,0)
+    // there) owns no pixels and is not a target.
+    if (loot.isOpen && layout.partnerPopup.getArea() > 0 &&
+        layout.partnerPopup.isPointInside(p)) {
+        return ScrollTarget::Loot;
+    }
+    if (skills.isOpen && layout.centerPopup.getArea() > 0 &&
+        layout.centerPopup.isPointInside(p)) {
+        return ScrollTarget::Skills;
     }
 
     // The whole chat panel scrolls, not just the message area: the tab strip
     // and the input field are part of the box the user is pointing at, and
     // the alternative is a dead 16px band at the top and bottom of it.
-    if (layout.chatPanel.isPointInside(p)) return ScrollTarget::Chat;
+    if (layout.chatPanel.getArea() > 0 && layout.chatPanel.isPointInside(p))
+        return ScrollTarget::Chat;
 
     return ScrollTarget::None;
 }

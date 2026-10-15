@@ -138,7 +138,7 @@ TEST(B429Census, TheThreeWindowsAreActuallyDrawn) {
 TEST(MerchantLayoutOracle, EveryElementLandsInsideTheCentrePopup) {
     for (auto rc : {std::pair<int, int>{640, 480}, {800, 600}, {1024, 768}}) {
         const auto l = layoutAt(rc.first, rc.second);
-        const auto& popup = l.centerPopup;
+        const auto& popup = l.partnerPopup;  // B1075: the PairLeft popup
         std::vector<irr::core::rect<irr::s32>> rects = {
             MerchantLayout::nameTextRect(l),
             MerchantLayout::listRect(l),

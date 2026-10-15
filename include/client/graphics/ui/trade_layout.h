@@ -126,14 +126,12 @@ constexpr irr::s32 BUTTON_TOP_FROM_BOTTOM = 37;
 constexpr irr::s32 BUTTON_BOTTOM_FROM_BOTTOM = 5;
 
 /** The window's top-left: the oracle's <Location>, clamped on screen. */
+// B1075 (#395): the oracle's (ORACLE_X, ORACLE_Y) is content history; WHERE
+// the window sits is the layout table's PairLeft anchor -- right-aligned
+// against the inventory it is always open with (inventory+trade is a
+// required co-open set), at its own oracle size.
 inline irr::core::vector2di windowOrigin(const UILayout& layout) {
-    irr::s32 x = ORACLE_X;
-    irr::s32 y = ORACLE_Y;
-    if (x + WINDOW_W > layout.screenW) x = layout.screenW - WINDOW_W;
-    if (y + WINDOW_H > layout.screenH) y = layout.screenH - WINDOW_H;
-    if (x < 0) x = 0;
-    if (y < 0) y = 0;
-    return irr::core::vector2di(x, y);
+    return layout.placePairLeft(WINDOW_W, WINDOW_H).UpperLeftCorner;
 }
 
 inline irr::core::rect<irr::s32> windowRect(const UILayout& layout) {

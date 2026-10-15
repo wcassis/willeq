@@ -231,7 +231,7 @@ protected:
     // the SAME rects hitTestHotbar() tests -- so the click lands inside the
     // drawn slot whatever resolution the layout was computed for.
     void clickSlot(int slot) {
-        const auto r = EQT::Graphics::HotbarLayout::slotRect(layout.hotbar, slot);
+        const auto r = EQT::Graphics::HotbarLayout::slotRect(layout.hotbar, slot, layout.hotbarColumns);
         const int x = (r.UpperLeftCorner.X + r.LowerRightCorner.X) / 2;
         const int y = (r.UpperLeftCorner.Y + r.LowerRightCorner.Y) / 2;
         input.processInput(x, y, /*leftClicked=*/true, layout, hotbar, gems,
@@ -458,9 +458,10 @@ protected:
     }
 
     // Click row `row` of the popup. centerPopup for 800x600 is
-    // {200,125,600,475}; rows start at popupY+24 with an 18px line and 2px pad.
+    // {264,65,664,415} (B1075: the layout table's CentreSlot); rows start at
+    // popupY+24 with an 18px line and 2px pad.
     void clickRow(int row) {
-        const int y = 125 + 24 + row * (18 + 2) + 4;
+        const int y = 65 + 24 + row * (18 + 2) + 4;
         input.processInput(300, y, /*leftClicked=*/true, layout, hotbar, gems,
                            inventory, spellbook, skills, buffs, loot);
     }
@@ -511,7 +512,7 @@ TEST_F(SkillsPopupProducerTest, ClosedPopupProducesNothing) {
 }
 
 TEST_F(SkillsPopupProducerTest, HoverWithoutClickProducesNothing) {
-    const int y = 125 + 24 + 4;
+    const int y = 65 + 24 + 4;  // B1075: centerPopup top is 65 at 800x600
     input.processInput(300, y, /*leftClicked=*/false, layout, hotbar, gems,
                        inventory, spellbook, skills, buffs, loot);
     EXPECT_EQ(skills.hoveredRow, 0);
