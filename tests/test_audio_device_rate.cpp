@@ -39,6 +39,7 @@
 #include "client/audio/audio_device_rate.h"
 #include "client/audio/audio_manager.h"
 #include "client/audio/audio_mixer.h"
+#include "client/audio/polyphase_resampler.h"
 #include "common/logging.h"
 
 using EQT::Audio::AudioMixer;
@@ -192,6 +193,10 @@ struct OneSecondAsset {
     }
 };
 
+// The polyphase resampler reads kTaps/2 frames ahead of its output instant
+// (polyphase_resampler.h); that look-ahead is pulled once, not per call.
+constexpr double kLookAhead = EQT::Audio::PolyphaseResampler::kTaps / 2;
+
 struct PullResult {
     uint64_t deviceFrames = 0;
     uint64_t audibleFrames = 0;
@@ -234,13 +239,13 @@ TEST(DeviceRateAdapter, MixerPulledAtItsOwnRateNoDriftOver10s) {
     EXPECT_EQ(r.deviceFrames, 480000u);
     // Exactly 10 s of mixer time; the linear resampler holds at most a frame
     // or two of look-ahead, never a growing debt.
-    EXPECT_NEAR(static_cast<double>(r.mixerFrames), 220500.0, 2.0);
+    EXPECT_NEAR(static_cast<double>(r.mixerFrames), 220500.0 + kLookAhead, 2.0);
 }
 
 TEST(DeviceRateAdapter, RaggedPullsAndOversizedPullsDoNotDrift) {
     // Odd sizes, a 1-frame pull, and a pull larger than the adapter's chunk.
     const PullResult r = PullSeconds(48000, 10.0, {1, 333, 1115, 4097, 64, 2048, 7});
-    EXPECT_NEAR(static_cast<double>(r.mixerFrames), 220500.0, 2.0);
+    EXPECT_NEAR(static_cast<double>(r.mixerFrames), 220500.0 + kLookAhead, 2.0);
 }
 
 TEST(DeviceRateAdapter, A22050HzAssetKeepsItsDurationAt48000) {
@@ -252,7 +257,82 @@ TEST(DeviceRateAdapter, A22050HzAssetKeepsItsDurationAt48000) {
 TEST(DeviceRateAdapter, A22050HzAssetKeepsItsDurationAt44100) {
     const PullResult r = PullSeconds(44100, 2.0, {1024});
     EXPECT_NEAR(static_cast<double>(r.audibleFrames), 44100.0, 4.0);
-    EXPECT_NEAR(static_cast<double>(r.mixerFrames), 44100.0, 2.0);
+    EXPECT_NEAR(static_cast<double>(r.mixerFrames), 44100.0 + kLookAhead, 2.0);
+}
+
+// B1069 acceptance 2: Will heard the 48 kHz stream as "distorted". Measured
+// (refactor/B1069/README.md): miniaudio's linear resampler folded the image
+// at 44100 - f back in band at f + 3900 Hz (SINAD 30.8 dB for a 6 kHz tone,
+// 43.2 dB at 3 kHz). Pin the band-limited replacement: a pure tone at the
+// mixer rate comes out at 48000 with SINAD >= 70 dB (sine fitted at the exact
+// frequency; the residual is everything else -- images, aliases, clicks).
+namespace {
+double ToneSinadDb(double hz) {
+    AudioMixer mixer;
+    std::vector<float> pcm(22050 * 3);
+    for (size_t i = 0; i < pcm.size(); ++i) pcm[i] = float(0.5 * std::sin(2 * M_PI * hz * i / 22050.0));
+    const int h = mixer.allocSfxChannel();
+    auto* ch = mixer.getChannel(h);
+    ch->samples = pcm.data(); ch->sampleRate = 22050; ch->channels = 1;
+    ch->totalFrames = pcm.size(); ch->looping = true;
+    ch->active.store(true, std::memory_order_release);
+    DeviceRateAdapter adapter;
+    EXPECT_TRUE(adapter.init(&mixer, 22050, 48000));
+    std::vector<float> out(48000 * 2 * 2);
+    for (size_t done = 0; done < 96000; done += 1115) {
+        const uint32_t n = static_cast<uint32_t>(std::min<size_t>(1115, 96000 - done));
+        adapter.render(out.data() + done * 2, n);
+    }
+    // Fit a*sin + b*cos at hz over the second second (the first holds the
+    // filter's start-up), left channel.
+    double ss = 0, sc = 0, cc = 0, xs = 0, xc = 0;
+    for (size_t n = 48000; n < 96000; ++n) {
+        const double w = 2 * M_PI * hz * n / 48000.0, s = std::sin(w), c = std::cos(w), x = out[n * 2];
+        ss += s * s; cc += c * c; sc += s * c; xs += x * s; xc += x * c;
+    }
+    const double det = ss * cc - sc * sc;
+    const double a = (xs * cc - xc * sc) / det, b = (xc * ss - xs * sc) / det;
+    double sig = 0, res = 0;
+    for (size_t n = 48000; n < 96000; ++n) {
+        const double w = 2 * M_PI * hz * n / 48000.0, fit = a * std::sin(w) + b * std::cos(w);
+        sig += fit * fit;
+        res += (out[n * 2] - fit) * (out[n * 2] - fit);
+    }
+    return 10.0 * std::log10(sig / res);
+}
+}  // namespace
+
+TEST(DeviceRateAdapter, TonesComeOutCleanAt48000) {
+    for (double hz : {440.0, 1000.0, 3000.0, 6000.0, 8000.0}) {
+        EXPECT_GE(ToneSinadDb(hz), 70.0) << hz << " Hz";
+    }
+}
+
+// The resampler's state is carried across calls: ragged pulls produce the
+// SAME samples as one big pull, so a period boundary leaves no trace.
+TEST(DeviceRateAdapter, PullSizesDoNotChangeTheSamples) {
+    auto run = [](const std::vector<uint32_t>& sizes) {
+        AudioMixer mixer;
+        OneSecondAsset asset;
+        for (size_t i = 0; i < asset.pcm.size(); ++i) asset.pcm[i] = float(0.4 * std::sin(i * 0.37));
+        asset.startOn(mixer);
+        DeviceRateAdapter adapter;
+        EXPECT_TRUE(adapter.init(&mixer, 22050, 48000));
+        std::vector<float> out(40000 * 2);
+        size_t done = 0, k = 0;
+        while (done < 40000) {
+            const uint32_t n = static_cast<uint32_t>(std::min<size_t>(sizes[k++ % sizes.size()], 40000 - done));
+            adapter.render(out.data() + done * 2, n);
+            done += n;
+        }
+        return out;
+    };
+    const auto oneShot = run({4096});
+    const auto ragged = run({1, 333, 1115, 4097, 64, 2048, 7});
+    ASSERT_EQ(oneShot.size(), ragged.size());
+    for (size_t i = 0; i < oneShot.size(); ++i) {
+        ASSERT_FLOAT_EQ(oneShot[i], ragged[i]) << "sample " << i;
+    }
 }
 
 TEST(DeviceRateAdapter, EqualRatesAreABitExactPassThrough) {
@@ -397,7 +477,7 @@ TEST(MiniaudioBackendDeviceRate, InitLogNamesRequestedConfiguredAndNativeRate) {
     SetLogLevel(savedLevel);
     EXPECT_NE(text.find("Audio device: requested=48000Hz configured=48000Hz"), std::string::npos)
         << "the one grep-able init line is missing. Captured: " << text;
-    EXPECT_NE(text.find("mixer=22050Hz resample=linear"), std::string::npos) << text;
+    EXPECT_NE(text.find("mixer=22050Hz resample=sinc48"), std::string::npos) << text;
     EXPECT_NE(text.find("native="), std::string::npos) << text;
     EXPECT_NE(text.find("requested_format=s16 client_format=s16"), std::string::npos) << text;
     EXPECT_NE(text.find("backend=Null"), std::string::npos) << text;
@@ -427,7 +507,7 @@ TEST(MiniaudioBackendDeviceRate, AudioManagerOpensThePublishedRate) {
     if (loopback) GTEST_SKIP() << "no miniaudio device opened (loopback fallback)";
     EXPECT_NE(text.find("Audio device: requested=44100Hz configured=44100Hz"), std::string::npos)
         << text;
-    EXPECT_NE(text.find("mixer=22050Hz resample=linear"), std::string::npos) << text;
+    EXPECT_NE(text.find("mixer=22050Hz resample=sinc48"), std::string::npos) << text;
 }
 
 #endif  // WITH_AUDIO

@@ -9,6 +9,7 @@ SET(AUDIO_COMMON_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/src/client/audio/audio_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/audio_mixer.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/audio_backend.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/audio/polyphase_resampler.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/midi_player.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/sfx_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/sound_buffer_cache.cpp

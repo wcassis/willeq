@@ -14,6 +14,7 @@ namespace EQT {
 namespace Audio {
 
 class AudioMixer;
+struct PcmTap;  // B1069 diagnostic (WILLEQ_AUDIO_DUMP), audio_backend.cpp
 
 // Callback for RDP audio streaming (s16 interleaved stereo)
 using AudioOutputCallback = std::function<void(const int16_t* samples, size_t count,
@@ -48,6 +49,11 @@ public:
     void render(float* output, uint32_t frameCount);
 
     bool isPassthrough() const;
+    // B1069 diagnostic: also record every mixer frame rendered (pre-resampler).
+    void setMixTap(PcmTap* tap);
+    // "off", "sinc48" (PolyphaseResampler, the default) or "linear" (the
+    // ma_resampler fallback for a rate pair with too many phases).
+    const char* resamplerName() const;
     uint32_t mixRate() const;
     uint32_t deviceRate() const;
     // Total mixer frames rendered so far (relaxed counter; tests and the

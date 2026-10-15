@@ -959,6 +959,7 @@ IF(WITH_AUDIO)
         src/client/audio/combat_music.cpp
         src/client/audio/audio_mixer.cpp
         src/client/audio/audio_backend.cpp
+        src/client/audio/polyphase_resampler.cpp
         src/client/audio/midi_player.cpp
         src/client/audio/sfx_manager.cpp
         src/client/audio/sound_buffer_cache.cpp

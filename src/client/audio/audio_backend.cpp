@@ -3,6 +3,7 @@
 #include "client/audio/audio_backend.h"
 #include "client/audio/audio_callback_probe.h"
 #include "client/audio/audio_mixer.h"
+#include "client/audio/polyphase_resampler.h"
 #include "common/logging.h"
 #include "client/core/memory_ledger.h"
 
@@ -13,6 +14,8 @@
 #include <ctime>
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
+#include <cstdlib>
 
 // miniaudio implementation — only in this .cpp
 #define MA_IMPLEMENTATION
@@ -53,6 +56,45 @@ static void t130WriteAudioTidOnce() {
 namespace EQT {
 namespace Audio {
 
+// ─── PcmTap (B1069 diagnostic) ──────────────────────────────────────────────
+
+// WILLEQ_AUDIO_DUMP=<file.wav> [WILLEQ_AUDIO_DUMP_SECONDS=<n>, default 30]
+// records exactly what the callback hands miniaudio (device rate + format)
+// to <file.wav>, and the mixer's own output (f32 at the mixer rate, before
+// the resampler) to <file.wav>.mix.wav, so the two can be compared offline
+// for the same input. Off unless the variable is set. The buffers are
+// allocated in init(); the callback only memcpy()s into them (no I/O, no
+// allocation); the files are written in stop().
+struct PcmTap {
+    std::vector<uint8_t> buf;
+    size_t pos = 0;  // audio thread writes; read after the device is stopped
+    void reserve(size_t bytes) { buf.assign(bytes, 0); pos = 0; }
+    void append(const void* data, size_t bytes) {
+        if (buf.empty() || pos >= buf.size()) return;
+        const size_t n = std::min(bytes, buf.size() - pos);
+        std::memcpy(buf.data() + pos, data, n);
+        pos += n;
+    }
+    // formatTag 1 = PCM, 3 = IEEE float.
+    bool writeWav(const std::string& path, uint16_t formatTag, uint16_t bits,
+                  uint32_t rate, uint16_t channels) const {
+        FILE* f = std::fopen(path.c_str(), "wb");
+        if (!f) return false;
+        auto w32 = [f](uint32_t v) { std::fwrite(&v, 4, 1, f); };
+        auto w16 = [f](uint16_t v) { std::fwrite(&v, 2, 1, f); };
+        const uint32_t dataBytes = static_cast<uint32_t>(pos);
+        const uint16_t blockAlign = static_cast<uint16_t>(channels * (bits / 8));
+        std::fwrite("RIFF", 1, 4, f); w32(36 + dataBytes);
+        std::fwrite("WAVEfmt ", 1, 8, f); w32(16);
+        w16(formatTag); w16(channels); w32(rate); w32(rate * blockAlign);
+        w16(blockAlign); w16(bits);
+        std::fwrite("data", 1, 4, f); w32(dataBytes);
+        std::fwrite(buf.data(), 1, pos, f);
+        std::fclose(f);
+        return true;
+    }
+};
+
 // ─── DeviceRateAdapter (B1069) ──────────────────────────────────────────────
 
 // Largest device-rate pull rendered in one resampler pass. A callback asking
@@ -66,9 +108,12 @@ struct DeviceRateAdapter::Impl {
     uint32_t deviceRate = 0;
     bool passthrough = true;
     bool resamplerInitialized = false;
-    ma_resampler resampler;
+    ma_resampler resampler;        // fallback only (a rate pair too odd for the polyphase table)
+    bool polyphase = false;
+    PolyphaseResampler poly;       // B1069 acceptance 2: the default path
     std::vector<float> mixScratch;  // mixer-rate frames, interleaved stereo
     std::atomic<uint64_t> mixerFrames{0};
+    PcmTap* mixTap = nullptr;       // B1069 diagnostic (WILLEQ_AUDIO_DUMP)
 
     ~Impl() {
         if (resamplerInitialized) ma_resampler_uninit(&resampler, nullptr);
@@ -88,10 +133,22 @@ bool DeviceRateAdapter::init(AudioMixer* mixer, uint32_t mixRate, uint32_t devic
     impl_->deviceRate = deviceRate;
     impl_->mixerFrames.store(0, std::memory_order_relaxed);
     impl_->passthrough = (mixRate == deviceRate) || mixRate == 0 || deviceRate == 0;
+    impl_->polyphase = false;
     if (impl_->passthrough) {
         impl_->mixScratch.clear();
         return mixRate == deviceRate;
     }
+
+    // B1069 acceptance 2: band-limited polyphase sinc (polyphase_resampler.h
+    // says why the linear resampler was audibly distorted).
+    if (impl_->poly.init(mixRate, deviceRate, kAdapterChunkFrames)) {
+        impl_->polyphase = true;
+        impl_->mixScratch.clear();
+        return true;
+    }
+    LOG_WARN(MOD_AUDIO, "DeviceRateAdapter: {} -> {} Hz needs more than {} phases; "
+             "falling back to linear resampling", mixRate, deviceRate,
+             PolyphaseResampler::kMaxPhases);
 
     ma_resampler_config rc = ma_resampler_config_init(
         ma_format_f32, 2, mixRate, deviceRate, ma_resample_algorithm_linear);
@@ -120,6 +177,24 @@ void DeviceRateAdapter::render(float* output, uint32_t frameCount) {
     if (impl_->passthrough) {
         impl_->mixer->render(output, static_cast<int>(frameCount));
         impl_->mixerFrames.fetch_add(frameCount, std::memory_order_relaxed);
+        if (impl_->mixTap) impl_->mixTap->append(output, static_cast<size_t>(frameCount) * 2 * sizeof(float));
+        return;
+    }
+
+    if (impl_->polyphase) {
+        uint32_t done = 0;
+        while (done < frameCount) {
+            const uint32_t chunk = std::min(frameCount - done, kAdapterChunkFrames);
+            const uint32_t need = impl_->poly.inputFramesFor(chunk);
+            float* in = impl_->poly.inputBuffer();
+            if (need > 0) {
+                impl_->mixer->render(in, static_cast<int>(need));
+                if (impl_->mixTap) impl_->mixTap->append(in, static_cast<size_t>(need) * 2 * sizeof(float));
+            }
+            impl_->poly.process(output + static_cast<size_t>(done) * 2, chunk);
+            impl_->mixerFrames.fetch_add(need, std::memory_order_relaxed);
+            done += chunk;
+        }
         return;
     }
 
@@ -132,6 +207,10 @@ void DeviceRateAdapter::render(float* output, uint32_t frameCount) {
         if (need > maxIn) need = maxIn;  // cannot happen (sized in init); never overrun
         if (need > 0) {
             impl_->mixer->render(impl_->mixScratch.data(), static_cast<int>(need));
+            if (impl_->mixTap) {
+                impl_->mixTap->append(impl_->mixScratch.data(),
+                                      static_cast<size_t>(need) * 2 * sizeof(float));
+            }
         }
         ma_uint64 inFrames = need;
         ma_uint64 outFrames = chunk;
@@ -150,6 +229,10 @@ void DeviceRateAdapter::render(float* output, uint32_t frameCount) {
 }
 
 bool DeviceRateAdapter::isPassthrough() const { return impl_->passthrough; }
+void DeviceRateAdapter::setMixTap(PcmTap* tap) { impl_->mixTap = tap; }
+const char* DeviceRateAdapter::resamplerName() const {
+    return impl_->passthrough ? "off" : (impl_->polyphase ? "sinc48" : "linear");
+}
 uint32_t DeviceRateAdapter::mixRate() const { return impl_->mixRate; }
 uint32_t DeviceRateAdapter::deviceRate() const { return impl_->deviceRate; }
 uint64_t DeviceRateAdapter::mixerFramesPulled() const {
@@ -188,6 +271,10 @@ struct MiniaudioBackend::Impl {
     // ma_pcm_convert writes the device's format, chunk by chunk.
     ma_format outFormat = ma_format_f32;
     std::vector<float> f32Scratch;
+    // B1069 diagnostic taps (PcmTap above); empty unless WILLEQ_AUDIO_DUMP.
+    std::string dumpPath;
+    PcmTap deviceTap;
+    PcmTap mixTap;
 };
 
 // T130: monotonic timestamp for AudioCallbackProbe. clock_gettime(CLOCK_MONOTONIC)
@@ -230,11 +317,12 @@ static void miniaudioDataCallback(ma_device* pDevice, void* pOutput, const void*
     // once, and a non-f32 device format is converted once here.
     auto* impl = static_cast<MiniaudioBackend::Impl*>(pDevice->pUserData);
     if (!impl) return;
+    const ma_uint32 bpf = ma_get_bytes_per_frame(impl->outFormat, 2);
     if (impl->outFormat == ma_format_f32 || impl->f32Scratch.empty()) {
         impl->adapter.render(static_cast<float*>(pOutput), frameCount);
+        impl->deviceTap.append(pOutput, static_cast<size_t>(frameCount) * bpf);
         return;
     }
-    const ma_uint32 bpf = ma_get_bytes_per_frame(impl->outFormat, 2);
     const ma_uint32 chunkMax = static_cast<ma_uint32>(impl->f32Scratch.size() / 2);
     auto* dst = static_cast<uint8_t*>(pOutput);
     ma_uint32 done = 0;
@@ -246,6 +334,7 @@ static void miniaudioDataCallback(ma_device* pDevice, void* pOutput, const void*
                        static_cast<ma_uint64>(n) * 2, ma_dither_mode_none);
         done += n;
     }
+    impl->deviceTap.append(pOutput, static_cast<size_t>(frameCount) * bpf);
 }
 
 MiniaudioBackend::MiniaudioBackend()
@@ -318,6 +407,17 @@ bool MiniaudioBackend::init(AudioMixer* mixer, uint32_t sampleRate) {
     // (the requested one, or the device's native one when 0 was asked).
     impl_->adapter.init(mixer, sampleRate, impl_->device.sampleRate);
     impl_->outFormat = impl_->device.playback.format;
+    // B1069 diagnostic: WILLEQ_AUDIO_DUMP (see PcmTap).
+    if (const char* dump = std::getenv("WILLEQ_AUDIO_DUMP"); dump && *dump) {
+        double secs = 30.0;
+        if (const char* s = std::getenv("WILLEQ_AUDIO_DUMP_SECONDS")) secs = std::max(0.1, std::atof(s));
+        impl_->dumpPath = dump;
+        impl_->deviceTap.reserve(static_cast<size_t>(secs * impl_->device.sampleRate) *
+                                 ma_get_bytes_per_frame(impl_->outFormat, 2));
+        impl_->mixTap.reserve(static_cast<size_t>(secs * sampleRate) * 2 * sizeof(float));
+        impl_->adapter.setMixTap(&impl_->mixTap);
+        LOG_INFO(MOD_AUDIO, "Audio dump armed: {} ({} s, device + .mix.wav)", impl_->dumpPath, secs);
+    }
     if (impl_->outFormat != ma_format_f32) {
         impl_->f32Scratch.assign(static_cast<size_t>(kAdapterChunkFrames) * 2, 0.0f);
     } else {
@@ -383,14 +483,28 @@ void MiniaudioBackend::start() {
                  d.playback.internalPeriodSizeInFrames,
                  d.pContext ? ma_get_backend_name(d.pContext->backend) : "?",
                  d.playback.name, impl_->mixRate,
-                 impl_->adapter.isPassthrough() ? "off" : "linear");
+                 impl_->adapter.isPassthrough() ? "off" : impl_->adapter.resamplerName());
     }
 }
 
 void MiniaudioBackend::stop() {
     if (impl_->deviceInitialized) {
+        const ma_format fmt = impl_->outFormat;
+        const uint32_t devRate = impl_->device.sampleRate;
         ma_device_uninit(&impl_->device);
         impl_->deviceInitialized = false;
+        if (!impl_->dumpPath.empty()) {
+            const uint16_t bits = static_cast<uint16_t>(ma_get_bytes_per_sample(fmt) * 8);
+            const bool okDev = impl_->deviceTap.writeWav(impl_->dumpPath,
+                                                         fmt == ma_format_f32 ? 3 : 1, bits, devRate, 2);
+            const bool okMix = impl_->mixTap.writeWav(impl_->dumpPath + ".mix.wav", 3, 32,
+                                                      impl_->mixRate, 2);
+            LOG_INFO(MOD_AUDIO, "Audio dump written: {} ({} B, {}) + .mix.wav ({} B): {}",
+                     impl_->dumpPath, impl_->deviceTap.pos, shortFormatName(fmt),
+                     impl_->mixTap.pos, (okDev && okMix) ? "ok" : "FAILED");
+            impl_->dumpPath.clear();
+            impl_->adapter.setMixTap(nullptr);
+        }
     }
     if (impl_->contextInitialized) {
         ma_context_uninit(&impl_->context);

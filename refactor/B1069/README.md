@@ -159,6 +159,73 @@ file and the CLI, native passes through to a real format, an unknown
 spelling keeps s16, the CLI wins. The CPU cost of the s16 conversion was not
 benchmarked (one float->int16 per sample, against the table above).
 
+## Device acceptance 2 (XU4, publish 42ebeabc): audible, "distorted" -> the resampler
+
+Will heard music at s16/48 kHz but "it sounds distorted". Measured here, not
+guessed, with a new diagnostic tap: `WILLEQ_AUDIO_DUMP=<file.wav>`
+(`WILLEQ_AUDIO_DUMP_SECONDS`, default 30) records exactly what the callback
+hands miniaudio (device rate and format) and, beside it, `<file>.mix.wav` --
+the mixer's own f32 output at 22050 for the SAME input (`PcmTap`,
+`audio_backend.cpp`; buffers allocated in `init()`, a memcpy in the callback,
+files written in `stop()`). Inputs: (a) pure tones at the mixer rate through
+`MiniaudioBackend` on the null device (`acceptance2/tones.cpp`), analysed by
+`acceptance2/sinad.py` (sine-bin power over everything else, Kaiser-windowed
+FFT, left channel); (b) the real `AudioManager` playing `qeynos2.xmi` plus
+four effects every 1.7 s for 30 s (`acceptance2/harness.cpp`), analysed by
+`acceptance2/analyze.py`.
+
+Tones, device SINAD (the 22050 mix itself is 153-154 dB on every tone):
+
+| tone | linear `ma_resampler` (42ebeabc) | worst spur | polyphase sinc (this fix) | worst spur |
+|---|---|---|---|---|
+| 440 Hz | 75.9 dB | 4,340 Hz -84.2 dBc | 83.7 dB | 1,320 Hz -95.9 dBc |
+| 1 kHz | 62.4 dB | 4,900 Hz -69.5 dBc | 83.3 dB | 3,000 Hz -93.9 dBc |
+| 3 kHz | 43.2 dB | 6,900 Hz -49.7 dBc | 85.1 dB | 9,000 Hz -94.9 dBc |
+| 6 kHz | 30.8 dB | 9,900 Hz -37.4 dBc | 96.0 dB | 18,000 Hz -102.0 dBc |
+| 9 kHz | 15.4 dB | 13,050 Hz -20.1 dBc | 88.2 dB | 3,000 Hz -97.3 dBc |
+
+(`acceptance2/tones_before_linear.txt`, `tones_after_sinc48.txt`.) **The
+mechanism:** the worst spur sits at f + 3,900 Hz for every tone up to 6 kHz.
+Linear interpolation leaves the image at 2 x 22050 - f = 44100 - f; above the
+48 kHz Nyquist it folds to 48000 - (44100 - f) = f + 3900 Hz -- an
+INHARMONIC tone inside the audible band, -50 dBc at 3 kHz, -37 dBc at 6 kHz,
+which on music reads as distortion. It is not clipping (0 clipped samples in
+the device stream and in the mix, peaks 0.637 / 0.637), not drift (length
+ratio 2.176871 = 48000/22050 exactly over 30 s), not a period-boundary
+discontinuity (|first difference| at the 1115-frame boundaries max 0.097,
+p99 0.036, vs 0.268 / 0.046 elsewhere), and the only all-zero run is the
+~1 s before the song starts (`music_before_linear.txt`).
+
+**Fix:** `PolyphaseResampler` (`include/client/audio/polyphase_resampler.h`,
+`src/client/audio/polyphase_resampler.cpp`): rational L/M (320/147 for
+22050 -> 48000), Kaiser-windowed sinc (beta 7.86, ~80 dB stopband), 48 taps
+per phase, cutoff 0.9 x the lower Nyquist (9.9 kHz), every phase normalised
+to unity DC gain, history carried across calls (ragged pulls are
+sample-identical to one big pull -- pinned). `DeviceRateAdapter` uses it by
+default (`resample=sinc48` in the init line); miniaudio's linear resampler is
+kept only as the fallback for a rate pair needing more than 2048 phases
+(WARN logged). After the fix, music: energy above 11,025 Hz -83.0 dB rel.
+total (was -51.9 dB), 0 clipped samples, length ratio 2.176871, boundary
+first difference max 0.145 / p99 0.048 vs 0.325 / 0.054 elsewhere
+(`music_after_sinc48.txt`). Tones are now at the s16 floor for a -12 dBFS
+sine. (The music "SNR vs a band-limited reference" row in `analyze.py` is
+alignment-limited -- the filter's delay is 24 input frames, a fractional
+number of output frames -- and is not used as a verdict.)
+
+**Cost** (`bench_x86_sinc.tsv`, same bench as section A; ranges over 3 runs):
+opt2 with the sinc is 91.1-106.1 us mean / 121.1-142.3 us p99 per callback,
+0.39-0.46 % of a core (linear was 0.31-0.37 %); `audio` live +70 KB over
+base (1,415,152 vs 1,344,896-1,345,584 B -- the 320 x 48 coefficient table
+is 61,440 B of it); peak unchanged. opt1 (mixer rendering at 48 kHz) would
+NOT have been clean either: its effects path is the mixer's own linear
+interpolation (T404) from 11,025 Hz, whose images all land in band. Pi One
+estimate, scaled with the same assumed 10-15x: ~3.9-6.9 % of one core; a Pi
+sink that accepts 22050 can still turn the resampler off.
+
+Pins added: `DeviceRateAdapter.TonesComeOutCleanAt48000` (SINAD >= 70 dB at
+440 Hz-8 kHz, sine fitted at the exact frequency, f32, before any s16) and
+`DeviceRateAdapter.PullSizesDoNotChangeTheSamples`.
+
 ## Not verified
 
 - Will HEARING zone music on the XU4 at the fixed publish (his acceptance).

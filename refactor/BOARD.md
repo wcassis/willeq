@@ -13679,6 +13679,11 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
     now asks for `audio.device_format` / `--audio-format` (default s16;
     f32/s24/s32/native), converted once in the callback; the init line
     carries `format=` (negotiated) `requested_format=` `client_format=`.
+  - Device acceptance 2 (publish 42ebeabc): audible but "distorted". Measured
+    with the new `WILLEQ_AUDIO_DUMP` tap: miniaudio's linear resampler folded
+    the 44100 - f image in band at f + 3900 Hz (6 kHz tone SINAD 30.8 dB);
+    replaced by `PolyphaseResampler` (windowed sinc, 83-96 dB on the same
+    tones). README section "Device acceptance 2".
   - Open: Will's device acceptance on the XU4 from the branch's armhf publish;
     the Orange Pi cost is scaled, not measured, and the live zone-in `audio`
     ledger row was not taken (the README says why).
