@@ -13,7 +13,7 @@
 // See the L01 Review.
 
 #include "client/graphics/rdp/rdp_component.h"
-#include "client/graphics/renderer_event_receiver.h"  // L01: the moved bodies call ctx_.eventReceiver->isKeyDown()/isLeftButtonDown()
+#include "client/graphics/renderer_event_receiver.h"  // L01: the moved bodies call ctx_.eventReceiver->isKeyDown()/isLeftButtonHeld()
 #include "common/logging.h"
 #include <fmt/format.h>
 
@@ -216,10 +216,10 @@ void RdpComponent::handleRDPMouse(uint16_t flags, uint16_t x, uint16_t y) {
 
     // Set button states
     event.MouseInput.ButtonStates = 0;
-    if (ctx_.eventReceiver->isLeftButtonDown()) {
+    if (ctx_.eventReceiver->isLeftButtonHeld()) {  // B1066: physical, not the look view
         event.MouseInput.ButtonStates |= irr::EMBSM_LEFT;
     }
-    if (ctx_.eventReceiver->isRightButtonDown()) {
+    if (ctx_.eventReceiver->isRightButtonHeld()) {  // B1066
         event.MouseInput.ButtonStates |= irr::EMBSM_RIGHT;
     }
 

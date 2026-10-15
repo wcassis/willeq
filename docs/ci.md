@@ -979,6 +979,30 @@ down (a zone hands back its LINKDEAD copy of a character's pose otherwise) and
 the standard snapshot restore runs at the end. The unit net for the same
 decision is `test_bsp_ground_step`.
 
+### Mouse press ownership: `scripts/eqemu/press_ownership_check.sh` (B1066)
+
+A mouse press belongs to the static UI or the camera, never both
+(`include/client/graphics/press_ownership.h`, #386). The rig drives REAL X
+button events with `xdotool` into an x86 GLES2 client on Xvfb (`--egl-x11`,
+`--pose-log`) on the local lane as Testbuddy, never touching the stack or the
+database: it opens the inventory, right-drags 20 px on an item (the item
+display opens), left-drags on the window's background, right-drags on the 3D
+view, and right-drags from the view into the window.
+`scripts/eqemu/press_ownership_verdict.py` reads the heading and the camera
+pitch around each gesture from the pose rows: the two UI gestures must leave
+both unchanged, the view drags must turn the camera (including the part after
+the pointer entered the window). Exit 0 PASS, 1 FAIL, 2 no verdict.
+
+```bash
+EQEMU_HOST=local bash scripts/eqemu/press_ownership_check.sh --bin build/bin/willeq --explore   # find the pixels
+bash scripts/eqemu/press_ownership_check.sh --bin build/bin/willeq --dismiss 754,460 \
+    --item 280,456 --window-bg 300,250 --view 650,80 --cross 520,300           # 800x600 window
+```
+
+Each run uses a fresh `WILLEQ_CACHE_DIR` (the per-character UI ini would
+otherwise remember an open inventory and the rig's `i` would close it). The
+unit net is `test_press_ownership`; the runs are in `review/B1066/`.
+
 ## `review/` citations
 
 The `DocCitations` hygiene test resolves a `review/...` citation against
