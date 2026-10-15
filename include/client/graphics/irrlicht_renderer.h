@@ -441,6 +441,11 @@ public:
     // Get Irrlicht device/driver/GUI (for loading thread GL context transfer)
     irr::IrrlichtDevice* getDevice() { return device_; }
     irr::video::IVideoDriver* getDriver() { return driver_; }
+    // B888-CC2 (#204): the pre-zone preview host builds a CharacterModelView
+    // (which creates its OWN scene manager off this one, like the paperdoll),
+    // so it needs the scene manager the same way OverlaysComponent gets it
+    // (ctx_.smgr). Render thread only.
+    irr::scene::ISceneManager* getSceneManager() { return smgr_; }
 
     // L01 (Batch L): the shared-state bundle the extracted renderer
     // components bind by reference. See renderer_context.h.

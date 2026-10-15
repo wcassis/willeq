@@ -55,12 +55,20 @@ struct CharacterSelectRow {
     uint8_t cls = 0;
     uint32_t race = 0;          // for the 3D preview leg; drawn nowhere today
     uint32_t zone = 0;
+    // B888-CC2 (#204): the preview's body, carried from the T14 wire
+    // (CharacterSelectEntry). gender is 0/1 (charcreate::Male/Female).
+    uint8_t gender = 0;
+    uint8_t face = 0;
+    uint8_t hair_color = 0;
+    uint8_t hair_style = 0;
     std::string infoLine;       // "Name [1 Warrior]"
     std::string zoneLine;       // "South Qeynos"
 
     bool operator==(const CharacterSelectRow& o) const {
         return slot == o.slot && name == o.name && level == o.level && cls == o.cls &&
-               race == o.race && zone == o.zone && infoLine == o.infoLine && zoneLine == o.zoneLine;
+               race == o.race && zone == o.zone && gender == o.gender && face == o.face &&
+               hair_color == o.hair_color && hair_style == o.hair_style &&
+               infoLine == o.infoLine && zoneLine == o.zoneLine;
     }
 };
 

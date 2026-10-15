@@ -660,11 +660,22 @@ void LoginWorldComponent::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 			uint8_t pclass = p.GetUInt8(1004 + 2 + i); // Class array at offset 1004
 			uint32_t race = p.GetUInt32(0 + 2 + (i * 4)); // Race array at offset 0
 			uint32_t zone = p.GetUInt32(964 + 2 + (i * 4)); // Zone array at offset 964
+			// B888-CC2 (#204): the preview leg's appearance, from the same
+			// Titanium arrays (eq_packet_structs.h CharacterSelect_Struct,
+			// quoted in the header). The server fills these for every row
+			// (worlddb.cpp: cse->Gender/Face/HairColor/HairStyle), so the
+			// select preview can stand the selected character up; they were
+			// on the wire all along, fable just dropped them.
+			uint8_t gender = p.GetUInt8(1664 + 2 + i);  // Gender array at offset 1664
+			uint8_t face = p.GetUInt8(1014 + 2 + i);    // Face array at offset 1014
+			uint8_t hairColor = p.GetUInt8(952 + 2 + i);    // HairColor array at offset 952
+			uint8_t hairStyle = p.GetUInt8(410 + 2 + i);    // HairStyle array at offset 410
 
-			LOG_DEBUG(MOD_MAIN, "Character {}: name='{}', level={}, class={}, race={}, zone={}",
-				i, name, level, pclass, race, zone);
+			LOG_DEBUG(MOD_MAIN, "Character {}: name='{}', level={}, class={}, race={}, zone={}, gender={}, face={}",
+				i, name, level, pclass, race, zone, gender, face);
 
-			m_character_select_list.push_back({i, name, level, pclass, race, zone});
+			m_character_select_list.push_back({i, name, level, pclass, race, zone,
+				gender, face, hairColor, hairStyle});
 
 			if (!found && ctx_.character.compare(name) == 0) {
 				LOG_DEBUG(MOD_MAIN, "Found our character '{}' at index {}", ctx_.character, i);

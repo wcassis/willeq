@@ -409,6 +409,24 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_character_select DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B888-CC2 (#204): the pre-zone 3D preview -- the device-free appearance
+# selection per state (select row's T14 body; creation race+gender+FacePick)
+# and the headless model leg (CharacterModelView on the production
+# RaceModelLoader, EDT_NULL, no zone): the right race model stands up,
+# distinct races resolve to distinct models, the rotation round-trips.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_char_preview
+        test_char_preview.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_char_preview PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_char_preview GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_char_preview PRIVATE
+        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db"
+        EQ_CLIENT_DATA_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+    GTEST_DISCOVER_TESTS(test_char_preview DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T434: the Options window -- geometry against EQUI_OptionsWindow.xml, the
 # T363 disabled-control rule, the three wired sliders, the Alt+O binding and
 # the persistence round trip. Device-free like its siblings.
