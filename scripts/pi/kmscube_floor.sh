@@ -18,7 +18,8 @@ BIN="$1"; OUT="$2"; RUNS="${3:-3}"; AT="${4:-12}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$OUT"
 for i in $(seq 1 "$RUNS"); do
-    # B1056: lane 4 needs the IMG libraries on the loader path (PI_RUN_ENV, env.sh); sudo drops LD_LIBRARY_PATH.
+    # B1056: lane 4 needs the IMG libraries on the loader path (PI_RUN_ENV, exported by pi_remote in
+    # env.sh for every remote command); sudo drops LD_LIBRARY_PATH, so it is re-applied past sudo here.
     # PI_KMSCUBE_ARGS (env.sh) pins the DRM card where the render node and the display are different devices.
     ( sleep 25 | sudo -n env ${PI_RUN_ENV:-} timeout 20 "$BIN" ${PI_KMSCUBE_ARGS:-} > "$OUT/run$i.stdout" 2>&1 ) &
     wrapper=$!

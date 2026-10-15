@@ -110,7 +110,7 @@
 #include <fstream>
 #ifdef __linux__
 #include <unistd.h>
-#include <malloc.h>
+#include "client/core/malloc_compat.h"  // mallinfo2 (+ shim for glibc < 2.33, B1056)
 #endif
 
 #ifndef M_PI

@@ -4,6 +4,7 @@
 #include "zone_bench_impostor.h"
 
 #include "zone_bench_loader.h"
+#include "client/core/gpu_buffer_census.h"
 
 #include <algorithm>
 #include <chrono>
@@ -86,6 +87,7 @@ std::map<std::string, int64_t> readDrmFdinfo() {
         if (n <= 0) continue;
         target[n] = '\0';
         if (strncmp(target, "/dev/dri/", 9) != 0) continue;
+        if (!eqt::memory::drmFdinfoIsSafe(target)) continue;  // B1056: pvrsrvkm panics on this read
         char infoPath[320];
         snprintf(infoPath, sizeof(infoPath), "/proc/self/fdinfo/%s", de->d_name);
         FILE* f = fopen(infoPath, "r");

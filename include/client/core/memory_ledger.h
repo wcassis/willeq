@@ -53,7 +53,7 @@
 #include <vector>
 
 #if defined(__linux__)
-#include <malloc.h>  // struct mallinfo2 (mallinfo2(), glibc >= 2.33)
+#include "client/core/malloc_compat.h"  // <malloc.h> + the mallinfo2 shim for glibc < 2.33 (B1056)
 #endif
 
 #include "client/core/gpu_buffer_census.h"  // B955: the gpu_buffers row
