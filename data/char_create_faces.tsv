@@ -3,7 +3,7 @@
 # from oracle facepick-matrix3 (all 26 in-era pairs; the rig's eqclient.ini was all-FALSE); its visible column was
 # re-probed against the raw stills pair by pair (0/26 mismatch) before the fill. The Luclin visible column
 # (col 6) is matrix4. A row's source column names the visible_classic capture when the cell came from it.
-race	gender	picker	min	max	visible	source	count_measured	status
+race	gender	picker	min	max	visible	visible_classic	source	count_measured	status
 2	0	face	0	7	1	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-male/face;visible_classic:oracle:facepick-matrix3/face	8	COUNT-MEASURED+SAMPLED
 2	0	hair	0	3	1	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-male/hair;visible_classic:oracle:facepick-matrix3/hair	UNMEASURED	UNMEASURED
 2	0	haircolor	0	19	1	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-male/haircolor;visible_classic:oracle:facepick-matrix3/haircolor	UNMEASURED	UNMEASURED
