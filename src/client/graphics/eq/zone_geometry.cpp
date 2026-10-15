@@ -657,21 +657,23 @@ irr::video::ITexture* ZoneMeshBuilder::getOrLoadTexture(const std::string& name,
         return texture;
     }
 
-    // B1051 (GitLab #371): the texture's raw S3D bytes may have been released
-    // because the EQE1 pack is present ("EQE1 authoritative" — see
+    // B1051 (GitLab #371): the per-part texture's raw S3D bytes may have been
+    // released because the EQE1 pack is present ("EQE1 authoritative" —
     // RaceModelLoader::loadModelZone's releaseBytesIfEqe1Authoritative) while
-    // its GPU storage was already created by a Compressed-source upload
-    // (ConstrainedTextureCache::uploadCompressedETC1). buildTexturedMesh()
-    // handles exactly this with its constrainedCache_->getTexture() fallback
-    // (above), but this on-demand path did not — so a per-part texture for a
-    // MULTI-BUFFER character model (one mesh buffer per part) resolved to
-    // nullptr and the buffer fell to the textureless diffuse fallback
-    // (mesh_building.cpp, the flat (255,200,180,160) body that B1051's live
-    // runs show as the ETC1 "smear"), while single-buffer zone meshes and the
-    // raw-RGBA run (bytes not released, pendingTextures_ populated) rendered
-    // correctly. The guarded name is already lowercase (both callers lowercase
-    // before calling); try the original spelling too, mirroring the
-    // buildTexturedMesh() fallback.
+    // the GPU storage was queued by a Compressed-source lookup
+    // (ConstrainedTextureCache::getOrLoad() -> findCompressedEntry). The
+    // The promotion (the actual glCompressedTexImage2D, logged as
+    // "ETC1 texture ... uploaded") normally happens later on the render
+    // thread's upload loop -- lane-2 run 912c measured it 80-94 ms AFTER
+    // the guard's mesh build (first race-71 build 11:02:47.871,
+    // Guard_Drath's own 11:02:47.885, first qcf ETC1 upload 11:02:47.965)
+    // -- so getTexture() alone still misses a freshly-queued
+    // entry. buildTexturedMesh() (the single-buffer zone path) survives by
+    // being built from already-promoted entries; this on-demand path runs
+    // inside the zone-load sequence, BEFORE the upload loop for a new
+    // race's qcs, so it must promote the queued entry itself. This path
+    // already does driver GL work (loadTextureFromBMP above), so the
+    // synchronous upload here is not a new thread/context assumption.
     if (constrainedCache_ && !name.empty()) {
         std::string lowerName = name;
         std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
@@ -679,6 +681,13 @@ irr::video::ITexture* ZoneMeshBuilder::getOrLoadTexture(const std::string& name,
         irr::video::ITexture* texture = constrainedCache_->getTexture(lowerName, applyPaletteMask);
         if (!texture) {
             texture = constrainedCache_->getTexture(name, applyPaletteMask);
+        }
+        if (!texture) {
+            // Queued (compressed or decoded) but not yet promoted: promote now.
+            texture = constrainedCache_->uploadTexture(lowerName, applyPaletteMask);
+            if (!texture) {
+                texture = constrainedCache_->uploadTexture(name, applyPaletteMask);
+            }
         }
         if (texture) {
             // Cache it so subsequent buffers/variants for the same texture

@@ -10,11 +10,15 @@
 // Root cause: ZoneMeshBuilder::getOrLoadTexture() consulted only its own
 // textureCache_/pendingTextures_ maps. In the EQE1-authoritative run the raw
 // bytes are released at parse time (RaceModelLoader::loadModelZone ->
-// releaseBytesIfEqe1Authoritative), so pendingTextures_ is empty; the per-part
-// GPU textures exist only in the ConstrainedTextureCache (created by the
-// Compressed upload path, which registers with the renderer's OTHER
-// ZoneMeshBuilder, not the RaceModelLoader's own builder). buildTexturedMesh()
-// already had the constrainedCache_->getTexture() fallback for exactly this;
+// releaseBytesIfEqe1Authoritative), so pendingTextures_ is empty and
+// loadTextureFromBMP() has nothing to decode; the per-part GPU textures exist
+// only in the ConstrainedTextureCache (created by the Compressed upload path,
+// which registers uploads with the renderer's OTHER ZoneMeshBuilder, not the
+// RaceModelLoader's own builder). The live ETC1 timeline shows the guard's
+// per-part uploads landing before its mesh build (08:32:16.772 vs 08:32:30.741,
+// lane-2 run 912) -- the textures were AVAILABLE in the cache, the on-demand
+// lookup just never asked. buildTexturedMesh() already had the
+// constrainedCache_->getTexture() fallback for exactly this;
 // getOrLoadTexture() (and hasTexture(), used by the isTextureAvailable()
 // override check in mesh_building.cpp) did not.
 //
@@ -174,6 +178,36 @@ TEST_F(B1051MeshTextureFallbackTest, GetOrLoadTextureFallsBackToConstrainedCache
     // A name nobody uploaded still misses (no spurious hits).
     EXPECT_FALSE(builder.hasTexture("qcffoobar.bmp"));
     EXPECT_EQ(builder.getOrLoadTexture("qcffoobar.bmp", false), nullptr);
+}
+
+// The QUEUED-not-yet-promoted state, measured on lane-2 run 912c (2026-10-15
+// 11:02:47.871 the first race-71 guard mesh build / Guard_Drath's own
+// 11:02:47.885 vs 11:02:47.965 the guard's qcf ETC1 uploads): getOrLoad()
+// has queued the entry (Compressed-source: the render thread's upload loop
+// promotes it LATER, 80-94 ms after this mesh build) so getTexture() misses
+// and a pure-lookup fallback still strands the buffer. The on-demand
+// path must therefore PROMOTE the queued entry itself (uploadTexture()). This
+// case is red on the getTexture()-only fix and green with the synchronous
+// promotion.
+TEST_F(B1051MeshTextureFallbackTest, QueuedEntryIsPromotedSynchronouslyByTheOnDemandPath) {
+    ZoneMeshBuilder builder(device_->getSceneManager(), driver_, device_->getFileSystem());
+    builder.setConstrainedTextureCache(cache_.get());
+
+    // Queue it: getOrLoad() decodes and stores a DecodedEntry, returns
+    // nullptr ("call uploadTexture() to promote"). Deliberately NOT promoted.
+    cache_->getOrLoad("qcfarm0001.bmp", makeTestBmp(8, 8, 210, 60, 30),
+                      "test", "B1051MeshTextureFallbackTest", /*applyPaletteMask=*/false);
+    EXPECT_EQ(cache_->getTexture("qcfarm0001.bmp", false), nullptr)
+        << "setup: the entry must be queued but not yet promoted (the lane-2 state)";
+
+    // Pre-promotion-fix: getTexture() misses -> nullptr -> the textureless
+    // diffuse fallback. With the fix: the on-demand path promotes it.
+    irr::video::ITexture* resolved = builder.getOrLoadTexture("qcfarm0001.bmp", false);
+    ASSERT_NE(resolved, nullptr)
+        << "a queued (not yet promoted) per-part entry must be promoted by the on-demand path";
+    EXPECT_EQ(cache_->getTexture("qcfarm0001.bmp", false), resolved)
+        << "the promoted entry must be the resident cache texture";
+    EXPECT_TRUE(builder.hasTexture("qcfarm0001.bmp"));
 }
 
 // The end-to-end shape of the bug: a multi-buffer character mesh (two
