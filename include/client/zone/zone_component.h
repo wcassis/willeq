@@ -397,6 +397,13 @@ private:
 	// zone-in since P17 skipped the region lookup with a spurious "stale"
 	// WARN (captured for '') -- see refactor/T260_bsp_region_size_max.md.
 	std::string m_zone_bsp_tree_zone_name;
+	// B1068: CheckZoneLine's per-zone state. The BSP zone-line region count
+	// is cached against the tree it was taken from; the sweep is primed by
+	// the first check after LoadZoneLines (the zone-in warp is never swept).
+	const EQT::Graphics::BspTree* m_zone_line_count_tree = nullptr;
+	size_t m_bsp_zone_line_regions = 0;
+	bool m_zone_line_sweep_primed = false;
+	size_t m_skipped_same_zone_region = SIZE_MAX;
 	// Zone environment data from NewZone packet
 	uint8_t m_zone_sky_type = 0;           // Sky type for rendering (0-255)
 	uint8_t m_zone_type = 0;               // Zone type (0=outdoor, 1=dungeon, etc.)
@@ -446,7 +453,10 @@ private:
 	std::unique_ptr<EQT::ZoneLines> m_zone_lines;
 
 	// Zone line detection state
-	bool m_zoning_enabled = false;                                   // Whether zone line detection triggers zoning (Ctrl+Z toggles)
+	// B1068 (#388): ON by default -- the official client zones at every line.
+	// 2c7bf6dd (2026-02-23) turned it off with the debug boxes, so no walked
+	// crossing ever sent OP_ZoneChange. `/zoning off` is the debug switch.
+	bool m_zoning_enabled = true;
 
 	// T322: graceful zone-out hand-off state. The official Titanium client
 	// does NOT close its source-zone socket on a zone change: it sends

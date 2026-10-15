@@ -886,10 +886,14 @@ void OverlaysComponent::toggleZoneLineVisualization() {
         removeZoneLineBoxSceneNodes();
     }
 
-    // Notify EverQuest to enable/disable zoning when zone lines are toggled
-    if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::ZoningEnabledIntent{showZoneLineBoxes_});
+    // B1068 (#388): showing the boxes still (re-)enables zoning, but hiding
+    // them no longer DISABLES it. Zoning is on by default (the official
+    // client always zones at a line); only `/zoning off` turns it off. Until
+    // B1068 this toggle was the only way to turn zoning on (2c7bf6dd made the
+    // default off), so a player who never pressed Ctrl+Z never zoned.
+    if (showZoneLineBoxes_ && ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::ZoningEnabledIntent{true});
 
-    LOG_INFO(MOD_GRAPHICS, "Zone line visualization and zoning {}", showZoneLineBoxes_ ? "enabled" : "disabled");
+    LOG_INFO(MOD_GRAPHICS, "Zone line visualization {}", showZoneLineBoxes_ ? "enabled" : "disabled");
 }
 
 void OverlaysComponent::removeZoneLineBoxSceneNodes() {
