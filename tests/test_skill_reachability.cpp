@@ -36,6 +36,7 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/hotbar_layout.h"
 #include "client/graphics/ui/static_ui_input.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/hotbar/hotbar_model.h"
@@ -225,12 +226,15 @@ protected:
         }
     }
 
-    // Click the centre of hotbar slot `slot` (800x600 layout: hotbar starts at
-    // x=222, y=556, slots 32px wide with a 4px margin).
+    // Click the centre of hotbar slot `slot`. B1025-H2: the hotbar is the
+    // stock 2x5 window, and the slot rects are HotbarLayout::slotRect() --
+    // the SAME rects hitTestHotbar() tests -- so the click lands inside the
+    // drawn slot whatever resolution the layout was computed for.
     void clickSlot(int slot) {
-        const int x = 222 + slot * (EQT::Graphics::UILayout::SLOT_SIZE +
-                                    EQT::Graphics::UILayout::MARGIN) + 4;
-        input.processInput(x, 570, /*leftClicked=*/true, layout, hotbar, gems,
+        const auto r = EQT::Graphics::HotbarLayout::slotRect(layout.hotbar, slot);
+        const int x = (r.UpperLeftCorner.X + r.LowerRightCorner.X) / 2;
+        const int y = (r.UpperLeftCorner.Y + r.LowerRightCorner.Y) / 2;
+        input.processInput(x, y, /*leftClicked=*/true, layout, hotbar, gems,
                            inventory, spellbook, skills, buffs, loot);
     }
 

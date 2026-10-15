@@ -135,12 +135,14 @@ struct UILayout {
         chatInput    = {chatX, chatMessages.LowerRightCorner.Y + 2, chatX + chatW, chatY + chatH};
         chatPanel    = {chatX, chatY, chatX + chatW, chatY + chatH};
 
-        // Buff bar: above the hotbar window (the bottom-left is the stock
-        // hotbar's 96x260 window, so the bar sits on top of it, left-aligned).
+        // Buff bar: above the chat panel -- the panel table's own "Above
+        // chat". B1025-H2 sat it above the hotbar window instead, which at
+        // 640x480 (buff top 146) collided with the pet panel (bottom 206);
+        // PetButtonsT419 pins the clearance. Above the chat it clears the
+        // pet panel at every supported resolution (top = height - 208).
         irr::s32 buffW = 300;
         irr::s32 buffH = SLOT_SIZE + MARGIN * 2;
-        buffBar = {MARGIN, hotbar.UpperLeftCorner.Y - MARGIN - buffH,
-                   MARGIN + buffW, hotbar.UpperLeftCorner.Y - MARGIN};
+        buffBar = {chatX, chatY - MARGIN - buffH, chatX + buffW, chatY - MARGIN};
 
         // Casting bar: center-bottom, above the hotbar window's TOP and clear
         // of the window's right edge (the window is 96 wide at the bottom-left
