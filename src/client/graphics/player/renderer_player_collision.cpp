@@ -9,6 +9,7 @@
 #include "client/graphics/gpu_buffers_legacy.h"  // B962
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/player/player_camera_component.h"
+#include "client/graphics/player/bsp_ground_query.h"  // B1067
 #include "client/graphics/door_collision.h"
 #include "client/graphics/world_line_batch.h"  // T335: the shared post-drawAll() 3D-line guard
 #include "client/bridge/game_state_bridge.h"
@@ -506,125 +507,47 @@ GroundZ PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float cu
         return GroundZ::NoFloor();
     }
 
-    float feetZ = currentZ - modelYOffset;
-    float headZ = currentZ + modelYOffset;
-    float maxStepUp = playerConfig_.collisionStepHeight;
-    float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
+    const float feetZ = currentZ - modelYOffset;
+    const float maxStepUp = playerConfig_.collisionStepHeight;
 
-    // Find BSP region at query point
-    size_t queryRegion = ctx_.zoneBspTree->findRegionIndexForPoint(x, y, currentZ);
-
-    // PHASE 1: Short raycast near current level
-    irr::core::vector3df nearStart(x, feetZ + maxStepUp, y);
-    irr::core::vector3df rayDir(0.0f, -1.0f, 0.0f);  // Cast down
-    float nearRayLen = maxStepUp + maxStepDown;
-
-    irr::core::vector3df hitPoint;
-    irr::core::triangle3df hitTriangle;
-    bool nearHit = false;
-    float closestDistSq = std::numeric_limits<float>::max();
-    irr::core::vector3df bestHit;
-
-    // Test query region world triangles (direct, no matrix math)
-    if (queryRegion != SIZE_MAX) {
-        if (const auto tris = ctx_.regionWorldTriangles.find(queryRegion)) {
-            float distSq;
-            if (rayIntersectTriangles(nearStart, rayDir, nearRayLen, tris, hitPoint, hitTriangle, distSq)) {
-                if (distSq < closestDistSq) {
-                    closestDistSq = distSq;
-                    bestHit = hitPoint;
-                    nearHit = true;
+    // B1067 (#387): the two-phase ray, over EVERY BSP region it crosses
+    // (bsp_ground_query.h). It used to test only the region holding the
+    // player's centre (x, y, currentZ) -- a floor that is the bottom face of a
+    // thin leaf under the centre was never tested, the answer was NoFloor and
+    // resolveIrrlichtClearPath() refused the move: the player stopped dead at
+    // curbs and small steps (qeynos2 Y 391.75, review/B1067/README.md).
+    const RegionRayTest regionTest =
+        [this](size_t region, const irr::core::vector3df& origin, const irr::core::vector3df& dir,
+               float length, irr::core::vector3df& hitPoint, float& hitDistSq) {
+            bool any = false;
+            float best = std::numeric_limits<float>::max();
+            irr::core::triangle3df tri;
+            if (const auto tris = ctx_.regionWorldTriangles.find(region)) {
+                irr::core::vector3df hp;
+                float d = 0.0f;
+                if (rayIntersectTriangles(origin, dir, length, tris, hp, tri, d) && d < best) {
+                    best = d; hitPoint = hp; any = true;
                 }
             }
-        }
-    }
-
-    // Test doors and objects in query region (direct Möller–Trumbore)
-    if (queryRegion != SIZE_MAX) {
-        irr::core::vector3df hp;
-        irr::core::triangle3df ht;
-        float distSq;
-        if (rayTestDoorsAndObjects(nearStart, rayDir, nearRayLen, queryRegion, hp, ht, distSq)) {
-            if (distSq < closestDistSq) {
-                closestDistSq = distSq;
-                bestHit = hp;
-                nearHit = true;
+            irr::core::vector3df hp;
+            float d = 0.0f;
+            if (rayTestDoorsAndObjects(origin, dir, length, region, hp, tri, d) && d < best) {
+                best = d; hitPoint = hp; any = true;
             }
-        }
-    }
+            if (any) hitDistSq = best;
+            return any;
+        };
+    GroundZ ground = FindBspGround(*ctx_.zoneBspTree, regionTest, x, y, currentZ, modelYOffset, maxStepUp);
 
-    // T440 (B438): the same three-way verdict the full ray uses, spelled once
-    // in the device-free seam. Phase 1 only RETURNS on a floor -- a near miss
-    // or a near ceiling falls through to the full raycast below.
-    {
-        GroundZ nearGround = ClassifyBspGroundRay(nearHit, bestHit.Y, feetZ, maxStepUp);
-        if (nearGround.hasFloor()) {
-            if (playerConfig_.collisionDebug) {
-                addCollisionDebugLine(nearStart, bestHit, irr::video::SColor(255, 0, 255, 128), 0.2f);
-            }
-            return nearGround;
-        }
-    }
-
-    // PHASE 2: Full raycast if no nearby ground found
-    irr::core::vector3df rayStart(x, headZ + 2.0f, y);
-    irr::core::vector3df rayEnd(x, feetZ - 500.0f, y);
-    float fullRayLen = (headZ + 2.0f) - (feetZ - 500.0f);
-
-    bool hit = false;
-    closestDistSq = std::numeric_limits<float>::max();
-    bestHit = irr::core::vector3df();
-
-    if (queryRegion != SIZE_MAX) {
-        if (const auto tris = ctx_.regionWorldTriangles.find(queryRegion)) {
-            float distSq;
-            if (rayIntersectTriangles(rayStart, rayDir, fullRayLen, tris, hitPoint, hitTriangle, distSq)) {
-                if (distSq < closestDistSq) {
-                    closestDistSq = distSq;
-                    bestHit = hitPoint;
-                    hit = true;
-                }
-            }
-        }
-    }
-
-    if (queryRegion != SIZE_MAX) {
-        irr::core::vector3df hp;
-        irr::core::triangle3df ht;
-        float distSq;
-        if (rayTestDoorsAndObjects(rayStart, rayDir, fullRayLen, queryRegion, hp, ht, distSq)) {
-            if (distSq < closestDistSq) {
-                closestDistSq = distSq;
-                bestHit = hp;
-                hit = true;
-            }
-        }
-    }
-
-    // Debug visualization
     if (playerConfig_.collisionDebug) {
-        if (hit) {
-            bool validFloor = ClassifyBspGroundRay(hit, bestHit.Y, feetZ, maxStepUp).hasFloor();
-            if (validFloor) {
-                addCollisionDebugLine(rayStart, bestHit, irr::video::SColor(255, 0, 255, 255), 0.2f);
-            } else {
-                addCollisionDebugLine(rayStart, bestHit, irr::video::SColor(255, 255, 165, 0), 0.2f);
-                LOG_TRACE(MOD_MOVEMENT, "BSP ray hit obstruction at {} (head at {}, feet at {})", bestHit.Y, headZ, feetZ);
-            }
+        const irr::core::vector3df top(x, feetZ + maxStepUp, y);
+        if (ground.hasFloor()) {
+            addCollisionDebugLine(top, irr::core::vector3df(x, ground.z(), y), irr::video::SColor(255, 0, 255, 128), 0.2f);
         } else {
-            addCollisionDebugLine(rayStart, rayEnd, irr::video::SColor(255, 255, 0, 255), 0.2f);
+            addCollisionDebugLine(top, irr::core::vector3df(x, feetZ - 10.0f, y), irr::video::SColor(255, 255, 0, 255), 0.2f);
+            LOG_TRACE(MOD_MOVEMENT, "BSP ground ray: no floor at ({}, {}), feet at {}", x, y, feetZ);
         }
     }
-
-    // T440 (board B438) -- THE DEFECT THIS UNIT CLOSES.
-    //
-    // This used to read `float groundZ = feetZ;` and, on a total miss, return
-    // Floor(feetZ): "the floor is exactly under your feet", whatever column the
-    // player is over. ShouldLandJump() then compared feetZ <= feetZ, agreed,
-    // and ended a fall in mid-air. A miss is now NoFloor and the fall
-    // continues. (The ceiling case -- geometry above the step-up limit, T437's
-    // B435 -- was already NoFloor and is now spelled by the same seam.)
-    GroundZ ground = ClassifyBspGroundRay(hit, bestHit.Y, feetZ, maxStepUp);
 
     // Check for boat collision — only when boats exist in zone.
     // T440: a deck is a floor, and when the zone geometry answers NoFloor it is

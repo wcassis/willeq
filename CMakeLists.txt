@@ -695,6 +695,7 @@ IF(EQT_GRAPHICS)
         # T437 (board B435): the ground query's answer shape and the two
         # decisions that read it, device-free so they can be tested.
         src/client/graphics/player/ground_query.cpp
+        src/client/graphics/player/bsp_ground_query.cpp  # B1067: the ground ray over every BSP region it crosses
         # T461: the official camera set -- the mode table and the orbit-rig
         # geometry (device-free), the rig modes and /camera on
         # PlayerCameraComponent, and /camera's parser (device-free).
