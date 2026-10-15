@@ -59,7 +59,12 @@ The model-region pixel diffs were measured with
 - The host (`char_select_host.cpp`) stands the model up each frame, advances
   the spin (Rotate), renders to its 256x256 texture, and blits it into
   `CharSelectLayout::modelAreaRect()` BEFORE the screen draws. A click in the
-  Rotate button rect toggles the spin. The model is drawn HERE, not in
+  Rotate button rect toggles the spin. The host reads
+  `wasLeftButtonClicked()` ONCE per frame and shares that read between the
+  Rotate toggle and the screen's own click handling -- the accessor is a
+  destructive read-and-reset (the `test_read_and_reset_ownership` guard), and
+  the Rotate rect and the row/button rects are disjoint, so one read drives
+  both. The model is drawn HERE, not in
   `renderCharSelectScreen`/`renderCharCreateScreen`, so the device-free screen
   functions the visual gate (CC-4) and the frame tests call directly stay
   model-free (acceptance E: the gate is unchanged).

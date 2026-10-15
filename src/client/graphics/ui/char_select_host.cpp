@@ -55,8 +55,16 @@ namespace {
 // B888-CC2: a click INSIDE the select window's Rotate button toggles the
 // spin. The button is drawn greyed today (the screen has no scene behind it);
 // the preview gives it one. Only on the select screen, not over the prompt.
-bool wasRotateClick(RendererEventReceiver* rx, const UILayout& layout) {
-    if (!rx || !rx->wasLeftButtonClicked()) {
+//
+// The caller passes in the frame's left-click read, it does NOT read one
+// here: wasLeftButtonClicked() is a read-and-reset (the
+// test_read_and_reset_ownership guard), and frame() consumes it for the
+// screen's own click handling below. A second read in the same frame would
+// always see false and steal the click from the screen. The click's
+// coordinates are set with the flag and outlive the reset, so the rect hit
+// test is stable.
+bool isRotateClick(bool leftClicked, RendererEventReceiver* rx, const UILayout& layout) {
+    if (!leftClicked || !rx) {
         return false;
     }
     const auto r = CharSelectLayout::rotateRect(layout.screenW, layout.screenH);
@@ -104,7 +112,12 @@ bool CharacterSelectHost::frame(IrrlichtRenderer& renderer, eqt::login_world::Ch
         // manager off the renderer's, so nothing of the zone scene graph is
         // touched.
         const bool onSelectScreen = !state_.create.isOpen;
-        if (rx && wasRotateClick(rx, layout) && onSelectScreen && !state_.confirm.isOpen) {
+        // The frame's left click, read ONCE: wasLeftButtonClicked() is a
+        // read-and-reset, and both the Rotate toggle and the screen's own
+        // click handling below consume it. Reading it here, before the
+        // screen's, would otherwise leave the second read seeing false.
+        const bool leftClicked = rx && rx->wasLeftButtonClicked();
+        if (leftClicked && onSelectScreen && !state_.confirm.isOpen && isRotateClick(leftClicked, rx, layout)) {
             preview_->setRotateEnabled(!preview_->rotateEnabled());
         }
         preview_->init(renderer);
@@ -136,7 +149,7 @@ bool CharacterSelectHost::frame(IrrlichtRenderer& renderer, eqt::login_world::Ch
             // ...) that the first in-zone frame would then replay. release()
             // lowers it again.
             rx->setChatInputFocused(true);
-            if (rx->wasLeftButtonClicked()) {
+            if (leftClicked) {
                 handle(applyCharSelectClick(state_, layout, rx->getClickMouseX(), rx->getClickMouseY(),
                                             false, data_, ++seed_, renderer.Diagnostics().isUsingOldModels()),
                        channel);
