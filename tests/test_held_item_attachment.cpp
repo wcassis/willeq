@@ -47,6 +47,7 @@
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
+#include "client/graphics/eq/bone_attachment.h"
 #include "client/graphics/eq/equipment_actor_geometry.h"
 #include "client/graphics/eq/equipment_model_loader.h"
 #include "client/graphics/eq/pfs.h"
@@ -680,3 +681,120 @@ TEST(HeldItemFrameOrder, PlayerHeadingIsSyncedAfterUpdatesAndBeforeEquipment) {
 }
 
 }  // namespace
+
+// ---------------------------------------------------------------------------
+// 5. B1065 (#385): every drawn entity's held items are placed, every frame.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// The held item's drawn frame against where the bone says it must be: the
+// body's absolute transform * computeHeldItemTransform(bone). The origin must
+// coincide; each item axis must point the same way (placeHeldItem() carries the
+// rotation only, so the bone's own scale -- 1.11 on the HUM skeleton -- is not
+// part of the comparison).
+void expectHeldAtBone(EQAnimatedMeshSceneNode* node, irr::scene::IMeshSceneNode* item, const BoneMat4& bone) {
+    node->updateAbsolutePosition();
+    item->updateAbsolutePosition();
+    const irr::core::matrix4 want = node->getAbsoluteTransformation() * computeHeldItemTransform(bone);
+    irr::core::vector3df gotO(0, 0, 0), expO(0, 0, 0);
+    item->getAbsoluteTransformation().transformVect(gotO);
+    want.transformVect(expO);
+    EXPECT_LT(gotO.getDistanceFrom(expO), 1e-3f) << "the item's origin is not on the bone";
+    for (const irr::core::vector3df p : {irr::core::vector3df(1, 0, 0), irr::core::vector3df(0, 1, 0),
+                                         irr::core::vector3df(0, 0, 1)}) {
+        irr::core::vector3df got = p, exp = p;
+        item->getAbsoluteTransformation().transformVect(got);
+        want.transformVect(exp);
+        got = (got - gotO).normalize();
+        exp = (exp - expO).normalize();
+        EXPECT_GT(got.dotProduct(exp), 0.9999f) << "item axis (" << p.X << "," << p.Y << "," << p.Z << ")";
+    }
+}
+
+}  // namespace
+
+TEST_F(HeldItemTest, StandingNpcsHeldItemsFollowTheirBonesEveryFrame) {
+    // A guard that never moves gets no position update, so it never entered
+    // EntityRenderer::activeEntities_ -- and before B1065 only that set's
+    // members had their items placed. Its sword and shield were drawn at the
+    // model origin, unrotated, while the body played its idle.
+    EntityAppearance a;
+    a.equipment[7] = 58;   // IT58, the Bastard Sword Lieutenant Arathur carries
+    a.equipment[8] = 200;  // IT200, the Qeynos Kite Shield
+    ents_->clearEntities();
+    ASSERT_TRUE(ents_->createEntity(7, 1, "B1065", 100.0f, 200.0f, 3.0f, 112.5f, false, 0, a, true));
+    ents_->setEntityAnimation(7, "o01", true);
+    auto* node = static_cast<EQAnimatedMeshSceneNode*>(ents_->getEntities().at(7).animatedNode);
+    ASSERT_NE(node, nullptr);
+    const EntityVisual& vis = ents_->getEntities().at(7);
+    ASSERT_NE(vis.primaryEquipNode, nullptr);
+    ASSERT_NE(vis.secondaryEquipNode, nullptr);
+    auto sk = node->getAnimator().getSkeleton();
+    const int shieldBone = sk->getBoneIndex("humshield_point");
+    const int rightBone = sk->getBoneIndex("humr_point");
+    ASSERT_GE(shieldBone, 0);
+    ASSERT_GE(rightBone, 0);
+
+    irr::core::vector3df shieldAt[2];
+    for (int k = 0; k < 2; ++k) {
+        // Two idle frames well apart: the item must be at the bone at each.
+        for (int t = 0; t < 30; ++t) {
+            node->OnAnimate(1000 + k * 1500 + t * 16);
+            ents_->updateMainThreadEntityState(0.016f);
+        }
+        const auto& bones = node->getAnimator().getBoneStates();
+        SCOPED_TRACE(k == 0 ? "first frame" : "second frame");
+        expectHeldAtBone(node, vis.secondaryEquipNode, bones[shieldBone].worldTransform);
+        expectHeldAtBone(node, vis.primaryEquipNode, bones[rightBone].worldTransform);
+        shieldAt[k] = vis.secondaryEquipNode->getAbsolutePosition();
+    }
+    EXPECT_GT(shieldAt[0].getDistanceFrom(shieldAt[1]), 1e-3f)
+        << "the idle moves the forearm, so the shield must move with it";
+}
+
+TEST_F(HeldItemTest, HeldItemsAreDrawnWithBackFaceCulling) {
+    // IT200's BACK skin lies on the +Y side of its painted face; only culling
+    // (which the official client does) shows the face from outside -- see
+    // kHeldItemBackfaceCulling in bone_attachment.h.
+    EXPECT_TRUE(kHeldItemBackfaceCulling);
+    EntityAppearance a;
+    a.equipment[7] = 58;
+    a.equipment[8] = 200;
+    ents_->clearEntities();
+    ASSERT_TRUE(ents_->createEntity(7, 1, "B1065", 100.0f, 200.0f, 3.0f, 112.5f, false, 0, a, true));
+    const EntityVisual& vis = ents_->getEntities().at(7);
+    for (irr::scene::IMeshSceneNode* item : {vis.primaryEquipNode, vis.secondaryEquipNode}) {
+        ASSERT_NE(item, nullptr);
+        ASSERT_GT(item->getMaterialCount(), 0u);
+        for (irr::u32 i = 0; i < item->getMaterialCount(); ++i) EXPECT_TRUE(item->getMaterial(i).BackfaceCulling);
+    }
+}
+
+TEST_F(HeldItemTest, FallbackModelRaceHoldsItsItemsAtItsOwnPointBones) {
+    // Race 71 (Qeynos Citizen, QCM) with only global_chr.s3d loaded is drawn
+    // with its fallback HUM skeleton (config/race_models.json fallback_code):
+    // the bones are "humr_point" / "humshield_point", never "QCM...". Before
+    // B1065 the lookup used the race code only and placed nothing.
+    EntityAppearance a;
+    a.equipment[7] = 58;
+    a.equipment[8] = 200;
+    ents_->clearEntities();
+    ASSERT_TRUE(ents_->createEntity(8, 71, "B1065", 100.0f, 200.0f, 3.0f, 112.5f, false, 0, a, true));
+    ents_->setEntityAnimation(8, "o01", true);
+    auto* node = static_cast<EQAnimatedMeshSceneNode*>(ents_->getEntities().at(8).animatedNode);
+    ASSERT_NE(node, nullptr);
+    auto sk = node->getAnimator().getSkeleton();
+    ASSERT_TRUE(sk);
+    if (sk->getBoneIndex("humshield_point") < 0) GTEST_SKIP() << "race 71 resolved to model '" << sk->modelCode << "'";
+    for (int t = 0; t < 5; ++t) {
+        node->OnAnimate(200 + t * 16);
+        ents_->updateMainThreadEntityState(0.016f);
+    }
+    const EntityVisual& vis = ents_->getEntities().at(8);
+    ASSERT_NE(vis.secondaryEquipNode, nullptr);
+    const auto& bones = node->getAnimator().getBoneStates();
+    expectHeldAtBone(node, vis.secondaryEquipNode, bones[sk->getBoneIndex("humshield_point")].worldTransform);
+    expectHeldAtBone(node, vis.primaryEquipNode, bones[sk->getBoneIndex("humr_point")].worldTransform);
+}
+

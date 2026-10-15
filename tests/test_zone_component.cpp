@@ -59,13 +59,14 @@ TEST_F(ZoneComponentTest, GmModeStartsFalseAndItsAccessorMoved) {
 }
 
 // The zoning-enabled toggle (Ctrl+Z / the /zoning command) moved whole:
-// member, setter and getter.
+// member, setter and getter. B1068 (#388, Will 2026-10-15): zoning is ON by
+// default -- the official client zones at every line.
 TEST_F(ZoneComponentTest, ZoningEnabledRoundTripsThroughTheComponent) {
+    EXPECT_TRUE(eq.Zone().IsZoningEnabled()) << "zoning is on by default (B1068)";
+    eq.Zone().SetZoningEnabled(false);
     EXPECT_FALSE(eq.Zone().IsZoningEnabled());
     eq.Zone().SetZoningEnabled(true);
     EXPECT_TRUE(eq.Zone().IsZoningEnabled());
-    eq.Zone().SetZoningEnabled(false);
-    EXPECT_FALSE(eq.Zone().IsZoningEnabled());
 }
 
 // T322: the zone-out handshake flags and their test seams moved together.

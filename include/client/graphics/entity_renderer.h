@@ -261,6 +261,14 @@ struct EntityVisual {
     irr::scene::IMeshSceneNode* secondaryEquipNode = nullptr; // Left hand weapon/shield
     uint32_t currentPrimaryId = 0;    // Current primary equipment item ID
     uint32_t currentSecondaryId = 0;  // Current secondary equipment item ID
+    // B1065: the point bones the two held items hang from, resolved once per
+    // (skeleton, secondary item) by EntityRenderer::updateEquipmentTransforms()
+    // -- the skeleton's OWN model code, not the race row's (race 71 QCM drawn
+    // with the HUM fallback skeleton has no "QCM..." bones).
+    const void* attachBoneSkeleton = nullptr;
+    uint32_t attachBoneSecondaryId = 0;
+    int primaryAttachBone = -1;
+    int secondaryAttachBone = -1;
 
     // Weapon skill types for combat animations (255 = unknown/none, 7 = hand-to-hand)
     uint8_t primaryWeaponSkill = 255;    // Weapon skill type of primary weapon
