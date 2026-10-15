@@ -659,9 +659,7 @@ open-source driver.
   textures (real 6:1 savings via `GL_ETC1_RGB8_OES`), and the shared path for
   the planned Android port. See `src/client/graphics/CLAUDE.md`.
 - **Display**: DRM/KMS direct rendering without X11 (`--drm`).
-- **Five single-tenant SBC lanes** (B1030/B1056/B1060, `docs/ci.md` "The aarch64 SBC lanes"): `PI_LANE=1` Orange Pi,
-`2` Rock64, `3` ROCK 4D, `4` Radxa A7S (PowerVR), `5` Orange Pi Zero (B1060, vkms only; table in
-`scripts/pi/env.sh`; a card names its lane, never an address).
+- **Single-tenant SBC lanes** (`docs/ci.md` "The aarch64 SBC lanes"): `PI_LANE=1` Orange Pi, `2` Rock64, `3` ROCK 4D, `4` Radxa A7S, `5` Orange Pi Zero; table in `scripts/pi/env.sh`; name the lane, never an address.
   `pi_lock_take <owner>` before any run, `pi_lock_release <owner>` after (on the device; `lock_selftest.sh`).
 - **GL driver: the shipped LLVM-less Mesa prefix** (Will 2026-09-30, B935; `docs/ci.md` "The shipped Mesa
   prefix"): Pi rigs run `ci-arm/<sha>/bin/willeq-nollvm` (absolute DT_RPATH; `$ORIGIN` is dropped under setcap)
