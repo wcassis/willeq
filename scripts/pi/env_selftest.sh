@@ -47,7 +47,8 @@ expect "lane 5 vs lane-1 host refused" \
 rc=2" \
     "source \"\$ENV_SH\"; PI_LANE=5 bash -c 'source \"\$ENV_SH\"; echo reached'; echo rc=\$?"
 expect "unknown lane refused"            "rc=2" \
-    "PI_LANE=9 bash \"\$ENV_SH\" 2>/dev/null; echo rc=\$?"expect "PI_LANE + its own PI_HOST"       "rc=0 3 172.16.200.202 rock4d" \
+    "PI_LANE=9 bash \"\$ENV_SH\" 2>/dev/null; echo rc=\$?"
+expect "PI_LANE + its own PI_HOST"       "rc=0 3 172.16.200.202 rock4d" \
     "export PI_LANE=3 PI_HOST=172.16.200.202; source \"\$ENV_SH\"; $P"
 expect "unlisted PI_HOST keeps PI_LANE"  "rc=0 2 192.0.2.7 rock64" \
     "export PI_LANE=2 PI_HOST=192.0.2.7; source \"\$ENV_SH\"; $P"
