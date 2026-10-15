@@ -32,6 +32,17 @@ struct CharacterSelectEntry
 	uint8_t char_class = 0;
 	uint32_t race = 0;
 	uint32_t zone = 0;
+	// B888-CC2 (#204): the preview leg reads the character's body from the
+	// T14 wire, which the server (eqemu worlddb.cpp, eq_packet_structs.h
+	// CharacterSelect_Struct) fills with the row's Gender/Face/Hair*. fable's
+	// T14 parse kept only the first five fields; these four come from the
+	// Titanium arrays (see the offsets in login_world_component.cpp) so the
+	// select preview can stand the selected character up. gender is 0/1
+	// (charcreate::Male/Female); face indexes the race's head variants.
+	uint8_t gender = 0;
+	uint8_t face = 0;
+	uint8_t hair_color = 0;
+	uint8_t hair_style = 0;
 };
 
 struct Entity
