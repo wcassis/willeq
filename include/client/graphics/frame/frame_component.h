@@ -327,6 +327,10 @@ public:
 	// True when a static window's own geometry holds (x,y) but its entry
 	// point returns nothing (the Friends window, the two dialogs).
 	bool pointOverSelfConsumingWindow(int x, int y) const;
+	// B1066 (#386): true when a press at (x,y) belongs to the static UI --
+	// an entry point took the position (uiTook), or a window whose entry
+	// point reports nothing holds it. False while the UI is hidden.
+	bool pointerOwnedByUI(bool uiTook, int x, int y) const;
 	// ---- B896 (GitLab #212): the trade / give window, renderer_frame_trade.cpp ----
 	// The click pass, from renderStaticUI() right after the QuantityWnd: the
 	// window is drawn above the centre popups, the bank, the trainer and the

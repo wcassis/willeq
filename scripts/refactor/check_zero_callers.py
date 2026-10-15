@@ -811,7 +811,6 @@ EXEMPT_GROUPS = {
     ("TradeManager", "setOwnMoney"): "B497",
     ("WilleqDatabase", "getAnimationSound"): "B497",
     ("ZoneLines", "addZonePoint"): "B497",
-    ("ZoneLines", "getZonePoint"): "B497",
     ("ConsoleInputHandler", "isKeyboardMode"): "B498",
     ("ConsoleInputHandler", "isStdinTty"): "B498",
     ("GraphicsInputHandler", "injectLootRequest"): "B498",

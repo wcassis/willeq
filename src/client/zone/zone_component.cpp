@@ -23,6 +23,7 @@
 #include "client/pathfinder_interface.h"
 #include "client/spell/buff_manager.h"
 #include "client/zone_lines.h"
+#include "client/zone_line_crossing.h"  // B1068
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/eq/pfs.h"
 #include "client/bridge/game_state_bridge.h"
@@ -757,6 +758,8 @@ void eqt::zone::ZoneComponent::LoadZoneLines(const std::string& zone_name)
 	ctx_.game_state.world().setZoneChangeRequested(false);
 	ctx_.game_state.world().clearPendingZone();
 	ctx_.game_state.world().setLastZoneCheckPosition(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ());
+	m_zone_line_sweep_primed = false;  // B1068: the zone-in warp is never swept
+	m_skipped_same_zone_region = SIZE_MAX;
 
 	// Try to load zone lines from the zone's S3D file
 	if (!ctx_.eq_client_path.empty()) {
@@ -889,8 +892,9 @@ void eqt::zone::ZoneComponent::LoadZoneSources(const std::string& zone_name)
 
 void eqt::zone::ZoneComponent::CheckZoneLine()
 {
-	// Skip if not fully zoned in or no zone lines loaded
-	if (!ctx_.self.IsFullyZonedIn() || !m_zone_lines || !m_zone_lines->hasZoneLines()) {
+	// B1068: the BSP's own zone-line regions are a source even when no
+	// curated box loaded, so the gate is "either source", not hasZoneLines().
+	if (!ctx_.self.IsFullyZonedIn() || !m_zone_lines) {
 		return;
 	}
 
@@ -899,62 +903,53 @@ void eqt::zone::ZoneComponent::CheckZoneLine()
 		return;
 	}
 
-	// Debug: periodically log zone line check status
-	static int checkCount = 0;
-	checkCount++;
-	if (checkCount % 100 == 0) {
-		LOG_TRACE(MOD_ZONE, "Zone line check #{}: pos=({:.1f}, {:.1f}, {:.1f}) zone_lines={} regions={}",
-			checkCount, ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(),
-			m_zone_lines->hasZoneLines() ? "yes" : "no",
-			m_zone_lines->getZoneLineCount());
+	// The tree is trusted only for the zone it was built for (P17/T260).
+	const EQT::Graphics::BspTree* tree =
+		(m_zone_bsp_tree && m_zone_bsp_tree_zone_name == ctx_.self.CurrentZoneName())
+			? m_zone_bsp_tree.get() : nullptr;
+	if (tree != m_zone_line_count_tree) {
+		m_zone_line_count_tree = tree;
+		m_bsp_zone_line_regions = tree ? EQT::ZoneLineCrossingFinder::CountBspZoneLineRegions(*tree) : 0;
+		LOG_INFO(MOD_ZONE, "Zone lines for '{}': {} BSP zone-line regions, {} curated boxes -> using {}",
+			ctx_.self.CurrentZoneName(), m_bsp_zone_line_regions, m_zone_lines->getZoneLineCount(),
+			m_bsp_zone_line_regions > 0 ? "BSP" : (m_zone_lines->hasZoneLines() ? "curated" : "none"));
+	}
+	if (m_bsp_zone_line_regions == 0 && !m_zone_lines->hasZoneLines()) {
+		return;
 	}
 
 	// Skip if we haven't moved since last check
 	constexpr float MIN_MOVE_THRESHOLD = 0.1f;
-	float dx = ctx_.self.PosX() - ctx_.game_state.world().lastZoneCheckX();
-	float dy = ctx_.self.PosY() - ctx_.game_state.world().lastZoneCheckY();
-	float dz = ctx_.self.PosZ() - ctx_.game_state.world().lastZoneCheckZ();
-	float dist_sq = dx * dx + dy * dy + dz * dz;
-
-	if (dist_sq < MIN_MOVE_THRESHOLD * MIN_MOVE_THRESHOLD) {
+	const float old_x = ctx_.game_state.world().lastZoneCheckX();
+	const float old_y = ctx_.game_state.world().lastZoneCheckY();
+	const float old_z = ctx_.game_state.world().lastZoneCheckZ();
+	const float cur_x = ctx_.self.PosX();
+	const float cur_y = ctx_.self.PosY();
+	const float cur_z = ctx_.self.PosZ();
+	const float dx = cur_x - old_x, dy = cur_y - old_y, dz = cur_z - old_z;
+	if (m_zone_line_sweep_primed && dx * dx + dy * dy + dz * dz < MIN_MOVE_THRESHOLD * MIN_MOVE_THRESHOLD) {
 		return;
 	}
 
-	// Update last checked position. T286: this used to write only the
-	// EverQuest copy, so WorldState's lastZoneCheck* froze at whatever
-	// LoadZoneLines set and never tracked the player again.
-	float old_x = ctx_.game_state.world().lastZoneCheckX();
-	float old_y = ctx_.game_state.world().lastZoneCheckY();
-	float old_z = ctx_.game_state.world().lastZoneCheckZ();
-	ctx_.game_state.world().setLastZoneCheckPosition(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ());
+	// T286: WorldState's lastZoneCheck* tracks the player.
+	ctx_.game_state.world().setLastZoneCheckPosition(cur_x, cur_y, cur_z);
 
-	// Check if currently in a zone line region
-	// The extracted zone lines use BSP coordinates which need to be checked against player position
-	// client x = server y, client y = server x (from spawn struct)
-	// Testing with player position directly (coordinates may need adjustment based on zone)
-	float check_x = ctx_.self.PosX();
-	float check_y = ctx_.self.PosY();
-	float check_z = ctx_.self.PosZ();
+	// B1068: SWEEP the segment since the last check. The renderer publishes
+	// our position every ~250 ms (renderer_player_physics.cpp
+	// sendPositionUpdateToServer), ~10 units at run speed; a point test at
+	// those samples stepped over thin lines (qeynos2 -> qeynos's curated box
+	// is 0.75 units deep). The first check after zone-in is the zone-in warp
+	// itself and tests the end point only.
+	const bool sweep = m_zone_line_sweep_primed;
+	m_zone_line_sweep_primed = true;
+	std::optional<EQT::ZoneLineCrossing> crossing = EQT::ZoneLineCrossingFinder::FindCrossing(
+		tree, m_bsp_zone_line_regions, m_zone_lines.get(),
+		old_x, old_y, old_z, cur_x, cur_y, cur_z, ctx_.self.GetHeading(), sweep);
 
-	// Debug: log position being checked
-	static int posLogCount = 0;
-	posLogCount++;
-	if (posLogCount % 100 == 1) {
-		LOG_DEBUG(MOD_ZONE, "CheckZoneLine: x={:.1f} y={:.1f} z={:.1f} (server: x={:.1f} y={:.1f})",
-			ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), ctx_.self.PosY(), ctx_.self.PosX());
-	}
-
-	EQT::ZoneLineResult result = m_zone_lines->checkPosition(check_x, check_y, check_z, check_x, check_y, check_z);
-
-	// Debug output for every position check (throttled)
-	if (checkCount % 50 == 0) {
-		LOG_TRACE(MOD_ZONE, "Zone line check: check=({:.1f}, {:.1f}, {:.1f}) m_pos=({:.1f}, {:.1f}, {:.1f}) -> isZoneLine={}",
-			check_x, check_y, check_z, ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), result.isZoneLine ? "YES" : "no");
-	}
-
-	if (result.isZoneLine) {
+	if (crossing) {
 		// We're in a zone line
 		auto now = std::chrono::steady_clock::now();
+		const EQT::ZoneLineResult& result = crossing->result;
 
 		// Skip actual zone trigger if zoning is disabled
 		if (!m_zoning_enabled) {
@@ -965,32 +960,31 @@ void eqt::zone::ZoneComponent::CheckZoneLine()
 		if (ctx_.game_state.world().zoneLineTriggered()) {
 			auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - ctx_.game_state.world().zoneLineTriggerTime());
 			if (elapsed.count() < 500) {
-				// Still in cooldown period, ignore
 				return;
 			}
 		}
 
-		// Check if this is a reference-type zone line that needs server lookup
+		// A Reference to a zone point whose target is THIS zone is an in-zone
+		// teleport row (qeynos2 #1/#2); eqemu cancels an unsolicited zone
+		// change to the current zone (zone/zoning.cpp), so it is not sent.
+		if (result.targetZoneId != 0 && result.targetZoneId == ctx_.self.CurrentZoneId()) {
+			if (m_skipped_same_zone_region != crossing->regionIndex) {
+				m_skipped_same_zone_region = crossing->regionIndex;
+				LOG_INFO(MOD_ZONE, "Zone line region {} (zone point #{}) targets this zone ({}); not requesting a zone change",
+					crossing->regionIndex, crossing->zonePointNumber, result.targetZoneId);
+			}
+			return;
+		}
+
 		if (result.needsServerLookup) {
-			// Log warning - the server should have sent us the zone point data
-			LOG_WARN(MOD_ZONE, "Zone line triggered but missing zone point data for index {}", result.zonePointIndex);
-			// Still trigger the zone line, the server will handle it
+			LOG_WARN(MOD_ZONE, "Zone line region {} names zone point #{} but OP_SendZonepoints carried no such row; sending zone 0 (server resolves)",
+				crossing->regionIndex, result.zonePointIndex);
 		}
 
 		// Trigger zone line!
 		//
-		// T52: Producer B's convention, stated explicitly (nobody had
-		// written it down before): result.targetX/Y/Z are stored straight
-		// through, in CLIENT format -- they come from this zone's own
-		// WLD-derived zone-line data (m_zone_lines, loaded from the S3D/WLD
-		// geometry via LoadZoneLines), which is compared directly against
-		// check_x/check_y (== client x/y) a few lines above with no swap. This
-		// matches docs/CLAUDE.md's convention #3 (S3D/WLD files are Z-up,
-		// identity vs. client internal coords, no transform needed). So
-		// m_game_state.world().pendingZoneX()/y here are in the SAME format producer A stores
-		// (client format) -- both producers agree; only the consumer's
-		// comment was wrong (fixed in eq_login_world.cpp, see this unit's
-		// Review).
+		// T52: result.targetX/Y/Z are CLIENT format, the same format producer
+		// A (ZoneProcessZoneChange) stores; RequestZoneChange swaps for the wire.
 		// Phase 7.3 / T286: WorldState is the only store
 		ctx_.game_state.world().setZoneLineTriggered(true);
 		ctx_.game_state.world().setZoneLineTriggerTime(now);
@@ -999,20 +993,22 @@ void eqt::zone::ZoneComponent::CheckZoneLine()
 
 		LOG_INFO(MOD_ZONE, "Zone line triggered! Target zone: {}, coords: ({:.1f}, {:.1f}, {:.1f}), heading: {:.1f}",
 		        ctx_.game_state.world().pendingZoneId(), ctx_.game_state.world().pendingZoneX(), ctx_.game_state.world().pendingZoneY(), ctx_.game_state.world().pendingZoneZ(), ctx_.game_state.world().pendingZoneHeading());
+		LOG_INFO(MOD_ZONE, "Zone line crossing: source={} region={} zone_point={}{} hit=({:.1f}, {:.1f}, {:.1f}) from=({:.1f}, {:.1f}, {:.1f}) to=({:.1f}, {:.1f}, {:.1f})",
+			crossing->source == EQT::ZoneLineCrossing::Source::Bsp ? "bsp" : "curated",
+			crossing->regionIndex == SIZE_MAX ? -1 : static_cast<long long>(crossing->regionIndex),
+			crossing->zonePointNumber, crossing->isReference ? " (reference)" : "",
+			crossing->hitX, crossing->hitY, crossing->hitZ, old_x, old_y, old_z, cur_x, cur_y, cur_z);
 
-		// Send zone change request to server. Client-initiated (we detected
-		// the zone line ourselves) -- solicited=false (ZoneUnsolicited),
-		// the existing/default behavior; stated explicitly per T52's
-		// ride-along fix at the other call site.
+		// Client-initiated (we detected the zone line ourselves) --
+		// zone_reason 1 (ZoneUnsolicited), per T52's ride-along fix.
 		RequestZoneChange(ctx_.game_state.world().pendingZoneId(), ctx_.game_state.world().pendingZoneX(), ctx_.game_state.world().pendingZoneY(), ctx_.game_state.world().pendingZoneZ(), ctx_.game_state.world().pendingZoneHeading(), /*zone_reason=*/1);
 	} else {
+		m_skipped_same_zone_region = SIZE_MAX;
 		// Not in a zone line - clear the triggered flag if we were previously in one
 		if (ctx_.game_state.world().zoneLineTriggered()) {
-			// Check if enough time has passed and we're no longer in a zone line
 			auto now = std::chrono::steady_clock::now();
 			auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - ctx_.game_state.world().zoneLineTriggerTime());
 			if (elapsed.count() >= 500) {
-				// Cooldown expired and we're not in a zone line, reset state
 				// Phase 7.3 / T286: WorldState is the only store
 				ctx_.game_state.world().setZoneLineTriggered(false);
 				ctx_.game_state.world().clearPendingZone();

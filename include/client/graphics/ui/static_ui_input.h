@@ -100,8 +100,9 @@ public:
     // The per-frame click state the item-window arms need beyond the left
     // click every entry point already takes: the RIGHT click (latched by
     // RendererEventReceiver::wasRightButtonClicked(), consumed only by the
-    // static UI -- a right click off every panel still mouselooks, because
-    // mouselook reads isRightButtonDown(), not this latch), the modifiers,
+    // static UI; mouselook never reads it -- it reads isRightButtonDown(),
+    // the CAMERA-OWNED hold, and a press on a panel is the UI's until its
+    // release, B1066 press_ownership.h), the modifiers,
     // and what the cursor holds. Set once per frame before the entry points
     // run; kept off their parameter lists so no existing caller changes.
     void setFrameClickState(bool rightClicked, eqt::inventory::ClickModifiers mods,
