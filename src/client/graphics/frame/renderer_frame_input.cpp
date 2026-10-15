@@ -27,6 +27,7 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
 #include "client/events/renderer_intents.h"
+#include "client/hotbar/hotbar_model.h"  // B1025-H4: PAGE_COUNT for the page keys
 #include "client/jump_fall_physics.h"  // B893: the shared fall-damage table
 #include "client/audio/volume_steps.h"  // T439: the oracle's 0..20 volume step
 #include "common/logging.h"
@@ -338,6 +339,18 @@ bool FrameComponent::toggleCombatAbilityWindow() {
     return combatAbilityState_.isOpen;
 }
 
+// B1025-H4 (#345): the hotbar window's own show/hide toggle -- the key's
+// arm. The panel's close box does exactly this flip on its own click
+// (static_ui_input.cpp), so the key and the box share the one flag,
+// hotbarState_.isOpen; the renderer no-ops while it is closed, and the
+// window is not in the ESC stack either way (it is not a centre popup).
+bool FrameComponent::toggleHotbar1Window() {
+    hotbarState_.isOpen = !hotbarState_.isOpen;
+    LOG_INFO(MOD_GRAPHICS, "Hotbar window {}",
+        hotbarState_.isOpen ? "opened" : "closed");
+    return hotbarState_.isOpen;
+}
+
 void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& actions) {
     using RA = RendererAction;
     for (const auto& event : actions) {
@@ -401,6 +414,22 @@ void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& action
             case RA::ToggleBuffWindow: toggleBuffWindow(); break;
             // T415 (B320): Alt+C, the oracle's own key.
             case RA::ToggleCombatAbilities: toggleCombatAbilityWindow(); break;
+            // B1025-H4 (#345): Alt+H, H-O's measured default (pages.tsv:2).
+            case RA::ToggleHotbar1Window: toggleHotbar1Window(); break;
+            // B1025-H4 (#345): the page keys (Shift+1..0 -> 0-9 in intData,
+            // H-O's measured defaults, pages.tsv:2). Out as the SAME intent
+            // the page buttons push: the model owns the page, and its
+            // republish is what the panel redraws.
+            case RA::HotbarPageChange: {
+                if (ctx_.bridge) {
+                    const int page = event.intData;
+                    if (page >= 0 && page < eqt::HotbarModel::PAGE_COUNT) {
+                        ctx_.bridge->pushIntent(
+                            eqt::events::HotbarPageChangedIntent{page});
+                    }
+                }
+                break;
+            }
 
             // Debug overlays
             case RA::ToggleZoneLineVisualization: ctx_.Overlays().toggleZoneLineVisualization(); break;

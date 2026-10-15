@@ -465,11 +465,14 @@ it without taking that measurement first.
   icon texture is not in the shipped atlas), close box, `HotbarPageChangedIntent`.
   The stock client cannot show Hotbars 2-4 (the XML gives them zero size; the
   H-O oracle measured them invisible even forced on), so there is no geometry
-  for bars 2-4. What remains is **H-3** (the slot-ASSIGNMENT gesture:
-  right-click/drag a gem or item onto a slot — `HotbarModel::assignSlot`
-  still has no production caller) and the live feature scenario. The
-  H0 partial official-client capture (`refactor/B1025-H0/README.md`) and its
-  "Not captured / not verified" cases remain open; this item is not closed.
+  for bars 2-4. Chain: **H-3** (merged, MR !198) — the slot-ASSIGNMENT gesture
+  (hold-to-pickup, place, clear, `/hotbutton`), the first production caller of
+  `HotbarModel::assignSlot`; **H-4** (this item's keys, `refactor/B1025-H4/README.md`)
+  — the official page keys (Shift+1..0) and window toggle (Alt+H) with their
+  Options Keys rows, addressed through the one `HotbarModel` page. What remains
+  is the live feature scenario (H-5). The H0 partial official-client capture
+  (`refactor/B1025-H0/README.md`) and its "Not captured / not verified" cases
+  remain open; this item is not closed.
 - **B988** (A) → issue #307. Will 2026-10-05: "make the nobocache flag opt-in
   (off by default) and fix the stale docs". A DRM client now leaves
   `LIMA_DEBUG` untouched (Lima's BO cache on); `WILLEQ_LIMA_NOBOCACHE=1`
@@ -7337,8 +7340,10 @@ client uses every field.
   ignored by the drain) and `SimulationInput::cameraTarget`,
   `EntityVisual::corpseYOffset` (computed per corpse, never applied to the
   node), `ParticleEmitter::spawnRadius_` (seven callers set it; the spawn does
-  not use it), `SpellEffectInstance::spellID`, `RendererEvent::intData`,
-  `SpellActionInfo::level2`. Same class as B296 one layer down: a producer
+  not use it), `SpellEffectInstance::spellID`, `SpellActionInfo::level2`.
+  `RendererEvent::intData` closed by B1025-H4 (the hotbar page keys' first
+  consumer: `FrameComponent::processPlayerInput`'s `HotbarPageChange` arm).
+  Same class as B296 one layer down: a producer
   computes a value for a consumer that never reads it. Closes per field. Found
   by T414 Leg C.
 
