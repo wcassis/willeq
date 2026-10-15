@@ -38,5 +38,17 @@ bool ApplicationScenarioWorld::EnterWorldAs(const std::string& name) {
     return client_.LoginWorld().EnterWorldFromSelect(name);
 }
 
+// B1072 (#392): zone_connect_timeout's observable and its lever
+// (EverQuest::SimulateUnreachableZoneConnects, zone_connect.cpp).
+long long ApplicationScenarioWorld::ZoneConnectOpens() const {
+    return client_.ZoneConnectOpenCount();
+}
+
+bool ApplicationScenarioWorld::SimulateUnreachableZoneConnects(int attempts, int port) {
+    if (attempts < 0 || port < 1 || port > 65535) return false;
+    client_.SimulateUnreachableZoneConnects(attempts, static_cast<uint16_t>(port));
+    return true;
+}
+
 }  // namespace scenario
 }  // namespace eqt
