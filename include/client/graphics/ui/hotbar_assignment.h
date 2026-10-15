@@ -78,9 +78,6 @@ struct HotbarHoldSource {
     uint32_t iconId = 0;
 };
 
-inline HotbarHoldSource::Kind holdKind(uint8_t raw) {
-    return static_cast<HotbarHoldSource::Kind>(raw);
-}
 inline uint8_t rawHoldKind(HotbarHoldSource::Kind k) {
     return static_cast<uint8_t>(k);
 }

@@ -23,6 +23,8 @@
 #include "client/graphics/ui/hotbar_assignment.h"
 #include "client/graphics/ui/hotbar_layout.h"
 #include "client/graphics/ui/hotbutton_holder.h"
+#include "client/graphics/ui/inventory_layout.h"  // B1025-H3: the item-hold test's slot rect
+#include "client/graphics/ui/tradeskill_panel.h"  // B1025-H3: processPanelInput's other panel
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/static_ui_input.h"
 #include "client/hotbar/hotbar_slot_type.h"
@@ -33,6 +35,10 @@ using EQT::Graphics::HotbarPanelState;
 using EQT::Graphics::HotbarSlotState;
 using EQT::Graphics::HotButtonHolder;
 using EQT::Graphics::kHotbarHoldThresholdMs;
+using EQT::Graphics::PopupType;          // B1025-H3: the press-release/hold E2E geometry
+using EQT::Graphics::UILayout;
+namespace IL = EQT::Graphics::InventoryLayout;          // namespace, not a type
+namespace CAL = EQT::Graphics::CombatAbilityLayout;     // namespace, not a type
 using eqt::HotbarSlotType;
 
 namespace {
@@ -447,12 +453,17 @@ protected:
 
     // One frame of the production loop: the gesture tick, then (on a press
     // frame) the input pass. `x`,`y` the mouse position, `down` the button.
+    // The panel pass (processPanelInput) is the ability window's input hop
+    // in the same frame (renderer_frame_render.cpp) -- the B1025-H3 ability
+    // press arm lives there.
     void frame(float dt, bool down, bool pressed, int x, int y) {
         input.processFrameGesture(dt, down, hotbar, gems, inventory, abilities);
         if (pressed) {
             input.processInput(x, y, /*leftClicked=*/true, layout, hotbar,
                                gems, inventory, spellbook, skills, buffs,
                                loot);
+            input.processPanelInput(x, y, /*leftClicked=*/true, layout,
+                                    tradeskill, abilities);
         }
     }
 
@@ -467,6 +478,7 @@ protected:
     EQT::Graphics::BuffBarState buffs;
     EQT::Graphics::LootPanelState loot;
     EQT::Graphics::CombatAbilityPanelState abilities;
+    EQT::Graphics::TradeskillPanelState tradeskill;  // B1025-H3: processPanelInput's other panel
     EQT::Graphics::StaticUIInput input;
 };
 
@@ -558,6 +570,118 @@ TEST_F(HotbarGestureEndToEndTest, PlacementAssignsAndDisplaces) {
     EXPECT_TRUE(cursor.hasHotbutton);
     EXPECT_EQ(cursor.hotbutton.text, "/wave");
     EXPECT_EQ(cursor.hotbutton.type, HotbarSlotType::Emote);
+}
+
+// ===================================================================
+// The other H-O sources: gem, ability, item (gestures.tsv rows 2-3, 12, 9)
+// ===================================================================
+
+// H-O "spell-hold": a 0.117 s gem press released and CAST with no clone; a
+// 3.074 s hold cloned by ~1.1 s. Through the REAL StaticUIInput: a short
+// press-release fires the cast; a hold clones a Spell button and the cast
+// never fires.
+TEST_F(HotbarGestureEndToEndTest, GemPressReleaseCastsAndHoldClones) {
+    gems.hoveredGem = -1;
+    gems.gems[2].spellId = 501;
+    gems.gems[2].spellName = "Fireball";
+    // The gem's own rect (the hit test's geometry).
+    const int sx = layout.spellGems.UpperLeftCorner.X;
+    const int sy = layout.spellGems.UpperLeftCorner.Y;
+    const int gx = sx + UILayout::SLOT_SIZE / 2;
+    const int gy = sy + 2 * (UILayout::SLOT_SIZE + UILayout::MARGIN) +
+                   UILayout::SLOT_SIZE / 2;
+
+    // A SHORT press (under the threshold) over the gem: release fires the
+    // cast, no clone.
+    gems.hoveredGem = 2;
+    frame(0.016f, /*down=*/true, /*pressed=*/true, gx, gy);
+    frame(0.016f, /*down=*/false, /*pressed=*/false, gx, gy);
+    auto intents = bridge.drainIntents();
+    ASSERT_EQ(intents.size(), 1u);
+    EXPECT_NE(std::get_if<eqt::events::CastSpellIntent>(&intents[0]), nullptr);
+    EXPECT_FALSE(cursor.hasHotbutton);
+
+    // A HOLD over the gem: the clone appears and the cast is cancelled.
+    frame(0.016f, true, true, gx, gy);
+    frame(0.100f, true, false, gx, gy);
+    frame(0.100f, true, false, gx, gy);
+    frame(0.100f, true, false, gx, gy);  // crosses 300 ms
+    ASSERT_TRUE(cursor.hasHotbutton);
+    EXPECT_EQ(cursor.hotbutton.type, HotbarSlotType::Spell);
+    EXPECT_EQ(cursor.hotbutton.id, 501u);
+    EXPECT_EQ(cursor.hotbutton.text, "Fireball");
+    EXPECT_TRUE(bridge.drainIntents().empty())
+        << "the hold cancels the pending cast";
+}
+
+// H-O "ability-hold": a 3.286 s hold on Actions-Melee Bash cloned by ~1.0 s
+// with no activation. Through the REAL StaticUIInput: a short press-release
+// over the row fires the activation; a hold clones a Combat button and the
+// activation never fires.
+TEST_F(HotbarGestureEndToEndTest, AbilityPressReleaseActivatesAndHoldClones) {
+    abilities.isOpen = true;
+    abilities.abilities = {{10, "Bash", 55}};
+    const auto r = CAL::buttonRect(layout, 0);
+    const int ax = (r.UpperLeftCorner.X + r.LowerRightCorner.X) / 2;
+    const int ay = (r.UpperLeftCorner.Y + r.LowerRightCorner.Y) / 2;
+
+    // A SHORT press over the row: release fires the activation, no clone.
+    frame(0.016f, /*down=*/true, /*pressed=*/true, ax, ay);
+    frame(0.016f, /*down=*/false, /*pressed=*/false, ax, ay);
+    auto intents = bridge.drainIntents();
+    ASSERT_EQ(intents.size(), 1u);
+    EXPECT_NE(std::get_if<eqt::events::SkillActivateIntent>(&intents[0]), nullptr);
+    EXPECT_FALSE(cursor.hasHotbutton);
+
+    // A HOLD over the row: the clone appears and the activation is cancelled.
+    frame(0.016f, true, true, ax, ay);
+    frame(0.100f, true, false, ax, ay);
+    frame(0.100f, true, false, ax, ay);
+    frame(0.100f, true, false, ax, ay);  // crosses 300 ms
+    ASSERT_TRUE(cursor.hasHotbutton);
+    EXPECT_EQ(cursor.hotbutton.type, HotbarSlotType::Combat);
+    EXPECT_EQ(cursor.hotbutton.id, 10u);
+    EXPECT_EQ(cursor.hotbutton.text, "Bash");
+    EXPECT_TRUE(bridge.drainIntents().empty())
+        << "the hold cancels the pending activation";
+}
+
+// H-O "inventory-hold": a 2.974 s hold on inventory slot 22 cloned the item
+// to the cursor AND the item REMAINED in inventory (the pickup never fired).
+// Through the REAL StaticUIInput: a short press-release over the item still
+// picks it up; a hold clones an Item button and the pickup never fires.
+TEST_F(HotbarGestureEndToEndTest, ItemPressReleasePicksUpAndHoldClones) {
+    inventory.activePopup = PopupType::Inventory;
+    inventory.generalSlots[0].hasItem = true;  // Titanium slot 22
+    inventory.generalSlots[0].itemId = 21779;
+    inventory.generalSlots[0].itemName = "Rusty Dagger";
+    inventory.generalSlots[0].quantity = 1;
+    const auto r = IL::slotRect(layout, 22);
+    const int ix = (r.UpperLeftCorner.X + r.LowerRightCorner.X) / 2;
+    const int iy = (r.UpperLeftCorner.Y + r.LowerRightCorner.Y) / 2;
+
+    // A SHORT press-release over the item: release fires the pickup.
+    frame(0.016f, /*down=*/true, /*pressed=*/true, ix, iy);
+    frame(0.016f, /*down=*/false, /*pressed=*/false, ix, iy);
+    auto intents = bridge.drainIntents();
+    ASSERT_EQ(intents.size(), 1u);
+    const auto* g = std::get_if<eqt::events::CursorGestureIntent>(&intents[0]);
+    ASSERT_NE(g, nullptr) << "the short press is the click-to-cursor pickup";
+    EXPECT_EQ(g->slot, 22);
+    EXPECT_FALSE(cursor.hasHotbutton);
+
+    // A HOLD over the item: the clone appears and the pickup never fires
+    // -- the item REMAINS in inventory.
+    frame(0.016f, true, true, ix, iy);
+    frame(0.100f, true, false, ix, iy);
+    frame(0.100f, true, false, ix, iy);
+    frame(0.100f, true, false, ix, iy);  // crosses 300 ms
+    ASSERT_TRUE(cursor.hasHotbutton);
+    EXPECT_EQ(cursor.hotbutton.type, HotbarSlotType::Item);
+    EXPECT_EQ(cursor.hotbutton.id, 21779u);
+    EXPECT_EQ(cursor.hotbutton.text, "Rusty Dagger");
+    EXPECT_TRUE(bridge.drainIntents().empty())
+        << "the hold cancels the pending pickup; the item remains";
 }
 
 }  // namespace

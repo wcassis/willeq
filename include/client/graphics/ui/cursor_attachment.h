@@ -45,11 +45,6 @@ struct CursorAttachmentState {
     std::string itemName;
     uint32_t iconId = 0;     // -> CA_Anim's 40x40 decal
     int32_t quantity = 0;    // held, NOT drawn -- the oracle has no count label
-    // B1025-H3 (#345): the item id the held item carries (fed with hasItem),
-    // so an item HOLD (holding the held item past the threshold) can clone it
-    // as a HotbarSlotType::Item button. The game thread's assignSlot resolves
-    // the id back to a slot via findItemSlotByItemId.
-    uint32_t carriedItemId = 0;
 
     // B442b (#151 row 29): held COIN, fed by GameEventType::CursorCoinChanged
     // (the game thread's one cursor-coin publisher). EQT::COINTYPE_* and the

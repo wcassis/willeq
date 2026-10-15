@@ -291,10 +291,63 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                         eqt::inventory::SlotSnapshot snap;
                         snap.occupied = info && info->hasItem;
                         snap.quantity = info ? info->quantity : 0;
-                        slotClick(static_cast<int16_t>(i), leftClicked, snap,
-                                  info ? info->itemName : std::string(),
-                                  info ? info->iconId : 0u,
-                                  info && info->hasItem ? info->bagSlots : uint8_t{0});
+                        // B1025-H3 (GitLab #345): a LEFT press on a holdable
+                        // item DEFERS its pickup to the holder so a hold can
+                        // clone the item away instead -- H-O "inventory-hold":
+                        // the 2.974 s hold cloned the item to the cursor and
+                        // the item REMAINED in inventory, i.e. the pickup
+                        // never fired. A quick release still fires the pickup
+                        // on its release frame. The deferral's conditions
+                        // mirror recomputeHoldSource's Item branch (general
+                        // slot, occupied, not a bag) plus what makes THIS
+                        // press a plain pickup rather than another measured
+                        // gesture: no modifiers (SHIFT/CTRL/ALT are their own
+                        // arms), the cursor holds nothing (a held item's press
+                        // is a place/swap, a coin's is a coin gesture -- both
+                        // unmeasured holds, kept immediate), nothing is being
+                        // placed (a hot button on the cursor is a placement
+                        // in flight), a single item (a stack's press is the
+                        // QuantityWnd, H-O measured none), and no merchant is
+                        // open (the empty-cursor click is the sale selection,
+                        // a measured flow with its own timing).
+                        const bool holdableItem = cursorGestureActive() &&
+                            leftClicked && !rightClicked_ &&
+                            !mods_.shift && !mods_.ctrl && !mods_.alt &&
+                            !quantity_.isOpen && !confirm_.isOpen &&
+                            !cursor_->hasHotbutton && !cursorHoldsItem() &&
+                            !cursorHoldsCoin() &&
+                            !(merchantSel_ && merchantSel_->isOpen) &&
+                            i >= InventoryPanelState::EQUIP_SLOTS &&
+                            info != nullptr && info->hasItem && info->bagSlots == 0 &&
+                            info->quantity <= 1;
+                        if (holdableItem) {
+                            const int16_t slotId = static_cast<int16_t>(i);
+                            const std::string itemName = info->itemName;
+                            const uint32_t itemIcon = info->iconId;
+                            hotButtonHolder_.begin(
+                                HotbarHoldSource{
+                                    HotbarHoldSource::Kind::Item,
+                                    static_cast<uint32_t>(i),
+                                    eqt::HotbarSlotType::Item,
+                                    info->itemId, 0, -1,
+                                    info->itemName, info->iconId},
+                                [this, slotId, snap, itemName, itemIcon](
+                                    eqt::bridge::GameStateBridge&) {
+                                    // The sweep's producer grep (T264) reads
+                                    // one line per push; the re-run is the
+                                    // press's own body, so the push stays in
+                                    // slotClick() where the immediate arm
+                                    // would have pushed it.
+                                    slotClick(slotId, /*leftClicked=*/true, snap,
+                                              itemName, itemIcon,
+                                              /*bagSlots=*/uint8_t{0});
+                                });
+                        } else {
+                            slotClick(static_cast<int16_t>(i), leftClicked, snap,
+                                      info ? info->itemName : std::string(),
+                                      info ? info->iconId : 0u,
+                                      info && info->hasItem ? info->bagSlots : uint8_t{0});
+                        }
                     }
                     break;
                 }
@@ -673,11 +726,36 @@ bool StaticUIInput::processPanelInput(int mouseX, int mouseY, bool leftClicked,
         if (row >= 0) {
             combatAbilities.hoveredButton = row;
             if (leftClicked && bridge_) {
-                // B1025-H3: the ability row activates on the press (the oracle's
-                // Make Hotkey route is the supported clone route, not a row
-                // hold -- see refactor/B1025-H3/README.md "Not implemented").
-                bridge_->pushIntent(eqt::events::SkillActivateIntent{
-                    combatAbilities.abilities[row].skillId});
+                // B1025-H3 (GitLab #345): a row press DEFERS its activation to
+                // the holder so a hold can clone the row away instead -- H-O
+                // "ability-hold": the 3.286 s hold on Actions-Melee Bash
+                // cloned by ~1.0 s with no activation. A quick release over
+                // the row still fires the activation on its release frame.
+                // The window is fable's combat-ability panel (the oracle's
+                // Actions window has no fable half); the row's skill is the
+                // clone's id (the Combat slot type).
+                if (cursorGestureActive() &&
+                    !mods_.shift && !mods_.ctrl && !mods_.alt) {
+                    hotButtonHolder_.begin(
+                        HotbarHoldSource{
+                            HotbarHoldSource::Kind::Ability,
+                            combatAbilities.abilities[row].skillId,
+                            eqt::HotbarSlotType::Combat,
+                            combatAbilities.abilities[row].skillId,
+                            0, -1,
+                            combatAbilities.abilities[row].name, 0},
+                        [skill = combatAbilities.abilities[row].skillId](
+                            eqt::bridge::GameStateBridge& b) {
+                            // The sweep's producer grep (T264) reads one
+                            // line: the push and its intent stay together,
+                            // like the immediate arm below.
+                            b.pushIntent(eqt::events::SkillActivateIntent{
+                                skill});
+                        });
+                } else {
+                    bridge_->pushIntent(eqt::events::SkillActivateIntent{
+                        combatAbilities.abilities[row].skillId});
+                }
             }
         }
     }

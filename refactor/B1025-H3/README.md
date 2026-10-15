@@ -26,7 +26,7 @@ seam row struck in `scripts/refactor/check_zero_callers.py`).
 | Occupied hotbar slot | `Slot` | `gestures.tsv:2` "hotbar-pickup" | the clone ALSO clears the source slot (`HotbarClearIntent` -> `HotbarModel::clearSlot()`, its first production caller) |
 | Memorised spell gem | `Gem` | `gestures.tsv:3` "spell-hold" | a 0.117 s press cast with no clone; a 3.074 s hold cloned by ~1.1 s |
 | Combat-ability row | `Ability` | `gestures.tsv` "ability-hold" | the clone is the row's skill (Combat slot type) |
-| Main-inventory item | `Item` | `gestures.tsv` "inventory-hold" | 10-fps-bounded onset 0.72-1.02 s; the clone carries the item id (the game thread resolves id -> slot via `findItemSlotByItemId`) |
+| Main-inventory item | `Item` | `gestures.tsv` "inventory-hold" | 10-fps-bounded onset 0.72-1.02 s; the clone carries the item id from the SLOTTED item (the game thread's assignSlot resolves id -> slot via `findItemSlotByItemId`); the item stays in its slot -- the pickup was deferred and the clone cancels it |
 
 `recomputeHoldSource()` (static_ui_input.cpp) derives the source each frame
 from the PREVIOUS frame's hover, in hit-test order: hotbar window, gem,
@@ -48,8 +48,8 @@ still open (H-O "Not captured").
 | `include/client/graphics/ui/hotbar_assignment.h` | the gesture's declarations + the H-O citations (the hold timer, the displacement, the per-frame step) |
 | `src/client/graphics/ui/hotbar_assignment.cpp` | `tickHotbarHold`, `stepHotbarGesture`, `applyHotbarAssignPending`, `applyHotbarPlacementDisplacement`, `renderHotbarCursorAttachment` (the CA_SpellGem piece's producer -- B440's "no producer" is struck) |
 | `include/client/graphics/ui/hotbutton_holder.h` | `HotButtonHolder` -- the deferred source action, pure and testable |
-| `include/client/graphics/ui/cursor_attachment.h` | `hasHotbutton`/`hotbutton` (`HotButtonCarried`), the hold timer's fields, `carriedItemId` |
-| `src/client/graphics/ui/static_ui_input.cpp` | the press arms (slot / gem deferral), `recomputeHoldSource`, `processFrameGesture`, the placement/pickup on the slot click |
+| `include/client/graphics/ui/cursor_attachment.h` | `hasHotbutton`/`hotbutton` (`HotButtonCarried`), the hold timer's fields |
+| `src/client/graphics/ui/static_ui_input.cpp` | the press arms (slot / gem / item / ability deferral -- each defers its action to the holder so a hold can clone the source instead; the immediate arms survive for the unholdable cases: shift+click, a held cursor, stacks, an open merchant), `recomputeHoldSource`, `processFrameGesture`, the placement/pickup on the slot click |
 | `src/client/graphics/frame/renderer_frame_cursor.cpp` | the WORLD click's dismissal (H-O "hotbar-worlddrop") |
 | `src/client/graphics/ui/cursor_attachment.cpp` | the hot button's draw (above the item/coin) |
 | `include/client/events/renderer_intents.h` | `HotbarAssignIntent` (the placement), `HotbarClearIntent` (the pickup) |
@@ -83,7 +83,12 @@ render thread's `applyHotbarAssignPending`), NOT the state EventBus.
   out-of-range), and the end-to-end press loops through the REAL
   `StaticUIInput` (press-release-under-threshold activates; hold clones AND
   clears the source; a release KEEPS the clone; placement assigns and
-  displaces).
+  displaces; and the same two forms for the other three sources --
+  gem-press-release casts and the gem-hold clones a Spell button,
+  ability-press-release activates and the ability-hold clones a Combat
+  button, item-press-release picks up and the item-hold clones an Item
+  button WITHOUT the pickup firing -- so the item stays in inventory,
+  the H-O "inventory-hold" row).
 - `tests/test_command_processor_hotbutton.cpp` (new source of the existing
   `test_command_processor` target): the command's registration, the oracle
   form, usage, colour/text refusals, the 60-char limit, the headless and

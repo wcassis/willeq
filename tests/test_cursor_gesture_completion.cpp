@@ -103,6 +103,7 @@ struct Rig {
     SkillsPopupState skills;
     BuffBarState buffs;
     LootPanelState loot;
+    CombatAbilityPanelState abilities;  // B1025-H3: processFrameGesture's source
     CursorAttachmentState cursor;
     MerchantPanelState merchant;
     BankPanelState bank;
@@ -128,6 +129,23 @@ struct Rig {
     void clickSlot(int slot, bool left, bool right, ClickModifiers mods = {}) {
         const auto r = InventoryLayout::slotRect(l, slot);
         frame(r.UpperLeftCorner.X + 3, r.UpperLeftCorner.Y + 3, left, right, mods);
+    }
+    // B1025-H3 (GitLab #345): a left press on a holdable single item DEFERS
+    // its pickup to the holder (a hold may clone the item away instead,
+    // H-O "inventory-hold"); the release frame over the source fires it.
+    // The production click is this two-frame form, so the tests that assert
+    // on the final state run the press, the gesture tick, the release, the
+    // tick that fires the deferred action.
+    void pressReleaseSlot(int slot) {
+        const auto r = InventoryLayout::slotRect(l, slot);
+        const int x = r.UpperLeftCorner.X + 3;
+        const int y = r.UpperLeftCorner.Y + 3;
+        frame(x, y, /*left=*/true, /*right=*/false);
+        input.processFrameGesture(0.001f, /*buttonDown=*/true, hotbar, gems,
+                                  inv, abilities);
+        frame(x, y, /*left=*/false, /*right=*/false);
+        input.processFrameGesture(0.001f, /*buttonDown=*/false, hotbar, gems,
+                                  inv, abilities);
     }
     void clickRect(const irr::core::rect<irr::s32>& r, ClickModifiers mods = {}) {
         frame(cx(r), cy(r), true, false, mods);

@@ -34,8 +34,6 @@ bool applyCursorSlotChanged(CursorAttachmentState& state,
     state.itemName = data.hasItem ? data.itemName : std::string();
     state.iconId = data.hasItem ? data.iconId : 0;
     state.quantity = data.hasItem ? static_cast<int32_t>(data.quantity) : 0;
-    // B1025-H3: the held item's id, for an item hold's clone (HotbarSlotType::Item).
-    state.carriedItemId = data.hasItem ? data.itemId : 0;
     return true;
 }
 
