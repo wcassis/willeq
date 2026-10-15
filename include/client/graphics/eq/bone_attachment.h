@@ -81,6 +81,46 @@ inline int findBoneIndex(const std::shared_ptr<CharacterSkeleton>& skeleton,
     return -1;
 }
 
+// B1065 (#385) -- WHICH BONES THE TWO HELD ITEMS HANG FROM. Primary: R_POINT.
+// Secondary: SHIELD_POINT for a shield (IT200-IT299; on every Luclin-era
+// humanoid skeleton a child of the left FOREARM, e.g. QCMFO_L_DAG ->
+// QCMSHIELD_POINT_DAG, docs/reference/s3d_contents_reference.md), L_POINT for
+// anything else (or when the skeleton has no SHIELD_POINT).
+//
+// The bone names carry the SKELETON's model code, which is not always the race
+// row's code: a race drawn with its fallback model (race 71 Qeynos Citizen
+// "QCM" -> "HUM" where no QCM model is loaded, config/race_models.json) has
+// "humr_point", never "QCMR_POINT". Before B1065 the lookup used only the race
+// code, so such an entity's items were never placed. The skeleton's own
+// modelCode is tried first, the race code second.
+struct HeldItemBones {
+    int primary = -1;
+    int secondary = -1;
+};
+
+inline HeldItemBones resolveHeldItemBones(const std::shared_ptr<CharacterSkeleton>& skeleton,
+                                          const std::string& raceCode, bool secondaryIsShield) {
+    HeldItemBones out;
+    if (!skeleton) return out;
+    std::vector<std::string> codes;
+    std::string own = skeleton->modelCode;
+    std::transform(own.begin(), own.end(), own.begin(), [](unsigned char c) { return std::toupper(c); });
+    if (!own.empty()) codes.push_back(own);
+    if (!raceCode.empty() && raceCode != own) codes.push_back(raceCode);
+    static const std::vector<std::string> kRight = {"R_POINT_DAG", "R_POINT", "r_point_dag", "r_point"};
+    static const std::vector<std::string> kShield = {"SHIELD_POINT_DAG", "SHIELD_POINT", "shield_point_dag",
+                                                     "shield_point"};
+    static const std::vector<std::string> kLeft = {"L_POINT_DAG", "L_POINT", "l_point_dag", "l_point"};
+    for (const auto& code : codes) {
+        if (out.primary < 0) out.primary = findBoneIndex(skeleton, code, kRight);
+        if (out.secondary < 0 && secondaryIsShield) out.secondary = findBoneIndex(skeleton, code, kShield);
+    }
+    for (const auto& code : codes) {
+        if (out.secondary < 0) out.secondary = findBoneIndex(skeleton, code, kLeft);
+    }
+    return out;
+}
+
 // T472 (board B588) / T485 (B724, B725) -- THE ONE TRANSFORM FOR AN ITEM HELD
 // AT A POINT BONE (R_POINT, L_POINT, SHIELD_POINT), for every item and every
 // slot, and the one placement routine that applies it to a scene node.

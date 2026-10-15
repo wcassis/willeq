@@ -167,10 +167,27 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
         return;
     }
 
-    // Get race code for bone name construction
-    std::string raceCode = RaceModelLoader::getRaceCode(visual.raceId);
-    std::transform(raceCode.begin(), raceCode.end(), raceCode.begin(),
-                  [](unsigned char c) { return std::toupper(c); });
+    // B1065: the point bones, resolved once per (skeleton, secondary item) --
+    // bone_attachment.h resolveHeldItemBones() tries the skeleton's own model
+    // code before the race row's, so a fallback-model race finds its bones.
+    // T498 (board B755/B823): equipment[8] is a MATERIAL / IT model number for
+    // every appearance, so the shield question is asked of it directly.
+    if (visual.attachBoneSkeleton != skeleton.get() || visual.attachBoneSecondaryId != visual.currentSecondaryId) {
+        std::string raceCode = RaceModelLoader::getRaceCode(visual.raceId);
+        std::transform(raceCode.begin(), raceCode.end(), raceCode.begin(),
+                      [](unsigned char c) { return std::toupper(c); });
+        const bool isShield = EquipmentModelLoader::isShield(static_cast<int>(visual.currentSecondaryId));
+        const HeldItemBones bones = resolveHeldItemBones(skeleton, raceCode, isShield);
+        visual.attachBoneSkeleton = skeleton.get();
+        visual.attachBoneSecondaryId = visual.currentSecondaryId;
+        visual.primaryAttachBone = bones.primary;
+        visual.secondaryAttachBone = bones.secondary;
+        LOG_DEBUG(MOD_ENTITY, "held items: spawn {} ({}) skeleton '{}' race code '{}' primary IT{} -> {} secondary IT{}{} -> {}",
+                  visual.spawnId, visual.name, skeleton->modelCode, raceCode, visual.currentPrimaryId,
+                  bones.primary >= 0 ? skeleton->bones[bones.primary].name : std::string("(none)"),
+                  visual.currentSecondaryId, isShield ? " (shield)" : "",
+                  bones.secondary >= 0 ? skeleton->bones[bones.secondary].name : std::string("(none)"));
+    }
 
     // T301 Leg C: the PLAYER's body is drawn in a different frame from the one
     // its equipment children inherit -- applyAnimation() bakes (nodeRot.Y + 90)
@@ -203,32 +220,12 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
         placeHeldItem(node, boneStates[boneIndex].worldTransform, playerBake ? &playerYawFix : nullptr, playerScale);
     };
 
-    // Primary (right hand - R_POINT)
-    if (visual.primaryEquipNode) {
-        std::vector<std::string> suffixes = {"R_POINT_DAG", "R_POINT", "r_point_dag", "r_point"};
-        int boneIndex = findBoneIndex(skeleton, raceCode, suffixes);
-        if (boneIndex >= 0 && boneIndex < static_cast<int>(boneStates.size())) {
-            placeAttachment(visual.primaryEquipNode, boneIndex);
-        }
+    const int boneCount = static_cast<int>(boneStates.size());
+    if (visual.primaryEquipNode && visual.primaryAttachBone >= 0 && visual.primaryAttachBone < boneCount) {
+        placeAttachment(visual.primaryEquipNode, visual.primaryAttachBone);
     }
-
-    // Secondary (SHIELD_POINT for a shield, otherwise the left hand)
-    if (visual.secondaryEquipNode) {
-        // T498 (board B755/B823): every appearance -- player, peer and NPC --
-        // carries a MATERIAL / IT model number here, so the shield question is
-        // asked of it directly. It used to be a DATABASE item id for the local
-        // player only, resolved through data/item_models.json by a rule the
-        // server does not use.
-        bool isShield = EquipmentModelLoader::isShield(static_cast<int>(visual.currentSecondaryId));
-
-        std::vector<std::string> suffixes = isShield
-            ? std::vector<std::string>{"SHIELD_POINT_DAG", "SHIELD_POINT", "shield_point_dag", "shield_point",
-                                       "L_POINT_DAG", "L_POINT", "l_point_dag", "l_point"}
-            : std::vector<std::string>{"L_POINT_DAG", "L_POINT", "l_point_dag", "l_point"};
-        int boneIndex = findBoneIndex(skeleton, raceCode, suffixes);
-        if (boneIndex >= 0 && boneIndex < static_cast<int>(boneStates.size())) {
-            placeAttachment(visual.secondaryEquipNode, boneIndex);
-        }
+    if (visual.secondaryEquipNode && visual.secondaryAttachBone >= 0 && visual.secondaryAttachBone < boneCount) {
+        placeAttachment(visual.secondaryEquipNode, visual.secondaryAttachBone);
     }
 }
 
