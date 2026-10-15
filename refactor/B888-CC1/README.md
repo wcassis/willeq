@@ -11,12 +11,23 @@ the same shipped race/gender ranges for its optional appearance keys.
 
 Raw official-client evidence is under
 `/home/user/kb-evidence/kb-cc1-facepick/oracle/`. The original
-`UseLuclin*=FALSE` client configuration shows only FACE on Human male and Dark
-Elf female (`08_human_facepick.png`, `15_darkelf_facepick.png`, their stepped
-stills and videos). After enabling the official client's Luclin character
-models, the additional XML picker rows appear; the mode distinction matters
-when reading a hidden row. The original INI was restored byte-for-byte after
-the packet leg (`cmp` exit 0, SHA-256
+`UseLuclin*=FALSE` client configuration was read in the 2026-10-13 packet leg
+from single stills taken right after the modal opened
+(`08_human_facepick.png`, `15_darkelf_facepick.png`, their stepped
+stills and videos). **Those single stills are the modal's half-open "FACE +
+buttons only" state** — the picker list had not yet rendered — and the
+"only FACE" reading from them is an artifact, not the stock client's row
+visibility. The corrected stock capture `facepick-matrix3` (2026-10-13, all
+26 in-era pairs, stills + per-pair video, the client ini all-`FALSE`) opens
+Set Face with a net-zero drag and stills only once the picker list is on
+screen; its per-pair visibility (barbarian-male 7/7 incl. WOAD, iksar/
+troll-male 2/7, human-male 6/7, darkelf-female 4/7, ...) is the
+`visible_classic` column in `data/char_create_faces.tsv`. After enabling the
+official client's Luclin character models, the 3D appearance models change;
+the picker-row visibility is the same set in both eras (the hidden-row lists
+of facepick-matrix3 and matrix4 are identical), and the mode distinction
+matters when reading a hidden row. The original INI was restored byte-for-byte
+after the packet leg (`cmp` exit 0, SHA-256
 `a54ab291128cdcc8d38aa31faff29a8f102e9fa4e031684426a9f7febe7568ff`).
 
 The corrected Luclin-enabled matrix4 records a still after each short
@@ -105,16 +116,30 @@ passed 31/31 tests. Draft MR !168 exists; CI must still verify the pushed head.
 
 ## Fix leg 2 (2026-10-14): findings 1 + 6
 
-- **Finding 1 (era gate) implemented.** `data/char_create_faces.tsv` gains a
-  `visible_classic` column (10th field) parsed beside the Luclin `visible`
-  column (`char_create_faces.cpp`); `openFacePick` copies the era-SELECTED
+- **Finding 1 (era gate) implemented and the capture leg landed.**
+  `data/char_create_faces.tsv` gained a `visible_classic` column (10th
+  field) parsed beside the Luclin `visible` column
+  (`char_create_faces.cpp`); `openFacePick` copies the era-SELECTED
   column into the modal state (`face_pick_panel.cpp`), so drawing,
   hit-testing, stepping and Random all gate on `CharCreateScreenState::useOldModels`,
   which the host mirrors from `RaceModelLoader::isUsingOldModels()`
   (`char_select_host.cpp`). `FacePick.ClassicModelsGateTheRowsOnTheModelEra`
-  pins the gate on both eras. The `visible_classic` CELLS are the capture leg's
-  output (26 stock-client stills under `kb-evidence/kb-cc1-facepick/classic-visibility/`);
-  until they land, the parser defaults a 9-column row's classic cell to hidden.
+  pins the gate on both eras. The `visible_classic` CELLS are the 2026-10-13
+  stock capture `facepick-matrix3` (all 26 pairs; the rig's `eqclient.ini`
+  all-`FALSE`); its `facepick.tsv` `visible` column was re-probed against the
+  raw stills pair by pair (0/26 mismatch) before the fill, and each filled
+  row's source column now carries
+  `visible_classic:oracle:facepick-matrix3/...` beside the Luclin source.
+  A 9-column row (pre-capture fixture) still defaults its classic cell to
+  hidden, so the 7/9/10-column parser contract is unchanged. The 2026-10-14
+  driver re-capture (`facepick-rows`) is fixed and ready for a confirming run
+  but is not the source of the shipped cells: its earlier runs (full26-b..f,
+  pilot2/3/4) all stilled the modal in the half-open state because the
+  `face_open` gate OCRs the button strip, which is present before the list
+  renders; the verb now opens with matrix3's net-zero drag, settles on
+  `facepick_row_count >= 2`, and fails rather than emit a single-row still
+  (the lane's Set Face button was unresponsive to both click shapes on
+  2026-10-15, so the confirming run is left open).
 - **Finding 6 (RED/GREEN) closed.** `CharCreateClicks.SetFaceButtonIsNotGreyed`
   uses only seam symbols present in both trees, so it compiles and runs at the
   pre-feature baseline (origin/fable ac32a25e): 1 test selected, FAILED
