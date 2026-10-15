@@ -13698,3 +13698,34 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
   - Open: Will's device acceptance on the XU4 from the branch's armhf publish;
     the Orange Pi cost is scaled, not measured, and the live zone-in `audio`
     ledger row was not taken (the README says why).
+
+## Added 2026-10-15 by task/kb-b1051-panfrost-npc-textures (issue #371)
+
+- **B1051** (A, graphics) → issue #371. Will's XU4 play test reported
+  corrupted NPC textures: multi-buffer characters rendered one flat mottled
+  body under the ETC1 pack (`--eqe1-path`) on BOTH the XU4 (Panfrost/Midgard)
+  and x86 (llvmpipe), while raw RGBA and single-buffer zone ETC1 rendered
+  correctly. Take 1/2 on the XU4 did not reproduce in a classifiable frame;
+  take 3 ruled it a client ETC1 material-path fault; the x86 capability check
+  (`refactor/B1051/STEP_A_x86_capability.md`, probe `mesa-probe/etalib.c`)
+  then cleared the driver on the cheaper side: llvmpipe accepts and decodes
+  ETC1 uploads, so per the ruling the fault is the client's multi-buffer
+  ETC1 path. **Confirmed mechanism (measured on lane 2):** in an
+  EQE1-authoritative run the character S3D's raw per-part bytes are released
+  at parse time, so `ZoneMeshBuilder::getOrLoadTexture()` — the on-demand
+  per-buffer path for multi-buffer characters — had nothing to decode and
+  each buffer fell to the textureless diffuse fallback; the per-part GPU
+  textures sat QUEUED in the `ConstrainedTextureCache`, promoted only by the
+  render thread's upload loop 80-94 ms AFTER the mesh build (run 912c:
+  first race-71 build 11:02:47.871 / Guard_Drath's own .885 vs first qcf
+  upload .965). **Fixed on the branch, MR !173:** `bf2a8968` falls back to
+  `constrainedCache_->getTexture()` (mirroring `buildTexturedMesh()`),
+  `ad7295e1` promotes a queued entry synchronously via `uploadTexture()` —
+  pinned by `tests/test_b1051_mesh_texture_fallback.cpp`. The companion-alpha
+  material gate (`7a6d47ec`) was REFUTED live and reverted at `eaf15dc0`;
+  the WILLEQ_B1051_TRACE net is retained. x86 lane-2 after-verification:
+  Guard_Treitan (race 71, qeynos2) ETC1 == RGBA distinct parts, single-buffer
+  zone ETC1 still correct, per-buffer tex0 objects distinct at draw; evidence
+  `~/kb-evidence/b1051-followup/`. `refactor/B1051/README.md` "The client
+  fix", `docs/reference/odroid_xu4.md`. Open: the XU4 after-still leg (both
+  guards via the ci-arm armhf publish, MR !173) and Will's play session.

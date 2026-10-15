@@ -106,6 +106,34 @@ NPC defect count. Therefore the result remains **NOT REPRODUCED**, and no
 Panfrost mechanism, one-knob result, or preset change is established. See
 `refactor/B1051/README.md` for the four run rows, raw evidence, and limitations.
 
+**Resolved 2026-10-15 as a CLIENT defect, not a Panfrost/Mesa one** (issue
+#371, MR !173). The live reproduction scripted `/moveto` + `/face` on
+Guard_Treitan (race 71, qeynos2) against eqemu lane 2 with the x86 llvmpipe
+client: with `--eqe1-path` (ETC1) the multi-buffer character rendered one
+flat mottled body ("smear") while single-buffer zone ETC1 rendered correctly;
+with `--eqe1-path` removed (raw RGBA) the same character rendered with
+distinct per-part textures. `refactor/B1051/STEP_A_x86_capability.md` proves
+llvmpipe accepts ETC1 uploads and decodes them correctly, so the driver is
+cleared on both sides of the equation. The confirmed mechanism is
+client-side: in an EQE1-authoritative run the character S3D's raw texture
+bytes are released at parse time, so `ZoneMeshBuilder::getOrLoadTexture()` —
+the on-demand per-buffer path for multi-buffer characters — found nothing in
+its own maps and fell to the textureless diffuse fallback; the per-part GPU
+textures existed in the `ConstrainedTextureCache` but only after the render
+thread's upload loop *promoted* the queued entry, which lane-2 run 912c
+measured 80-94 ms AFTER the mesh build (first race-71 guard mesh build
+11:02:47.871 / Guard_Drath's own 11:02:47.885 vs the first qcf ETC1 upload
+11:02:47.965; the continuation's run re-measured the same gap at 154 ms,
+`refactor/B1051/README.md` "The client fix"). The fix is the
+constrained-cache fallback plus the synchronous promotion of the queued
+entry (`bf2a8968`, `ad7295e1`, MR !173), pinned by
+`tests/test_b1051_mesh_texture_fallback.cpp`. The earlier companion-alpha
+material gate hypothesis (take 3) was refuted live and reverted
+(`eaf15dc0`) — it was the wrong mechanism; the smear buffers drew mat=256
+SOLID. The x86 lane-2 after-stills (ETC1 == RGBA, distinct parts,
+`/home/user/kb-evidence/b1051-followup/`) land with the XU4 after-still leg
+of the same MR.
+
 ## Kernel and module state on the box
 
 Armbian 26.05 (6.6.129) shipped Panfrost but had this defect; its headers are not packaged. Armbian 26.8.3

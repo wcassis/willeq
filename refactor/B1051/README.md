@@ -128,3 +128,74 @@ still did not appear in a classifiable NPC view. A follow-up needs a capture
 with at least one visibly affected NPC and a way to keep that entity in view
 long enough for a before/after comparison. Neither the prior distant NPC nor
 the take-2 bridge NPC establishes a failing baseline.
+
+## The client fix (2026-10-15, MR !173)
+
+The repro and fix live on the eqemu lane 2 x86/llvmpipe client, not on the
+XU4: a scripted `/target` + `/moveto` + `/face` on Guard_Treitan (race 71,
+multi-buffer model, qeynos2) rendered the "smear" with `--eqe1-path` (ETC1)
+and correctly without it (raw RGBA), while single-buffer zone ETC1 rendered
+correctly in both — see `STEP_A_x86_capability.md` for the full outcome
+tables, the llvmpipe-accepts-ETC1 probe (`mesa-probe/etalib.c`), and the
+WILLEQ_B1051_TRACE evidence. That clears the driver on both GPUs; the fault
+is the client.
+
+**Mechanism (measured, not inferred).** In an EQE1-authoritative run the
+character S3D parses as "472 textures with 0 raw bytes", so the raw per-part
+bytes are released at parse time (`RaceModelLoader::loadModelZone` →
+`releaseBytesIfEqe1Authoritative`, `race_model_loader.cpp`). `ZoneMeshBuilder::getOrLoadTexture()` — the
+on-demand per-buffer path `mesh_building.cpp` uses for multi-buffer
+characters — consulted only its own `textureCache_`/`pendingTextures_` maps,
+both empty, and returned nullptr; each buffer then fell to the textureless
+diffuse fallback, the flat (255,200,180,160) body. The per-part GPU textures
+DO exist — the Compressed-source ETC1 lookup (`ConstrainedTextureCache::
+getOrLoad()` → `findCompressedEntry`) has queued them — but
+`getTexture()` only sees PROMOTED entries, and the promotion (the actual
+`glCompressedTexImage2D`, logged `ETC1 texture ... uploaded`) happens in the
+render thread's upload loop. The timeline measured on lane 2:
+
+| run | first race-71 guard mesh build (Step8c) | first per-part ETC1 upload | gap |
+|---|---|---|---:|
+| 912c (Guard_Drath, 2026-10-15 11:02) | 11:02:47.871 (first) / 11:02:47.885 (Drath's own) | 11:02:47.965 (`qcfch0001`) | 80-94 ms |
+| continuation (Guard_Treitan, 2026-10-15 15:48) | 15:48:01.847 | 15:48:02.001 (`humch0001`) | 154 ms |
+
+The single-buffer zone path (`buildTexturedMesh()`) survived because it is
+built from already-promoted entries and already had the
+`constrainedCache_->getTexture()` fallback — the on-demand path did not.
+
+**Fix (two commits, MR !173).**
+1. `bf2a8968` — `getOrLoadTexture()` (and `hasTexture()`) fall back to
+   `constrainedCache_->getTexture()`, mirroring `buildTexturedMesh()`.
+2. `ad7295e1` — the refinement: that alone still misses a queued-but-not-
+   promoted entry (the 80-154 ms gap above), so the on-demand path promotes
+   it synchronously via `constrainedCache_->uploadTexture()` — the same call
+   the render thread's loop makes; the path already does driver GL work
+   (`loadTextureFromBMP`), so no new thread/context assumption.
+
+Pinned by `tests/test_b1051_mesh_texture_fallback.cpp` (3 tests, incl.
+`QueuedEntryIsPromotedSynchronouslyByTheOnDemandPath`, red on the
+`getTexture()`-only fix, green with the refinement).
+
+**Live x86 after-verification (this continuation, lane 2, head 433a1c2e).**
+Same recipe as the pre-fix runs (Guard_Treitan, qeynos2,
+`/target` + `/moveto` + `/face`, UI hidden): ETC1 (`--eqe1-path`) now renders
+**DISTINCT** per-part textures (brown hooded tunic, gold-centred round
+shield, metallic blade — vision read of frames 100/122) matching the raw
+RGBA baseline; the pre-fix ETC1 run (912) of the same zone showed the SMOOR
+frame (one flat mottle over the whole guard, vision read of frame 60).
+Single-buffer zone ETC1 still renders correctly in the ETC1 run.
+WILLEQ_B1051_TRACE at the post-`/face` frames: the entity draws bind 28-41
+DISTINCT tex0 objects per frame on mat=256/264 (e.g. frame 2843 mat=256:
+tex0=10/23/24/158/176/.../293, distinct GL ids) — per-buffer binding is
+distinct at draw. Colour diversity of the guard torso crop: ETC1-fixed
+top-5-share 0.45-0.50 vs the RGBA baseline 0.18-0.24 (the pre-fix smear's
+signature is a single dominant mottle; the fixed ETC1 sits in the
+multi-texture band). Evidence: `/home/user/kb-evidence/b1051-followup/`
+(guard_torso_{pre_fix_etc1_smear,etc1_fixed,rgba_baseline}.png, the full
+frames, both client logs, the trace log). The XU4 after-still leg (both
+guards via the ci-arm armhf publish) lands with MR !173.
+
+The earlier companion-alpha material-gate hypothesis (take 3, commit
+`7a6d47ec`) was REFUTED live and reverted at `eaf15dc0` — the smear buffers
+drew mat=256 SOLID, so the alpha-variant path was never the mechanism. Do
+not re-apply it. The WILLEQ_B1051_TRACE net stays in the branch.
