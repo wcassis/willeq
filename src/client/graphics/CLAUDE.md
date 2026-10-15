@@ -21,7 +21,7 @@
   | `Eqe1ArchiveComponent` | `eqe1/` | EQE1 flat-pack open/resolve/index/report + the `EQT_HAS_DRM` fire-glow icospheres (L02) |
   | `OverlaysComponent` | `overlays/` | map/navmesh overlays, target outline (= inverted hull + depth pre-pass, no stencil, B1064, `target_outline_pass.h`), mouse targeting/LOS, HUD, fog, loading screen, paperdoll (L03) |
   | `DiagnosticsComponent` | `diagnostics/` | dumpScene, scene breakdown, frame-timing profiling, memory reports, the runtime debug toggles (L04) |
-  | `PlayerCameraComponent` | `player/` | `updatePlayerMovement()`, movement collision and ground height, and the ONE first-person camera formula (L05) |
+  | `PlayerCameraComponent` | `player/` | `updatePlayerMovement()`, movement collision and ground height (the ground ray tests every BSP leaf it crosses, `bsp_ground_query.cpp`, B1067), and the ONE first-person camera formula (L05) |
   | `SlashCommandsComponent` | `slash/` | `processSlashCommand()`, the registry-3 renderer command chain (L06) |
   | `SimBridgeComponent` | `sim/` | `SimulationWorker` marshaling; the worker itself is still the renderer's (L07) |
   | `ZoneStreamComponent` | `zone_stream/` | lazy/background mesh load, progressive load, PVS depth and neighbourhood (L08) |
