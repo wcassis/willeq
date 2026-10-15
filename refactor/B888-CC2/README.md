@@ -131,8 +131,9 @@ body.
   capture.** The model region was static (0.00-1.34% diff) across the four
   post-toggle stills -- the 10 fps capture + the driver's 2.5-4 s wait steps do
   not resolve a slow spin, and the toggle-frame diff is dominated by the button
-  repaint. The code's spin rate (0.15 deg/ms ~= 90 deg/s) is the paperdoll's
-  idle rate, a reasonable default, NOT an oracle measurement. The video is in
+  repaint. The code's spin rate (0.15 deg/ms = 150 deg/s, ~2.4 s per turn) is
+  the paperdoll's idle rate, a reasonable default, NOT an oracle measurement.
+  The video is in
   the evidence dir for a slower re-extraction if the rate needs to be pinned.
 - **The oracle run's cleanup exited 65** (lane teardown) after the capture
   completed; all 38 stills + the video are present. The Gnome-female create

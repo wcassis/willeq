@@ -42,11 +42,12 @@ bool appearanceEquals(const EQT::Graphics::EntityAppearance& a,
 namespace {
 constexpr int kPreviewW = 256;
 constexpr int kPreviewH = 256;
-// The spin's step, per 16 ms frame, in degrees. The oracle's spin is slow;
-// the ledger's measured period (refactor/B888-CC2/README.md) sets this. 300
-// degrees per 60-frame second ~= a 1.2 s full turn, the paperdoll's idle
-// rate. Kept as a constant, not a magic number in update().
-constexpr float kSpinDegreesPerMs = 0.15f;  // ~90 deg/s, a slow show-rotation
+// The spin's step, in degrees per ms. 0.15 deg/ms = 150 deg/s (~2.4 s per
+// full turn), the paperdoll's idle rate, a slow show-rotation. An assumed
+// default, NOT an oracle measurement -- the spin period was NOT measured from
+// the capture (refactor/B888-CC2/README.md, "Not verified"). Kept as a
+// constant, not a magic number in update().
+constexpr float kSpinDegreesPerMs = 0.15f;  // 150 deg/s (~2.4 s/turn), slow show-rotation
 }  // namespace
 
 class CharPreviewScene::Impl {
