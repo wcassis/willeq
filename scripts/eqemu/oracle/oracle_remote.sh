@@ -338,16 +338,174 @@ expected_for() {
         random) echo 'Random|Accept|Cancel' ;;
         accept|cancel) echo 'Character Creation' ;;
         create) echo window:EverQuest ;;
+        open-creation|open-face) echo 'Character Creation' ;;
+        # The capture-leg verbs leave the creation slot OPEN (page 0, no
+        # The capture-leg verbs leave the creation slot OPEN (page 0, no
+        # submission). facepick-rows' postcondition is its OWN modal's
+        # button strip (Random/Accept/Cancel -- the one region the lane-5
+        # OCR reads reliably, and the same gate face_open uses): the creation
+        # page's full-screen text is too flaky under psm 6 (heading and
+        # bottom row both miss intermittently, 2026-10-14 pilots). race-table
+        # and close-creation stay on the character-select/creation screens,
+        # never a zone, so a window check would be wrong; they use the weak
+        # 'Character' substring (both "Character Select" and "Character
+        # Creation" carry it -- the most reliably-read word on the rig). The
+        # STRONG state checks live in-driver: facepick-rows requires
+        # face_open before probing; close-creation requires the creation
+        # heading to have disappeared.
+        race-table) echo 'Character' ;;
+        close-creation) echo window:EverQuest ;;
+        facepick-rows) echo 'Random|Accept|Cancel' ;;
         *) echo "${optional:-window:EverQuest}" ;;
     esac
 }
-face_open() { screen_text '205x400+0+180' | grep -qiE 'Random|Accept|Cancel'; }
+face_open() { face_buttons_text '200x55+0+485' | grep -qiE 'Random|Accept|Cancel'; }
+# B888-CC1 (#204): the Set Face OPEN click. matrix3 (the reference stock
+# capture, oracle/matrix_capture3.sh, which rendered all 26 pairs' picker
+# rows) opens Set Face with a net-ZERO drag: mousedown, move +1,+1, move BACK
+# to the start, then mouseup -- its comment is "the net-zero drag keeps the
+# popup stationary". The ui-lib jclick used by every earlier capture leg is a
+# 1px NET drag (mousedown, move +1,+1, mouseup, no move-back), and on this
+# client that opens the modal in the half-open "FACE + buttons only" state
+# with the picker LIST never rendered (the full26/pilot failure: all pairs
+# stilled showing only the FACE row). The net-zero drag is the one matrix3
+# proved renders the full list, so the open uses exactly its sequence.
+face_open_click() {
+    local x=$1 y=$2
+    xdotool mousemove "$x" "$y"
+    sleep 0.4
+    xdotool mousemove "$((x+1))" "$y"
+    sleep 0.2
+    xdotool mousemove "$x" "$y"
+    sleep 0.4
+    xdotool mousedown 1
+    sleep 0.35
+    xdotool mousemove "$((x+1))" "$((y+1))"
+    sleep 0.3
+    xdotool mousemove "$x" "$y"  # net-zero drag keeps the popup stationary
+    sleep 0.2
+    xdotool mouseup 1
+    sleep 0.3
+}
+face_buttons_text() {
+    # The modal's own three bottom buttons (window at 1280x1024: (0,374)
+    # 175x215 image-space, i.e. (0,404) root; Random/Accept/Cancel at root
+    # y 515-540 = image 485-510, B888-CC1: the lane-5 stills put Random at
+    # image ~485). A crop of THAT strip is the open-gate: whole-screen OCR
+    # on this rig mangles "Accept" (measured 'Recept'), so the gate reads
+    # only the button strip. screen_text's crop is image space (import
+    # crops 1280x800+0+30), so the +30 is already absorbed.
+    screen_text "$1"
+}
 require_face_open() { face_open || { echo "$1 without face dialog" >&2; return 65; }; }
+creation_page_open() {
+    # The creation page is proven by its "Character Creation" heading (top
+    # band, OCR-clean on the lane-5 rig). A SINGLE read is unreliable (the
+    # stock classic client's small 11px type and screen_text's --psm 6 miss
+    # it intermittently -- the B888-CC1 pilots, 2026-10-14), so callers poll
+    # with creation_page_up, not this one-shot. The FacePick modal carries no
+    # such heading while covering the page, and the modal's identity is the
+    # Random/Accept/Cancel strip (face_open), so the two are distinguishable.
+    screen_text | grep -qi 'Character Creation'
+}
+creation_page_up() {
+    # Poll the heading up to $1 tries (default 4, 2 s apart).
+    local tries=${1:-4} i
+    for i in $(seq 1 "$tries"); do
+        if creation_page_open; then return 0; fi
+        sleep 2
+    done
+    return 1
+}
+creation_pair_open() {
+    # $1 race, $2 gender (or "none"), $3 still label. Opens a fresh creation
+    # slot and -- when a real gender is given -- selects the pair WITHOUT
+    # submitting (no class, no points, no page 1, no create packet). That is
+    # the state the stock UseLuclin=FALSE stills were taken in. It assumes
+    # the caller is at character select (the close-creation verb is the only
+    # way off the creation page), so it does not try to leave a screen it
+    # already found: the page signal it relies on is the creation heading
+    # itself, which the slot click produces. gender "none" opens the bare
+    # page 0 (the race-table measurement) and makes no selection.
+    local race=$1 gender=$2 label=$3 race_row gender_row
+    race_row=$(race_y "$race" || true)
+    gender_row=$([[ $gender == Male || $gender == Female ]] && gender_x "$gender" || true)
+    # The slot button's row (create verb: 123,421) is character-select-only.
+    jclick 123 421; sleep 3
+    creation_page_up || { jclick 123 421; sleep 12; }
+    creation_page_up || { shot "$label-create-slot-missing"; echo 'creation_pair_open: slot did not open' >&2; return 65; }
+    sleep 12   # the restored selection must finish re-rendering (create verb)
+    if [[ $gender == Male || $gender == Female ]]; then
+        [[ -n $race_row ]] || return 65
+        select_once "$race" 53 "$race_row" || return 65
+        select_once "$gender" "$gender_row" 252 || return 65
+        selected_at "$race" 53 "$race_row" || return 65
+        selected_at "$gender" "$gender_row" 252 || return 65
+        shot "$label-pair-selected" || :
+    fi
+    return 0
+}
+# B888-CC1 (#204): the machine probe behind the facepick-rows verb. The
+# picker's rows read their SELECTED state from the same white-arrow glyph the
+# row's text turns into (the stock client marks the chosen row), so a row is
+# VISIBLE iff the 20px strip before its text (x 138-158, 12px tall at the
+# row's y-6) is bright. The strip's Gray mean (0-255, %[fx:mean*255]) was
+# calibrated against the 183-row matrix4 visibility table (2026-10-14): a
+# VISIBLE row measured 73.92-75.02 and a HIDDEN one 20.58-21.68, a ~52-unit
+# gap; threshold 48 (the midpoint) keeps ~26 units of margin on each side.
+# The picker's y rows are constant per control (face 348, hair 368, haircolor
+# 388, eyes 408, beard 428, beardcolor 448, wode 468), measured from the
+# lane-5 modal; the image crop is +0+30-offset (import crops 1280x800+0+30).
+# $1 image, $2 race, $3 gender, $4 tsv path. Emits one line: race, gender,
+# image, then label=0/1 for the seven pickers (face first, wode last).
+facepick_probe_tsv() {
+    local image=$1 race=$2 gender=$3 out=$4 yrow label mean vis
+    {
+        printf '%s\t%s\t%s\t' "$race" "$gender" "$image"
+        for row in 'face:348' 'hair:368' 'haircolor:388' 'eyes:408' 'beard:428' 'beardcolor:448' 'wode:468'; do
+            label=${row%%:*}; yrow=${row##*:}
+            mean=$(convert "$image" -crop "20x12+138+$((yrow-6-30))" +repage -colorspace Gray -format '%[fx:mean*255]' info: 2>/dev/null)
+            [[ $mean =~ ^[0-9.]+$ ]] || { echo "facepick_probe_tsv: bad mean on $label" >&2; return 65; }
+            vis=$(awk -v m="$mean" 'BEGIN { print (m > 48) ? 1 : 0 }')
+            printf '%s=%s ' "$label" "$vis"
+        done
+        printf '\n'
+    } >> "$out"
+}
+# B888-CC1 (#204): the settle discriminator behind facepick-rows. Counts how
+# many of the seven picker rows read a visible arrow-strip value (>48, the
+# probe's threshold). A modal that is OPEN but whose picker LIST has not yet
+# rendered shows only the FACE row bright (~74) and the other six dark (~21),
+# so it counts 1; a rendered list shows >= 2, because every stock (UseLuclin=
+# FALSE) pair shows at least face+eyes (matrix3's 2/7 floor -- iksar/troll/
+# ogre MALE show exactly face+eyes). The FACE row alone reads ~74 in BOTH
+# states, so it cannot discriminate; the COUNT can. Validated 2026-10-14:
+# matrix3-open (all rows) counts 7, a half-open full26f still counts 1.
+facepick_row_count() {
+    local row label yrow mean n=0
+    for row in 'face:348' 'hair:368' 'haircolor:388' 'eyes:408' 'beard:428' 'beardcolor:448' 'wode:468'; do
+        label=${row%%:*}; yrow=${row##*:}
+        mean=$(convert "$1" -crop "20x12+138+$((yrow-6-30))" +repage -colorspace Gray -format '%[fx:mean*255]' info: 2>/dev/null)
+        [[ $mean =~ ^[0-9.]+$ ]] || continue
+        if [[ $(awk -v m="$mean" 'BEGIN { print (m > 48) ? 1 : 0 }') == 1 ]]; then n=$((n+1)); fi
+    done
+    printf '%s\n' "$n"
+}
 assert_action_state() {
     local verb=$1 expected=$2 name=$3
     case $verb in
         random)
             face_open || { shot "$name-face-missing"; echo 'random missed face dialog' >&2; return 65; } ;;
+        open-face)
+            # B888-CC1 (#204): on the lane-5 rig the modal (root (0,404)
+            # 175x215, measured) covers the creation screen's page text, and
+            # its button strip is what IS legible (full-frame OCR reads
+            # 'Randam Accent Cance!'), so the modal's button strip IS the
+            # postcondition -- the same gate open-face's own click check
+            # uses. A text assertion here can never see what the modal
+            # covers, so it must not gate the step.
+            face_open || { shot "$name-face-missing"; echo 'open-face: modal not open at assertion' >&2; return 65; }
+            return 0 ;;
         accept|cancel)
             if face_open; then
                 shot "$name-face-still-open"
@@ -382,6 +540,32 @@ if [[ $ACTION == selftest ]]; then
     # fix2g through.
     STUB_MEAN=1.0
     if selected_at "$race" 53 "$race_row"; then echo "unselected row passed selected_at"; exit 1; fi
+    # B888-CC1 (#204): the open-creation / open-face verbs must resolve their
+    # expected postconditions (the creation screen stays up; open-face then
+    # shows the modal's button strip). A verb with no expected_for arm falls
+    # to the default 'window:EverQuest' and would assert a live zone.
+    [[ $(expected_for open-creation Barbarian) == 'Character Creation' ]] || exit 1
+    [[ $(expected_for open-face x) == 'Character Creation' ]] || exit 1
+    # B888-CC1 (#204): the capture-leg verbs' per-step postconditions.
+    # facepick-rows asserts its OWN modal's button strip (the reliable
+    # cropped read; the strong checks are in-driver). close-creation asserts
+    # the live-client window (its proof is the creation heading having
+    # DISAPPEARED, in-driver, not any full-screen text). A misfiled verb
+    # would still assert the zone default 'window:EverQuest' or the weak
+    # 'Character' substring.
+    [[ $(expected_for race-table x) == 'Character' ]] || exit 1
+    [[ $(expected_for facepick-rows x) == 'Random|Accept|Cancel' ]] || exit 1
+    [[ $(expected_for close-creation x) == window:EverQuest ]] || exit 1
+    # The calibrated arrow probe must classify the two measured extremes:
+    # the brightest hidden row (21.68) hidden, the dimmest visible (73.92)
+    # visible. The convert stub yields STUB_MEAN as the strip's Gray mean.
+    : >"$DIR/rows.tsv"
+    STUB_MEAN=21.68
+    facepick_probe_tsv fake.png Barbarian Male "$DIR/rows.tsv" || exit 1
+    STUB_MEAN=73.92
+    facepick_probe_tsv fake.png Elf Female "$DIR/rows.tsv" || exit 1
+    grep -q $'Barbarian\tMale\tfake.png\tface=0 hair=0 haircolor=0 eyes=0 beard=0 beardcolor=0 wode=0 ' "$DIR/rows.tsv" || exit 1
+    grep -q $'Elf\tFemale\tfake.png\tface=1 hair=1 haircolor=1 eyes=1 beard=1 beardcolor=1 wode=1 ' "$DIR/rows.tsv" || exit 1
     # name_filled: the convert stub returns STUB_MEAN as the std. A uniform
     # (empty) field (std 0) must be rejected and a glyph-like field (std
     # 0.172) accepted -- the fix2h mode of failure is a lost xdotool
@@ -394,6 +578,13 @@ if [[ $ACTION == selftest ]]; then
     STUB_MEAN=
     SCREEN_TEXT='Character Creation'
     screen_text() { echo "$SCREEN_TEXT"; }
+    # B888-CC1 (#204): the face_open gate (open-face's success check) must
+    # read the modal's OWN button strip, not the whole screen: a closed
+    # creation screen has no Random/Accept/Cancel and must fail it.
+    if face_open; then echo 'closed creation screen passed face_open'; exit 1; fi
+    SCREEN_TEXT='Random Accept Cancel'
+    face_open || { echo 'open modal failed face_open (button-strip gate)'; exit 1; }
+    SCREEN_TEXT='Character Creation'   # restore: the assert_visible below keys off it
     assert_visible 'Character Creation' positive || exit 1
     if assert_visible 'Missing Window' negative; then exit 1; fi
     [[ -f $DIR/negative-assertion-failed.png ]] || exit 1
@@ -608,6 +799,10 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
     hold_ms=$arg3 still_name=$arg4
     if [[ $verb == create ]]; then
         race=$arg3 class=$arg4 gender=$arg5 still_name=$arg6
+    elif [[ $verb == facepick-rows ]]; then
+        # The still label is the 6th field (like create), not the universal
+        # still_name slot (arg4), which is the gender-less '0' placeholder.
+        still_name=$arg6
     fi
     name=$(printf '%02d_%s' "$step" "${still_name:-$verb}")
     [[ $name =~ ^[A-Za-z0-9_-]+$ ]] || exit 65
@@ -651,6 +846,198 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
         random) jclick 148 348 ;;
         accept) require_face_open accept || exit 65; jclick 50 519 ;;
         cancel) require_face_open cancel || exit 65; jclick 50 539 ;;
+        open-face)
+            # B888-CC1 (#204): open the FacePick modal of an ALREADY OPEN creation
+            # screen (the stock stills' state: Set Face on the creation page).
+            # The Set Face button is CC0_Face_Button, XML (2,45,64,24) in the
+            # 0a row that also carries Male/Female (XML (70,45)/(134,45)): on
+            # the lane-5 rig (B1057 measured) Male is display (105,252) and
+            # Female (169,252) -- a 1:1 x-map (offset -1) -- so Set Face's
+            # centre is display (37,252). The modal is a popup: it opens over
+            # the creation screen without closing it.
+            jclick 37 252
+            sleep 2
+            face_open || { shot "$name-face-missing"; echo 'open-face did not open the modal' >&2; exit 65; } ;;
+        open-creation)
+            # B888-CC1 (#204): leave the creation screen if the previous
+            # pair's flow is still inside it (the Back button is shared by
+            # both pages: page 1 -> page 0 -> character select; the live
+            # creation screen opens on page 0), then open it fresh and
+            # select the target's race and gender -- WITHOUT submitting
+            # (no class, no points, no page 1, no name, no create
+            # packet). This is exactly the state the stock UseLuclin=FALSE
+            # stills were taken in: the pair's FacePick modal over the
+            # creation page. Plan line: open-creation <race> <gender>
+            # <still_name> (3 fields, the still label). The host report
+            # must not require a decoded create packet for this verb (it
+            # only does for the create verb).
+            [[ $arg3 == Male || $arg3 == Female ]] || exit 65
+            race_row=$(race_y "$target") || exit 65
+            gender_row=$(gender_x "$arg3") || exit 65
+            if screen_text | grep -qi 'Character Creation'; then
+                # Previous pair is still inside: page 0 Back -> select.
+                jclick 899 23; sleep 6
+                screen_text | grep -qi 'Character Creation' && { shot "$name-back-stuck"; echo 'open-creation: Back did not leave the creation screen' >&2; exit 65; }
+            fi
+            screen_text | grep -qiE 'Character Select|Create a New Character' || { shot "$name-no-select"; echo 'open-creation: character select not visible' >&2; exit 65; }
+            jclick 123 421; sleep 3
+            if ! screen_text | grep -qi 'Character Creation'; then
+                jclick 123 421; sleep 12
+            fi
+            screen_text | grep -qi 'Character Creation' || { shot "$name-create-slot-missing"; echo 'open-creation: slot did not open' >&2; exit 65; }
+            # Let the restored selection finish re-rendering (create verb).
+            sleep 12
+            select_once "$target" 53 "$race_row" || exit 65
+            select_once "$arg3" "$gender_row" 252 || exit 65
+            selected_at "$target" 53 "$race_row" || exit 65
+            selected_at "$arg3" "$gender_row" 252 || exit 65
+            shot "$name-pair-selected" || : ;;
+        race-table)
+            # B888-CC1 (#204): ONE still of the fresh creation page 0 (the
+            # full race list, no pair selected) so the race-row y-centres can
+            # be measured off it. Plan line: race-table 0 0 <label> (the
+            # label is the still name, arg4). The caller must be at character
+            # select (see close-creation). No selection, no class, no create
+            # packet.
+            creation_pair_open "race-table" "none" "$name" || exit 65
+            shot "$name" ;;
+        close-creation)
+            # B888-CC1 (#204): the one way off the creation page. The
+            # FacePick modal, if open, is closed by ITS Cancel button (50,539
+            # -- root (50,569); the modal is the only widget there, so the
+            # click is safe ONLY when face_open holds). Then the page-0 Back
+            # button returns to character select. Its position was MEASURED
+            # (image (1100,15) -> display (1100,45); the still crop is
+            # +0+30-offset, the xdotool clicks are root/display): a 4x crop
+            # of the pilot's 02_race-table still puts the Back/Next pair at
+            # the top-right, Back centred ~(1100,15) image. The old 899,23
+            # was never exercised and is wrong. The heading's disappearance
+            # is polled (the re-render takes a few seconds).
+            # Postcondition: the character-select "Create a New Character"
+            # slots (OCR-reliable on the lane-5 stills -- the only page
+            # signature that reads across all psm/mode combinations).
+            # Close the modal FIRST, with retries: a single Cancel click can
+            # be dropped by the rig. The button ROW was MEASURED from the
+            # full26b/c stills (bright-run scan, image space): the text
+            # Random/Accept/Cancel sits at image y ~486-492 -- Random
+            # centre ~(47,489), Accept ~(115,489), Cancel ~(132,489) -- so
+            # the button bodies centre at ROOT y ~520 (the still crop is
+            # +0+30-offset). The earlier 539/569 sweeps were ~20-45 px BELOW
+            # the buttons, which is why every click missed. Sweep the three
+            # measured centres at the measured row (plus one 6 px low for
+            # the body height); clicking between buttons is harmless. Poll
+            # face_open (the modal's own button strip) after every click.
+            for coord in '47 520' '115 520' '132 520' '47 526' '115 526' '132 526' '50 539' '140 539'; do
+                face_open || break
+                set -- $coord; cxb=$1; cby=$2
+                jclick "$cxb" "$cby"; sleep 3
+            done
+            face_open && { shot "$name-modal-still-open"; echo 'close-creation: modal still open after Cancel retries' >&2; exit 65; }
+            if creation_page_up; then
+                # The Back button's centre is ~(1100-1130, 45-55) display
+                # (two 3x/4x vision reads of the pilot stills, 2026-10-14;
+                # the old 899,23 was never exercised and is wrong). Sweep
+                # both estimates: clicking between the top-right controls is
+                # harmless. Poll the heading after each (re-render is slow).
+                for coord in '1100 45' '1130 55'; do
+                    set -- $coord; cxb=$1; cby=$2
+                    jclick "$cxb" "$cby"
+                    for i in 1 2 3 4; do
+                        sleep 3
+                        if ! creation_page_open; then break 2; fi
+                    done
+                done
+                creation_page_open && { shot "$name-back-stuck"; echo 'close-creation: Back did not leave the creation screen' >&2; exit 65; }
+            fi
+            # In-driver proof we reached character select: the creation
+            # heading must be GONE after Back (the one reliable creation-page
+            # signal). We do NOT assert a "Character Select" string appears --
+            # full-screen psm 6 reads of the panel title and the bottom "Return
+            # Home" row both flake on the lane-5 rig (the 2026-10-14 pilots),
+            # so a positive text assertion would be a flaky gate.
+            if creation_page_up; then
+                shot "$name-still-creation"; echo 'close-creation: creation heading still present after Back' >&2; exit 65
+            fi
+            # The modal must be GONE too (the first check ran before the Back
+            # re-render finished): the full26 run exited with the heading check
+            # passed and the modal still up, so the next pair's slot click
+            # landed on nothing. The strip read (face_open) is cropped, not
+            # flaky.
+            sleep 2
+            face_open && { shot "$name-modal-reopened"; echo 'close-creation: modal open after leaving the creation page' >&2; exit 65; }
+            shot "$name" ;;
+        facepick-rows)
+            # B888-CC1 (#204): the capture leg. Plan line (tab fields):
+            # facepick-rows <race> 0 0 <gender> <label> -- race in target,
+            # gender in arg5, the still label in arg6 (the driver's
+            # still_name slot is arg4, so this verb keeps the label in arg6,
+            # the same column the create verb's still_name uses). Select the
+            # pair, open the FacePick modal, still it, and run the
+            # calibrated arrow probe IN-DRIVER so the step emits its own
+            # TSV line (no separate host-side probe step that could read a
+            # different frame). No class, no create packet.
+            [[ $arg5 == Male || $arg5 == Female ]] || exit 65
+            [[ -n $arg6 && $arg6 =~ ^[A-Za-z0-9_-]+$ ]] || exit 65
+            creation_pair_open "$target" "$arg5" "$name" || exit 65
+            # matrix3 (the reference stock capture, oracle/matrix_capture3.sh)
+            # opens Set Face in a retry loop and STILLs the modal directly --
+            # no close/reopen. A re-open does NOT re-render the picker list on
+            # this rig: it strands the modal in the half-open "FACE + buttons
+            # only" state, which is exactly the full26/pilot2 failure (all
+            # pairs stilled before the list rendered). So mirror matrix3: open
+            # once and settle until the list is on screen.
+            for open_attempt in 1 2 3 4 5; do
+                face_open && break
+                face_open_click 37 251; sleep 2
+                xdotool mousemove 600 900
+            done
+            face_open || { shot "$name-face-missing"; echo 'facepick-rows: modal did not open' >&2; exit 65; }
+            # Settle until the picker LIST renders. The FACE row alone reads
+            # ~74 in BOTH the half-open and rendered states, so it cannot
+            # discriminate; the ROW COUNT can (facepick_row_count: half-open =
+            # 1, rendered = >= 2, because every stock pair shows at least
+            # face+eyes). matrix3 stills the modal right after it opens, but
+            # its capture settles ~2s; the re-render can take longer, so poll
+            # the row count for up to ~24s.
+            for settle in $(seq 1 12); do
+                sleep 2
+                shot "$name" || :
+                if [[ $(facepick_row_count "$DIR/$name.png") -ge 2 ]]; then
+                    break
+                fi
+            done
+            # If it is STILL the half-open state after the settle window, do
+            # ONE verified close (the MEASURED Cancel row, not 50,539 which
+            # full26/b/c proved ~20px below the button) -> reopen, then settle
+            # again. The close is verified (face_open false) before the
+            # re-open, so the re-open is never a no-op on an already-open
+            # modal.
+            if [[ $(facepick_row_count "$DIR/$name.png") -lt 2 ]]; then
+                for coord in '47 520' '115 520' '132 520' '47 526' '115 526' '132 526' '50 539' '140 539'; do
+                    face_open || break
+                    set -- $coord; cxb=$1; cby=$2
+                    jclick "$cxb" "$cby"; sleep 3
+                done
+                face_open && { shot "$name-close-failed"; echo 'facepick-rows: modal still open after Cancel retries' >&2; exit 65; }
+                for open_attempt in 1 2 3 4 5; do
+                    face_open && break
+                    face_open_click 37 251; sleep 2
+                    xdotool mousemove 600 900
+                done
+                face_open || { shot "$name-face-missing2"; echo 'facepick-rows: modal not open after re-open' >&2; exit 65; }
+                for settle in $(seq 1 12); do
+                    sleep 2
+                    shot "$name" || :
+                    [[ $(facepick_row_count "$DIR/$name.png") -ge 2 ]] && break
+                done
+            fi
+            # The still must show a rendered list (>= 2 rows). Every stock
+            # pair shows at least face+eyes; a single-row read means the list
+            # never rendered (the half-open state) and the step FAILS rather
+            # than recording an untrustworthy row (the full26f failure).
+            shot "$name" || :
+            [[ $(facepick_row_count "$DIR/$name.png") -ge 2 ]] || { shot "$name-face-not-rendered"; echo 'facepick-rows: picker list not rendered -- only the FACE row is bright, the still is the half-open state' >&2; exit 65; }
+            facepick_probe_tsv "$DIR/$name.png" "$target" "$arg5" "$DIR/rows.tsv" || exit 65 ;;
         create)
             [[ $target =~ ^[A-Za-z]{3,15}$ && ( $gender == Male || $gender == Female ) ]] || exit 65
             race_row=$(race_y "$race") || exit 65
@@ -753,8 +1140,20 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
     esac
     sleep 2
     if ! alive; then mark DISCONNECT "$name"; exit 67; fi
-    if [[ $verb == create ]]; then expected=$(expected_for "$verb" "$target")
+    if [[ $verb == create || $verb == facepick-rows || $verb == still ]]; then expected=$(expected_for "$verb" "$target")
     else expected=$(expected_for "$verb" "$target" "$arg5"); fi || exit 65
+    if [[ $verb == facepick-rows || $verb == still ]]; then
+        # No full-screen postcondition: facepick-rows already required
+        # face_open (the modal's own Random/Accept/Cancel strip, cropped
+        # read) before it probed, and that cropped strip is the reliable
+        # signal -- the full-screen OCR mangles the same words (measured
+        # 'Randam Accent Cance!'), and the creation page behind the modal
+        # has no legible heading under psm 6 (the 2026-10-14 pilots).
+        mark END "$name"
+        shot "$name" || :
+        cp "$CLIENT/${CHARACTER}_".ini "$DIR/$name.ini" 2>/dev/null || :
+        continue
+    fi
     assert_action_state "$verb" "$expected" "$name" || exit 65
     mark END "$name"
     shot "$name" || exit 65

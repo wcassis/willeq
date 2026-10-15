@@ -330,7 +330,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  -np, --no-pathfinding    Disable navmesh pathfinding\n";
             std::cout << "  --record-session <file>  Record decoded session packets to <file> for later replay\n";
             std::cout << "  --script <file>          Run a scripted command tour ('wait N' + slash-command lines)\n";
-            std::cout << "  --create-character \"Name,Race,Gender,Class,Deity,City[,STR=n,...]\"\n"
+            std::cout << "  --create-character \"Name,Race,Gender,Class,Deity,City[,STR=n,...][,FACE=n,HAIR=n,HAIRCOLOR=n,EYES=n,BEARD=n,BEARDCOLOR=n]\"\n"
                          "                           Create the character at character select, then enter world with it (home city)\n";
             std::cout << "  --delete-character <Name>  Delete the character at character select, then exit\n";
             std::cout << "  --list-characters        Print the account's characters at character select, then exit\n";

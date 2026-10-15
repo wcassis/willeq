@@ -4,7 +4,7 @@
 // character select instead of entering the configured character's world.
 // It is how automation creates, deletes or lists characters without the UI:
 //
-//   --create-character "Name,Race,Gender,Class,Deity,City[,STR=n,...]"
+//   --create-character "Name,Race,Gender,Class,Deity,City[,STR=n,...][,FACE=n,HAIR=n,HAIRCOLOR=n,EYES=n,BEARD=n,BEARDCOLOR=n]"
 //       create it (OP_ApproveName -> OP_CharacterCreate), then enter world
 //       with it -- in its home city, never the tutorial.
 //   --delete-character Name      delete it (OP_DeleteCharacter), then quit.
@@ -17,6 +17,8 @@
 // can create nothing the UI could not. With no STR=.. terms the stats are
 // charcreate::defaultAllocation(); with some, the rest stay at base and every
 // point must be spent (eqstr 1577), exactly as Next demands on page 0.
+// Appearance keys are optional decimal values validated against the same
+// race/gender ranges as FacePick (data/char_create_faces.tsv). EYES sets both eyes.
 //
 // A refused script (bad spec at startup; a name or creation the server
 // refuses; a delete of a name the account does not hold) logs

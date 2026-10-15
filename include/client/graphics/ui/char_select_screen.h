@@ -95,9 +95,11 @@ int charSelectRowForButton(const CharSelectScreenState& s, int n);
 /** True while input is ignored: a request is in flight, or the game is entering world. */
 bool charSelectBlocked(const CharSelectScreenState& s);
 
-/** CSW_Char<n+1>_Button: select a character, or open creation (`seed`: its random pick). */
+/** CSW_Char<n+1>_Button: select a character, or open creation (`seed`: its random pick;
+ *  `useOldModels`: the model era the creation screen gates its FacePick rows on). */
 CharSelectAction pressCharButton(CharSelectScreenState& s, int n,
-                                 const eqt::charcreate::CharCreateData& data, uint32_t seed);
+                                 const eqt::charcreate::CharCreateData& data, uint32_t seed,
+                                 bool useOldModels = true);
 /** CSW_Enter_World_Button. */
 CharSelectAction pressEnterWorld(CharSelectScreenState& s);
 /** CSW_Delete_Button: open the prompt (nothing is sent yet). */
