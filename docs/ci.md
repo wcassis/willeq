@@ -22,6 +22,14 @@ SKIPs there and runs on dev-u24 / hermes-ext. Its text reader is checked the sam
 `OracleGlyphReader` (`scripts/eqemu/oracle/tests/oracle_glyphs_test.py`, B1059: pinned labelled
 crops under `/mnt/projects/fable/review`, read exactly or UNKNOWN, never wrong; same SKIP rule).
 
+Live scenarios are separate from CI too: `scripts/scenario.sh <name>` on an eqemu lane (CLAUDE.md,
+"The scenario lane"); their state machines run offline in the suite. `zone_connect_timeout` (B1072,
+#392) is the zone-IN bound's live leg: `/camp` to character select, a dead zone port for two
+connects, Enter World -- back at character select after the attempt plus ONE retry
+(`ZoneComponent::kZoneConnectTimeoutMs` each), then Enter World again and zone in
+(`EQEMU_LANE=2 bash scripts/scenario.sh zone_connect_timeout --unit B1072`; offline net
+`test_zone_connect_timeout`).
+
 | | |
 | --- | --- |
 | GitLab | `https://gitlab.goldfarm.local`, project `willeq/willeq` (id 1) |
@@ -914,6 +922,86 @@ net: `test_zone_budget_census` (pure python, every pipeline),
 `zone_budget_census_smoke` (the 3-zone smoke, label `slow`) and
 `test_zone_census_pack_selfheal` (the self-heal's exit-code contract on stub
 verify/builder binaries, pure bash+python).
+
+## The walked zone-line crossing (B1068, issue #388)
+
+A live lane scenario, not a pipeline stage: it needs an eqemu lane and a
+display. `scripts/scenario.sh zone_line_walk` seeds Testchar in qeynos 20
+units short of the qeynos -> qeynos2 gate's BSP zone-line region
+(`scripts/scenario_configs/zone_line_walk_seed.sql`), starts a private Xvfb,
+runs the client `--egl-x11`, and its sidecar holds the forward key with
+xdotool -- the renderer's own keyboard movement, the path a player walks.
+`--scenario` runs headless (no renderer), so this lane runs the ordinary
+windowed client and `scenario.sh` reads the verdict from its log with the same
+exit codes: 0 once the client is in qeynos2, 3 if qeynos never finished
+loading, 2 if it never zoned within `--timeout`. The post-check
+(`zone_line_walk.post.sh`) requires the client's `Zone line triggered!` line
+and the source zone log's `zoning to [qeynos2]` line for the character
+(eqemu's `Client::Handle_OP_ZoneChange`).
+
+```bash
+EQEMU_LANE=1 bash scripts/scenario.sh zone_line_walk --timeout 180 --unit B1068
+```
+
+Like every `scenario.sh` run it brings the lane's server up and stops its
+container for the restore -- never point it at a stack someone is playing on.
+The offline half is `test_zone_line_crossing` (every pipeline): the 0x29
+body-string decode on the zone files' own DRNTP strings, the swept segment
+test, and BSP-over-curated precedence. `scripts/tools/wld_zonelines.py
+--table <eq_dir> data/zone_lines` prints the per-zone BSP-vs-curated census
+(review/B1068/README.md).
+
+## The keyboard step walk (B1067, #387)
+
+A live lane scenario, not a pipeline stage: it needs an eqemu lane, an X
+display and an x86 GLES2 build (`build-gles2/bin/willeq`,
+`scripts/build-gles2-x86.sh`). Keyboard movement is the only route through the
+renderer's region-triangle collision (`PlayerCameraComponent::
+resolveIrrlichtCollision`); `/move`, `--script` and `--scenario` resolve on the
+game thread against the zone map, so none of them can see a step defect there.
+
+```bash
+EQEMU_LANE=1 bash scripts/eqemu/step_walk.sh --leg both    # a VM lane: both legs
+EQEMU_HOST=local bash scripts/eqemu/step_walk.sh --leg rise   # the local lane: one leg per run
+```
+
+It seeds Testchar in qeynos2 beside the street curb at renderer Y 391.75 (a
+1.0 rise, coordinates and the map evidence in `review/B1067/README.md`), runs
+the client on Xvfb with `--egl-x11` and `--pose-log`, holds W with `xdotool`
+after the loader's `Game ready!` line, and `scripts/eqemu/step_walk_verdict.py`
+decides from the pose rows alone: PASS when the player's Y got at least 2 units
+past the edge and its Z changed by at least 0.75 of the rise in the right
+direction. Exit 0 every leg PASS, 1 a leg FAILED, 2 no verdict, 64 lock held,
+65 lane problem. **On the local lane it never stops the world or bounces a
+zone** (the XU4 play rig logs into that stack): the pose is put back with a
+plain `UPDATE` after logout. On a VM lane the seed is written with the world
+down (a zone hands back its LINKDEAD copy of a character's pose otherwise) and
+the standard snapshot restore runs at the end. The unit net for the same
+decision is `test_bsp_ground_step`.
+
+### Mouse press ownership: `scripts/eqemu/press_ownership_check.sh` (B1066)
+
+A mouse press belongs to the static UI or the camera, never both
+(`include/client/graphics/press_ownership.h`, #386). The rig drives REAL X
+button events with `xdotool` into an x86 GLES2 client on Xvfb (`--egl-x11`,
+`--pose-log`) on the local lane as Testbuddy, never touching the stack or the
+database: it opens the inventory, right-drags 20 px on an item (the item
+display opens), left-drags on the window's background, right-drags on the 3D
+view, and right-drags from the view into the window.
+`scripts/eqemu/press_ownership_verdict.py` reads the heading and the camera
+pitch around each gesture from the pose rows: the two UI gestures must leave
+both unchanged, the view drags must turn the camera (including the part after
+the pointer entered the window). Exit 0 PASS, 1 FAIL, 2 no verdict.
+
+```bash
+EQEMU_HOST=local bash scripts/eqemu/press_ownership_check.sh --bin build/bin/willeq --explore   # find the pixels
+bash scripts/eqemu/press_ownership_check.sh --bin build/bin/willeq --dismiss 754,460 \
+    --item 280,456 --window-bg 300,250 --view 650,80 --cross 520,300           # 800x600 window
+```
+
+Each run uses a fresh `WILLEQ_CACHE_DIR` (the per-character UI ini would
+otherwise remember an open inventory and the rig's `i` would close it). The
+unit net is `test_press_ownership`; the runs are in `review/B1066/`.
 
 ## `review/` citations
 

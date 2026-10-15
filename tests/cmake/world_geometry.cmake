@@ -187,3 +187,28 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_placed_object_record GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_placed_object_record DISCOVERY_TIMEOUT 120)
 ENDIF()
+
+# B1068 (#388): walked zone-line crossings -- the 0x29 body-string decode,
+# the swept crossing test and BSP-over-curated precedence. The WLD loader is
+# a CLIENT_CORE source (P28), so this builds with EQT_GRAPHICS=OFF too; the
+# real-zone case skips without the EQ client files.
+ADD_EXECUTABLE(test_zone_line_crossing
+    test_zone_line_crossing.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/zone_line_crossing.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/zone_lines.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/hc_map.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/raycast_mesh.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/util/compression.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_material.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_mesh.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_actor.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_skeleton.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_light.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_bsp.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/zone_bsp.cpp
+    )
+TARGET_LINK_LIBRARIES(test_zone_line_crossing GTest::gtest_main ${FMT_LIB} ${ZLIB_LIBRARIES} ${JSONCPP_LIBRARIES})
+GTEST_DISCOVER_TESTS(test_zone_line_crossing DISCOVERY_TIMEOUT 120)

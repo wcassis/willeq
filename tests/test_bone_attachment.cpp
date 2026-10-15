@@ -273,3 +273,85 @@ TEST(BoneAttachmentTest, PlaceHeldItemSetsTheNodeFromTheOneTransform) {
     EQT::Graphics::placeHeldItem(nullptr, b);
     device->drop();
 }
+
+// --- B1065 (#385): which bones the two held items hang from ---------------
+
+namespace {
+
+std::shared_ptr<EQT::Graphics::CharacterSkeleton> makeHumanArmSkeleton() {
+    // The HUM layout (docs/reference/s3d_contents_reference.md): SHIELD_POINT
+    // is a child of the left FOREARM, beside the fingers that carry L_POINT.
+    auto sk = makeSkeleton({"hum", "humfo_l", "humfi_l", "huml_point", "humshield_point", "humfo_r", "humr_point"});
+    sk->bones[1].parentIndex = 0;
+    sk->bones[2].parentIndex = 1;
+    sk->bones[3].parentIndex = 2;
+    sk->bones[4].parentIndex = 1;
+    sk->bones[5].parentIndex = 0;
+    sk->bones[6].parentIndex = 5;
+    return sk;
+}
+
+void expectMatrix(const irr::core::matrix4& got, const float (&want)[16]) {
+    for (int i = 0; i < 16; ++i) EXPECT_NEAR(got[i], want[i], 1e-5f) << "element " << i;
+}
+
+} // namespace
+
+TEST(BoneAttachmentTest, HeldItemBonesComeFromTheSkeletonsOwnModelCode) {
+    // Race 71 (Qeynos Citizen, code QCM) drawn with its HUM fallback skeleton:
+    // the race code names no bone at all, which is why such a guard's items
+    // were never placed before B1065.
+    auto sk = makeHumanArmSkeleton();
+    EXPECT_EQ(findBoneIndex(sk, "QCM", {"R_POINT_DAG", "R_POINT", "r_point_dag", "r_point"}), -1);
+    const auto shield = EQT::Graphics::resolveHeldItemBones(sk, "QCM", /*secondaryIsShield=*/true);
+    EXPECT_EQ(shield.primary, 6);
+    EXPECT_EQ(shield.secondary, 4) << "a shield hangs from SHIELD_POINT (on the forearm)";
+    const auto offhand = EQT::Graphics::resolveHeldItemBones(sk, "QCM", /*secondaryIsShield=*/false);
+    EXPECT_EQ(offhand.primary, 6);
+    EXPECT_EQ(offhand.secondary, 3) << "an off-hand weapon is held at L_POINT (in the fist)";
+}
+
+TEST(BoneAttachmentTest, HeldItemBonesFallBackToTheRaceCodeAndToTheLeftHand) {
+    // A skeleton whose modelCode is empty still resolves through the race code,
+    // and a shield on a skeleton with no SHIELD_POINT goes to L_POINT.
+    auto sk = makeSkeleton({"QCMR_POINT_DAG", "QCML_POINT_DAG"});
+    sk->modelCode.clear();
+    const auto b = EQT::Graphics::resolveHeldItemBones(sk, "QCM", /*secondaryIsShield=*/true);
+    EXPECT_EQ(b.primary, 0);
+    EXPECT_EQ(b.secondary, 1);
+    EXPECT_EQ(EQT::Graphics::resolveHeldItemBones(nullptr, "QCM", true).primary, -1);
+}
+
+TEST(BoneAttachmentTest, BothHandsWorldMatricesMatchTheHandComputedValues) {
+    // A known skeleton pose, composed the way SkeletalAnimator composes it
+    // (world = parent world * local), and the hand-computed result.
+    //
+    // Left forearm: translate(0, 2, 4) * a quarter turn about EQ +X
+    //   (x -> x, y -> z, z -> -y).
+    // SHIELD_POINT local: translate(0.5, 0, -0.25).
+    // => SHIELD_POINT world origin = (0, 2, 4) + R(0.5, 0, -0.25)
+    //                              = (0, 2, 4) + (0.5, 0.25, 0) = (0.5, 2.25, 4),
+    //    axes X (1,0,0), Y (0,0,1), Z (0,-1,0) in EQ space.
+    // Irrlicht swaps y<->z on both sides: column 0 = EQ X col (1,0,0) -> (1,0,0);
+    // column 1 = EQ Z col (0,-1,0) -> (0,0,-1); column 2 = EQ Y col (0,0,1) ->
+    // (0,1,0); translation (0.5, 4, 2.25).
+    const float s = std::sqrt(0.5f);
+    const BoneMat4 forearm = BoneMat4::translate(0.0f, 2.0f, 4.0f) * BoneMat4::fromQuaternion(s, 0.0f, 0.0f, s);
+    const BoneMat4 shieldWorld = forearm * BoneMat4::translate(0.5f, 0.0f, -0.25f);
+    const float wantShield[16] = {1, 0, 0, 0,   0, 0, -1, 0,   0, 1, 0, 0,   0.5f, 4.0f, 2.25f, 1};
+    expectMatrix(computeHeldItemTransform(shieldWorld), wantShield);
+
+    // The shield's far edge (IT200 spans item x -1.76 .. 0.96): item EQ
+    // (-1.76, 0, 0) -> world EQ (0.5 - 1.76, 2.25, 4) -> Irrlicht (-1.26, 4, 2.25).
+    irr::core::vector3df edge(-1.76f, 0.0f, 0.0f);
+    computeHeldItemTransform(shieldWorld).transformVect(edge);
+    EXPECT_NEAR(edge.X, -1.26f, 1e-5f);
+    EXPECT_NEAR(edge.Y, 4.0f, 1e-5f);
+    EXPECT_NEAR(edge.Z, 2.25f, 1e-5f);
+
+    // Right hand: R_POINT world = translate(-1, -2, 3), no rotation ->
+    // identity rotation, Irrlicht translation (-1, 3, -2).
+    const BoneMat4 rpoint = BoneMat4::translate(-1.0f, -2.0f, 3.0f);
+    const float wantRight[16] = {1, 0, 0, 0,   0, 1, 0, 0,   0, 0, 1, 0,   -1.0f, 3.0f, -2.0f, 1};
+    expectMatrix(computeHeldItemTransform(rpoint), wantRight);
+}

@@ -71,6 +71,10 @@ the original bytes, records the seeded before/changed after copies, then
 restores the original byte-identically when the client stops. The hotbutton
 plan uses it to make its placement diff reproducible even after an earlier
 session filled that slot.
+The optional `# pose=x,y,z,heading` directive (B1065; heading in EQ units,
+0-512) seeds the login character's position together with the plan's `zone`
+row, so an official still is taken from a pose the willeq client can be put at
+exactly; the snapshot restore puts the old x/y/z/heading back.
 
 Output is under the given directory: `summary.md`, `steps.tsv`, per-step PNG,
 frame PNG, opcode TSV and INI diff, `contact.png`, `step_frames.tsv`, raw

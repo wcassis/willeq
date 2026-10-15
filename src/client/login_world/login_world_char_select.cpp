@@ -73,17 +73,19 @@ void LoginWorldComponent::ReconnectWorld() {
 	m_world_connection_manager->Connect(m_world_server_host, 9000);
 }
 
-void LoginWorldComponent::ReturnToCharacterSelect() {
-	// Server authoritative: this runs only after the zone's OP_LogoutReply
-	// (PlayerComponent::ZoneProcessLogoutReply -> the deferred teardown in
-	// MovementComponent::UpdateMovement), never on the client's own clock.
+void LoginWorldComponent::ReturnToCharacterSelect(const char* why) {
+	// Server authoritative for a camp: this runs only after the zone's
+	// OP_LogoutReply (PlayerComponent::ZoneProcessLogoutReply -> the deferred
+	// teardown in MovementComponent::UpdateMovement), never on the client's own
+	// clock. B1072: the one clock-driven caller is the zone-in bound
+	// (EverQuest::AbandonZoneConnect), where no zone session ever came up.
 	m_select_screen = true;
 	m_awaiting_fresh_list = true;
 	m_character_select_list.clear();
 	m_create_status = CharCreateStatus{};
 	++m_select_returns;
-	LOG_INFO(MOD_WORLD, "[CHARSELECT] camp: back to character select (return #{}), reconnecting to world",
-	         m_select_returns);
+	LOG_INFO(MOD_WORLD, "[CHARSELECT] {}: back to character select (return #{}), reconnecting to world",
+	         why, m_select_returns);
 	// ctx_.Zone().ZoneToZoneInProgress() is false here (the logout reply
 	// clears it), so OP_SendLoginInfo goes out with zoning = 0: a fresh
 	// login, which is what makes world send the character list.
