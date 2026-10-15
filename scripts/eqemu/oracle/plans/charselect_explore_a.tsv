@@ -1,0 +1,42 @@
+# B888-CC3 (#204): A step -- the character select backdrop + Explore mode.
+#
+# What it measures (card step 1):
+#   - the select screen's BACKDROP: what scene it is (stills + video; the
+#     pcap and the world log say whether a zone file was loaded at
+#     character-select time), all characters standing where (the stills);
+#   - Explore: click CSW_Explore_Button -> the ExploreModeWindow appears
+#     (EXW_InfoLabel1's "Click on a character" asserted in-driver), what the
+#     camera does under d (forward), a mouse orbit drag, and the wheel (zoom;
+#     the transient moves are on the VIDEO -- the before/after still pairs
+#     give the deltas);
+#   - clicking a character in Explore (Testcaster, the FIRST row): does the
+#     selection change;
+#   - Esc: EXW_ExploreModeWindow disappears, the select screen returns.
+#
+# No zone row: this session stays OUT of the world (Enter-with-a-selection is
+# the B-step plan, which seeds its own zone so the restore round-trips).
+# Plan column format: verb<TAB>target<TAB>hold_ms<TAB>still_name.
+# Coordinates: ROOT space (the driver's jclick space); stills crop +0+30.
+#   Explore button centre: display (40,242) (XML (2,60) 48x32 in the client
+#   origin (14,166), char_select_layout.h) -> root (40,272).
+#   Char rows: the driver's own table -- Char1 (Testcaster) y 315,
+#   step 35 (Char2 350); x 123.
+#   Model area (CC-2 measured): x 400-898, y 160-698.
+
+login	Testchar	0
+wait	15000	0	select_settle
+still	select_backdrop
+wait	8000	0	backdrop_settle_2
+explore-open	0	0	explore_window
+wait	6000	0	explore_settle
+hold-d	0	8000	cam_forward
+wait	3000	0	cam_forward_settle
+orbit	200,0	0	cam_orbit
+wait	3000	0	cam_orbit_settle
+wheel	0	3	0	cam_zoom
+wait	3000	0	cam_zoom_settle
+click	123,315	0	explore_click_testcaster
+wait	4000	0	explore_click_testcaster_settle
+explore-esc	0	0	esc_leave_explore
+wait	5000	0	back_to_select
+still	back_to_select_2

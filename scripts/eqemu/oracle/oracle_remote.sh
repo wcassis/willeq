@@ -328,6 +328,10 @@ expected_for() {
     if [[ -n $optional ]]; then echo "$optional"; return; fi
     case $verb in
         login) echo 'Character Select|Create a New Character' ;;
+        explore-open) echo 'Click on a character' ;;
+        explore-esc) echo 'Create a New Character' ;;
+        hold-d|orbit|wheel) echo 'Click on a character' ;;
+        enter-press|camp-quit) echo window:EverQuest ;;
         zone) echo window:EverQuest ;;
         open) case $target in
             hotbar) echo 'Hot Buttons|Hotbutton' ;;
@@ -522,6 +526,13 @@ if [[ $ACTION == selftest ]]; then
         expected_for "$verb" character-create >/dev/null || exit 1
     done
     [[ $(expected_for create Testname) == window:EverQuest ]] || exit 1
+    # B888-CC3 (#204): the Explore-mode verbs' postconditions.
+    [[ $(expected_for explore-open 0) == 'Click on a character' ]] || exit 1
+    [[ $(expected_for hold-d 0) == 'Click on a character' ]] || exit 1
+    [[ $(expected_for orbit 0) == 'Click on a character' ]] || exit 1
+    [[ $(expected_for wheel 0) == 'Click on a character' ]] || exit 1
+    [[ $(expected_for explore-esc 0) == 'Create a New Character' ]] || exit 1
+    [[ $(expected_for enter-press 0) == window:EverQuest ]] || exit 1
     DIR=$2
     shot() { touch "$DIR/$1.png"; }
     # selected_at must run with NO caller-scoped 'label' (fix2f crashed
@@ -1134,6 +1145,70 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             # below only proves that a live client remains after the click.
             : ;;
         command) xdotool key Return; xdotool type --delay 80 "$target"; xdotool key Return ;;
+        explore-open)
+            # B888-CC3 (#204): enter the character-select screen's Explore
+            # mode. CSW_Explore_Button is XML (2,60) 48x32 in the client
+            # origin measured in char_select_layout.h: (14, (800-484)/2+8) =
+            # (14,166) at 1280x800 -> centre (14+2+24, 166+60+16) =
+            # (40,242); root = display + (0,30) = (40,272). The postcondition
+            # is EXW_InfoLabel1's own text (EQUI_CharacterSelect.xml).
+            jclick 40 272
+            sleep 3 ;;
+        explore-esc)
+            # B888-CC3 (#204): leave Explore mode with Esc (EXW_InfoLabel2:
+            # "Press Enter to enter the game, or press Esc to leave explore
+            # mode.").
+            xdotool key Esc
+            sleep 3 ;;
+        hold-d)
+            # B888-CC3 (#204): hold the d key (Explore camera forward) for
+            # hold_ms. A slow multi-step glide would test DirectInput polling
+            # differently than the official client's own key auto-repeat, so
+            # hold-d keeps the key down for the whole interval: the transient
+            # motion is on the video.
+            [[ $hold_ms =~ ^[0-9]+$ ]] || exit 65
+            xdotool keydown d
+            sleep "$(awk -v ms="$hold_ms" 'BEGIN {printf "%.3f",ms/1000}')"
+            xdotool keyup d ;;
+        orbit)
+            # B888-CC3 (#204): a slow multi-step mouse drag over the model
+            # area (Explore camera orbit). target is the DELTA in px
+            # "dx,dy"; the drag starts at (640,400), the model area's centre
+            # (CC-2 measured the model at x 400-898, y 160-698). 40 steps,
+            # 100 ms apart (wine-oracle.md: DirectInput polls motion, an
+            # instant delta is dropped).
+            [[ $target =~ ^-?[0-9]+,-?[0-9]+$ ]] || exit 65
+            IFS=, read -r dx dy <<<"$target"
+            xdotool mousemove 640 400
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
+                xdotool mousemove_relative -- "$((dx/40))" "$((dy/40))"
+                sleep 0.1
+            done ;;
+        wheel)
+            # B888-CC3 (#204): the Explore camera zoom, N wheel-up clicks
+            # (hold_ms, default 3).
+            n=${hold_ms:-3}
+            [[ $n =~ ^[0-9]+$ ]] || exit 65
+            xdotool mousemove 640 400
+            for unused in $(seq 1 "$n"); do
+                xdotool click 4
+                sleep 0.3
+            done ;;
+        enter-press)
+            # B888-CC3 (#204): press Return in Explore mode -- the documented
+            # "Press Enter to enter the game". The postcondition is the
+            # EverQuest window (the world). Which CHARACTER entered is the
+            # pcap's OP_EnterWorld plus the world log, not this verb.
+            xdotool key Return
+            sleep 8 ;;
+        camp-quit)
+            # B888-CC3 (#204): the clean in-world exit (wine-oracle.md):
+            # jclick Actions -> "Camp (Exit)" ~(945,745) at 1280x1024 with
+            # the 1280x800 client at root offset (-1,30). The wait gives the
+            # world time to flush the character (the driver's restore stops
+            # the world, which writes the zone-in back).
+            jclick 945 745
+            sleep 30 ;;
         still) : ;;
         wait) [[ $target =~ ^[0-9]+$ ]] || exit 65; sleep "$(awk -v ms="$target" 'BEGIN {printf "%.3f",ms/1000}')" ;;
         *) exit 65 ;;
