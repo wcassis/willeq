@@ -181,6 +181,12 @@ public:
 
     virtual void useItem(int16_t slot) = 0;
 
+    // T230: resolve an item id to its inventory slot (what a hotbar Item
+    // slot stores); SLOT_INVALID when the item is not carried. Same lookup
+    // the mouse path performs (InventoryManager::findItemSlotByItemId,
+    // eq_bridge.cpp).
+    virtual int16_t findItemSlotByItemId(uint32_t itemId) = 0;
+
     // T239: the keyboard hotbar route for the three COMMAND slot types.
     // Emote/Macro carry command text (`text`, the slot's emoteText -- a line
     // exactly as the chat window would run it, "/wave", "/say hi"); Combat
@@ -188,12 +194,13 @@ public:
     // (EverQuest::ActivateHotbarCommandSlot, shared with the mouse path).
     virtual void activateHotbarCommandSlot(HotbarSlotType type, const std::string& text) = 0;
 
-    // T230: the item-id -> inventory-slot hop the keyboard hotbar route needs.
-    // A hotbar Item slot stores an ITEM id; useItem() takes an INVENTORY slot.
-    // Returns eqt::inventory::SLOT_INVALID (-1) when the item is not in the
-    // player's inventory (or there is no inventory). Same lookup the mouse
-    // path performs (InventoryManager::findItemSlotByItemId, eq_bridge.cpp).
-    virtual int16_t findItemSlotByItemId(uint32_t itemId) = 0;
+    // B1025-H3 (GitLab #345): /hotbutton -- put a social hot button (an
+    // Emote carrying the command text, eqstr 13278-13283) on the cursor.
+    // The handler publishes HotbarAssignPending on the bridge; the render
+    // thread draws it, and a slot click crosses it back as
+    // HotbarAssignIntent. A headless run (no bridge) is refused with
+    // eqstr 13283's message.
+    virtual bool createHotbutton(const std::string& text) = 0;
 
     // T141: /equip's three input forms (slot-pair / item-name / list) all
     // arrive as one free-text string, same shape as chat's sendChatMessage

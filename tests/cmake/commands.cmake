@@ -60,6 +60,7 @@ ADD_EXECUTABLE(test_command_processor
     test_command_processor_world.cpp
     test_command_processor_senders.cpp
     test_command_processor_corpse_slots.cpp
+    test_command_processor_hotbutton.cpp  # B1025-H3
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher_social.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher_guild_misc.cpp

@@ -101,6 +101,7 @@ using EventData = std::variant<
     BankCurrencyChangedData,
     CursorCoinChangedData,          // B442b
     ConfirmationRequestedData,      // B442b
+    HotbarAssignPendingData,        // B1025-H3
     // Audio
     VolumesChangedData,
     GameOptionChangedData,  // B430

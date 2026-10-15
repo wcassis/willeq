@@ -247,6 +247,21 @@ void CommandProcessor::registerCombatCommands() {
         "Combat", false
     }, [this](const std::string& args) { return cmdUseSkill(args); });
 
+    // B1025-H3 (GitLab #345): /hotbutton [Name] <Color> [Text] -- the game
+    // thread's one hot-button producer (eqstr 13278-13283). fable creates the
+    // social button the oracle's session shows (`/hotbutton H0 1 /say hi`):
+    // an Emote whose text is the macro. The NAME and COLOR are the oracle's
+    // display fields -- the INI's per-button label and text colour; fable's
+    // hotbar model carries no colour field, so both are parsed (they must
+    // parse) and the label rides the button's name. The button lands on the
+    // cursor via HotbarAssignPending and is placed by a hotbar slot click,
+    // the same assignment the hold gesture uses.
+    registerCommand({
+        "hotbutton", {}, "/hotbutton [Name] <Color> [Text]",
+        "Create a social hot button on the cursor (e.g. /hotbutton H0 1 /say hi)",
+        "Combat", false
+    }, [this](const std::string& args) { return cmdHotbutton(args); });
+
     registerCommand({
         "autofire", {"af"}, "/autofire", "Toggle ranged auto-attack (archery/throwing)", "Combat", false
     }, [this](const std::string& args) { return cmdAutofire(args); });
