@@ -54,6 +54,10 @@ struct LifecycleFacade {
 	// EverQuest's own zone-connection setup (the ZoneOn* callbacks are its
 	// private member functions).
 	std::function<void()> ConnectToZone;
+	// B1072 (#392): the zone-IN connect bound, ticked at the top of
+	// UpdateMovement() on the game thread (EverQuest::TickZoneConnect with
+	// steady_clock::now(); zone_connect.cpp).
+	std::function<void()> TickZoneConnect;
 	// A public EverQuest body that itself drives the entities family's
 	// SendSpawnAppearance.
 	std::function<void(bool)> SetSneak;

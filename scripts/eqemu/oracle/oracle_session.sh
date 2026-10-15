@@ -7,8 +7,8 @@ if [[ ! -f $REPO/scripts/eqemu/env.sh && -f $SCRIPT_DIR/.oracle-repo ]]; then
     REPO=$(cat "$SCRIPT_DIR/.oracle-repo")
 fi
 [[ -f $REPO/scripts/eqemu/env.sh ]] || { echo "oracle repo not found; rerun install.sh" >&2; exit 65; }
-if [[ $# != 3 || ! $1 =~ ^[1-4]$ ]]; then
-    echo "usage: $0 <lane 1..4> <plan.tsv> <out_dir>" >&2
+if [[ $# != 3 || ! $1 =~ ^[1-5]$ ]]; then
+    echo "usage: $0 <lane 1..5> <plan.tsv> <out_dir>" >&2
     exit 64
 fi
 LANE=$1 PLAN=$(realpath "$2") OUT=$(realpath -m "$3")
@@ -19,12 +19,20 @@ source "$REPO/scripts/eqemu/env.sh"
 source "$REPO/scripts/eqemu/restore_lib.sh"
 OWNER="${ORACLE_OWNER:-oracle_session}_$(date -u +%Y%m%dT%H%M%S)_$$"
 [[ $OWNER =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid ORACLE_OWNER" >&2; exit 64; }
-STATUS=0 LOCKED=0 SNAPSHOT=0 REMOTE_STARTED=0 CREATE_ACCOUNT_ID=
+STATUS=0 LOCKED=0 SNAPSHOT=0 REMOTE_STARTED=0 CREATE_ACCOUNT_ID= BROKER_PID=
 REMOTE_DIR="/home/user/eq-oracle/sessions/$OWNER"
 say() { printf '%s\n' "$*" | tee -a "$OUT/driver.log"; }
 remote() { ssh -n -o BatchMode=yes -o ConnectTimeout=10 "user@$EQEMU_ORACLE_HOST" "$@"; }
+stop_broker() {
+    if [[ -n $BROKER_PID ]]; then
+        kill "$BROKER_PID" 2>/dev/null || :
+        wait "$BROKER_PID" 2>/dev/null || :
+        BROKER_PID=
+    fi
+}
 cleanup() {
     local prior=$STATUS current
+    stop_broker
     if (( REMOTE_STARTED )); then
         remote "bash ~/eq-oracle/uigap-scripts/oracle_remote.sh stop '$REMOTE_DIR'" >>"$OUT/driver.log" 2>&1 || :
         scp -q -r "user@$EQEMU_ORACLE_HOST:$REMOTE_DIR/." "$OUT/" 2>>"$OUT/driver.log" || STATUS=65
@@ -113,6 +121,16 @@ if [[ -n $ZONE && -n $CHARACTER ]]; then
     ZONE_ID=$(eqemu_sql "SELECT zoneidnumber FROM zone WHERE short_name='$ZONE' LIMIT 1;")
     [[ $ZONE_ID =~ ^[0-9]+$ ]] || { STATUS=65; exit "$STATUS"; }
     eqemu_sql "UPDATE character_data SET zone_id=$ZONE_ID WHERE name='$CHARACTER';" >/dev/null || { STATUS=65; exit "$STATUS"; }
+    # B1065: `# pose=x,y,z,heading` (heading in EQ units, 0-512) seeds the
+    # login character's position with the zone, so a still is taken from a
+    # pose willeq can be put at byte-for-byte. x/y/z/heading are in
+    # eqemu_snapshot, so the restore puts the old row back.
+    POSE=$(awk '/^# pose=/ {sub(/^# pose=/, ""); print; exit}' "$PLAN")
+    if [[ -n $POSE ]]; then
+        [[ $POSE =~ ^-?[0-9.]+,-?[0-9.]+,-?[0-9.]+,[0-9.]+$ ]] || { STATUS=64; exit "$STATUS"; }
+        IFS=, read -r PX PY PZ PH <<<"$POSE"
+        eqemu_sql "UPDATE character_data SET x=$PX, y=$PY, z=$PZ, heading=$PH WHERE name='$CHARACTER';" >/dev/null || { STATUS=65; exit "$STATUS"; }
+    fi
 fi
 remote "mkdir -p ~/eq-oracle/uigap-scripts '$REMOTE_DIR'" || { STATUS=65; exit "$STATUS"; }
 scp -q "$REPO/scripts/eqemu/oracle/oracle_remote.sh" "user@$EQEMU_ORACLE_HOST:/home/user/eq-oracle/uigap-scripts/oracle_remote.sh" || { STATUS=65; exit "$STATUS"; }
@@ -120,8 +138,19 @@ scp -q "$REPO/scripts/eqemu/oracle/oracle_login_patch.py" "user@$EQEMU_ORACLE_HO
 scp -q "$REPO/scripts/eqemu/oracle/oracle_ini_seed.py" "user@$EQEMU_ORACLE_HOST:/home/user/eq-oracle/uigap-scripts/oracle_ini_seed.py" || { STATUS=65; exit "$STATUS"; }
 scp -q "$PLAN" "user@$EQEMU_ORACLE_HOST:$REMOTE_DIR/plan.tsv" || { STATUS=65; exit "$STATUS"; }
 REMOTE_STARTED=1
+# B1058: a plan with template clicks needs the locate broker on THIS host (the
+# oracle box has no NumPy/OpenCV): one ssh exchange per locate, shots and the
+# per-locate table in $OUT/broker/ (docs/oracle_driver.md "Template clicks").
+# B1059: the same broker answers text reads with lane$LANE's glyph atlas
+# (glyphs/rigs.tsv; none listed = tesseract / the legacy checks only).
+if grep -qE '^# create-clicks=template$|^(click|wait)-template'$'\t' "$PLAN"; then
+    python3 "$REPO/scripts/eqemu/oracle/oracle_locate.py" broker --remote "user@$EQEMU_ORACLE_HOST" \
+        --remote-dir "$REMOTE_DIR" --out "$OUT/broker" --rig "lane$LANE" 2>>"$OUT/broker.log" &
+    BROKER_PID=$!
+fi
 remote "bash ~/eq-oracle/uigap-scripts/oracle_remote.sh run '$REMOTE_DIR'" >"$OUT/remote.log" 2>&1
 RC=$?
+stop_broker
 if (( RC == 67 )); then STATUS=67; else STATUS=$RC; fi
 remote "bash ~/eq-oracle/uigap-scripts/oracle_remote.sh stop '$REMOTE_DIR'" >>"$OUT/remote.log" 2>&1 || STATUS=65
 scp -q -r "user@$EQEMU_ORACLE_HOST:$REMOTE_DIR/." "$OUT/" 2>>"$OUT/driver.log" || STATUS=65

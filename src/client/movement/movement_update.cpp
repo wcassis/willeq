@@ -89,6 +89,12 @@ void eqt::movement::MovementComponent::UpdateMovement()
 		return;  // Don't process movement post-logout
 	}
 
+	// B1072 (#392): the zone-IN connect bound. A no-op unless ConnectToZone()
+	// armed it and the phase is still ZONE_CONNECTING; on the deadline it
+	// retries once, then returns to character select (zone_connect.cpp). Here,
+	// outside any packet callback, because both re-create the zone manager.
+	ctx_.lifecycle.TickZoneConnect();
+
 	// Process deferred zone change if approved
 	// This MUST be at the very start of UpdateMovement to process outside of any callback context
 	//

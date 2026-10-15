@@ -212,6 +212,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_ground_sentinels DISCOVERY_TIMEOUT 120)
 
+# B1067 (#387): the keyboard-movement ground ray over every BSP leaf it
+# crosses (BspTree::collectRegionsAlongSegment) and the step rule
+# (a pinned copy of resolveIrrlichtClearPath's) over a synthetic two-level
+# floor whose floors are the polygons of a thin leaf below the player's
+# centre -- the qeynos2 curb's layout. Graphics-only: bsp_ground_query.cpp is a GRAPHICS_SOURCES TU.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_bsp_ground_step
+        test_bsp_ground_step.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_bsp_ground_step GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_bsp_ground_step PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    TARGET_INCLUDE_DIRECTORIES(test_bsp_ground_step PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    GTEST_DISCOVER_TESTS(test_bsp_ground_step DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T376 Leg A (BOARD B140): the door / world-object click senders go out
 # through eqt::PacketSender (null-guard, T268 seam, session recorder).
 ADD_EXECUTABLE(test_click_senders_packet_sender

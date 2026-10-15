@@ -386,6 +386,11 @@ it without taking that measurement first.
   is not claimed there; gate poses vs B967 Pi frames: 0 px in all 15 (stencil
   drop is pixel-inert on Lima's shared 32-bit word). ARM benchmark now
   published by `publish_arm_build.sh`; runner `scripts/b971/run_gate_poses.sh`.
+  **B1064 (#384):** `/portal` was NOT the only stencil user -- the target
+  outline was a stencil rim and painted the whole inflated model on this
+  surface. It is now an inverted hull that touches no stencil
+  (`target_outline_pass.h`, `refactor/B1064/README.md`); the stencil-off
+  surface stands.
 - ~~**B967** (C) → issue #285. The player light is quantized at large world
   coordinates on BOTH GPUs: the mediump `vWorldPos` varying.~~ **FIXED**
   (`refactor/B967/README.md`, MR !74 **merged into fable `2c7d5be4`
@@ -1148,6 +1153,20 @@ it without taking that measurement first.
   Open: lane 2's 17.2 MiB of unnamed GEM fails the Pi rig's 10 MiB bound
   and the B962 owner-census shim is armhf-only (an aarch64 build of it is
   the next B item there).
+- **B1060** (B) → issue #380. The Orange Pi Zero (H2+, Mali-400/Lima, 484 MB,
+  Armbian trixie) joined as `PI_LANE=5`, lane 1's sibling (same armhf publish,
+  nollvm prefix, preset and ceilings). Done in the unit: NFS (pinned-port
+  NFSv3), the GL runtime packages, env.sh lane 5 (`env_selftest.sh`,
+  `lock_selftest.sh` PASS on lane 5), and the board's missing display: its DT
+  leaves the display engine disabled, so card0 is render-only Lima and the
+  client's DRM device refused; `pi_hdmi_force_on` loads the stock vkms module on
+  lane 5 (kmsro pairs it with Lima). `lane_smoke.sh` takes the armhf lane:
+  smoke PASS; ledger rows for qeynos2 + the four heavy zones
+  (`docs/reference/orangepizero.md`, `review/B1060/README.md`). Open: the
+  lane's `gpu_buffers` row is about twice lane 1's (qeynos2 fails the 10 MiB
+  unnamed-GEM bound at 10.27 MiB, timorous/iceclad at 35-39 MiB) -- unattributed
+  (vkms scanout path vs kernel 6.18 vs build); needs a same-build lane-1 row and
+  a `--bo-census` run.
 - ~~**B1033** (C) → issue #353.~~ RULED 2026-10-12 (Will, `docs/decisions.md`):
   the aarch64 lanes keep the `orangepi` preset, the same 256 MB bound and
   64 MB target, and get no goldens of their own until a lane runs the gate
@@ -13647,3 +13666,29 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
   the report remains open because the original failing still and affected tab
   are unknown. See `refactor/B1053/README.md` for the exact audit and the
   explicit unverified items.
+
+## Added 2026-10-14 by task/B1069-hdmi-audio-rate (issue #389)
+
+- **B1069** (A, audio) → issue #389. No game audio on the XU4's HDMI monitor:
+  `MiniaudioBackend::init()` opened the device at the mixer's 22050 Hz, ALSA
+  ran the Exynos HDMI PCM at 32000 and the monitor drops 32 kHz (Fable's
+  measurements are on the issue). **Fixed on the branch, MR pending:** the
+  device opens at `audio.device_sample_rate` / `--audio-rate` (default 48000,
+  0 = native); the mixer stays at 22050 and `DeviceRateAdapter` resamples once
+  (one linear `ma_resampler`), chosen over rendering the mixer at 48000 by
+  measurement (`refactor/B1069/README.md`, `bench_x86.tsv`); after start one
+  `Audio device: requested=.. configured=.. native=.. format=..` INFO line
+  names what the hardware runs at. Pinned by `tests/test_audio_device_rate.cpp`.
+  - Device acceptance 1 FAILED (XU4, publish de282232): 48000 Hz but
+    S24_LE, silent; speaker-test 48000 S16_LE heard, S24_LE not. The device
+    now asks for `audio.device_format` / `--audio-format` (default s16;
+    f32/s24/s32/native), converted once in the callback; the init line
+    carries `format=` (negotiated) `requested_format=` `client_format=`.
+  - Device acceptance 2 (publish 42ebeabc): audible but "distorted". Measured
+    with the new `WILLEQ_AUDIO_DUMP` tap: miniaudio's linear resampler folded
+    the 44100 - f image in band at f + 3900 Hz (6 kHz tone SINAD 30.8 dB);
+    replaced by `PolyphaseResampler` (windowed sinc, 83-96 dB on the same
+    tones). README section "Device acceptance 2".
+  - Open: Will's device acceptance on the XU4 from the branch's armhf publish;
+    the Orange Pi cost is scaled, not measured, and the live zone-in `audio`
+    ledger row was not taken (the README says why).

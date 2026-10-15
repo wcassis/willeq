@@ -1688,6 +1688,18 @@ Pi byte saving is "not achieved on the current rig, and not claimed."
 structurally correct and a future Mesa/Lima that exposes a 16-bit depth
 window config picks it up with no further code change.
 
+**Addendum 2026-10-14 (B1064, #384): the target outline was a stencil user
+nobody counted, and it no longer is.** B971's premise -- "/portal is the
+orangepi preset's only stencil user" -- missed `drawTargetOutline()`, a
+two-pass stencil rim (ref 128); on the stencil-less surface its second pass
+painted the whole 1.10-scaled model (Will's XU4 screenshot,
+`review/B1064/xu4_dionna_qeynos_2026-10-14.png`). The outline is now an
+inverted hull (one draw of the scaled mesh, front faces culled, depth
+LESSEQUAL, no depth write; `include/client/graphics/overlays/target_outline_pass.h`)
+and touches no stencil state on any surface, so **B971's stencil-off surface
+stands and is correct for the outline**; the preset does not get S8 back.
+Evidence: `refactor/B1064/README.md`.
+
 ## 2026-10-05 — the audio ledger is measured on the Pi; the budget is held at
 32 MiB (Will; B977, #295)
 

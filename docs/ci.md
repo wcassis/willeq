@@ -14,7 +14,21 @@ A card body still says `-j3` for any direct `cmake --build`.
 
 Official-client oracle sessions are separate from CI. The one-command lane
 driver, plan vocabulary, evidence layout and exit codes are in
-[`oracle_driver.md`](oracle_driver.md).
+[`oracle_driver.md`](oracle_driver.md). Its template library is checked by the
+hygiene test `OracleLocateTemplates` (`scripts/eqemu/oracle/tests/oracle_locate_test.py`,
+B1058), which needs NumPy + Pillow and the archived corpus under
+`/mnt/projects/fable/review/B1058/corpus`; the runners have neither, so it
+SKIPs there and runs on dev-u24 / hermes-ext. Its text reader is checked the same way by
+`OracleGlyphReader` (`scripts/eqemu/oracle/tests/oracle_glyphs_test.py`, B1059: pinned labelled
+crops under `/mnt/projects/fable/review`, read exactly or UNKNOWN, never wrong; same SKIP rule).
+
+Live scenarios are separate from CI too: `scripts/scenario.sh <name>` on an eqemu lane (CLAUDE.md,
+"The scenario lane"); their state machines run offline in the suite. `zone_connect_timeout` (B1072,
+#392) is the zone-IN bound's live leg: `/camp` to character select, a dead zone port for two
+connects, Enter World -- back at character select after the attempt plus ONE retry
+(`ZoneComponent::kZoneConnectTimeoutMs` each), then Enter World again and zone in
+(`EQEMU_LANE=2 bash scripts/scenario.sh zone_connect_timeout --unit B1072`; offline net
+`test_zone_connect_timeout`).
 
 | | |
 | --- | --- |
@@ -74,7 +88,7 @@ for the rendered Kunark + Velious sweep (#102, `refactor/B854/RENDERED_SWEEP.md`
 
 ### The aarch64 SBC lanes (B1030, #350)
 
-The Orange Pi is **lane 1** of a three-lane table in `scripts/pi/env.sh`; `PI_LANE=N` picks the device the way
+The Orange Pi is **lane 1** of the lane table in `scripts/pi/env.sh` (lanes 1-3, B1030; 5, B1060); `PI_LANE=N` picks the device the way
 `EQEMU_LANE` picks an eqemu VM, and a card or a script names its LANE, never an address. Each lane is
 single-tenant with its own lock ON the device (`pi_lock_take`/`pi_lock_release` are unchanged; `PI_LANE=2 bash
 scripts/pi/lock_selftest.sh` is the per-lane net). A `PI_HOST` alone still picks its lane, so every pre-B1030
@@ -88,6 +102,7 @@ than here.
 | 1 | `orangepi` | armv7l | Mali-400, Lima | `ci-arm/<sha>/bin/willeq-nollvm` (the shipped prefix above) |
 | 2 | `rock64` (RK3328) | aarch64 | Mali-450, Lima (system Mesa) | `ci-arm64/<sha>/bin/willeq` |
 | 3 | `rock4d` (RK3576) | aarch64 | Mali-G52, Panfrost (system Mesa) | `ci-arm64/<sha>/bin/willeq` |
+| 5 | `orangepizero` (H2+) | armv7l | Mali-400, Lima, on a **vkms** card (no display output) | `ci-arm/<sha>/bin/willeq-nollvm` (as lane 1) |
 
 Lanes 2 and 3 run ONE generic `-march=armv8-a` binary from **`scripts/build-arm64-noble.sh`**
 (`docker/Dockerfile.arm64-noble`, a noble arm64 sysroot; lane 3's Armbian resolute runs it because glibc is
@@ -120,6 +135,15 @@ is the ledger rig for every lane: on an aarch64 lane it defaults to `ci-arm64/by
 measurements a per-lane preset ruling needs); the client runs in its own cgroup and zones in live against the
 eqemu lane, so the `[memgpu]` row and the rendered-zone TSV row are both device figures. Evidence from the
 first runs: `review/B1030/README.md`.
+
+**Lane 5, the Orange Pi Zero** (B1060, #380; `docs/reference/orangepizero.md`) is lane 1's sibling: the same armhf
+`ci-arm/` publish and shipped Mesa prefix, the same preset and ceilings, on Armbian **trixie** (glibc 2.41; the noble
+build runs unmodified once the GL runtime packages are installed). The board has no HDMI and its device tree leaves
+the display engine and TV encoder `disabled`, so `card0` is Lima, render-only, and the client's DRM device (there is
+no surfaceless path on ARM) finds no connector. On lane 5 `pi_hdmi_force_on` loads the stock **vkms** module instead
+(a connected `Virtual-1`; Mesa's kmsro pairs it with the Lima render node) and `pi_hdmi_restore` unloads it, so
+`lane_smoke.sh` and `pi_rendered_zone_sweep.sh` run there unchanged. The scanout goes nowhere: frames are rendered
+by Lima and flipped on a virtual CRTC, so lane 5 measures memory and GPU cost, never a picture on a screen.
 
 **Not a lane: the ODROID XU4** (B1045, #365) is Will's interactive play-test box. It runs the same armhf
 `ci-arm/by-branch/fable` publish on Panfrost, and needed a self-built Panfrost module whose power-on path
@@ -898,6 +922,86 @@ net: `test_zone_budget_census` (pure python, every pipeline),
 `zone_budget_census_smoke` (the 3-zone smoke, label `slow`) and
 `test_zone_census_pack_selfheal` (the self-heal's exit-code contract on stub
 verify/builder binaries, pure bash+python).
+
+## The walked zone-line crossing (B1068, issue #388)
+
+A live lane scenario, not a pipeline stage: it needs an eqemu lane and a
+display. `scripts/scenario.sh zone_line_walk` seeds Testchar in qeynos 20
+units short of the qeynos -> qeynos2 gate's BSP zone-line region
+(`scripts/scenario_configs/zone_line_walk_seed.sql`), starts a private Xvfb,
+runs the client `--egl-x11`, and its sidecar holds the forward key with
+xdotool -- the renderer's own keyboard movement, the path a player walks.
+`--scenario` runs headless (no renderer), so this lane runs the ordinary
+windowed client and `scenario.sh` reads the verdict from its log with the same
+exit codes: 0 once the client is in qeynos2, 3 if qeynos never finished
+loading, 2 if it never zoned within `--timeout`. The post-check
+(`zone_line_walk.post.sh`) requires the client's `Zone line triggered!` line
+and the source zone log's `zoning to [qeynos2]` line for the character
+(eqemu's `Client::Handle_OP_ZoneChange`).
+
+```bash
+EQEMU_LANE=1 bash scripts/scenario.sh zone_line_walk --timeout 180 --unit B1068
+```
+
+Like every `scenario.sh` run it brings the lane's server up and stops its
+container for the restore -- never point it at a stack someone is playing on.
+The offline half is `test_zone_line_crossing` (every pipeline): the 0x29
+body-string decode on the zone files' own DRNTP strings, the swept segment
+test, and BSP-over-curated precedence. `scripts/tools/wld_zonelines.py
+--table <eq_dir> data/zone_lines` prints the per-zone BSP-vs-curated census
+(review/B1068/README.md).
+
+## The keyboard step walk (B1067, #387)
+
+A live lane scenario, not a pipeline stage: it needs an eqemu lane, an X
+display and an x86 GLES2 build (`build-gles2/bin/willeq`,
+`scripts/build-gles2-x86.sh`). Keyboard movement is the only route through the
+renderer's region-triangle collision (`PlayerCameraComponent::
+resolveIrrlichtCollision`); `/move`, `--script` and `--scenario` resolve on the
+game thread against the zone map, so none of them can see a step defect there.
+
+```bash
+EQEMU_LANE=1 bash scripts/eqemu/step_walk.sh --leg both    # a VM lane: both legs
+EQEMU_HOST=local bash scripts/eqemu/step_walk.sh --leg rise   # the local lane: one leg per run
+```
+
+It seeds Testchar in qeynos2 beside the street curb at renderer Y 391.75 (a
+1.0 rise, coordinates and the map evidence in `review/B1067/README.md`), runs
+the client on Xvfb with `--egl-x11` and `--pose-log`, holds W with `xdotool`
+after the loader's `Game ready!` line, and `scripts/eqemu/step_walk_verdict.py`
+decides from the pose rows alone: PASS when the player's Y got at least 2 units
+past the edge and its Z changed by at least 0.75 of the rise in the right
+direction. Exit 0 every leg PASS, 1 a leg FAILED, 2 no verdict, 64 lock held,
+65 lane problem. **On the local lane it never stops the world or bounces a
+zone** (the XU4 play rig logs into that stack): the pose is put back with a
+plain `UPDATE` after logout. On a VM lane the seed is written with the world
+down (a zone hands back its LINKDEAD copy of a character's pose otherwise) and
+the standard snapshot restore runs at the end. The unit net for the same
+decision is `test_bsp_ground_step`.
+
+### Mouse press ownership: `scripts/eqemu/press_ownership_check.sh` (B1066)
+
+A mouse press belongs to the static UI or the camera, never both
+(`include/client/graphics/press_ownership.h`, #386). The rig drives REAL X
+button events with `xdotool` into an x86 GLES2 client on Xvfb (`--egl-x11`,
+`--pose-log`) on the local lane as Testbuddy, never touching the stack or the
+database: it opens the inventory, right-drags 20 px on an item (the item
+display opens), left-drags on the window's background, right-drags on the 3D
+view, and right-drags from the view into the window.
+`scripts/eqemu/press_ownership_verdict.py` reads the heading and the camera
+pitch around each gesture from the pose rows: the two UI gestures must leave
+both unchanged, the view drags must turn the camera (including the part after
+the pointer entered the window). Exit 0 PASS, 1 FAIL, 2 no verdict.
+
+```bash
+EQEMU_HOST=local bash scripts/eqemu/press_ownership_check.sh --bin build/bin/willeq --explore   # find the pixels
+bash scripts/eqemu/press_ownership_check.sh --bin build/bin/willeq --dismiss 754,460 \
+    --item 280,456 --window-bg 300,250 --view 650,80 --cross 520,300           # 800x600 window
+```
+
+Each run uses a fresh `WILLEQ_CACHE_DIR` (the per-character UI ini would
+otherwise remember an open inventory and the rig's `i` would close it). The
+unit net is `test_press_ownership`; the runs are in `review/B1066/`.
 
 ## `review/` citations
 

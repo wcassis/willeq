@@ -204,6 +204,19 @@ void EntityRenderer::updateMainThreadEntityState(float deltaTime) {
         updateEquipmentTransforms(visual);
     }
 
+    // B1065 (#385): EVERY drawn entity's held items follow its bones, moving
+    // or not. activeEntities_ holds only entities that have had a velocity
+    // (entity_updates.cpp processUpdate) plus the player and fading corpses,
+    // so an NPC that stands at its spawn point -- a guard -- never reached the
+    // loop above: its weapon and shield were never placed and drew at the
+    // model origin with the identity rotation (a blade level at the hip, a
+    // shield beside the body), while its body played its idle.
+    for (auto& [spawnId, visual] : entities_) {
+        if (!visual.inSceneGraph || (!visual.primaryEquipNode && !visual.secondaryEquipNode)) continue;
+        if (activeEntities_.count(spawnId)) continue;
+        updateEquipmentTransforms(visual);
+    }
+
     // Remove fully faded entities
     for (const auto& [spawnId, visual] : entities_) {
         if (visual.isFading && visual.fadeAlpha <= 0.0f) {
