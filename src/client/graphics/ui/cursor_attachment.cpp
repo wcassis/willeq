@@ -7,8 +7,8 @@
  */
 
 #include "client/graphics/ui/cursor_attachment.h"
-
 #include "client/graphics/ui/cursor_attachment_layout.h"
+#include "client/graphics/ui/hotbar_assignment.h"  // B1025-H3: the hot button's draw
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/text_batch.h"
 #include "client/inventory/inventory_constants.h"
@@ -34,6 +34,8 @@ bool applyCursorSlotChanged(CursorAttachmentState& state,
     state.itemName = data.hasItem ? data.itemName : std::string();
     state.iconId = data.hasItem ? data.iconId : 0;
     state.quantity = data.hasItem ? static_cast<int32_t>(data.quantity) : 0;
+    // B1025-H3: the held item's id, for an item hold's clone (HotbarSlotType::Item).
+    state.carriedItemId = data.hasItem ? data.itemId : 0;
     return true;
 }
 
@@ -56,6 +58,14 @@ uint32_t cursorCoinIcon(uint8_t coinType) {
 
 void renderCursorAttachment(UIRenderer& ui, const UILayout& layout,
                             const CursorAttachmentState& state) {
+    // B1025-H3 (#345): the hot button -- drawn above the item/coin, because
+    // a placement consumes the item it displaces (the oracle's pickup
+    // replaces the cursor's contents) and nothing else can be on the cursor
+    // with it.
+    if (state.hasHotbutton) {
+        renderHotbarCursorAttachment(ui, layout, state);
+        return;
+    }
     if (!state.hasItem && state.holdsCoin()) {
         const auto icon =
             CursorAttachmentLayout::iconRect(layout, state.mouseX, state.mouseY);

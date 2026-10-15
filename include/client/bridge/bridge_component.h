@@ -271,6 +271,14 @@ public:
 	// Any other slot type is not this function's business and returns false.
 	bool ActivateHotbarCommandSlot(eqt::HotbarSlotType type, const std::string& text);
 
+	// B1025-H3 (GitLab #345): /hotbutton -- the game thread's one hot-button
+	// producer. Publishes HotbarAssignPending (a social button, an Emote
+	// carrying the command text) on the bridge; the render thread lands it on
+	// the cursor (IrrlichtBridge's arm) and draws it. Returns false when there
+	// is no bridge (a headless run): the caller refuses with eqstr 13283.
+	bool PublishHotbarAssignPending(eqt::HotbarSlotType type, uint32_t id,
+	                               const std::string& text, uint32_t iconId);
+
 #ifdef WITH_AUDIO
 	// Audio lifecycle. ShutdownAudio() is also called from EverQuest's
 	// destructor (eq.cpp), so it is public.
@@ -404,6 +412,14 @@ private:
 	void onHotbarActivateIntent(const eqt::events::HotbarActivateIntent& i);
 	// B1025-H2: the hotbar window's page buttons (HotbarPageChangedIntent).
 	void onHotbarPageChangedIntent(const eqt::events::HotbarPageChangedIntent& i);
+	// B1025-H3 (GitLab #345): a placed hot button (a render-thread hold, or the
+	// /hotbutton command's) assigns a slot -- the first production caller of
+	// HotbarModel::assignSlot().
+	void onHotbarAssignIntent(const eqt::events::HotbarAssignIntent& i);
+	// B1025-H3 (GitLab #345): the pickup half -- a hold on an occupied slot
+	// cleared its source while the cursor carried the button off; the first
+	// production caller of HotbarModel::clearSlot().
+	void onHotbarClearIntent(const eqt::events::HotbarClearIntent& i);
 	void onTradeskillCombineIntent(const eqt::events::TradeskillCombineIntent& i);
 	void onTradeskillCloseIntent(const eqt::events::TradeskillCloseIntent& i);
 	void onRecipeDetailsRequestIntent(const eqt::events::RecipeDetailsRequestIntent& i);

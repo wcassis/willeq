@@ -788,6 +788,14 @@ void EqActionHandler::activateHotbarCommandSlot(eqt::HotbarSlotType type, const 
     m_eq.Bridge().ActivateHotbarCommandSlot(type, text);
 }
 
+// B1025-H3 (GitLab #345): /hotbutton -- a social button (an Emote whose text
+// is the macro, eqstr 13278-13283) on the cursor. The publish is the only
+// game-side effect; the render thread lands it on the cursor.
+bool EqActionHandler::createHotbutton(const std::string& text) {
+    return m_eq.Bridge().PublishHotbarAssignPending(
+        eqt::HotbarSlotType::Emote, 0, text, 0);
+}
+
 // T141: /equip's three input forms all arrive as one free-text string --
 // same shape as warp()/debugLevel()/timeOfDay() (T140). All parsing/
 // legality/execution happens in EverQuest::RequestEquip() ->

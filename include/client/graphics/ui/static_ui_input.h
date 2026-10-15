@@ -16,6 +16,8 @@
 #include <cstdint>
 #include <string>
 
+#include "client/bridge/game_state_bridge.h"
+#include "client/graphics/ui/hotbutton_holder.h"  // B1025-H3: the gesture's deferred action
 #include "client/graphics/ui/confirmation_dialog.h"  // B442b
 #include "client/graphics/ui/esc_window_stack.h"   // B460
 #include "client/graphics/ui/options_layout.h"
@@ -106,11 +108,7 @@ public:
     // and what the cursor holds. Set once per frame before the entry points
     // run; kept off their parameter lists so no existing caller changes.
     void setFrameClickState(bool rightClicked, eqt::inventory::ClickModifiers mods,
-                            const CursorAttachmentState* cursor) {
-        rightClicked_ = rightClicked;
-        mods_ = mods;
-        cursor_ = cursor;
-    }
+                            CursorAttachmentState* cursor);
 
     /**
      * The QuantityWnd, hit-tested FIRST (it is drawn last, `RelativePosition
@@ -207,6 +205,38 @@ public:
                            const UILayout& layout,
                            TradeskillPanelState& tradeskill,
                            CombatAbilityPanelState& combatAbilities);
+
+    /**
+     * B1025-H3 (GitLab #345): one frame of the hotbar assignment gesture,
+     * called by processFrameInput() (renderer_frame_input.cpp) BEFORE the
+     * render phase's input pass. `deltaTime` the frame's seconds,
+     * `buttonDown` the left-button state now (the receiver's plain state,
+     * not the one-shot release latch).
+     *
+     * It recomputes what the pointer is on from the PREVIOUS frame's hover
+     * (the pass below overwrites the hovers), advances the hold timer in
+     * cursor_ -- a press on a memorised gem / combat-ability row /
+     * inventory item / occupied hotbar slot that stays down and on-source
+     * crosses kHotbarHoldThresholdMs and clones the source onto the cursor,
+     * the gesture's producer -- and steps the deferred source action: a
+     * clone cancels the press's pending action (the press was the
+     * clone's, not a click); a release over the source fires it (the
+     * short-press activate). A release with a clone on the cursor does
+     * nothing to the clone: H-O's clones SURVIVE release (gestures.tsv:3,
+     * "remained attached to cursor on release"); a clone is cleared only
+     * by being placed on a slot or by a world click (the render-phase
+     * cursor-gesture path, H-O's worlddrop row).
+     * No-op unless the gesture is active (bridge + cursor bound, i.e. a real
+     * render thread; a test's nullptr cursor bypasses all of it).
+     */
+    void processFrameGesture(float deltaTime, bool buttonDown,
+                             const HotbarPanelState& hotbar,
+                             const SpellGemPanelState& spellGems,
+                             const InventoryPanelState& inventory,
+                             const CombatAbilityPanelState& combatAbilities);
+
+    /** What the pointer was on the frame this was last computed (the tick's source). */
+    HotbarHoldSource pendingSource() const { return pendingSource_; }
 
     /**
      * T421 (board B298, item half): the item display window.
@@ -467,7 +497,26 @@ private:
     QuantityWindowState quantity_;
     bool rightClicked_ = false;
     eqt::inventory::ClickModifiers mods_;
-    const CursorAttachmentState* cursor_ = nullptr;
+    CursorAttachmentState* cursor_ = nullptr;
+    // B1025-H3 (GitLab #345): the gesture's home + the deferred source action.
+    // `cursor_` (set once per frame by setFrameClickState) is the
+    // CursorAttachmentState the gesture reads (hasHotbutton) and WRITES (the
+    // hold timer, hotbar_assignment.h), so it is non-const.
+    // `hotButtonHolder_` holds the press's pending action so a hold can
+    // cancel it into a clone. The gesture runs only when both the bridge and
+    // the cursor are bound (cursorGestureActive()); a test's nullptr cursor
+    // bypasses it entirely.
+    HotButtonHolder hotButtonHolder_;
+    bool cursorGestureActive() const { return bridge_ != nullptr && cursor_ != nullptr; }
+    // B1025-H3: what the pointer is on, recomputed once per frame at the
+    // gesture tick from the PREVIOUS frame's hover (the tick runs before this
+    // frame's input pass overwrites the hovers). `pendingSource()` reads it.
+    HotbarHoldSource pendingSource_;
+    // Recompute pendingSource_ from the current hover fields.
+    void recomputeHoldSource(const HotbarPanelState& hotbar,
+                             const SpellGemPanelState& spellGems,
+                             const InventoryPanelState& inventory,
+                             const CombatAbilityPanelState& combatAbilities);
     // B442b: B442's `coinHeld_` shadow is GONE. Whether coin is held is read
     // from the cursor attachment (CursorAttachmentState::holdsCoin()), which
     // the game thread's CursorCoinChanged feeds -- so a /coin behind the UI's

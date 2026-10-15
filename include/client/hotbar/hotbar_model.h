@@ -67,18 +67,16 @@ public:
     void reset();
 
     // --- Slot mutation (publishes events) ---
-    // B603 (T458 class: test seam, kept): no production caller. The only
-    // production slot writer is loadFromJson() (LoadHotbarConfig at zone-in);
-    // nothing in a command or the UI assigns or clears a slot, so the
-    // per-character save callback (setSaveCallback, registered in
-    // BridgeComponent::wireBridgeToSubsystems) has no production assignment
-    // trigger yet, i.e. hotbar
-    // slot assignment is a missing feature, not a live path. They stay
-    // because their tests drive assignSlot/clearSlot as the REAL producer of
-    // the HotbarSlotAssigned bridge event, not a hand-built fixture (T156's
+    // B1025-H3 (#345): BOTH now have production callers through the hotbar
+    // assignment gesture: BridgeComponent::onHotbarAssignIntent
+    // (bridge_component_intents.cpp) is the assignSlot one (a placed hot
+    // button, the render-thread hold or the /hotbutton command's), and
+    // onHotbarClearIntent is the clearSlot one (the pickup: a hold on an
+    // occupied slot clears the slot while the cursor carries the button).
+    // Their tests still drive them as the REAL producer of the
+    // HotbarSlotAssigned bridge event, not a hand-built fixture (T156's
     // skill-reachability leg, the T15 input-action-bridge routing, T230's
-    // hotbar item route) -- the tests are the net, so the functions live
-    // with them.
+    // hotbar item route) -- those stay the net for the event itself.
     void assignSlot(HotbarAddress address, HotbarSlotType type, uint32_t id,
                     const std::string& emoteText = "", uint32_t iconId = 0);
     void clearSlot(HotbarAddress address);

@@ -114,6 +114,7 @@ public:
     void useItem(int16_t slot) override;
     int16_t findItemSlotByItemId(uint32_t itemId) override;  // T230
     void activateHotbarCommandSlot(eqt::HotbarSlotType type, const std::string& text) override;  // T239
+    bool createHotbutton(const std::string& text) override;  // B1025-H3 (#345): /hotbutton
     void equip(const std::string& args) override;  // T141
     void readItem(const std::string& args) override;  // T273
     void scribeItem(const std::string& args) override;  // T276
