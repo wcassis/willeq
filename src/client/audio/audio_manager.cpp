@@ -191,6 +191,7 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
     } else {
         auto maBackend = std::make_unique<MiniaudioBackend>();
         maBackend->setDeviceSampleRate(deviceSampleRate_);  // B1069 (#389)
+        maBackend->setDeviceFormat(deviceFormat_);          // B1069
         if (maBackend->init(mixer_.get(), AudioMixer::SAMPLE_RATE)) {
             maBackend->start();
             backend_ = std::move(maBackend);

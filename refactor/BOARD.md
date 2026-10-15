@@ -13674,6 +13674,11 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
   measurement (`refactor/B1069/README.md`, `bench_x86.tsv`); after start one
   `Audio device: requested=.. configured=.. native=.. format=..` INFO line
   names what the hardware runs at. Pinned by `tests/test_audio_device_rate.cpp`.
+  - Device acceptance 1 FAILED (XU4, publish de282232): 48000 Hz but
+    S24_LE, silent; speaker-test 48000 S16_LE heard, S24_LE not. The device
+    now asks for `audio.device_format` / `--audio-format` (default s16;
+    f32/s24/s32/native), converted once in the callback; the init line
+    carries `format=` (negotiated) `requested_format=` `client_format=`.
   - Open: Will's device acceptance on the XU4 from the branch's armhf publish;
     the Orange Pi cost is scaled, not measured, and the live zone-in `audio`
     ledger row was not taken (the README says why).

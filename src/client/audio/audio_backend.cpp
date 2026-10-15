@@ -182,6 +182,12 @@ struct MiniaudioBackend::Impl {
     DeviceRateAdapter adapter;
     uint32_t mixRate = 0;
     uint32_t requestedRate = 0;
+    DeviceFormat requestedFormat = kDefaultDeviceFormat;
+    // B1069: the callback's output format (ma_device.playback.format). Not
+    // f32 -> the adapter renders f32 into f32Scratch (allocated in init) and
+    // ma_pcm_convert writes the device's format, chunk by chunk.
+    ma_format outFormat = ma_format_f32;
+    std::vector<float> f32Scratch;
 };
 
 // T130: monotonic timestamp for AudioCallbackProbe. clock_gettime(CLOCK_MONOTONIC)
@@ -219,11 +225,26 @@ static void miniaudioDataCallback(ma_device* pDevice, void* pOutput, const void*
     t130WriteAudioTidOnce();
 #endif
     AudioCallbackProbe::onCallback(t130MonotonicNs());
-    // B1069: frames are delivered at the device's configured rate; the
-    // adapter renders the mixer at its own rate and resamples once.
-    auto* adapter = static_cast<DeviceRateAdapter*>(pDevice->pUserData);
-    if (adapter) {
-        adapter->render(static_cast<float*>(pOutput), frameCount);
+    // B1069: frames are delivered at the device's configured rate and
+    // format; the adapter renders the mixer at its own rate and resamples
+    // once, and a non-f32 device format is converted once here.
+    auto* impl = static_cast<MiniaudioBackend::Impl*>(pDevice->pUserData);
+    if (!impl) return;
+    if (impl->outFormat == ma_format_f32 || impl->f32Scratch.empty()) {
+        impl->adapter.render(static_cast<float*>(pOutput), frameCount);
+        return;
+    }
+    const ma_uint32 bpf = ma_get_bytes_per_frame(impl->outFormat, 2);
+    const ma_uint32 chunkMax = static_cast<ma_uint32>(impl->f32Scratch.size() / 2);
+    auto* dst = static_cast<uint8_t*>(pOutput);
+    ma_uint32 done = 0;
+    while (done < frameCount) {
+        const ma_uint32 n = std::min(frameCount - done, chunkMax);
+        impl->adapter.render(impl->f32Scratch.data(), n);
+        ma_pcm_convert(dst + static_cast<size_t>(done) * bpf, impl->outFormat,
+                       impl->f32Scratch.data(), ma_format_f32,
+                       static_cast<ma_uint64>(n) * 2, ma_dither_mode_none);
+        done += n;
     }
 }
 
@@ -247,12 +268,22 @@ bool MiniaudioBackend::init(AudioMixer* mixer, uint32_t sampleRate) {
     impl_->requestedRate = requestedDeviceRate_;
 
     ma_device_config config = ma_device_config_init(ma_device_type_playback);
-    config.playback.format   = ma_format_f32;
+    // B1069: the DEVICE sample format (default s16; HDMI sinks that drop
+    // 24-bit, e.g. the XU4's monitor, play it). Native = ma_format_unknown,
+    // which lets miniaudio take the device's own format.
+    impl_->requestedFormat = requestedFormat_;
+    switch (requestedFormat_) {
+        case DeviceFormat::S16:    config.playback.format = ma_format_s16; break;
+        case DeviceFormat::F32:    config.playback.format = ma_format_f32; break;
+        case DeviceFormat::S24:    config.playback.format = ma_format_s24; break;
+        case DeviceFormat::S32:    config.playback.format = ma_format_s32; break;
+        case DeviceFormat::Native: config.playback.format = ma_format_unknown; break;
+    }
     config.playback.channels = 2;
     // B1069 (#389): the DEVICE rate, not the mixer's. 0 = native.
     config.sampleRate        = requestedDeviceRate_;
     config.dataCallback      = miniaudioDataCallback;
-    config.pUserData         = &impl_->adapter;
+    config.pUserData         = impl_.get();
     if (requestedDeviceRate_ > 0 && sampleRate > 0) {
         config.periodSizeInFrames = static_cast<ma_uint32>(
             (static_cast<uint64_t>(kMixerPeriodFrames) * requestedDeviceRate_ + sampleRate / 2) / sampleRate);
@@ -286,6 +317,12 @@ bool MiniaudioBackend::init(AudioMixer* mixer, uint32_t sampleRate) {
     // B1069: ma_device.sampleRate is the rate the callback must deliver at
     // (the requested one, or the device's native one when 0 was asked).
     impl_->adapter.init(mixer, sampleRate, impl_->device.sampleRate);
+    impl_->outFormat = impl_->device.playback.format;
+    if (impl_->outFormat != ma_format_f32) {
+        impl_->f32Scratch.assign(static_cast<size_t>(kAdapterChunkFrames) * 2, 0.0f);
+    } else {
+        impl_->f32Scratch.clear();
+    }
 
     // T130: configure the callback-timing probe's expected period so it can
     // classify "late" callbacks. sampleRate is validated >0 by the caller
@@ -313,6 +350,9 @@ uint32_t MiniaudioBackend::configuredSampleRate() const {
 uint32_t MiniaudioBackend::internalSampleRate() const {
     return impl_->deviceInitialized ? impl_->device.playback.internalSampleRate : 0;
 }
+const char* MiniaudioBackend::configuredFormatName() const {
+    return impl_->deviceInitialized ? shortFormatName(impl_->device.playback.format) : "none";
+}
 bool MiniaudioBackend::isResampling() const {
     return impl_->deviceInitialized && !impl_->adapter.isPassthrough();
 }
@@ -326,13 +366,20 @@ void MiniaudioBackend::start() {
         }
         // B1069 (#389): the one line that says what the hardware is really
         // doing. The XU4 case was "client asked 22050, ALSA ran 32000, the
-        // HDMI monitor dropped 32 kHz" and nothing in the log said 32000.
+        // HDMI monitor dropped 32 kHz" and nothing in the log said 32000;
+        // then "48000 but S24_LE, still silent". format= is the NEGOTIATED
+        // hardware format (playback.internalFormat); requested_format= the
+        // knob; client_format= what the callback writes (miniaudio converts
+        // client -> hardware when they differ).
         const ma_device& d = impl_->device;
         LOG_INFO(MOD_AUDIO,
                  "Audio device: requested={}Hz configured={}Hz native={}Hz format={} "
+                 "requested_format={} client_format={} "
                  "channels={} period={} backend={} device=\"{}\" mixer={}Hz resample={}",
                  impl_->requestedRate, d.sampleRate, d.playback.internalSampleRate,
-                 shortFormatName(d.playback.internalFormat), d.playback.internalChannels,
+                 shortFormatName(d.playback.internalFormat),
+                 deviceFormatName(impl_->requestedFormat), shortFormatName(d.playback.format),
+                 d.playback.internalChannels,
                  d.playback.internalPeriodSizeInFrames,
                  d.pContext ? ma_get_backend_name(d.pContext->backend) : "?",
                  d.playback.name, impl_->mixRate,

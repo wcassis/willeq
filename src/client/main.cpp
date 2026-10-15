@@ -284,6 +284,7 @@ static bool parseCliAndLoadConfig(int argc, char* argv[],
     // / --audio-rate) to the audio system before Application::initialize();
     // client/audio/audio_device_rate.h says why this is not a Bridge setter.
     EQT::Audio::setConfiguredDeviceSampleRate(config.audioDeviceSampleRate);
+    EQT::Audio::setConfiguredDeviceFormat(config.audioDeviceFormat);
 
     out = std::move(config);
     return true;

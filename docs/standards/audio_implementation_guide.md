@@ -155,6 +155,7 @@ std::shared_ptr<SoundBuffer> AudioManager::loadSound(const std::string& filename
 | `--music-volume <0-100>` | Music volume | 70 |
 | `--effects-volume <0-100>` | Sound effects volume | 100 |
 | `--soundfont <path>` | SoundFont for MIDI | None |
+| `--audio-format <fmt>` | Playback DEVICE sample format: `s16`, `f32`, `s24`, `s32`, `native`. Wins over `audio.device_format` (B1069) | s16 |
 | `--audio-rate <hz>` | Playback DEVICE sample rate; `0` = the backend's native rate. Wins over `audio.device_sample_rate` (B1069) | 48000 |
 
 ### JSON Configuration
@@ -167,7 +168,8 @@ std::shared_ptr<SoundBuffer> AudioManager::loadSound(const std::string& filename
         "music_volume": 70,
         "effects_volume": 100,
         "soundfont": "/path/to/soundfont.sf2",
-        "device_sample_rate": 48000
+        "device_sample_rate": 48000,
+        "device_format": "s16"
     }
 }
 ```
@@ -184,14 +186,26 @@ rate, 22050, turns the resampler off and is the pre-B1069 behaviour). The
 loopback/RDP stream is not affected: it stays 22050 Hz
 (`AudioManager::LOOPBACK_SAMPLE_RATE`).
 
+`device_format` (B1069 device acceptance) is the sample format the device is
+asked for. With the rate fixed, the XU4's PCM ran at 48000 Hz **S24_LE** and
+the monitor was still silent; `speaker-test` at 48000 S16_LE was heard and at
+48000 S24_LE was not. The client had asked for 32-bit float, which ALSA
+cannot take, so the card's native 24-bit was negotiated. The default is now
+`s16` (every HDMI sink takes 16-bit PCM); `f32`/`s24`/`s32` ask for that
+format and `native` lets the backend pick. The mixer still renders float;
+`MiniaudioBackend` converts once in the callback (`ma_pcm_convert`). An
+unknown spelling is a WARN and keeps `s16`.
+
 What the device really runs at is one log line at audio start
 (`MOD_AUDIO`, INFO):
 
 ```
-Audio device: requested=48000Hz configured=48000Hz native=48000Hz format=s16 channels=2 period=... backend=ALSA device="..." mixer=22050Hz resample=linear
+Audio device: requested=48000Hz configured=48000Hz native=48000Hz format=s16 requested_format=s16 client_format=s16 channels=2 period=... backend=ALSA device="..." mixer=22050Hz resample=linear
 ```
 
-(`format` is one of `u8`/`s16`/`s24`/`s32`/`f32`.) `requested` is the configured knob, `configured` the rate frames are handed to
+(`format` is the NEGOTIATED hardware format, `ma_device.playback.internalFormat`,
+one of `u8`/`s16`/`s24`/`s32`/`f32`; `requested_format` the knob;
+`client_format` what the callback writes, `ma_device.playback.format`.) `requested` is the configured knob, `configured` the rate frames are handed to
 miniaudio at (`ma_device.sampleRate`), `native`/`format` the hardware side
 (`ma_device.playback.internalSampleRate` / `internalFormat`). When `native`
 differs from `configured`, miniaudio converts a second time internally; a

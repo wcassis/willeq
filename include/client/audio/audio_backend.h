@@ -62,6 +62,10 @@ private:
 // Miniaudio-based hardware output
 class MiniaudioBackend : public AudioBackend {
 public:
+    // Opaque; public only so the miniaudio data callback (a free function
+    // in audio_backend.cpp) can name it as its pUserData type.
+    struct Impl;
+
     MiniaudioBackend();
     ~MiniaudioBackend() override;
 
@@ -74,6 +78,11 @@ public:
     // B1069: call before init(). 0 = backend's native rate.
     void setDeviceSampleRate(uint32_t hz) { requestedDeviceRate_ = hz; }
     uint32_t requestedDeviceSampleRate() const { return requestedDeviceRate_; }
+    // B1069: the playback DEVICE sample format; call before init().
+    void setDeviceFormat(DeviceFormat f) { requestedFormat_ = f; }
+    // The format the callback delivers in (ma_device.playback.format), as
+    // the config spelling ("s16", ...); valid after init().
+    const char* configuredFormatName() const;
     // Test seam: open miniaudio's null backend instead of the default
     // backend list, so a test can open a "device" on a host with none.
     void setUseNullBackend(bool on) { useNullBackend_ = on; }
@@ -87,10 +96,10 @@ public:
     bool isResampling() const;
 
 private:
-    struct Impl;
     std::unique_ptr<Impl> impl_;
     uint32_t requestedDeviceRate_ = kDefaultDeviceSampleRate;
     bool useNullBackend_ = false;
+    DeviceFormat requestedFormat_ = kDefaultDeviceFormat;
 };
 
 // RDP loopback backend — renders PCM and delivers via callback

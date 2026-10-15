@@ -847,6 +847,8 @@ EXEMPT_TESTS_GROUPS = {
     ("AudioManager", "getDeviceSampleRate"): "observer",
     ("DeviceRateAdapter", "mixerFramesPulled"): "observer",
     ("MiniaudioBackend", "configuredSampleRate"): "observer",
+    ("MiniaudioBackend", "configuredFormatName"): "observer",
+    ("AudioManager", "getDeviceFormat"): "observer",
     ("MiniaudioBackend", "isResampling"): "observer",
     ("MiniaudioBackend", "requestedDeviceSampleRate"): "observer",
     ("MiniaudioBackend", "setUseNullBackend"): "seam",

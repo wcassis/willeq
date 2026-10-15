@@ -95,6 +95,10 @@ struct ApplicationConfig {
     // Set by --audio-rate: the config file (loaded AFTER the arguments) then
     // leaves audioDeviceSampleRate alone, so the CLI mirror wins.
     bool audioDeviceSampleRateFromCli = false;
+    // B1069: "audio.device_format" / --audio-format (s16 default; f32, s24,
+    // s32, native). Published by main.cpp like the rate; the CLI wins.
+    EQT::Audio::DeviceFormat audioDeviceFormat = EQT::Audio::kDefaultDeviceFormat;
+    bool audioDeviceFormatFromCli = false;
 
     // RDP settings (guarded by WITH_RDP at usage sites)
     bool rdpEnabled = false;

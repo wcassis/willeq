@@ -150,6 +150,18 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
                 config.audioDeviceSampleRate = static_cast<uint32_t>(std::clamp(hz, 0L, 384000L));
                 config.audioDeviceSampleRateFromCli = true;
             }
+        } else if (arg == "--audio-format") {
+            // B1069: playback DEVICE sample format (s16|f32|s24|s32|native).
+            if (i + 1 < argc) {
+                const std::string fmt = argv[++i];
+                if (EQT::Audio::parseDeviceFormat(fmt, config.audioDeviceFormat)) {
+                    config.audioDeviceFormatFromCli = true;
+                } else {
+                    std::cerr << "--audio-format: unknown format '" << fmt
+                              << "' (s16, f32, s24, s32, native); keeping "
+                              << EQT::Audio::deviceFormatName(config.audioDeviceFormat) << "\n";
+                }
+            }
         } else if (arg == "--soundfont") {
             if (i + 1 < argc) {
                 config.audioSoundfont = argv[++i];
@@ -368,6 +380,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --effects-volume <0-100> Sound effects volume (default: 100)\n";
             std::cout << "  --soundfont <path>       Path to SoundFont for MIDI playback\n";
             std::cout << "  --audio-rate <hz>        Audio device sample rate (default: 48000, 0 = native)\n";
+            std::cout << "  --audio-format <fmt>     Audio device format: s16 (default), f32, s24, s32, native\n";
 #endif
             std::cout << "  --headless               Run in headless interactive mode\n";
             std::cout << "  --automated              Run in automated/bot mode\n";
@@ -555,6 +568,17 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
                         std::clamp<Json::Int64>(hz, 0, 384000));
                     LOG_INFO(MOD_AUDIO, "Audio device sample rate from config: {}Hz",
                              config.audioDeviceSampleRate);
+                }
+                // B1069: the playback DEVICE format. --audio-format wins.
+                if (audio_config.isMember("device_format") && !config.audioDeviceFormatFromCli) {
+                    const std::string fmt = audio_config["device_format"].asString();
+                    if (EQT::Audio::parseDeviceFormat(fmt, config.audioDeviceFormat)) {
+                        LOG_INFO(MOD_AUDIO, "Audio device format from config: {}", fmt);
+                    } else {
+                        LOG_WARN(MOD_AUDIO,
+                                 "audio.device_format '{}' unknown (s16, f32, s24, s32, native); keeping {}",
+                                 fmt, EQT::Audio::deviceFormatName(config.audioDeviceFormat));
+                    }
                 }
             }
 #endif

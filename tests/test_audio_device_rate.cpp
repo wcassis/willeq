@@ -114,6 +114,49 @@ TEST(AudioDeviceRateConfig, ManagerCarriesTheRate) {
     EXPECT_EQ(mgr.getDeviceSampleRate(), 44100u);
 }
 
+// B1069 device acceptance (XU4): 48000 S24_LE was silent, 48000 S16_LE was
+// heard. The device FORMAT knob: default s16, override honoured, native
+// passes through, an unknown spelling keeps the default.
+TEST(AudioDeviceFormatConfig, DefaultIsS16Everywhere) {
+    using EQT::Audio::DeviceFormat;
+    EXPECT_EQ(EQT::Audio::kDefaultDeviceFormat, DeviceFormat::S16);
+    EXPECT_EQ(eqt::ApplicationConfig{}.audioDeviceFormat, DeviceFormat::S16);
+    EXPECT_EQ(ParseArgs({}).audioDeviceFormat, DeviceFormat::S16);
+    EXPECT_EQ(EQT::Audio::AudioManager{}.getDeviceFormat(), DeviceFormat::S16);
+    eqt::ApplicationConfig config;
+    ASSERT_TRUE(eqt::Application::loadConfigFile(WriteAudioConfig("b1069_fmt_absent.json", ""), config));
+    EXPECT_EQ(config.audioDeviceFormat, DeviceFormat::S16);
+}
+
+TEST(AudioDeviceFormatConfig, OverrideHonouredAndNativePassesThrough) {
+    using EQT::Audio::DeviceFormat;
+    struct Case { const char* text; DeviceFormat want; };
+    for (const Case& c : {Case{"f32", DeviceFormat::F32}, Case{"s24", DeviceFormat::S24},
+                          Case{"s32", DeviceFormat::S32}, Case{"native", DeviceFormat::Native},
+                          Case{"s16", DeviceFormat::S16}}) {
+        eqt::ApplicationConfig config;
+        ASSERT_TRUE(eqt::Application::loadConfigFile(
+            WriteAudioConfig(std::string("b1069_fmt_") + c.text + ".json",
+                             std::string(",\n    \"device_format\": \"") + c.text + "\""),
+            config));
+        EXPECT_EQ(config.audioDeviceFormat, c.want) << c.text;
+        EXPECT_EQ(ParseArgs({"--audio-format", c.text}).audioDeviceFormat, c.want) << c.text;
+        EXPECT_STREQ(EQT::Audio::deviceFormatName(c.want), c.text);
+    }
+}
+
+TEST(AudioDeviceFormatConfig, UnknownKeepsDefaultAndCliWins) {
+    using EQT::Audio::DeviceFormat;
+    eqt::ApplicationConfig config;
+    ASSERT_TRUE(eqt::Application::loadConfigFile(
+        WriteAudioConfig("b1069_fmt_bad.json", ",\n    \"device_format\": \"s8\""), config));
+    EXPECT_EQ(config.audioDeviceFormat, DeviceFormat::S16);
+    config = ParseArgs({"--audio-format", "native"});
+    ASSERT_TRUE(eqt::Application::loadConfigFile(
+        WriteAudioConfig("b1069_fmt_cli.json", ",\n    \"device_format\": \"f32\""), config));
+    EXPECT_EQ(config.audioDeviceFormat, DeviceFormat::Native);
+}
+
 // main.cpp publishes the parsed rate process-wide (audio_device_rate.h: the
 // G04 golden pins initEverQuestClient()); a manager built after that takes
 // it as its default, 0 included.
@@ -284,6 +327,32 @@ TEST(MiniaudioBackendDeviceRate, Requested48000OpensAt48000AndResamples) {
     ASSERT_TRUE(backend.init(&mixer, AudioMixer::SAMPLE_RATE));
     EXPECT_EQ(backend.configuredSampleRate(), 48000u);
     EXPECT_TRUE(backend.isResampling());
+    EXPECT_STREQ(backend.configuredFormatName(), "s16") << "the device format default is s16";
+    backend.stop();
+}
+
+TEST(MiniaudioBackendDeviceRate, FormatKnobReachesTheDevice) {
+    using EQT::Audio::DeviceFormat;
+    for (auto [f, want] : {std::pair{DeviceFormat::F32, "f32"}, std::pair{DeviceFormat::S32, "s32"},
+                           std::pair{DeviceFormat::S24, "s24"}}) {
+        AudioMixer mixer;
+        MiniaudioBackend backend;
+        backend.setUseNullBackend(true);
+        backend.setDeviceFormat(f);
+        ASSERT_TRUE(backend.init(&mixer, AudioMixer::SAMPLE_RATE));
+        EXPECT_STREQ(backend.configuredFormatName(), want);
+        backend.start();
+        std::this_thread::sleep_for(std::chrono::milliseconds(60));  // a few converted callbacks
+        backend.stop();
+    }
+    // Native: miniaudio picks the device's own format; whatever it is, it is
+    // a real one, not "unknown".
+    AudioMixer mixer;
+    MiniaudioBackend backend;
+    backend.setUseNullBackend(true);
+    backend.setDeviceFormat(DeviceFormat::Native);
+    ASSERT_TRUE(backend.init(&mixer, AudioMixer::SAMPLE_RATE));
+    EXPECT_STRNE(backend.configuredFormatName(), "unknown");
     backend.stop();
 }
 
@@ -330,6 +399,7 @@ TEST(MiniaudioBackendDeviceRate, InitLogNamesRequestedConfiguredAndNativeRate) {
         << "the one grep-able init line is missing. Captured: " << text;
     EXPECT_NE(text.find("mixer=22050Hz resample=linear"), std::string::npos) << text;
     EXPECT_NE(text.find("native="), std::string::npos) << text;
+    EXPECT_NE(text.find("requested_format=s16 client_format=s16"), std::string::npos) << text;
     EXPECT_NE(text.find("backend=Null"), std::string::npos) << text;
 }
 

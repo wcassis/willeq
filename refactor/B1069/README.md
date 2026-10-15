@@ -136,6 +136,29 @@ Every pre-existing audio test passes on this host
 (`ctest -R "Audio|Sound|Music|Midi|...|InitOrder"` in `build/hygiene`: 454/454 incl. the 17 new cases and the G04 init-order net,
 1 skipped as before -- `SoundBufferTest.LoadSwingWav`).
 
+## Device acceptance 1 (XU4, publish de282232): FAILED -> the format
+
+Measured on the box by the coordinator with that publish running:
+`/proc/asound/card0/pcm0p/sub0/hw_params` = S24_LE, rate 48000, RUNNING --
+the rate was right and Will heard nothing. With the box idle, `speaker-test`
+at 48000 S16_LE was HEARD, 48000 S24_LE and 32000 S24_LE were silent. The
+backend asked miniaudio for `ma_format_f32`; the hardware has no float, so
+ALSA negotiated the card's native S24_LE, which this sink drops.
+
+Fix: the device is asked for `audio.device_format` / `--audio-format`
+(`include/client/audio/audio_device_rate.h` `DeviceFormat`; default `s16`;
+`f32`, `s24`, `s32`, `native` = `ma_format_unknown`), published by main.cpp
+like the rate. The mixer and the resampler stay f32; when the callback's
+format (`ma_device.playback.format`) is not f32 the adapter renders f32
+into a scratch allocated in `init()` (2048 frames) and `ma_pcm_convert`
+writes the device format, chunk by chunk, no dither. The init line now
+reads `format=<negotiated internalFormat> requested_format=<knob>
+client_format=<playback.format>`. Pins: default s16 (config, CLI, manager,
+backend on the null device, the log line), every spelling honoured from the
+file and the CLI, native passes through to a real format, an unknown
+spelling keeps s16, the CLI wins. The CPU cost of the s16 conversion was not
+benchmarked (one float->int16 per sample, against the table above).
+
 ## Not verified
 
 - Will HEARING zone music on the XU4 at the fixed publish (his acceptance).

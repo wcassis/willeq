@@ -148,6 +148,9 @@ public:
     // streams at LOOPBACK_SAMPLE_RATE.
     void setDeviceSampleRate(uint32_t hz) { deviceSampleRate_ = hz; }
     uint32_t getDeviceSampleRate() const { return deviceSampleRate_; }
+    // B1069: the playback DEVICE format (default s16; see audio_device_rate.h).
+    void setDeviceFormat(DeviceFormat f) { deviceFormat_ = f; }
+    DeviceFormat getDeviceFormat() const { return deviceFormat_; }
 
     // RDP audio streaming callback
     void setAudioOutputCallback(AudioOutputCallback callback);
@@ -224,6 +227,7 @@ private:
     bool audioEnabled_ = true;
     bool use3DAudio_ = true;  // K15 (B037)
     uint32_t deviceSampleRate_ = configuredDeviceSampleRate();  // B1069
+    DeviceFormat deviceFormat_ = configuredDeviceFormat();       // B1069
     std::string eqPath_;
     std::function<void()> tickCallback_;
     std::string soundFontPath_;
