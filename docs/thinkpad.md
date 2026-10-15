@@ -28,6 +28,38 @@ Provisioning evidence: `review/THINKPAD/README.md`.
   `~/eq-oracle/client`, `eqhost.txt` pointed at lane 5) and reaches the EULA in
   about 10 s, against roughly two minutes on the llvmpipe oracle VMs. The B1048 oracle
   session driver (MR !172) finds `:99` already up and skips its own Xvfb.
+- **The NVIDIA GLX stack is the standard for :99** (B1073, #393). The 2026-10-13
+  re-provision installed Mesa 25.2.8 beside NVIDIA 580.178.04, and Xorg loaded
+  BOTH GLX providers — the generic `glx` module (`xserver-xorg-core`,
+  `/usr/lib/xorg/modules/extensions/libglx.so`) and NVIDIA's
+  `glxserver_nvidia` — leaving `GLX: Another vendor is already registered for
+  screen 0` in the log and the client's 32-bit libglvnd dispatcher probing a
+  dual-vendor GLX. The consequence showed up in the official client's Set Face
+  picker (half-open modal, `FINDINGS-setface-regression.txt` in the CC-1
+  evidence). The fix has two halves, both lane-5-only:
+  - **Server side**: `/etc/X11/oracle/xorg.conf` carries a
+    `Section "Module"` with `Disable "glx"`, so `glxserver_nvidia` is the ONLY
+    GLX vendor on screen 0 (the canonical single-GPU NVIDIA setup; `wfb` and
+    the nvidia driver load unchanged). Verification: a fresh `/var/log/Xorg.99.log`
+    has no "Another vendor" line, and `DISPLAY=:99 glxinfo` reports NVIDIA
+    vendor/renderer (Quadro RTX 3000, 580.178.04, GLX direct).
+  - **Client side**: `oracle_remote.sh` exports
+    `__GLX_VENDOR_LIBRARY_NAME=nvidia` (lane 5 only — lanes 1-4 have no NVIDIA
+    vendor lib, and the pin would break their GL), so Wine's 32-bit
+    `libGL.so.1` (libglvnd dispatcher) goes to `libnvidia-gl-580:i386`, never
+    the Mesa i386 wrapper.
+- **The rig has NO window manager, so input needs an explicit focus** (B1073,
+  #393). After a client re-render the EverQuest window does not hold input
+  focus, and on a no-WM display a motion click (the driver's `jclick` 1px-drag,
+  the Set Face net-zero drag) lands on the root window and does nothing. The
+  fix is the simpler durable option: `oracle_remote.sh` defines
+  `client_focus` (`xdotool windowfocus --sync --name '^EverQuest$'`, a no-op on
+  failure) and, on lane 5, redefines `jclick`/`jrclick` (from
+  `/mnt/projects/eq-oracle/scripts/ui-lib.sh`, which stays untouched) and the
+  raw-xdotool `face_open_click` / `hold` paths to focus first. No WM runs on
+  :99; every motion click carries its own focus. A lane-5 capture run logs
+  each Set Face open attempt in `timeline.tsv` (`face-open attempt=N`), so a
+  run proves whether the FIRST click opened the modal.
 - **The default oracle lane** (B1057, #377): oracle legs run
   `scripts/eqemu/oracle/oracle_session.sh 5 <plan> <out>` (`docs/oracle_driver.md`)
   unless lane 5's lock is held; lanes 1-4 are the fallback. The driver's stop
