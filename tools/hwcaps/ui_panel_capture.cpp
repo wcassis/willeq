@@ -1024,6 +1024,10 @@ std::vector<PanelCapture> buildCaptureList() {
         {"charcreate_page0", [](UIRenderer& u, const UILayout& l, PanelStates&) {
             auto s = charCreateCaptureState(0);
             renderCharCreateScreen(u, l.screenW, l.screenH, s, charCreateEqstr()); }},
+        {"charcreate_facepick", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            auto s = charCreateCaptureState(0);
+            openFacePick(s);
+            renderCharCreateScreen(u, l.screenW, l.screenH, s, charCreateEqstr()); }},
         {"charcreate_page1", [](UIRenderer& u, const UILayout& l, PanelStates&) {
             auto s = charCreateCaptureState(1);
             renderCharCreateScreen(u, l.screenW, l.screenH, s, charCreateEqstr()); }},

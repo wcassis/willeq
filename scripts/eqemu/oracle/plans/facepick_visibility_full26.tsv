@@ -1,0 +1,63 @@
+# B888-CC1 (#204): the full 26 in-era race/gender pairs, ONE untouched
+# creation each, FacePick (Set Face) open, stock UseLuclin=FALSE client
+# (the lane-5 eqclient.ini is all-FALSE; Will's 2026-10-14 ruling: the
+# visible_classic column is the stock client's rows, all 26 pairs).
+#
+# Flow: facepick-rows <race> 0 0 <gender> <label> selects the pair and
+# stills the open modal with its in-driver arrow probe (rows.tsv), then
+# close-creation returns to character select for the next pair. Nothing is
+# submitted (page 0 only): no DB rows, no create packets, and the
+# driver's create-name arming does not apply.
+login	Testchar	0	char_select
+facepick-rows	Barbarian	0	0	Male	barbarian-male
+close-creation	0	0	close-barbarian-male
+facepick-rows	Barbarian	0	0	Female	barbarian-female
+close-creation	0	0	close-barbarian-female
+facepick-rows	DarkElf	0	0	Male	darkelf-male
+close-creation	0	0	close-darkelf-male
+facepick-rows	DarkElf	0	0	Female	darkelf-female
+close-creation	0	0	close-darkelf-female
+facepick-rows	Dwarf	0	0	Male	dwarf-male
+close-creation	0	0	close-dwarf-male
+facepick-rows	Dwarf	0	0	Female	dwarf-female
+close-creation	0	0	close-dwarf-female
+facepick-rows	Erudite	0	0	Male	erudite-male
+close-creation	0	0	close-erudite-male
+facepick-rows	Erudite	0	0	Female	erudite-female
+close-creation	0	0	close-erudite-female
+facepick-rows	Gnome	0	0	Male	gnome-male
+close-creation	0	0	close-gnome-male
+facepick-rows	Gnome	0	0	Female	gnome-female
+close-creation	0	0	close-gnome-female
+facepick-rows	HalfElf	0	0	Male	halfelf-male
+close-creation	0	0	close-halfelf-male
+facepick-rows	HalfElf	0	0	Female	halfelf-female
+close-creation	0	0	close-halfelf-female
+facepick-rows	Halfling	0	0	Male	halfling-male
+close-creation	0	0	close-halfling-male
+facepick-rows	Halfling	0	0	Female	halfling-female
+close-creation	0	0	close-halfling-female
+facepick-rows	HighElf	0	0	Male	highelf-male
+close-creation	0	0	close-highelf-male
+facepick-rows	HighElf	0	0	Female	highelf-female
+close-creation	0	0	close-highelf-female
+facepick-rows	Human	0	0	Male	human-male
+close-creation	0	0	close-human-male
+facepick-rows	Human	0	0	Female	human-female
+close-creation	0	0	close-human-female
+facepick-rows	Iksar	0	0	Male	iksar-male
+close-creation	0	0	close-iksar-male
+facepick-rows	Iksar	0	0	Female	iksar-female
+close-creation	0	0	close-iksar-female
+facepick-rows	Ogre	0	0	Male	ogre-male
+close-creation	0	0	close-ogre-male
+facepick-rows	Ogre	0	0	Female	ogre-female
+close-creation	0	0	close-ogre-female
+facepick-rows	Troll	0	0	Male	troll-male
+close-creation	0	0	close-troll-male
+facepick-rows	Troll	0	0	Female	troll-female
+close-creation	0	0	close-troll-female
+facepick-rows	WoodElf	0	0	Male	woodelf-male
+close-creation	0	0	close-woodelf-male
+facepick-rows	WoodElf	0	0	Female	woodelf-female
+close-creation	0	0	close-woodelf-female

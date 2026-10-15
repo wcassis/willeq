@@ -1,0 +1,12 @@
+Running main() from ./googletest/src/gtest_main.cc
+Note: Google Test filter = CharCreateClicks.SetFaceButtonIsNotGreyed
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from CharCreateClicks
+[ RUN      ] CharCreateClicks.SetFaceButtonIsNotGreyed
+[       OK ] CharCreateClicks.SetFaceButtonIsNotGreyed (1 ms)
+[----------] 1 test from CharCreateClicks (1 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (1 ms total)
+[  PASSED  ] 1 test.

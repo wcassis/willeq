@@ -46,8 +46,8 @@ struct CharCreateRequest {
     uint32_t deity = 0;
     uint32_t startZone = 0;   // the CC1_City<n> index == the server's StartZoneIndex
     Stats stats{};
-    // FacePick (EQUI_FacePick.xml). fable has no FacePick window yet, so these
-    // stay 0 -- the server stores them as given (world/client.cpp:1762-1768).
+    // FacePick (EQUI_FacePick.xml); the server stores these as given
+    // (world/client.cpp:1762-1768). Barbarian woad is packed into face's tens.
     uint32_t face = 0, hairstyle = 0, haircolor = 0, beard = 0, beardcolor = 0,
              eyecolor1 = 0, eyecolor2 = 0;
 };

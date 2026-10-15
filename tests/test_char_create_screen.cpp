@@ -11,11 +11,14 @@
 #include "client/graphics/ui/char_create_layout.h"
 #include "client/graphics/ui/char_create_panel.h"
 #include "client/graphics/ui/char_create_screen.h"
+#include "client/graphics/ui/face_pick_layout.h"
 #include "client/login_world/char_create_data.h"
 #include "client/login_world/char_create_rules.h"
 
+#include <array>
 #include <filesystem>
 #include <fstream>
+#include <regex>
 #include <set>
 #include <sstream>
 #include <string>
@@ -28,6 +31,7 @@ using L = CharCreateLayout;
 namespace {
 
 const fs::path kXml = "/mnt/projects/EverQuestP1999/uifiles/default/EQUI_CharacterCreate.xml";
+const fs::path kFaceXml = "/mnt/projects/EverQuestP1999/uifiles/default/EQUI_FacePick.xml";
 
 std::string ReadXml() {
     std::ifstream in(kXml);
@@ -50,10 +54,39 @@ std::string Body(const std::string& xml, const std::string& name) {
     return xml.substr(at, next == std::string::npos ? std::string::npos : next - at);
 }
 
+// FacePick's XML uses whitespace around item=, unlike CharacterCreate's.
+std::string FaceBody(const std::string& xml, const std::string& name) {
+    const std::regex start("<(Button|StaticText|Screen)\\s+item\\s*=\\s*\"" + name + "\"");
+    std::smatch m;
+    if (!std::regex_search(xml, m, start)) return {};
+    const size_t from = static_cast<size_t>(m.position());
+    const size_t end = xml.find("</" + m[1].str() + ">", from);
+    return xml.substr(from, end == std::string::npos ? std::string::npos : end - from);
+}
+
 struct XRect { int x, y, w, h; };
 XRect Loc(const std::string& xml, const std::string& name) {
     const std::string b = Body(xml, name);
     return {Tag(b, "X"), Tag(b, "Y"), Tag(b, "CX"), Tag(b, "CY")};
+}
+
+XRect FaceLoc(const std::string& xml, const std::string& name) {
+    const std::string b = FaceBody(xml, name);
+    return {Tag(b, "X"), Tag(b, "Y"), Tag(b, "CX"), Tag(b, "CY")};
+}
+
+XRect FaceRel(const FacePickLayout::Rect& child, const FacePickLayout::Rect& parent) {
+    return {child.UpperLeftCorner.X - parent.UpperLeftCorner.X - FacePickLayout::kClientX,
+            child.UpperLeftCorner.Y - parent.UpperLeftCorner.Y - FacePickLayout::kClientY,
+            child.getWidth(), child.getHeight()};
+}
+
+std::string FaceText(const std::string& xml, const std::string& name) {
+    const std::string b = FaceBody(xml, name);
+    const size_t begin = b.find("<Text>");
+    const size_t end = b.find("</Text>", begin);
+    return begin == std::string::npos || end == std::string::npos
+        ? std::string() : b.substr(begin + 6, end - begin - 6);
 }
 
 // A child's rect relative to its parent's CLIENT origin.
@@ -92,6 +125,240 @@ CharCreateScreenState OpenHumanWarrior() {
 // ===========================================================================
 // Geometry against the XML
 // ===========================================================================
+
+TEST(FacePickLayout, EveryXmlRectAndLabelMatches) {
+    if (!fs::exists(kFaceXml)) GTEST_SKIP() << "no oracle install";
+    std::ifstream in(kFaceXml);
+    std::stringstream contents;
+    contents << in.rdbuf();
+    const std::string xml = contents.str();
+    using F = FacePickLayout;
+    const auto window = F::windowRect(W, H);
+    ExpectSame(FaceLoc(xml, "FacePickWindow"),
+               {F::kXmlX, F::kXmlY, F::kWindowW, F::kWindowH}, "FacePickWindow");
+    const std::array<const char*, F::kRows> names = {
+        "Face", "Hair", "Hair_Color", "Eyes", "Beard", "Beard_Color", "Wode"
+    };
+    for (int row = 0; row < F::kRows; ++row) {
+        const std::string stem = "FPW_" + std::string(names[static_cast<size_t>(row)]);
+        ExpectSame(FaceLoc(xml, stem + "_Down_Button"), FaceRel(F::downRect(W, H, row), window), stem + " down");
+        ExpectSame(FaceLoc(xml, stem + "_Text"), FaceRel(F::textRect(W, H, row), window), stem + " text");
+        ExpectSame(FaceLoc(xml, stem + "_Up_Button"), FaceRel(F::upRect(W, H, row), window), stem + " up");
+        EXPECT_EQ(FaceText(xml, stem + "_Text"), F::rowLabel(row)) << stem;
+    }
+    ExpectSame(FaceLoc(xml, "FPW_Random_Button"), FaceRel(F::randomRect(W, H), window), "Random");
+    ExpectSame(FaceLoc(xml, "FPW_Accept_Button"), FaceRel(F::acceptRect(W, H), window), "Accept");
+    ExpectSame(FaceLoc(xml, "FPW_Cancel_Button"), FaceRel(F::cancelRect(W, H), window), "Cancel");
+    EXPECT_EQ(FaceText(xml, "FPW_Random_Button"), "Random");
+    EXPECT_EQ(FaceText(xml, "FPW_Accept_Button"), "Accept");
+    EXPECT_EQ(FaceText(xml, "FPW_Cancel_Button"), "Cancel");
+    EXPECT_EQ(FaceText(xml, "FacePickWindow"), "Choose Your Appearance");
+    const std::regex controls("<(?:Button|StaticText)\\s+item\\s*=\\s*\"FPW_");
+    EXPECT_EQ(std::distance(std::sregex_iterator(xml.begin(), xml.end(), controls),
+                            std::sregex_iterator()), 3 * F::kRows + 3);
+}
+
+TEST(FacePick, TsvRangesAndModalAcceptCancelReachPacket) {
+    const std::string fixture =
+        "2\t0\tface\t0\t7\t1\tfixture\n"
+        "2\t0\thair\t0\t3\t1\tfixture\n"
+        "2\t0\thaircolor\t0\t5\t1\tfixture\n"
+        "2\t0\teyes\t0\t9\t1\tfixture\n"
+        "2\t0\tbeard\t0\t2\t1\tfixture\n"
+        "2\t0\tbeardcolor\t0\t5\t1\tfixture\n"
+        "2\t0\twode\t0\t8\t1\tfixture\n";
+    FacePickData ranges;
+    ASSERT_TRUE(ranges.loadText(fixture)) << ranges.error();
+    ASSERT_NE(ranges.find(Race::Barbarian, Gender::Male), nullptr);
+    EXPECT_EQ(ranges.find(Race::Barbarian, Gender::Female), nullptr);
+    EXPECT_FALSE(ranges.loadText(fixture + "2\t0\tface\t0\t7\t1\tfixture\n"));
+    EXPECT_EQ(ranges.find(Race::Barbarian, Gender::Male), nullptr);
+    ASSERT_TRUE(ranges.loadText(fixture)) << ranges.error();
+
+    CharCreateScreenState s;
+    ASSERT_TRUE(openCharCreateWith(s, Data(), Race::Barbarian, Gender::Male, Class::Warrior,
+                                   /*useOldModels=*/false));   // the fixture rows are the Luclin column
+    s.faceData = ranges;
+    const auto button = L::faceButtonRect(W, H).getCenter();
+    const auto open = hitTestCharCreate(W, H, s, button.X, button.Y);
+    ASSERT_EQ(open.hit, CharCreateHit::FacePick);
+    applyCharCreateClick(s, open, false);
+    ASSERT_TRUE(s.facePick.isOpen);
+    EXPECT_EQ(pressNext(s).kind, CharCreateAction::Kind::None);
+    EXPECT_EQ(s.messageEqstr, 0u);  // the modal blocks page navigation
+
+    stepFacePick(s.facePick, 0, -1);
+    EXPECT_EQ(s.facePick.values[0], 7u);  // down from min wraps to max
+    stepFacePick(s.facePick, 0, 1);
+    EXPECT_EQ(s.facePick.values[0], 0u);  // up from max wraps to min
+    for (int n = 0; n < 100; ++n) {
+        randomFacePick(s.facePick);
+        for (size_t row = 0; row < kFacePickFeatures; ++row) {
+            EXPECT_GE(s.facePick.values[row], s.facePick.ranges[row].min);
+            EXPECT_LE(s.facePick.values[row], s.facePick.ranges[row].max);
+        }
+    }
+    const auto cancel = FacePickLayout::cancelRect(W, H).getCenter();
+    const auto cancelHit = hitTestCharCreate(W, H, s, cancel.X, cancel.Y);
+    ASSERT_EQ(cancelHit.hit, CharCreateHit::FacePickControl);
+    EXPECT_EQ(cancelHit.facePick.hit, FacePickHit::Cancel);
+    applyCharCreateClick(s, cancelHit, false);
+    EXPECT_FALSE(s.facePick.isOpen);
+    EXPECT_EQ(s.appearance[0], 0u);  // discarded
+
+    ASSERT_TRUE(openFacePick(s));
+    stepFacePick(s.facePick, 0, -1);  // face 7
+    stepFacePick(s.facePick, 6, 1);
+    stepFacePick(s.facePick, 6, 1);   // wode 2
+    stepFacePick(s.facePick, 3, 1);   // eyes 1
+    const auto accept = FacePickLayout::acceptRect(W, H).getCenter();
+    applyCharCreateClick(s, hitTestCharCreate(W, H, s, accept.X, accept.Y), false);
+    EXPECT_FALSE(s.facePick.isOpen);
+    EXPECT_EQ(s.appearance[0], 7u);
+    EXPECT_EQ(s.appearance[6], 2u);
+    const auto request = buildRequest(s);
+    EXPECT_EQ(request.face, 27u);      // Barbarian wode occupies face's tens
+    EXPECT_EQ(request.eyecolor1, 1u);
+    EXPECT_EQ(request.eyecolor2, 1u);
+}
+
+TEST(FacePick, ShippedRangesCoverEveryInEraRaceAndGender) {
+    FacePickData ranges;
+    ASSERT_TRUE(ranges.loadShipped()) << ranges.error();
+    const auto races = Data().visibleRaces();
+    for (const auto& race : races) {
+        for (uint32_t gender : {Gender::Male, Gender::Female}) {
+            const auto* pair = ranges.find(race.id, gender);
+            ASSERT_NE(pair, nullptr) << race.label << " gender=" << gender;
+            for (const auto& picker : *pair) {
+                EXPECT_FALSE(picker.source.empty());
+                EXPECT_LE(picker.min, picker.max);
+                if (!picker.visible) {
+                    EXPECT_EQ(picker.min, 0u);
+                    EXPECT_EQ(picker.max, 0u);
+                }
+            }
+        }
+    }
+}
+
+// B888-CC1 finding 1 (MR !168): the visible_classic column gates the CLASSIC
+// UI (useOldModels, the client's default) and the visible (Luclin) column
+// gates the Luclin UI. Drawing, hit-testing and Random all consume the
+// era-selected column, because openFacePick copies it into the modal's plain
+// `visible` field. The fixture rows: HAIR is visible in BOTH eras, WODE is
+// Luclin-only (a Barbarian's woad is classic-visible in the real table --
+// this fixture deliberately makes it Luclin-only to exercise the gate), EYES
+// is classic-only.
+TEST(FacePick, ClassicModelsGateTheRowsOnTheModelEra) {
+    const std::string fixture =
+        "2\t0\tface\t0\t7\t1\t1\tfixture\tUNMEASURED\tUNMEASURED\n"
+        "2\t0\thair\t0\t3\t1\t1\tfixture\tUNMEASURED\tUNMEASURED\n"
+        "2\t0\thaircolor\t0\t19\t0\t0\tfixture\tUNMEASURED\tUNMEASURED\n"
+        "2\t0\teyes\t0\t9\t0\t1\tfixture\tUNMEASURED\tUNMEASURED\n"
+        "2\t0\tbeard\t0\t5\t1\t1\tfixture\tUNMEASURED\tUNMEASURED\n"
+        "2\t0\tbeardcolor\t0\t19\t1\t1\tfixture\tUNMEASURED\tUNMEASURED\n"
+        "2\t0\twode\t0\t8\t1\t0\tfixture\tUNMEASURED\tUNMEASURED\n";
+    FacePickData ranges;
+    ASSERT_TRUE(ranges.loadText(fixture)) << ranges.error();
+    const auto* pair = ranges.find(Race::Barbarian, Gender::Male);
+    ASSERT_NE(pair, nullptr);
+    // The parser keeps both columns apart.
+    EXPECT_TRUE((*pair)[static_cast<size_t>(FacePickFeature::Hair)].visibleFor(true));
+    EXPECT_TRUE((*pair)[static_cast<size_t>(FacePickFeature::Hair)].visibleFor(false));
+    EXPECT_TRUE((*pair)[static_cast<size_t>(FacePickFeature::Eyes)].visibleFor(true));
+    EXPECT_FALSE((*pair)[static_cast<size_t>(FacePickFeature::Eyes)].visibleFor(false));
+    EXPECT_FALSE((*pair)[static_cast<size_t>(FacePickFeature::Wode)].visibleFor(true));
+    EXPECT_TRUE((*pair)[static_cast<size_t>(FacePickFeature::Wode)].visibleFor(false));
+    // A 10-column row with a bad visible_classic is refused (and a failed
+    // load clears the table, so reload the fixture before using it).
+    EXPECT_FALSE(ranges.loadText(fixture + "2\t0\tface\t0\t7\t1\t2\tfixture\tUNMEASURED\tUNMEASURED\n"));
+    ASSERT_TRUE(ranges.loadText(fixture)) << ranges.error();
+
+    const auto open = [&](bool oldModels, CharCreateScreenState& s) -> bool {
+        EXPECT_TRUE(openCharCreateWith(s, Data(), Race::Barbarian, Gender::Male, Class::Warrior, oldModels));
+        s.faceData = ranges;
+        EXPECT_TRUE(openFacePick(s));
+        return s.facePick.isOpen;
+    };
+    const auto rowCentre = [](int row) {
+        const auto r = FacePickLayout::upRect(W, H, row);
+        return r.getCenter();
+    };
+    {   // Classic models: EYES shown, WODE not; hitting the WODE row is blocked.
+        CharCreateScreenState s;
+        ASSERT_TRUE(open(true, s));
+        EXPECT_TRUE(s.facePick.ranges[static_cast<size_t>(FacePickFeature::Eyes)].visible);
+        EXPECT_FALSE(s.facePick.ranges[static_cast<size_t>(FacePickFeature::Wode)].visible);
+        EXPECT_EQ(hitTestFacePick(W, H, s.facePick, rowCentre(3).X, rowCentre(3).Y).hit, FacePickHit::Up);
+        EXPECT_EQ(hitTestFacePick(W, H, s.facePick, rowCentre(6).X, rowCentre(6).Y).hit, FacePickHit::Blocked);
+        // Stepping and Random honour the same gate.
+        stepFacePick(s.facePick, static_cast<int>(FacePickFeature::Wode), 1);
+        EXPECT_EQ(s.facePick.values[static_cast<size_t>(FacePickFeature::Wode)], 0u);
+        for (int n = 0; n < 100; ++n) {
+            randomFacePick(s.facePick);
+            EXPECT_EQ(s.facePick.values[static_cast<size_t>(FacePickFeature::Wode)], 0u);
+            EXPECT_GE(s.facePick.values[static_cast<size_t>(FacePickFeature::Eyes)], 0u);
+            EXPECT_LE(s.facePick.values[static_cast<size_t>(FacePickFeature::Eyes)], 9u);
+        }
+    }
+    {   // Luclin models: WODE shown, EYES not.
+        CharCreateScreenState s;
+        ASSERT_TRUE(open(false, s));
+        EXPECT_FALSE(s.facePick.ranges[static_cast<size_t>(FacePickFeature::Eyes)].visible);
+        EXPECT_TRUE(s.facePick.ranges[static_cast<size_t>(FacePickFeature::Wode)].visible);
+        EXPECT_EQ(hitTestFacePick(W, H, s.facePick, rowCentre(6).X, rowCentre(6).Y).hit, FacePickHit::Up);
+        EXPECT_EQ(hitTestFacePick(W, H, s.facePick, rowCentre(3).X, rowCentre(3).Y).hit, FacePickHit::Blocked);
+        stepFacePick(s.facePick, static_cast<int>(FacePickFeature::Eyes), 1);
+        EXPECT_EQ(s.facePick.values[static_cast<size_t>(FacePickFeature::Eyes)], 0u);
+    }
+}
+
+TEST(FacePick, NonzeroMinimumWrapsAtItsOwnEndpoints) {
+    FacePickState draft;
+    draft.isOpen = true;
+    draft.ranges[static_cast<size_t>(FacePickFeature::HairColor)] = {13, 18, true, true, "fixture"};
+    draft.values[static_cast<size_t>(FacePickFeature::HairColor)] = 13;
+    stepFacePick(draft, static_cast<int>(FacePickFeature::HairColor), -1);
+    EXPECT_EQ(draft.values[static_cast<size_t>(FacePickFeature::HairColor)], 18u);
+    stepFacePick(draft, static_cast<int>(FacePickFeature::HairColor), 1);
+    EXPECT_EQ(draft.values[static_cast<size_t>(FacePickFeature::HairColor)], 13u);
+    for (int n = 0; n < 100; ++n) {
+        randomFacePick(draft);
+        EXPECT_GE(draft.values[static_cast<size_t>(FacePickFeature::HairColor)], 13u);
+        EXPECT_LE(draft.values[static_cast<size_t>(FacePickFeature::HairColor)], 18u);
+    }
+}
+
+TEST(FacePick, HiddenRowsCannotBeClickedOrRandomized) {
+    FacePickData data;
+    const std::string fixture =
+        "6\t1\tface\t0\t7\t1\tfixture\n"
+        "6\t1\thair\t0\t3\t1\tfixture\n"
+        "6\t1\thaircolor\t13\t18\t1\tfixture\n"
+        "6\t1\teyes\t0\t9\t1\tfixture\n"
+        "6\t1\tbeard\t0\t0\t0\tfixture\n"
+        "6\t1\tbeardcolor\t0\t0\t0\tfixture\n"
+        "6\t1\twode\t0\t0\t0\tfixture\n";
+    ASSERT_TRUE(data.loadText(fixture)) << data.error();
+    CharCreateScreenState s;
+    ASSERT_TRUE(openCharCreateWith(s, Data(), Race::DarkElf, Gender::Female, Class::Necromancer,
+                                   /*useOldModels=*/false));   // the fixture rows are the Luclin column
+    s.faceData = data;
+    ASSERT_TRUE(openFacePick(s));
+    const auto beard = FacePickLayout::upRect(W, H, 4).getCenter();
+    EXPECT_EQ(hitTestFacePick(W, H, s.facePick, beard.X, beard.Y).hit, FacePickHit::Blocked);
+    stepFacePick(s.facePick, 4, 1);
+    EXPECT_EQ(s.facePick.values[4], 0u);
+    for (int n = 0; n < 100; ++n) {
+        randomFacePick(s.facePick);
+        EXPECT_EQ(s.facePick.values[4], 0u);
+        EXPECT_EQ(s.facePick.values[5], 0u);
+        EXPECT_EQ(s.facePick.values[6], 0u);
+        EXPECT_GE(s.facePick.values[2], 13u);
+        EXPECT_LE(s.facePick.values[2], 18u);
+    }
+}
 
 TEST(CharCreateLayout, ScreenSizesAreTheXmls) {
     if (!fs::exists(kXml)) GTEST_SKIP() << "no oracle install";
@@ -326,7 +593,7 @@ TEST(CharCreateClicks, ButtonsResolveAndGreyedOnesAreNotHitTestable) {
     };
     EXPECT_EQ(at(L::nextButtonRect(W, H)).hit, CharCreateHit::Next);
     EXPECT_EQ(at(L::backButtonRect(W, H)).hit, CharCreateHit::Back);
-    EXPECT_EQ(at(L::faceButtonRect(W, H)).hit, CharCreateHit::None);   // greyed: no FacePick yet
+    EXPECT_EQ(at(L::faceButtonRect(W, H)).hit, CharCreateHit::FacePick);
     int shaman = -1;
     for (size_t i = 0; i < s.classes.size(); ++i) {
         if (s.classes[i].id == Class::Shaman) shaman = static_cast<int>(i);
@@ -348,5 +615,21 @@ TEST(CharCreateClicks, ButtonsResolveAndGreyedOnesAreNotHitTestable) {
 TEST(CharCreateClicks, PlainTextDropsTheMarkup) {
     EXPECT_EQ(charCreatePlainText("AGNOSTIC<BR><BR>Agnostics will <c \"#00A000\">not</c> commit."),
               "AGNOSTIC\n\nAgnostics will not commit.");
-    EXPECT_EQ(charCreatePlainText("NPC\xE2\x80\x99s"), "NPC's");   // eqstr 3334's apostrophe
+    EXPECT_EQ(charCreatePlainText("NPC\xe2\x80\x99s"), "NPC's");   // eqstr 3334's apostrophe
+}
+
+// B888-CC1 finding 6 (MR !168): the GREEN half of the genuine RED. The same
+// test body compiles and RUNS on the pre-feature baseline (origin/fable,
+// where CC0_Face_Button is greyed -- hitTestCharCreate returns
+// CharCreateHit::None, "greyed: no FacePick yet") and there FAILs (the RED
+// log, refactor/B888-CC1/finding6-RED-baseline-ac32a25e.txt); here, at the
+// feature head, Set Face resolves to the FacePick modal, so it passes. Only
+// seam symbols present in BOTH trees are named (hitTestCharCreate,
+// CharCreateHit::None, OpenHumanWarrior), so the body is byte-identical.
+TEST(CharCreateClicks, SetFaceButtonIsNotGreyed) {
+    CharCreateScreenState s = OpenHumanWarrior();
+    const auto c = L::faceButtonRect(W, H).getCenter();
+    const auto hit = hitTestCharCreate(W, H, s, c.X, c.Y);
+    EXPECT_NE(hit.hit, CharCreateHit::None)
+        << "Set Face is greyed: the FacePick modal the feature adds is absent";
 }
