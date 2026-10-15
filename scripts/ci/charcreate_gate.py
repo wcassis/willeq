@@ -13,21 +13,33 @@ headless 1280x800 GLES2 frame), then scores every gate state per control:
   * OCR — tesseract the label region and check the client's own label landed
     (the state machine resolved the eqstr to real text, not "eqstr <id>").
   * reference IoU — when the official-client reference still for the state is
-    present, the same per-rect edge density is compared against the
-    reference frame. Until the reference set is blessed (tests/goldens/
-    charcreate/ is a BLESS, Will's sign-off) these are reported NOT-BLESSED
-    and are a coverage gap, not a failure.
+    present, the gate ratchets the FULL-FRAME edge IoU (blessed still vs the
+    fresh willeq render) against the state's blessed baseline in
+    reference_manifest.tsv, floor = baseline - REF_REGRESSION_TOL. Until the
+    reference set is blessed (tests/goldens/charcreate/ is a BLESS, Will's
+    sign-off) these are reported NOT-BLESSED and are a coverage gap, not a
+    failure. A blessed still without a manifest row fails the gate (the
+    reference leg must never run inert).
 
 The per-state table is printed and written as a ledger TSV in the visual_gate
-shape. The gate FAILS on: a willeq state that does not render, a control's
-IoU below the bar, or a required label that is missing/garbled. A missing
+shape. The gate FAILS on: a willeq state that does not render, a required
+control that did not render, a PRESENT required control whose edge density is
+below IOU_BAR (its border regressed to a flat fill; presence alone does not
+see it), or a reference-IoU regression below the blessed floor. OCR label
+mismatches are FINDINGS (reported in the ledger), never failures. A missing
 reference still does not fail the gate (it is named NOT-BLESSED) — the
 reference set is attached as goldens_proposed and blessed separately.
 
 Usage:
   charcreate_gate.py [--capture DIR] [--ref-dir DIR] [--labels FILE]
                      [--willeq-states DIR] [--capture-bin BIN]
+                     [--ref-manifest FILE] [--bless-required]
+                     [--bless-record FILE]
   Default: run tools/hwcaps/charcreate_capture into a temp dir, score it.
+  --bless-record FILE: bless-time helper — after scoring, write
+  reference_manifest.tsv (state<TAB>frame-edge-IoU) for every armed state.
+  That file is the blessed set's baseline: with it beside the stills the
+  reference leg arms; without it the gate fails.
 """
 import argparse
 import json
@@ -44,8 +56,62 @@ import charcreate_gate_controls as controls  # noqa: E402  the XML-derived rects
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 BLESS_GOLDENS = PROJECT_DIR / "tests" / "goldens" / "charcreate"
 
-# IoU of the detected control edges within the rect, at the 0.9 bar.
+# The per-control edge-density bar for a REQUIRED control: the share of the
+# rect's bright pixels that carry an edge (a bright pixel with a dark
+# 4-neighbour). Provenance, measured at this gate's render (llvmpipe, this
+# host is the CI runner): a control that drew correctly reads 0.981..1.000
+# (the 0.981 floor is the stat up/down glyph borders on the five creation
+# states, the README's scores table), while a control whose edges regressed
+# to a solid fill reads ~0.14 (QA's break_2.py: create_initial help flattened
+# to a solid bright fill -> 0.142). 0.9 is the floor of the first regime: a
+# required control at or above it drew its border; below it, the border is
+# gone even though the rect still has bright pixels, so presence alone does
+# not see it.
 IOU_BAR = 0.9
+
+# The reference leg is ratcheted at frame level, not per rect: for each
+# blessed state the manifest records the full-frame edge IoU between the
+# blessed still and the FRESH willeq render at bless time, and the gate fails
+# if the armed value drops below (baseline - REF_REGRESSION_TOL). This is the
+# one number an 8,8 px-shifted still measurably hurts (select_one: 0.0823
+# unshifted against a 0.0723 floor; the shifted still reads 0.0021, the
+# acceptance proof's break A) while staying immune to per-rect bless-time
+# artifacts (a blessed rect that measured 0.4197 because a 3D viewport's art
+# bled in is not a control the gate can ratchet). REF_REGRESSION_TOL is
+# headroom for re-render jitter, not a quality claim.
+REF_REGRESSION_TOL = 0.01
+
+
+def frame_edge_iou(gray_a, gray_b):
+    """Full-frame edge IoU: the overlap of the two frames' edge sets (the same
+    edge definition edge_fraction uses, bright pixel with a dark 4-neighbour,
+    taken over the whole frame). One number per (reference, willeq render)
+    pair, what the manifest records and the gate ratchets."""
+    import numpy as np
+    def edges(gray):
+        p = np.zeros((gray.shape[0] + 4, gray.shape[1] + 4), dtype=bool)
+        p[2:-2, 2:-2] = gray > 96
+        interior = p.copy()
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            interior &= np.roll(np.roll(p, dx, axis=1), dy, axis=0)
+        return (p & ~interior)[2:-2, 2:-2]
+    ea, eb = edges(gray_a), edges(gray_b)
+    union = int((ea | eb).sum())
+    return int((ea & eb).sum()) / union if union else 1.0
+
+
+# The blessed set's frame-level baseline. TSV, one row per state:
+# state<TAB>frame_iou, '#' comments. A blessed state without a row is a
+# failure (the reference leg would be inert for it).
+def load_reference_manifest(path):
+    base = {}
+    for line in Path(path).read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        state, frame_iou = line.split("\t")[:2]
+        base[state] = float(frame_iou)
+    return base
 
 
 def load_grayscale(path):
@@ -139,13 +205,35 @@ def run_capture(out_dir, cap_bin, extra_args):
     return states
 
 
-def score_state(name, willeq_png, ref_png, labels, ref_labels, gray_cache={}):
+def score_state(name, willeq_png, ref_png, labels, ref_labels, gray_cache={},
+                ref_manifest=None):
     """Score one gate state. Returns a dict of per-control rows + an overall
     ok flag. `labels` is {control: expected substring}; a None labels value
-    means the state has no OCR labels to check."""
+    means the state has no OCR labels to check. `ref_manifest`, when the
+    reference leg is armed (a manifest TSV alongside the reference set), is
+    the {state: frame-edge-IoU} baseline to ratchet against (see
+    REF_REGRESSION_TOL)."""
     import numpy as np
     gray = load_grayscale(willeq_png)
     ref_gray = load_grayscale(ref_png) if ref_png and ref_png.exists() else None
+    # the reference leg: a reference frame with NO manifest is a failure, not
+    # report-only (an inert reference leg is exactly the claimed-but-unenforced
+    # defect this ratchet exists to close); with a manifest, the frame-level
+    # edge IoU against the fresh willeq render ratchets against the blessed
+    # baseline - REF_REGRESSION_TOL.
+    ref_armed = ref_gray is not None and ref_manifest is not None
+    ref_frame_iou = frame_edge_iou(ref_gray, gray) if ref_gray is not None else None
+    ref_base = (ref_manifest or {}).get(name)
+    ref_floor = (
+        ref_base - REF_REGRESSION_TOL
+        if ref_armed and ref_base is not None else None)
+    ref_fail = (
+        ref_gray is not None
+        and (ref_manifest is None
+             or ref_base is None
+             or (ref_frame_iou is not None
+                 and ref_floor is not None
+                 and ref_frame_iou < ref_floor)))
 
     rows = []
     ok = True
@@ -156,6 +244,10 @@ def score_state(name, willeq_png, ref_png, labels, ref_labels, gray_cache={}):
         # a real control has bright pixels in its rect; if it has none the
         # control is missing (regardless of edge ratio)
         present = w_bright > 0.002
+        # the per-control edge bar: a PRESENT required control still owes its
+        # border. Presence alone (bright > 0.2%) does not see a control whose
+        # edges regressed to a solid fill (break_2.py: 0.142, still "present").
+        below_bar = present and ctrl in required and w_edge < IOU_BAR
         rows.append({
             "state": name, "control": ctrl,
             "required": int(ctrl in required),
@@ -163,10 +255,15 @@ def score_state(name, willeq_png, ref_png, labels, ref_labels, gray_cache={}):
             "bright": round(w_bright, 4),
             "ref_iou": (round(ref_edge, 4) if ref_edge is not None else ""),
             "present": int(present),
+            "below_bar": int(below_bar),
             "ref_present": int((ref_edge or 0) > 0.002) if ref_gray is not None else None,
         })
         if not present and ctrl in required:
             ok = False
+        if below_bar:
+            ok = False
+    if ref_fail:
+        ok = False
     # OCR labels: reported, not gated. The stock client's small antialiased
     # type is not OCR-reliable at this crop (measured: psm7 on a 2x-4x upscale
     # reads "Character Select" as 'ssr ee se tt'/'Be ele'), and the card's rule
@@ -183,7 +280,11 @@ def score_state(name, willeq_png, ref_png, labels, ref_labels, gray_cache={}):
                              "expected": expect, "got": got[:40],
                              "ok": int(bool(expect and got and expect.lower() in got))})
     return {"rows": rows, "ocr": ocr_rows, "ok": ok,
-            "ref_blessed": ref_png is not None and ref_png.exists()}
+            "ref_blessed": ref_gray is not None,
+            "ref_armed": ref_armed,
+            "ref_frame_iou": (round(ref_frame_iou, 4) if ref_frame_iou is not None else ""),
+            "ref_floor": (round(ref_floor, 4) if ref_floor is not None else ""),
+            "ref_fail": int(ref_fail)}
 
 
 def main():
@@ -191,6 +292,13 @@ def main():
     ap.add_argument("--capture-dir", default=None, help="reuse these willeq state PNGs")
     ap.add_argument("--willeq-states", default=None, help="dir of willeq state PNGs (or capture-dir)")
     ap.add_argument("--ref-dir", default=None, help="official-client reference stills dir")
+    ap.add_argument("--ref-manifest", default=None,
+                    help="reference_manifest.tsv (state<TAB>frame_iou) -- the "
+                         "blessed set's frame-level baseline. Default: "
+                         "reference_manifest.tsv beside the reference set (or "
+                         "one level up, the goldens root). A reference frame "
+                         "without its manifest fails the gate (the reference "
+                         "leg must be armed, not inert).")
     ap.add_argument("--labels", default=None, help="labels.tsv (state<TAB>control<TAB>label)")
     ap.add_argument("--ref-labels", default=None, help="reference labels.tsv")
     ap.add_argument("--capture-bin", default=None, help="charcreate_capture binary")
@@ -201,6 +309,12 @@ def main():
                          "('reference set not blessed') instead of running the "
                          "willeq-internal gate. Until Will blesses it, CI stays "
                          "green; the table is still printed for the README.")
+    ap.add_argument("--bless-record", default=None, metavar="FILE",
+                    help="bless-time helper: after scoring, write "
+                         "reference_manifest.tsv (state<TAB>frame-edge-IoU) for "
+                         "every armed state to FILE. That file is the reference "
+                         "leg's baseline: keep it beside the blessed stills, or "
+                         "the gate fails on the missing/short manifest.")
     args = ap.parse_args()
 
     # --bless-required is the ctest row's mode: the official-client reference
@@ -240,6 +354,21 @@ def main():
     # blessed goldens win over a --ref-dir
     if BLESS_GOLDENS.exists():
         ref_dir = BLESS_GOLDENS
+    # the reference leg's baseline lives beside the reference set (or one
+    # level up, the goldens root, when the stills sit in a references/ subdir);
+    # a reference frame without it fails the gate (score_state), so a set
+    # that ships stills but no baseline can never run inert.
+    ref_manifest = None
+    if ref_dir is not None:
+        if args.ref_manifest:
+            cands = [Path(args.ref_manifest)]
+        else:
+            cands = [ref_dir / "reference_manifest.tsv",
+                     ref_dir.parent / "reference_manifest.tsv"]
+        for manifest in cands:
+            if manifest.exists():
+                ref_manifest = load_reference_manifest(manifest)
+                break
 
     # run (or reuse) the willeq capture
     if args.willeq_states or args.capture_dir:
@@ -249,15 +378,21 @@ def main():
         with tempfile.TemporaryDirectory(prefix="cc4_capture_") as td:
             states = run_capture(td, cap_bin, [])
             # the ledger + scores are printed before the dir is torn down
-            return _score_and_report(states, ref_dir, labels, ref_labels, args.ledger)
+            return _score_and_report(states, ref_dir, ref_manifest,
+                                     labels, ref_labels, args.ledger,
+                                     args.bless_record)
 
-    return _score_and_report(states, ref_dir, labels, ref_labels, args.ledger)
+    return _score_and_report(states, ref_dir, ref_manifest,
+                             labels, ref_labels, args.ledger,
+                             args.bless_record)
 
 
-def _score_and_report(states, ref_dir, labels, ref_labels, ledger_path):
+def _score_and_report(states, ref_dir, ref_manifest, labels, ref_labels,
+                      ledger_path, bless_record=None):
     import numpy as np
     failures = []
     all_rows, all_ocr = [], []
+    state_results = {}
     print(f"{'state':22} {'controls':>8} {'present':>8} {'minIoU':>7} {'ocrOk':>7} {'ref':>10}  ok")
     blessed = 0
     for name in controls.GATE_STATES:
@@ -267,7 +402,9 @@ def _score_and_report(states, ref_dir, labels, ref_labels, ledger_path):
             failures.append(f"{name}: willeq state missing (capture did not render it)")
             continue
         ref_png = (ref_dir / f"{name}.png") if ref_dir else None
-        result = score_state(name, w_png, ref_png, labels.get(name), ref_labels.get(name))
+        result = score_state(name, w_png, ref_png, labels.get(name),
+                             ref_labels.get(name), ref_manifest=ref_manifest)
+        state_results[name] = result
         all_rows += result["rows"]
         all_ocr += result["ocr"]
         present = sum(1 for r in result["rows"] if r["present"])
@@ -278,7 +415,10 @@ def _score_and_report(states, ref_dir, labels, ref_labels, ledger_path):
         ocr_ok = sum(1 for r in result["ocr"] if r["ok"])
         if result["ref_blessed"]:
             blessed += 1
-        ref_txt = "blessed" if result["ref_blessed"] else "NOT-BLESSED"
+        if result["ref_armed"]:
+            ref_txt = f"ARMED {result['ref_frame_iou']:.4f}"
+        else:
+            ref_txt = "blessed" if result["ref_blessed"] else "NOT-BLESSED"
         print(f"{name:22} {total:>8} {present:>8} {min_iou:>7.3f} "
               f"{(str(ocr_ok) + '/' + str(ocr_total)) if ocr_total else '-':>7} {ref_txt:>10}  {'OK' if result['ok'] else 'FAIL'}")
         if not result["ok"]:
@@ -286,16 +426,35 @@ def _score_and_report(states, ref_dir, labels, ref_labels, ledger_path):
                 if not r["present"] and r["required"]:
                     failures.append(f"{name}: control {r['control']} has no pixels in its rect "
                                     f"({controls.state_controls(name)[r['control']]}) — it did not render")
+                if r["below_bar"]:
+                    failures.append(f"{name}: required control {r['control']} edge density "
+                                    f"{r['iou']:.3f} is below the {IOU_BAR:.1f} bar "
+                                    f"(its border regressed; the rect still has bright pixels, "
+                                    f"so presence alone does not see it)")
+            if result["ref_fail"]:
+                if ref_manifest is None:
+                    failures.append(f"{name}: reference frame present but reference_manifest.tsv "
+                                    f"is missing from {ref_dir} — the reference leg would run "
+                                    f"unarmed; bless it with its baseline")
+                elif (ref_manifest or {}).get(name) is None:
+                    failures.append(f"{name}: reference frame present but reference_manifest.tsv "
+                                    f"has no baseline row for it — the reference leg would run "
+                                    f"unarmed for this state; record it with --bless-record")
+                else:
+                    failures.append(f"{name}: reference-IoU regression — frame edge IoU "
+                                    f"{result['ref_frame_iou']:.4f} fell below the blessed "
+                                    f"baseline floor {result['ref_floor']:.4f}")
 
     # ledger TSV (visual_gate shape: one header, tab-separated)
     if ledger_path:
         ledger_path = Path(ledger_path)
         with open(ledger_path, "w") as f:
-            f.write("state\tcontrol\trequired\tiou\tbright\tref_iou\tpresent\tref_present\n")
+            f.write("state\tcontrol\trequired\tiou\tbright\tref_iou\tpresent\tbelow_bar\tref_present\n")
             for r in all_rows:
                 f.write(f"{r['state']}\t{r['control']}\t{r['required']}\t{r['iou']}\t{r['bright']}\t"
-                        f"{r['ref_iou'] if r['ref_iou'] is not None else '-'}\t"
-                        f"{r['present']}\t{r['ref_present'] if r['ref_present'] is not None else '-'}\n")
+                        f"{r['ref_iou'] if r['ref_iou'] != '' else '-'}\t"
+                        f"{r['present']}\t{r['below_bar']}\t"
+                        f"{r['ref_present'] if r['ref_present'] is not None else '-'}\n")
             f.write("\n# ocr\nstate\tcontrol\texpected\tgot\tok\n")
             for r in all_ocr:
                 f.write(f"{r['state']}\t{r['control']}\t{r['expected']}\t{r['got']}\t{r['ok']}\n")
@@ -309,6 +468,33 @@ def _score_and_report(states, ref_dir, labels, ref_labels, ledger_path):
     elif blessed == 0:
         print("NOTE: no reference set supplied (--ref-dir / tests/goldens/charcreate absent) — "
               "reference IoU NOT-BLESSED, a coverage gap, not a failure.")
+
+    # bless-record: the blessed set's frame-level baseline, one row per ARMED
+    # state (a blessed still present in the reference set), measured at bless
+    # time against the fresh willeq render. Written AFTER scoring so a bless
+    # can never ship a baseline the gate itself measured failing.
+    if bless_record:
+        armed = [n for n in state_results
+                 if state_results[n]["ref_blessed"]
+                 and state_results[n]["ref_frame_iou"] != ""]
+        missing = ([p.stem for p in ref_dir.glob("*.png")
+                    if p.stem in set(controls.GATE_STATES)]
+                   if ref_dir else [])
+        unrecorded = sorted(set(missing) - set(armed))
+        if unrecorded:
+            print(f"NOTE: --bless-record skipped: blessed stills without an armed "
+                  f"frame IoU: {', '.join(unrecorded)}")
+        else:
+            bless_record = Path(bless_record)
+            with open(bless_record, "w") as f:
+                f.write("# reference_manifest.tsv -- B888-CC4 reference leg baseline\n")
+                f.write("# state<TAB>frame_edge_iou (blessed still vs fresh willeq "
+                        "render at bless time; gate floor = baseline - "
+                        f"{REF_REGRESSION_TOL})\n")
+                for n in controls.GATE_STATES:
+                    if n in armed:
+                        f.write(f"{n}\t{state_results[n]['ref_frame_iou']:.4f}\n")
+            print(f"bless-record: {bless_record}")
 
     if failures:
         print("\n=== CHARCREATE GATE: FAIL ===")
