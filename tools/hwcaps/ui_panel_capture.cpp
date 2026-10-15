@@ -37,6 +37,7 @@
 //                   of the full set.
 
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/hotbar_panel.h"  // B1025-H2: renderHotbar's home
 #include "client/graphics/gles2_shader_cache.h"
 #include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/item_display_panel.h"

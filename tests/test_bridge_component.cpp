@@ -18,6 +18,7 @@
 #include "client/bridge/bridge_component.h"
 #include "client/inspect_answer.h"
 #include "client/bridge/game_state_bridge.h"
+#include "client/hotbar/hotbar_model.h"
 #include "zone_stream_test_utils.h"
 
 using namespace zonetest;
@@ -136,6 +137,23 @@ TEST_F(BridgeComponentTest, TheBridgePumpsMovedAndAreReachedThroughTheAccessor) 
     eq.Bridge().ProcessBridgeIntents();
     eq.Bridge().ProcessBridgeEvents();
     SUCCEED();
+}
+
+// B1025-H2: the stock window's page buttons push HotbarPageChangedIntent;
+// the pump routes it to the model's setCurrentPage(), which clamps and
+// rejects out-of-range pages.
+TEST_F(BridgeComponentTest, HotbarPageChangedIntentMovesTheModelPage) {
+    ASSERT_NE(eq.GetHotbarModel(), nullptr);
+    EXPECT_EQ(eq.GetHotbarModel()->currentPage(), 0);
+
+    bridge.pushIntent(eqt::events::HotbarPageChangedIntent{4});
+    eq.Bridge().ProcessBridgeIntents();
+    EXPECT_EQ(eq.GetHotbarModel()->currentPage(), 4);
+
+    // Out-of-range pages are the model's to refuse, not the intent's.
+    bridge.pushIntent(eqt::events::HotbarPageChangedIntent{77});
+    eq.Bridge().ProcessBridgeIntents();
+    EXPECT_EQ(eq.GetHotbarModel()->currentPage(), 4);
 }
 
 }  // namespace

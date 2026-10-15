@@ -46,7 +46,7 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 | Player status | Top-left | `PlayerStatsData` | `renderPlayerStatus()` |
 | Target info | Top-right | `TargetInfoData` | `renderTargetInfo()` |
 | Chat | Bottom-left | `ChatPanelState` | `renderChatPanel()` |
-| Hotbar | Bottom-center | `HotbarPanelState` (10 slots) | `renderHotbar()` |
+| Hotbar | Stock Titanium HotButtonWnd (one visible window, paged 2x5 slots) | `HotbarPanelState` | `renderHotbar()` |
 | Spell gems | Bottom-right | `SpellGemPanelState` (8 gems) | `renderSpellGemPanel()` |
 | Buff bar | Above chat | `BuffBarState` (max 25) | `renderBuffBar()` |
 | Casting bar | Center-bottom | `CastingBarState` | `renderCastingBar()` |
