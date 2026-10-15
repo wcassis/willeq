@@ -614,19 +614,18 @@ EXEMPT_GROUPS = {
     ("SurfaceMap", "getMinY"): "B492",
     ("WindController", "getWindMagnitude"): "B492",
     ("(free)", "createRenderer"): "B493",
-    ("CharacterModelView", "getCurrentGender"): "B493",
-    ("CharacterModelView", "getCurrentRaceId"): "B493",
     ("CharacterModelView", "getPrimaryWeaponId"): "B493",
+    # B888-CC2 (#204): getRotationY is still zero-caller -- the preview host
+    # OWNS its own spin angle and only ever SETS the model to it (never
+    # reads), so nothing in production or tests calls the getter.
     ("CharacterModelView", "getRotationY"): "B493",
     ("CharacterModelView", "getSecondaryWeaponId"): "B493",
-    ("CharacterModelView", "hasCharacterModel"): "B493",
     ("CharacterModelView", "hasPrimaryWeapon"): "B493",
     ("CharacterModelView", "hasSecondaryWeapon"): "B493",
     ("CharacterModelView", "isDragging"): "B493",
     ("CharacterModelView", "onMouseDown"): "B493",
     ("CharacterModelView", "onMouseMove"): "B493",
     ("CharacterModelView", "onMouseUp"): "B493",
-    ("CharacterModelView", "setRotationY"): "B493",
     ("GraphicalRenderer", "getRenderQuality"): "B493",
     ("AnimatedTextureManager", "getAnimatedTextureCount"): "B494",
     ("AnimatedTextureManager", "getCurrentTexture"): "B494",
@@ -1057,6 +1056,17 @@ EXEMPT_TESTS_GROUPS = {
     ("BuffManager", "getPetBuffsOwnerId"): "observer",
     ("BuffManager", "hasEntityBuff"): "observer",
     ("BuffManager", "hasPlayerBuff"): "observer",
+    # B888-CC2 (#204): the pre-zone preview's observation windows. The host
+    # class (CharPreviewScene) is thin/render-thread-only, exercised live in
+    # the visual gate, not headless; modelRace is the test's window onto its
+    # rebuild-on-change bookkeeping. CharacterModelView's race/gender getters
+    # are the headless model leg's (test_char_preview.cpp) window onto which
+    # body the paperdoll actually stood up -- the "right race model is in
+    # the view" assertion; the class's live callers are setCharacter/
+    # hasCharacterModel, wired by the preview host and the paperdoll.
+    ("CharPreviewScene", "modelRace"): "observer",
+    ("CharacterModelView", "getCurrentGender"): "observer",
+    ("CharacterModelView", "getCurrentRaceId"): "observer",
     ("CharacterModelView", "isReady"): "observer",
     ("CombatManager", "GetLootSubState"): "observer",
     ("CombatManager", "IsAutoLootEnabled"): "observer",

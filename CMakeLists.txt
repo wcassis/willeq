@@ -849,6 +849,11 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/char_select_screen.cpp
         src/client/graphics/ui/char_select_panel.cpp
         src/client/graphics/ui/char_select_host.cpp
+        # B888-CC2 (#204): the pre-zone 3D preview -- device-free appearance
+        # selection + the CharacterModelView host (the select/creation model,
+        # the Rotate spin).
+        src/client/graphics/ui/char_preview_host.cpp
+        src/client/graphics/ui/char_preview_scene.cpp
         # T436 (board B429): the merchant, bank and cursor-attachment
         # windows -- one TU per panel (M00).
         src/client/graphics/ui/merchant_panel.cpp
