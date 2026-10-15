@@ -344,6 +344,15 @@ struct HotbarActivateIntent {
     std::string emoteText;  // For emote buttons
 };
 
+// B1025-H2 (#345): the hotbar window's page buttons. The page lives in
+// HotbarModel (the one source of truth -- H-1's setCurrentPage seam existed
+// exactly for this), so the intent carries the target page and the consumer
+// routes it to the model. HotbarModel::setCurrentPage() republishes the page
+// via HotbarSlotAssigned, so the panel state follows on its own.
+struct HotbarPageChangedIntent {
+    int page = 0;
+};
+
 // --- Inventory ---
 
 struct MoveItemIntent {
@@ -506,6 +515,7 @@ using RendererIntent = std::variant<
     EffectsVolumeChangeIntent,
     // Hotbar (D20b2)
     HotbarActivateIntent,
+    HotbarPageChangedIntent,   // B1025-H2
     // Tradeskill
     TradeskillCombineIntent,
     TradeskillCloseIntent,

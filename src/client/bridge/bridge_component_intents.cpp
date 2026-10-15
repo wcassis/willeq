@@ -798,6 +798,14 @@ void eqt::bridge::BridgeComponent::onHotbarActivateIntent(const eqt::events::Hot
 	}
 }
 
+// B1025-H2: the hotbar window's page buttons. The page lives in HotbarModel
+// (the one source of truth); setCurrentPage() rejects out-of-range values and
+// republishes the whole page via HotbarSlotAssigned, so the panel state
+// follows on its own.
+void eqt::bridge::BridgeComponent::onHotbarPageChangedIntent(const eqt::events::HotbarPageChangedIntent& i) {
+	if (ctx_.hotbar_model) ctx_.hotbar_model->setCurrentPage(i.page);
+}
+
 // Tradeskill intents (D20b1)
 void eqt::bridge::BridgeComponent::onTradeskillCombineIntent(const eqt::events::TradeskillCombineIntent& i) {
 	// B899, MEASURED (UIGAP-ORACLE 215 combine.tsv row 7): a stack in the
@@ -1122,6 +1130,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::MusicVolumeChangeIntent& i) { onMusicVolumeChangeIntent(i); },
 			[this](const eqt::events::EffectsVolumeChangeIntent& i) { onEffectsVolumeChangeIntent(i); },
 			[this](const eqt::events::HotbarActivateIntent& i) { onHotbarActivateIntent(i); },
+			[this](const eqt::events::HotbarPageChangedIntent& i) { onHotbarPageChangedIntent(i); },
 			[this](const eqt::events::TradeskillCombineIntent& i) { onTradeskillCombineIntent(i); },
 			[this](const eqt::events::TradeskillCloseIntent& i) { onTradeskillCloseIntent(i); },
 			[this](const eqt::events::RecipeDetailsRequestIntent& i) { onRecipeDetailsRequestIntent(i); },
