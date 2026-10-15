@@ -457,6 +457,8 @@ Zone loading runs on a dedicated **LoadingThread** that owns the GL context duri
 
 ## Held items (weapons, shields, lanterns at the point bones)
 
+- B1065: every in-scene entity's items are placed every frame (`activeEntities_` membership no longer gates it); point bones come from `resolveHeldItemBones()` using the skeleton's own modelCode (fallback models have their own `*_point` names); held items draw with back-face culling ON (`kHeldItemBackfaceCulling`: a shield's back skin is its outer surface).
+
 **One owner: `include/client/graphics/eq/bone_attachment.h`.**
 `computeHeldItemTransform(bone)` is the matrix that takes an equipment mesh
 (Irrlicht coordinates, centre already added by `src/client/graphics/eq/equipment_actor_geometry.cpp`)
