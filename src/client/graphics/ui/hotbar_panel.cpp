@@ -53,7 +53,7 @@ HotbarHit hitTestHotbar(const UILayout& layout, HotbarPanelState& state,
     if (inside(HotbarLayout::pageLeftRect(window), x, y)) return HotbarHit::PageLeft;
     if (inside(HotbarLayout::pageRightRect(window), x, y)) return HotbarHit::PageRight;
     for (int i = 0; i < HotbarPanelState::SLOT_COUNT; ++i) {
-        if (inside(HotbarLayout::slotRect(window, i), x, y)) {
+        if (inside(HotbarLayout::slotRect(window, i, layout.hotbarColumns), x, y)) {
             state.hoveredSlot = i;
             return HotbarHit::Slot;
         }
@@ -91,7 +91,7 @@ void renderHotbar(UIRenderer& ui, const UILayout& layout,
         "1", "2", "3", "4", "5", "6", "7", "8", "9", "0"};
 
     for (int i = 0; i < HotbarPanelState::SLOT_COUNT; ++i) {
-        const auto slotRect = HotbarLayout::slotRect(window, i);
+        const auto slotRect = HotbarLayout::slotRect(window, i, layout.hotbarColumns);
         ui.drawRect(slotRect, kSlotBg);
         ui.drawFrame(slotRect, state.hoveredSlot == i
             ? irr::video::SColor(255, 160, 170, 200) : kFrame);

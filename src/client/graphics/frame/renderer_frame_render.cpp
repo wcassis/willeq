@@ -711,9 +711,10 @@ void FrameComponent::renderStaticUI() {
         renderInventoryPopup(uiRenderer_->layer(), uiLayout_, inventoryState_);
         renderSpellbookPopup(uiRenderer_->layer(), uiLayout_, spellbookState_);
         renderSkillsPopup(uiRenderer_->layer(), uiLayout_, skillsPopupState_);
-        // T290: last of the center popups, so it is on top. It only draws
-        // while the game says a corpse is open, and opening one closes the
-        // other three (IrrlichtBridge's LootWindowOpened arm).
+        // T290: drawn after the inventory/spellbook/skills popups. It only
+        // draws while the game says a corpse is open; since B1075 it sits
+        // beside the inventory (PairLeft) and opening it closes only what
+        // the co-open table says (IrrlichtBridge's LootWindowOpened arm).
         renderLootPopup(uiRenderer_->layer(), uiLayout_, lootState_);
         // T415 (B321): the tradeskill container window, the last centre
         // popup, drawn after the loot popup for the same reason -- the

@@ -837,6 +837,11 @@ EXEMPT_GROUPS = {
 
 EXEMPT_TESTS_GROUPS = {
     ("(free)", "ComputeHelpCoverage"): "seam",
+    # B1075 (#395): the layout table's row -> rect map. Every arm forwards to
+    # the UILayout member or <Window>Layout::windowRect() the window's own
+    # render body and hit test call; the reader is the co-open census
+    # (test_ui_layout_coopen), which asserts the required sets over it.
+    ("(free)", "windowRectFor"): "observer",
     # B1069 (#389): the playback DEVICE rate. The production path is
     # main.cpp -> setConfiguredDeviceSampleRate -> AudioManager ->
     # MiniaudioBackend::setDeviceSampleRate -> init/start (whose INFO line
