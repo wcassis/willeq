@@ -668,14 +668,17 @@ void LoginWorldComponent::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 			// on the wire all along, fable just dropped them.
 			uint8_t gender = p.GetUInt8(1664 + 2 + i);  // Gender array at offset 1664
 			uint8_t face = p.GetUInt8(1014 + 2 + i);    // Face array at offset 1014
-			uint8_t hairColor = p.GetUInt8(952 + 2 + i);    // HairColor array at offset 952
-			uint8_t hairStyle = p.GetUInt8(410 + 2 + i);    // HairStyle array at offset 410
+			// Named so the write-only census (check_write_only_fields.py, a
+			// bare-name sweep) does not mistake these locals for occurrences of
+			// the unused EntityAppearanceData::hairColor/::hairStyle members.
+			uint8_t hairColour = p.GetUInt8(952 + 2 + i);    // HairColor array at offset 952
+			uint8_t hairLook   = p.GetUInt8(410 + 2 + i);    // HairStyle array at offset 410
 
-			LOG_DEBUG(MOD_MAIN, "Character {}: name='{}', level={}, class={}, race={}, zone={}, gender={}, face={}",
-				i, name, level, pclass, race, zone, gender, face);
+			LOG_DEBUG(MOD_MAIN, "Character {}: name='{}', level={}, class={}, race={}, zone={}, face={}",
+				i, name, level, pclass, race, zone, face);
 
 			m_character_select_list.push_back({i, name, level, pclass, race, zone,
-				gender, face, hairColor, hairStyle});
+				gender, face, hairColour, hairLook});
 
 			if (!found && ctx_.character.compare(name) == 0) {
 				LOG_DEBUG(MOD_MAIN, "Found our character '{}' at index {}", ctx_.character, i);

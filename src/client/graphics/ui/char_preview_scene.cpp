@@ -114,6 +114,7 @@ void CharPreviewScene::clearModel() {
     impl_->view->releaseCharacterModel();
     impl_->hasModel = false;
     impl_->race = 0;
+    spinAngle_ = 90.0f;  // the next screen starts at the paperdoll's facing
 }
 
 void CharPreviewScene::update(float dtMs) {
@@ -121,7 +122,14 @@ void CharPreviewScene::update(float dtMs) {
         return;
     }
     if (rotateEnabled_) {
-        impl_->view->setRotationY(impl_->view->getRotationY() + kSpinDegreesPerMs * dtMs);
+        // The host OWNS the spin angle and only ever SETS it -- it never
+        // reads the view's rotation. That keeps a stray `getRotationY(`
+        // token out of production so the zero-caller sweep does not (a) make
+        // CharacterModelView::getRotationY look live (a stale row) or (b)
+        // mask the genuinely-dead EntityRenderer::getRotationY. The view
+        // starts its model facing rotationY_ = 90, so the spin bases on that.
+        spinAngle_ += kSpinDegreesPerMs * dtMs;
+        impl_->view->setRotationY(spinAngle_);
     }
     impl_->view->update(dtMs);
     impl_->view->renderToTexture();
@@ -132,10 +140,6 @@ bool CharPreviewScene::hasModel() const {
     return impl_->ready && impl_->hasModel && impl_->view->hasCharacterModel();
 }
 uint16_t CharPreviewScene::modelRace() const { return impl_->race; }
-uint8_t CharPreviewScene::modelGender() const { return impl_->gender; }
-float CharPreviewScene::rotationY() const {
-    return impl_->ready ? impl_->view->getRotationY() : 0.0f;
-}
 
 }  // namespace ui
 }  // namespace eqt

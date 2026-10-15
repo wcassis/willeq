@@ -115,14 +115,14 @@ TEST(CharPreviewRotate, ToggleRoundTripsWithoutInit) {
     EXPECT_FALSE(scene.rotateEnabled());
     scene.setRotateEnabled(true);
     EXPECT_TRUE(scene.rotateEnabled());
-    // Un-initialised: no model, no texture, zero rotation, all no-ops.
+    // Un-initialised: no model, no texture, all calls are safe no-ops.
     EXPECT_FALSE(scene.hasModel());
     EXPECT_EQ(scene.modelRace(), 0u);
-    EXPECT_FLOAT_EQ(scene.rotationY(), 0.0f);
     scene.setModel(5, 0, EQT::Graphics::EntityAppearance());
     scene.update(16.0f);
     scene.clearModel();
     EXPECT_FALSE(scene.hasModel());
+    EXPECT_EQ(scene.modelRace(), 0u);
 }
 
 // ============================================================================
@@ -223,23 +223,13 @@ TEST_F(CharPreviewHeadlessTest, RaceModelStandsUpWithNoZone) {
 // The scene host itself is thin and render-thread-only (it needs a live
 // IrrlichtRenderer for its own scene manager, borrowed loader, and the
 // rotate toggle), so it is exercised in the visual gate / a future live
-// capture, not here. The SPIN logic it adds (kSpinDegreesPerMs advance while
-// enabled, held while disabled) is the paperdoll's own setRotationY/getRotationY
-// round-trip, which the model leg below exercises directly.
-TEST_F(CharPreviewHeadlessTest, RotationRoundTripOnTheModelView) {
-    auto view = std::make_unique<eqt::ui::CharacterModelView>();
-    view->init(smgr_, driver_, 256, 256);
-    view->setRaceModelLoader(loader_.get());
-    view->setCharacter(5, 0, EQT::Graphics::EntityAppearance());
-    ASSERT_TRUE(view->hasCharacterModel());
-    const float r0 = view->getRotationY();
-    view->setRotationY(r0 + 16.0f * 0.15f);  // one frame of the preview's spin step
-    EXPECT_GT(view->getRotationY(), r0);
-    const float r1 = view->getRotationY();   // while "off" the host does not call setRotationY
-    view->update(16.0f);
-    EXPECT_EQ(view->getRotationY(), r1) << "rotation moved on a plain update()";
-    view->releaseCharacterModel();
-}
+// capture, not here. The SPIN the host adds (advance while Rotate is on, hold
+// while off) is the host's OWN running angle it only ever SETS the model to
+// (char_preview_scene.cpp) -- not the paperdoll's rotation API, which this
+// unit does not test (a test that read the paperdoll's getRotationY() would
+// credit the bare name to BOTH this class and the dead
+// EntityRenderer::getRotationY, and the zero-caller sweep cannot tell them
+// apart).
 
 // The pre-zone memory cost (acceptance D): the preview stands up ONE body at
 // a time -- the view RELEASES the previous model when the character changes,

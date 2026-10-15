@@ -69,13 +69,19 @@ The model-region pixel diffs were measured with
 `tests/test_char_preview.cpp` (new; `ctest -R CharPreview`):
 - `CharPreviewAppearance.*` -- device-free: the right race/gender/appearance
   per state, and the invalid cases (no race, no row).
+- `CharPreviewRotate.ToggleRoundTripsWithoutInit` -- the Rotate flag round-
+  trips and the host is a safe no-op before init().
 - `CharPreviewHeadlessTest.*` -- the model leg under EDT_NULL + the shipped db
   + the real client tree (skips when absent): a Human body stands up on
-  `CharacterModelView` with NO zone; the rotation round-trips on the model view
-  (the spin's advance while enabled / hold while disabled); and two distinct
-  races (Human, Dwarf) resolve to DIFFERENT model codes through the production
-  loader -- the "right race model in the view" net, checked live (no blessed
-  golden).
+  `CharacterModelView` with NO zone, the pre-zone memory delta (the acceptance
+  D leg), and two distinct races (Human, Dwarf) resolve to DIFFERENT model
+  codes through the production loader -- the "right race model in the view"
+  net, checked live (no blessed golden). The host's own spin (advance its
+  running angle while Rotate is on, hold while off) is render-thread-only and
+  exercised in the visual gate, not here -- a headless test that read the
+  paperdoll's `getRotationY()` would credit the bare name to both this class
+  and the dead `EntityRenderer::getRotationY`, so the host owns its angle and
+  only ever SETS it (see the test's note).
 
 B1029's call-order trap, cited in the test header: a fresh `RaceModelLoader`
 loads nothing until setClientPath() + setConstrainedTextureCache() on the

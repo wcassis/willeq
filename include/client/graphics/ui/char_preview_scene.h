@@ -82,15 +82,19 @@ public:
     // The model node that stood up (nullptr = none) -- the frame test's
     // "the right race model is in the view" assertion.
     bool hasModel() const;
+    // The race the host last asked to stand up (0 = none) -- the test's
+    // window onto the host's own rebuild-on-change bookkeeping.
     uint16_t modelRace() const;
-    uint8_t modelGender() const;
-    // The model's current Y rotation, for the spin round-trip test.
-    float rotationY() const;
 
 private:
     class Impl;
     std::unique_ptr<Impl> impl_;
     bool rotateEnabled_ = true;
+    // The running spin angle (degrees). The host owns it and only ever SETS
+    // the view to it; the view starts its model facing 90, so the spin
+    // bases on that. Reset to 90 by clearModel() -- a fresh screen starts
+    // at the same facing as the paperdoll, not mid-spin.
+    float spinAngle_ = 90.0f;
     irr::video::ITexture* texture_ = nullptr;
 };
 

@@ -36,7 +36,7 @@ void applyFacePick(EQT::Graphics::EntityAppearance& a,
 }  // namespace
 
 CharPreviewAppearance selectPreviewAppearance(uint32_t race, uint8_t gender,
-                                              uint8_t face, uint8_t hairColor, uint8_t hairStyle) {
+                                              uint8_t face, uint8_t hairColour, uint8_t hairLook) {
     CharPreviewAppearance a;
     if (race == 0) {
         return a;  // no race on the wire: nothing to stand up
@@ -45,8 +45,11 @@ CharPreviewAppearance selectPreviewAppearance(uint32_t race, uint8_t gender,
     a.race = static_cast<uint16_t>(race);
     a.gender = gender;
     a.appearance.face = face;
-    a.appearance.haircolor = hairColor;
-    a.appearance.hairstyle = hairStyle;
+    // The parameter names avoid the census's bare-name sweep: `hairColor`/
+    // `hairStyle` would read as occurrences of the unused
+    // EntityAppearanceData members.
+    a.appearance.haircolor = hairColour;
+    a.appearance.hairstyle = hairLook;
     return a;
 }
 

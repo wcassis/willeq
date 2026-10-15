@@ -38,7 +38,7 @@ struct CharPreviewAppearance {
  * wire fields B888-CC2 added to CharacterSelectRow). No row -> invalid.
  */
 CharPreviewAppearance selectPreviewAppearance(uint32_t race, uint8_t gender,
-                                              uint8_t face, uint8_t hairColor, uint8_t hairStyle);
+                                              uint8_t face, uint8_t hairColour, uint8_t hairLook);
 
 /**
  * The CREATION preview body: the sample model of the page-0 race + gender,
