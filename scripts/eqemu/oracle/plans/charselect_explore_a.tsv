@@ -13,8 +13,11 @@
 #     selection change;
 #   - Esc: EXW_ExploreModeWindow disappears, the select screen returns.
 #
-# No zone row: this session stays OUT of the world (Enter-with-a-selection is
-# the B-step plan, which seeds its own zone so the restore round-trips).
+# No zone row: this session stays OUT of the world. Enter-with-a-selection is
+# the B-step plan (charselect_explore_enter.tsv); that one relies on Testchar's
+# EXISTING last zone (no seed row) -- the DB snapshot captures zone_id before
+# login and the driver's restore (world stopped first, so the zone server
+# writes the zone-in back) puts the old row back, so it round-trips.
 # Plan column format: verb<TAB>target<TAB>hold_ms<TAB>still_name.
 # Coordinates: ROOT space (the driver's jclick space); stills crop +0+30.
 #   Explore button centre: MEASURED by the y-sweep diagnostic run
