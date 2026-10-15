@@ -166,3 +166,93 @@ The `WILLEQ_B1051_TRACE` net is RETAINED in the branch (this analysis uses it).
   - RGBA correct: `~/.hermes/profiles/dev/cache/scratch/b1051_x86_stepA_rgba/frame_000050.png`
   - traces: `<dir>/stderr.log` (WILLEQ_B1051_TRACE), logs `<dir>/client.log`
 - Pixel-diversity + trace analysis scripts: `b1051_stepA/{diver,cmp2,per,freshmat,ord}.py`
+
+## 6. Negative finding (2026-10-15, follow-up run): the offline `gles2_zone_benchmark --entity-viewer` is NOT a valid multi-buffer-ETC1 repro
+
+I tried to get a server-free x86 repro through the P47 magenta entity
+viewer (`gles2_zone_benchmark --entity-viewer --entity-viewer-race 71`
+`--eqe1-path ...`, which the tooling bills as the "etc1" leg). It renders
+the guard (race 71) with DISTINCT per-part textures — i.e. it does NOT
+reproduce the smear. The reason, verified in the tree and the binary, is
+that **the offline tool never uploads the character as compressed ETC1**:
+
+- A `--log-level DEBUG` entity-viewer run (race 71, `--eqe1-path` set)
+  produces **0** `[CONSTRAINED] ETC1 texture ... uploaded` lines and **0**
+  `[CONSTRAINED] texture ... EQE1 hit` lines — the character's per-part
+  textures are decoded to RGBA and uploaded as `glTexImage2D`, NOT through
+  `uploadCompressedETC1()`/`createETC1Storage()`.
+- Root cause in `tools/hwcaps/zone_bench_loader.cpp`: the entity path
+  routes through `RaceModelLoader::getMeshForRace()` (static, unmasked S3D
+  decode) plus the `--animate`-gated `preloadModelData()` (P46d comment at
+  line ~893). The benchmark's `ConstrainedTextureCache` is wired with only
+  the zone/`_obj.s3d` archives as its `ArchiveTextureSource`, so the
+  character's per-part names do not resolve to EQE1 compressed entries —
+  `findCompressedEntry()` misses and the decode path is taken. Only the
+  zone meshes (single-buffer, separate loader) actually go ETC1, which is
+  why the zone renders correct in this tool and always has.
+- The deeper reason: the benchmark's EQE1 name→pack resolver is wired ONLY
+  under `config.compositeEntities` (`zone_bench_loader.cpp:818-838`, the
+  T284 comment: it is "the only x86 harness that drives the COMPOSITE path
+  without a server"). The plain `--entity-viewer` (multi-buffer, non-
+  composite) run opens the zone zone/obj packs at load but sets no
+  `eqe1ArchiveResolver_`, so a character per-part name (e.g.
+  `qcfch0001.bmp`) that lives in a `*_chr.eqe1` pack has no archive to
+  resolve from — `findCompressedEntry()` returns null and the S3D RGBA
+  decode is taken. This mirrors the tool's stated scope: it is a
+  COMPOSITE harness, not a multi-buffer-character-ETC1 harness.
+- So the "etc1" vs "rgba" legs in `--entity-viewer` differ only in the
+  zone texture source, not in the character path. The character is RGBA in
+  BOTH. This is consistent with P46d's long comment: the benchmark does not
+  reproduce the live client's production character-ETC1 wiring.
+
+**Consequence:** the live-client path (`EntityPrepWorker` →
+`preloadModelData()` → `compressedEntries_` → `uploadCompressedETC1()`)
+cannot be exercised offline. The offline character S3D (the same
+`/mnt/projects/EverQuestP1999` the live run reads) carries RAW texture
+bytes, so `getOrLoadTexture()`/`buildMeshFromGeometry()` decode RGBA from
+S3D and never ask the cache for the name — the compressed lookup never
+fires even with the EQE1 resolver wired (verified: wiring the resolver for
+the non-composite leg too, `zone_bench_loader.cpp` step-11 block, still
+yields 0 `EQE1 hit` / 0 `ETC1 texture ... uploaded` lines for a race-71
+entity-viewer run, because the per-part names resolve from S3D raw bytes
+first). The LIVE client is the opposite: its character S3D parse reports
+"472 textures with 0 raw bytes (0 released at once: EQE1 authoritative)"
+(client.log 05:54:58.408), so every per-part name IS a compressed lookup.
+That divergence — offline S3D raw vs live S3D empty — is the structural
+reason the offline tool can never reproduce this bug.
+
+So the only valid x86 repro is the live `willeq` client against a live
+server — which is what step (a)'s stills already were. **A fix must be
+verified live; it cannot be verified offline.** (This is a negative
+result, not a fix: nothing is claimed to be correct or incorrect about
+the client's ETC1 path beyond step (a)'s "multi-buffer ETC1 client path
+smears on llvmpipe.")
+
+## 7. Server state (2026-10-15 ~07:00Z, follow-up run)
+
+Every eqemu lane is down (T497 probe: container running, zero server
+processes, `eqemu_stack_ready: NO`):
+
+| lane | host | loginserver | world | ready |
+|------|------|-------------|-------|-------|
+| 1 | 172.16.200.99 | DOWN | DOWN | NO |
+| 2 | 172.16.200.98 | DOWN | DOWN | NO |
+| 3 | 172.16.200.97 | DOWN | DOWN | NO |
+| 4 | 172.16.200.96 | DOWN | DOWN | NO |
+| 5 | 172.16.200.205 | DOWN | DOWN | NO |
+| card | 10.0.30.23 | — | — | ssh `Permission denied (publickey,password)`, no E |
+
+`10.0.30.23` (the card's named play server, the NAS akk-stack) is not even
+ssh-reachable from hermes-ext, so I cannot inspect or start its stack.
+Per the card ("if down, block with the probe evidence — do not re-point at
+another server without a ruling"), I am blocking rather than re-pointing.
+
+**Remaining (all require a live server; none can be done offline):**
+- (B) Pin the client multi-buffer ETC1 mechanism with a live
+  `WILLEQ_B1051_TRACE` + a per-`entry.etc1Data` content-hash at upload
+  (refute/confirm the data-sharing hypothesis) and implement the fix.
+- (B) Live x86 verification: the guard (Guard_Treitan, race 71, qeynos2)
+  rendering ETC1 == RGBA with distinct per-part textures.
+- (C) XU4 after-stills (server + XU4; ARM binary from CI `ci-arm/<sha>/`;
+  never compile on the box).
+- (D) x86 gate goldens; (E) MR !13 pipeline green at the new head.
