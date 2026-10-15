@@ -1165,9 +1165,11 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
         explore-esc)
             # B888-CC3 (#204): leave Explore mode with Esc (EXW_InfoLabel2:
             # "Press Enter to enter the game, or press Esc to leave explore
-            # mode."). Lowercase keysym: this rig's xdotool rejects `Esc`
-            # ("No such key name 'Esc'"), `esc` is the keysym.
-            xdotool key esc
+            # mode."). The X11 keysym is `Escape` (XK_Escape 0xFF1B) -- this
+            # rig's xdotool rejects both `Esc` and the lowercase `esc`
+            # ("No such key name"), so the first two A-run attempts failed at
+            # this step; `Escape` is the canonical name.
+            xdotool key Escape
             sleep 3 ;;
         hold-d)
             # B888-CC3 (#204): hold the d key (Explore camera forward) for
