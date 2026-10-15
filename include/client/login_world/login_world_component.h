@@ -185,7 +185,10 @@ public:
 	// zoning = 0: world sends the guild list, OP_ExpansionInfo and a fresh
 	// OP_SendCharInfo), with the screen on and the previous list dropped, so
 	// the screen comes up only on the NEW list. Body: login_world_char_select.cpp.
-	void ReturnToCharacterSelect();
+	// B1072: also the landing of a zone-in that never completed
+	// (EverQuest::AbandonZoneConnect, zone_connect.cpp); `why` names the cause
+	// in the log line.
+	void ReturnToCharacterSelect(const char* why = "camp");
 	/** True from ReturnToCharacterSelect() until the fresh OP_SendCharInfo. */
 	bool AwaitingFreshCharacterList() const { return m_awaiting_fresh_list; }
 	/** How many times this session went back to the character-select screen. */

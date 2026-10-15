@@ -54,6 +54,7 @@
 
 #include "common/net/posix_udp_transport.h"
 #include "client/animation_constants.h"
+#include "client/zone/zone_component.h"  // B1072: kZoneConnectTimeoutMs
 #include <array>
 #include <cstdlib>
 #include <iomanip>
@@ -105,6 +106,7 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	              [this] { StopUpdateLoop(); },
 	              [this] { OnGameStateComplete(); },
 	              [this] { ConnectToZone(); },
+	              [this] { TickZoneConnect(std::chrono::steady_clock::now()); },
 	              [this](bool sneak) { SetSneak(sneak); },
 	              m_update_running,
 	              m_pending_logout_disconnect,
@@ -835,13 +837,13 @@ void EverQuest::ConnectToZone()
 	// S04: inventory_manager, spell DB and buff_manager are all
 	// pre-allocated in EverQuest constructor / Application::initialize()
 
-	EQ::Net::DaybreakConnectionManagerOptions zone_opts;
-	auto transport = std::make_unique<EQ::Net::PosixUdpTransport>();
-	m_zone_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(zone_opts, std::move(transport)));
-	m_zone_connection_manager->OnNewConnection(std::bind(&EverQuest::ZoneOnNewConnection, this, std::placeholders::_1));
-	m_zone_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::ZoneOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-	m_zone_connection_manager->OnPacketRecv(std::bind(&EverQuest::ZoneOnPacketRecv, this, std::placeholders::_1, std::placeholders::_2));
-	m_zone_connection_manager->Connect(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort());
+	// B1072 (#392): a fresh ZoneServerInfo arms the zone-IN bound; the
+	// session itself is OpenZoneConnection()'s (zone_connect.cpp), which the
+	// one retry reuses.
+	m_zone_connect_watchdog.Arm(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort(),
+		std::chrono::steady_clock::now(), eqt::zone::ZoneComponent::kZoneConnectTimeoutMs,
+		eqt::zone::ZoneComponent::kZoneConnectRetries);
+	OpenZoneConnection(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort());
 }
 
 void EverQuest::ZoneOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection)
@@ -877,6 +879,13 @@ void EverQuest::ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Dayb
 		m_zone->ZoneEntrySent() = false;
 		m_zone_connection.reset();
 		SetLoadingPhase(LoadingPhase::ZONE_CONNECTING);
+		// B1072: this reconnect was unbounded too; bound it the same way
+		// unless a zone-in attempt already holds the deadline.
+		if (!m_zone_connect_watchdog.Armed()) {
+			m_zone_connect_watchdog.Arm(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort(),
+				std::chrono::steady_clock::now(), eqt::zone::ZoneComponent::kZoneConnectTimeoutMs,
+				eqt::zone::ZoneComponent::kZoneConnectRetries);
+		}
 		m_zone_connection_manager->Connect(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort());
 	}
 }

@@ -1,0 +1,5 @@
+  440 Hz  mix SINAD  153.4 dB | device SINAD   75.9 dB, worst spur    4340 Hz at  -84.2 dBc | peak dev 0.2497 mix 0.2500 | len ratio 2.17687
+ 1000 Hz  mix SINAD  153.6 dB | device SINAD   62.4 dB, worst spur    4900 Hz at  -69.5 dBc | peak dev 0.2484 mix 0.2500 | len ratio 2.17687
+ 3000 Hz  mix SINAD  154.0 dB | device SINAD   43.2 dB, worst spur    6900 Hz at  -49.7 dBc | peak dev 0.2368 mix 0.2500 | len ratio 2.17687
+ 6000 Hz  mix SINAD  154.0 dB | device SINAD   30.8 dB, worst spur    9900 Hz at  -37.4 dBc | peak dev 0.2055 mix 0.2500 | len ratio 2.17687
+ 9000 Hz  mix SINAD  154.1 dB | device SINAD   15.4 dB, worst spur   13050 Hz at  -20.1 dBc | peak dev 0.1666 mix 0.2499 | len ratio 2.17687
