@@ -22,6 +22,14 @@ SKIPs there and runs on dev-u24 / hermes-ext. Its text reader is checked the sam
 `OracleGlyphReader` (`scripts/eqemu/oracle/tests/oracle_glyphs_test.py`, B1059: pinned labelled
 crops under `/mnt/projects/fable/review`, read exactly or UNKNOWN, never wrong; same SKIP rule).
 
+Live scenarios are separate from CI too: `scripts/scenario.sh <name>` on an eqemu lane (CLAUDE.md,
+"The scenario lane"); their state machines run offline in the suite. `zone_connect_timeout` (B1072,
+#392) is the zone-IN bound's live leg: `/camp` to character select, a dead zone port for two
+connects, Enter World -- back at character select after the attempt plus ONE retry
+(`ZoneComponent::kZoneConnectTimeoutMs` each), then Enter World again and zone in
+(`EQEMU_LANE=2 bash scripts/scenario.sh zone_connect_timeout --unit B1072`; offline net
+`test_zone_connect_timeout`).
+
 | | |
 | --- | --- |
 | GitLab | `https://gitlab.goldfarm.local`, project `willeq/willeq` (id 1) |
@@ -914,6 +922,34 @@ net: `test_zone_budget_census` (pure python, every pipeline),
 `zone_budget_census_smoke` (the 3-zone smoke, label `slow`) and
 `test_zone_census_pack_selfheal` (the self-heal's exit-code contract on stub
 verify/builder binaries, pure bash+python).
+
+## The keyboard step walk (B1067, #387)
+
+A live lane scenario, not a pipeline stage: it needs an eqemu lane, an X
+display and an x86 GLES2 build (`build-gles2/bin/willeq`,
+`scripts/build-gles2-x86.sh`). Keyboard movement is the only route through the
+renderer's region-triangle collision (`PlayerCameraComponent::
+resolveIrrlichtCollision`); `/move`, `--script` and `--scenario` resolve on the
+game thread against the zone map, so none of them can see a step defect there.
+
+```bash
+EQEMU_LANE=1 bash scripts/eqemu/step_walk.sh --leg both    # a VM lane: both legs
+EQEMU_HOST=local bash scripts/eqemu/step_walk.sh --leg rise   # the local lane: one leg per run
+```
+
+It seeds Testchar in qeynos2 beside the street curb at renderer Y 391.75 (a
+1.0 rise, coordinates and the map evidence in `review/B1067/README.md`), runs
+the client on Xvfb with `--egl-x11` and `--pose-log`, holds W with `xdotool`
+after the loader's `Game ready!` line, and `scripts/eqemu/step_walk_verdict.py`
+decides from the pose rows alone: PASS when the player's Y got at least 2 units
+past the edge and its Z changed by at least 0.75 of the rise in the right
+direction. Exit 0 every leg PASS, 1 a leg FAILED, 2 no verdict, 64 lock held,
+65 lane problem. **On the local lane it never stops the world or bounces a
+zone** (the XU4 play rig logs into that stack): the pose is put back with a
+plain `UPDATE` after logout. On a VM lane the seed is written with the world
+down (a zone hands back its LINKDEAD copy of a character's pose otherwise) and
+the standard snapshot restore runs at the end. The unit net for the same
+decision is `test_bsp_ground_step`.
 
 ## `review/` citations
 

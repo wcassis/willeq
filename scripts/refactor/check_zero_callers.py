@@ -838,6 +838,20 @@ EXEMPT_GROUPS = {
 
 EXEMPT_TESTS_GROUPS = {
     ("(free)", "ComputeHelpCoverage"): "seam",
+    # B1069 (#389): the playback DEVICE rate. The production path is
+    # main.cpp -> setConfiguredDeviceSampleRate -> AudioManager ->
+    # MiniaudioBackend::setDeviceSampleRate -> init/start (whose INFO line
+    # reports the same values these read); the accessors are
+    # test_audio_device_rate's observation window on it, setUseNullBackend
+    # the seam that opens miniaudio's null device on a host with no audio.
+    ("AudioManager", "getDeviceSampleRate"): "observer",
+    ("DeviceRateAdapter", "mixerFramesPulled"): "observer",
+    ("MiniaudioBackend", "configuredSampleRate"): "observer",
+    ("MiniaudioBackend", "configuredFormatName"): "observer",
+    ("AudioManager", "getDeviceFormat"): "observer",
+    ("MiniaudioBackend", "isResampling"): "observer",
+    ("MiniaudioBackend", "requestedDeviceSampleRate"): "observer",
+    ("MiniaudioBackend", "setUseNullBackend"): "seam",
     # B976 (#294): the zone depth tie-break's pure C++ decision -- the C++
     # mirror of the GLSL line EQT_DEPTH_TIE_VS_LINES that production executes
     # in the region vertex programs. Its only caller is the unit test

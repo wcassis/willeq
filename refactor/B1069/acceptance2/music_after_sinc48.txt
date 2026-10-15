@@ -1,0 +1,9 @@
+device 48000 Hz 1440000 frames; mix 22050 Hz 661500 frames
+length ratio dev/mix = 2.176871 (ideal 2.176871)
+peak dev 0.6065 mix 0.6088; rms dev 0.0976 mix 0.0976
+clipped samples: dev 0 (0.000 %), mix 0 (0.000 %)
+vs band-limited reference: lag 2 frames, SNR 32.3 dB, max |err| 0.0577
+|first diff| L: at period boundaries max 0.1453 p99 0.0482; elsewhere max 0.3246 p99 0.0540
+mix |first diff| L max 0.4841 p99 0.1175
+device energy above 11025 Hz: -83.0 dB rel. total
+longest all-zero run in device stream: 47710 frames

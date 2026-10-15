@@ -335,6 +335,7 @@ SET(COMMON_SOURCES
 # Client sources (core - without main.cpp, for library)
 SET(CLIENT_CORE_SOURCES
     src/client/core/everquest.cpp
+    src/client/core/zone_connect.cpp  # B1072: the bounded zone-in connect
     src/client/core/memory_ledger.cpp
     src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
     src/client/core/memory_ledger_trace.cpp
@@ -534,6 +535,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/scenario/scenario_world_app_ui.cpp
     src/client/scenario/scenario_world_app_trade.cpp  # UIGAP-live2
     src/client/scenario/scenario_camp.cpp  # B1005 (#324)
+    src/client/scenario/scenario_zone_connect_timeout.cpp  # B1072 (#392)
     src/client/scenario/scenario_world_app_camp.cpp  # B1005
     src/client/scenario/scenario_fall_damage.cpp  # B893 (#209)
     src/client/scenario/scenario_ranged_single_shot.cpp  # B900 (#216)
@@ -697,6 +699,7 @@ IF(EQT_GRAPHICS)
         # T437 (board B435): the ground query's answer shape and the two
         # decisions that read it, device-free so they can be tested.
         src/client/graphics/player/ground_query.cpp
+        src/client/graphics/player/bsp_ground_query.cpp  # B1067: the ground ray over every BSP region it crosses
         # T461: the official camera set -- the mode table and the orbit-rig
         # geometry (device-free), the rig modes and /camera on
         # PlayerCameraComponent, and /camera's parser (device-free).
@@ -963,6 +966,7 @@ IF(WITH_AUDIO)
         src/client/audio/combat_music.cpp
         src/client/audio/audio_mixer.cpp
         src/client/audio/audio_backend.cpp
+        src/client/audio/polyphase_resampler.cpp
         src/client/audio/midi_player.cpp
         src/client/audio/sfx_manager.cpp
         src/client/audio/sound_buffer_cache.cpp

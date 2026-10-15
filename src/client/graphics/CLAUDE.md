@@ -21,7 +21,7 @@
   | `Eqe1ArchiveComponent` | `eqe1/` | EQE1 flat-pack open/resolve/index/report + the `EQT_HAS_DRM` fire-glow icospheres (L02) |
   | `OverlaysComponent` | `overlays/` | map/navmesh overlays, target outline (= inverted hull + depth pre-pass, no stencil, B1064, `target_outline_pass.h`), mouse targeting/LOS, HUD, fog, loading screen, paperdoll (L03) |
   | `DiagnosticsComponent` | `diagnostics/` | dumpScene, scene breakdown, frame-timing profiling, memory reports, the runtime debug toggles (L04) |
-  | `PlayerCameraComponent` | `player/` | `updatePlayerMovement()`, movement collision and ground height, and the ONE first-person camera formula (L05) |
+  | `PlayerCameraComponent` | `player/` | `updatePlayerMovement()`, movement collision and ground height (the ground ray tests every BSP leaf it crosses, `bsp_ground_query.cpp`, B1067), and the ONE first-person camera formula (L05) |
   | `SlashCommandsComponent` | `slash/` | `processSlashCommand()`, the registry-3 renderer command chain (L06) |
   | `SimBridgeComponent` | `sim/` | `SimulationWorker` marshaling; the worker itself is still the renderer's (L07) |
   | `ZoneStreamComponent` | `zone_stream/` | lazy/background mesh load, progressive load, PVS depth and neighbourhood (L08) |
@@ -456,6 +456,8 @@ Zone loading runs on a dedicated **LoadingThread** that owns the GL context duri
 - `held_item_candidate_search` (T485) - renders every proper signed permutation of the held-item correction on an `EntityRenderer`-built Human male at o01 and measures each item's long axis in the body frame; see "Held items" below
 
 ## Held items (weapons, shields, lanterns at the point bones)
+
+- B1065: every in-scene entity's items are placed every frame (`activeEntities_` membership no longer gates it); point bones come from `resolveHeldItemBones()` using the skeleton's own modelCode (fallback models have their own `*_point` names); held items draw with back-face culling ON (`kHeldItemBackfaceCulling`: a shield's back skin is its outer surface).
 
 **One owner: `include/client/graphics/eq/bone_attachment.h`.**
 `computeHeldItemTransform(bone)` is the matrix that takes an equipment mesh
