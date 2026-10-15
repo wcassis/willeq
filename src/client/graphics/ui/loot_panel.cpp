@@ -46,21 +46,24 @@ constexpr irr::s32 kRowGap     = 2;
 // pixel of inset top and bottom inside the 22px row.
 constexpr irr::s32 kRowIcon    = 20;
 
+// B1075 (#395): the loot window is the layout table's PairLeft popup
+// (UILayout::partnerPopup), beside the inventory -- inventory+loot is a
+// required co-open set.
 irr::s32 rowsTop(const UILayout& layout) {
     // title row + the Loot All button row above the list
-    return layout.centerPopup.UpperLeftCorner.Y + kTitleH + kPad + kButtonH + kPad;
+    return layout.partnerPopup.UpperLeftCorner.Y + kTitleH + kPad + kButtonH + kPad;
 }
 
 irr::core::rect<irr::s32> lootAllRect(const UILayout& layout) {
-    irr::s32 x = layout.centerPopup.UpperLeftCorner.X + kPad;
-    irr::s32 y = layout.centerPopup.UpperLeftCorner.Y + kTitleH + kPad;
+    irr::s32 x = layout.partnerPopup.UpperLeftCorner.X + kPad;
+    irr::s32 y = layout.partnerPopup.UpperLeftCorner.Y + kTitleH + kPad;
     return {x, y, x + kButtonW, y + kButtonH};
 }
 
 irr::core::rect<irr::s32> closeRect(const UILayout& layout) {
-    irr::s32 cx = (layout.centerPopup.UpperLeftCorner.X +
-                   layout.centerPopup.LowerRightCorner.X) / 2;
-    irr::s32 y = layout.centerPopup.LowerRightCorner.Y - kPad - kButtonH;
+    irr::s32 cx = (layout.partnerPopup.UpperLeftCorner.X +
+                   layout.partnerPopup.LowerRightCorner.X) / 2;
+    irr::s32 y = layout.partnerPopup.LowerRightCorner.Y - kPad - kButtonH;
     return {cx - kButtonW / 2, y, cx + kButtonW / 2, y + kButtonH};
 }
 
@@ -96,7 +99,7 @@ void renderLootPopup(UIRenderer& ui, const UILayout& layout,
     if (!state.isOpen) return;
 
     auto* tb = ui.getTextBatch();
-    const auto& popup = layout.centerPopup;
+    const auto& popup = layout.partnerPopup;
 
     ui.drawPanel(popup);
 
@@ -173,8 +176,8 @@ int hitTestLootRow(const UILayout& layout, const LootPanelState& state,
                    int mouseX, int mouseY) {
     if (!state.isOpen) return -1;
 
-    irr::s32 startX = layout.centerPopup.UpperLeftCorner.X + kPad;
-    irr::s32 contentW = layout.centerPopup.getWidth() - kPad * 2;
+    irr::s32 startX = layout.partnerPopup.UpperLeftCorner.X + kPad;
+    irr::s32 contentW = layout.partnerPopup.getWidth() - kPad * 2;
     if (mouseX < startX || mouseX >= startX + contentW) return -1;
 
     irr::s32 startY = rowsTop(layout);

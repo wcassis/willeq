@@ -7,6 +7,9 @@
  * follow: quote the official client's own element, map it proportionally
  * from the oracle window's size onto fable's fixed 400x350
  * `UILayout::centerPopup`, integer division, no rounding policy to drift.
+ * B1075 (#395): the box is now `UILayout::partnerPopup` -- the same 400x350,
+ * anchored PairLeft in the layout table, beside the inventory
+ * (inventory+merchant is a required co-open set).
  *
  * Source: /mnt/projects/EverQuestP1999/uifiles/default/EQUI_MerchantWnd.xml
  *
@@ -192,14 +195,14 @@ constexpr irr::s32 ORACLE_DONE_BTN_W = 64;
 constexpr irr::s32 ORACLE_DONE_BTN_H = 38;
 
 /**
- * Map an oracle-window rect into `layout.centerPopup`, proportionally.
+ * Map an oracle-window rect into `layout.partnerPopup`, proportionally.
  * THE one scaling body -- every rect below and both hit tests go through it,
  * so what is drawn and what is clicked cannot drift (T57's rule).
  */
 inline irr::core::rect<irr::s32> scaled(const UILayout& layout,
                                         irr::s32 x, irr::s32 y,
                                         irr::s32 w, irr::s32 h) {
-    const auto& popup = layout.centerPopup;
+    const auto& popup = layout.partnerPopup;
     const irr::s32 pw = popup.getWidth();
     const irr::s32 ph = popup.getHeight();
     const irr::s32 sx = popup.UpperLeftCorner.X + x * pw / ORACLE_WINDOW_W;
@@ -253,7 +256,7 @@ inline irr::core::rect<irr::s32> listRowRect(const UILayout& layout, int i) {
  * go through this, so the seven columns tile exactly.
  */
 inline irr::s32 scaledX(const UILayout& layout, irr::s32 x) {
-    const auto& popup = layout.centerPopup;
+    const auto& popup = layout.partnerPopup;
     return popup.UpperLeftCorner.X + x * popup.getWidth() / ORACLE_WINDOW_W;
 }
 
