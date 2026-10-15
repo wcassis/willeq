@@ -22,6 +22,14 @@ SKIPs there and runs on dev-u24 / hermes-ext. Its text reader is checked the sam
 `OracleGlyphReader` (`scripts/eqemu/oracle/tests/oracle_glyphs_test.py`, B1059: pinned labelled
 crops under `/mnt/projects/fable/review`, read exactly or UNKNOWN, never wrong; same SKIP rule).
 
+Live scenarios are separate from CI too: `scripts/scenario.sh <name>` on an eqemu lane (CLAUDE.md,
+"The scenario lane"); their state machines run offline in the suite. `zone_connect_timeout` (B1072,
+#392) is the zone-IN bound's live leg: `/camp` to character select, a dead zone port for two
+connects, Enter World -- back at character select after the attempt plus ONE retry
+(`ZoneComponent::kZoneConnectTimeoutMs` each), then Enter World again and zone in
+(`EQEMU_LANE=2 bash scripts/scenario.sh zone_connect_timeout --unit B1072`; offline net
+`test_zone_connect_timeout`).
+
 | | |
 | --- | --- |
 | GitLab | `https://gitlab.goldfarm.local`, project `willeq/willeq` (id 1) |
