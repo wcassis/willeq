@@ -24,6 +24,14 @@ expect "PI_LANE=3 alone"                 "rc=0 3 172.16.200.202 rock4d" \
     "export PI_LANE=3; source \"\$ENV_SH\"; $P"
 expect "listed PI_HOST alone picks lane" "rc=0 2 172.16.200.204 rock64" \
     "export PI_HOST=172.16.200.204; source \"\$ENV_SH\"; $P"
+# B1056: lane 4 is the first lane whose ssh user, publish root and DRM connector
+# differ from the others; env.sh must carry them per lane, never from the caller.
+expect "PI_LANE=4 alone (user, publish, connector)" \
+    "rc=0 4 172.16.200.206 a7s radxa /mnt/projects/fable/ci-arm64-bullseye /sys/class/drm/card0-DP-1 /home/radxa/.pi-lock" \
+    "export PI_LANE=4; source \"\$ENV_SH\"; echo rc=\$? \$PI_LANE \$PI_HOST \$PI_LANE_NAME \$PI_USER \$PI_LANE_PUBLISH \$PI_HDMI_CONN \$PI_LOCK"
+expect "lane 3 keeps user/publish/connector" \
+    "rc=0 3 user /mnt/projects/fable/ci-arm64 /sys/class/drm/card0-HDMI-A-1 /home/user/.pi-lock" \
+    "export PI_LANE=3; source \"\$ENV_SH\"; echo rc=\$? \$PI_LANE \$PI_USER \$PI_LANE_PUBLISH \$PI_HDMI_CONN \$PI_LOCK"
 # B1060: lane 5 (the Orange Pi Zero) is armhf like lane 1; both resolutions must
 # land on it, and a lane-1 shell must not reach it (nor it a lane-1 run).
 expect "PI_LANE=5 alone"                 "rc=0 5 172.16.200.207 orangepizero armhf lima" \

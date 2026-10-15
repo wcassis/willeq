@@ -88,7 +88,7 @@ for the rendered Kunark + Velious sweep (#102, `refactor/B854/RENDERED_SWEEP.md`
 
 ### The aarch64 SBC lanes (B1030, #350)
 
-The Orange Pi is **lane 1** of the lane table in `scripts/pi/env.sh` (lanes 1-3, B1030; 5, B1060); `PI_LANE=N` picks the device the way
+The Orange Pi is **lane 1** of the lane table in `scripts/pi/env.sh` (lanes 1-3, B1030; 4, B1056; 5, B1060); `PI_LANE=N` picks the device the way
 `EQEMU_LANE` picks an eqemu VM, and a card or a script names its LANE, never an address. Each lane is
 single-tenant with its own lock ON the device (`pi_lock_take`/`pi_lock_release` are unchanged; `PI_LANE=2 bash
 scripts/pi/lock_selftest.sh` is the per-lane net). A `PI_HOST` alone still picks its lane, so every pre-B1030
@@ -102,6 +102,7 @@ than here.
 | 1 | `orangepi` | armv7l | Mali-400, Lima | `ci-arm/<sha>/bin/willeq-nollvm` (the shipped prefix above) |
 | 2 | `rock64` (RK3328) | aarch64 | Mali-450, Lima (system Mesa) | `ci-arm64/<sha>/bin/willeq` |
 | 3 | `rock4d` (RK3576) | aarch64 | Mali-G52, Panfrost (system Mesa) | `ci-arm64/<sha>/bin/willeq` |
+| 4 | `a7s` (Allwinner A733) | aarch64 | PowerVR BXM-4-64, IMG DDK 24.2 blob (`pvr_dri.so` behind IMG's Mesa-derived EGL/GBM) | `ci-arm64-bullseye/<sha>/bin/willeq`, built ON the board (B1056) |
 | 5 | `orangepizero` (H2+) | armv7l | Mali-400, Lima, on a **vkms** card (no display output) | `ci-arm/<sha>/bin/willeq-nollvm` (as lane 1) |
 
 Lanes 2 and 3 run ONE generic `-march=armv8-a` binary from **`scripts/build-arm64-noble.sh`**
@@ -124,6 +125,23 @@ preset is for an experiment (`pi_rendered_zone_sweep.sh --constrained <preset>`)
 Lane 2's Mesa is the same
 25.2.8 the Pi runs, so the Lima cost sheet applies; lane 3 is Bifrost under Panfrost and nothing Lima-specific
 transfers to it.
+
+**Lane 4 is the odd one out** (B1056, #376, `docs/reference/radxa_a7s.md`). The Radxa Cubie A7S runs Debian 11
+bullseye (end-of-life since 2026-08-31; its apt sources point at `archive.debian.org`) on Radxa's vendor 5.15 kernel,
+its GPU is Imagination's, not Mali, and three things the other lanes take for granted do not hold there, so
+`scripts/pi/env.sh` carries them per lane instead of letting a rig assume them: the ssh user is `radxa`
+(`PI_USER`); the noble-sysroot `ci-arm64/` binary needs `GLIBC_2.38` and the board has 2.31, so the lane's binary
+is built on the device by `scripts/sbc/a7s/build_native.sh` (gcc 10, cmake 3.18, the same patched DRM/GLES2
+Irrlicht and configure flags as the cross build) and published under **`ci-arm64-bullseye/<sha>/`**
+(`PI_LANE_PUBLISH`, same shape as `ci-arm64/`); and the IMG libraries live in `/usr/local/lib` with the DRI driver
+in `/usr/local/lib/dri`, which an ssh session does not see (`/etc/environment` there uses `export`, which pam_env
+ignores), so every run on the lane is prefixed with `PI_RUN_ENV` (`LD_LIBRARY_PATH` + `LIBGL_DRIVERS_PATH`) --
+`kmscube_floor.sh` and `lane_smoke.sh` do this; a hand run must too. The vendor kernel has no NFS client and the
+NAS refuses SMB from `172.16.200.x`, so `/mnt/projects` is an **sshfs** mount of dev-u24's share (fstab,
+`user@10.0.30.23`, the board's key in dev-u24's `authorized_keys`): the same paths, slower reads, and a run that
+streams zone assets is reading them through dev-u24. Its display is `card0-DP-1` (`PI_HDMI_CONN`); the image's
+`sddm` was disabled because the display manager held DRM master on `card0`. Nothing Lima- or Bifrost-specific
+transfers to it; re-measure.
 
 **Headless DRM.** The two boards share one KVM, so a lane's HDMI is usually `disconnected` and the DRM device
 refuses to start. `pi_hdmi_force_on` (`scripts/pi/env.sh`) writes `on` to the connector's sysfs `status`, which
@@ -343,7 +361,14 @@ the only figure that sees Lima's GEM buffers. On a kernel+driver that publishes
 the row is the RESIDENT figure (B1032, #352): `drm-total-memory` includes
 Panfrost's 128 MiB growable tiler heap before the tiler has faulted it in, and
 the `[memgpu]` line carries `fdinfo_total=`/`fdinfo_resident=`/`fdinfo_purgeable=`
-so the choice stays visible. `scripts/ci/owned_memory.py` is
+so the choice stays visible. The fdinfo read is never made against the IMG
+PowerVR module (`pvrsrvkm`, lane 4): its `pvr_show_fdinfo` panics the kernel on
+any read of a DRM fd's fdinfo (B1056, trace in `review/B1056/lane4_attempts/`).
+The guard fails closed (an fd whose driver has no sysfs row is not read either),
+and `WILLEQ_GPU_CENSUS_NO_FDINFO=1` (in lane 4's `PI_RUN_ENV`) skips the read for
+every driver. With fdinfo skipped `decideGpuBuffers` falls through in order to
+`memcg_shmem`, `drm_maps_lower_bound`, then `logical`: lane 4's smoke row is
+`source=drm_maps_lower_bound`. `scripts/ci/owned_memory.py` is
 the one Python definition of these figures, behind the `[rss-target]` line and
 the Pi summarizers.
 

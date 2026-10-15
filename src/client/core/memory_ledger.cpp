@@ -30,7 +30,7 @@
 #include <link.h>    // T504: dl_iterate_phdr, for the gpu_driver classifier
 #include <execinfo.h> // T504: backtrace(), for the WILLEQ_LEDGER_TRACE instrument
 #include <dlfcn.h>    // T504: dladdr(), module-relative frame addresses
-#include <malloc.h>
+#include "client/core/malloc_compat.h"  // mallinfo2 (+ shim for glibc < 2.33, B1056)
 #include <unistd.h>
 #endif
 

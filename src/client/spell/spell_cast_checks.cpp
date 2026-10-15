@@ -52,8 +52,8 @@ bool SpellManager::checkLineOfSight(uint16_t target_id) const
         return true;
     }
 
-    constexpr float kDefaultSize = 6.0f;
-    constexpr float kHeadPosition = 0.9f;
+    static constexpr float kDefaultSize = 6.0f;  // static: gcc 10 (lane 4) wants a capture for a plain constexpr local
+    static constexpr float kHeadPosition = 0.9f;
     auto eyeZ = [](float z, float size) {
         return z + ((size > 0.0f ? size : kDefaultSize) / 2.0f) * kHeadPosition;
     };
