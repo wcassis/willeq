@@ -29,17 +29,24 @@ second character on a DIFFERENT account, so isolation is real):
    - spell: the server-delivered buff (OP_Action 231 -> BuffManager, the
      cast_lands model) + the client's "Casting from gem 1" (key route only;
      the click route prints "Casting <name>");
-   - item: the client's "Using Bag of Bone Dust" x2 (the HC_OP_CastSpell
-     sender prints it only when it sent) + the DB charge decrement (post-
-     check: 10 -> 8 or 9 — the key route re-casts an active buff, which
-     eqemu may or may not charge; the deterministic half is "dropped from 10");
+   - item: the client's "Using Bag of Bone Dust" (the HC_OP_CastSpell
+     sender prints it only when it sent; every out.System() echo is logged
+     twice, plain + [SYS]-tagged, so the post-check counts the plain lines)
+     + the DB charge decrement (post-check: the seeded 10 drops — measured
+     8, one charge per landed route). The item click-cast DEFAULTS ITS
+     TARGET TO SELF (bridge_component_ui_audio.cpp, UseInventoryItem): the
+     server's DoCastingChecksOnTarget resolves a null target to the caster
+     only for ST_Self spells, and 8443's Enduring Breath is ST_Target — a 0
+     target was the silent no-charge failure that a rebuild could not fix.
    - skill: the deterministic `#fish` (GoFish(true) guarantee, forage.cpp:302)
      lands a catch ("caught" line + a NEW cursor item). The client-route
      skill press is best-effort exactly as forage_lands drives it: the
      client's own gate reads the pole's PARSED wire skillType (field 56),
      which a direct DB seed does not guarantee the client parses as 36.
-     Zone 96 (dreadspire) has fishing rows and NO watermap, so CanFish()
-     passes (forage.cpp:207 requires a watermap to probe) and the catch lands.
+     The seed places Testcaster in freporte (lane 1: the only zone that
+     both loads headless AND has a real water body in its watermap —
+     befallen's watermap has none), and the prep #gotos a computed
+     water's edge (lane-1 freporte.wtr).
    - social: the client's own local echo of /emote (chat_component.cpp:331 —
      eqemu broadcasts emotes ignore_sender, so the actor's line is
      client-generated) x2, once per route.
@@ -78,35 +85,36 @@ second character on a DIFFERENT account, so isolation is real):
 ## Live run (lane 1, 2026-10-16)
 
 `EQEMU_LANE=1 bash scripts/scenario.sh hotbar_lifecycle --unit B1025-H5
---timeout 420` — exit code, client/peer/post logs in
-`/mnt/projects/fable/review/B1025-H5/scenario/` (and attached to the task).
+--timeout 420` — exit code 0 (client VERDICT pass in 137.3 s + post-check
+PASS): the 8443 charge stack dropped 10 -> 8 in the DB (both routes
+consumed a charge — the server's own record), Testcaster's INI holds exactly
+its three typed slots (Page1Button1=H0, Page1Button2=F8443,
+Page1Button3=J55; the free-text emote slot absent, the documented gap),
+Testbuddy's INI holds only its own J55 (isolation), and 2 plain "Using Bag
+of Bone Dust" activation lines. Client/peer/post logs in
+`/mnt/projects/fable/review/B1025-H5/scenario/` (attached to the task) and
+`/home/user/kb-evidence/kb-h5-hotbar-scenario/scenario/`.
 
 ## Not verified / left open
 
-- **CI green (acceptance D) at this MR head is NOT yet true, and it is not
-  this unit's defect.** This branch carries H-3 (MR !198) and H-4 (MR !199)
-  ahead of `origin/fable`, and both are still in review: their one-line
-  protected-file `CLAUDE.md` count bumps (the DocCounts rows `src/client/
-  input/CLAUDE.md:24` 95→106, the 156→157 `registerCommand` rows, the
-  107→108 `GameEventType` rows, the 50→52 `RendererIntent` row) were left for
-  the orchestrator to apply (the H-3/H-4 review verdicts, the same shape as
-  B1025-H3's own strike). Those rows are RED on any head before H-3/H-4 merge.
-  H-5's own hygiene is green (file sizes, this README's doc counts). The card's
-  acceptance D is met when this MR's pipeline is green, which requires the
-  H-3/H-4 chain to merge first; the orchestrator owns the protected-file edits.
-  Do not call H-5's CI red an H-5 code defect on sight -- read the trace
-  (`glab api .../jobs/<id>/trace`) and confirm the failing ctest is one of the
-  pre-existing rows above, not a hotbar scenario test.
+- **CI green (acceptance D) requires the MR pipeline at the pushed head.**
+  The lane-seed fix (MR !214, the roster->befallen zone seed in
+  scenario.sh) is not in `origin/fable` yet, so a rebase on it happens after
+  it merges (one 4-line hunk before `snapshot "$BEFORE"` in scenario.sh).
+  This branch's own hygiene (file sizes, doc counts, citations) is green.
+  Do not call this MR's CI red an H-5 code defect on sight — read the trace
+  (`glab api .../jobs/<id>/trace`) and confirm the failing ctest is not a
+  hotbar scenario test.
 
 - The free-text emote slot's persistence is the DOCUMENTED fable-vs-official
   gap (official = E<number> index; H-O's oracle measured that form), not an
   oversight: the relog leg asserts the slot is absent, and H-5's README is
   the named home for it. Filling it (persist the index form) is a follow-up,
   not this unit.
-- The exact post-relog charge count (8 vs 9) depends on eqemu's decision to
-  charge a completed cast whose buff it will not re-apply; the post-check
-  asserts the deterministic half (dropped from 10) and prints the measured
-  value.
+- The post-relog charge count was measured 8 (one charge per landed route —
+  the key route's cast also consumed, so both routes' casts complete now
+  that the item click-cast self-targets); the post-check asserts the
+  deterministic half (8 or 9, i.e. dropped from 10) and prints the value.
 - The H0 partial official-client capture and its "Not captured / not
   verified" cases remain open (B1025-H0); this item's BOARD row is struck for
   the CI-test half H-5 owes.

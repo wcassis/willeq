@@ -250,7 +250,6 @@ public:
                 clickVerified_ = true;
                 clickEmoteCount_ = EmoteCount(w);
                 clickCatchCount_ = CatchCount(w);
-                clickGemCount_   = GemLineCount(w);
                 w.Note("click: spell landed (buff), item activated, emote echo, "
                        "skill fired; #fish is the skill proof");
                 stage_ = Stage::Key;
@@ -323,7 +322,6 @@ public:
                               std::to_string(fishCursorBase_) + ")");
                     return StepResult::Fail;
                 }
-                fishOk_ = true;
                 pageEmoteBase_ = EmoteCount(w);
                 pageCatchBase_ = CatchCount(w);
                 w.Note("fish: catch landed (caught-line + new cursor item " +
@@ -359,7 +357,6 @@ public:
                           " catch=" + std::to_string(CatchCount(w)) + ")");
                 return StepResult::Fail;
             }
-            pageOk_ = true;
             w.Note("page: page 2 reports; empty slot fires nothing on either route");
             stage_ = Stage::Camp;
             return StepResult::Running;
@@ -450,9 +447,9 @@ private:
     bool started_ = false;
     std::string me_;
     int clickStep_ = 0, keyStep_ = 0, pageStep_ = 0;
-    bool clickVerified_ = false, keyVerified_ = false, pageOk_ = false, fishOk_ = false;
+    bool clickVerified_ = false, keyVerified_ = false;
     bool clickSpellOk_ = false, clickItemOk_ = false, clickEmoteOk_ = false;
-    int clickEmoteCount_ = 0, clickCatchCount_ = 0, clickGemCount_ = 0;
+    int clickEmoteCount_ = 0, clickCatchCount_ = 0;
     int fishSent_ = 0;
     long long fishCursorBase_ = -1;
     int pageEmoteBase_ = 0, pageCatchBase_ = 0;
