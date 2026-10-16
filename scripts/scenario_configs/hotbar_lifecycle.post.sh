@@ -17,7 +17,7 @@
 #      server; a 10 that neither did; fewer, something else ate a charge.
 #   2. the PERSISTENCE bytes. The per-character INI (the lane pinned
 #      WILLEQ_CACHE_DIR to $OUT/cache; HotbarCacheName,
-#      hotbar_persistence.cpp:155-159 -> ui/UI_Testcaster_WillEQ.ini) carries
+#      hotbar_persistence.cpp:155-158 -> ui/Testcaster_WillEQ.ini) carries
 #      the three TYPED slots after the relog: spell H<gem> (gem 0), item F8443,
 #      skill J55. The free-text emote slot does NOT persist (the documented
 #      fable-vs-official gap: the official client's social is an emote INDEX,
@@ -57,7 +57,7 @@ echo "PASS: the item was used server-side -- the 10-charge stack dropped to ${_c
 
 # ---- 2. Testcaster's per-character INI --------------------------------------
 _inicache="${WILLEQ_CACHE_DIR:-$OUT/cache}"
-_main_ini="$_inicache/ui/UI_Testcaster_WillEQ.ini"
+_main_ini="$_inicache/ui/Testcaster_WillEQ.ini"
 echo "main character INI: $_main_ini"
 if [ ! -f "$_main_ini" ]; then
     echo "FAIL: no per-character hotbar INI for Testcaster at $_main_ini -- the assign->saveCallback->SaveHotbarConfig (bridge_component.cpp:269) write never landed (WILLEQ_CACHE_DIR=[$_inicache], files: $(ls "$_inicache/ui" 2>/dev/null || echo none))"
@@ -90,7 +90,7 @@ fi
 echo "PASS: Testcaster's INI holds exactly its three typed slots (H<gem> / F8443 / J55); the free-text emote slot did not persist (the documented gap)"
 
 # ---- 3. isolation: the second character -------------------------------------
-_peer_ini="$_inicache/ui/UI_Testbuddy_WillEQ.ini"
+_peer_ini="$_inicache/ui/Testbuddy_WillEQ.ini"
 echo "peer character INI: $_peer_ini"
 if [ ! -f "$_peer_ini" ]; then
     echo "FAIL: no per-character hotbar INI for Testbuddy -- the peer (hotbar_isolation_assign) never assigned (see $PEERLOG); isolation cannot be proven from a file that does not exist"
@@ -122,11 +122,14 @@ echo "PASS: isolation -- Testbuddy's INI holds ONLY its own one slot (J55); none
 # Both routes must have PRINTED "Using Bag of Bone Dust" (bridge_component_
 # ui_audio.cpp:744, printed only when the client actually sent HC_OP_CastSpell)
 # -- the in-run transcript the post-check independently re-reads, the way
-# ranged_single_shot.post.sh re-reads the combat line. Two lines: click + key.
-_using="$(grep -c "Using Bag of Bone Dust" "$LOG")"
-echo "client 'Using Bag of Bone Dust' lines = ${_using}"
-if [ "${_using}" != "2" ]; then
-    echo "FAIL: ${_using} 'Using Bag of Bone Dust' line(s) in the client log, expected 2 (the item slot activated by the click route AND the key route)"
+# ranged_single_shot.post.sh re-reads the combat line. Two activations: click
+# + key. Count the plain [MAIN] line only: every out.System() echo is logged
+# twice, as the plain line and again tagged "[SYS]", so a bare grep -c of the
+# phrase would read 4 for the two activations and could never match "2".
+_using="$(grep -c "Using Bag of Bone Dust" <(grep -v "\[SYS\]" "$LOG" 2>/dev/null) 2>/dev/null)"
+echo "client 'Using Bag of Bone Dust' activations (plain lines) = ${_using}"
+if [ "${_using:-0}" != "2" ]; then
+    echo "FAIL: ${_using:-0} 'Using Bag of Bone Dust' activation line(s) in the client log, expected 2 (the item slot activated by the click route AND the key route)"
     return 1 2>/dev/null || exit 1
 fi
 

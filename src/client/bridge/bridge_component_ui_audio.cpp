@@ -737,7 +737,18 @@ bool eqt::bridge::BridgeComponent::UseInventoryItem(int16_t slot) {
 	packet.PutUInt32(0, 10);  // slot = 10 for item clicks
 	packet.PutUInt32(4, static_cast<uint32_t>(item->clickEffect.effectId));
 	packet.PutUInt32(8, static_cast<uint32_t>(slot));
+	// Default the target to the player's own id when no combat target is set.
+	// The official client sends self for a self-buff item click; the server's
+	// DoCastingChecksOnTarget (spells.cpp) resolves a null target to the caster
+	// ONLY for ST_Self spells. For an item click whose spell is ST_Target (e.g.
+	// 8443's "Enduring Breath", spells_new targettype=5), a 0 target makes that
+	// gate return false -> StopCastSpell (silent for a client) -> no charge is
+	// ever consumed. Self-id mirrors beginCastFromGem's "no target specified"
+	// resolve (spell_manager.cpp:209).
 	uint16_t targetId = ctx_.combat_manager ? ctx_.combat_manager->GetTargetId() : 0;
+	if (targetId == 0) {
+		targetId = ctx_.self.MySpawnId();
+	}
 	packet.PutUInt32(12, targetId);
 	packet.PutUInt32(16, 0);
 	ctx_.net.Queue(HC_OP_CastSpell, &packet);
