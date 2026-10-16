@@ -288,7 +288,6 @@ ConstrainedTextureCache::ContentTwin ConstrainedTextureCache::findContentTwin(
         if (entry.contentDigest == contentDigest) {
             out.entry = &entry;
             out.key = &key;
-            out.digest = entry.contentDigest;
             return out;
         }
     }

@@ -774,7 +774,6 @@ private:
     struct ContentTwin {
         const CachedTexture* entry = nullptr;  // the resident twin
         const std::string* key = nullptr;      // the map key to alias to
-        uint64_t digest = 0;
         bool found() const { return key != nullptr; }
     };
     // Find the first entry of the request's (name, mask) family (cache_ key
