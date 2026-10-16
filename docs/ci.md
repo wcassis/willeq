@@ -85,7 +85,12 @@ Wine official client + the `/opt/akk-stack` eqemu containers), so the builds run
 - **No GPU for jobs**: gitlab-runner is NOT in `video`/`render`. With them, the GL tests opened the
   Intel iGPU through DRM (a 3840x2160 modeset on the laptop panel) instead of surfaceless llvmpipe, and
   19 pixel tests failed (MR !211's first pipeline, 1420); without them the jobs see what the runner VMs
-  saw. A future `x86-gpu` hardware-GL job needs its own grant.
+  saw. Without the groups, surfaceless EGL still found NVIDIA's EGL (its `/dev/nvidia*` nodes are world-
+  readable; `EGL (surfaceless): ... vendor=NVIDIA`), which has no ETC1, so the census decoded every
+  texture (`textures_decoded` 14 MB vs 0.34 MB on runner-1, 110 of 118 zones over budget). The runner's
+  `environment` therefore pins Mesa: `__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json`
+  and `LIBGL_ALWAYS_SOFTWARE=1` (llvmpipe, as on the runner VMs; this also keeps CI off the oracle's
+  Quadro). A future `x86-gpu` hardware-GL job needs its own grant and must unset both.
 - **`CI_JOBS=8`** from the runner's `environment`: `.goldfarm`'s `before_script` exports it as `JOBS`, and
   `build-arm64` as `BUILD_JOBS`, so the host, not this file, sizes its builds.
 - **ccache** at `CCACHE_DIR=/var/cache/ccache-ci` (NVMe root, `max_size = 30G` in its `ccache.conf`).
