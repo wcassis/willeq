@@ -379,6 +379,12 @@ public:
     int scenarioExitCode() const;
     std::string scenarioReason() const;
     std::string scenarioName() const;
+    // B1081 (#401): the screen-up count the zone_change_no_flash scenario
+    // reads (CharacterSelectService::Activations, the game thread's
+    // observable for the render thread's "[CHARSELECT] screen up" log).
+    long long CharacterSelectActivations() const {
+        return static_cast<long long>(m_charSelectService.Activations());
+    }
 
     /** B998 (#318): whether `config` shows the character-select screen
      *  (login_world/character_select.h, CharacterSelectScreenWanted). Public
@@ -519,12 +525,6 @@ private:
     bool applyCharacterSelect(const ApplicationConfig& config);
     void serviceCharacterSelect();
     bool renderCharacterSelect(float deltaTime);
-    // B1081 (#401): the screen-up count the zone_change_no_flash scenario
-    // reads (CharacterSelectService::Activations, the game thread's
-    // observable for the render thread's "[CHARSELECT] screen up" log).
-    long long CharacterSelectActivations() const {
-        return static_cast<long long>(m_charSelectService.Activations());
-    }
     bool initSpellSystem(const ApplicationConfig& config);
     bool initActionLayer(const ApplicationConfig& config);
     bool initScriptedCommandTour(const ApplicationConfig& config);

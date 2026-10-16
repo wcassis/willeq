@@ -202,13 +202,18 @@ public:
 	 * clears it, player_camp.cpp) and the B1072 give-up (AbandonZoneConnect
 	 * clears it, zone_connect.cpp). No new packet parsing, no new storage.
 	 * CharacterSelectService::tick() reads it and keeps the screen down for
-	 * those frames (the loading screen stays up).
+	 * those frames (the loading screen stays up). Defined in
+	 * login_world_component.cpp -- the zone header's forward declaration of
+	 * EverQuest would shadow eq.h's definition otherwise.
 	 */
-	bool IsZoningReconnect() const {
-		return ctx_.Zone().ZoneToZoneInProgress() && !m_enter_world_sent;
-	}
+	bool IsZoningReconnect() const;
 	/** Test seam: set m_enter_world_sent without sending (B1081's window tests). */
 	void Test_SetEnterWorldSentForSeam(bool v) { m_enter_world_sent = v; }
+	/** Test seam: the reconnect's enter-world reset (ReconnectWorld clears
+	 *  m_enter_world_sent, login_world_char_select.cpp:60) WITHOUT tearing the
+	 *  world connection down -- the rig replays packets, it has no socket.
+	 *  B1081 (#401). */
+	void Test_ReconnectEnterWorldResetForSeam() { m_world_ready = false; m_enter_world_sent = false; }
 	/** How many times this session went back to the character-select screen. */
 	uint32_t CharacterSelectReturns() const { return m_select_returns; }
 	/** Tear down the world session and open a new one to the stored world

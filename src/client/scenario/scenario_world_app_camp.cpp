@@ -7,6 +7,7 @@
 
 #include "client/scenario/scenario_world_app.h"
 
+#include "client/application.h"
 #include "client/eq.h"
 #include "client/login_world/login_world_component.h"
 #include "client/player/player_component.h"

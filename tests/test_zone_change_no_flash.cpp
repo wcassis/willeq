@@ -82,7 +82,7 @@ struct Rig {
     }
     void OneTick() { Tick(service, lw, channel); }
 
-    eqt::EverQuest eq;
+    EverQuest eq;
     eqt::login_world::LoginWorldComponent& lw = eq.LoginWorld();
     CharacterSelectService service;
     CharacterSelectChannel channel;
@@ -153,9 +153,11 @@ TEST(ZoningReconnectGate, ZoneChangeReconnectDoesNotReActivateTheScreen) {
     // 2. A zone change. The client latches ZoneToZoneInProgress in
     //    ProcessDeferredZoneChange (zone_component.cpp:646) and tears the
     //    world session down -- ReconnectWorld resets m_enter_world_sent to
-    //    false (login_world_char_select.cpp:60). The seam sets the latch;
-    //    the enter-world flag is already false (Enter World went out in 1.).
+    //    false (login_world_char_select.cpp:60). The seams model exactly
+    //    those two writes; the enter-world flag is already true (Enter World
+    //    went out in 1.) and the reset clears it.
     r.eq.Zone().Test_SetZoneToZoneInProgressForSeam(true);
+    r.lw.Test_ReconnectEnterWorldResetForSeam();
     ASSERT_TRUE(r.lw.IsZoningReconnect());
 
     // 3. The zone-change world pass: eqemu sends OP_SendLoginInfo (zoning==1)
@@ -206,7 +208,10 @@ TEST(ZoningReconnectGate, CampReturnStillBringsTheScreenUp) {
 
     // /camp, server-confirmed: ReturnToCharacterSelect -- the screen ON, the
     // fresh list awaited, the latch CLEARED (the logout reply, player_camp.
-    // cpp), the world session torn down.
+    // cpp), the world session torn down. The rig has no world socket, so
+    // the tear-down's flag reset is modeled with the seam, exactly as in the
+    // zone-change test.
+    r.lw.Test_ReconnectEnterWorldResetForSeam();
     r.lw.ReturnToCharacterSelect("camp");
     ASSERT_TRUE(r.lw.CharacterSelectScreen());
     ASSERT_TRUE(r.lw.AwaitingFreshCharacterList());
@@ -237,15 +242,16 @@ TEST(ZoningReconnectGate, B1072GiveUpStillBringsTheScreenUp) {
     r.OneTick();
     ASSERT_FALSE(r.channel.active());
 
-    // The B1072 give-up (AbandonZoneConnect, zone_connect.cpp:111): the
-    // latch clears before the fresh world login, so IsZoningReconnect is
-    // FALSE for the reconnect's whole window -- the gate must NOT fire. The
-    // give-up's "returning to character select" branch is
-    // ReturnToCharacterSelect itself (the zone-connect-failed caller):
-    // screen ON, the fresh list awaited, the latch clear, the enter-world
-    // flag down.
+    // The zone change was in flight (latched, the reconnect's flag reset
+    // modeled with the seam), then the zone-in bound blew. The give-up's
+    // order is AbandonZoneConnect's: the latch clears FIRST
+    // (zone_connect.cpp:109), and the "returning to character select"
+    // branch is ReturnToCharacterSelect itself -- screen ON, the fresh
+    // list awaited, the enter-world flag down.
     r.eq.Zone().Test_SetZoneToZoneInProgressForSeam(true);
+    r.lw.Test_ReconnectEnterWorldResetForSeam();
     ASSERT_TRUE(r.lw.IsZoningReconnect());
+    r.eq.Zone().Test_SetZoneToZoneInProgressForSeam(false);
     r.lw.ReturnToCharacterSelect("zone connect failed");
     ASSERT_TRUE(r.lw.CharacterSelectScreen());
     ASSERT_TRUE(r.lw.AwaitingFreshCharacterList());
@@ -276,7 +282,11 @@ struct FakeWorld : eqt::scenario::IScenarioWorld {
     bool IsConnected() const override { return true; }
     bool IsFullyZonedIn() const override { return zonedIn; }
     std::string ZoneName() const override { return zone; }
+    int OtherPlayerCount() const override { return 0; }
     std::string PlayerName() const override { return me; }
+    std::vector<uint32_t> PlayerBuffSpellIds() const override { return {}; }
+    long long PeerEquipmentMaterial(const std::string&, int) const override { return -1; }
+    long long SelfEquipmentMaterial(int) const override { return -1; }
     long long CharacterSelectActivations() const override { return activations; }
     bool EnterWorldAs(const std::string& n) override {
         ++enters;
@@ -284,6 +294,7 @@ struct FakeWorld : eqt::scenario::IScenarioWorld {
         return n == me;
     }
     void SendCommand(const std::string& line) override { sent.push_back(line); }
+    void Note(const std::string&) override {}
 };
 
 using eqt::scenario::StepResult;
