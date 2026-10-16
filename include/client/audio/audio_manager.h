@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 
 #include "client/audio/sound_buffer_cache.h"
+#include "client/audio/sfx_manager.h"  // B1074: SfxLoopHandle
 #include "client/audio/audio_device_rate.h"  // B1069
 
 #include <memory>
@@ -86,6 +87,21 @@ public:
     void playSoundByName(const std::string& filename);
     void playSoundByName(const std::string& filename, const glm::vec3& position);
     void stopAllSounds();
+
+    // B1074 (#394): a LOOPING positioned sound (zone ambient emitters with
+    // zero cooldown). Plays through SfxManager::play(..., loop=true) and
+    // returns the owner token; an invalid token (handle -1) means nothing
+    // started (audio off, sound missing, no free channel, listener beyond
+    // maxDist). The loop never ends by itself: the owner MUST call
+    // stopLoopingSound() before it forgets the token, or the channel and the
+    // buffer's in-use pin live on. With 3D audio off the loop plays centred
+    // at the effects volume, like playSoundInternal().
+    SfxLoopHandle playLoopingSound(const std::string& filename, const glm::vec3& position,
+                                   float maxDist, float fullVolDist);
+    // Re-derive the loop's volume/pan from the listener, scaled by gain.
+    void updateLoopingSound(const SfxLoopHandle& loop, float gain);
+    bool isLoopingSoundActive(const SfxLoopHandle& loop) const;
+    void stopLoopingSound(const SfxLoopHandle& loop);
 
     // Preload sounds for faster playback
     void preloadSound(uint32_t soundId);

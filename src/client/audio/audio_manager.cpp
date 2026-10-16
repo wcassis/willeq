@@ -353,6 +353,42 @@ void AudioManager::playSoundInternal(const std::string& filename, const glm::vec
     }
 }
 
+SfxLoopHandle AudioManager::playLoopingSound(const std::string& filename,
+                                             const glm::vec3& position,
+                                             float maxDist, float fullVolDist) {
+    MemoryScope memScope(Category::Audio);  // B977
+    if (!initialized_ || !audioEnabled_ || !sfxManager_) {
+        return {};
+    }
+
+    // B1015: through the ONE cache; the in-use pin keeps this PCM resident
+    // for as long as the looped channel reads it.
+    auto buffer = loadSound(filename);
+    if (!buffer || !buffer->isValid()) {
+        LOG_DEBUG(MOD_AUDIO, "Loop failed: file={} (not found)", filename);
+        return {};
+    }
+
+    SfxLoopHandle loop = use3DAudio_
+        ? sfxManager_->playSpatialLoop(buffer.get(), position, maxDist, fullVolDist)
+        : sfxManager_->playLoop(buffer.get(), masterVolume_ * effectsVolume_);
+    LOG_TRACE(MOD_AUDIO, "Loop play: file={} pos=({},{},{}) handle={}",
+              filename, position.x, position.y, position.z, loop.handle);
+    return loop;
+}
+
+void AudioManager::updateLoopingSound(const SfxLoopHandle& loop, float gain) {
+    if (sfxManager_) sfxManager_->updateLoop(loop, gain);
+}
+
+bool AudioManager::isLoopingSoundActive(const SfxLoopHandle& loop) const {
+    return sfxManager_ ? sfxManager_->isLoopActive(loop) : false;
+}
+
+void AudioManager::stopLoopingSound(const SfxLoopHandle& loop) {
+    if (sfxManager_) sfxManager_->stopLoop(loop);
+}
+
 void AudioManager::stopAllSounds() {
     // SfxManager channels will naturally complete or can be stopped by mixer
     if (mixer_) {

@@ -203,8 +203,9 @@ UiPreferences CollectUiPreferences(const UiPreferencesBinding& b, int cameraMode
 }
 
 void ApplyUiPreferences(const UiPreferences& p, const UiPreferencesBinding& b) {
-    // The three centre popups are mutually exclusive live (toggleSkillsWindow()
-    // and the /newbook handler enforce it), so a file naming two of them open
+    // These three centre popups share no required co-open set (B1075,
+    // closesOnOpen() in ui_layout_table.h; toggleSkillsWindow() and the
+    // /newbook handler ask it), so they are one-at-a-time live and a file naming two of them open
     // -- only reachable by hand-editing -- is resolved here with a fixed
     // priority rather than left to paint both. Skills is the one whose own
     // toggle closes the other two, so it wins.

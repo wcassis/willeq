@@ -2,6 +2,11 @@
  * InventoryLayout — the single shared source of inventory-popup slot
  * geometry.
  *
+ * B1075 (#395): the 400x350 box every rect below is mapped into is
+ * `UILayout::inventoryPopup` (the layout table's PairRight anchor, so the
+ * merchant/loot/bank/trade window can sit beside it). The comments below
+ * that say "centerPopup" predate the split and mean that same-size box.
+ *
  * T57: static_panels.cpp's renderInventoryPopup() and
  * static_ui_input.cpp's processInput() used to independently compute
  * these same rectangles from the same magic numbers, and drifted apart
@@ -144,7 +149,7 @@ constexpr irr::s32 PAPERDOLL_RT_SUPERSAMPLE = 2;
 
 /**
  * Returns the screen-space rect for a global inventory slot index
- * (0-21 equipment, 22-29 general), positioned within `layout.centerPopup`.
+ * (0-21 equipment, 22-29 general), positioned within `layout.inventoryPopup`.
  * Returns a degenerate (all-zero) rect for an out-of-range index.
  *
  * This is the ONLY place inventory-popup slot geometry is computed —
@@ -152,7 +157,7 @@ constexpr irr::s32 PAPERDOLL_RT_SUPERSAMPLE = 2;
  */
 inline irr::core::rect<irr::s32> slotRect(const UILayout& layout, int globalIndex) {
     using namespace detail;
-    const auto& popup = layout.centerPopup;
+    const auto& popup = layout.inventoryPopup;
     const irr::s32 popupX = popup.UpperLeftCorner.X;
     const irr::s32 popupY = popup.UpperLeftCorner.Y;
     const irr::s32 popupW = popup.getWidth();
@@ -222,7 +227,7 @@ inline irr::core::rect<irr::s32> slotRect(const UILayout& layout, int globalInde
  */
 inline irr::core::rect<irr::s32> paperdollRect(const UILayout& layout) {
     using namespace detail;
-    const auto& popup = layout.centerPopup;
+    const auto& popup = layout.inventoryPopup;
     const irr::s32 popupW = popup.getWidth();
     const irr::s32 popupH = popup.getHeight();
 
@@ -258,7 +263,7 @@ enum Coin { COIN_PLATINUM = 0, COIN_GOLD = 1, COIN_SILVER = 2, COIN_COPPER = 3 }
 
 /**
  * Returns the screen-space rect for one coin row (0=platinum .. 3=copper),
- * positioned within `layout.centerPopup`. Degenerate (all-zero) rect for an
+ * positioned within `layout.inventoryPopup`. Degenerate (all-zero) rect for an
  * out-of-range denomination.
  *
  * As with slotRect(), this is the ONLY place purse geometry is computed —
@@ -269,7 +274,7 @@ inline irr::core::rect<irr::s32> coinRect(const UILayout& layout, int denom) {
     if (denom < 0 || denom >= COIN_COUNT) {
         return irr::core::rect<irr::s32>(0, 0, 0, 0);
     }
-    const auto& popup = layout.centerPopup;
+    const auto& popup = layout.inventoryPopup;
     const irr::s32 popupW = popup.getWidth();
     const irr::s32 popupH = popup.getHeight();
 
@@ -291,7 +296,7 @@ inline irr::core::rect<irr::s32> coinDecalRect(const UILayout& layout, int denom
     if (denom < 0 || denom >= COIN_COUNT) {
         return irr::core::rect<irr::s32>(0, 0, 0, 0);
     }
-    const auto& popup = layout.centerPopup;
+    const auto& popup = layout.inventoryPopup;
     const irr::s32 popupW = popup.getWidth();
     const irr::s32 popupH = popup.getHeight();
     const auto row = coinRect(layout, denom);
@@ -323,7 +328,7 @@ inline irr::core::rect<irr::s32> destroyButtonRect(const UILayout& layout) {
     using namespace detail;
     constexpr irr::s32 ORACLE_DESTROY_W = 50;
     constexpr irr::s32 ORACLE_DESTROY_H = 20;
-    const auto& popup = layout.centerPopup;
+    const auto& popup = layout.inventoryPopup;
     const irr::s32 popupW = popup.getWidth();
     const irr::s32 popupH = popup.getHeight();
     const irr::s32 w = ORACLE_DESTROY_W * popupW / ORACLE_WINDOW_W;
