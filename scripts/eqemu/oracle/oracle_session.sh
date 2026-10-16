@@ -148,7 +148,7 @@ if grep -qE '^# create-clicks=template$|^(click|wait)-template'$'\t' "$PLAN"; th
         --remote-dir "$REMOTE_DIR" --out "$OUT/broker" --rig "lane$LANE" 2>>"$OUT/broker.log" &
     BROKER_PID=$!
 fi
-remote "bash ~/eq-oracle/uigap-scripts/oracle_remote.sh run '$REMOTE_DIR'" >"$OUT/remote.log" 2>&1
+remote "bash ~/eq-oracle/uigap-scripts/oracle_remote.sh run '$REMOTE_DIR' $LANE" >"$OUT/remote.log" 2>&1
 RC=$?
 stop_broker
 if (( RC == 67 )); then STATUS=67; else STATUS=$RC; fi
