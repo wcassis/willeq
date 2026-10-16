@@ -61,12 +61,9 @@ constexpr irr::s32 NO_LEFT_FROM_RIGHT = 66, NO_RIGHT_FROM_RIGHT = 2;
 constexpr irr::s32 OK_LEFT = 105, OK_RIGHT = 169;         // both to the left edge
 constexpr irr::s32 TEXT_LEFT = 2, TEXT_TOP = 2, TEXT_RIGHT = 2, TEXT_BOTTOM = 24;
 
+// B1075 (#395): the layout table's ScreenCentre anchor.
 inline irr::core::rect<irr::s32> windowRect(const UILayout& layout) {
-    irr::s32 x = (layout.screenW - WINDOW_W) / 2;
-    irr::s32 y = (layout.screenH - WINDOW_H) / 2;
-    if (x < 0) x = 0;
-    if (y < 0) y = 0;
-    return {x, y, x + WINDOW_W, y + WINDOW_H};
+    return layout.placeScreenCentre(WINDOW_W, WINDOW_H);
 }
 
 inline irr::core::rect<irr::s32> titleRect(const UILayout& layout) {

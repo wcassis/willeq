@@ -491,7 +491,7 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (38 tests: `FacePickXmlGeometry`, `FileSizeCeiling`, `DocCitations` (+ B1020's
+`hygiene` (39 tests: `FacePickXmlGeometry`, `FileSizeCeiling`, `DocCitations` (+ B1020's
 `DocCitationsSelfTest`, the anchored-citation probes), B1030's
 `DockerfileArm64Derived` (the arm64 Dockerfile stays arch-swapped armhf) and
 `PiEnvLaneResolution` (`scripts/pi/env_selftest.sh`: a PI_LANE that disagrees
@@ -533,6 +533,12 @@ TSVs) and B908's `BoardDirNumbers`
 (`scripts/refactor/check_board_dir_numbers.py`, the refactor/B###/-directory-
 vs-BOARD.md-header collision net — a directory's declared subject must share
 a keyword with every BOARD.md header naming its number; pure source/doc scan)
+and B888-CC4's `CharCreateGateStateList`
+(`scripts/refactor/check_charcreate_gate_state_list.py`, the charcreate
+gate's three-way state-list agreement — `GATE_STATES` in
+`scripts/ci/charcreate_gate_controls.py`, the `kStates[]` array in
+`tools/hwcaps/charcreate_capture.cpp`, and the scores table in
+`refactor/B888-CC4/README.md` must name the same states; pure text scan)
 and B907's `CheckBuildTreeOrphansPrune`
 (`scripts/ci/test_check_build_tree_orphans.py`, the regression net for
 `check_build_tree_orphans.py --prune` — the CI warm-tree orphan prune added to

@@ -3,6 +3,7 @@
 #include "client/audio/zone_sound_emitter.h"
 #include "client/audio/audio_manager.h"
 #include "client/audio/sound_buffer.h"
+#include "common/logging.h"
 #include <cstdlib>
 #include <algorithm>
 #include <iostream>
@@ -31,7 +32,9 @@ ZoneSoundEmitter::ZoneSoundEmitter(ZoneSoundEmitter&& other) noexcept
     , fullVolRange_(other.fullVolRange_)
     , xmiIndex1_(other.xmiIndex1_)
     , xmiIndex2_(other.xmiIndex2_)
-    , sfxHandle_(other.sfxHandle_)
+    , loop_(other.loop_)
+    , loopAudio_(other.loopAudio_)
+    , loopFile_(std::move(other.loopFile_))
     , currentBuffer_(std::move(other.currentBuffer_))
     , cooldownTimer_(other.cooldownTimer_)
     , isPlaying_(other.isPlaying_)
@@ -42,7 +45,8 @@ ZoneSoundEmitter::ZoneSoundEmitter(ZoneSoundEmitter&& other) noexcept
     , fadeTimer_(other.fadeTimer_)
     , isFadingOut_(other.isFadingOut_)
 {
-    other.sfxHandle_ = -1;
+    other.loop_ = SfxLoopHandle{};
+    other.loopAudio_ = nullptr;
     other.isPlaying_ = false;
 }
 
@@ -64,7 +68,9 @@ ZoneSoundEmitter& ZoneSoundEmitter::operator=(ZoneSoundEmitter&& other) noexcept
         fullVolRange_ = other.fullVolRange_;
         xmiIndex1_ = other.xmiIndex1_;
         xmiIndex2_ = other.xmiIndex2_;
-        sfxHandle_ = other.sfxHandle_;
+        loop_ = other.loop_;
+        loopAudio_ = other.loopAudio_;
+        loopFile_ = std::move(other.loopFile_);
         currentBuffer_ = std::move(other.currentBuffer_);
         cooldownTimer_ = other.cooldownTimer_;
         isPlaying_ = other.isPlaying_;
@@ -75,7 +81,8 @@ ZoneSoundEmitter& ZoneSoundEmitter::operator=(ZoneSoundEmitter&& other) noexcept
         fadeTimer_ = other.fadeTimer_;
         isFadingOut_ = other.isFadingOut_;
 
-        other.sfxHandle_ = -1;
+        other.loop_ = SfxLoopHandle{};
+        other.loopAudio_ = nullptr;
         other.isPlaying_ = false;
     }
     return *this;
@@ -145,6 +152,27 @@ void ZoneSoundEmitter::update(float deltaTime, const glm::vec3& listenerPos, boo
     }
     currentIsDay_ = isDay;
 
+    // B1074: a loop is ours until we stop it -- unless something else freed
+    // the channel (AudioManager::stopAllSounds on audio disable), or the
+    // file for the current day/night state is no longer the one looping
+    // (ZoneAudioManager::setDayNight has already moved currentIsDay_, so the
+    // block above never sees that switch; a night-only emitter has NO day
+    // file at all). Either way: release it, and replay at once if in range.
+    if (loop_.valid()) {
+        if (!audioManager->isLoopingSoundActive(loop_)) {
+            LOG_DEBUG(MOD_AUDIO, "Emitter {} loop channel {} lost; restarting", sequence_, loop_.handle);
+            loop_ = SfxLoopHandle{};
+            loopAudio_ = nullptr;
+            loopFile_.clear();
+            isPlaying_ = false;
+            cooldownTimer_ = 0;
+        } else if (playbackFileName(isDay) != loopFile_) {
+            LOG_DEBUG(MOD_AUDIO, "Emitter {} day/night switch: stop loop {}", sequence_, loopFile_);
+            stop();
+            cooldownTimer_ = 0;
+        }
+    }
+
     // Calculate target volume based on type and distance
     if (inRange) {
         targetVolume_ = calculateVolume(distance);
@@ -170,6 +198,11 @@ void ZoneSoundEmitter::update(float deltaTime, const glm::vec3& listenerPos, boo
                 stop();
             }
         }
+    }
+    // B1074: a loop that is already silent when the listener leaves (its
+    // envelope was 0 in range) has nothing to fade -- it still must stop.
+    if (loop_.valid() && !inRange && currentVolume_ <= 0.0f) {
+        stop();
     }
 
     // Handle entering/leaving range
@@ -199,6 +232,16 @@ void ZoneSoundEmitter::update(float deltaTime, const glm::vec3& listenerPos, boo
     if (!isPlaying_ && inRange && cooldownTimer_ <= 0) {
         play(audioManager, isDay);
     }
+
+    // B1074: a loop's channel follows the listener and the fade envelope.
+    if (loop_.valid()) {
+        audioManager->updateLoopingSound(loop_, currentVolume_);
+    }
+}
+
+bool ZoneSoundEmitter::loopsFor(bool isDay) const {
+    int32_t baseCooldown = isDay ? cooldown1_ : cooldown2_;
+    return baseCooldown <= 0 && randomDelay_ <= 0;
 }
 
 bool ZoneSoundEmitter::isInRange(const glm::vec3& pos) const {
@@ -270,12 +313,20 @@ bool ZoneSoundEmitter::hasDayNightVariants() const {
 }
 
 void ZoneSoundEmitter::stop() {
-    // Sounds are played through AudioManager's source pool (SfxManager),
-    // which handles its own channel lifecycle. We just clear our state.
+    // One-shots end by themselves in the mixer. A LOOP never does (B1074):
+    // free its channel here, which also drops the buffer's in-use pin
+    // (B1015). stopLoopingSound() is a no-op if the channel is no longer
+    // ours.
+    if (loop_.valid() && loopAudio_) {
+        loopAudio_->stopLoopingSound(loop_);
+        LOG_DEBUG(MOD_AUDIO, "Emitter {} loop stopped: {}", sequence_, loopFile_);
+    }
+    loop_ = SfxLoopHandle{};
+    loopAudio_ = nullptr;
+    loopFile_.clear();
     isPlaying_ = false;
     currentVolume_ = 0.0f;
     isFadingOut_ = false;
-    sfxHandle_ = -1;
 }
 
 void ZoneSoundEmitter::play(AudioManager* audioManager, bool isDay) {
@@ -283,15 +334,43 @@ void ZoneSoundEmitter::play(AudioManager* audioManager, bool isDay) {
         return;
     }
 
-    const std::string& soundFile = getCurrentSoundFile(isDay);
-    if (soundFile.empty()) {
+    const std::string filename = playbackFileName(isDay);
+    if (filename.empty()) {
         return;
     }
 
-    // Add .wav extension if not present
-    std::string filename = soundFile;
-    if (filename.find('.') == std::string::npos) {
-        filename += ".wav";
+    // Ensure minimum cooldown of 1 second to prevent rapid re-triggering
+    // This accounts for typical ambient sound durations
+    static constexpr int32_t MIN_COOLDOWN_MS = 1000;
+
+    // B1074 (#394): zero cooldown and zero random delay = a LOOP while in
+    // range (the official client's continuous ambience), not a one-shot.
+    // maxDist is the emitter's own radius (it is audible wherever it is in
+    // range; SfxManager's 500 default silenced qeynos2's r=700 emitter);
+    // type 0 is constant volume within the radius, so its full-volume
+    // distance is the radius; the distance types keep SfxManager's 50.
+    if (loopsFor(isDay)) {
+        const float fullVolDist = (type_ == EmitterSoundType::DayNightConstant)
+            ? radius_ : std::min(50.0f, radius_);
+        SfxLoopHandle loop = audioManager->playLoopingSound(filename, position_, radius_, fullVolDist);
+        if (!loop.valid()) {
+            // Nothing started (no free channel, sound missing, audio off):
+            // retry after the minimum cooldown rather than every frame.
+            isPlaying_ = false;
+            cooldownTimer_ = static_cast<float>(MIN_COOLDOWN_MS);
+            return;
+        }
+        loop_ = loop;
+        loopAudio_ = audioManager;
+        loopFile_ = filename;
+        isPlaying_ = true;
+        isFadingOut_ = false;
+        currentVolume_ = targetVolume_;
+        cooldownTimer_ = 0.0f;
+        audioManager->updateLoopingSound(loop_, currentVolume_);
+        LOG_DEBUG(MOD_AUDIO, "Emitter {} loop started: {} channel={} radius={}",
+                  sequence_, filename, loop_.handle, radius_);
+        return;
     }
 
     // Play through AudioManager (uses SfxManager internally)
@@ -299,24 +378,25 @@ void ZoneSoundEmitter::play(AudioManager* audioManager, bool isDay) {
     isPlaying_ = true;
     currentVolume_ = targetVolume_;
 
-    // Set cooldown for next play
+    // Set cooldown for next play (a cooldown > 0 or a random delay: the
+    // zero/zero case looped above)
     int32_t baseCooldown = isDay ? cooldown1_ : cooldown2_;
     int32_t randomAdd = randomDelay_ > 0 ? (std::rand() % (randomDelay_ + 1)) : 0;
 
-    // Ensure minimum cooldown of 1 second to prevent rapid re-triggering
-    // This accounts for typical ambient sound durations
-    static constexpr int32_t MIN_COOLDOWN_MS = 1000;
     int32_t totalCooldown = baseCooldown + randomAdd;
     if (totalCooldown < MIN_COOLDOWN_MS && totalCooldown >= 0) {
         totalCooldown = MIN_COOLDOWN_MS;
     }
     cooldownTimer_ = static_cast<float>(totalCooldown);
+}
 
-    // If no cooldown specified, this is a one-shot trigger
-    // The sound will play once and we wait for the player to leave and re-enter
-    if (baseCooldown <= 0 && randomDelay_ <= 0) {
-        cooldownTimer_ = -1.0f;  // Don't replay automatically
+std::string ZoneSoundEmitter::playbackFileName(bool isDay) const {
+    std::string filename = getCurrentSoundFile(isDay);
+    // Add .wav extension if not present
+    if (!filename.empty() && filename.find('.') == std::string::npos) {
+        filename += ".wav";
     }
+    return filename;
 }
 
 void ZoneSoundEmitter::updateVolume(float distance) {

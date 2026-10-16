@@ -121,7 +121,7 @@ void renderMerchantPopup(UIRenderer& ui, const UILayout& layout,
     if (!state.isOpen) return;
 
     auto* tb = ui.getTextBatch();
-    ui.drawPanel(layout.centerPopup);
+    ui.drawPanel(layout.partnerPopup);
 
     // --- MW_MerchantName ---
     // A <Label> paints no background; the quoted rect is 452 tall and the
@@ -314,7 +314,7 @@ bool hitTestMerchantDoneButton(const UILayout& layout,
 bool merchantContains(const UILayout& layout, const MerchantPanelState& state,
                       int mouseX, int mouseY) {
     if (!state.isOpen) return false;
-    return layout.centerPopup.isPointInside(
+    return layout.partnerPopup.isPointInside(
         irr::core::vector2di(mouseX, mouseY));
 }
 

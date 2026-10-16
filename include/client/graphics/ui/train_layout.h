@@ -154,12 +154,9 @@ constexpr irr::s32 DONE_X = 460, DONE_Y = 226, DONE_W = 100, DONE_H = 24;
  * The whole window, in screen coordinates: the oracle's own 580x280,
  * CENTRED (the flagged deviation), clamped so it never starts off screen.
  */
+// B1075 (#395): the layout table's ScreenCentre anchor.
 inline irr::core::rect<irr::s32> windowRect(const UILayout& layout) {
-    irr::s32 x = (layout.screenW - WINDOW_W) / 2;
-    irr::s32 y = (layout.screenH - WINDOW_H) / 2;
-    if (x < 0) x = 0;
-    if (y < 0) y = 0;
-    return irr::core::rect<irr::s32>(x, y, x + WINDOW_W, y + WINDOW_H);
+    return layout.placeScreenCentre(WINDOW_W, WINDOW_H);
 }
 
 /** Style_Titlebar: the row holding <Text>Training Window</Text>. */

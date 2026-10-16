@@ -468,10 +468,12 @@ public:
 	// Fed by the SocialListsChanged bridge arm; persisted open/closed as
 	// `[FriendsWindow] Show=` through UiPreferences.
 	FriendsPanelState friendsState_;            // B897
-	// T436 (board B429): the merchant window. One of the mutually exclusive
-	// centre popups (the oracle's MerchantWnd is Style_Sizable true and does
-	// not fit 640x480, so it is scaled onto centerPopup the way T415 scaled
-	// the tradeskill window). Fed by the three Vendor* bridge arms.
+	// T436 (board B429): the merchant window. A centre popup (the oracle's
+	// MerchantWnd is Style_Sizable true and does not fit 640x480, so it is
+	// scaled onto the 400x350 box the way T415 scaled the tradeskill window);
+	// since B1075 that box is the layout table's PairLeft popup, beside the
+	// inventory -- inventory+merchant is a required co-open set. Fed by the
+	// three Vendor* bridge arms.
 	MerchantPanelState merchantState_;          // T436
 	// T436 (board B429): the bank window. NOT a centre popup -- the oracle's
 	// BankWnd is Style_Sizable false at 108x347, so it keeps its own size and

@@ -467,6 +467,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_frame_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1085 (GitLab #405): the three chat key latches (enter/escape/slash) latch
+# ONLY while the chat is unfocused and every setChatInputFocused()
+# transition resets them. The frame-input half runs the production policy
+# bodies (processChatInput's enter/slash checks, applyTextEntryKey(),
+# handleEscapeKey()) through the same bare, never-Init()'d IrrlichtRenderer
+# idiom as test_frame_component above.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_b1085_chat_latches
+        test_b1085_chat_latches.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_b1085_chat_latches PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_b1085_chat_latches GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_b1085_chat_latches DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T329 (B041): the NavmeshChanged bridge arm forwarding to
 # OverlaysComponent::setNavmesh. Same bare, never-Init()'d IrrlichtRenderer
 # idiom as test_overlays_component above, plus a real eqt::bridge::

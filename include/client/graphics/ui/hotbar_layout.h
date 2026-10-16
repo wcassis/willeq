@@ -23,6 +23,15 @@
  * rows to end at layout.hotbar.UpperLeftCorner.Y): with a 284px bar that holds
  * at 800x600 (340px headroom) and 1280x720 (460px), which is all the test
  * checks.
+ *
+ * B1075 (#395, Will 2026-10-15 ruling item 3): the ARRANGEMENT of the ten
+ * buttons is layout, not content. `columns` is a table value
+ * (ui_layout_table.h, kHotbarOrientations): 2 is the oracle's 2x5 window
+ * above, 10 is the 1x10 bar the layout table places bottom-centre. Both are
+ * the SAME arithmetic -- the oracle's first-cell offset, 44px step, 40px cell
+ * and its own right (10px) and bottom (24px) padding -- so windowSize(2) is the
+ * oracle's 96x260 exactly and no second code path exists. The windowRect()
+ * overloads with no `columns` keep the oracle's 2x5 for the XML test.
  */
 
 #pragma once
@@ -56,6 +65,24 @@ constexpr int kCloseBox = 12;
 // defaults.ini's [HotButtonWnd] XPos/YPos rule: the window's top sits at
 // screenHeight - 30 - 260 (the stock client's bottom-anchored gap), X at the
 // measured 0, clamped to stay on screen.
+// The oracle window's padding past the last cell, derived from its own
+// 96x260: 96 - (46 + 40) = 10 on the right, 260 - (196 + 40) = 24 below.
+constexpr int kPadRight = kWindowW - (kSlotFirstX + kSlotStepX + kSlotW);
+constexpr int kPadBottom = kWindowH - (kSlotFirstY + 4 * kSlotStepY + kSlotH);
+constexpr int kStockColumns = 2;
+
+constexpr int rowsFor(int columns) {
+    return columns <= 0 ? kSlotCount : (kSlotCount + columns - 1) / columns;
+}
+constexpr int windowW(int columns) {
+    return kSlotFirstX + (columns - 1) * kSlotStepX + kSlotW + kPadRight;
+}
+constexpr int windowH(int columns) {
+    return kSlotFirstY + (rowsFor(columns) - 1) * kSlotStepY + kSlotH + kPadBottom;
+}
+static_assert(windowW(kStockColumns) == kWindowW && windowH(kStockColumns) == kWindowH,
+              "the 2x5 arrangement must reproduce the oracle's 96x260");
+
 inline Rect windowRect(irr::s32 screenW, irr::s32 screenH) {
     irr::s32 x = kWindowX;
     irr::s32 y = screenH - 30 - kWindowH;
@@ -92,12 +119,14 @@ inline Rect closeBoxRect(const Rect& window) {
 }
 
 // The Button, InvSlot and SpellGem pieces for one index share this rect.
-inline Rect slotRect(const Rect& window, int index) {
-    if (index < 0 || index >= kSlotCount) return {0, 0, 0, 0};
+// Row-major in `columns` columns: 2 is the oracle's 2x5 (HB_Button1 and 2
+// share the first row), 10 is the 1x10 bar.
+inline Rect slotRect(const Rect& window, int index, int columns = kStockColumns) {
+    if (index < 0 || index >= kSlotCount || columns <= 0) return {0, 0, 0, 0};
     const int x = window.UpperLeftCorner.X + kSlotFirstX +
-                  (index % 2) * kSlotStepX;
+                  (index % columns) * kSlotStepX;
     const int y = window.UpperLeftCorner.Y + kSlotFirstY +
-                  (index / 2) * kSlotStepY;
+                  (index / columns) * kSlotStepY;
     return {x, y, x + kSlotW, y + kSlotH};
 }
 
