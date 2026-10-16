@@ -35,6 +35,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_constrained_texture_cache DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1083 (GitLab #403): a zone family's packs (zone + _obj) hold the same name
+# with different content; the (archive, name) cache key + source-first EQE1
+# resolution keeps each copy for the material that came from it. Two
+# synthetic v1 packs mirror the measured qeytoqrg tree70 collision (opaque
+# vs alpha companion). Real EDT_OGLES2 surfaceless device (the ETC1 upload
+# needs live GL); self-skips when unavailable.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_eqe1_source_archive
+        test_eqe1_source_archive.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_eqe1_source_archive PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_eqe1_source_archive GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_eqe1_source_archive DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B944 (GitLab #262): eviction under the ceiling keeps the ITexture object and
 # the driver's first bind restores it. Live consumers (materials the cache does
 # not know) are driven past the ceiling; the objects must stay valid, the

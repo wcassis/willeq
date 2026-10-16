@@ -611,7 +611,8 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
                         if (texIt != modelData->textures.end() && texIt->second && meshBuilder_) {
                             const TextureOrigin origin = texIt->second->origin();  // B947
                             irr::video::ITexture* equipTex = meshBuilder_->loadTextureFromBMP(
-                                equipTexName, texIt->second->data, isMaskedMaterial, &origin);
+                                equipTexName, texIt->second->data, isMaskedMaterial, &origin,
+                                texIt->second->archiveStem());  // B1083
                             if (equipTex) {
                                 node->getMaterial(b).setTexture(0, equipTex);
                                 LOG_DEBUG(MOD_GRAPHICS, "    -> REPLACED with {}", equipTexName);

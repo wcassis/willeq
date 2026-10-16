@@ -67,27 +67,63 @@ namespace Graphics {
 // is a no-op for every other caller/texture class — in particular zone
 // geometry (zone_geometry.cpp's own getOrLoad call site never passes true)
 // stays byte-identical.
-std::string ConstrainedTextureCache::cacheKey(const std::string& name, bool applyPaletteMask) {
-    if (!applyPaletteMask) {
-        return name;
+//
+// B1083 (GitLab #403): the key gains one more axis, the SOURCE ARCHIVE. Two
+// packs of the same zone family ship the same name with different content
+// (qeytoqrg.eqe1 tree70 opaque ETC1, qeytoqrg_obj.eqe1 tree70 with an alpha
+// companion -- the willow's foliage drew as a solid rectangle because the
+// zone pack, opened first in configured order, won the name-keyed lookup for
+// the OBJECT's material too). A request that names its source archive gets a
+// (stem, name) key, so the two copies coexist side by side: the object
+// material keeps its alpha copy, the zone material keeps the opaque one. An
+// empty stem (every call site that does not name a source) is the identity,
+// so all of P46d and everything that never knew an archive is untouched.
+//
+// The stem is joined with \x01@ ... \x01 -- control characters never appear
+// in an EQ texture name, an archive stem or the masked suffix -- so
+// ("tree70", "qeytoqrg_obj") cannot collide with any other (name, stem,
+// mask) combination, and splitCacheKey() recovers all three axes.
+std::string ConstrainedTextureCache::cacheKey(const std::string& name,
+                                               const std::string& sourceArchiveStem,
+                                               bool applyPaletteMask) {
+    std::string key = name;
+    if (!sourceArchiveStem.empty()) {
+        key += "\x01@" + sourceArchiveStem + "\x01";
     }
-    // \x01 cannot appear in an EQ texture filename or an EQE1 flat-pack entry
-    // name (both are plain ASCII filenames), so this can never collide with a
-    // real name, masked or not.
-    return name + "\x01masked";
+    if (applyPaletteMask) {
+        // \x01 cannot appear in an EQ texture filename or an EQE1 flat-pack
+        // entry name (both are plain ASCII filenames), so this can never
+        // collide with a real name, masked or not.
+        key += "\x01masked";
+    }
+    return key;
 }
 
 void ConstrainedTextureCache::splitCacheKey(const std::string& key, std::string& realName,
+                                             std::string& sourceArchiveStem,
                                              bool& applyPaletteMask) {
     static const std::string kSuffix = "\x01masked";
-    if (key.size() > kSuffix.size() &&
-        key.compare(key.size() - kSuffix.size(), kSuffix.size(), kSuffix) == 0) {
-        realName = key.substr(0, key.size() - kSuffix.size());
+    static const std::string kStemOpen = "\x01@";
+    std::string work = key;
+    if (work.size() > kSuffix.size() &&
+        work.compare(work.size() - kSuffix.size(), kSuffix.size(), kSuffix) == 0) {
+        work = work.substr(0, work.size() - kSuffix.size());
         applyPaletteMask = true;
     } else {
-        realName = key;
         applyPaletteMask = false;
     }
+    const size_t open = work.rfind(kStemOpen);
+    if (open != std::string::npos) {
+        // The stem cannot contain \x01, so the LAST \x01 of the stem field
+        // is its terminator even for a name that itself would never match.
+        const size_t close = work.find("\x01", open + kStemOpen.size());
+        if (close != std::string::npos && close == work.size() - 1) {
+            sourceArchiveStem = work.substr(open + kStemOpen.size(),
+                                             close - (open + kStemOpen.size()));
+            work = work.substr(0, open);
+        }
+    }
+    realName = work;
 }
 
 ConstrainedTextureCache::ConstrainedTextureCache(const ConstrainedRendererConfig& config)
@@ -192,15 +228,20 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
                                                           const std::string& category,
                                                           const std::string& callsite,
                                                           bool applyPaletteMask,
-                                                          const TextureOrigin* origin) {
+                                                          const TextureOrigin* origin,
+                                                          const std::string& sourceArchiveStem) {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::TexturesDecoded);  // T491
     std::lock_guard<std::mutex> lock(mutex_);
 
     // P46d: masked and unmasked variants of the same name are distinct cache
-    // entries (see cacheKey()) — internalKey is identity when
-    // applyPaletteMask is false, so every non-masked call site (the vast
-    // majority) is completely unaffected.
-    const std::string internalKey = cacheKey(name, applyPaletteMask);
+    // entries (see cacheKey()). B1083 (GitLab #403): the entry is additionally
+    // scoped to the SOURCE ARCHIVE -- internalKey is identity only when both
+    // sourceArchiveStem and applyPaletteMask are empty/false (the vast
+    // majority), so every unscoped call site is completely unaffected. Two
+    // packs of one zone family that hold a name with different content
+    // (qeytoqrg tree70 opaque vs qeytoqrg_obj tree70 alpha) now coexist as
+    // two entries instead of collapsing into one name-keyed slot.
+    const std::string internalKey = cacheKey(name, sourceArchiveStem, applyPaletteMask);
 
     // Check if already uploaded
     auto cacheIt = cache_.find(internalKey);
@@ -250,7 +291,22 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     // the same EQE1 payload) is a bounded, expected cost — see this unit's
     // Review (only WLD-masked textures, dozens not thousands, ever request
     // the masked variant).
-    auto* compressed = findCompressedEntry(name);
+    //
+    // B1083 (GitLab #403): findCompressedEntry takes the SOURCE ARCHIVE too.
+    // When a request names the archive its bytes came from (the S3D stem a
+    // zone/object WLD was loaded from), that pack is tried FIRST, before the
+    // configured-order scan of the other open packs. qeytoqrg.s3d and
+    // qeytoqrg_obj.s3d both hold tree70 (opaque DXT1 vs alpha DXT5) and the
+    // packs mirror that; the configured order ({zone}, {zone}_obj,
+    // {zone}_chr) handed the OBJECT's material the zone pack's opaque copy,
+    // so the willow drew as a solid rectangle. With the source tried first
+    // the object keeps its own copy and the zone keeps its own — the two
+    // coexist as (archive, name) entries instead of one name-keyed slot.
+    // An empty stem (every call site that does not name a source: character
+    // models, equipment, composite sheets, UI) is exactly today's scan +
+    // resolver fallback, so T207/T266's late-open rules and the
+    // global/_chr lookups are untouched.
+    auto* compressed = findCompressedEntry(name, sourceArchiveStem);
     if (compressed) {
         compressedEntries_[internalKey] = *compressed;
         LOG_TRACE(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' EQE1 hit ({}x{}, {} mips{}){}",
@@ -337,7 +393,8 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     return nullptr;  // Decoded but not uploaded — call uploadTexture() to promote
 }
 
-irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& name, bool applyPaletteMask) {
+irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& name, bool applyPaletteMask,
+                                                              const std::string& sourceArchiveStem) {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::TexturesDecoded);  // T491
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -350,7 +407,10 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     // ZoneMeshBuilder::registerUploadedTexture() (its own textureCache_
     // fast-path map, keyed by plain name exactly as before this fix — see
     // this unit's Review for why that map does not also need mask-awareness).
-    const std::string internalKey = cacheKey(name, applyPaletteMask);
+    // B1083: the key also carries the source archive stem, so a masked or
+    // archive-scoped variant promotes its OWN entry rather than the plain
+    // name's.
+    const std::string internalKey = cacheKey(name, sourceArchiveStem, applyPaletteMask);
 
     // Already uploaded?
     auto cacheIt = cache_.find(internalKey);
@@ -572,9 +632,10 @@ int ConstrainedTextureCache::uploadPending(int maxCount) {
         if (attempted >= maxCount) break;
         ++attempted;
         std::string realName;
+        std::string sourceArchiveStem;
         bool applyPaletteMask = false;
-        splitCacheKey(key, realName, applyPaletteMask);
-        if (uploadTexture(realName, applyPaletteMask)) {
+        splitCacheKey(key, realName, sourceArchiveStem, applyPaletteMask);
+        if (uploadTexture(realName, applyPaletteMask, sourceArchiveStem)) {
             ++uploaded;
         }
     }
@@ -646,12 +707,16 @@ bool ConstrainedTextureCache::hasTexture(const std::string& name) const {
     return cache_.find(name) != cache_.end();
 }
 
-irr::video::ITexture* ConstrainedTextureCache::getTexture(const std::string& name, bool applyPaletteMask) {
+irr::video::ITexture* ConstrainedTextureCache::getTexture(const std::string& name, bool applyPaletteMask,
+                                                           const std::string& sourceArchiveStem) {
     std::lock_guard<std::mutex> lock(mutex_);
     // P50: internalKey mirrors getOrLoad()/uploadTexture() — identity when
     // applyPaletteMask is false, so every existing (unmasked) call site is
     // byte-identical to before this parameter existed.
-    const std::string internalKey = cacheKey(name, applyPaletteMask);
+    // B1083: the archive axis too — a zone and the _obj pack of one family
+    // can both cache the same name, and only the scoped query finds the
+    // entry the caller decoded (see cacheKey()).
+    const std::string internalKey = cacheKey(name, sourceArchiveStem, applyPaletteMask);
     auto it = cache_.find(internalKey);
     if (it != cache_.end()) {
         touchInternal(internalKey);
@@ -712,16 +777,23 @@ bool ConstrainedTextureCache::registerTexture(const std::string& name,
     return true;
 }
 
-bool ConstrainedTextureCache::hasAlpha(const std::string& name, bool applyPaletteMask) const {
+bool ConstrainedTextureCache::hasAlpha(const std::string& name, bool applyPaletteMask,
+                                       const std::string& sourceArchiveStem) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    const std::string internalKey = cacheKey(name, applyPaletteMask);
+    // B1083: the (archive, name) entry — the zone and _obj copies of one name
+    // carry different hasAlpha, so an unscoped query would report whichever
+    // pack the configured order happened to cache first (see cacheKey()).
+    const std::string internalKey = cacheKey(name, sourceArchiveStem, applyPaletteMask);
     auto it = cache_.find(internalKey);
     return it != cache_.end() && it->second.hasAlpha;
 }
 
-irr::video::ITexture* ConstrainedTextureCache::getAlphaTexture(const std::string& name, bool applyPaletteMask) const {
+irr::video::ITexture* ConstrainedTextureCache::getAlphaTexture(const std::string& name, bool applyPaletteMask,
+                                                               const std::string& sourceArchiveStem) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    const std::string internalKey = cacheKey(name, applyPaletteMask);
+    // B1083: the companion belongs to the (archive, name) entry — the object
+    // material binds the _obj pack's companion, not the zone pack's.
+    const std::string internalKey = cacheKey(name, sourceArchiveStem, applyPaletteMask);
     auto it = cache_.find(internalKey);
     if (it != cache_.end()) return it->second.alphaTexture;
     return nullptr;
@@ -736,9 +808,11 @@ irr::video::ITexture* ConstrainedTextureCache::getAlphaTexture(irr::video::IText
     return nullptr;
 }
 
-bool ConstrainedTextureCache::isETC1Texture(const std::string& name, bool applyPaletteMask) const {
+bool ConstrainedTextureCache::isETC1Texture(const std::string& name, bool applyPaletteMask,
+                                            const std::string& sourceArchiveStem) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    const std::string internalKey = cacheKey(name, applyPaletteMask);
+    // B1083: the (archive, name) entry (see cacheKey()).
+    const std::string internalKey = cacheKey(name, sourceArchiveStem, applyPaletteMask);
     auto it = cache_.find(internalKey);
     return it != cache_.end() && it->second.isETC1;
 }

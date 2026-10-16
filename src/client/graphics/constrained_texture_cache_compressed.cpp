@@ -293,8 +293,13 @@ bool ConstrainedTextureCache::getEQE1RawData(const std::string& name,
     return got;
 }
 
+// B1083: findCompressedEntry() (above) uses the T214 archive-stem normalizer
+// before its definition below, so it needs the forward declaration.
+static std::string eqe1ArchiveStem(const std::string& filepath);
+
 const ConstrainedTextureCache::CompressedEntry*
-ConstrainedTextureCache::findCompressedEntry(const std::string& name) {
+ConstrainedTextureCache::findCompressedEntry(const std::string& name,
+                                             const std::string& sourceArchiveStem) {
     if (snapshotEQE1Loaders().empty() && !eqe1ArchiveResolver_) return nullptr;
 
     // Strip .bmp extension — EQE1 stores names without extension
@@ -309,10 +314,37 @@ ConstrainedTextureCache::findCompressedEntry(const std::string& name) {
     // Lowercase
     std::transform(lookupName.begin(), lookupName.end(), lookupName.begin(),
                    [](unsigned char c) { return std::tolower(c); });
+    // B1083 (GitLab #403): the SOURCE ARCHIVE, normalized the same way
+    // eqe1ArchiveStem() normalizes a loader's path (lowercase, .eqe1 stripped,
+    // directory dropped) so "data/eqe1_client/qeytoqrg_obj.eqe1" matches the
+    // open loader "qeytoqrg_obj". Empty keeps the scan exactly as before.
+    std::string sourceStem = sourceArchiveStem;
+    std::transform(sourceStem.begin(), sourceStem.end(), sourceStem.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    {
+        const size_t dot = sourceStem.rfind(".eqe1");
+        if (dot != std::string::npos) sourceStem.resize(dot);
+        const size_t slash = sourceStem.find_last_of("/\\");
+        if (slash != std::string::npos) sourceStem = sourceStem.substr(slash + 1);
+    }
 
     // P04/T207: as above — search open archives, then resolve the miss to at
     // most one archive via the index. Vector snapshotted under
     // eqe1LoadersMutex_ (see getEQE1RawData).
+    //
+    // B1083: the scan is SOURCE-FIRST. When the request names the archive its
+    // bytes came from, that open pack is tried before the configured-order
+    // scan of the rest. That is the whole fix: qeytoqrg.s3d and
+    // qeytoqrg_obj.s3d both hold tree70 (opaque vs alpha) and the packs
+    // mirror it; the old scan (load order, {zone} first) handed the OBJECT's
+    // material the zone pack's opaque copy, and the zone region's material —
+    // which asked for the same name, also stamped with its own source — is
+    // unaffected because it tries its OWN pack first. The result is stored
+    // under the (archive, name) cache key (getOrLoad's internalKey), so the
+    // two copies coexist and an evicted one restores from its own pack
+    // (B947's origin), not the other. Names the source pack does not hold
+    // (a WLD referencing a texture from a sibling archive, or a global) miss
+    // it and fall through to the unchanged scan + index resolver.
     auto emit = [](const EQE1Loader::TextureEntry* entry) -> const CompressedEntry* {
         // Build a static CompressedEntry to return pointer to
         static thread_local CompressedEntry result;
@@ -329,7 +361,28 @@ ConstrainedTextureCache::findCompressedEntry(const std::string& name) {
     };
 
     auto loaders = snapshotEQE1Loaders();
+
+    const EQE1Loader* sourceLoader = nullptr;
+    if (!sourceStem.empty()) {
+        for (const auto* loader : loaders) {
+            std::string loaderStem = eqe1ArchiveStem(loader->getFilePath());
+            std::transform(loaderStem.begin(), loaderStem.end(), loaderStem.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            if (loaderStem == sourceStem) {
+                sourceLoader = loader;
+                break;
+            }
+        }
+        if (sourceLoader) {
+            if (const auto* entry = sourceLoader->lookup(lookupName)) {
+                recordEQE1Request(lookupName, sourceLoader, false);
+                return emit(entry);
+            }
+        }
+    }
+
     for (const auto* loader : loaders) {
+        if (loader == sourceLoader) continue;  // already tried, and held no copy
         if (const auto* entry = loader->lookup(lookupName)) {
             recordEQE1Request(lookupName, loader, false);
             return emit(entry);

@@ -293,13 +293,18 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                     return getArmorTexture(name);
                 };
 
+                // B1083 (GitLab #403): source archive stems for the two
+                // candidate names. finalTexName may be an equipment VARIANT
+                // name (qcfch0101.bmp) that no TextureInfo in this map holds
+                // — its stem is "" until findTextureData() finds data for it,
+                // exactly as the pre-B1083 lookup found the data itself.
                 texture = meshBuilder_->getOrLoadTexture(finalTexName, isMaskedMaterial);
                 if (!texture) {
                     auto texInfo = findTextureData(finalTexName);
                     if (texInfo && texInfo->present()) {
                         const TextureOrigin origin = texInfo->origin();  // B947
                         texture = meshBuilder_->loadTextureFromBMP(finalTexName, texInfo->data, isMaskedMaterial,
-                                                                   &origin);
+                                                                   &origin, texInfo->archiveStem());
                     } else if (overrideApplied) {
                         texture = meshBuilder_->getOrLoadTexture(lowerTexName, isMaskedMaterial);
                         if (!texture) {
@@ -307,7 +312,8 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                             if (texInfo && texInfo->present()) {
                                 const TextureOrigin origin = texInfo->origin();  // B947
                                 texture = meshBuilder_->loadTextureFromBMP(lowerTexName, texInfo->data,
-                                                                           isMaskedMaterial, &origin);
+                                                                           isMaskedMaterial, &origin,
+                                                                           texInfo->archiveStem());
                             }
                         }
                     }

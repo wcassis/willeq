@@ -57,15 +57,22 @@ public:
     // default false preserves pre-P50 behavior byte-for-byte.
     // B947: origin (the TextureInfo's, when there is one) is handed to the
     // cache so an evicted texture restores from the same bytes.
+    // B1083 (GitLab #403): sourceArchiveStem (the TextureInfo's archiveStem(),
+    // when there is one) scopes the (archive, name) cache key and the
+    // source-first EQE1 resolution so a texture that shares its name across a
+    // zone family's packs (qeytoqrg vs qeytoqrg_obj tree70) resolves to the
+    // pack it actually came from. Empty = exactly the pre-B1083 behaviour.
     irr::video::ITexture* loadTextureFromBMP(const std::string& name, const std::vector<char>& data,
                                               bool applyPaletteMask = false,
-                                              const TextureOrigin* origin = nullptr);
+                                              const TextureOrigin* origin = nullptr,
+                                              const std::string& sourceArchiveStem = "");
 
     // Get texture, loading lazily if needed.
     // P50: applyPaletteMask is forwarded to loadTextureFromBMP() ONLY for the
     // lazy-load-now path (pendingTextures_); an already-loaded/-cached
     // texture (textureCache_ hit) is returned as-is regardless of this flag
     // since its mask status was already resolved when it was first loaded.
+    // B1083: the pending TextureInfo's own archiveStem() scopes the load.
     irr::video::ITexture* getOrLoadTexture(const std::string& name, bool applyPaletteMask = false);
 
     // Check if a texture is registered (either loaded or pending)

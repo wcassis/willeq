@@ -173,12 +173,24 @@ public:
     // bind re-reads and re-decodes those exact bytes. A decode-path entry
     // with no usable origin and no TextureSourceProvider serving the same
     // bytes is PINNED on eviction (never evicted again), never destroyed.
+    //
+    // B1083 (GitLab #403): sourceArchiveStem, when the caller knows it, names
+    // the EQE1 ARCHIVE these bytes came from (the S3D stem the loader read
+    // them out of, e.g. "qeytoqrg_obj"). The cache key is (stem, name) and
+    // EQE1 resolution tries that archive first, so two packs of the same zone
+    // family that hold one name with different content (zone opaque vs
+    // object alpha -- the qeytoqrg tree70/treea willow) no longer collapse
+    // into one name-keyed entry: the object material keeps its own copy and
+    // the zone material keeps its own. Empty (the overwhelming majority)
+    // leaves the key and the resolution exactly as before (configured
+    // order / index late-open).
     irr::video::ITexture* getOrLoad(const std::string& name,
                                      const std::vector<char>& data,
                                      const std::string& category = "uncategorized",
                                      const std::string& callsite = "",
                                      bool applyPaletteMask = false,
-                                     const TextureOrigin* origin = nullptr);
+                                     const TextureOrigin* origin = nullptr,
+                                     const std::string& sourceArchiveStem = "");
 
     // Upload a decoded texture to the GPU.
     // Promotes DecodedEntry → CachedTexture via driver_->addTexture().
@@ -193,7 +205,12 @@ public:
     // uploadTexture() themselves (rather than relying on uploadAllPending(),
     // which re-derives the correct internal key on its own — see .cpp) MUST
     // pass the same flag here or the lookup will miss.
-    irr::video::ITexture* uploadTexture(const std::string& name, bool applyPaletteMask = false);
+    //
+    // B1083: sourceArchiveStem must match what getOrLoad() recorded (see
+    // cacheKey(name, sourceArchiveStem, applyPaletteMask)); uploadAllPending()
+    // re-derives all three from its internal keys.
+    irr::video::ITexture* uploadTexture(const std::string& name, bool applyPaletteMask = false,
+                                        const std::string& sourceArchiveStem = "");
 
     // Upload all pending decoded textures to the GPU.
     // Calls uploadTexture() for each DecodedEntry in the cache.
@@ -242,7 +259,10 @@ public:
     // cacheKey()) — a plain-name query for a masked-variant entry always
     // missed before this parameter existed. Defaults to false, matching
     // every call site that never requests the masked variant.
-    irr::video::ITexture* getTexture(const std::string& name, bool applyPaletteMask = false);
+    // B1083: sourceArchiveStem must match what getOrLoad() recorded; empty
+    // (the default) queries the unscoped entry, exactly as before.
+    irr::video::ITexture* getTexture(const std::string& name, bool applyPaletteMask = false,
+                                     const std::string& sourceArchiveStem = "");
 
     // Register an externally-created texture into the LRU cache.
     // The texture must already be created via driver_->addTexture().
@@ -255,13 +275,22 @@ public:
     // Check if a cached texture has alpha transparency.
     // P50: see getTexture() above — applyPaletteMask must match the
     // variant's original getOrLoad()/uploadTexture() call.
-    bool hasAlpha(const std::string& name, bool applyPaletteMask = false) const;
+    // B1083: sourceArchiveStem must match what getOrLoad() recorded (see
+    // getTexture()); the zone and the _obj pack of one family ship the same
+    // name with different hasAlpha (qeytoqrg tree70: 0 vs 1), so the object
+    // material must ask for its own entry or it inherits the zone's answer.
+    bool hasAlpha(const std::string& name, bool applyPaletteMask = false,
+                  const std::string& sourceArchiveStem = "") const;
 
     // Get ETC1 alpha companion texture (for binding to texture unit 1)
     // Returns nullptr if texture has no alpha companion.
     // P50: see getTexture() above — applyPaletteMask must match the
     // variant's original getOrLoad()/uploadTexture() call.
-    irr::video::ITexture* getAlphaTexture(const std::string& name, bool applyPaletteMask = false) const;
+    // B1083: see hasAlpha() — the companion belongs to the (archive, name)
+    // entry, so an object material binds the _obj pack's companion, not the
+    // zone pack's (which has none).
+    irr::video::ITexture* getAlphaTexture(const std::string& name, bool applyPaletteMask = false,
+                                          const std::string& sourceArchiveStem = "") const;
 
     // Reverse-lookup overload for callers that only have the GPU texture
     // pointer (e.g. ZoneMeshBuilder::buildCompositeMesh, which builds from a
@@ -279,7 +308,13 @@ public:
     // unknown/not-yet-uploaded names.
     // P50: see getTexture() above — applyPaletteMask must match the
     // variant's original getOrLoad()/uploadTexture() call.
-    bool isETC1Texture(const std::string& name, bool applyPaletteMask = false) const;
+    // B1083: see hasAlpha() — the ETC1-ness is a property of the (archive,
+    // name) entry; the zone pack's opaque tree70 and the _obj pack's
+    // alpha-companioned one are both ETC1, but a name in only one of the
+    // two (bpine/gpine live only in _obj) must be asked for in its own entry
+    // or the query sees the other copy.
+    bool isETC1Texture(const std::string& name, bool applyPaletteMask = false,
+                       const std::string& sourceArchiveStem = "") const;
 
     // Reverse-lookup overload by GPU texture pointer (see getAlphaTexture(ITexture*)).
     bool isETC1Texture(irr::video::ITexture* texture) const;
@@ -372,6 +407,21 @@ public:
     // Check if a texture name is decoded but not yet uploaded (not yet in cache)
     bool isPending(const std::string& name) const;
 
+    // B1083 (GitLab #403): the archive STEM that served a name, by its
+    // EQE1 request log ("", when the name was not served by an archive —
+    // decode path, resolver miss, or never looked up). Observation hook
+    // for the source-first resolution the archive axis introduces: the
+    // test drives two synthetic packs that hold one name with different
+    // content and reads back which pack each (archive, name) request
+    // actually came from. The log itself is written by dumpEQE1RequestLog()
+    // at zone load (T214); this returns one row's answer without the dump.
+    std::string eqe1ServedByStem(const std::string& name) const {
+        std::lock_guard<std::mutex> lock(eqe1RequestLogMutex_);
+        auto it = eqe1RequestLog_.find(name);
+        if (it == eqe1RequestLog_.end() || it->second.servedBy == "<NOT-FOUND>") return {};
+        return it->second.servedBy;
+    }
+
     // Check if any decoded textures are waiting for their upload
     bool hasPendingWork() const;
 
@@ -456,7 +506,8 @@ private:
         uint32_t alphaDataSize;
         uint8_t  payloadFormat = 0;  // EQE1PayloadFormat; 0 == EQE1_PAYLOAD_ETC1
     };
-    const CompressedEntry* findCompressedEntry(const std::string& name);
+    const CompressedEntry* findCompressedEntry(const std::string& name,
+                                               const std::string& sourceArchiveStem = "");
 
     // P04: copy of the loader-pointer vector taken under eqe1LoadersMutex_.
     std::vector<const EQE1Loader*> snapshotEQE1Loaders() const;
@@ -500,39 +551,47 @@ private:
                                                int width, int height);
 
     // P46d: internal cache/decodedEntries_/compressedEntries_ map key for
-    // (name, applyPaletteMask). Identity when applyPaletteMask is false (the
-    // overwhelming majority of calls) — cacheKey(x, false) == x always, which
-    // is why callers that only ever pass plain names (getTexture/hasTexture/
-    // touch/isPending/evictTexture, every eviction listener, P13b's
-    // deferredPerPartTextureNames_ skip-list, uploadAllPending()'s own
-    // re-derivation of the key it already collected) need NO changes: they
-    // never request the masked variant, so they always resolve to the
-    // unmasked entry, exactly as before this fix. Only getOrLoad() and
-    // uploadTexture() (the two call sites that take applyPaletteMask
-    // directly) ever produce or consume a masked key. A control character
-    // prefix (never legal in an EQ texture/EQE1 filename) makes collision
-    // with a real name impossible. See constrained_texture_cache.cpp's
-    // top-of-file comment for the full rationale (root cause:
-    // refactor/P46c_neutral_pair_stop.md; fix: refactor/P46d_cache_key_fix.md).
-    static std::string cacheKey(const std::string& name, bool applyPaletteMask);
+    // (name, sourceArchiveStem, applyPaletteMask). Identity when BOTH
+    // sourceArchiveStem and applyPaletteMask are empty/false (the
+    // overwhelming majority of calls) — cacheKey(x, "", false) == x always,
+    // which is why callers that only ever pass plain names (getTexture/
+    // hasTexture/touch/isPending/evictTexture, every eviction listener,
+    // P13b's deferredPerPartTextureNames_ skip-list, uploadAllPending()'s
+    // own re-derivation of the key it already collected) need NO changes:
+    // they never request the masked or archive-scoped variant, so they
+    // always resolve to the unscoped entry, exactly as before this fix.
+    // Only getOrLoad() and uploadTexture() (the two call sites that take
+    // applyPaletteMask / sourceArchiveStem directly) ever produce or
+    // consume a mangled key. Control characters (never legal in an EQ
+    // texture/EQE1 filename or archive stem) make collision with a real
+    // name impossible. See constrained_texture_cache.cpp's top-of-file
+    // comment for the full rationale (root cause:
+    // refactor/P46c_neutral_pair_stop.md; fix: refactor/P46d_cache_key_fix.md;
+    // archive axis: refactor/B1083, GitLab #403).
+    static std::string cacheKey(const std::string& name,
+                                const std::string& sourceArchiveStem,
+                                bool applyPaletteMask);
 
-    // P46d: inverse of cacheKey() — recovers (realName, applyPaletteMask)
-    // from an internal key. Needed by uploadAllPending(), which only has the
-    // (possibly mangled) keys it harvested from decodedEntries_/
-    // compressedEntries_, not the original plain names — calling
-    // uploadTexture(key) directly (relying on cacheKey(key,false)==key) is
-    // correct for cache_/decodedEntries_/compressedEntries_ lookups, but
-    // would leak the mangled key into uploadTexture's `name` parameter,
-    // which (unlike internalKey) is supposed to be the real display name
-    // (GL debug label, ledger row, ZoneMeshBuilder::registerUploadedTexture
-    // — see uploadTexture()'s comment). Without this split, masked entries
-    // uploaded via uploadAllPending() register into ZoneMeshBuilder's
-    // textureCache_ under the MANGLED name, which
+    // P46d: inverse of cacheKey() — recovers (realName, sourceArchiveStem,
+    // applyPaletteMask) from an internal key. Needed by uploadAllPending(),
+    // which only has the (possibly mangled) keys it harvested from
+    // decodedEntries_/compressedEntries_, not the original plain names —
+    // calling uploadTexture(key) directly (relying on
+    // cacheKey(key, "", false) == key) is correct for cache_/decodedEntries_/
+    // compressedEntries_ lookups, but would leak the mangled key into
+    // uploadTexture's `name` parameter, which (unlike internalKey) is
+    // supposed to be the real display name (GL debug label, ledger row,
+    // ZoneMeshBuilder::registerUploadedTexture — see uploadTexture()'s
+    // comment). Without this split, mangled entries uploaded via
+    // uploadAllPending() register into ZoneMeshBuilder's textureCache_
+    // under the MANGLED name, which
     // mesh_building.cpp::getOrLoadTexture()'s plain-name lookup then never
     // finds — silently falling back to the unmasked loadTextureFromBMP()
     // path and defeating this whole fix. Caught by this unit's own
     // discard-fire re-verification (see Review).
-    static void splitCacheKey(const std::string& key, std::string& realName, bool& applyPaletteMask);
+    static void splitCacheKey(const std::string& key, std::string& realName,
+                              std::string& sourceArchiveStem,
+                              bool& applyPaletteMask);
 
     // Move name to back of LRU list — call only while holding mutex_
     void touchInternal(const std::string& name);
