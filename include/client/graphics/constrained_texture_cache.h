@@ -593,6 +593,7 @@ private:
                               std::string& sourceArchiveStem,
                               bool& applyPaletteMask);
 
+
     // Move name to back of LRU list — call only while holding mutex_
     void touchInternal(const std::string& name);
 
@@ -722,6 +723,21 @@ private:
         // B947: an eviction found no restore source; never evicted again.
         bool pinned = false;
     };
+
+    // B1083: entry lookup for the three (archive, name) accessors. Returns the
+    // entry for the exact (archive, name, mask) key, or — for an UNSCOPED
+    // query (empty sourceArchiveStem) that misses — the entry stored for that
+    // (name, mask) under any archive. The fallback is deliberately absent for
+    // a SCOPED query: that is exactly the case B1083 must not answer with a
+    // sibling archive's entry (qeytoqrg tree70, zone vs _obj). An unscoped
+    // query carries no archive preference (T285's on-demand fallback queries
+    // an S3D-stemmed entry by plain name; pre-B1083 EQE1 lookups stored
+    // unscoped), so a single (name, mask) entry is unambiguous. Call while
+    // holding mutex_.
+    const CachedTexture* findEntryForKey(const std::string& name,
+                                         const std::string& sourceArchiveStem,
+                                         bool applyPaletteMask,
+                                         const std::string** foundKey = nullptr) const;
 
     // Protects all state except decodedQueue_ (which has its own decodedQueueMutex_)
     mutable std::mutex mutex_;

@@ -126,6 +126,43 @@ void ConstrainedTextureCache::splitCacheKey(const std::string& key, std::string&
     realName = work;
 }
 
+const ConstrainedTextureCache::CachedTexture* ConstrainedTextureCache::findEntryForKey(
+    const std::string& name, const std::string& sourceArchiveStem, bool applyPaletteMask,
+    const std::string** foundKey) const {
+    const std::string internalKey = cacheKey(name, sourceArchiveStem, applyPaletteMask);
+    auto it = cache_.find(internalKey);
+    if (it != cache_.end()) {
+        if (foundKey) *foundKey = &it->first;
+        return &it->second;
+    }
+    // Scoped query that missed: a SIBLING archive's entry is the wrong
+    // answer — return null (the caller treats a miss as "not this copy").
+    if (!sourceArchiveStem.empty()) {
+        return nullptr;
+    }
+    // Unscoped miss: iterate the prefix range [name, name\x00) and look for
+    // the entry whose realName IS name with this mask (any archive). A
+    // lower_bound(name) alone is not enough: the unscoped key `name` sorts
+    // BELOW any suffixed key of a LONGER name (name < "nameA" < "name\x01.."),
+    // so the range can contain unrelated longer-named entries that must be
+    // skipped, and a prefix-matching-but-different-name key must not satisfy
+    // the realName check.
+    for (auto it2 = cache_.lower_bound(name);
+         it2 != cache_.end() && it2->first.compare(0, name.size(), name) == 0;
+         ++it2) {
+        if (it2->first.size() == name.size()) break;  // the plain key itself: miss
+        std::string realName;
+        std::string stem;
+        bool masked = false;
+        splitCacheKey(it2->first, realName, stem, masked);
+        if (realName == name && masked == applyPaletteMask) {
+            if (foundKey) *foundKey = &it2->first;
+            return &it2->second;
+        }
+    }
+    return nullptr;
+}
+
 ConstrainedTextureCache::ConstrainedTextureCache(const ConstrainedRendererConfig& config)
     : config_(config)
 {
@@ -715,12 +752,15 @@ irr::video::ITexture* ConstrainedTextureCache::getTexture(const std::string& nam
     // byte-identical to before this parameter existed.
     // B1083: the archive axis too — a zone and the _obj pack of one family
     // can both cache the same name, and only the scoped query finds the
-    // entry the caller decoded (see cacheKey()).
-    const std::string internalKey = cacheKey(name, sourceArchiveStem, applyPaletteMask);
-    auto it = cache_.find(internalKey);
-    if (it != cache_.end()) {
-        touchInternal(internalKey);
-        return it->second.texture;
+    // entry the caller decoded (see cacheKey()). findEntryForKey() keeps the
+    // scoped-miss-returns-null rule (no sibling-archive leak) and, for an
+    // unscoped query, finds the entry stored under (name, mask) in any
+    // archive — including an S3D-stemmed one the on-demand fallback stored.
+    const std::string* foundKey = nullptr;
+    const CachedTexture* entry = findEntryForKey(name, sourceArchiveStem, applyPaletteMask, &foundKey);
+    if (entry != nullptr) {
+        touchInternal(*foundKey);
+        return entry->texture;
     }
     return nullptr;
 }
@@ -783,19 +823,21 @@ bool ConstrainedTextureCache::hasAlpha(const std::string& name, bool applyPalett
     // B1083: the (archive, name) entry — the zone and _obj copies of one name
     // carry different hasAlpha, so an unscoped query would report whichever
     // pack the configured order happened to cache first (see cacheKey()).
-    const std::string internalKey = cacheKey(name, sourceArchiveStem, applyPaletteMask);
-    auto it = cache_.find(internalKey);
-    return it != cache_.end() && it->second.hasAlpha;
+    // findEntryForKey() scopes the answer: a SCOPED query misses cleanly (no
+    // sibling-archive leak), an UNSCOPED query falls back to the entry stored
+    // for that (name, mask) under any archive.
+    const CachedTexture* entry = findEntryForKey(name, sourceArchiveStem, applyPaletteMask);
+    return entry != nullptr && entry->hasAlpha;
 }
 
 irr::video::ITexture* ConstrainedTextureCache::getAlphaTexture(const std::string& name, bool applyPaletteMask,
                                                                const std::string& sourceArchiveStem) const {
     std::lock_guard<std::mutex> lock(mutex_);
     // B1083: the companion belongs to the (archive, name) entry — the object
-    // material binds the _obj pack's companion, not the zone pack's.
-    const std::string internalKey = cacheKey(name, sourceArchiveStem, applyPaletteMask);
-    auto it = cache_.find(internalKey);
-    if (it != cache_.end()) return it->second.alphaTexture;
+    // material binds the _obj pack's companion, not the zone pack's. The
+    // scoped/unscoped semantics mirror hasAlpha() via findEntryForKey().
+    const CachedTexture* entry = findEntryForKey(name, sourceArchiveStem, applyPaletteMask);
+    if (entry != nullptr) return entry->alphaTexture;
     return nullptr;
 }
 
@@ -811,10 +853,10 @@ irr::video::ITexture* ConstrainedTextureCache::getAlphaTexture(irr::video::IText
 bool ConstrainedTextureCache::isETC1Texture(const std::string& name, bool applyPaletteMask,
                                             const std::string& sourceArchiveStem) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    // B1083: the (archive, name) entry (see cacheKey()).
-    const std::string internalKey = cacheKey(name, sourceArchiveStem, applyPaletteMask);
-    auto it = cache_.find(internalKey);
-    return it != cache_.end() && it->second.isETC1;
+    // B1083: the (archive, name) entry (see cacheKey()); scoped/unscoped
+    // semantics mirror hasAlpha() via findEntryForKey().
+    const CachedTexture* entry = findEntryForKey(name, sourceArchiveStem, applyPaletteMask);
+    return entry != nullptr && entry->isETC1;
 }
 
 bool ConstrainedTextureCache::isETC1Texture(irr::video::ITexture* texture) const {

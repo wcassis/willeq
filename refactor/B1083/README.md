@@ -21,6 +21,17 @@ material each ask for, store, and query their own `(archive, name)` entry —
 including `hasAlpha` / `getAlphaTexture` / `isETC1Texture`, which are
 properties of the entry, not the name.
 
+The entry accessors (`getTexture` / `hasAlpha` / `getAlphaTexture` /
+`isETC1Texture`) route through one `findEntryForKey()`: a HIT on the exact
+`(archive, name, mask)` key is the answer; a SCOPED MISS stays a miss (that
+is the fix — qeytoqrg tree70 must not answer the zone's request with the
+_obj copy or vice versa); an UNSCOPED MISS falls back to the entry stored
+for that `(name, mask)` under any archive. The fallback is what keeps the
+pre-B1083 plain-name consumers working: T285's on-demand fallback
+(`tests/test_palette_mask_plumbing.cpp`) queries an S3D-stemmed entry by
+plain name and mask, and the unmasked S3D names it reads are exactly the
+ones the key change would have hidden.
+
 Files: `constrained_texture_cache{,.compressed,.residency}.cpp` + header,
 `s3d_loader.h` (`TextureInfo::archiveStem()`), `zone_geometry.{h,cpp}`,
 `animated_mesh_creation.cpp`, `mesh_building.cpp`, `renderer_guards.cmake`
@@ -184,6 +195,17 @@ keys EQE1 (compressed) entries.
   platform-independent per the issue (same packs, same code on x86/ARM;
   nothing Panfrost-specific), and the Pi golden set is bless-only — no Pi
   re-bless was requested or done.
+- **Pre-existing local-only failures, NOT from this branch** (2026-10-16,
+  hermes-ext): the five `FirstPerson*` gtest binaries segfault at
+  `__dynamic_cast` (backtrace: libstdc++ `__dynamic_cast` from
+  `FirstPersonBodyDrawRuleTest_...::TestBody`'s `dynamic_cast<
+  EQAnimatedMeshSceneNode*>`) on THIS box even at the pristine fable tip
+  `4e987f0c` and at `6cc847d2` (pre-accessor-fix) — both reproduced from
+  fresh evidence worktrees under `/home/user/kb-evidence/` — while CI's
+  `build-test` ran them green at `6cc847d2` (pipeline 1381, test #3624-#3628
+  Passed). `PackReproducible` likewise fails locally only because the host's
+  INSTALLED `/mnt/projects/EverQuest_ETC1/willeq.eqe1` differs from a rebuild
+  of the committed inputs. Neither is in scope here; CI is the arbiter.
 - The census counts EQE1 *payload* bytes; the S3D-side `.s3d` members are
   not re-digested (the packs mirror the S3D faithfully per the issue's
   `detectAlpha()` measurement), so an S3D member that differs while its
