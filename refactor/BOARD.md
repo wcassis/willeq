@@ -471,8 +471,14 @@ it without taking that measurement first.
   official page keys (Shift+1..0) and window toggle (Alt+H) with their
   Options Keys rows, addressed through the one `HotbarModel` page
   (`refactor/B1025-H4/README.md`). **H-5** (this item's live CI feature
-  scenario, `refactor/B1025-H5/README.md`) — the gap-rule test the issue's
-  acceptance requires. The H0 partial official-client capture
+  scenario, MR !207, `refactor/B1025-H5/README.md`) — the gap-rule test the
+  issue's acceptance requires: `hotbar_lifecycle` (+ the `hotbar_isolation_
+  assign` peer) drives the hotbar's whole user path on a lane and asserts
+  only server/chat observables (the buff, the charge decrement, the client's
+  own cast/use/emote lines, the #fish catch, the per-character INI bytes for
+  persistence + isolation). Its lane run + attached log complete acceptance
+  A (in flight on lane 1 at commit time, behind the B1080 oracle lock). The
+  H0 partial official-client capture
   (`refactor/B1025-H0/README.md`) and its "Not captured / not verified" cases
   remain open; this item is not closed.
 - **B988** (A) → issue #307. Will 2026-10-05: "make the nobocache flag opt-in
