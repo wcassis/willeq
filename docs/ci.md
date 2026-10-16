@@ -33,8 +33,9 @@ connects, Enter World -- back at character select after the attempt plus ONE ret
 | | |
 | --- | --- |
 | GitLab | `https://gitlab.goldfarm.local`, project `willeq/willeq` (id 1) |
-| x86 runners | **gitlab-runner-1** and **gitlab-runner-2** (10.0.30.81/.82, B1008): shell executor (bash), `concurrent = 1` each, **both tagged `x86-build`** since 2026-10-11 — one pipeline's stages may run on different hosts (B1026, "Two x86 runners" below) |
-| ARM runner | `dev-u24-arm-nfs` on dev-u24, tag `arm-nfs` (T503, below) |
+| Primary runner | **`thinkpad`** (runner id 7, 172.16.200.205, B1087, Will 2026-10-16): runs EVERY job, x86 and ARM — tags `x86-build`, `arm-nfs`, `goldfarm`, `x86-gpu`, `x86-build-fast`, runs untagged, `concurrent = 3`, in `ci-build.slice` beside the lane-5 oracle ("The ThinkPad primary runner" below) |
+| x86 runners | **gitlab-runner-1** and **gitlab-runner-2** (10.0.30.81/.82, B1008): shell executor (bash), `concurrent = 1` each, **both tagged `x86-build`** since 2026-10-11 — one pipeline's stages may run on different hosts (B1026, "Two x86 runners" below). **Paused since B1087**, not unregistered |
+| ARM runner | `dev-u24-arm-nfs` on dev-u24, tag `arm-nfs` (T503, below). **Paused since B1087**, not unregistered |
 | Former host | **hermes-ext** (172.16.200.100): runner id 1, untagged; it ran every job until B1008 (2026-10-08) and no longer builds |
 | Config | `.gitlab-ci.yml` at the repo root |
 
@@ -49,13 +50,59 @@ CPUs belong to the GPUs. Every job's first line is therefore a host
 allow-list (`.goldfarm`'s `before_script`; it was `hermes-ext` alone before
 B1008)
 
-    case "$(hostname)" in hermes-ext|gitlab-runner-1|gitlab-runner-2) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac
+    case "$(hostname)" in hermes-ext|gitlab-runner-1|gitlab-runner-2|thinkpad) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac
 
 so if the project is ever reassigned to another runner the pipeline fails loudly
 instead of quietly moving builds onto the Inspur. hermes-ext also hosts the
 hermes gateway and its kanban workers, so every heavy command is bounded to
 `JOBS` (8 of the 16 cores) and runs under `nice -n 10`: a pipeline must not
 starve a live worker.
+
+## The ThinkPad primary runner (B1087)
+
+Will (2026-10-16): the ThinkPad (lane 5, `docs/thinkpad.md`) runs **every** CI job, x86 and ARM; runners 1
+(hermes-ext), 5, 6 (gitlab-runner-1/2) and 2 (dev-u24-arm-nfs) are **paused, not unregistered** (un-pause
+with `PUT /api/v4/runners/<id>` `paused=false`). The box also hosts the lane-5 oracle (headless Xorg :99 + the
+Wine official client + the `/opt/akk-stack` eqemu containers), so the builds run under resource control:
+
+- **`ci.slice` / `ci-build.slice`** (`/etc/systemd/system/`): `CPUWeight=30`, `IOWeight=30`,
+  `MemoryHigh=24G`. The dash is hierarchy (`ci-build.slice` lives UNDER `ci.slice`), so the weights must be
+  on `ci.slice` to compete at the root with `system.slice` and `user.slice` (default 100): with only
+  `ci-build.slice` weighted, a lane-5 oracle login under a full pipeline took 273 s against 127 s idle;
+  with `ci.slice` weighted, 173 s (#407). Idle, a build still has all 12 threads. `IOWeight` is inert on
+  this box's NVMe (scheduler `none`); IO pressure stayed near zero under load, CPU is the contended
+  resource.
+- **The runner runs AS `gitlab-runner`, without `--user`** (drop-in
+  `/etc/systemd/system/gitlab-runner.service.d/b1087.conf`: `Slice=ci-build.slice`, `User=gitlab-runner`,
+  `UMask=0002`, `SHLVL=1`). With `--user` the root runner `su`s into each job, and PAM's `pam_systemd`
+  moves the job shell into `user-996.slice/session-*.scope`, OUT of the slice (measured). The config is
+  owned by gitlab-runner so the runner can rewrite its own token.
+- **Docker jobs** (the two ARM cross-builds) start containers through dockerd, which would put them in
+  `system.slice`. The runner's `environment` puts `/usr/local/lib/ci-build/bin` first on `PATH`; the
+  `docker` wrapper there adds `--cgroup-parent=$CI_DOCKER_CGROUP_PARENT` (`ci-build.slice`) to
+  `docker run` and passes everything else through. Image builds (`docker build`, BuildKit) stay in
+  dockerd's cgroup; they are layer-cached after the first pipeline.
+- **No GPU for jobs**: gitlab-runner is NOT in `video`/`render`. With them, the GL tests opened the
+  Intel iGPU through DRM (a 3840x2160 modeset on the laptop panel) instead of surfaceless llvmpipe, and
+  19 pixel tests failed (MR !211's first pipeline, 1420); without them the jobs see what the runner VMs
+  saw. Without the groups, surfaceless EGL still found NVIDIA's EGL (its `/dev/nvidia*` nodes are world-
+  readable; `EGL (surfaceless): ... vendor=NVIDIA`), which has no ETC1, so the census decoded every
+  texture (`textures_decoded` 14 MB vs 0.34 MB on runner-1, 110 of 118 zones over budget). The runner's
+  `environment` therefore pins Mesa: `__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json`
+  and `LIBGL_ALWAYS_SOFTWARE=1` (llvmpipe, as on the runner VMs; this also keeps CI off the oracle's
+  Quadro). A future `x86-gpu` hardware-GL job needs its own grant and must unset both.
+- **One runner, shared checkouts**: `concurrent = 3` gives each slot its own checkout
+  (`builds/<runner>/0..2`), and an x86 job can land in a slot an ARM job used. The ARM cross-build's
+  container writes `build-arm*-noble/cache` as root, which gitlab-runner's `git clean` cannot remove, so
+  the global `GIT_CLEAN_FLAGS` keeps both ARM trees as well (pipeline 1427's hygiene died in the clean).
+- **`CI_JOBS=8`** from the runner's `environment`: `.goldfarm`'s `before_script` exports it as `JOBS`, and
+  `build-arm64` as `BUILD_JOBS`, so the host, not this file, sizes its builds.
+- **ccache** at `CCACHE_DIR=/var/cache/ccache-ci` (NVMe root, `max_size = 30G` in its `ccache.conf`).
+- **The ARM publish path is the same NFS share** (`/mnt/projects`, the NAS 10.0.30.10, already in the
+  ThinkPad's fstab), so `ci-arm/<sha>/` and `ci-arm64/<sha>/` land exactly where the SBC lanes read them.
+  gitlab-runner (uid 996) is in group `user` (gid 1000) so it can write the group-writable `ci-arm64/`;
+  `ci-arm/` is open to all on the NAS. Host tools for the publish: `docker-buildx`,
+  `binutils-arm-linux-gnueabihf` (the armhf strip runs on the host).
 
 ## The ARM runner and Pi runs (T503)
 
@@ -68,7 +115,7 @@ keep both build trees (`-e build-arm-noble -e build-arm64-noble`). `build-arm` i
 `willeq-arm-noble`) then `scripts/pi/publish_arm_build.sh`, which publishes the stripped client plus that
 commit's tracked `config/` + `data/` to **`/mnt/projects/fable/ci-arm/<sha>/`** (`by-branch/<branch>` symlinks;
 newest 12 kept). The job is automatic on `fable` and a manual, non-blocking job everywhere else
-(`glab ci trigger build-arm`), and refuses any host but `dev-u24`. Both ARM jobs write the whole build to
+(`glab ci trigger build-arm`), and refuses any host but `dev-u24` and `thinkpad` (B1087). Both ARM jobs write the whole build to
 `build-<arch>-noble.log`, kept as a job artifact (14 days); a failure prints the `error:` lines and the tail,
 so an ARM-only compile error reaches the trace (B1054's did not through the old `| tail -n 40`).
 
@@ -88,7 +135,7 @@ for the rendered Kunark + Velious sweep (#102, `refactor/B854/RENDERED_SWEEP.md`
 
 ### The aarch64 SBC lanes (B1030, #350)
 
-The Orange Pi is **lane 1** of the lane table in `scripts/pi/env.sh` (lanes 1-3, B1030; 5, B1060); `PI_LANE=N` picks the device the way
+The Orange Pi is **lane 1** of the lane table in `scripts/pi/env.sh` (lanes 1-3, B1030; 4, B1056; 5, B1060); `PI_LANE=N` picks the device the way
 `EQEMU_LANE` picks an eqemu VM, and a card or a script names its LANE, never an address. Each lane is
 single-tenant with its own lock ON the device (`pi_lock_take`/`pi_lock_release` are unchanged; `PI_LANE=2 bash
 scripts/pi/lock_selftest.sh` is the per-lane net). A `PI_HOST` alone still picks its lane, so every pre-B1030
@@ -102,6 +149,7 @@ than here.
 | 1 | `orangepi` | armv7l | Mali-400, Lima | `ci-arm/<sha>/bin/willeq-nollvm` (the shipped prefix above) |
 | 2 | `rock64` (RK3328) | aarch64 | Mali-450, Lima (system Mesa) | `ci-arm64/<sha>/bin/willeq` |
 | 3 | `rock4d` (RK3576) | aarch64 | Mali-G52, Panfrost (system Mesa) | `ci-arm64/<sha>/bin/willeq` |
+| 4 | `a7s` (Allwinner A733) | aarch64 | PowerVR BXM-4-64, IMG DDK 24.2 blob (`pvr_dri.so` behind IMG's Mesa-derived EGL/GBM) | `ci-arm64-bullseye/<sha>/bin/willeq`, built ON the board (B1056) |
 | 5 | `orangepizero` (H2+) | armv7l | Mali-400, Lima, on a **vkms** card (no display output) | `ci-arm/<sha>/bin/willeq-nollvm` (as lane 1) |
 
 Lanes 2 and 3 run ONE generic `-march=armv8-a` binary from **`scripts/build-arm64-noble.sh`**
@@ -124,6 +172,23 @@ preset is for an experiment (`pi_rendered_zone_sweep.sh --constrained <preset>`)
 Lane 2's Mesa is the same
 25.2.8 the Pi runs, so the Lima cost sheet applies; lane 3 is Bifrost under Panfrost and nothing Lima-specific
 transfers to it.
+
+**Lane 4 is the odd one out** (B1056, #376, `docs/reference/radxa_a7s.md`). The Radxa Cubie A7S runs Debian 11
+bullseye (end-of-life since 2026-08-31; its apt sources point at `archive.debian.org`) on Radxa's vendor 5.15 kernel,
+its GPU is Imagination's, not Mali, and three things the other lanes take for granted do not hold there, so
+`scripts/pi/env.sh` carries them per lane instead of letting a rig assume them: the ssh user is `radxa`
+(`PI_USER`); the noble-sysroot `ci-arm64/` binary needs `GLIBC_2.38` and the board has 2.31, so the lane's binary
+is built on the device by `scripts/sbc/a7s/build_native.sh` (gcc 10, cmake 3.18, the same patched DRM/GLES2
+Irrlicht and configure flags as the cross build) and published under **`ci-arm64-bullseye/<sha>/`**
+(`PI_LANE_PUBLISH`, same shape as `ci-arm64/`); and the IMG libraries live in `/usr/local/lib` with the DRI driver
+in `/usr/local/lib/dri`, which an ssh session does not see (`/etc/environment` there uses `export`, which pam_env
+ignores), so every run on the lane is prefixed with `PI_RUN_ENV` (`LD_LIBRARY_PATH` + `LIBGL_DRIVERS_PATH`) --
+`kmscube_floor.sh` and `lane_smoke.sh` do this; a hand run must too. The vendor kernel has no NFS client and the
+NAS refuses SMB from `172.16.200.x`, so `/mnt/projects` is an **sshfs** mount of dev-u24's share (fstab,
+`user@10.0.30.23`, the board's key in dev-u24's `authorized_keys`): the same paths, slower reads, and a run that
+streams zone assets is reading them through dev-u24. Its display is `card0-DP-1` (`PI_HDMI_CONN`); the image's
+`sddm` was disabled because the display manager held DRM master on `card0`. Nothing Lima- or Bifrost-specific
+transfers to it; re-measure.
 
 **Headless DRM.** The two boards share one KVM, so a lane's HDMI is usually `disconnected` and the DRM device
 refuses to start. `pi_hdmi_force_on` (`scripts/pi/env.sh`) writes `on` to the connector's sysfs `status`, which
@@ -343,7 +408,14 @@ the only figure that sees Lima's GEM buffers. On a kernel+driver that publishes
 the row is the RESIDENT figure (B1032, #352): `drm-total-memory` includes
 Panfrost's 128 MiB growable tiler heap before the tiler has faulted it in, and
 the `[memgpu]` line carries `fdinfo_total=`/`fdinfo_resident=`/`fdinfo_purgeable=`
-so the choice stays visible. `scripts/ci/owned_memory.py` is
+so the choice stays visible. The fdinfo read is never made against the IMG
+PowerVR module (`pvrsrvkm`, lane 4): its `pvr_show_fdinfo` panics the kernel on
+any read of a DRM fd's fdinfo (B1056, trace in `review/B1056/lane4_attempts/`).
+The guard fails closed (an fd whose driver has no sysfs row is not read either),
+and `WILLEQ_GPU_CENSUS_NO_FDINFO=1` (in lane 4's `PI_RUN_ENV`) skips the read for
+every driver. With fdinfo skipped `decideGpuBuffers` falls through in order to
+`memcg_shmem`, `drm_maps_lower_bound`, then `logical`: lane 4's smoke row is
+`source=drm_maps_lower_bound`. `scripts/ci/owned_memory.py` is
 the one Python definition of these figures, behind the `[rss-target]` line and
 the Pi summarizers.
 

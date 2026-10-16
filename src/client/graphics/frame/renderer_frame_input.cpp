@@ -37,6 +37,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include "client/graphics/ui/ui_layout_table.h"  // B1075: closesOnOpen()
 #ifdef __linux__
 #include <unistd.h>  // sysconf, _SC_PAGESIZE (H01: missing on x86 EQT_GLES2 builds)
 #endif
@@ -292,15 +293,18 @@ void FrameComponent::processCommonInput(const std::vector<RendererEvent>& action
 }
 
 // T363 (B058): THE skills-window toggle. See the doc comment in
-// frame_component.h. The mutual exclusion (one centre popup at a time) is the
-// same rule /newbook and the LootWindowOpened bridge arm apply, and it is
+// frame_component.h. What opening it closes is the co-open table's call
+// (B1075, closesOnOpen() in ui_layout_table.h: skills shares no required set
+// with the inventory or the spellbook, so both close, as before), and it is
 // guarded on the OPEN branch only -- closing the skills window must not close
 // anything else.
 bool FrameComponent::toggleSkillsWindow() {
     skillsPopupState_.isOpen = !skillsPopupState_.isOpen;
     if (skillsPopupState_.isOpen) {
-        inventoryState_.activePopup = PopupType::None;
-        spellbookState_.isOpen = false;
+        if (closesOnOpen(UIWindow::Skills, UIWindow::Inventory))
+            inventoryState_.activePopup = PopupType::None;
+        if (closesOnOpen(UIWindow::Skills, UIWindow::Spellbook))
+            spellbookState_.isOpen = false;
     }
     LOG_INFO(MOD_GRAPHICS, "Skills window {}", skillsPopupState_.isOpen ? "opened" : "closed");
     return skillsPopupState_.isOpen;

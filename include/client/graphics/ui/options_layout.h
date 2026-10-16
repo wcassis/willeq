@@ -336,20 +336,8 @@ constexpr int CONTROL_COUNT =
  * screen even at 640x480 where 452 leaves 28px of slack.
  */
 inline irr::core::rect<irr::s32> windowRect(const UILayout& layout) {
-    irr::s32 x = (layout.screenW - ORACLE_WINDOW_W) / 2;
-    irr::s32 y = (layout.screenH - ORACLE_WINDOW_H) / 2;
-    if (x < 0) x = 0;
-    if (y < 0) y = 0;
-    if (x + ORACLE_WINDOW_W > layout.screenW) {
-        x = layout.screenW - ORACLE_WINDOW_W;
-        if (x < 0) x = 0;
-    }
-    if (y + ORACLE_WINDOW_H > layout.screenH) {
-        y = layout.screenH - ORACLE_WINDOW_H;
-        if (y < 0) y = 0;
-    }
-    return irr::core::rect<irr::s32>(x, y, x + ORACLE_WINDOW_W,
-                                     y + ORACLE_WINDOW_H);
+    // B1075 (#395): the layout table's ScreenCentre anchor.
+    return layout.placeScreenCentre(ORACLE_WINDOW_W, ORACLE_WINDOW_H);
 }
 
 /** fable's title band, holding the oracle's <Text>Options</Text>. */

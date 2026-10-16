@@ -389,3 +389,22 @@ IF(EQT_GRAPHICS)
     TARGET_LINK_LIBRARIES(test_zone_depth_tie_break GTest::gtest_main)
     GTEST_DISCOVER_TESTS(test_zone_depth_tie_break DISCOVERY_TIMEOUT 120)
 ENDIF()
+
+# B888-CC4 (GitLab #204): the character select + creation visual gate. Not a
+# GTest binary -- a script (scripts/ci/charcreate_gate.py) that drives the
+# charcreate_capture tool (the willeq leg) and scores each of the 14 gate
+# states per-control (presence + edge IoU, REQUIRED_CONTROLS per state, OCR
+# label reads as findings, and reference IoU against tests/goldens/charcreate/).
+# --bless-required is THIS row's mode: the official-client reference set is a
+# BLESS (Will's sign-off; the proposed stills live in
+# /home/user/kb-evidence/kb-cc4-charcreate-oracle-gate/goldens_proposed/).
+# Until it is blessed into tests/goldens/charcreate/ the script skips with 125
+# (SKIP_RETURN_CODE below turns that into a clean ctest SKIP, so CI stays green
+# and the willeq-internal gate still runs on any tip without a reference).
+# Gated on the capture target so a non-graphics build has no row for it.
+IF(TARGET charcreate_capture)
+    ADD_TEST(NAME charcreate_gate
+        COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/charcreate_gate.py --bless-required)
+    SET_TESTS_PROPERTIES(charcreate_gate PROPERTIES
+        LABELS "charcreate_gate" SKIP_RETURN_CODE 125 RUN_SERIAL TRUE)
+ENDIF()

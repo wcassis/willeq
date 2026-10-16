@@ -3,10 +3,9 @@
 # Source this from bench_pi.sh / compare_pi.sh (or their Python engines).
 # Every value can be overridden by exporting it before sourcing.
 
-: "${PI_USER:=user}"
 : "${PI_SSH_OPTS:=-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new}"
 
-# B1030 (#350) -- the SBC LANES. Three single-tenant devices, each with its
+# B1030 (#350) -- the SBC LANES. Four single-tenant devices (lane 4 = B1056), each with its
 # own lock ON the device (PI_LOCK below is a path on the remote host, so one
 # lock per device falls out of the lane choice). `PI_LANE=N` picks the device,
 # exactly like scripts/eqemu/env.sh's EQEMU_LANE: a card or a script names its
@@ -24,6 +23,15 @@
 #   lane 1  orangepi  10.0.30.192     armv7l  Allwinner H3  Mali-400  lima      483 MB
 #   lane 2  rock64    172.16.200.204  aarch64 RK3328        Mali-450  lima      4 GB, eMMC
 #   lane 3  rock4d    172.16.200.202  aarch64 RK3576        Mali-G52  panfrost  12 GB, SD
+#   lane 4  a7s       172.16.200.206  aarch64 Allwinner A733 PowerVR BXM-4-64 pvr (IMG DDK 24.2)  4 GB, eMMC
+#
+# Lane 4 (B1056, #376) is Debian 11 bullseye on a vendor 5.15 kernel, user `radxa`,
+# and its GPU is Imagination's, not Mali: the IMG DDK blob (`/usr/local/lib/dri/pvr_dri.so`
+# behind IMG's own Mesa-derived libEGL/libgbm in /usr/local/lib) does the GLES2 work, so
+# nothing Lima- or Panfrost-specific transfers. Its glibc is 2.31, so the noble-sysroot
+# ci-arm64/ publish does NOT run there (GLIBC_2.38): the lane's binary is built ON the
+# device by scripts/sbc/a7s/build_native.sh and published under ci-arm64-bullseye/<sha>/
+# in the same shape as ci-arm64/ (PI_LANE_PUBLISH below names the root per lane).
 #   lane 5  orangepizero 172.16.200.207 armv7l Allwinner H2+ Mali-400 lima     484 MB, SD, trixie
 #
 # Lane 5 (B1060, #380) is lane 1's sibling: the same armhf ci-arm/ publish, the same
@@ -46,8 +54,9 @@ case "${PI_LANE:-}" in
     ""|1) PI_LANE_HOST=10.0.30.192;    PI_LANE_NAME=orangepi; PI_LANE_ARCH=armhf;   PI_LANE_GPU=lima ;;
     2)    PI_LANE_HOST=172.16.200.204; PI_LANE_NAME=rock64;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=lima ;;
     3)    PI_LANE_HOST=172.16.200.202; PI_LANE_NAME=rock4d;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=panfrost ;;
+    4)    PI_LANE_HOST=172.16.200.206; PI_LANE_NAME=a7s;      PI_LANE_ARCH=aarch64; PI_LANE_GPU=pvr ;;
     5)    PI_LANE_HOST=172.16.200.207; PI_LANE_NAME=orangepizero; PI_LANE_ARCH=armhf; PI_LANE_GPU=lima ;;
-    *)    echo "scripts/pi/env.sh: unknown PI_LANE '${PI_LANE}' (1-3, 5)" >&2
+    *)    echo "scripts/pi/env.sh: unknown PI_LANE '${PI_LANE}' (1-5)" >&2
           return 2 2>/dev/null || exit 2 ;;
 esac
 : "${PI_HOST:=${PI_LANE_HOST}}"
@@ -55,6 +64,7 @@ case "${PI_HOST}" in
     10.0.30.192)    _pi_host_lane=1 ;;
     172.16.200.204) _pi_host_lane=2 ;;
     172.16.200.202) _pi_host_lane=3 ;;
+    172.16.200.206) _pi_host_lane=4 ;;
     172.16.200.207) _pi_host_lane=5 ;;
     *)              _pi_host_lane= ;;   # an unlisted host keeps whatever the caller said
 esac
@@ -71,15 +81,44 @@ case "${_pi_host_lane}" in
     1) PI_LANE=1; PI_LANE_NAME=orangepi; PI_LANE_ARCH=armhf;   PI_LANE_GPU=lima ;;
     2) PI_LANE=2; PI_LANE_NAME=rock64;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=lima ;;
     3) PI_LANE=3; PI_LANE_NAME=rock4d;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=panfrost ;;
+    4) PI_LANE=4; PI_LANE_NAME=a7s;      PI_LANE_ARCH=aarch64; PI_LANE_GPU=pvr ;;
     5) PI_LANE=5; PI_LANE_NAME=orangepizero; PI_LANE_ARCH=armhf; PI_LANE_GPU=lima ;;
     *) PI_LANE="${PI_LANE:-1}" ;;
 esac
 unset _pi_lane_asked _pi_host_lane
 
+# Per-lane facts the rigs read instead of guessing (B1056): the ssh user (lane 4's
+# image has no `user`), the publish root the lane's binary comes from, the DRM
+# connector a headless run forces on, and the environment a run needs on the
+# device (lane 4: the IMG libraries are in /usr/local/lib and the DRI driver in
+# /usr/local/lib/dri; /etc/environment on that image uses `export`, which pam_env
+# ignores, so an ssh session does not get them by itself).
+case "${PI_LANE}" in
+    4) : "${PI_USER:=radxa}"
+       : "${PI_LANE_PUBLISH:=/mnt/projects/fable/ci-arm64-bullseye}"
+       : "${PI_HDMI_CONN:=/sys/class/drm/card0-DP-1}"
+       # WILLEQ_GPU_CENSUS_NO_FDINFO: reading a DRM fd's fdinfo panics this kernel (pvr_show_fdinfo);
+       # the device-level fact rides in the lane env, not only in the in-process sysfs lookup.
+       : "${PI_RUN_ENV:=LD_LIBRARY_PATH=/usr/local/lib LIBGL_DRIVERS_PATH=/usr/local/lib/dri WILLEQ_GPU_CENSUS_NO_FDINFO=1}"
+       # kmscube's own device scan lands on card1 (pvrsrvkm, render-only: "no connected
+       # connector!"); the display is sunxi-drm card0 and GBM there reaches the IMG driver.
+       : "${PI_KMSCUBE_ARGS:=-D /dev/dri/card0}" ;;
+    2|3) : "${PI_USER:=user}"
+       : "${PI_LANE_PUBLISH:=/mnt/projects/fable/ci-arm64}"
+       : "${PI_RUN_ENV:=}"; : "${PI_KMSCUBE_ARGS:=}" ;;
+    *) : "${PI_USER:=user}"
+       : "${PI_LANE_PUBLISH:=/mnt/projects/fable/ci-arm}"
+       : "${PI_RUN_ENV:=}"; : "${PI_KMSCUBE_ARGS:=}" ;;
+esac
+
 # ARM cross-build lands in the MAIN worktree, not this task worktree --
 # scripts/build-arm-noble.sh / build-arm64-noble.sh always build there.
 # Override if needed. The default follows the lane's architecture.
-if [ "${PI_LANE_ARCH}" = aarch64 ]; then
+if [ "${PI_LANE}" = 4 ]; then
+    # Lane 4 has no cross build (the noble binary needs GLIBC_2.38, the board has
+    # 2.31): its binaries come from the on-device build's publish (B1056).
+    : "${ARM_BUILD_BIN_DIR:=${PI_LANE_PUBLISH}/by-branch/fable/bin}"
+elif [ "${PI_LANE_ARCH}" = aarch64 ]; then
     : "${ARM_BUILD_BIN_DIR:=/mnt/projects/fable/main/build-arm64-noble/bin}"
 else
     : "${ARM_BUILD_BIN_DIR:=/mnt/projects/fable/main/build-arm-noble/bin}"
@@ -91,7 +130,8 @@ fi
 
 # Pi tmpfs -- I/O rule: ALL timed-run output goes here, never to NFS/SD/eMMC
 # while frames are being timed. Lane 1 has 242 MB total, watch the ceiling;
-# lanes 2-3 have a 2 G / 5.9 G /tmp plus a /mnt/ram scratch tmpfs. All are
+# lanes 2-3 have a 2 G / 5.9 G /tmp plus a /mnt/ram scratch tmpfs, lane 4 a 1 G /tmp
+# plus a 1.5 G /mnt/ram. All are
 # mounted nosuid: a binary that needs setcap goes in the ext4 home.
 : "${PI_REMOTE_TMP:=/tmp}"
 : "${PI_REMOTE_BIN:=/tmp/gles2_zone_benchmark_h04}"
@@ -125,8 +165,16 @@ PROJECT_DIR="$(cd "$PI_ENV_SCRIPT_DIR/../.." && pwd)"
 : "${PI_LOCK:=/home/${PI_USER}/.pi-lock}"
 
 pi_remote() {
+    # The lane's run environment (PI_RUN_ENV, lane 4: the IMG loader paths + the
+    # fdinfo kill switch) is applied HERE, once, for every rig and hand run; the
+    # rigs never prefix it themselves. PI_RUN_ENV / PI_KMSCUBE_ARGS are exported
+    # too, for the sudo boundary inside kmscube_floor.sh. "$*" is what ssh would
+    # have joined anyway.
+    local pre="export PI_RUN_ENV='${PI_RUN_ENV:-}' PI_KMSCUBE_ARGS='${PI_KMSCUBE_ARGS:-}'"
+    local kv
+    for kv in ${PI_RUN_ENV:-}; do pre="$pre $kv"; done
     # shellcheck disable=SC2086
-    ssh ${PI_SSH_OPTS} "${PI_USER}@${PI_HOST}" "$@"
+    ssh ${PI_SSH_OPTS} "${PI_USER}@${PI_HOST}" "$pre; $*"
 }
 pi_lock_take() {
     # pi_lock_take <owner, e.g. T### or kb-slug> -- exit 0 = you own it;
@@ -201,6 +249,6 @@ pi_vkms_off() {
     pi_remote "sudo -n rmmod vkms" </dev/null && PI_VKMS_LOADED=0
 }
 
-export PI_LANE PI_LANE_NAME PI_LANE_ARCH PI_LANE_GPU PI_DRM_VIRTUAL PI_DRM_CARD PI_KMSCUBE_ARGS PI_HOST PI_USER PI_SSH_OPTS ARM_BUILD_BIN_DIR PI_EQ_PATH PI_EQE1_PATH \
+export PI_LANE PI_LANE_NAME PI_LANE_ARCH PI_LANE_GPU PI_LANE_PUBLISH PI_RUN_ENV PI_DRM_VIRTUAL PI_DRM_CARD PI_KMSCUBE_ARGS PI_HOST PI_USER PI_SSH_OPTS ARM_BUILD_BIN_DIR PI_EQ_PATH PI_EQE1_PATH \
        PI_HDMI_CONN PI_REMOTE_TMP PI_REMOTE_BIN PI_LOCK PROJECT_DIR MANIFEST_PATH ARTIFACTS_DIR \
        BASELINE_DIR H04_TOTAL_FRAMES H04_COOLDOWN_SEC H04_WARMUP_REPS

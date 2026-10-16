@@ -7,7 +7,7 @@
 | Dockerfile | Target | Architecture | Notes |
 |-----------|--------|-------------|-------|
 | `Dockerfile.arm-noble` | Orange Pi One | armhf (32-bit) | Primary build target; native GLES2 (`COpenGLES2Driver`) on DRM/KMS, Mesa/Lima supplying EGL |
-| `Dockerfile.arm64-noble` | SBC lanes 2-3: Rock64 (RK3328, Lima) + ROCK 4D (RK3576, Panfrost) | aarch64 (64-bit) | B1030: the armhf file with the arch swapped, generic armv8-a; `scripts/ci/check_arm64_dockerfile.sh` keeps it derived (`--write` regenerates); built by `scripts/build-arm64-noble.sh`, published to `ci-arm64/` |
+| `Dockerfile.arm64-noble` | SBC lanes 2-3: Rock64 (RK3328, Lima) + ROCK 4D (RK3576, Panfrost) | aarch64 (64-bit) | B1030: the armhf file with the arch swapped, generic armv8-a; `scripts/ci/check_arm64_dockerfile.sh` keeps it derived (`--write` regenerates); built by `scripts/build-arm64-noble.sh`, published to `ci-arm64/`. NOT lane 4 (bullseye glibc 2.31 cannot run a noble binary): that lane builds on the device, `scripts/sbc/a7s/build_native.sh` (B1056) |
 | `Dockerfile` | Desktop | x86_64 | Multi-stage: builder, runtime, vnc |
 | `Dockerfile.arm-cross` | ARM (legacy) | armhf | Superseded by arm-noble |
 | `Dockerfile.mesa-nollvm-armhf` | Orange Pi One | armhf (32-bit) | B932/B935: builds the SHIPPED Mesa 25.2.8 without LLVM (Lima only), plus patchelf for the rpath copy; driven by `scripts/pi/build_mesa_nollvm.sh`, measured in `refactor/B932/README.md` |

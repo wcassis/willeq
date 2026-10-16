@@ -112,6 +112,10 @@ std::vector<CharacterSelectRow> BuildCharacterSelectRows(
         r.cls = e.char_class;
         r.race = e.race;
         r.zone = e.zone;
+        r.gender = e.gender;
+        r.face = e.face;
+        r.hair_color = e.hair_color;
+        r.hair_style = e.hair_style;
         r.infoLine = ComposeCharacterInfoLine(e.name, e.level, eqt::strings::GetClassName(e.char_class));
         const auto it = zoneNames.find(e.zone);
         // A zone outside the era list (the tutorial, 189, among them) has no

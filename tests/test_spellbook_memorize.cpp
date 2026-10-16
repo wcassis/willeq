@@ -120,13 +120,14 @@ public:
 };
 
 // 800x600 geometry, same source of truth as test_static_ui_panels.cpp:
-//   centerPopup: {200, 125, 600, 475}, spellGems: {764, 22, 796, 306}
-//   (B1025-H2: the gem bar ends at the hotbar window's TOP, y=310)
-// Spellbook rows: startY = 125 + 24 = 149, LINE_H 28 + MARGIN 4 = 32 pitch.
-//   row 0 -> y in [149, 177)   -> probe y=160
-//   row 1 -> y in [181, 209)   -> probe y=190
-// Gems: gy = 22 + i*36, 32 tall. gem 0 -> y in [22, 54)   -> probe y=38
-//                                   gem 2 -> y in [94, 126)  -> probe y=110
+//   centerPopup: {264, 65, 664, 415}, spellGems: {764, 198, 796, 482}
+//   (B1075: the spellbook is the layout table's CentreSlot; the gem bar ends
+//   MARGIN above the 1x10 hotbar's top, y=486)
+// Spellbook rows: startY = 65 + 24 = 89, LINE_H 28 + MARGIN 4 = 32 pitch.
+//   row 0 -> y in [89, 117)    -> probe y=100
+//   row 1 -> y in [121, 149)   -> probe y=130
+// Gems: gy = 198 + i*36, 32 tall. gem 0 -> y in [198, 230) -> probe y=214
+//                                   gem 2 -> y in [270, 302) -> probe y=286
 class SpellbookClickTest : public ::testing::Test {
 protected:
     UILayout layout;
@@ -161,7 +162,7 @@ protected:
 };
 
 TEST_F(SpellbookClickTest, ClickOnFirstRowPushesMemorizeIntentForThatSpell) {
-    click(300, 160);
+    click(300, 100);
 
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -172,7 +173,7 @@ TEST_F(SpellbookClickTest, ClickOnFirstRowPushesMemorizeIntentForThatSpell) {
 }
 
 TEST_F(SpellbookClickTest, ClickOnSecondRowCarriesThatRowsSpellId) {
-    click(300, 190);
+    click(300, 130);
 
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -189,7 +190,7 @@ TEST_F(SpellbookClickTest, PageOffsetIsAppliedToTheRowIndex) {
         spellbook.spells.push_back(e);
     }
     spellbook.currentPage = 1;
-    click(300, 160);
+    click(300, 100);
 
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -198,14 +199,14 @@ TEST_F(SpellbookClickTest, PageOffsetIsAppliedToTheRowIndex) {
 
 TEST_F(SpellbookClickTest, ClickOnAnEmptyRowPushesNothing) {
     // Three spells populated, row 5 is past the end of the page.
-    click(300, 149 + 5 * 32 + 4);
+    click(300, 89 + 5 * 32 + 4);
     EXPECT_TRUE(bridge.drainIntents().empty());
 }
 
 TEST_F(SpellbookClickTest, DestinationIsTheFirstEmptyGem) {
     gems.gems[0].spellId = 500;
     gems.gems[1].spellId = 501;
-    click(300, 160);
+    click(300, 100);
 
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -213,22 +214,22 @@ TEST_F(SpellbookClickTest, DestinationIsTheFirstEmptyGem) {
 }
 
 TEST_F(SpellbookClickTest, GemClickWhileSpellbookOpenSelectsTargetInsteadOfCasting) {
-    click(770, 110);  // gem 2
+    click(770, 286);  // gem 2
 
     EXPECT_EQ(gems.memorizeTargetGem, 2);
     EXPECT_TRUE(bridge.drainIntents().empty()) << "a gem click must not cast while the book is open";
 }
 
 TEST_F(SpellbookClickTest, ClickingTheSelectedGemAgainClearsTheSelection) {
-    click(770, 110);
+    click(770, 286);
     ASSERT_EQ(gems.memorizeTargetGem, 2);
-    click(770, 110);
+    click(770, 286);
     EXPECT_EQ(gems.memorizeTargetGem, -1);
 }
 
 TEST_F(SpellbookClickTest, SelectedGemBecomesTheMemorizeDestinationAndIsThenConsumed) {
-    click(770, 110);            // pick gem 2 as the destination
-    click(300, 160);            // memorize row 0 there
+    click(770, 286);            // pick gem 2 as the destination
+    click(300, 100);            // memorize row 0 there
 
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -240,7 +241,7 @@ TEST_F(SpellbookClickTest, SelectedGemBecomesTheMemorizeDestinationAndIsThenCons
 
 TEST_F(SpellbookClickTest, AllGemsFullAndNoPickPushesNothing) {
     for (int i = 0; i < static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT); ++i) gems.gems[i].spellId = 100 + i;
-    click(300, 160);
+    click(300, 100);
     EXPECT_TRUE(bridge.drainIntents().empty());
 }
 
@@ -248,7 +249,7 @@ TEST_F(SpellbookClickTest, GemClickWithSpellbookClosedStillCasts) {
     // The cast gesture is only diverted while the book is open -- pin that
     // the ordinary case is untouched.
     spellbook.isOpen = false;
-    click(770, 38);  // gem 0
+    click(770, 214);  // gem 0
 
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -258,7 +259,7 @@ TEST_F(SpellbookClickTest, GemClickWithSpellbookClosedStillCasts) {
 
 TEST_F(SpellbookClickTest, ClosedSpellbookRowClickPushesNothing) {
     spellbook.isOpen = false;
-    click(300, 160);
+    click(300, 100);
     EXPECT_TRUE(bridge.drainIntents().empty());
 }
 

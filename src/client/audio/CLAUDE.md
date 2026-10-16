@@ -15,8 +15,8 @@ Core:
 
 Zone Audio:
 - `EffLoader` - Parses zone_sounds.eff and zone_sndbnk.eff files for emitter data
-- `ZoneSoundEmitter` - Positioned sound sources with day/night variants, cooldowns
-- `ZoneAudioManager` - Manages all zone emitters, handles day/night transitions
+- `ZoneSoundEmitter` - Positioned sound sources with day/night variants, cooldowns. **Loop rule (B1074):** an emitter whose cooldown for the current day/night variant AND randomDelay are 0 (every qeynos2 emitter; the sound bank's LOOP/EMIT sounds) LOOPS while the listener is in range -- `AudioManager::playLoopingSound()` -> `SfxManager::playSpatialLoop()` -> `play(..., loop=true)`, maxDist = the emitter radius, volume/pan re-derived each update times the fade envelope. The emitter owns the channel (`SfxLoopHandle`, guarded by the buffer's samples pointer so a freed/reused channel is never stopped) and stops it on leaving range (after the fade), on a day/night switch to another file, and on `stop()` (pause, unload, destructor), releasing B1015's in-use pin. Cooldown > 0 stays a one-shot with cooldown.
+- `ZoneAudioManager` - Manages all zone emitters, handles day/night transitions; `unloadZone()`/`pause()` stop every emitter, so no looped channel outlives its zone
 
 Sound Categories:
 - `DoorSounds` - Door type sounds (metal, stone, wood, secret, mechanisms); reached from `entities_component_world.cpp`
@@ -109,7 +109,7 @@ Audio tests require `WITH_AUDIO` and skip if no audio device:
 - `test_sound_effects.cpp` - Sound ID constants, sound effect playback
 - `test_spatial_audio.cpp` - 3D spatial audio, loopback mode for RDP
 - `test_eff_loader.cpp` - EFF file parsing (zone sound emitter config)
-- `test_zone_sound_emitters.cpp` - Zone sound emitter system
+- `test_zone_sound_emitters.cpp` - Zone sound emitter system; `ZoneEmitterLoopTest` pins the B1074 loop rule headlessly (loopback backend, synthetic WAV), `ZoneAudioLoopUnloadTest` the qeynos2 unload
 - `test_day_night_audio.cpp` - Day/night audio transitions
 - `test_player_sounds.cpp` - Player race/gender sound mapping
 - `test_creature_sounds.cpp` - Creature/NPC race sound mapping
