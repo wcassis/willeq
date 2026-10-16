@@ -98,6 +98,16 @@ Wine official client + the `/opt/akk-stack` eqemu containers), so the builds run
 - **`CI_JOBS=8`** from the runner's `environment`: `.goldfarm`'s `before_script` exports it as `JOBS`, and
   `build-arm64` as `BUILD_JOBS`, so the host, not this file, sizes its builds.
 - **ccache** at `CCACHE_DIR=/var/cache/ccache-ci` (NVMe root, `max_size = 30G` in its `ccache.conf`).
+- **ARM ccache** (B1087 follow-up): a slot that never built ARM compiled both cross-builds from scratch
+  (pipeline 1428: build-arm 1,451 s, build-arm64 1,719 s). The two ARM jobs set
+  `ARM_CCACHE_DIR=/var/cache/ccache-ci-arm`; `scripts/ci/arm_ccache.sh` mounts
+  `$ARM_CCACHE_DIR/<image>` into the build container as `CCACHE_DIR` (10G per image) and the Dockerfiles'
+  entrypoint adds `ccache` as the compiler launcher only when `CCACHE_DIR` is set. The container sees
+  every slot's checkout at `/src` and its tree at `/build`, so the compile lines match across slots
+  (`CCACHE_BASEDIR=/src`, `CCACHE_NOHASHDIR=1`). The directory is provisioned on the host
+  (`install -d -o gitlab-runner -g gitlab-runner`); where it is missing the build runs without ccache.
+  Each ARM log ends with `=== ccache (this build) ===` (this compile's hits, from a per-build stats log)
+  and the cache totals.
 - **The ARM publish path is the same NFS share** (`/mnt/projects`, the NAS 10.0.30.10, already in the
   ThinkPad's fstab), so `ci-arm/<sha>/` and `ci-arm64/<sha>/` land exactly where the SBC lanes read them.
   gitlab-runner (uid 996) is in group `user` (gid 1000) so it can write the group-writable `ci-arm64/`;
