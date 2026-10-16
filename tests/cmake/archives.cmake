@@ -40,7 +40,7 @@ IF(EQT_GRAPHICS)
     # T408: test_baked_vertex_lighting.cpp reads the shader source file to
     # check all six vertex programs carry the baked-light uniforms.
     TARGET_COMPILE_DEFINITIONS(test_wld PRIVATE
-        T408_ZONE_SHADER_SOURCES="${CMAKE_SOURCE_DIR}/src/client/graphics/zone_shader_sources_gles2.h")
+        "T408_ZONE_SHADER_SOURCES=WILLEQ_REPO_PATH(\"src/client/graphics/zone_shader_sources_gles2.h\")")
     TARGET_LINK_LIBRARIES(test_wld GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
     GTEST_DISCOVER_TESTS(test_wld DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -73,9 +73,9 @@ IF(EQT_GRAPHICS AND TARGET model_fingerprint)
     ADD_EXECUTABLE(test_entity_source_pruning test_entity_source_pruning.cpp)
     TARGET_LINK_LIBRARIES(test_entity_source_pruning GTest::gtest_main)
     TARGET_COMPILE_DEFINITIONS(test_entity_source_pruning PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db"
-        GOLDEN_DIR="${CMAKE_SOURCE_DIR}/tests/goldens/model_fingerprint"
-        MODEL_FINGERPRINT_BIN="$<TARGET_FILE:model_fingerprint>")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")"
+        "GOLDEN_DIR=WILLEQ_REPO_PATH(\"tests/goldens/model_fingerprint\")"
+        "MODEL_FINGERPRINT_BIN=WILLEQ_BIN_PATH_OF(\"$<TARGET_FILE_NAME:model_fingerprint>\")")
     ADD_DEPENDENCIES(test_entity_source_pruning model_fingerprint)
     GTEST_DISCOVER_TESTS(test_entity_source_pruning DISCOVERY_TIMEOUT 120)
 ENDIF()
