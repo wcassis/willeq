@@ -21,7 +21,7 @@
 ADD_EXECUTABLE(test_spell_manager
     test_spell_manager.cpp
 )
-TARGET_COMPILE_DEFINITIONS(test_spell_manager PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_COMPILE_DEFINITIONS(test_spell_manager PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 TARGET_LINK_LIBRARIES(test_spell_manager GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_manager PRIVATE ${IRRLICHT_INCLUDE_DIR})
@@ -70,7 +70,7 @@ GTEST_DISCOVER_TESTS(test_spell_body_type_targeting DISCOVERY_TIMEOUT 120)
 ADD_EXECUTABLE(test_levitation
     test_levitation.cpp
 )
-TARGET_COMPILE_DEFINITIONS(test_levitation PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_COMPILE_DEFINITIONS(test_levitation PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 TARGET_LINK_LIBRARIES(test_levitation GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_levitation PRIVATE ${IRRLICHT_INCLUDE_DIR})
@@ -93,7 +93,7 @@ ADD_EXECUTABLE(test_spell_interrupt_wire
     test_spell_interrupt_wire.cpp
 )
 TARGET_COMPILE_DEFINITIONS(test_spell_interrupt_wire PRIVATE
-    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 TARGET_LINK_LIBRARIES(test_spell_interrupt_wire GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_interrupt_wire PRIVATE ${IRRLICHT_INCLUDE_DIR})
@@ -107,7 +107,7 @@ ADD_EXECUTABLE(test_spell_cast_end_wire
     test_spell_cast_end_wire.cpp
 )
 TARGET_COMPILE_DEFINITIONS(test_spell_cast_end_wire PRIVATE
-    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 TARGET_LINK_LIBRARIES(test_spell_cast_end_wire GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_cast_end_wire PRIVATE ${IRRLICHT_INCLUDE_DIR})
@@ -136,7 +136,7 @@ ADD_EXECUTABLE(test_buff_manager
     ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
     ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
 )
-TARGET_COMPILE_DEFINITIONS(test_buff_manager PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_COMPILE_DEFINITIONS(test_buff_manager PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 TARGET_LINK_LIBRARIES(test_buff_manager GTest::gtest_main ${FMT_LIB} dl)
 GTEST_DISCOVER_TESTS(test_buff_manager DISCOVERY_TIMEOUT 120)
 
@@ -152,7 +152,7 @@ ADD_EXECUTABLE(test_buff_landing_producer
     test_buff_landing_producer.cpp
 )
 TARGET_COMPILE_DEFINITIONS(test_buff_landing_producer PRIVATE
-    WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 TARGET_LINK_LIBRARIES(test_buff_landing_producer GTest::gtest willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_buff_landing_producer PRIVATE ${IRRLICHT_INCLUDE_DIR})
@@ -167,7 +167,7 @@ ADD_EXECUTABLE(test_spell_impact_visual
     test_spell_impact_visual.cpp
 )
 TARGET_COMPILE_DEFINITIONS(test_spell_impact_visual PRIVATE
-    WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 TARGET_LINK_LIBRARIES(test_spell_impact_visual GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_impact_visual PRIVATE ${IRRLICHT_INCLUDE_DIR})
