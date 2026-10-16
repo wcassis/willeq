@@ -337,6 +337,16 @@ struct ScenarioOptions {
      * flaky lane should not pass on the first tick's un-echoed value.
      */
     double fallWaitSeconds = 8.0;
+    /**
+     * B1088 (#408, loading_name): the target of the scenario's GM zone
+     * request -- the SECOND zone-in whose loading screen the post-check
+     * asserts. 0 = refuse (the scenario has nowhere to go); the initial
+     * zone is whatever the character entered.
+     */
+    uint32_t expectZoneChangeId = 0;
+    /** B1088: the short name of that target zone (the scenario's Pass
+     *  check); empty = any zone counts. */
+    std::string expectZoneName;
 };
 
 class IScenario {

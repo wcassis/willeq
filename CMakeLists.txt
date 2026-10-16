@@ -542,6 +542,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/scenario/scenario_zone_connect_timeout.cpp  # B1072 (#392)
     src/client/scenario/scenario_world_app_camp.cpp  # B1005
     src/client/scenario/scenario_fall_damage.cpp  # B893 (#209)
+    src/client/scenario/scenario_loading_name.cpp  # B1088 (#408)
     src/client/scenario/scenario_ranged_single_shot.cpp  # B900 (#216)
     src/client/scenario/scenario_application_wiring.cpp
     # Bridge sources
