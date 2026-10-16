@@ -35,8 +35,9 @@ connects, Enter World -- back at character select after the attempt plus ONE ret
 | | |
 | --- | --- |
 | GitLab | `https://gitlab.goldfarm.local`, project `willeq/willeq` (id 1) |
-| x86 runners | **gitlab-runner-1** and **gitlab-runner-2** (10.0.30.81/.82, B1008): shell executor (bash), `concurrent = 1` each, **both tagged `x86-build`** since 2026-10-11 — one pipeline's stages may run on different hosts (B1026, "Two x86 runners" below) |
-| ARM runner | `dev-u24-arm-nfs` on dev-u24, tag `arm-nfs` (T503, below) |
+| Primary runner | **`thinkpad`** (runner id 7, 172.16.200.205, B1087, Will 2026-10-16): runs EVERY job, x86 and ARM — tags `x86-build`, `arm-nfs`, `goldfarm`, `x86-gpu`, `x86-build-fast`, runs untagged, `concurrent = 3`, in `ci-build.slice` beside the lane-5 oracle ("The ThinkPad primary runner" below) |
+| x86 runners | **gitlab-runner-1** and **gitlab-runner-2** (10.0.30.81/.82, B1008): shell executor (bash), `concurrent = 1` each, **both tagged `x86-build`** since 2026-10-11 — one pipeline's stages may run on different hosts (B1026, "Two x86 runners" below). **Paused since B1087**, not unregistered |
+| ARM runner | `dev-u24-arm-nfs` on dev-u24, tag `arm-nfs` (T503, below). **Paused since B1087**, not unregistered |
 | Former host | **hermes-ext** (172.16.200.100): runner id 1, untagged; it ran every job until B1008 (2026-10-08) and no longer builds |
 | Config | `.gitlab-ci.yml` at the repo root |
 
@@ -51,13 +52,59 @@ CPUs belong to the GPUs. Every job's first line is therefore a host
 allow-list (`.goldfarm`'s `before_script`; it was `hermes-ext` alone before
 B1008)
 
-    case "$(hostname)" in hermes-ext|gitlab-runner-1|gitlab-runner-2) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac
+    case "$(hostname)" in hermes-ext|gitlab-runner-1|gitlab-runner-2|thinkpad) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac
 
 so if the project is ever reassigned to another runner the pipeline fails loudly
 instead of quietly moving builds onto the Inspur. hermes-ext also hosts the
 hermes gateway and its kanban workers, so every heavy command is bounded to
 `JOBS` (8 of the 16 cores) and runs under `nice -n 10`: a pipeline must not
 starve a live worker.
+
+## The ThinkPad primary runner (B1087)
+
+Will (2026-10-16): the ThinkPad (lane 5, `docs/thinkpad.md`) runs **every** CI job, x86 and ARM; runners 1
+(hermes-ext), 5, 6 (gitlab-runner-1/2) and 2 (dev-u24-arm-nfs) are **paused, not unregistered** (un-pause
+with `PUT /api/v4/runners/<id>` `paused=false`). The box also hosts the lane-5 oracle (headless Xorg :99 + the
+Wine official client + the `/opt/akk-stack` eqemu containers), so the builds run under resource control:
+
+- **`ci.slice` / `ci-build.slice`** (`/etc/systemd/system/`): `CPUWeight=30`, `IOWeight=30`,
+  `MemoryHigh=24G`. The dash is hierarchy (`ci-build.slice` lives UNDER `ci.slice`), so the weights must be
+  on `ci.slice` to compete at the root with `system.slice` and `user.slice` (default 100): with only
+  `ci-build.slice` weighted, a lane-5 oracle login under a full pipeline took 273 s against 127 s idle;
+  with `ci.slice` weighted, 173 s (#407). Idle, a build still has all 12 threads. `IOWeight` is inert on
+  this box's NVMe (scheduler `none`); IO pressure stayed near zero under load, CPU is the contended
+  resource.
+- **The runner runs AS `gitlab-runner`, without `--user`** (drop-in
+  `/etc/systemd/system/gitlab-runner.service.d/b1087.conf`: `Slice=ci-build.slice`, `User=gitlab-runner`,
+  `UMask=0002`, `SHLVL=1`). With `--user` the root runner `su`s into each job, and PAM's `pam_systemd`
+  moves the job shell into `user-996.slice/session-*.scope`, OUT of the slice (measured). The config is
+  owned by gitlab-runner so the runner can rewrite its own token.
+- **Docker jobs** (the two ARM cross-builds) start containers through dockerd, which would put them in
+  `system.slice`. The runner's `environment` puts `/usr/local/lib/ci-build/bin` first on `PATH`; the
+  `docker` wrapper there adds `--cgroup-parent=$CI_DOCKER_CGROUP_PARENT` (`ci-build.slice`) to
+  `docker run` and passes everything else through. Image builds (`docker build`, BuildKit) stay in
+  dockerd's cgroup; they are layer-cached after the first pipeline.
+- **No GPU for jobs**: gitlab-runner is NOT in `video`/`render`. With them, the GL tests opened the
+  Intel iGPU through DRM (a 3840x2160 modeset on the laptop panel) instead of surfaceless llvmpipe, and
+  19 pixel tests failed (MR !211's first pipeline, 1420); without them the jobs see what the runner VMs
+  saw. Without the groups, surfaceless EGL still found NVIDIA's EGL (its `/dev/nvidia*` nodes are world-
+  readable; `EGL (surfaceless): ... vendor=NVIDIA`), which has no ETC1, so the census decoded every
+  texture (`textures_decoded` 14 MB vs 0.34 MB on runner-1, 110 of 118 zones over budget). The runner's
+  `environment` therefore pins Mesa: `__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json`
+  and `LIBGL_ALWAYS_SOFTWARE=1` (llvmpipe, as on the runner VMs; this also keeps CI off the oracle's
+  Quadro). A future `x86-gpu` hardware-GL job needs its own grant and must unset both.
+- **One runner, shared checkouts**: `concurrent = 3` gives each slot its own checkout
+  (`builds/<runner>/0..2`), and an x86 job can land in a slot an ARM job used. The ARM cross-build's
+  container writes `build-arm*-noble/cache` as root, which gitlab-runner's `git clean` cannot remove, so
+  the global `GIT_CLEAN_FLAGS` keeps both ARM trees as well (pipeline 1427's hygiene died in the clean).
+- **`CI_JOBS=8`** from the runner's `environment`: `.goldfarm`'s `before_script` exports it as `JOBS`, and
+  `build-arm64` as `BUILD_JOBS`, so the host, not this file, sizes its builds.
+- **ccache** at `CCACHE_DIR=/var/cache/ccache-ci` (NVMe root, `max_size = 30G` in its `ccache.conf`).
+- **The ARM publish path is the same NFS share** (`/mnt/projects`, the NAS 10.0.30.10, already in the
+  ThinkPad's fstab), so `ci-arm/<sha>/` and `ci-arm64/<sha>/` land exactly where the SBC lanes read them.
+  gitlab-runner (uid 996) is in group `user` (gid 1000) so it can write the group-writable `ci-arm64/`;
+  `ci-arm/` is open to all on the NAS. Host tools for the publish: `docker-buildx`,
+  `binutils-arm-linux-gnueabihf` (the armhf strip runs on the host).
 
 ## The ARM runner and Pi runs (T503)
 
@@ -70,7 +117,7 @@ keep both build trees (`-e build-arm-noble -e build-arm64-noble`). `build-arm` i
 `willeq-arm-noble`) then `scripts/pi/publish_arm_build.sh`, which publishes the stripped client plus that
 commit's tracked `config/` + `data/` to **`/mnt/projects/fable/ci-arm/<sha>/`** (`by-branch/<branch>` symlinks;
 newest 12 kept). The job is automatic on `fable` and a manual, non-blocking job everywhere else
-(`glab ci trigger build-arm`), and refuses any host but `dev-u24`. Both ARM jobs write the whole build to
+(`glab ci trigger build-arm`), and refuses any host but `dev-u24` and `thinkpad` (B1087). Both ARM jobs write the whole build to
 `build-<arch>-noble.log`, kept as a job artifact (14 days); a failure prints the `error:` lines and the tail,
 so an ARM-only compile error reaches the trace (B1054's did not through the old `| tail -n 40`).
 
