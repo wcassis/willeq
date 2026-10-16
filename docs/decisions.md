@@ -2116,3 +2116,17 @@ the focused gate, and `setChatInputFocused()` resets all three in both
 directions, so a press that changed the focus (a submitted Enter, a
 cancelling Escape) can never replay on the first frame in the new state
 (`tests/test_b1085_chat_latches.cpp`).
+
+## 2026-10-16 — B1081: the zone-change world reconnect does not bring up the character-select screen (#401)
+
+One line: the screen may come up only while the world is in a character-select
+stage, so `CharacterSelectService::tick()` keeps it down for the frames in
+which `LoginWorldComponent::IsZoningReconnect()` is true — the zone-change
+latch (`ZoneToZoneInProgress`, set in `ProcessDeferredZoneChange` and latched
+across the teardown) AND the zoning pass's `OP_EnterWorld` not yet out; a
+fresh login, the B1005 camp return and the B1072 give-up all clear the latch
+before their reconnect, so they still bring the screen up, exactly as before
+(the screen-up count is asserted in `tests/test_zone_change_no_flash.cpp` and
+the `zone_change_no_flash` scenario: one screen-up for the whole
+login→zone-in→`/gmzone`→zone-change run, measured in
+`CharacterSelectService::Activations()`).

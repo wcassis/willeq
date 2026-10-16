@@ -1021,6 +1021,8 @@ EXEMPT_TESTS_GROUPS = {
     ("GmComponent", "Test_GetLastGMSummon"): "seam",
     ("LoginWorldComponent", "ReplayLoginPacket"): "seam",
     ("LoginWorldComponent", "ReplayWorldPacket"): "seam",
+    # B1081 (#401): the zone-change reconnect window, test_zone_change_no_flash.
+    ("LoginWorldComponent", "Test_EnterWorldSentForSeam"): "seam",
     ("OverlaysComponent", "mapOverlayTriangleCount"): "seam",
     ("OverlaysComponent", "navmeshOverlayTriangleCount"): "seam",
     ("OverlaysComponent", "seedMapOverlayTriangleForTest"): "seam",

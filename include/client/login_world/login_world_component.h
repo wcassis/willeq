@@ -207,13 +207,10 @@ public:
 	 * EverQuest would shadow eq.h's definition otherwise.
 	 */
 	bool IsZoningReconnect() const;
-	/** Test seam: set m_enter_world_sent without sending (B1081's window tests). */
-	void Test_SetEnterWorldSentForSeam(bool v) { m_enter_world_sent = v; }
-	/** Test seam: the reconnect's enter-world reset (ReconnectWorld clears
-	 *  m_enter_world_sent, login_world_char_select.cpp:60) WITHOUT tearing the
-	 *  world connection down -- the rig replays packets, it has no socket.
-	 *  B1081 (#401). */
-	void Test_ReconnectEnterWorldResetForSeam() { m_world_ready = false; m_enter_world_sent = false; }
+	/** Test seam: set m_enter_world_sent without sending (B1081's window
+	 *  tests; false also models ReconnectWorld's reset,
+	 *  login_world_char_select.cpp:60, without tearing a socket down). */
+	void Test_EnterWorldSentForSeam(bool v) { m_enter_world_sent = v; }
 	/** How many times this session went back to the character-select screen. */
 	uint32_t CharacterSelectReturns() const { return m_select_returns; }
 	/** Tear down the world session and open a new one to the stored world

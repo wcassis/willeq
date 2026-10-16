@@ -101,13 +101,13 @@ TEST(ZoningReconnectGate, IsZoningReconnectIsTheLatchUntilTheZoningEnterWorld) {
     zone.Test_SetZoneToZoneInProgressForSeam(true);
     EXPECT_TRUE(r.lw.IsZoningReconnect());
     // The zoning pass's OP_EnterWorld is out: false again.
-    r.lw.Test_SetEnterWorldSentForSeam(true);
+    r.lw.Test_EnterWorldSentForSeam(true);
     EXPECT_FALSE(r.lw.IsZoningReconnect());
     // B1005 camp return / B1072 give-up: the latch clears (player_camp.cpp /
     // zone_connect.cpp), so even with the enter-world flag down this is not
     // a zoning reconnect -- the screen must come up there.
     zone.Test_SetZoneToZoneInProgressForSeam(false);
-    r.lw.Test_SetEnterWorldSentForSeam(false);
+    r.lw.Test_EnterWorldSentForSeam(false);
     EXPECT_FALSE(r.lw.IsZoningReconnect());
 }
 
@@ -157,7 +157,7 @@ TEST(ZoningReconnectGate, ZoneChangeReconnectDoesNotReActivateTheScreen) {
     //    those two writes; the enter-world flag is already true (Enter World
     //    went out in 1.) and the reset clears it.
     r.eq.Zone().Test_SetZoneToZoneInProgressForSeam(true);
-    r.lw.Test_ReconnectEnterWorldResetForSeam();
+    r.lw.Test_EnterWorldSentForSeam(false);
     ASSERT_TRUE(r.lw.IsZoningReconnect());
 
     // 3. The zone-change world pass: eqemu sends OP_SendLoginInfo (zoning==1)
@@ -174,7 +174,7 @@ TEST(ZoningReconnectGate, ZoneChangeReconnectDoesNotReActivateTheScreen) {
     EXPECT_EQ(r.lw.CharacterListGeneration(), gen) << "the zoning pass never re-lists";
 
     // 4. The automatic OP_EnterWorld goes out in the zoning pass.
-    r.lw.Test_SetEnterWorldSentForSeam(true);
+    r.lw.Test_EnterWorldSentForSeam(true);
     EXPECT_FALSE(r.lw.IsZoningReconnect());
     r.OneTick();
     EXPECT_FALSE(r.channel.active());
@@ -211,7 +211,7 @@ TEST(ZoningReconnectGate, CampReturnStillBringsTheScreenUp) {
     // cpp), the world session torn down. The rig has no world socket, so
     // the tear-down's flag reset is modeled with the seam, exactly as in the
     // zone-change test.
-    r.lw.Test_ReconnectEnterWorldResetForSeam();
+    r.lw.Test_EnterWorldSentForSeam(false);
     r.lw.ReturnToCharacterSelect("camp");
     ASSERT_TRUE(r.lw.CharacterSelectScreen());
     ASSERT_TRUE(r.lw.AwaitingFreshCharacterList());
@@ -249,7 +249,7 @@ TEST(ZoningReconnectGate, B1072GiveUpStillBringsTheScreenUp) {
     // branch is ReturnToCharacterSelect itself -- screen ON, the fresh
     // list awaited, the enter-world flag down.
     r.eq.Zone().Test_SetZoneToZoneInProgressForSeam(true);
-    r.lw.Test_ReconnectEnterWorldResetForSeam();
+    r.lw.Test_EnterWorldSentForSeam(false);
     ASSERT_TRUE(r.lw.IsZoningReconnect());
     r.eq.Zone().Test_SetZoneToZoneInProgressForSeam(false);
     r.lw.ReturnToCharacterSelect("zone connect failed");
