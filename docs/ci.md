@@ -65,9 +65,13 @@ Will (2026-10-16): the ThinkPad (lane 5, `docs/thinkpad.md`) runs **every** CI j
 with `PUT /api/v4/runners/<id>` `paused=false`). The box also hosts the lane-5 oracle (headless Xorg :99 + the
 Wine official client + the `/opt/akk-stack` eqemu containers), so the builds run under resource control:
 
-- **`ci-build.slice`** (`/etc/systemd/system/ci-build.slice`): `CPUWeight=30`, `IOWeight=30`,
-  `MemoryHigh=24G`. Everything else on the box keeps the default weight 100, so under contention CI gets
-  about 30/130 of the CPU and disk; idle, a build still has all 12 threads.
+- **`ci.slice` / `ci-build.slice`** (`/etc/systemd/system/`): `CPUWeight=30`, `IOWeight=30`,
+  `MemoryHigh=24G`. The dash is hierarchy (`ci-build.slice` lives UNDER `ci.slice`), so the weights must be
+  on `ci.slice` to compete at the root with `system.slice` and `user.slice` (default 100): with only
+  `ci-build.slice` weighted, a lane-5 oracle login under a full pipeline took 273 s against 127 s idle;
+  with `ci.slice` weighted, 173 s (#407). Idle, a build still has all 12 threads. `IOWeight` is inert on
+  this box's NVMe (scheduler `none`); IO pressure stayed near zero under load, CPU is the contended
+  resource.
 - **The runner runs AS `gitlab-runner`, without `--user`** (drop-in
   `/etc/systemd/system/gitlab-runner.service.d/b1087.conf`: `Slice=ci-build.slice`, `User=gitlab-runner`,
   `UMask=0002`, `SHLVL=1`). With `--user` the root runner `su`s into each job, and PAM's `pam_systemd`
@@ -78,6 +82,10 @@ Wine official client + the `/opt/akk-stack` eqemu containers), so the builds run
   `docker` wrapper there adds `--cgroup-parent=$CI_DOCKER_CGROUP_PARENT` (`ci-build.slice`) to
   `docker run` and passes everything else through. Image builds (`docker build`, BuildKit) stay in
   dockerd's cgroup; they are layer-cached after the first pipeline.
+- **No GPU for jobs**: gitlab-runner is NOT in `video`/`render`. With them, the GL tests opened the
+  Intel iGPU through DRM (a 3840x2160 modeset on the laptop panel) instead of surfaceless llvmpipe, and
+  19 pixel tests failed (MR !211's first pipeline, 1420); without them the jobs see what the runner VMs
+  saw. A future `x86-gpu` hardware-GL job needs its own grant.
 - **`CI_JOBS=8`** from the runner's `environment`: `.goldfarm`'s `before_script` exports it as `JOBS`, and
   `build-arm64` as `BUILD_JOBS`, so the host, not this file, sizes its builds.
 - **ccache** at `CCACHE_DIR=/var/cache/ccache-ci` (NVMe root, `max_size = 30G` in its `ccache.conf`).
