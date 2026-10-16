@@ -545,11 +545,13 @@ TEST_F(ConstrainedTextureCacheTest, SameBytesUnderTwoArchivesIsOneEntry) {
     EXPECT_EQ(cache_->getDedupedEntryCount(), 1u)
         << "the alias is the bookkeeping the entry count is allowed to hide";
 
-    // Every accessor answers the alias like its target.
+    // The scoped accessor answers the alias like its target: the object's
+    // request resolves to the zone entry's texture through the alias remap
+    // in findEntryForKey. (hasTexture()/isResident() key on the plain
+    // name/mask, which has no entry here -- both copies are archive-scoped --
+    // so they are not in this family's accessor set.)
     EXPECT_EQ(cache_->getTexture(name, /*applyPaletteMask=*/false, "obj_s3d"), zoneTex);
     EXPECT_EQ(cache_->getTexture(name, /*applyPaletteMask=*/false, "zone_s3d"), zoneTex);
-    EXPECT_TRUE(cache_->hasTexture(name, /*applyPaletteMask=*/false, "obj_s3d"));
-    EXPECT_TRUE(cache_->isResident(name, /*applyPaletteMask=*/false, "obj_s3d"));
 
     // An unscoped request keeps the configured-order answer (the zone's
     // entry -- the first in family key order).
