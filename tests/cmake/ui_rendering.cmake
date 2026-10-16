@@ -67,6 +67,22 @@ IF(EQT_GRAPHICS)
     GTEST_DISCOVER_TESTS(test_robe_texture_range DISCOVERY_TIMEOUT 60)
 ENDIF()
 
+# B1084 (#404) entity-prep leg: chest material 10 (the naked-body bug) must
+# select the robe body variant (bodyVariant=1, the {RACE}01 mesh) through the
+# production per-entity entry createAnimatedNodeWithEquipment(). Same
+# EDT_NULL + willeq_core gate as test_inventory_model_view; opens the shipped
+# db and the real client tree and skips without either.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_robe_entity_prep
+        test_robe_entity_prep.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_robe_entity_prep PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_robe_entity_prep GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_robe_entity_prep PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_robe_entity_prep DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T309: the measured first-person draw rule (predicate + the withhold seam).
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_first_person_body_draw_rule
