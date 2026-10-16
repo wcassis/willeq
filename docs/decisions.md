@@ -2106,3 +2106,35 @@ gestures at a fixed position fable chose. RULED:
 4. Performance is unchanged by fidelity: static panels, batched quads,
    no drag, no z-order negotiation. A card that proposes movable windows
    reopens U07c, not this entry.
+
+## 2026-10-16 — a stalled zone-in is bounded at every phase, and a zone that ANSWERED is never re-connected (B1079, #399)
+
+Will's 2026-10-15 XU4 hang (#399): an in-session zone change (zone load #2,
+past the session) sat on the loading screen until it was killed. B1072's
+watchdog bounded only `ZONE_CONNECTING` and disarmed the moment the phase
+moved past it. RULED:
+
+1. **Every zone-in loading phase carries a deadline** (`zone_connect_watchdog.h`,
+   the `phase_bound` table, sources in `refactor/B1079/README.md`): the connect
+   phase is measured (B1072 census, 2x the max); the five network-tail phases
+   are assumed (no per-phase census exists in-tree, stated as such); the four
+   `GRAPHICS_*` phases share one budget (2x the slowest blessed Pi cold load).
+   A stalled load costs ONE phase's own budget, and the escalation names the
+   stuck phase and the last opcode the zone sent, then lands on a fresh world
+   login (character select / auto Enter World) -- never a hang, never a
+   process exit. The bound covers a zone load #N, not only a cold login,
+   because the deadline walks the CURRENT loading phase, not "still connecting".
+2. **A zone that ANSWERED is never re-connected.** The ONE retry of the zone
+   connect applies to `ZONE_CONNECTING` only. Once the session is up (the phase
+   has advanced past it -- the zone has seen our `OP_ZoneEntry`), the
+   escalation is a no-retry give-up: re-opening the session would duplicate the
+   zone entry. This is the standing distinction from B1072's shape (session
+   never came up -> one connect retry). A unit that wants a re-connect after the
+   session is up reopens this entry.
+3. **The play box keeps its log** (`--log-file PATH` / `WILLEQ_LOG_FILE`): the
+   logger writes the SAME lines to a file, line-flushed every drain cycle, so a
+   kill mid-zone-in keeps the log. The file is ADDITIVE (stdout/stderr keep
+   everything; an unwritable path is one stderr line, never a silencer). Both
+   `--log-level=LEVEL` and the space form `--log-level LEVEL` are accepted; an
+   unparseable level is a loud startup `ERROR`, never a silent no-op.
+   `refactor/B1079/README.md` and `docs/standards/debug_logging_standards.md`.
