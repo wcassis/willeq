@@ -439,15 +439,17 @@ protected:
     }
 
     // The slot's own rect (hotbar_layout.h -- the hit test's geometry), so
-    // the click lands where hitTestHotbar() says it does.
+    // the click lands where hitTestHotbar() says it does. The columns are
+    // the layout table's (B1075: 1x10 at 800x600, 2x5 only where 1x10 does
+    // not fit) -- hitTestHotbar() reads the same layout.hotbarColumns.
     int slotX(int slot) const {
         const auto r = EQT::Graphics::HotbarLayout::slotRect(
-            layout.hotbar, slot);
+            layout.hotbar, slot, layout.hotbarColumns);
         return (r.UpperLeftCorner.X + r.LowerRightCorner.X) / 2;
     }
     int slotY(int slot) const {
         const auto r = EQT::Graphics::HotbarLayout::slotRect(
-            layout.hotbar, slot);
+            layout.hotbar, slot, layout.hotbarColumns);
         return (r.UpperLeftCorner.Y + r.LowerRightCorner.Y) / 2;
     }
 

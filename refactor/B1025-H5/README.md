@@ -100,14 +100,33 @@ attached to the task) and a copy in
 
 ## Not verified / left open
 
-- **CI green (acceptance D) requires the MR pipeline at the pushed head.**
-  The lane-seed fix (MR !214, the roster->befallen zone seed in
-  scenario.sh) is not in `origin/fable` yet, so a rebase on it happens after
-  it merges (one 4-line hunk before `snapshot "$BEFORE"` in scenario.sh).
-  This branch's own hygiene (file sizes, doc counts, citations) is green.
-  Do not call this MR's CI red an H-5 code defect on sight — read the trace
-  (`glab api .../jobs/<id>/trace`) and confirm the failing ctest is not a
-  hotbar scenario test.
+- **CI green (acceptance D) — the carried-head defects are fixed at this head.**
+  Pipeline 1472 (head 2e9df364) failed build-test on two tests that neither
+  H-3 nor H-4 could see on its own branch — both are collisions that only
+  appear where H-3 + H-4 + the post-merge fable (B1075, B1090) meet, which is
+  this branch:
+  - `WilleqPaths.NoCompileDefinitionCarriesAnAbsolutePath` (B1090's census):
+    H-4's `test_hotbar_key_routing` block wrote `WILLEQ_REPO_ROOT="${CMAKE_
+    SOURCE_DIR}"`, the exact shape B1090 bans; H-4's pipeline was green
+    because B1090 was not on fable yet. Fixed to the B1090 form
+    (`"WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH("")"`), matching every sibling
+    block in `tests/cmake/ui_rendering.cmake`.
+  - 3x `HotbarGestureEndToEndTest` (H-3): the fixture's slot centers were
+    computed with the stock 2x5 `slotRect(window, slot)` default, but
+    B1075's layout table makes the hotbar a 1x10 row at 800x600, so every
+    press missed the real slot and no intent ever landed. The fixture now
+    reads the same `layout.hotbarColumns` the production `hitTestHotbar()`
+    reads.
+  Both fixes are test-side, in the two files this branch carries; rbuild
+  (ThinkPad) at the fix commit: 28/28 of the touched suites green (the three
+  E2E tests, the WilleqPaths census, the hold-timer and key-routing suites),
+  `rbuild hygiene` green, `check_doc_counts.py` green. The MR !207 pipeline
+  at the new head is the verdict for D; if it goes red, read the trace
+  (`glab api projects/willeq%2Fwilleq/jobs/<id>/trace`) — the two classes
+  above are closed. The lane-seed fix (MR !214) is green at its own head but
+  not yet in `origin/fable`; it touches only scenario.sh's pre-snapshot
+  seeding and this branch's scenario config, and a rebase conflict, if any,
+  is one small hunk before `snapshot "$BEFORE"` in scenario.sh.
 
 - The free-text emote slot's persistence is the DOCUMENTED fable-vs-official
   gap (official = E<number> index; H-O's oracle measured that form), not an
