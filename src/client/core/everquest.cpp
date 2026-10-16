@@ -845,6 +845,19 @@ void EverQuest::ConnectToZone()
 		std::chrono::steady_clock::now(), ZonePhaseBoundsMs(),
 		eqt::zone::ZoneComponent::kZoneConnectRetries);
 	OpenZoneConnection(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort());
+	// B1079 (#399): the scenario lane's "zone answered then went silent" lever
+	// (SimulateZoneSilentAfterHandshake). The connection above goes to a dead
+	// port (SimulateUnreachableZoneConnects), which -- as the B1072 arm
+	// proves live -- is stable silence: the stale connect is erased without a
+	// StatusDisconnected, so nothing re-connects and nothing moves the phase.
+	// Override the handshake's ZONE_CONNECTING with the "the zone answered"
+	// phase so the load SITS there and the bound has to walk it to its own
+	// deadline and escalate WITHOUT a connect retry (the zone already saw our
+	// OP_ZoneEntry -- a re-connect would duplicate it). A pure phase move: the
+	// forwarder sets the phase, not the PlayerProfile side effects.
+	if (m_sim_zone_silent) {
+		SetLoadingPhase(LoadingPhase::ZONE_RECEIVING_PROFILE);
+	}
 }
 
 void EverQuest::ZoneOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection)

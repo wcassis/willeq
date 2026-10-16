@@ -265,6 +265,21 @@ public:
 		m_sim_dead_zone_attempts = attempts;
 		m_sim_dead_zone_port = port;
 	}
+	// B1079 (#399): the scenario lane's "zone answered then went silent" lever
+	// (zone_connect_timeout's silent arm, the 2026-10-15 XU4 shape). Armed
+	// alongside a dead-port connect (SimulateUnreachableZoneConnects), the
+	// next ConnectToZone's handshake is overridden to ZONE_RECEIVING_PROFILE --
+	// the phase ZoneProcessPlayerProfile sets once the zone has answered the
+	// session and OP_ZoneEntry. Since the phase advances past ZONE_CONNECTING
+	// ONLY on a PlayerProfile (zone_entry.cpp), that pin is the client-side
+	// shape of "the zone answered the session, then went silent" (the dead
+	// port supplies the silence). The bound must then walk that phase to its
+	// own deadline and escalate WITHOUT a connect retry (the zone already saw
+	// our OP_ZoneEntry -- a re-connect would duplicate it), landing on
+	// character select. It is a one-shot flag for the next ConnectToZone: the
+	// silent arm does exactly one Enter World (it is a verdict, not a
+	// recovery), so the pin never needs clearing. Nothing else sets it.
+	void SimulateZoneSilentAfterHandshake() { m_sim_zone_silent = true; }
 
 	static void SetDebugLevel(int level) { s_debug_level = level; ::SetDebugLevel(level); }
 	static int GetDebugLevel() { return s_debug_level; }
@@ -764,6 +779,11 @@ private:
 	int m_last_zone_opcode = -1;
 	int m_sim_dead_zone_attempts = 0;
 	uint16_t m_sim_dead_zone_port = 0;
+	// B1079 (#399): the "zone answered then went silent" lever (see
+	// SimulateZoneSilentAfterHandshake). When set, ConnectToZone overrides the
+	// handshake's ZONE_CONNECTING with ZONE_RECEIVING_PROFILE (the zone
+	// "answered" phase). Cleared by the escalation (AbandonZoneConnect).
+	bool m_sim_zone_silent = false;
 
 	// Combat manager
 	std::unique_ptr<CombatManager> m_combat_manager;

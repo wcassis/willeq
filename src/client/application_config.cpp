@@ -252,6 +252,10 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
                 config.scenarioSpellId =
                     static_cast<unsigned int>(std::atoi(argv[++i]));
             }
+        } else if (arg == "--scenario-silent-zone") {
+            // B1079 (#399): zone_connect_timeout's "zone answered then went
+            // silent" arm (the 2026-10-15 XU4 shape). Boolean, no value.
+            config.scenarioSilentZone = true;
         } else if (arg == "--scenario-expect-material") {
             if (i + 1 < argc) {
                 config.scenarioExpectMaterial = std::atoll(argv[++i]);
@@ -340,6 +344,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --timeout <s>            --scenario: overall wall-clock budget (default 300)\n";
             std::cout << "  --scenario-hold <s>      --scenario two_client_survive: how long the pair must hold (default 300)\n";
             std::cout << "  --scenario-spell <id>    --scenario cast_lands: beneficial spell to memorise and cast (default 288, Minor Shielding)\n";
+            std::cout << "  --scenario-silent-zone   --scenario zone_connect_timeout: the 'zone answered then went silent' arm (B1079)\n";
             std::cout << "  --scenario-expect-material <n>  --scenario equip_actor_return: assert our OWN primary material is <n> (T498)\n";
             std::cout << "  --scenario-cast-target <name>   --scenario cast_interrupt*: the character to target (B630 two-client lane)\n";
             std::cout << "  --scenario-success-spell <id>   --scenario cast_interrupt_chain: D1 nuke to let finish (default 372)\n";
