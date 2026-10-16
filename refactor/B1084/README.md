@@ -65,20 +65,34 @@ see below).
   parent for material 10 (1/4 fail — exactly the bug), GREEN at the head** —
   `red_run.tsv`.
 
-## Oracle leg (lane 1)
+## Oracle leg (lanes)
 
-The official-client session (material-10 robe + a 11..16 robe, in-zone and
-at character select, ledger + stills) runs on lane 1 through
-`scripts/eqemu/oracle/oracle_session.sh`; the lane rig was held by
-b1080_oracle when this run last looked. The char-select preview plan is
-drafted at `scripts/eqemu/oracle/plans/b1084_robe11_charselect.tsv`.
+The official-client session (material-10 robe + a 11..16 robe, in-zone and at
+character select, ledger + stills) runs on a lane through
+`scripts/eqemu/oracle/oracle_session.sh`. At the time of writing it is NOT
+YET RUN, and the reason is concrete:
+
+- **Lane 1's oracle rig is held by a LIVE b1080 session** — `b1080_oracle`
+  since 2026-10-16T10:48, and its `client_audio.wav` is still being written
+  (a running capture on oracle VM .91), so the lock is live, not stale.
+  Must wait for it to release.
+- **Lanes 2/3/4's eqemu-server container will not stay up** (host .98/.97):
+  `up.sh` reports the loginserver/world/zone "adopting" 25-26 already-running
+  procs, yet the `akk-stack-eqemu-server-1` container is absent a moment later
+  and `eqemu_stack_ready` is false. This is a lane-infra problem on the
+  shared hosts, not a code defect; it needs the lane operators.
+
+The range is independently settled by the archive + item-table census above,
+which is what the predicate and its tests are pinned to; the oracle stills are
+the remaining live confirmation.
 
 ## Not verified / left open
 
-- The **oracle stills** (acceptance A/D) are pending the lane-1 rig; the
-  range is independently settled by the archive + item-table census above,
-  which is what the predicate and its tests are pinned to.
-- Fable-side headless still of the seeded character: pending the same lane
-  session (the fable client needs the lane's server; the visual-gate
-  benchmark cannot target it — it renders zone assets, not equipped
-  characters).
+- The **oracle stills** (acceptance A/D) and the **fable-side still of the
+  same seeded character** (D): pending a free, working lane (see above).
+- The CI **build/gate leg**: pipeline 1422's `hygiene` and
+  `zone-budget-census` failed only on **runner placement** — they landed on a
+  `thinkpad` runner that the job's own `x86-build` guard refused
+  (`refusing to build on thinkpad`); fable pipelines 1408/1406 pass on the
+  real runners, and local hygiene + both new tests are green at the head.
+  A fresh pipeline (25904c69) re-places the jobs.
