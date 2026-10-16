@@ -91,12 +91,20 @@ in a quote is a red test.
   32-bit → 67). This worker cannot edit a CLAUDE.md; the exact replacement
   lines are in the completion summary under `CLAUDE.md EDITS:`. Hygiene is
   otherwise green.
-- **Oracle stills (acceptance E) not taken here**: no eq-oracle lane is
-  reachable from this host. The geometry is quoted from stock Titanium
-  uifiles (the oracle sources the card names), and every drawn rect is
-  pinned to that XML by test — but the visual-record still (gem bar with
-  memorised spells, buff window with a buff, open spellbook; also serves
-  #396) remains to be captured on an eq-oracle lane.
+- **Oracle still (acceptance E) captured on lane 1** (eq-oracle-1,
+  2026-10-16): official Titanium client, Testcaster with 2 memorised
+  spells, zoned to qeynos2. `06_main.png` (evidence dir
+  `/home/user/kb-evidence/kb-b1077-spell-icon-atlas/oracle_capture/`)
+  shows the **cast-spell (gem) window on the left edge**: top two cells
+  carry the memorised spells' icons (a shield + one more), the rest of
+  the 8-cell column is empty, and the **book button sits at the bottom**
+  — matching `CastSpellWnd` (48x290, 8 gems 36x28, book 22x22 at
+  (10,252)) and the layout pinned by the XML-geometry tests. The buff
+  window and open spellbook were not open in this default session
+  (the `/cast` line landed with the help popup holding focus), so a
+  buff-window-with-live-buff and an open-book still remain; those
+  serve #396 and are left open. Lane restored (DB seed rolled back,
+  lock released, stack down).
 - **visual_gate goldens (acceptance G) not proposed**: needs the oracle
   still + a rendered frame; propose after the lane capture. Nothing in
   `tests/goldens/` was touched.
