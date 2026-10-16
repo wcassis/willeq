@@ -35,9 +35,11 @@
 //          nothing -- that is why the CLIENT cast is best-effort. The
 //          DETERMINISTIC server proof is #fish -> GoFish(true) (forage.cpp:
 //          302 guarantee) landing a catch: a "caught" line (eqstr 170/421) +
-//          a NEW cursor item, which the client receives. (Zone 96 = dreadspire
-//          has no watermap, so CanFish() passes and the catch lands rather
-//          than the FISHING_LAND refusal.)
+//          a NEW cursor item, which the client receives. #fish works in any
+//          zone: the Watermap.CheckForWaterWhenFishing rule defaults to false
+//          (ruletypes.h:418), so CanFish() (forage.cpp:206) skips the water
+//          probe entirely, and guarantee=true (forage.cpp:302) forces the
+//          success roll -- the catch lands from the common_fish_ids fallback.
 //   social a free-text emote macro (/emote). The client's OWN local echo of
 //          /emote (chat_component.cpp:318 -- eqemu broadcasts emotes with
 //          ignore_sender, so the actor's line is client-generated) is the

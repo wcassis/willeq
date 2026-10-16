@@ -1,12 +1,13 @@
 -- B1025-H5 (#345): hotbar_lifecycle. The kit the lane's client cannot seat
--- in-world: Testcaster (level-1 wizard, lane 1, zone 96 dreadspire) is
--- already fully equipped -- primary 13 holds 14337, and the live inventory
--- dump (2026-10-16, this card) shows general 23-30 all filled (9990, 9991,
--- 15288, 15372, 18755, 21779, 32601, +8007 in ammo 22), so #summonitem +
--- /putdown would swap the OLD primary onto the cursor instead of seating the
--- pole. The rows go in by direct INSERT, the way ranged_single_shot_seed.sql
--- does: the server loads the inventory as-is at login, and the client reads
--- the same synced rows.
+-- in-world: Testcaster (level-1 wizard, lane 1) is already fully equipped --
+-- primary 13 holds 14337, and the live inventory dump (2026-10-16, this card)
+-- shows general 23-30 all filled (9990, 9991, 15288, 15372, 18755, 21779,
+-- 32601, +8007 in ammo 22), so #summonitem + /putdown would swap the OLD
+-- primary onto the cursor instead of seating the pole. The rows go in by
+-- direct INSERT, the way ranged_single_shot_seed.sql does: the server loads
+-- the inventory as-is at login, and the client reads the same synced rows.
+-- The seed ALSO places the character in befallen (the zone UPDATE below): the
+-- stored zone is timorous (96), which never finishes loading headless.
 --
 -- Slot numbers are the DB's (RoF2): inventory.slot_id IS the user-facing
 -- numbering (T494), and the server's invslot (rof2_limits.h, read by
@@ -45,11 +46,12 @@
 -- not guarantee the client parses as 36 -- so the client-route skill press is
 -- best-effort, exactly as forage_lands drives it (scenario_forage_lands.cpp:
 -- 38-43): the deterministic server proof is #fish -> GoFish(true)
--- (gm_commands/fish.cpp:22), the guarantee half of forage.cpp:302. Zone 96
--- has fishing rows (fishing.zoneid=96: items 19113/14989) but NO watermap
--- file, so CanFish() skips the water probe (forage.cpp:207 requires
--- watermap != nullptr) and returns true -- the catch lands from the
--- common_fish_ids fallback (forage.cpp:271-281).
+-- (gm_commands/fish.cpp:22), the guarantee half of forage.cpp:302. #fish works
+-- in ANY zone: the Watermap.CheckForWaterWhenFishing rule defaults to false
+-- (ruletypes.h:418), so CanFish() (forage.cpp:206) skips the water probe
+-- entirely and only needs the pole (seeded, primary) + bait (seeded, worn);
+-- the catch then lands from the common_fish_ids fallback (forage.cpp:269-281)
+-- because guarantee=true forces the success roll (forage.cpp:302).
 --
 -- Slots 13, 20 and 30 are ALREADY OCCUPIED on Testcaster (live dump 2026-10-
 -- 16: primary 13 holds 14337, waist 20 holds 11666, general 30 holds 32601),
@@ -58,6 +60,25 @@
 -- the three originals back, so we DELETE the three target slots first and
 -- re-seat them here.
 SET @tc = (SELECT id FROM character_data WHERE name = 'Testcaster');
+-- B1025-H5 (2026-10-16, lane-1 run2, acceptance A): Testcaster's STORED zone
+-- is 96 = timorous (the header's earlier "dreadspire" note was wrong; the
+-- client stalls at [LOADING] Phase 9/15 and the scenario reports
+-- could-not-start, exit 3). timorous is the known lane trap (B1047 #367: keep
+-- test characters out of it). Place the character in befallen instead -- a
+-- standard zone that loads headless (the peer, Testbuddy, zoned in there in
+-- 2.95 s in the same run2). The server zones at the stored x/y/z, so the
+-- coordinates MUST be set too (the same trap b630_seed.sql:15-19 documents):
+-- befallen's own safe point from the zone table, the canonical on-land spawn
+-- zone_place_lib.seed_char places headless sweeps at. The snapshot
+-- (character_data restore) puts the original zone/pose back, so the lane is
+-- left as found.
+UPDATE character_data SET
+    zone_id = (SELECT zoneidnumber FROM zone WHERE short_name = 'befallen'),
+    x       = (SELECT safe_x       FROM zone WHERE short_name = 'befallen'),
+    y       = (SELECT safe_y       FROM zone WHERE short_name = 'befallen'),
+    z       = (SELECT safe_z       FROM zone WHERE short_name = 'befallen'),
+    heading = 0
+WHERE id = @tc;
 DELETE FROM inventory WHERE character_id = @tc AND slot_id IN (13, 20, 30);
 INSERT INTO inventory (character_id, slot_id, item_id, charges, color, augment_one, augment_two, augment_three, augment_four, augment_five, augment_six, instnodrop, ornament_icon, ornament_idfile, ornament_hero_model)
 VALUES (@tc, 13, 13100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
