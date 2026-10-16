@@ -2141,3 +2141,13 @@ Standing facts — do not re-derive:
 The atlas is the fourth `scripts/build_textures.sh` recipe and grows
 `willeq.eqe1` by 4,197,056 bytes (three ETC1 family atlases with mips +
 their three `_alpha` companions + the 40x40 `A_SpellGemHolder` piece).
+
+## 2026-10-16 — B1085: the chat key latches (enter/escape/slash) latch only while the chat is unfocused, and reset on every focus transition (#405)
+
+One line: a key press may only ever arm the chat shortcuts (open-chat on
+Enter/slash, the ESC window stack) for a frame in which the chat is NOT
+focused -- `RendererEventReceiver::OnEvent()` sets the three latches below
+the focused gate, and `setChatInputFocused()` resets all three in both
+directions, so a press that changed the focus (a submitted Enter, a
+cancelling Escape) can never replay on the first frame in the new state
+(`tests/test_b1085_chat_latches.cpp`).

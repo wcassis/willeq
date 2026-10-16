@@ -34,6 +34,36 @@ bounds the timing-marker wait. Measured per-step times against lanes 1/3/4
 (`review/B1057/README.md`): the steps are bound by the driver's fixed sleeps,
 so lane 5 saves about 25 s on login and little on create, not minutes.
 
+**Lane-5-only fixes (B1073, #393)** are in the same script and are inert on
+lanes 1-4 (the run passes its lane as the third argument to
+`oracle_remote.sh`, `ORACLE_LANE`):
+- **The NVIDIA GLX stack** (server + client): `:99` registers only NVIDIA's
+  `glxserver_nvidia` — `/etc/X11/oracle/xorg.conf` carries
+  `Section "Module" Disable "glx"`, so the generic Mesa `glx` module never
+  loads and the log has no `GLX: Another vendor is already registered` line
+  (`DISPLAY=:99 glxinfo` = NVIDIA). On the client side the run exports
+  `__GLX_VENDOR_LIBRARY_NAME=nvidia`, pinning Wine's 32-bit libglvnd
+  `libGL.so.1` dispatcher to `libnvidia-gl-580:i386` instead of the Mesa i386
+  wrapper. Lanes 1-4 have no NVIDIA vendor lib, so the pin is lane-5 only.
+  Background and the Set Face regression this fixed: `docs/thinkpad.md`.
+- **The no-WM focus**: the rig has no window manager, so after a client
+  re-render the EverQuest window does not hold input focus and a motion click
+  (the `jclick` 1px drag, the Set Face net-zero drag) lands on the root window
+  and does nothing. `oracle_remote.sh` defines `client_focus`
+  (`xdotool windowfocus --sync --name '^EverQuest$'`, never fatal) and, on
+  lane 5, redefines `jclick`/`jrclick` and focuses before the raw-xdotool
+  `hold` path, so every motion click carries its own focus. The rig-side
+  `/mnt/projects/eq-oracle/scripts/ui-lib.sh` stays untouched.
+- **The Set Face open shape** (lane 5 only): matrix3's net-zero drag does not
+  open the modal on the re-provisioned rig (FINDINGS-setface-regression.txt
+  measured it "NO (5 tries)"); the focus-wrapped `jclick` 1px-net drag does.
+  `face_open_click` therefore delegates to the lane-5 `jclick` when
+  `ORACLE_LANE=5` and keeps matrix3's net-zero drag for lanes 1-4. The
+  `facepick-rows` verb additionally logs each Set Face open attempt to
+  `timeline.tsv` (`face-open attempt=N at=37,251`), so a lane-5 run
+  proves whether the FIRST click opened the modal (the acceptance bar: a
+  retry is a focus/sequence defect, not an acceptable settle).
+
 `install.sh` also writes `~/eq-oracle/uigap-scripts/.oracle-repo`, so the
 installed copy can be invoked from outside the checkout until that checkout
 is moved or removed; reinstall it after moving the repo.
