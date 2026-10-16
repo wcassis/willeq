@@ -141,8 +141,13 @@ while IFS= read -r z; do
 done < <(printf '%s' "$ZONES" | sort -u)
 MUST="${MUST}${FIXED_LIST}"$'\n'
 MUST="$(printf '%s' "$MUST" | sort -u)"
+# No pipe (B1087, #407): under pipefail, `printf "$MUST" | grep -qx` lost the race
+# when grep matched in printf's first write and exited -- printf took SIGPIPE, the
+# pipeline returned 141, and a MANDATORY pack was taken as optional, skipped, and
+# then reported "missing from data/eqe1_client" (ThinkPad runner, 1 in ~1,900
+# lookups under load; pipelines 1433 and 1437). A here-string has no writer to kill.
 is_mandatory() {
-    printf '%s\n' "$MUST" | grep -qx -- "$1"
+    grep -qx -- "$1" <<<"$MUST"
 }
 
 mkdir -p "$OUT_DIR"
@@ -181,7 +186,7 @@ make_usable() {
         ln "$src" "$dst" 2>/dev/null || cp "$src" "$dst"
         return 0
     fi
-    if ! printf '%s\n' "$vout" | grep -q "STALE"; then
+    if ! grep -q "STALE" <<<"$vout"; then  # no pipe: same SIGPIPE race as is_mandatory
         echo "FATAL: verify of $src failed without a STALE line (not a format issue):" >&2
         printf '%s\n' "$vout" >&2
         return 1

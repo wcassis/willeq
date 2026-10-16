@@ -2144,6 +2144,76 @@ move; its proof is the `--objects` benchmark before/after
 name alone again, and do not let a new pack family join a zone family
 without re-running the census.
 
+## 2026-10-16 — the duplicate (archive, name) entries are deduped by CONTENT: same bytes under two archives, one GPU entry (B1083, #403)
+
+**Decision (ruling 2026-10-16):** "dedupe by content (hash decoded payload;
+same bytes under two archives -> one entry)". The (archive, name) key above
+splits EVERY name a sibling pack also holds into two entries -- byte-
+identical or not -- and the extra bytes bust the texture budget on zones the
+name-keyed run stayed under (the x86 gate: qeynos2 at 99.6% of the 20 MiB
+ceiling, evicted textures drawing black). The content identity is an FNV-1a
+64 over what a GPU entry actually holds: the decoded RGBA image (pixels +
+dimensions + alpha) on the decode path, the compressed payload + alpha
+companion + shape fields on the EQE1 path. A scoped request about to create
+an entry asks the promote-time gate (`dedupeBeforePromote`, the ONLY dedupe
+decision point, in `uploadTexture()`) whether a (name, mask) family entry
+with the same digest exists: yes -> the request key becomes an alias of it
+(one entry, one budget charge, one LRU node); no -> it promotes and becomes
+the target for later siblings. First promoted in time wins -- the pre-B1083
+name-keyed cache's first-upload-wins answer. An evicted shell is a valid
+twin target (its driver-side bind restores the same pixels); a stale alias
+is dropped (`destroyEntry`/`clear` -> `dropAliasesTo`) and the next promote
+decides fresh. Genuinely different same-name textures (qeytoqrg tree70's
+DXT1-vs-DXT5, the willow fix itself) digest differently and keep two
+entries.
+
+**Implications:** unscoped requests never alias (they create/answer the
+plain key -- the configured-order answer); `findEntryForKey` remaps an
+aliased key before the scoped miss, so every accessor (getTexture/hasAlpha/
+getAlphaTexture/isETC1Texture/isResident) answers the alias like its
+target. The dedupe is a memory optimization, never a correctness gate: no
+alias exists for different content, and a missing target promotes normally.
+`getDedupedEntryCount()` is the bookkeeping; the texture gate reads
+`getTextureCount()` (GPU entries). Pinned by
+`ConstrainedTextureCacheTest.SameBytesUnderTwoArchivesIsOneEntry` (red on
+the pre-dedupe branch: the second upload creates a second entry) and
+`DifferentBytesUnderTwoArchivesKeepTwoEntries` (the willow pair must NOT
+fold), beside the scoping tests in `test_eqe1_source_archive.cpp`.
+
+## 2026-10-15 — B1082: the character-select keyboard mirrors the measured official client (#402; Will's XU4 report)
+
+Will's report (2026-10-15 XU4 play sessions): "The arrow keys up/down do not
+change which character is selected but they should. The enter key should load
+the selected character." MEASURED on the official Titanium client (oracle
+lane 1; `refactor/B1082/README.md` carries the ledger, stills, video and the
+pcap as ground truth):
+
+1. **Up/Down move the selection one row and wrap at the ends — within the
+   occupied rows only** (the highlight cycles the 8-button list, but the name
+   line and the 3D model only ever reflect an occupied row, so the
+   enterable selection is bounded by the occupied rows). **Navigation sends
+   NOTHING to the server** — zero C→S packets on any Down/Up in the pcap.
+2. **Enter/Return sends `OP_EnterWorld` for the selected row** — the SAME
+   72-byte payload as the Enter World button's click. Nothing selected is
+   inert.
+3. **The delete prompt ignores everything but ESC** (ESC = No, as B998):
+   Enter/Return do not answer it, no keys navigate or type while it is up; it
+   closes on its own ~10 s timeout.
+4. **Escape with no prompt up leaves pre-zone** (server-select), as before —
+   no quit confirmation prompt.
+
+Ruled into `applyCharSelectKey()` (`char_select_screen.cpp`): it now RETURNS
+the `CharSelectAction` exactly like the click path; `KEY_DOWN`/`KEY_UP` go
+through the new `moveSelection(s, delta)` (one occupied row, wrap at the
+ends, gated on blocked/prompt/create like every other press), `KEY_RETURN`
+goes through `pressEnterWorld` (the Enter World button's own body — the
+numpad Enter maps to the same receiver code). The host
+(`char_select_host.cpp`) routes the returned action through `handle()` and
+keeps spending Enter/Escape/Slash so nothing replays in-zone (B1085). Tests:
+`CharacterSelectKeys.*` in `tests/test_character_select.cpp` (wrap without
+sending, Enter for the arrow-chosen row, prompt ignores everything but
+Escape).
+
 ## 2026-10-16 — B1085: the chat key latches (enter/escape/slash) latch only while the chat is unfocused, and reset on every focus transition (#405)
 
 One line: a key press may only ever arm the chat shortcuts (open-chat on

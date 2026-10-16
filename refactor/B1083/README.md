@@ -133,6 +133,38 @@ ETC1 payloads — the two duplicates that must now coexist. No other entry
 moved (entry count 103 in both). `willow_before.log` / `willow_after.log`,
 `[texture-cache]` + "Texture cache:" lines.
 
+## Step 6 — dedupe by content (ruling 2026-10-16, Will; #403)
+
+The scoping above splits EVERY name a sibling pack also holds into two
+entries — byte-identical or not — and those extra bytes bust the texture
+budget on zones the name-keyed run stayed under (the x86 gate: qeynos2 at
+99.6% of the 20 MiB ceiling, evicted textures drawing black). Ruling:
+**"dedupe by content (hash decoded payload; same bytes under two archives →
+one entry)"** — `docs/decisions.md` 2026-10-16 records it.
+
+The content identity is an FNV-1a 64 over what a GPU entry actually holds:
+`decodedContentDigest` (pixels + dimensions + alpha) on the decode path,
+`compressedContentDigest` (payload + alpha companion + shape fields) on the
+EQE1 path. The SINGLE decision point is the promote-time gate
+(`dedupeBeforePromote` in `uploadTexture()`): a scoped request about to
+create an entry folds onto a content-identical (name, mask) family entry
+(first promoted in time wins — the pre-B1083 first-upload-wins answer), its
+request key becomes an alias (`deduped_`, `getDedupedEntryCount()`), and
+every accessor answers the alias like its target via `findEntryForKey`'s
+remap. Genuinely different same-name textures (the qeytoqrg tree70
+DXT1-vs-DXT5 willow pair) digest differently and keep two entries — the
+willow fix itself is untouched. Unscoped requests never alias.
+
+Pinned by `ConstrainedTextureCacheTest.SameBytesUnderTwoArchivesIsOneEntry`
+(one entry, one GPU texture, alias stable across re-arrival — RED on the
+pre-dedupe branch), `DifferentBytesUnderTwoArchivesKeepTwoEntries` (the
+willow pair must NOT fold), and `AliasRearrivalKeepsTheTwinEntry`; the
+scoping tests in `test_eqe1_source_archive.cpp` (incl.
+`ObjectKeepsItsOwnCopyWhenNamesCollide`, real EDT_OGLES2) keep the two
+genuinely-different copies apart. All five pass, plus the full
+ConstrainedTextureCacheTest, the eviction/residency suites, and the
+hygiene net (WriteOnlyFields clean).
+
 ## Step 5 — docs
 
 `docs/decisions.md` records the ruling. `refactor/B1083/README.md` is this
