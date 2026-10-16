@@ -50,5 +50,12 @@ bool ApplicationScenarioWorld::SimulateUnreachableZoneConnects(int attempts, int
     return true;
 }
 
+// B1080 (#400): the zone-OUT teardown's audio-silence count (the counter
+// CleanupZone() increments in every build -- a headless --scenario run has
+// no audio system, but the count still proves the silence path ran).
+long long ApplicationScenarioWorld::ZoneAudioSilenceCount() const {
+    return client_.Zone().ZoneAudioSilenceCount();
+}
+
 }  // namespace scenario
 }  // namespace eqt

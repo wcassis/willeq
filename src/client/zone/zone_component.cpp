@@ -31,10 +31,9 @@
 #include "common/net/posix_udp_transport.h"
 
 #ifdef WITH_AUDIO
-// B1080 (#400): the zone-out audio teardown (SilenceZoneAudioForZoneOut and
-// the test seams) calls into the two audio managers, so it needs their full
-// definitions, not just client_context.h's forward declarations.
-#include "client/audio/audio_manager.h"
+// B1080 (#400): the zone-out audio teardown (SilenceZoneAudioForZoneOut)
+// calls into the zone audio manager, so it needs its full definition, not
+// just client_context.h's forward declaration.
 #include "client/audio/zone_audio_manager.h"
 #endif // WITH_AUDIO
 
@@ -525,6 +524,11 @@ void eqt::zone::ZoneComponent::CleanupZone()
 // calls it unconditionally); the body is empty when audio is compiled out.
 void eqt::zone::ZoneComponent::SilenceZoneAudioForZoneOut()
 {
+	// The teardown ran the audio silence -- counted in every build (WITH_AUDIO
+	// on or off), so the scenario lane's assertion holds even on a run with no
+	// audio system (headless --scenario: the managers stay null, but the count
+	// still says the silence path executed).
+	++m_zone_audio_silences;
 #ifdef WITH_AUDIO
 	// The zone audio manager owns the emitters (positioned sound + the music
 	// region); the audio manager owns the one-shot SFX channels and the music
@@ -539,39 +543,6 @@ void eqt::zone::ZoneComponent::SilenceZoneAudioForZoneOut()
 	}
 #endif // WITH_AUDIO
 }
-
-#ifdef WITH_AUDIO
-void eqt::zone::ZoneComponent::Test_BindAudioManagersForSeam(
-	EQT::Audio::AudioManager* audio, EQT::Audio::ZoneAudioManager* zoneAudio)
-{
-	ctx_.audio_manager.reset(audio);
-	ctx_.zone_audio_manager.reset(zoneAudio);
-	if (zoneAudio) zoneAudio->setAudioManager(audio);
-}
-EQT::Audio::AudioManager* eqt::zone::ZoneComponent::Test_AudioManagerForSeam()
-{
-	return ctx_.audio_manager.get();
-}
-EQT::Audio::ZoneAudioManager* eqt::zone::ZoneComponent::Test_ZoneAudioManagerForSeam()
-{
-	return ctx_.zone_audio_manager.get();
-}
-#else
-void eqt::zone::ZoneComponent::Test_BindAudioManagersForSeam(
-	EQT::Audio::AudioManager* audio, EQT::Audio::ZoneAudioManager* zoneAudio)
-{
-	(void)audio;
-	(void)zoneAudio;
-}
-EQT::Audio::AudioManager* eqt::zone::ZoneComponent::Test_AudioManagerForSeam()
-{
-	return nullptr;
-}
-EQT::Audio::ZoneAudioManager* eqt::zone::ZoneComponent::Test_ZoneAudioManagerForSeam()
-{
-	return nullptr;
-}
-#endif // WITH_AUDIO
 
 bool eqt::zone::ZoneComponent::BeginGracefulZoneOut()
 {

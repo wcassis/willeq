@@ -264,17 +264,19 @@ public:
 	bool Test_IsZoneToZoneInProgress() const { return m_zone_to_zone_in_progress; }
 	void Test_SetZoneToZoneInProgressForSeam(bool v) { m_zone_to_zone_in_progress = v; }
 
-	// B1080 (#400) test seams (defined in zone_component.cpp): the zone-out
-	// audio teardown (SilenceZoneAudioForZoneOut, called from CleanupZone)
-	// reads the two audio managers off ClientContext. A headless test builds
-	// the real managers and binds them here -- the same references the
-	// production InitializeAudio() binds -- then drives the real CleanupZone()
-	// and asserts the audio went quiet. Test-only; no production code reads
-	// them.
-	void Test_BindAudioManagersForSeam(EQT::Audio::AudioManager* audio,
-	                                   EQT::Audio::ZoneAudioManager* zoneAudio);
-	EQT::Audio::AudioManager* Test_AudioManagerForSeam();
-	EQT::Audio::ZoneAudioManager* Test_ZoneAudioManagerForSeam();
+	// B1080 (#400): how many zone-OUT teardowns ran the audio silence
+	// (SilenceZoneAudioForZoneOut). Every zone-OUT path runs through
+	// CleanupZone(), so this counts them all -- a graceful zone-out, the
+	// handshake timeout, a logout, the B1072 fresh-login give-up. The
+	// scenario lane (the zone_connect_timeout scenario, B1072's harness)
+	// reads it to assert the teardown ran the silence; the count works even
+	// when the audio managers are null (a headless --scenario run has no
+	// audio system: InitializeAudio() runs only from the graphics init),
+	// because it counts the teardown, not the sound. The AUDIO EFFECT of the
+	// silence -- emitters cleared, loops freed, music stopped -- is pinned
+	// by tests/test_zone_sound_emitters.cpp (silenceForZoneOut over the real
+	// qeynos2 loops + music).
+	int ZoneAudioSilenceCount() const { return m_zone_audio_silences; }
 
 	// K09 transition scaffolding: zone state whose remaining readers/writers
 	// live in the entities, movement, player and login_world components, in
@@ -515,6 +517,12 @@ private:
 	// OP_SendLoginInfo was always 0. Set in ProcessDeferredZoneChange(),
 	// cleared once the destination zone session is up (or on a logout).
 	bool m_zone_to_zone_in_progress = false;
+
+	// B1080 (#400): the teardown audio-silence counter (see
+	// ZoneAudioSilenceCount()). Incremented by SilenceZoneAudioForZoneOut()
+	// from CleanupZone(); monotonically increasing, never reset -- a run's
+	// total teardown count is the number a scenario observes at the end.
+	int m_zone_audio_silences = 0;
 
 	// Pending spell scribe state (for handling server confirmation). Written
 	// by MerchantComponent::RequestScribeSpell, cleared by the OP_MemorizeSpell

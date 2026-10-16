@@ -6,6 +6,42 @@ Newest entries first. Each entry: decision, rationale, implications.
 
 ---
 
+## 2026-10-16 — The zone-OUT audio teardown: silence at CleanupZone, counted for the lane (B1080, #400)
+
+**Decision:** leaving a zone silences its audio at the zone-OUT boundary, not
+at the next zone-in. `ZoneAudioManager::silenceForZoneOut(fadeSeconds)` stops
+every emitter (its looped SFX channel freed, B1074), frees the one-shot SFX
+channels (`AudioManager::stopAllSounds()`) and fades the zone music
+(`stopMusic(fade)`). It is called from `ZoneComponent::CleanupZone()` — the
+single point every zone-OUT path funnels through (graceful zone-out,
+handshake timeout, logout, the B1072 fresh-login give-up) — and is idempotent
+and a safe no-op with no zone loaded. It must NOT be called on a zone IN: the
+destination zone's `loadZone()` / `AudioManager::onZoneChange()` re-arms
+emitters and music, and the next zone's music region is a different one.
+
+**Rationale:** before this, a zone's audio outlived the zone. `unloadZone()`
+ran only in the NEXT zone's `loadZone()`, and `onZoneChange()` only on zone
+ENTRY, so while the loading screen was up — including a stalled zone-in that
+gave up (B1072) and sat back at character select — the leaving zone's music
+and every zero-cooldown emitter kept playing: nothing in a zone-OUT path
+stopped them (the emitters are stopped only by range, day/night switch,
+`unloadZone()`/`pause()`, or the manager's own lifetime; B1074's loop rule
+guarantees the zero-cooldown ones hold their channels for as long as the
+listener is in range). Fixing it at CleanupZone() catches every path at once;
+fixing each path individually would leave the next one open.
+
+**Implications:** the lane can assert the teardown without audio. A
+headless `--scenario` run has no audio system (`InitializeAudio()` runs only
+from the graphics init), so the `zone_connect_timeout` scenario asserts on
+`ZoneAudioSilenceCount()` — a teardown counter incremented in every build,
+WITH_AUDIO on or off, counting the silence PATH, not the sound. The audio
+EFFECT (emitters cleared, loops freed, one-shots freed, music faded and
+stopped) is pinned by `test_zone_sound_emitters.cpp`'s
+`ZoneAudioSilenceForZoneOutTest` over the real qeynos2 loops + music; the
+wiring (CleanupZone calls it) by `test_zone_component.cpp`'s
+`ZoneOutTeardownRunsTheAudioSilence`. A world that cannot read the count
+(-1) fails the scenario rather than passing silently.
+
 ## 2026-09-05 — The ceiling covers `tools/` and `benchmarks/` too (T385)
 
 **Decision:** `scripts/refactor/check_file_sizes.sh --all` scans `src/`,
