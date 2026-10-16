@@ -122,25 +122,38 @@ bound. The plain dead-port arm (B1072: 2 connects) is unchanged.
 - `docs/standards/debug_logging_standards.md`: `--log-file`, `WILLEQ_LOG_FILE`,
   `--log-level` space form.
 
+## Live runs (lanes 1-4)
+
+Lanes freed up mid-run (the sibling oracle/hotbar runs had finished), so the
+live legs ran here, not just in QA:
+
+**Silent arm, lane 1** (2026-10-16 09:43Z, `EQEMU_LANE=1
+bash scripts/scenario.sh zone_connect_timeout --timeout 120 --unit B1079`
+with `SCENARIO_CLIENT_ARGS="--scenario-silent-zone --log-file …"`), PASS,
+exit 0 (evidence `live_silent_run.log` + `live_silent.log`):
+
+    09:43:00.823 [INFO ] [SCENARIO] zone_connect_timeout: silent arm -- 1 connect to port 1, handshake pinned past ZONE_CONNECTING
+    09:43:10.907 [WARN ] [ZONE] Zone-in to 172.16.200.99:7000 stalled in PlayerProfile (10000 ms budget); last opcode from the zone: 0x3cdc (15580); returning to character select
+    09:43:11.485 [INFO ] [SCENARIO] back at character select 10.6617 s after Enter World, 1 zone connect(s)
+    VERDICT pass: ... escalated on the 10 s profile bound with no connect retry
+
+Exactly the B1079 shape: **one** connect (the zone answered, so NO retry),
+back at character select at **10.66 s** — over the 10 s profile bound (within
+the 1 s tolerance) and well inside the 30 s connect bound, which would be the
+wrong escalation. The WARN names the stuck phase (PlayerProfile) and the last
+opcode the zone sent — the fact a play box without a log file still leaves.
+The `--log-file` run (427 lines) is the live `--log-file` evidence: the file
+carries the same lines as stdout/stderr, flushed every drain cycle (acceptance
+C). Snapshot restored byte-identically; lock released.
+
+**Plain arm, lane 2** (2026-10-16 09:46Z, same rig, no `--scenario-silent-zone`),
+PASS, exit 0 (evidence `live_plain_run.log`): dead zone port -> **2 connects**
+-> character select (fresh list) at 60.64 s -> Enter World -> zoned in to
+'qeynos' 1.08 s later. The B1072 shape is unchanged: the session never came
+up, so the one connect-retry still happens and the recovery re-entry works.
+
 ## Not verified / left open
 
-- **LIVE run on lanes 1-4 (acceptance B): NOT done in this run.** All four
-  lanes were held by sibling runs (`b1080_oracle`, then `B1025-H5
-  hotbar_lifecycle`, per `eqemu_lock_show`) throughout; the live leg -- run
-  `zone_connect_timeout --scenario-silent-zone` cold (SIGSTOP the zone process
-  after ZoneEntry, SIGCONT after) and confirm the time-to-character-select
-  against the table -- is left to the QA card (t_4fbaa1fd, step 4/5). The
-  mechanism is proven at the unit and pure state-machine level above (25/25
-  green); the live run is the remaining leg.
-- **`--log-file` (acceptance C): smoke-tested in this run, live line-for-line
-  left to QA.** `willeq --no-graphics --log-file <path> --log-level INFO`
-  wrote the same lines to the file (evidence:
-  `/home/user/kb-evidence/kb-b1079-zone-in-bound/logfile_smoke.log`), and
-  `--log-level BOGUSLEVEL` (the space form) produced the loud startup ERROR
-  rather than being silently ignored. The line-for-line equality check on a
-  REAL zone-in (where the file and the merged stdout/stderr can only differ in
-  the position of a stderr line that drains in a separate 50 ms cycle --
-  content is preserved and flushed before exit) is QA's step 4, on a lane.
 - The **official client's** own per-phase bound and message are not measured
   (assumed conservative, table above). An oracle capture that shows a
   different value changes one constant.
@@ -149,5 +162,7 @@ bound. The plain dead-port arm (B1072: 2 connects) is unchanged.
   -> `quitRequested` -> non-zero exit (B918) rather than sitting on the screen,
   but a live "pause the loading thread in GRAPHICS_LOADING_ZONE and confirm the
   bound trips" run is left to QA (t_4fbaa1fd, step 5).
-- The in-session `#zone tutorialb` (zone load #2) live run is QA's leg
-  (t_4fbaa1fd, step 5a), not this card's.
+- The in-session `#zone tutorialb` (zone load #2, with the renderer) live run
+  is QA's leg (t_4fbaa1fd, step 5a), not this card's — it needs a seeded
+  character and the renderer lane, and the per-phase bound (which walks the
+  CURRENT phase, not just ZONE_CONNECTING) is what makes it covered.
