@@ -135,6 +135,25 @@ const ConstrainedTextureCache::CachedTexture* ConstrainedTextureCache::findEntry
         if (foundKey) *foundKey = &it->first;
         return &it->second;
     }
+    // B1083 dedupe: this key may be an alias recorded by the promote-time
+    // gate -- its content is served by the TWIN's single GPU entry, so the
+    // alias answers like its target (texture, hasAlpha, companion,
+    // ETC1-ness; an evicted shell answers too -- its driver-side bind
+    // restores the same pixels, exactly as a direct evicted hit does; the
+    // foundKey the caller touches/reports is the target's). A stale alias
+    // (target destroyed) does NOT answer here: the request falls through
+    // exactly as if the alias never existed (its own pending promotion, or
+    // the scoped-miss null).
+    {
+        auto alias = deduped_.find(internalKey);
+        if (alias != deduped_.end()) {
+            auto twin = cache_.find(alias->second);
+            if (twin != cache_.end()) {
+                if (foundKey) *foundKey = &twin->first;
+                return &twin->second;
+            }
+        }
+    }
     // Scoped query that missed: a SIBLING archive's entry is the wrong
     // answer — return null (the caller treats a miss as "not this copy").
     if (!sourceArchiveStem.empty()) {
@@ -161,6 +180,175 @@ const ConstrainedTextureCache::CachedTexture* ConstrainedTextureCache::findEntry
         }
     }
     return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// B1083 (GitLab #403, ruling 2026-10-16): dedupe by content
+// ---------------------------------------------------------------------------
+
+// FNV-1a 64 (the same family as rawBytesDigest in texture_origin.h) over a
+// uint32.
+namespace {
+inline uint64_t fnvU32(uint64_t h, uint32_t v) {
+    for (int i = 0; i < 4; ++i) {
+        h ^= (v >> (8 * i)) & 0xFF;
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+}  // namespace
+
+uint64_t ConstrainedTextureCache::compressedContentDigest(const CompressedEntry& e) {
+    uint64_t h = 1469598103934665603ULL;
+    h = fnvU32(h, e.width);
+    h = fnvU32(h, e.height);
+    h = fnvU32(h, e.mipLevels);
+    h = fnvU32(h, e.payloadFormat);
+    h ^= e.hasAlpha ? 1u : 0u;
+    h *= 1099511628211ULL;
+    if (e.etc1Data && e.dataSize) {
+        for (uint32_t i = 0; i < e.dataSize; ++i) {
+            h ^= e.etc1Data[i];
+            h *= 1099511628211ULL;
+        }
+    }
+    if (e.hasAlpha && e.alphaData && e.alphaDataSize) {
+        h ^= 0xA5A5u;  // boundary: companion bytes are a distinct run
+        h *= 1099511628211ULL;
+        for (uint32_t i = 0; i < e.alphaDataSize; ++i) {
+            h ^= e.alphaData[i];
+            h *= 1099511628211ULL;
+        }
+    }
+    return h;
+}
+
+uint64_t ConstrainedTextureCache::decodedContentDigest(const std::vector<uint8_t>& rgba, int width,
+                                                        int height, bool hasAlpha) {
+    uint64_t h = 1469598103934665603ULL;
+    h = fnvU32(h, static_cast<uint32_t>(width));
+    h = fnvU32(h, static_cast<uint32_t>(height));
+    h ^= hasAlpha ? 1u : 0u;
+    h *= 1099511628211ULL;
+    for (uint8_t b : rgba) {
+        h ^= b;
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+size_t ConstrainedTextureCache::getDedupedEntryCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return deduped_.size();
+}
+
+// B1083 dedupe: the content identity of a PENDING payload (0 when the key
+// holds none -- a same-key re-arrival after a promotion, or a key nothing
+// decoded yet; the gate then dedupes nothing, which is correct: nothing is
+// about to be promoted). Call while holding mutex_.
+uint64_t ConstrainedTextureCache::pendingContentDigest(const std::string& internalKey) const {
+    auto dec = decodedEntries_.find(internalKey);
+    if (dec != decodedEntries_.end()) return dec->second.contentDigest;
+    auto cmp = compressedEntries_.find(internalKey);
+    if (cmp != compressedEntries_.end()) return compressedContentDigest(cmp->second);
+    return 0;
+}
+
+// B1083 dedupe: the first entry of this (name, mask) family (in cache_ key
+// order -- the plain key first, then the \x01-suffixed archive variants, the
+// same range argument as findEntryForKey) under a DIFFERENT key whose
+// content digest matches, or not found. Scoped requests only: an unscoped
+// request must create/answer the plain (name, mask) key itself (the
+// configured-order answer), never an archive-scoped twin. An EVICTED shell
+// counts: its driver-side bind restores the same pixels, so aliasing to it
+// is safe (and consistent: findEntryForKey answers an evicted direct hit
+// with its shell too). Call while holding mutex_.
+ConstrainedTextureCache::ContentTwin ConstrainedTextureCache::findContentTwin(
+    const std::string& name, const std::string& sourceArchiveStem, bool applyPaletteMask,
+    uint64_t contentDigest) const {
+    ContentTwin out;
+    if (sourceArchiveStem.empty() || contentDigest == 0) return out;
+    const std::string requestKey = cacheKey(name, sourceArchiveStem, applyPaletteMask);
+    for (auto it = cache_.lower_bound(name);
+         it != cache_.end() && it->first.compare(0, name.size(), name) == 0;
+         ++it) {
+        const auto& key = it->first;
+        if (key == requestKey) continue;
+        if (key.size() == name.size()) {
+            // The plain (name) key: the unmasked family member.
+            if (key != cacheKey(name, "", applyPaletteMask)) continue;
+        } else {
+            std::string realName;
+            std::string stem;
+            bool masked = false;
+            splitCacheKey(key, realName, stem, masked);
+            if (realName != name || masked != applyPaletteMask) continue;
+        }
+        const auto& entry = it->second;
+        if (entry.contentDigest == contentDigest) {
+            out.entry = &entry;
+            out.key = &key;
+            out.digest = entry.contentDigest;
+            return out;
+        }
+    }
+    return out;
+}
+
+// B1083 dedupe (ruling 2026-10-16): the promote-time gate -- the ONLY
+// dedupe decision point. A scoped request whose payload is about to become
+// a GPU entry asks whether an entry for this (name, mask) already exists
+// with the same content digest: Deduped -- the request key becomes an
+// alias (deduped_) of that entry, the caller answers the entry's texture
+// (a resident one, or an evicted shell whose bind restores the identical
+// pixels) and drops the request's payload; one GPU entry serves both keys.
+// None -- no content-identical entry (a different-content same-name family,
+// e.g. qeytoqrg tree70's DXT1-vs-DXT5, keeps two entries by design): the
+// caller promotes its own payload, which then becomes the target for any
+// later content-identical sibling request. First entry promoted in time
+// wins -- exactly the pre-B1083 name-keyed cache's first-upload-wins
+// answer, since the zone load promotes each texture right after decoding
+// it. Call while holding mutex_.
+ConstrainedTextureCache::DedupeGateOutcome ConstrainedTextureCache::dedupeBeforePromote(
+    const std::string& name, const std::string& sourceArchiveStem, bool applyPaletteMask,
+    const std::string& internalKey, uint64_t contentDigest) {
+    DedupeGateOutcome out;
+    if (sourceArchiveStem.empty() || contentDigest == 0) return out;  // unscoped, or nothing to promote
+    auto existing = deduped_.find(internalKey);
+    if (existing != deduped_.end()) {
+        // Already an alias: the recorded target, if still in the map
+        // (resident or an evicted shell -- both restore the same pixels on
+        // their next bind), is the answer. Gone (destroyed) -- decide fresh.
+        auto target = cache_.find(existing->second);
+        if (target != cache_.end()) {
+            out.result = DedupeGateResult::Deduped;
+            out.twinEntry = &target->second;
+            return out;
+        }
+        deduped_.erase(existing);
+    }
+    // An entry under the request's own key (an evicted shell: uploadTexture's
+    // early return answered a resident one already) restores its OWN pixels
+    // on first bind -- it is never folded into another key's entry.
+    if (cache_.find(internalKey) != cache_.end()) return out;
+    const ContentTwin twin = findContentTwin(name, sourceArchiveStem, applyPaletteMask, contentDigest);
+    if (!twin.found()) return out;
+    deduped_[internalKey] = *twin.key;
+    out.result = DedupeGateResult::Deduped;
+    out.twinEntry = twin.entry;
+    LOG_TRACE(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' deduped: archive '{}'{} reuses entry (one GPU entry serves both keys)",
+              name, sourceArchiveStem, applyPaletteMask ? " [masked]" : "");
+    return out;
+}
+
+// B1083 dedupe: every alias recording `key` as its target is dropped -- the
+// target is going (destroyEntry / clear). The aliasers re-fold, or resolve
+// on their own, when they next promote or query. Call while holding mutex_.
+void ConstrainedTextureCache::dropAliasesTo(const std::string& key) {
+    for (auto it = deduped_.begin(); it != deduped_.end();) {
+        if (it->second == key) it = deduped_.erase(it);
+        else ++it;
+    }
 }
 
 ConstrainedTextureCache::ConstrainedTextureCache(const ConstrainedRendererConfig& config)
@@ -345,6 +533,17 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     // global/_chr lookups are untouched.
     auto* compressed = findCompressedEntry(name, sourceArchiveStem);
     if (compressed) {
+        // B1083 dedupe (ruling 2026-10-16): the (archive, name) key change
+        // splits EVERY name a sibling pack also holds -- byte-identical or
+        // not -- into two entries, and those extra bytes bust the texture
+        // budget on zones the name-keyed run stayed under (the x86 gate:
+        // qeynos2 at 99.6% of the 20 MiB ceiling, evicted textures
+        // drawing black). This payload is stored with its content identity
+        // (the promote-time gate's input, see pendingContentDigest); the
+        // gate in uploadTexture() folds a content-identical sibling request
+        // into the entry this payload becomes -- one GPU entry serves both
+        // keys. Only genuinely different same-name textures (qeytoqrg
+        // tree70, DXT1-vs-DXT5) keep two entries -- the willow fix itself.
         compressedEntries_[internalKey] = *compressed;
         LOG_TRACE(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' EQE1 hit ({}x{}, {} mips{}){}",
                   name, compressed->width, compressed->height, compressed->mipLevels,
@@ -423,6 +622,15 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     if (origin && origin->known()) decoded.origin = *origin;
     decoded.rawDigest = rawBytesDigest(data);
     decoded.rawSize = data.size();
+
+    // B1083 dedupe (ruling 2026-10-16): the decode path (S3D, no EQE1) has
+    // the same split -- a name held byte-identically by two of the zone's
+    // open .s3d archives becomes two (archive, name) entries. The decoded
+    // image is stored with its content digest (FNV-1a 64 over pixels +
+    // dimensions + alpha); the promote-time gate in uploadTexture() folds a
+    // content-identical scoped request into the entry this image becomes
+    // (one GPU entry serves both keys).
+    decoded.contentDigest = decodedContentDigest(decoded.rgbaPixels, width, height, hasAlpha);
     decodedEntries_[internalKey] = std::move(decoded);
 
     LOG_DEBUG(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' decoded ({}x{}, alpha={}{})",
@@ -454,6 +662,33 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     if (cacheIt != cache_.end()) {
         touchInternal(internalKey);
         return cacheIt->second.texture;
+    }
+
+    // B1083 dedupe (ruling 2026-10-16): the promote-time gate -- the ONLY
+    // dedupe decision point. A scoped request that is about to create a GPU
+    // entry asks whether an entry for this (name, mask) already exists with
+    // the same content digest: if so it becomes an ALIAS of that entry (one
+    // GPU entry serves both keys) and the entry's texture is the answer,
+    // and the pending payload is dropped so nothing promotes a second
+    // entry. Genuinely different same-name textures (qeytoqrg tree70,
+    // DXT1-vs-DXT5) keep two entries -- the willow fix itself. First
+    // promoted in time wins (the pre-B1083 name-keyed cache's
+    // first-upload-wins answer). A re-arrival for an already-recorded
+    // alias answers the same way; a stale alias (its target was destroyed)
+    // is dropped and the normal promotion below runs, so the dedupe is a
+    // memory optimization and never makes a name unresolvable.
+    {
+        const DedupeGateOutcome gate = dedupeBeforePromote(name, sourceArchiveStem,
+                                                           applyPaletteMask, internalKey,
+                                                           pendingContentDigest(internalKey));
+        if (gate.result == DedupeGateResult::Deduped) {
+            const auto targetKey = deduped_.find(internalKey);
+            if (targetKey != deduped_.end()) touchInternal(targetKey->second);
+            compressedEntries_.erase(internalKey);
+            decodedEntries_.erase(internalKey);
+            if (ledgerEnabled_) pendingLedgerTag_.erase(internalKey);
+            return gate.twinEntry->texture;
+        }
     }
 
     // Check for compressed/v2 entry (from EQE1 flat pack)
@@ -525,6 +760,9 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     cached.origin = std::move(origin);
     cached.rawDigest = rawDigest;
     cached.rawSize = rawSize;
+    // B1083 dedupe: the content identity a later sibling-archive request
+    // compares against (recorded in getOrLoad() from the same decoded image).
+    cached.contentDigest = entry.contentDigest;
 
     // P13: consume this name's pending ledger tag (set by getOrLoad) and
     // record the upload row. No-op when disabled.
@@ -945,6 +1183,10 @@ void ConstrainedTextureCache::clear() {
     cache_.clear();
     lruOrder_.clear();
     currentUsage_ = 0;
+    // B1083 dedupe: every destroyed entry was an alias target; drop them all
+    // (a target surviving the clear re-registers itself and re-earns its
+    // aliasers on their next promotion).
+    deduped_.clear();
     // B944: every shell left in the map was destroyed above (protected ones
     // are re-registered below with their own entry, never through this map).
     evictedOwner_.clear();

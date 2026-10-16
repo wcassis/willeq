@@ -233,6 +233,9 @@ void ConstrainedTextureCache::releaseStorage(const std::string& key, CachedTextu
 void ConstrainedTextureCache::destroyEntry(const std::string& key) {
     auto it = cache_.find(key);
     if (it == cache_.end()) return;
+    // B1083 dedupe: this entry is the target of every alias pointing at it --
+    // they re-fold, or resolve on their own, when they next promote/query.
+    dropAliasesTo(key);
     destroyTextures(key, it->second, /*scrubMeshBuilder=*/true);
     if (it->second.resident) {
         currentUsage_ -= it->second.sizeBytes;

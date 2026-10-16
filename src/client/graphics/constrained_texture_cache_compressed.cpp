@@ -534,6 +534,9 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
     // mapped, so this costs a struct, not the pixels).
     cached.source = CachedTexture::Source::Compressed;
     cached.compressed = entry;
+    // B1083 dedupe: the content identity a later sibling-archive request
+    // compares against (the payload this upload is built from).
+    cached.contentDigest = compressedContentDigest(entry);
 
     if (ledgerEnabled_) {
         std::string ledgerCategory = "uncategorized";
@@ -833,6 +836,9 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedV2(
     cached.lruIterator = std::prev(lruOrder_.end());
     cached.source = CachedTexture::Source::Compressed;  // B944: restore source
     cached.compressed = entry;
+    // B1083 dedupe: the content identity a later sibling-archive request
+    // compares against (the payload this upload is built from).
+    cached.contentDigest = compressedContentDigest(entry);
 
     static const char* kPayloadNames[] = {"etc1", "rgb565", "rgba4444", "rgba8888"};
     if (ledgerEnabled_) {

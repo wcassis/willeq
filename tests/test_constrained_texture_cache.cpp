@@ -493,6 +493,142 @@ TEST_F(ConstrainedTextureCacheTest, ProtectedEntriesSurviveClearWithValidLruIter
     }
 }
 
+// ---------------------------------------------------------------------------
+// B1083 (GitLab #403, ruling 2026-10-16): dedupe by content.
+//
+// The (archive, name) keying splits every name two of a zone's open archives
+// hold into two entries -- even when the copies are byte-identical -- and
+// those extra bytes bust the texture budget on zones the name-keyed run
+// stayed under (the x86 gate: qeynos2 at 99.6% of its 20 MiB ceiling,
+// evicted textures drawing black). The ruling: same (name, mask) with
+// content-identical payload -> ONE entry (the second request becomes an
+// alias of the first); genuinely different content (qeytoqrg tree70's
+// DXT1-vs-DXT5) -> two entries, the willow fix itself.
+//
+// The decode path (BMP bytes in, no EQE1) is the x86 gate's path, and it
+// runs under the EDT_NULL device this suite already uses -- no GL context
+// needed.
+// ---------------------------------------------------------------------------
+
+// The ruling's first clause: the SAME image bytes under two archives are ONE
+// cache entry. The second request's upload returns the FIRST request's
+// texture (the pre-B1083 name-keyed cache's first-upload-wins answer), and
+// every accessor answers the alias like its target. On the pre-dedupe branch
+// (the gate regression) the second upload creates a second entry and the
+// textures differ -- the test is RED there and GREEN here.
+TEST_F(ConstrainedTextureCacheTest, SameBytesUnderTwoArchivesIsOneEntry) {
+    const std::string name = "b1083_same_bytes_test";
+    const auto bmp = makeTestBmp(4, 4, 20, 40, 60);
+
+    // The zone's archive uploads first (configured order: {zone} first).
+    cache_->getOrLoad(name, bmp, "test", "SameBytesUnderTwoArchivesIsOneEntry",
+                      /*applyPaletteMask=*/false, /*origin=*/nullptr,
+                      /*sourceArchiveStem=*/"zone_s3d");
+    irr::video::ITexture* zoneTex =
+        cache_->uploadTexture(name, /*applyPaletteMask=*/false, "zone_s3d");
+    ASSERT_NE(zoneTex, nullptr) << "the zone's own copy must upload";
+
+    // The sibling archive (a .s3d of the same zone family holding the same
+    // name) asks for the same name with the same bytes.
+    cache_->getOrLoad(name, bmp, "test", "SameBytesUnderTwoArchivesIsOneEntry",
+                      /*applyPaletteMask=*/false, /*origin=*/nullptr,
+                      /*sourceArchiveStem=*/"obj_s3d");
+    irr::video::ITexture* objTex =
+        cache_->uploadTexture(name, /*applyPaletteMask=*/false, "obj_s3d");
+    ASSERT_NE(objTex, nullptr) << "the sibling request must still be served";
+
+    // ONE GPU entry: the alias answers the twin's texture.
+    EXPECT_EQ(objTex, zoneTex)
+        << "content-identical same-(name, mask) requests must share one entry";
+    EXPECT_EQ(cache_->getTextureCount(), 1u)
+        << "the dedupe must not create a second (archive, name) entry";
+    EXPECT_EQ(cache_->getDedupedEntryCount(), 1u)
+        << "the alias is the bookkeeping the entry count is allowed to hide";
+
+    // Every accessor answers the alias like its target.
+    EXPECT_EQ(cache_->getTexture(name, /*applyPaletteMask=*/false, "obj_s3d"), zoneTex);
+    EXPECT_EQ(cache_->getTexture(name, /*applyPaletteMask=*/false, "zone_s3d"), zoneTex);
+    EXPECT_TRUE(cache_->hasTexture(name, /*applyPaletteMask=*/false, "obj_s3d"));
+    EXPECT_TRUE(cache_->isResident(name, /*applyPaletteMask=*/false, "obj_s3d"));
+
+    // An unscoped request keeps the configured-order answer (the zone's
+    // entry -- the first in family key order).
+    EXPECT_EQ(cache_->getTexture(name), zoneTex);
+}
+
+// The ruling's second clause: GENUINELY different content under the same
+// (name, mask) keeps two entries. This is the willow fix itself (qeytoqrg
+// tree70: the zone copy opaque, the object copy with its alpha) and must
+// not be folded by the dedupe -- the digest is over the decoded pixels, not
+// the file bytes.
+TEST_F(ConstrainedTextureCacheTest, DifferentBytesUnderTwoArchivesKeepTwoEntries) {
+    const std::string name = "b1083_diff_bytes_test";
+    const auto zoneBmp = makeTestBmp(4, 4, 200, 10, 10);
+    const auto objBmp = makeTestBmp(4, 4, 10, 10, 200);
+
+    cache_->getOrLoad(name, zoneBmp, "test", "DifferentBytesUnderTwoArchivesKeepTwoEntries",
+                      /*applyPaletteMask=*/false, /*origin=*/nullptr,
+                      /*sourceArchiveStem=*/"zone_s3d");
+    irr::video::ITexture* zoneTex =
+        cache_->uploadTexture(name, /*applyPaletteMask=*/false, "zone_s3d");
+    ASSERT_NE(zoneTex, nullptr);
+
+    cache_->getOrLoad(name, objBmp, "test", "DifferentBytesUnderTwoArchivesKeepTwoEntries",
+                      /*applyPaletteMask=*/false, /*origin=*/nullptr,
+                      /*sourceArchiveStem=*/"obj_s3d");
+    irr::video::ITexture* objTex =
+        cache_->uploadTexture(name, /*applyPaletteMask=*/false, "obj_s3d");
+    ASSERT_NE(objTex, nullptr);
+
+    // Two distinct GPU textures: the dedupe must NOT touch the willow pair.
+    EXPECT_NE(zoneTex, objTex)
+        << "different-content same-(name, mask) requests must keep two entries";
+    EXPECT_EQ(cache_->getTextureCount(), 2u);
+    EXPECT_EQ(cache_->getDedupedEntryCount(), 0u)
+        << "a content-miss must not record an alias";
+
+    // Each request keeps ITS OWN copy (the B1083 scoping the willow relies
+    // on): the object's material must not be answered with the zone's
+    // pixels or vice versa.
+    EXPECT_EQ(cache_->getTexture(name, /*applyPaletteMask=*/false, "zone_s3d"), zoneTex);
+    EXPECT_EQ(cache_->getTexture(name, /*applyPaletteMask=*/false, "obj_s3d"), objTex);
+}
+
+// An already-aliased request re-arriving (a second getOrLoad + upload for
+// the same key, e.g. a re-draw asking again) must keep the same one-entry
+// answer: the alias is stable, and the target's texture is what every
+// re-arrival gets.
+TEST_F(ConstrainedTextureCacheTest, AliasRearrivalKeepsTheTwinEntry) {
+    const std::string name = "b1083_rearrival_test";
+    const auto bmp = makeTestBmp(4, 4, 80, 80, 80);
+
+    cache_->getOrLoad(name, bmp, "test", "AliasRearrivalKeepsTheTwinEntry",
+                      /*applyPaletteMask=*/false, /*origin=*/nullptr,
+                      /*sourceArchiveStem=*/"zone_s3d");
+    irr::video::ITexture* zoneTex =
+        cache_->uploadTexture(name, /*applyPaletteMask=*/false, "zone_s3d");
+    ASSERT_NE(zoneTex, nullptr);
+
+    cache_->getOrLoad(name, bmp, "test", "AliasRearrivalKeepsTheTwinEntry",
+                      /*applyPaletteMask=*/false, /*origin=*/nullptr,
+                      /*sourceArchiveStem=*/"obj_s3d");
+    irr::video::ITexture* first =
+        cache_->uploadTexture(name, /*applyPaletteMask=*/false, "obj_s3d");
+    ASSERT_EQ(first, zoneTex);
+
+    // Re-arrival for the ALIASED key: the alias (not a fresh fold, and not
+    // a promotion) answers the same twin.
+    cache_->getOrLoad(name, bmp, "test", "AliasRearrivalKeepsTheTwinEntry",
+                      /*applyPaletteMask=*/false, /*origin=*/nullptr,
+                      /*sourceArchiveStem=*/"obj_s3d");
+    irr::video::ITexture* second =
+        cache_->uploadTexture(name, /*applyPaletteMask=*/false, "obj_s3d");
+    ASSERT_EQ(second, zoneTex)
+        << "a re-arrival must keep answering the twin, not promote a second entry";
+    EXPECT_EQ(cache_->getTextureCount(), 1u);
+    EXPECT_EQ(cache_->getDedupedEntryCount(), 1u);
+}
+
 #else  // !EQT_HAS_GRAPHICS
 
 TEST(ConstrainedTextureCacheTest, SkippedNoGraphics) {

@@ -98,6 +98,10 @@ struct DecodedEntry {
     TextureOrigin origin;
     uint64_t rawDigest = 0;
     size_t rawSize = 0;
+    // B1083 dedupe: FNV-1a 64 over the DECODED image (see
+    // ConstrainedTextureCache::decodedContentDigest); a scoped request whose
+    // digest matches an existing (name, mask) entry reuses that entry.
+    uint64_t contentDigest = 0;
 };
 
 // LRU texture cache with memory budget enforcement
@@ -720,6 +724,10 @@ private:
         size_t rawSize = 0;
         bool sourceChecked = false;   // decodedSourceAvailable() ran
         bool sourceOk = false;        // ...and found the same bytes
+        // B1083 dedupe: the content identity (see compressedContentDigest()
+        // / decodedContentDigest()) recorded at store time; a scoped request
+        // whose digest matches a (name, mask) twin reuses the twin's entry.
+        uint64_t contentDigest = 0;
         // B947: an eviction found no restore source; never evicted again.
         bool pinned = false;
     };
@@ -738,6 +746,84 @@ private:
                                          const std::string& sourceArchiveStem,
                                          bool applyPaletteMask,
                                          const std::string** foundKey = nullptr) const;
+
+    // B1083 (GitLab #403, ruling 2026-10-16): DEDUPE BY CONTENT. The
+    // (archive, name) keying splits every name a zone and one of its sibling
+    // packs also hold -- even when the copies are BYTE-IDENTICAL -- into two
+    // entries, and those extra bytes bust the texture budget on zones the
+    // name-keyed run stayed under (the x86 gate's 20 MiB ceiling: the split
+    // pushed qeynos2 to 99.6%, and evicted textures drew black). This map
+    // records which request keys were REUSED instead of created: the
+    // promote-time gate (dedupeBeforePromote, the only decision point)
+    // compares a scoped request's pending payload digest against the
+    // entries of the same (name, mask) family (findContentTwin), and a
+    // content-identical request maps its request key to that entry's key,
+    // so one GPU entry serves both. Genuinely different same-name textures
+    // (the qeytoqrg tree70 DXT1-vs-DXT5 case) digest differently and keep
+    // two entries. Guarded by mutex_; dropped when the target goes
+    // (destroyEntry / clear). uploadTexture() answers an alias from its
+    // target, and findEntryForKey() remaps an aliased key BEFORE the scoped
+    // miss, so every accessor (getTexture / hasAlpha / getAlphaTexture /
+    // isETC1Texture / isResident) answers an alias like its target.
+    std::unordered_map<std::string, std::string> deduped_;
+    // How many request keys were reused instead of creating an entry
+    // (the dedupe map's size; a stat, like the eviction counters).
+    size_t getDedupedEntryCount() const;
+
+    // B1083 dedupe: a twin for a SCOPED request (see findContentTwin()).
+    struct ContentTwin {
+        const CachedTexture* entry = nullptr;  // the resident twin
+        const std::string* key = nullptr;      // the map key to alias to
+        uint64_t digest = 0;
+        bool found() const { return key != nullptr; }
+    };
+    // Find the first entry of the request's (name, mask) family (cache_ key
+    // order -- the plain key first, then the \x01-suffixed archive variants)
+    // under a DIFFERENT key whose content digest matches, or not found.
+    // Scoped requests only. An evicted shell counts: its driver-side bind
+    // restores the same pixels. Call while holding mutex_.
+    ContentTwin findContentTwin(const std::string& name,
+                                const std::string& sourceArchiveStem,
+                                bool applyPaletteMask,
+                                uint64_t contentDigest) const;
+    // The content identity of the request's PENDING payload, or 0 when the
+    // key holds none (a same-key re-arrival after a promotion: the gate
+    // then dedupes nothing, which is correct -- nothing is being promoted).
+    // Call while holding mutex_.
+    uint64_t pendingContentDigest(const std::string& internalKey) const;
+    // The promote-time gate (the ONLY dedupe decision point): a scoped
+    // request about to create a GPU entry checks whether an entry for this
+    // (name, mask) already exists with the same content digest. Deduped:
+    // the request key becomes an ALIAS (deduped_) of that entry -- one GPU
+    // entry serves both keys, the caller answers the entry's texture (a
+    // resident one, or an evicted shell whose driver-side bind restores the
+    // identical pixels) and drops the request's payload. None: no
+    // content-identical entry (a different-content same-name family keeps
+    // two entries by design) -- the caller promotes its own payload, which
+    // then becomes the target for any later content-identical sibling
+    // request (first promoted in time wins: the pre-B1083 name-keyed
+    // cache's first-upload-wins answer).
+    enum class DedupeGateResult : uint8_t { None, Deduped };
+    struct DedupeGateOutcome {
+        DedupeGateResult result = DedupeGateResult::None;
+        const CachedTexture* twinEntry = nullptr;  // set with Deduped
+    };
+    DedupeGateOutcome dedupeBeforePromote(const std::string& name,
+                                          const std::string& sourceArchiveStem,
+                                          bool applyPaletteMask,
+                                          const std::string& internalKey,
+                                          uint64_t contentDigest);
+    // Drop every recorded alias whose target is `key` (the target is going:
+    // destroyEntry / clear). The aliasers re-fold, or resolve on their own,
+    // when they next promote or query. Call while holding mutex_.
+    void dropAliasesTo(const std::string& key);
+    // FNV-1a 64 over everything a compressed entry uploads (payload +
+    // companion, and the shape fields a raw byte run would not cover) --
+    // the content identity the ruling dedupes on.
+    static uint64_t compressedContentDigest(const CompressedEntry& e);
+    // Same for a decoded RGBA image (pixels + dimensions + alpha).
+    static uint64_t decodedContentDigest(const std::vector<uint8_t>& rgba, int width,
+                                         int height, bool hasAlpha);
 
     // Protects all state except decodedQueue_ (which has its own decodedQueueMutex_)
     mutable std::mutex mutex_;
