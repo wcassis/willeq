@@ -113,22 +113,34 @@ back.
   CPUWeight=30, IOWeight=30, MemoryMax=16G. `ci.slice`'s MemoryHigh is 32G
   since the worker slice joined it (backup `ci.slice.pre-rbuild-slice`).
   rbuild starts the scope with
-  `sudo -n systemd-run --scope --slice=ci-worker.slice ... -- setpriv --reuid=user --regid=user --init-groups -- env <vars> <cmd>`.
+  `sudo -n systemd-run --scope --slice=ci-worker.slice ... -- setpriv --reuid=user --regid=user --clear-groups -- env <vars> <cmd>`.
   `/etc/sudoers.d/90-willeq-rbuild` allows exactly that form and nothing
   else. It is a sudo regex: an `rbuild-*` unit name, MemoryMax 1G..16G, and the
-  fixed setpriv drop to `user`. Two notes on that form:
+  fixed setpriv drop to `user`. Three notes on that form:
   - It uses `setpriv`, not `systemd-run --uid`, because a `--scope --uid` run
     kept root's supplementary group 0 (measured).
+  - `--clear-groups` leaves the step with no supplementary groups, so no
+    `video`/`render`. Worker tests therefore cannot open the Intel panel through
+    DRM, the same reason gitlab-runner left those groups.
   - `user` also holds a general `NOPASSWD: ALL` here, so the drop-in only starts
     to matter if that rule is narrowed.
 
   When the sudo form is refused, or `RBUILD_MEM` is outside 1G..16G, rbuild
   says so and falls back to a user scope in the user slice `worker-build.slice`
   (MemoryMax 28G; `rbuild --setup-host` installs it). `-j6` is the default
-  (`RBUILD_JOBS`). ccache lives in `/home/user/willeq-builds/_ccache`, with
-  `CCACHE_BASEDIR=/home/user/src/willeq-wt` and `CCACHE_NOHASHDIR=1`. Build
-  trees in different worktrees still miss each other while the compile lines
-  carry slug paths (B1090, #407).
+  (`RBUILD_JOBS`).
+- **Shared ccache across worktrees (B1090).** ccache lives in
+  `/home/user/willeq-builds/_ccache`. Each tree is configured from the symlink
+  `/home/user/willeq-builds/<slug>/src` (pointing at the worktree), not from the
+  worktree path itself. ccache runs with `CCACHE_BASEDIR=/home/user/willeq-builds`
+  and `CCACHE_NOHASHDIR=1`, so every compile line reads `../src/...` whatever the
+  slug (measured on #407: 2485/2485 hits, 94 s against a 1929 s cold build).
+  - Full cross-worktree hits need B1090 (MR !218), which takes the absolute
+    paths out of the `-D` values.
+  - rbuild re-configures a tree that was configured from the old `-S <worktree>`
+    path, once.
+  - Steps get the CI test environment: `WILLEQ_DATA_ROOT=<worktree>` and the
+    Mesa llvmpipe pins (`__EGL_VENDOR_LIBRARY_FILENAMES`, `LIBGL_ALWAYS_SOFTWARE=1`).
 - **Lifecycle.** One rbuild per worktree at a time (a second waits on a lock).
   If the caller dies, the ssh channel closes and the remote scope is stopped.
   `rbuild --status` lists running scopes, system and user. `rbuild --kill <slug>`

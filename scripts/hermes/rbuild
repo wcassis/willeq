@@ -17,7 +17,7 @@
 # builds:
 #   sudo -n systemd-run --scope --slice=ci-worker.slice \
 #       -p CPUWeight=30 -p IOWeight=30 -p MemoryMax=$RBUILD_MEM \
-#       -- setpriv --reuid=user --regid=user --init-groups -- env <vars> <cmd>
+#       -- setpriv --reuid=user --regid=user --clear-groups -- env <vars> <cmd>
 # (ci.slice/ci-worker.slice: under CI's weight-30 parent, so worker builds yield
 # to the lane-5 oracle exactly as CI does; the exact form is the one
 # /etc/sudoers.d/90-willeq-rbuild allows). When that sudo form is not allowed it
@@ -75,8 +75,11 @@ rb_remote() {
     set -uo pipefail
     local action=$1 broot=$2 jobs=$3 mem=$4; shift 4
     local wtroot=/home/user/src/willeq-wt
-    # CCACHE_BASEDIR/NOHASHDIR: coordinated with B1090 (path-independent binary) on #407.
-    export CCACHE_DIR="$broot/_ccache" CCACHE_MAXSIZE=40G CCACHE_NOHASHDIR=1 CCACHE_BASEDIR="$wtroot"
+    # Cross-worktree ccache (B1090, #407, measured 2485/2485 hits): each tree is
+    # configured from the symlink $broot/<slug>/src -> the worktree, and ccache
+    # relativises against $broot, so every compile line reads ../src/... whatever
+    # the slug. Full benefit needs B1090 (MR !218: no absolute path in any -D).
+    export CCACHE_DIR="$broot/_ccache" CCACHE_MAXSIZE=40G CCACHE_NOHASHDIR=1 CCACHE_BASEDIR="$broot"
 
     # Stop one rbuild scope. A system scope's processes all run as `user` (setpriv),
     # so they are signalled directly -- `systemctl stop` of a system unit would need
@@ -160,8 +163,18 @@ EOF
         ls "$wtroot" >/dev/null 2>&1
         [ -f "$wt/CMakeLists.txt" ] || { echo "rbuild: $wt/CMakeLists.txt not visible on $(hostname) (NFS mount $wtroot?)" >&2; return 2; }
     fi
-    local sdir="$broot/$slug" B="$broot/$slug/build" H="$broot/$slug/hygiene"
+    local sdir="$broot/$slug" B="$broot/$slug/build" H="$broot/$slug/hygiene" S="$broot/$slug/src"
     mkdir -p "$sdir" "$CCACHE_DIR" "$broot/_irrlicht"
+    ln -sfn "$wt" "$S"
+    # A tree configured before the symlinked layout (-S $wt) is refused by cmake
+    # ("source does not match"): drop its cache once so it is re-configured.
+    local t
+    for t in "$B" "$H"; do
+        if [ -f "$t/CMakeCache.txt" ] && ! grep -qx "CMAKE_HOME_DIRECTORY:INTERNAL=$S" "$t/CMakeCache.txt"; then
+            echo "rbuild: $t was configured from another source path; re-configuring from $S" >&2
+            rm -rf "$t/CMakeCache.txt" "$t/CMakeFiles"
+        fi
+    done
 
     # Per-slug lock: one rbuild per worktree at a time; others wait.
     exec 9>"$sdir/.lock"
@@ -201,7 +214,7 @@ EOF
     # so `env` carries the variables the step needs.
     local -a scope=(sudo -n /usr/bin/systemd-run --scope --quiet --collect --unit="$unit"
                     --slice=ci-worker.slice -p CPUWeight=30 -p IOWeight=30 -p MemoryMax="$mem"
-                    -- /usr/bin/setpriv --reuid=user --regid=user --init-groups -- /usr/bin/env)
+                    -- /usr/bin/setpriv --reuid=user --regid=user --clear-groups -- /usr/bin/env)
     if ! [[ "$mem" =~ ^([1-9]|1[0-6])G$ ]] || ! sudo -n -l "${scope[@]:2}" true >/dev/null 2>&1; then
         echo "rbuild: system slice not available (sudoers form or RBUILD_MEM=$mem); using the user slice worker-build.slice" >&2
         scope=(systemd-run --user --scope --quiet --collect --unit="$unit" --slice=worker-build.slice
@@ -216,7 +229,7 @@ EOF
         irr=$(rb_irrlicht) || { echo "rbuild: Irrlicht bootstrap failed" >&2; return 1; }
         [ -f "$B/CMakeCache.txt" ] || gen=(-G Ninja)
         echo "rbuild: configure $B (source $wt, irrlicht $irr) on $(hostname)" >&2
-        cmake -S "$wt" -B "$B" "${gen[@]}" -DCMAKE_BUILD_TYPE=Release -DEQT_BUILD_TESTS=ON \
+        cmake -S "$S" -B "$B" "${gen[@]}" -DCMAKE_BUILD_TYPE=Release -DEQT_BUILD_TESTS=ON \
             -DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_DRM=OFF -DEQT_GLES2_IRRLICHT_DIR="$irr" "${ccl[@]}" "$@"
     }
 
@@ -226,7 +239,12 @@ EOF
         local -a envs=(HOME="$HOME" USER=user LOGNAME=user PATH="$PATH" LANG="${LANG:-C.UTF-8}"
                        CCACHE_DIR="$CCACHE_DIR" CCACHE_MAXSIZE="$CCACHE_MAXSIZE"
                        CCACHE_NOHASHDIR="$CCACHE_NOHASHDIR" CCACHE_BASEDIR="$CCACHE_BASEDIR"
-                       wt="$wt" slug="$slug" broot="$broot" jobs="$jobs" B="$B")
+                       wt="$wt" slug="$slug" broot="$broot" jobs="$jobs" B="$B" S="$S"
+                       # Tests: data/config resolve from the worktree (the tree is out
+                       # of it), and GL runs on llvmpipe exactly as in CI.
+                       WILLEQ_DATA_ROOT="$wt"
+                       __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
+                       LIBGL_ALWAYS_SOFTWARE=1)
         "${scope[@]}" "${envs[@]}" "$@" </dev/null &
         local pid=$! rc
         { while read -r _; do :; done; rb_stop_unit "$unit.scope"; } <&0 &
@@ -237,7 +255,7 @@ EOF
     }
 
     # The scope's bash gets the helpers + the variables they read.
-    export wt slug broot jobs B
+    export wt slug broot jobs B S
     local defs; defs="$(declare -p ccl); $(declare -f rb_configure rb_irrlicht)"
     case "$action" in
     configure)
@@ -260,7 +278,7 @@ EOF
         for a in "$@"; do case "$a" in -j*|--parallel*) jarg=() ;; esac; done
         rb_run ctest --test-dir "$B" --output-on-failure "${jarg[@]}" "$@" ;;
     hygiene)
-        rb_run bash -c "cmake -S \"$wt\" -B \"$H\" -DCMAKE_BUILD_TYPE=Release -DEQT_GRAPHICS=OFF -DEQT_BUILD_TESTS=ON >/dev/null && ctest --test-dir \"$H\" -L hygiene -j $jobs --output-on-failure" ;;
+        rb_run bash -c "cmake -S \"$S\" -B \"$H\" -DCMAKE_BUILD_TYPE=Release -DEQT_GRAPHICS=OFF -DEQT_BUILD_TESTS=ON >/dev/null && ctest --test-dir \"$H\" -L hygiene -j $jobs --output-on-failure" ;;
     *) echo "rbuild: unknown action $action" >&2; return 2 ;;
     esac
 }
