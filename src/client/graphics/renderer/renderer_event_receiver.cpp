@@ -135,7 +135,26 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
             keyEvent.ctrl = event.KeyInput.Control;
             pendingKeyEvents_.push_back(keyEvent);
 
-            // Chat input shortcuts - these are always tracked for text input
+            // When chat input is focused, only allow function keys through to hotkey matching.
+            // All other keys are consumed by the chat input handler.
+            if (chatInputFocused_ &&
+                !(event.KeyInput.Key >= irr::KEY_F1 && event.KeyInput.Key <= irr::KEY_F12)) {
+                return true;
+            }
+
+            // B1085 (#405): the three chat key latches are set ONLY here,
+            // below the focused gate -- i.e. only while the chat is
+            // UNFOCUSED. A press typed INTO the focused box is the box's
+            // (it is in pendingKeyEvents_ above, and the box is the only
+            // reader of that queue), so it must not leave a latch that the
+            // first unfocused frame replays: Will's `/who` + Enter re-opened
+            // the chat empty (stale ENTER), an ESC after it re-opened it
+            // with `/` (stale SLASH from the slash command), and a stale
+            // ESCAPE ran FrameComponent's ESC handler -- closing a window or
+            // clearing the target. setChatInputFocused() resets all three on
+            // every transition in both directions, so a press that changed
+            // the focus (a submitted Enter, a cancelling Escape) dies with
+            // the transition and can never replay in the new state.
             if (event.KeyInput.Key == irr::KEY_RETURN) {
                 enterKeyPressed_ = true;
             }
@@ -144,13 +163,6 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
             }
             if (event.KeyInput.Key == irr::KEY_OEM_2 || event.KeyInput.Key == irr::KEY_DIVIDE) {
                 slashKeyPressed_ = true;
-            }
-
-            // When chat input is focused, only allow function keys through to hotkey matching.
-            // All other keys are consumed by the chat input handler.
-            if (chatInputFocused_ &&
-                !(event.KeyInput.Key >= irr::KEY_F1 && event.KeyInput.Key <= irr::KEY_F12)) {
-                return true;
             }
 
             // Look up action from HotkeyManager
