@@ -126,8 +126,48 @@ moved (entry count 103 in both). `willow_before.log` / `willow_after.log`,
 
 `docs/decisions.md` records the ruling. `refactor/B1083/README.md` is this
 file. The EQE1 lookup paragraph in `src/client/graphics/CLAUDE.md` is edited
-via the completion summary's `CLAUDE.md EDITS:` section (the file is
-protected).
+via the `CLAUDE.md EDITS:` section below (the file is protected).
+
+## CLAUDE.md EDITS:
+
+In `src/client/graphics/CLAUDE.md`, the bullet
+
+```
+- T207 (`ed14c4de`): EQE1 lookups resolve through a name→archive index
+  (`eqe1_texture_index_builder`, `openArchiveContaining()`) instead of
+  linear-probing every archive; 37 opens/24 unused/149MB → 13/0/46MB on the
+  Pi (T208 `604ef722`), zone-in time unchanged (load time is not a work item —
+  see decisions).
+```
+
+is superseded on one sentence. **Replace** the phrase
+
+```
+EQE1 lookups resolve through a name→archive index
+(`eqe1_texture_index_builder`, `openArchiveContaining()`) instead of
+linear-probing every archive
+```
+
+**with**
+
+```
+EQE1 lookups resolve through a name→archive index
+(`eqe1_texture_index_builder`, `openArchiveContaining()`) instead of
+linear-probing every archive; since B1083 (`docs/decisions.md` 2026-10-16)
+the cache key is `(sourceArchiveStem, name, applyPaletteMask)` and
+`findCompressedEntry()` tries the requesting archive's own pack first before
+falling back to the configured-order scan + index late-open (T207/T266) — a
+name two zone-family packs hold with different content (361 names in
+`data/eqe1_client`; the byte-complete census is
+`scripts/refactor/eqe1_family_census.py`) now resolves to the REQUESTING
+pack's copy rather than the first pack in configured order
+```
+
+Everything else in the paragraph (the ALL-OR-NOTHING rule, T205, T214, T266,
+T284, the T195/T197-dead rationale) stays. The T195/T197-dead paragraph
+"so a name two archives share cannot restore the wrong pixels" is about
+S3D-path (`TextureOrigin`) decode entries and is unaffected by B1083, which
+keys EQE1 (compressed) entries.
 
 ## Not verified / left open
 
