@@ -55,6 +55,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_inventory_model_view DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1084 (#404): the ONE robe predicate, table-tested over the measured range
+# 10..16 (official-client oracle + the shipped S3D archives; evidence in
+# refactor/B1084/README.md). Pure header test -- no device, no db, no client
+# tree -- so it gates on graphics only.
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(test_robe_texture_range
+        test_robe_texture_range.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_robe_texture_range GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_robe_texture_range DISCOVERY_TIMEOUT 60)
+ENDIF()
+
 # T309: the measured first-person draw rule (predicate + the withhold seam).
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_first_person_body_draw_rule
