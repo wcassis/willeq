@@ -2106,3 +2106,40 @@ gestures at a fixed position fable chose. RULED:
 4. Performance is unchanged by fidelity: static panels, batched quads,
    no drag, no z-order negotiation. A card that proposes movable windows
    reopens U07c, not this entry.
+
+## 2026-10-16 — A texture request carries its SOURCE ARCHIVE: the cache key is (archive, name, mask), resolution is source-first (B1083, #403)
+
+**Decision:** Two EQE1 packs of one zone family (`{zone}.eqe1`,
+`{zone}_obj.eqe1`, `{zone}_chr.eqe1`) may hold the same texture name with
+DIFFERENT content — measured over `data/eqe1_client`: 361 names across 172
+families with differing payload bytes
+(`scripts/refactor/eqe1_family_census.py`). A name-keyed texture cache
+collapses those into one entry and serves the wrong copy in configured
+order: in qeytoqrg the OBJECT's `tree70`/`treea` request was answered by
+the zone pack's opaque copy, so the willow's foliage drew as a solid
+rectangle (Will 2026-10-15, XU4).
+
+**Rule:** the texture request carries the S3D stem its bytes came from
+(`TextureInfo::archiveStem()`, B947's `sourceArchive`), the cache key is
+`(sourceArchiveStem, name, applyPaletteMask)` (control-character join,
+collision-proof, `splitCacheKey()` recovers all three axes), and
+`findCompressedEntry()` tries the request's OWN open pack first, then
+falls through to the unchanged configured-order scan + index late-open
+(T207/T266). An empty stem is the identity, so every call site that does
+not name a source (character models, equipment, composite sheets, UI) is
+byte-identical to before. The stem is threaded through
+`ZoneMeshBuilder::buildTexturedMesh` / `loadTextureFromBMP` /
+`getOrLoadTexture` and `mesh_building.cpp`, so `hasAlpha` /
+`getAlphaTexture` / `isETC1Texture` are properties of the `(archive, name)`
+entry, not the name. `refactor/B1083/README.md` carries the census, the
+before/after stills and the memory delta; `test_eqe1_source_archive.cpp`
+pins the two copies from two packs (red on the pre-B1083 tree).
+
+**Implications:** the ledger does not grow beyond the genuinely-duplicated
+names (qeytoqrg measured: +2 x 43,704 B = the two `_obj` copies that must
+now coexist; 103 entries both sides). The `zones[]` visual-gate manifest
+runs deliberately load no zone objects, so this fix has no manifest row to
+move; its proof is the `--objects` benchmark before/after
+(`refactor/B1083/README.md` Step 3). Do not key texture resolution on the
+name alone again, and do not let a new pack family join a zone family
+without re-running the census.
