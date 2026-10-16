@@ -2143,3 +2143,13 @@ move; its proof is the `--objects` benchmark before/after
 (`refactor/B1083/README.md` Step 3). Do not key texture resolution on the
 name alone again, and do not let a new pack family join a zone family
 without re-running the census.
+
+## 2026-10-16 — B1085: the chat key latches (enter/escape/slash) latch only while the chat is unfocused, and reset on every focus transition (#405)
+
+One line: a key press may only ever arm the chat shortcuts (open-chat on
+Enter/slash, the ESC window stack) for a frame in which the chat is NOT
+focused -- `RendererEventReceiver::OnEvent()` sets the three latches below
+the focused gate, and `setChatInputFocused()` resets all three in both
+directions, so a press that changed the focus (a submitted Enter, a
+cancelling Escape) can never replay on the first frame in the new state
+(`tests/test_b1085_chat_latches.cpp`).

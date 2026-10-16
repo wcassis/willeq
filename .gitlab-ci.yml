@@ -45,7 +45,12 @@ variables:
   # (~gitlab-runner/.cache/ccache, 20G per runner, git clean never sees it).
   # A truly cold compile also needs CCACHE_DISABLE=1 (docs/ci.md, "ccache on
   # the x86 runners").
-  GIT_CLEAN_FLAGS: -ffdx -e build -e build-gles2 -e build-headless -e third_party/irrlicht-gles2-x86
+  # B1087 (#407): ONE runner (the ThinkPad) now runs the x86 AND the ARM jobs in
+  # the same checkouts, and the ARM jobs' docker cross-build writes
+  # build-arm*-noble/cache as ROOT, which a gitlab-runner `git clean` cannot
+  # remove (MR !211 pipeline 1427: hygiene died in the clean). The x86 jobs
+  # therefore keep the two ARM trees too, exactly as the ARM jobs always have.
+  GIT_CLEAN_FLAGS: -ffdx -e build -e build-gles2 -e build-headless -e third_party/irrlicht-gles2-x86 -e build-arm-noble -e build-arm64-noble
   # B1012 (#333): ONE WARM TREE PER REF. Two branches' pipelines interleaving
   # on the concurrent=1 runner shared one build/ -- MR !119's `test` stage
   # (pipeline 697) ran over binaries MR !118's `build` stage (698) had just
@@ -111,7 +116,11 @@ workflow:
   tags: [x86-build]
   before_script:
     - set -o pipefail
-    - 'case "$(hostname)" in hermes-ext|gitlab-runner-1|gitlab-runner-2) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac'
+    - 'case "$(hostname)" in hermes-ext|gitlab-runner-1|gitlab-runner-2|thinkpad) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac'
+    # B1087 (#407): the runner's own CI_JOBS (config.toml `environment`) wins
+    # over this file's JOBS, so a host sizes its builds to what it shares: the
+    # ThinkPad (primary runner, concurrent=3, beside the lane-5 oracle) sets 8.
+    - 'if [ -n "${CI_JOBS:-}" ]; then export JOBS="$CI_JOBS"; fi; echo "JOBS=$JOBS (runner CI_JOBS=${CI_JOBS:-unset})"'
     - hostname; nproc; free -g | head -2
     # The client asset symlinks are gitignored (tests/test_data_paths.cpp), so
     # `git clean -ffdx` removes them before every job and they must be re-made
@@ -193,7 +202,10 @@ prune-build-trees:
     - git ls-remote --heads origin | awk '{print $2}' | sed 's#^refs/heads/##' > live-refs.txt
     - wc -l live-refs.txt
     - nice -n 10 python3 scripts/ci/prune_ref_build_trees.py --root build/ref --root build-gles2/ref --root build-headless/ref --live-refs-file live-refs.txt --max-age-days 14 --legacy-root build --legacy-root build-gles2 2>&1 | tee prune.log
-    - du -sh build build-gles2 build-headless third_party/irrlicht-gles2-x86 2>/dev/null | tee -a prune.log; df -h . | tail -1 | tee -a prune.log
+    # B1087 (#407): `du` exits 1 when a root is absent, and under pipefail that
+    # failed the job on the ThinkPad, whose concurrent=3 gives each slot its own
+    # checkout (builds/<runner>/0..2), so not every slot has every tree.
+    - '{ du -sh build build-gles2 build-headless third_party/irrlicht-gles2-x86 2>/dev/null || true; } | tee -a prune.log; df -h . | tail -1 | tee -a prune.log'
   artifacts:
     when: always
     expire_in: 30 days
@@ -384,7 +396,8 @@ build-arm:
       allow_failure: true
   script:
     - set -o pipefail
-    - '[ "$(hostname)" = "dev-u24" ] || { echo "refusing to build on $(hostname)"; exit 1; }'
+    # B1087 (#407): the ThinkPad is the primary runner; dev-u24's runner is paused but kept.
+    - 'case "$(hostname)" in dev-u24|thinkpad) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac'
     # B970: verify/fill the vendored Irrlicht+libpng store first; fails naming the pin.
     - scripts/ci/vendor_fetch.sh --ensure
     # Full log kept as an artifact; on failure print the compiler errors, not a
@@ -421,8 +434,10 @@ build-arm64:
       allow_failure: true
   script:
     - set -o pipefail
-    - '[ "$(hostname)" = "dev-u24" ] || { echo "refusing to build on $(hostname)"; exit 1; }'
+    # B1087 (#407): the ThinkPad is the primary runner; dev-u24's runner is paused but kept.
+    - 'case "$(hostname)" in dev-u24|thinkpad) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac'
     - scripts/ci/vendor_fetch.sh --ensure
+    - 'if [ -n "${CI_JOBS:-}" ]; then export BUILD_JOBS="$CI_JOBS"; fi; echo "BUILD_JOBS=$BUILD_JOBS"'
     # Full log kept as an artifact; on failure print the compiler errors, not a
     # blind tail (B1054's ARM-only compile error never reached the trace).
     - nice -n 10 scripts/build-arm64-noble.sh > build-arm64-noble.log 2>&1 || { grep -nE 'error:|undefined reference|ERROR:' build-arm64-noble.log | head -n 40; tail -n 40 build-arm64-noble.log; exit 1; }
