@@ -393,12 +393,6 @@ struct ScenarioOptions {
      * its CHARGE DECREMENT, which the lane's post-check asserts in the DB.
      */
     uint32_t hotbarItemId = 8443;
-    /**
-     * B1025-H5: the social line the /hotbutton command stores as the Emote
-     * slot's text (the official client's social is an emote INDEX, E<number>;
-     * fable stores the free-text form -- see the README's persistence gap).
-     */
-    std::string hotbarEmoteText;
 };
 
 class IScenario {
