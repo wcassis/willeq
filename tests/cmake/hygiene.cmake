@@ -86,6 +86,18 @@ ADD_TEST(NAME CommentClaims
             --repo ${CMAKE_SOURCE_DIR})
 SET_TESTS_PROPERTIES(CommentClaims PROPERTIES LABELS "hygiene")
 
+# B888-CC4 (GitLab #204): the charcreate gate's state list is ONE list, kept in
+# three places that must not drift apart: GATE_STATES in
+# scripts/ci/charcreate_gate_controls.py, the kStates[] array in
+# tools/hwcaps/charcreate_capture.cpp, and the scores table in
+# refactor/B888-CC4/README.md. A state the gate names but the capture does not
+# emit (or the README does not score) is a silent coverage hole. Pure text
+# scan -- no build artefact, no display; the "hygiene" label, runs in every
+# configuration.
+ADD_TEST(NAME CharCreateGateStateList
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_charcreate_gate_state_list.py)
+SET_TESTS_PROPERTIES(CharCreateGateStateList PROPERTIES LABELS "hygiene")
+
 # T403 (2026-09-06, board B260): the 64 BMPs under data/textures/ are 64 of
 # willeq.eqe1's 67 entries, and until now they were checked-in binaries with
 # no build recipe -- P26 retired their generator as dead while its output kept
