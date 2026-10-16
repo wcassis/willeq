@@ -879,6 +879,70 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
         click)
             [[ $target =~ ^[0-9]+,[0-9]+$ ]] || exit 65
             IFS=, read -r x y <<<"$target"; jclick "$x" "$y" ;;
+        # B1076 (#396): a motionless right click -- the driver had no
+        # right-click verb at all, and the spellbook's memorise gesture is
+        # only measurable once it can be issued on its own. Motionless is
+        # deliberate here: it is a PRESS, not a drag (a drag is `hold`), so
+        # DirectInput's 1px-while-held dance is not what the oracle does.
+        rclick)
+            [[ $target =~ ^[0-9]+,[0-9]+$ ]] || exit 65
+            IFS=, read -r x y <<<"$target"; jrclick "$x" "$y" ;;
+        # B1076 (#396): park the cursor. A spell dragged onto a page only
+        # counts if it first followed the cursor, so the scribe drag needs
+        # a motion-to-without-pressing in front of the `hold` that drags.
+        mmove)
+            [[ $target =~ ^[0-9]+,[0-9]+$ ]] || exit 65
+            IFS=, read -r x y <<<"$target"; client_focus; xdotool mousemove "$x" "$y" ;;
+        # B1076 (#396): left button down at (x,y) and HELD for hold_ms,
+        # without the 1px move -- `hold` carries the DirectInput 1px drag,
+        # which an item pick-up would treat as a one-pixel move of the
+        # held item, not as a press-and-release in the same cell.
+        lhold)
+            [[ $target =~ ^[0-9]+,[0-9]+$ && $hold_ms =~ ^[0-9]+$ ]] || exit 65
+            IFS=, read -r x y <<<"$target"
+            client_focus
+            xdotool mousemove "$x" "$y"; xdotool mousedown 1
+            sleep "$(awk -v ms="$hold_ms" 'BEGIN {printf "%.3f",ms/1000}')"
+            xdotool mouseup 1 ;;
+        # B1076 (#396): button-1 drag, xdotool syntax (x1,y1 x2,y2 ...).
+        # The 1px-while-held dance is done once at the start so DirectInput
+        # registers the press; the glide is a real multi-step drag, which is
+        # what moves a held item. `ldrag` carries hold_ms = settle ms AFTER
+        # the release (a 1px release in the same cell is a no-op drop).
+        ldrag)
+            [[ $target == *","* && $hold_ms =~ ^[0-9]+$ ]] || exit 65
+            client_focus
+            read -r sx sy _rest <<<"$target"
+            xdotool mousemove "$sx" "$sy"
+            xdotool mousedown 1
+            xdotool mousemove $((sx+1)) $((sy+1))
+            read -r _ _ tail <<<"$target"
+            # glide over every waypoint with a small delay per step
+            IFS=' ' read -r -a pts <<<"$tail"
+            for p in "${pts[@]}"; do
+                xdotool mousemove "$p"; sleep 0.15
+            done
+            sleep "$(awk -v ms="$hold_ms" 'BEGIN {printf "%.3f",ms/1000}')"
+            xdotool mouseup 1 ;;
+        # B1076 (#396): the button-3 version. The official client's item
+        # drag is a right-button drag (the cursor picks the item up on a
+        # right press; a left press on a held item DROPS it), so the scribe
+        # gesture -- scroll from inventory onto the open book -- rides
+        # button 3, and the memorise drag-to-gem does too.
+        rdrag)
+            [[ $target == *","* && $hold_ms =~ ^[0-9]+$ ]] || exit 65
+            client_focus
+            read -r sx sy _rest <<<"$target"
+            xdotool mousemove "$sx" "$sy"
+            xdotool mousedown 3
+            xdotool mousemove $((sx+1)) $((sy+1))
+            read -r _ _ tail <<<"$target"
+            IFS=' ' read -r -a pts <<<"$tail"
+            for p in "${pts[@]}"; do
+                xdotool mousemove "$p"; sleep 0.15
+            done
+            sleep "$(awk -v ms="$hold_ms" 'BEGIN {printf "%.3f",ms/1000}')"
+            xdotool mouseup 3 ;;
         click-template) click_template "$target" "$hold_ms" "$name" || exit 65 ;;
         wait-template) wait_template "$target" "$hold_ms" "$name" || exit 65 ;;
         press) xdotool key "$target" ;;
