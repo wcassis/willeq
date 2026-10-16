@@ -219,10 +219,10 @@ protected:
     }
     // Centre of the Nth VISIBLE ROW, from the same corners the renderer uses.
     int rowY(int visibleRow) const {
-        return layout.centerPopup.UpperLeftCorner.Y + 20 + 8 + 16 + 8
+        return layout.partnerPopup.UpperLeftCorner.Y + 20 + 8 + 16 + 8
              + visibleRow * (22 + 2) + 11;
     }
-    int rowX() const { return layout.centerPopup.UpperLeftCorner.X + 40; }
+    int rowX() const { return layout.partnerPopup.UpperLeftCorner.X + 40; }
 };
 
 TEST_F(LootGeometryTest, ClosedPanelHitTestsNothing) {
@@ -256,18 +256,18 @@ TEST_F(LootGeometryTest, ScrollingShiftsWhichListIndexARowHits) {
 TEST_F(LootGeometryTest, PointsOutsideThePanelWidthMiss) {
     fill(3);
     EXPECT_EQ(hitTestLootRow(layout, loot,
-        layout.centerPopup.UpperLeftCorner.X - 5, rowY(0)), -1);
+        layout.partnerPopup.UpperLeftCorner.X - 5, rowY(0)), -1);
 }
 
 TEST_F(LootGeometryTest, ButtonsAreFoundAndDoNotOverlapTheRows) {
     fill(3);
     // Loot All sits above the first row; Close below the last.
-    const int lootAllY = layout.centerPopup.UpperLeftCorner.Y + 20 + 8 + 8;
-    const int closeY = layout.centerPopup.LowerRightCorner.Y - 8 - 8;
-    const int cx = (layout.centerPopup.UpperLeftCorner.X +
-                    layout.centerPopup.LowerRightCorner.X) / 2;
+    const int lootAllY = layout.partnerPopup.UpperLeftCorner.Y + 20 + 8 + 8;
+    const int closeY = layout.partnerPopup.LowerRightCorner.Y - 8 - 8;
+    const int cx = (layout.partnerPopup.UpperLeftCorner.X +
+                    layout.partnerPopup.LowerRightCorner.X) / 2;
     EXPECT_EQ(hitTestLootButton(layout, loot,
-        layout.centerPopup.UpperLeftCorner.X + 40, lootAllY), LootButton::LootAll);
+        layout.partnerPopup.UpperLeftCorner.X + 40, lootAllY), LootButton::LootAll);
     EXPECT_EQ(hitTestLootButton(layout, loot, cx, closeY), LootButton::Close);
     // and neither y is a row
     EXPECT_EQ(hitTestLootRow(layout, loot, rowX(), lootAllY), -1);
@@ -319,10 +319,10 @@ protected:
     std::vector<eqt::events::RendererIntent> drain() { return bridge.drainIntents(); }
 
     int rowY(int visibleRow) const {
-        return layout.centerPopup.UpperLeftCorner.Y + 20 + 8 + 16 + 8
+        return layout.partnerPopup.UpperLeftCorner.Y + 20 + 8 + 16 + 8
              + visibleRow * (22 + 2) + 11;
     }
-    int rowX() const { return layout.centerPopup.UpperLeftCorner.X + 40; }
+    int rowX() const { return layout.partnerPopup.UpperLeftCorner.X + 40; }
 };
 
 TEST_F(LootClickTest, ClickingARowPushesLootItemIntentCarryingTheCorpseSlot) {
@@ -357,8 +357,8 @@ TEST_F(LootClickTest, HoverSetsTheOnScreenRowNotTheListIndex) {
 }
 
 TEST_F(LootClickTest, LootAllButtonPushesLootAllIntent) {
-    const int lootAllY = layout.centerPopup.UpperLeftCorner.Y + 20 + 8 + 8;
-    ASSERT_TRUE(click(layout.centerPopup.UpperLeftCorner.X + 40, lootAllY));
+    const int lootAllY = layout.partnerPopup.UpperLeftCorner.Y + 20 + 8 + 8;
+    ASSERT_TRUE(click(layout.partnerPopup.UpperLeftCorner.X + 40, lootAllY));
     auto intents = drain();
     ASSERT_EQ(intents.size(), 1u);
     const auto* la = std::get_if<eqt::events::LootAllIntent>(&intents[0]);
@@ -368,15 +368,15 @@ TEST_F(LootClickTest, LootAllButtonPushesLootAllIntent) {
 
 TEST_F(LootClickTest, LootAllOnAnEmptyCorpsePushesNothing) {
     loot.items.clear();
-    const int lootAllY = layout.centerPopup.UpperLeftCorner.Y + 20 + 8 + 8;
-    ASSERT_TRUE(click(layout.centerPopup.UpperLeftCorner.X + 40, lootAllY));
+    const int lootAllY = layout.partnerPopup.UpperLeftCorner.Y + 20 + 8 + 8;
+    ASSERT_TRUE(click(layout.partnerPopup.UpperLeftCorner.X + 40, lootAllY));
     EXPECT_TRUE(drain().empty());
 }
 
 TEST_F(LootClickTest, CloseButtonPushesCloseLootIntentAndLeavesThePanelUp) {
-    const int closeY = layout.centerPopup.LowerRightCorner.Y - 8 - 8;
-    const int cx = (layout.centerPopup.UpperLeftCorner.X +
-                    layout.centerPopup.LowerRightCorner.X) / 2;
+    const int closeY = layout.partnerPopup.LowerRightCorner.Y - 8 - 8;
+    const int cx = (layout.partnerPopup.UpperLeftCorner.X +
+                    layout.partnerPopup.LowerRightCorner.X) / 2;
     ASSERT_TRUE(click(cx, closeY));
     auto intents = drain();
     ASSERT_EQ(intents.size(), 1u);
@@ -409,7 +409,7 @@ TEST_F(LootClickTest, ClicksInsideThePanelButOnNothingAreStillConsumed) {
     // buff bar's rule).
     // The 8px gap between the Loot All button (ends at +44) and the first
     // row (starts at +52).
-    const int deadY = layout.centerPopup.UpperLeftCorner.Y + 48;
+    const int deadY = layout.partnerPopup.UpperLeftCorner.Y + 48;
     EXPECT_TRUE(click(rowX(), deadY));
     EXPECT_TRUE(drain().empty());
 }

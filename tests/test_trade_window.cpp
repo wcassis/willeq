@@ -245,8 +245,17 @@ TEST(TradeLayoutOracle, TheTradeWindowIsTheScreensOwnSizeAndLocation) {
     EXPECT_EQ(s.h, TradeLayout::WINDOW_H);
     // Drawn unscaled: it fits the smallest supported screen.
     EXPECT_LE(TradeLayout::ORACLE_Y + TradeLayout::WINDOW_H, 480);
-    const UILayout l = layoutAt(640, 480);
-    EXPECT_EQ(TradeLayout::windowOrigin(l), irr::core::vector2di(0, 25));
+    // B1075 (#395): the oracle's (0,25) is the window's CONTENT history;
+    // WHERE it sits is the layout table's PairLeft anchor -- right-aligned
+    // against the inventory, top-aligned with it -- at the oracle's own size.
+    for (auto rc : {std::pair<int, int>{800, 600}, {1280, 720}}) {
+        const UILayout l = layoutAt(rc.first, rc.second);
+        const auto w = TradeLayout::windowRect(l);
+        EXPECT_EQ(w, l.placePairLeft(TradeLayout::WINDOW_W, TradeLayout::WINDOW_H));
+        EXPECT_EQ(w.LowerRightCorner.X, l.partnerPopup.LowerRightCorner.X);
+        EXPECT_EQ(w.UpperLeftCorner.Y, l.inventoryPopup.UpperLeftCorner.Y);
+        EXPECT_LE(w.LowerRightCorner.X, l.inventoryPopup.UpperLeftCorner.X);
+    }
 }
 
 TEST(TradeLayoutOracle, EverySlotNameAndCoinRowIsTranscribed) {

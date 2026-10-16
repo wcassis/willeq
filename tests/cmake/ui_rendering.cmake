@@ -395,6 +395,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_hotbar_layout DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1075 (#395): the layout table's required co-open sets -- every set, at
+# every supported resolution, no two members overlap and all are on screen,
+# plus the negative (a colliding table fails) and the 1x10 / 2x5 hotbar
+# orientation from the same table. Headless, header-only layout code.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_ui_layout_coopen test_ui_layout_coopen.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_ui_layout_coopen PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_ui_layout_coopen GTest::gtest_main)
+    TARGET_COMPILE_DEFINITIONS(test_ui_layout_coopen PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_ui_layout_coopen DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B998 (#318): the character-select screen -- layout vs EQUI_CharacterSelect.xml,
 # the list from a recorded OP_SendCharInfo, buttons -> requests -> packets
 # through the real service and the world replay seam, the configured-character
@@ -407,6 +419,24 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_character_select GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_character_select PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     GTEST_DISCOVER_TESTS(test_character_select DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B888-CC2 (#204): the pre-zone 3D preview -- the device-free appearance
+# selection per state (select row's T14 body; creation race+gender+FacePick)
+# and the headless model leg (CharacterModelView on the production
+# RaceModelLoader, EDT_NULL, no zone): the right race model stands up,
+# distinct races resolve to distinct models, the rotation round-trips.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_char_preview
+        test_char_preview.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_char_preview PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_char_preview GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_char_preview PRIVATE
+        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db"
+        EQ_CLIENT_DATA_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+    GTEST_DISCOVER_TESTS(test_char_preview DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T434: the Options window -- geometry against EQUI_OptionsWindow.xml, the

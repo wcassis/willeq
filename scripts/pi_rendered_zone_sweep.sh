@@ -141,8 +141,10 @@ MESA="${WILLEQ_MESA:-nollvm}"
 # B1030: the aarch64 lanes (PI_LANE 2/3) run ci-arm64/<sha>/ builds on the
 # system Mesa -- no LLVM-less prefix exists for them (Lima needs none on 4 GB;
 # Panfrost is a different driver). The lane is read from scripts/pi/env.sh.
+# B1056: lane 4 (a7s, PowerVR) runs its own bullseye build; env.sh names each
+# lane's publish root in PI_LANE_PUBLISH, so the default follows the lane.
 if [ "${PI_LANE_ARCH:-armv7l}" = aarch64 ]; then
-    PI_DIR="/mnt/projects/fable/ci-arm64/by-branch/fable"
+    PI_DIR="${PI_LANE_PUBLISH:-/mnt/projects/fable/ci-arm64}/by-branch/fable"
     MESA="${WILLEQ_MESA:-system}"
 fi
 CONSTRAINED="orangepi"

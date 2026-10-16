@@ -810,6 +810,19 @@ struct PanelCapture {
     std::function<void(UIRenderer&, const UILayout&, PanelStates&)> draw;
 };
 
+// B1075: the always-on HUD, in renderStaticUI()'s order.
+void drawCoOpenHud(UIRenderer& u, const UILayout& l, PanelStates& s) {
+    renderPlayerStatus(u.layer(), l, s.stats);
+    renderTargetInfo(u.layer(), l, s.target);
+    renderChatPanel(u.layer(), l, s.chat);
+    renderHotbar(u.layer(), l, s.hotbar);
+    renderSpellGemPanel(u.layer(), l, s.gems);
+    renderBuffBar(u.layer(), l, s.buffs);
+    renderGroupPanel(u.layer(), l, s.group);
+    renderPetPanel(u.layer(), l, s.pet);
+    renderXPBar(u.layer(), l, s.xp);
+}
+
 std::vector<PanelCapture> buildCaptureList() {
     return {
         {"player_status", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
@@ -985,6 +998,36 @@ std::vector<PanelCapture> buildCaptureList() {
             renderTradeWindow(u.layer(), l, s.tradeA); }},
         {"give_npc", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderTradeWindow(u.layer(), l, s.give); }},
+        // B1075 (#395): the layout table's required co-open sets, each drawn
+        // over the whole always-on HUD in the production draw order, so a
+        // reviewer sees both windows AND what they sit beside.
+        {"coopen_inventory_merchant", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            drawCoOpenHud(u, l, s);
+            renderInventoryPopup(u.layer(), l, s.inventory);
+            CursorAttachmentState empty;
+            renderMerchantPopup(u.layer(), l, s.merchant, empty); }},
+        {"coopen_inventory_bank", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            drawCoOpenHud(u, l, s);
+            renderInventoryPopup(u.layer(), l, s.inventory);
+            renderBankWindow(u.layer(), l, s.bank); }},
+        {"coopen_inventory_trade", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            drawCoOpenHud(u, l, s);
+            renderInventoryPopup(u.layer(), l, s.inventory);
+            renderTradeWindow(u.layer(), l, s.tradeA); }},
+        {"coopen_inventory_give", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            drawCoOpenHud(u, l, s);
+            renderInventoryPopup(u.layer(), l, s.inventory);
+            renderTradeWindow(u.layer(), l, s.give); }},
+        {"coopen_inventory_loot", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            drawCoOpenHud(u, l, s);
+            renderInventoryPopup(u.layer(), l, s.inventory);
+            renderLootPopup(u.layer(), l, s.loot); }},
+        {"coopen_spellbook_gems", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            drawCoOpenHud(u, l, s);
+            renderSpellbookPopup(u.layer(), l, s.spellbook); }},
+        {"coopen_skills_hud", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            drawCoOpenHud(u, l, s);
+            renderSkillsPopup(u.layer(), l, s.skills); }},
         // B1004 (#323): the item-name tooltips (review/UIGAP-ORACLE/323/).
         // `tooltip_alt_bag`: Alt held, pointer on the Backpack's label -- every
         // item named at once, the right column half a slot lower.

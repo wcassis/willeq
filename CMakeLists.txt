@@ -851,6 +851,11 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/char_select_screen.cpp
         src/client/graphics/ui/char_select_panel.cpp
         src/client/graphics/ui/char_select_host.cpp
+        # B888-CC2 (#204): the pre-zone 3D preview -- device-free appearance
+        # selection + the CharacterModelView host (the select/creation model,
+        # the Rotate spin).
+        src/client/graphics/ui/char_preview_host.cpp
+        src/client/graphics/ui/char_preview_scene.cpp
         # T436 (board B429): the merchant, bank and cursor-attachment
         # windows -- one TU per panel (M00).
         src/client/graphics/ui/merchant_panel.cpp
@@ -1147,6 +1152,20 @@ ENDIF()
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(ui_inventory_capture tools/hwcaps/ui_inventory_capture.cpp)
     TARGET_LINK_LIBRARIES(ui_inventory_capture willeq_core ${LINK_LIBS})
+ENDIF()
+
+# B888-CC4 (GitLab #204): the character select + creation visual gate's willeq
+# side. Renders the gate's 14 states through the production render path
+# (renderCharSelectScreen / renderCharCreateScreen) into a headless 1280x800
+# GLES2 frame, one PNG per state, so scripts/ci/charcreate_gate.py can score
+# them per-rect against the blessed official-client reference set. Needs no
+# server/network (only the shipped char_create.tsv + willeq.db strings and the
+# UIAtlas pack), so a CI job re-runs it on any tip. Manual tool, not
+# ctest-registered; the gate's ctest row runs the gate script, which invokes
+# this tool.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(charcreate_capture tools/hwcaps/charcreate_capture.cpp)
+    TARGET_LINK_LIBRARIES(charcreate_capture willeq_core ${LINK_LIBS})
 ENDIF()
 
 # T416 (board B316): the sibling of ui_inventory_capture that renders EVERY

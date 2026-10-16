@@ -409,8 +409,9 @@ public:
     /**
      * Which scrollable panel is under the cursor, in the same top-down
      * order the panels are DRAWN and the same order processKey() dismisses
-     * them: the loot popup is on top, then the skills popup (both live in
-     * layout.centerPopup and are never open together), then the chat panel.
+     * them: the loot popup is on top, then the skills popup (each over its
+     * own layout-table anchor since B1075: layout.partnerPopup and
+     * layout.centerPopup), then the chat panel.
      * A closed popup is not a target even when the cursor is over where it
      * would be.
      */
