@@ -338,6 +338,9 @@ public:
     size_t getAvailableMemory() const;
     // Entries, resident or evicted (an evicted entry is still a live object).
     size_t getTextureCount() const;
+    // B1083 dedupe: how many request keys were reused instead of creating an
+    // entry (the dedupe map's size; a stat, like the eviction counters).
+    size_t getDedupedEntryCount() const;
     // B944: entries whose GL storage is resident, and the restore statistics.
     size_t getResidentTextureCount() const;
     size_t getRestoreCount() const;
@@ -766,9 +769,6 @@ private:
     // miss, so every accessor (getTexture / hasAlpha / getAlphaTexture /
     // isETC1Texture / isResident) answers an alias like its target.
     std::unordered_map<std::string, std::string> deduped_;
-    // How many request keys were reused instead of creating an entry
-    // (the dedupe map's size; a stat, like the eviction counters).
-    size_t getDedupedEntryCount() const;
 
     // B1083 dedupe: a twin for a SCOPED request (see findContentTwin()).
     struct ContentTwin {

@@ -165,6 +165,56 @@ genuinely-different copies apart. All five pass, plus the full
 ConstrainedTextureCacheTest, the eviction/residency suites, and the
 hygiene net (WriteOnlyFields clean).
 
+### Step 6b — dedupe measured on the gate (2026-10-16): fires 0 times, regression survives
+
+The ruling predicted the five non-qeytoqrg gate zones would return to 0 px
+once identical-byte duplicates collapsed. **The measurement contradicts that
+for the gate path**: the dedupe fires **0 times** in all five x86 gate zones,
+and qeynos2's cache is **byte-identical to the pre-dedupe branch** — so the
+197 px gate diff (evicted textures drawing black at 99.6% of the 20 MiB
+ceiling) is **untouched by the dedupe**.
+
+Measured by running the exact x86 gate invocation (60 frames, 3 camera
+poses, `--eq-path` only — the gate passes no `--eqe1-path`) through the
+`gles2_zone_benchmark` with a new `deduped` counter in the summary line
+(`getDedupedEntryCount()`, `tools/hwcaps/zone_bench_modes.cpp` +
+`gles2_zone_benchmark.cpp`), ThinkPad / llvmpipe, 2026-10-16:
+
+| zone | entries | used / limit | deduped |
+|---|---|---|---|
+| qeynos2 | 126 | 21,932,691 / 22,020,096 (99.6%) | **0** |
+| gfaydark | 32 | 11,184,800 / 22,020,096 | **0** |
+| befallen | 9 | 2,883,581 / 22,020,096 | **0** |
+| iceclad | 15 | 3,866,619 / 22,020,096 | **0** |
+| timorous | 35 | 3,183,945 / 22,020,096 | **0** |
+
+qeynos2 `entries=126 used=21,932,691` is the **same byte count as the
+pre-B1083 / pre-dedupe run** (GATE_FINDINGS `used=21932691`); the gate
+diff is still 197 px (62/45/90), byte-identical to pre-dedupe.
+
+**Why 0 deduped.** The gate benchmark loads **one** `.s3d` archive per zone —
+qeynos2's own — and **no character models, no objects, no EQE1**
+(`characterModelsBytes=0`, `placeableObjectsBytes=0`, `eqe1ArchiveCount=0`
+in the run's memory JSON; log: `S3D loaded: 2074 regions, 148 textures`).
+The only cross-archive duplicate family qeynos2 holds is **zone ∩ chr**
+(~140 names — the `bat*`/`beach*`/`bet*`/`bgm*` character-model textures,
+per `s3d_dump` over the three archives: zone∩obj = ∅, zone∩chr = 140,
+obj∩chr = ∅). Because the gate never loads `_chr.s3d`, **none of those
+shared names are in the working set** — there is no content-identical
+cross-archive duplicate for the dedupe gate to fold. The dedupe is correct
+and unit-proven; it simply has no in-working-set target in a
+single-archive gate run.
+
+**Consequence for the ruling:** the dedupe restores the **_obj / _chr**
+working set (the live-client path, where the willow and other object /
+character textures DO cross archives) — it does **not** restore the five
+gate zones, because the gate's working set is a single archive. The
+regression on those five zones is therefore a **separate** consequence of
+the (archive,name) keying that the ruling's dedupe does not address, and
+fixing it is a further design decision (re-bless vs. change the keying) —
+left for Will (step 7; the gate goldens are bless-only). See the
+`FABLE RULING` comment and the card's block note (2026-10-16).
+
 ## Step 5 — docs
 
 `docs/decisions.md` records the ruling. `refactor/B1083/README.md` is this
