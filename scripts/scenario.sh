@@ -144,6 +144,14 @@ PEERLOG="$OUT/${SCENARIO}_peer.log"
 BEFORE="$OUT/${SCENARIO}_snapshot_before.tsv"
 AFTER="$OUT/${SCENARIO}_snapshot_after.tsv"
 INV_BEFORE="$OUT/${SCENARIO}_inventory_before.tsv"
+# B1025-H5 (#345): the clients' PER-CHARACTER generated files (the hotbar INI,
+# the UI preferences, the shader cache) go under $WILLEQ_CACHE_DIR
+# (ResolveCachePathForWrite, data_paths.h) -- never the checkout. The lane pins
+# it to OUT so the post-check can read the hotbar INI from a known place, and
+# export it once here: it rides into the MAIN client (this shell) AND the peer
+# subshell (it inherits the environment), so both characters' INIs land in the
+# same dir, named by the character (UI_<Char>_<Server>.ini).
+export WILLEQ_CACHE_DIR="$OUT/cache"
 # A task worktree has no build/ of its own; the shared build lives in main.
 BIN="${WILLEQ_BIN:-}"
 if [ -z "$BIN" ]; then

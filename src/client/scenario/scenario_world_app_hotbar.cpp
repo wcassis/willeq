@@ -79,6 +79,15 @@ bool ApplicationScenarioWorld::SetHotbarPage(int page) {
     return true;
 }
 
+int ApplicationScenarioWorld::HotbarPage() const {
+    // The one model read the lifecycle's page leg is allowed (the card's
+    // criterion B keeps the ACTIVATIONS on server/chat observables; the page
+    // has no server-visible effect of its own, so its own page state is the
+    // only thing to assert). A model that is not up yet reports page 0.
+    auto* model = client_.GetHotbarModel();
+    return model ? model->currentPage() : 0;
+}
+
 HotbarSlotRead ApplicationScenarioWorld::HotbarSlotAt(int page, int slot) const {
     HotbarSlotRead out;
     auto* model = client_.GetHotbarModel();

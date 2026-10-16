@@ -428,7 +428,7 @@ private:
     double campAt_ = 0;
     long long gen0_ = 0;
 
-    static std::vector<PrepStep> MakePrep() {
+    std::vector<PrepStep> MakePrep() {
         return {
             {kInvulnOffAt,  "/say #set invulnerable off"},
             {kUnmemAt,      "/say #unmemspells"},

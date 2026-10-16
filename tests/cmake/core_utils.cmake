@@ -167,6 +167,8 @@ ADD_EXECUTABLE(test_scenario_state_machines
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_zone_connect_timeout.cpp  # B1072
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_fall_damage.cpp  # B893
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ranged_single_shot.cpp  # B900
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_hotbar_lifecycle.cpp  # B1025-H5
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_hotbar_isolation_assign.cpp  # B1025-H5 peer
 )
 TARGET_INCLUDE_DIRECTORIES(test_scenario_state_machines PRIVATE ${CMAKE_SOURCE_DIR}/include)
 TARGET_LINK_LIBRARIES(test_scenario_state_machines GTest::gtest_main)
@@ -195,6 +197,8 @@ ADD_EXECUTABLE(test_scenario_ui_legs
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_forage_lands.cpp  # B894
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_fall_damage.cpp  # B893
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ranged_single_shot.cpp  # B900
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_hotbar_lifecycle.cpp  # B1025-H5
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_hotbar_isolation_assign.cpp  # B1025-H5 peer
 )
 TARGET_INCLUDE_DIRECTORIES(test_scenario_ui_legs PRIVATE ${CMAKE_SOURCE_DIR}/include)
 TARGET_LINK_LIBRARIES(test_scenario_ui_legs GTest::gtest_main)

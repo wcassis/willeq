@@ -152,7 +152,11 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     // of these fixes, when only B894 + B900 had merged). B760 (#45) adds
     // its repeated cast-tail lane: two casters and their two peers. B1072
     // (#392) adds zone_connect_timeout (tests/test_zone_connect_timeout.cpp).
-    EXPECT_EQ(names.size(), 41u);
+    // B1025-H5 (#345) adds its hotbar pair: hotbar_lifecycle + the
+    // hotbar_isolation_assign peer.
+    EXPECT_EQ(names.size(), 43u);
+    EXPECT_TRUE(IsScenarioName("hotbar_lifecycle"));
+    EXPECT_TRUE(IsScenarioName("hotbar_isolation_assign"));
     EXPECT_TRUE(IsScenarioName("zone_connect_timeout"));
     EXPECT_TRUE(IsScenarioName("camp_to_charselect"));
     EXPECT_TRUE(IsScenarioName("camp_desktop"));
