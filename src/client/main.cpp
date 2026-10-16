@@ -210,7 +210,11 @@ static bool parseCliAndLoadConfig(int argc, char* argv[],
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--log-level") == 0 && i + 1 < argc) {
             logLevelArgRewrite = std::string("--log-level=") + argv[i + 1];
-            argv[i] = logLevelArgRewrite.c_str();
+            // data() (C++17) returns a mutable char* for a non-const string,
+            // so this is a valid char* for the (writable) argv slot; c_str()
+            // is const char* and does not convert (the Release build is
+            // stricter than the Debug one, which accepted it).
+            argv[i] = logLevelArgRewrite.data();
             argv[i + 1] = argv[argc - 1];
             argc--;
             break;  // one --log-level per invocation
