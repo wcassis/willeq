@@ -207,6 +207,24 @@ public:
 	// Public: MovementComponent::UpdateMovement() names it in the timeout WARN.
 	static constexpr int kZoneOutHandshakeTimeoutMs = 2000;
 
+	// B1080 (#400): how long the leaving zone's music takes to fade out when
+	// the zone session tears down (silenceForZoneOut, below). The client's
+	// own zone music stop is a 2.0 s fade (AudioManager::onZoneChange, the
+	// ENTRY side, audio_manager.cpp) and the zone-audio unload path fades
+	// 0.5 s (ZoneAudioManager::stopAllSounds' default) -- the oracle's exact
+	// zone-OUT fade length is not isolated on the current rig (see
+	// refactor/B1080/README.md), so the value is documented as a choice
+	// within the client's own measured range: long enough to read as a fade,
+	// short enough that the loading screen is effectively silent.
+	static constexpr float kZoneOutMusicFadeSeconds = 2.0f;
+
+	// B1080 (#400): the zone-OUT audio silence, called from CleanupZone() --
+	// the single point every zone-OUT path runs through (graceful zone-out,
+	// the handshake timeout, logout, the B1072 fresh-login give-up). Stops
+	// every emitter, frees the one-shot SFX channels and fades the zone
+	// music, so a stalled zone-in is quiet while the loading screen is up.
+	void SilenceZoneAudioForZoneOut();
+
 	// B1072 (#392): the bound on the zone-IN connect, per attempt -- from
 	// ConnectToZone() (LoadingPhase::ZONE_CONNECTING) to the zone's
 	// PlayerProfile (ZONE_RECEIVING_PROFILE). MEASURED over 1,663 zone-ins in
@@ -245,6 +263,18 @@ public:
 	bool Test_IsZoneOutAcknowledged() const { return m_zone_out_acknowledged; }
 	bool Test_IsZoneToZoneInProgress() const { return m_zone_to_zone_in_progress; }
 	void Test_SetZoneToZoneInProgressForSeam(bool v) { m_zone_to_zone_in_progress = v; }
+
+	// B1080 (#400) test seams (defined in zone_component.cpp): the zone-out
+	// audio teardown (SilenceZoneAudioForZoneOut, called from CleanupZone)
+	// reads the two audio managers off ClientContext. A headless test builds
+	// the real managers and binds them here -- the same references the
+	// production InitializeAudio() binds -- then drives the real CleanupZone()
+	// and asserts the audio went quiet. Test-only; no production code reads
+	// them.
+	void Test_BindAudioManagersForSeam(EQT::Audio::AudioManager* audio,
+	                                   EQT::Audio::ZoneAudioManager* zoneAudio);
+	EQT::Audio::AudioManager* Test_AudioManagerForSeam();
+	EQT::Audio::ZoneAudioManager* Test_ZoneAudioManagerForSeam();
 
 	// K09 transition scaffolding: zone state whose remaining readers/writers
 	// live in the entities, movement, player and login_world components, in

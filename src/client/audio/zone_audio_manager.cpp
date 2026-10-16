@@ -177,14 +177,48 @@ size_t ZoneAudioManager::getMusicEmitterCount() const {
     return count;
 }
 
-void ZoneAudioManager::stopAllSounds() {
+void ZoneAudioManager::stopAllSounds(float musicFadeSeconds) {
     for (auto& emitter : emitters_) {
         emitter->stop();
     }
     activeMusicEmitter_ = nullptr;
 
     if (audioManager_) {
-        audioManager_->stopMusic(0.5f);
+        audioManager_->stopMusic(musicFadeSeconds);
+    }
+}
+
+void ZoneAudioManager::silenceForZoneOut(float musicFadeSeconds) {
+    // B1080 (#400): at zone-OUT, everything this zone's audio owns goes quiet
+    // while the loading screen is up -- the old zone's music, every positioned
+    // emitter (a loop's channel is freed by its stop, B1074), and any one-shot
+    // SFX channel the mixer still holds.
+    //
+    // Previously NOTHING ran here. unloadZone() was called only by the NEXT
+    // zone's loadZone() (zone_entry.cpp) and AudioManager::onZoneChange() only
+    // on zone ENTRY, so from the moment the client left a zone until the new
+    // zone's ZoneEntry ran, the OLD zone's music region and every
+    // zero-cooldown emitter kept playing. That is Will's 2026-10-15 report:
+    // "I still hear in-zone music and spell sound effects" while the zone-in
+    // hung at 20 %.
+    //
+    // It is idempotent and safe when nothing is loaded (the emitters are
+    // already empty and AudioManager::stopMusic() no-ops on a player that is
+    // not playing). The three pieces the fix specifies:
+    //   - the emitters (their stop() frees the looped SFX channel),
+    //   - audioManager->stopAllSounds() (free the one-shot SFX channels),
+    //   - stopMusic(<fade>) (fade the zone music).
+    for (auto& emitter : emitters_) {
+        emitter->stop();
+    }
+    activeMusicEmitter_ = nullptr;
+    emitters_.clear();
+    currentZone_.clear();
+    effLoader_->clear();
+
+    if (audioManager_) {
+        audioManager_->stopAllSounds();              // free one-shot SFX channels
+        audioManager_->stopMusic(musicFadeSeconds);  // fade the zone music
     }
 }
 

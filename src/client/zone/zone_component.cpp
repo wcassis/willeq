@@ -30,6 +30,14 @@
 #include "common/logging.h"
 #include "common/net/posix_udp_transport.h"
 
+#ifdef WITH_AUDIO
+// B1080 (#400): the zone-out audio teardown (SilenceZoneAudioForZoneOut and
+// the test seams) calls into the two audio managers, so it needs their full
+// definitions, not just client_context.h's forward declarations.
+#include "client/audio/audio_manager.h"
+#include "client/audio/zone_audio_manager.h"
+#endif // WITH_AUDIO
+
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -346,6 +354,17 @@ void eqt::zone::ZoneComponent::CleanupZone()
 	// so that ZoneProcessClientUpdate() can restart it for the new zone
 	ctx_.lifecycle.StopUpdateLoop();
 
+	// B1080 (#400): silence the zone we are LEAVING, now, at the teardown.
+	// CleanupZone() is the single point every zone-OUT path runs through
+	// (DisconnectFromZone() calls it): a graceful zone-out, the zone-out
+	// handshake timeout, a logout, and the B1072 fresh-login give-up. Before
+	// this, nothing stopped the zone audio here -- unloadZone() ran only in
+	// the NEXT zone's loadZone() and AudioManager::onZoneChange() only on
+	// zone ENTRY -- so a stalled zone-in left the old zone's music and every
+	// emitter playing under the loading screen. onZoneChange() keeps its
+	// ENTRY role (it starts the new zone's music); this is the OUT side.
+	SilenceZoneAudioForZoneOut();
+
 	ctx_.Bridge().SetLoadingPhase(LoadingPhase::DISCONNECTED, "Leaving zone...");
 
 #ifdef EQT_HAS_GRAPHICS
@@ -501,6 +520,58 @@ void eqt::zone::ZoneComponent::CleanupZone()
 
 	LOG_DEBUG(MOD_ZONE, "Zone cleanup complete");
 }
+
+// B1080 (#400): stop the zone audio we are leaving. Always defined (CleanupZone
+// calls it unconditionally); the body is empty when audio is compiled out.
+void eqt::zone::ZoneComponent::SilenceZoneAudioForZoneOut()
+{
+#ifdef WITH_AUDIO
+	// The zone audio manager owns the emitters (positioned sound + the music
+	// region); the audio manager owns the one-shot SFX channels and the music
+	// player. silenceForZoneOut() does all of it: each emitter stops (freeing a
+	// loop's SFX channel, B1074), the one-shot SFX channels are freed, and the
+	// zone music fades out over kZoneOutMusicFadeSeconds.
+	//
+	// The manager may be null: audio is disabled when there is no EQ client
+	// path or --no-audio, in which case there is nothing to silence.
+	if (ctx_.zone_audio_manager) {
+		ctx_.zone_audio_manager->silenceForZoneOut(kZoneOutMusicFadeSeconds);
+	}
+#endif // WITH_AUDIO
+}
+
+#ifdef WITH_AUDIO
+void eqt::zone::ZoneComponent::Test_BindAudioManagersForSeam(
+	EQT::Audio::AudioManager* audio, EQT::Audio::ZoneAudioManager* zoneAudio)
+{
+	ctx_.audio_manager.reset(audio);
+	ctx_.zone_audio_manager.reset(zoneAudio);
+	if (zoneAudio) zoneAudio->setAudioManager(audio);
+}
+EQT::Audio::AudioManager* eqt::zone::ZoneComponent::Test_AudioManagerForSeam()
+{
+	return ctx_.audio_manager.get();
+}
+EQT::Audio::ZoneAudioManager* eqt::zone::ZoneComponent::Test_ZoneAudioManagerForSeam()
+{
+	return ctx_.zone_audio_manager.get();
+}
+#else
+void eqt::zone::ZoneComponent::Test_BindAudioManagersForSeam(
+	EQT::Audio::AudioManager* audio, EQT::Audio::ZoneAudioManager* zoneAudio)
+{
+	(void)audio;
+	(void)zoneAudio;
+}
+EQT::Audio::AudioManager* eqt::zone::ZoneComponent::Test_AudioManagerForSeam()
+{
+	return nullptr;
+}
+EQT::Audio::ZoneAudioManager* eqt::zone::ZoneComponent::Test_ZoneAudioManagerForSeam()
+{
+	return nullptr;
+}
+#endif // WITH_AUDIO
 
 bool eqt::zone::ZoneComponent::BeginGracefulZoneOut()
 {
