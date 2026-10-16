@@ -1,12 +1,46 @@
 #!/usr/bin/env bash
 # Runs on the paired oracle VM; no server DB writes here.
 set -uo pipefail
-ACTION=${1:-} DIR=${2:-}
+ACTION=${1:-} DIR=${2:-} ORACLE_LANE=${3:-}
+# B1073 (#393): oracle_session.sh passes the driving lane, so the lane-5-only
+# fixes below (the NVIDIA GLX pin, the WM-less focus wrap) are inert on lanes
+# 1-4, where the oracle is Xvfb + llvmpipe and a focus/force-NVIDIA change
+# would break GL or hang a windowfocus --sync with no focusable window.
 [[ $ACTION == selftest || ( -n $DIR && $DIR == /home/user/eq-oracle/sessions/* ) ]] || exit 65
 export DISPLAY=:99 WINEPREFIX=/home/user/eq-oracle/wineprefix WINEARCH=win32 WINEDEBUG=-all LP_NUM_THREADS=1
+# B1073 (#393): the NVIDIA GLX stack is the lane-5 standard. :99 registers
+# ONLY NVIDIA's glxserver_nvidia (the generic Mesa glx module is disabled in
+# /etc/X11/oracle/xorg.conf, docs/thinkpad.md), and the client's 32-bit
+# libglvnd libGL.so.1 dispatcher is pinned to the same vendor so Wine's GLX
+# goes to NVIDIA, never Mesa, regardless of which i386 vendor lib the
+# dispatcher probes first. Lanes 1-4 (Xvfb + llvmpipe) have no NVIDIA vendor
+# at all, so the pin is lane-5 only: there it would point the dispatcher at a
+# vendor lib that does not exist.
+if [[ $ORACLE_LANE == 5 ]]; then export __GLX_VENDOR_LIBRARY_NAME=nvidia; fi
 source /mnt/projects/eq-oracle/scripts/ui-lib.sh
 CLIENT=/home/user/eq-oracle/client
 alive() { pgrep -x eqgame.exe >/dev/null && xdotool search --name '^EverQuest$' >/dev/null 2>&1; }
+# B1073 (#393): the lane-5 rig has NO window manager, so after a re-render the
+# client window does not hold input focus and motion clicks (jclick, the
+# face_open_click drag) land on the root window and do nothing -- this is why
+# Set Face stopped opening after the 2026-10-13 re-provision. Give the client
+# the focus before every motion click. A failure is harmless: the click is
+# still made (a lost focus costs one retry, an always-throwing helper would
+# cost every run), so this never returns non-zero.
+client_focus() {
+    xdotool windowfocus --sync --name '^EverQuest$' 2>/dev/null || :
+}
+# The wrap. ui-lib.sh (sourced above) defines jclick/jrclick; on lane 5 we
+# redefine them so every motion click -- the facepick-rows open loop, the
+# selection clicks, the hold verb, the login helper's jclicks -- gives the
+# client window the focus first. Lanes 1-4 keep ui-lib's originals. The
+# wrapper adds a few milliseconds per click (windowfocus --sync); on a
+# no-WM rig that is the difference between a click that lands and one that
+# does nothing.
+if [[ $ORACLE_LANE == 5 ]]; then
+    jclick() { client_focus; xdotool mousemove "$1" "$2"; sleep 0.6; xdotool mousedown 1; sleep 0.4; xdotool mousemove $(( $1 + 1 )) $(( $2 + 1 )); sleep 0.3; xdotool mouseup 1; }
+    jrclick() { client_focus; xdotool mousemove "$1" "$2"; sleep 0.6; xdotool mousedown 3; sleep 0.4; xdotool mousemove $(( $1 + 1 )) $(( $2 + 1 )); sleep 0.3; xdotool mouseup 3; }
+fi
 shot() { import -window root -crop 1280x800+0+30 "$DIR/$1.png" 2>/dev/null; }
 stamp() { date -u +%s.%3N; }
 mark() { printf '%s\t%s\t%s\n' "$(stamp)" "$1" "$2" >>"$DIR/timeline.tsv"; }
@@ -370,8 +404,20 @@ face_open() { face_buttons_text '200x55+0+485' | grep -qiE 'Random|Accept|Cancel
 # with the picker LIST never rendered (the full26/pilot failure: all pairs
 # stilled showing only the FACE row). The net-zero drag is the one matrix3
 # proved renders the full list, so the open uses exactly its sequence.
+# B1073 (#393): the open shape. On lanes 1-4 this is matrix3's net-ZERO drag
+# (the sequence that reference capture used). On lane 5 it is the
+# focus-wrapped jclick instead: since the 2026-10-13 re-provision the
+# net-zero drag does NOT open Set Face on this rig (FINDINGS-setface-
+# regression.txt measured it "NO (5 tries)"), while the jclick 1px-net drag
+# WITH an explicit windowfocus DOES (the same table: "jclick WITH explicit
+# xdotool windowfocus -> YES"). The lane-5 jclick (defined above) already
+# takes the focus, so the open is just the focus-wrapped 1px click.
 face_open_click() {
     local x=$1 y=$2
+    if [[ $ORACLE_LANE == 5 ]]; then
+        jclick "$x" "$y"
+        return 0
+    fi
     xdotool mousemove "$x" "$y"
     sleep 0.4
     xdotool mousemove "$((x+1))" "$y"
@@ -839,6 +885,7 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
         hold)
             [[ $target =~ ^[0-9]+,[0-9]+$ && $hold_ms =~ ^[0-9]+$ ]] || exit 65
             IFS=, read -r x y <<<"$target"
+            client_focus   # B1073: same no-WM focus rule as face_open_click
             xdotool mousemove "$x" "$y"; xdotool mousedown 1
             xdotool mousemove "$((x+1))" "$((y+1))"
             sleep "$(awk -v ms="$hold_ms" 'BEGIN {printf "%.3f",ms/1000}')"
@@ -986,8 +1033,13 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             # only" state, which is exactly the full26/pilot2 failure (all
             # pairs stilled before the list rendered). So mirror matrix3: open
             # once and settle until the list is on screen.
+            # B1073 (#393): on lane 5 every open attempt is logged in the
+            # timeline so a capture run can prove the FIRST attempt opened
+            # the modal -- the acceptance bar for the no-WM rig (a retry is a
+            # focus/sequence defect, not an acceptable settle).
             for open_attempt in 1 2 3 4 5; do
                 face_open && break
+                [[ $ORACLE_LANE == 5 ]] && mark face-open "attempt=$open_attempt at=37,251"
                 face_open_click 37 251; sleep 2
                 xdotool mousemove 600 900
             done
