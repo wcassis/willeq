@@ -128,6 +128,14 @@ attached to the task) and a copy in
   seeding and this branch's scenario config, and a rebase conflict, if any,
   is one small hunk before `snapshot "$BEFORE"` in scenario.sh.
 
+  The failed pipeline 1472 named exactly four ctest failures in its
+  build-test job 7909: `WilleqPaths.NoCompileDefinitionCarriesAnAbsolutePath`
+  (test #344) and `HotbarGestureEndToEndTest.{PressReleaseUnderThresholdActivates,
+  HoldClonesAndPickupClearsTheSource, PlacementAssignsAndDisplaces}` (tests
+  #4500–#4502) — the build-headless job 7908 failed on `WilleqPaths` alone
+  (#323; the hotbar test target needs the graphics gate). No other test
+  failed in either job, so the two fixes above cover the whole red.
+
 - The free-text emote slot's persistence is the DOCUMENTED fable-vs-official
   gap (official = E<number> index; H-O's oracle measured that form), not an
   oversight: the relog leg asserts the slot is absent, and H-5's README is
