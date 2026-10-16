@@ -78,6 +78,10 @@ const Entry kScenarios[] = {
     {"fall_damage", &MakeFallDamageScenario},
     // B900 (#216): the single ranged attack, live. The packet half's lane leg.
     {"ranged_single_shot", &MakeRangedSingleShotScenario},
+    // B1025-H5 (#345): the hotbar lifecycle, live.
+    {"hotbar_lifecycle", &MakeHotbarLifecycleScenario},
+    // B1025-H5 (#345): the lifecycle's peer -- acceptance C (isolation).
+    {"hotbar_isolation_assign", &MakeHotbarIsolationAssignScenario},
 };
 
 }  // namespace

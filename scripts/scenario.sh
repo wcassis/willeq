@@ -355,6 +355,13 @@ say "snapshot taken ($(wc -l < "$BEFORE") rows)"
 if [ "$SCENARIO" = "ranged_single_shot" ] && [ -z "$INVENTORY_CHARS" ]; then
     INVENTORY_CHARS="$(eqemu_sql "SELECT id FROM character_data WHERE name='Testchar';" | head -1)"
 fi
+# B1025-H5 (#345): the hotbar item/skill kit is DB-seeded into Testcaster and
+# the item leg CONSUMES a charge, so Testcaster's inventory rows get the
+# snapshot/restore pair (the item slot's 10-charge stack is what the run
+# mutates; the restore takes the whole seeded kit out again).
+if [ "$SCENARIO" = "hotbar_lifecycle" ] && [ -z "$INVENTORY_CHARS" ]; then
+    INVENTORY_CHARS="$(eqemu_sql "SELECT id FROM character_data WHERE name='Testcaster';" | head -1)"
+fi
 # The inventory snapshot, whenever the run names inventory characters -- always
 # BEFORE any seed (a seed after the snapshot is invisible to the restore and
 # survives the run: duplicate-key on the next seed, the kit left behind;
@@ -381,6 +388,13 @@ esac
 # snapshot/restore pair exactly like T494's equip lane.
 if [ "$SCENARIO" = "ranged_single_shot" ] && [ -z "$SEED_SQL" ]; then
     SEED_SQL="$REPO/scripts/scenario_configs/ranged_single_shot_seed.sql"
+fi
+# B1025-H5 (#345): the hotbar kit is DB-seeded (Testcaster's primary and
+# general slots are already full, so #summonitem + /putdown cannot seat the
+# pole without swapping the old primary onto the cursor). The restore
+# (INVENTORY_CHARS above) takes it out again.
+if [ "$SCENARIO" = "hotbar_lifecycle" ] && [ -z "$SEED_SQL" ]; then
+    SEED_SQL="$REPO/scripts/scenario_configs/hotbar_lifecycle_seed.sql"
 fi
 # B1068 (#388): the walked zone-line crossing starts a few units short of
 # qeynos -> qeynos2's BSP zone-line region, facing it; the restore moves the
@@ -428,6 +442,12 @@ CHAIN_OBSERVE_HOLD=120
 case "$SCENARIO" in
     two_client_survive) PEER_SCENARIO="zone_in" ;;
     equip_observed)     PEER_SCENARIO="equip_actor"; PEER_SCENARIO_2="equip_actor_return" ;;
+    # B1025-H5 (#345): acceptance C -- a SECOND character on the account. The
+    # peer (Testbuddy) zones in and assigns ONE skill slot through the same
+    # user path; its per-character INI must end up holding ONLY that slot and
+    # none of Testcaster's. The main character's INI must hold its three typed
+    # slots. The post-check reads both INI files (the isolation verdict).
+    hotbar_lifecycle)   PEER_SCENARIO="hotbar_isolation_assign" ;;
     # B630 (issue #48): the caster runs the whole 4-leg chain, the observer
     # targets the caster and holds it for the chain's duration. Co-location is
     # the seed SQL, not a re-login.

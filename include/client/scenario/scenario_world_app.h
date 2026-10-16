@@ -100,6 +100,15 @@ public:
     long long ZoneConnectOpens() const override;                          // B1072
     bool SimulateUnreachableZoneConnects(int attempts, int port) override;  // B1072
 
+    // B1025-H5 (#345): hotbar controls, through the user path
+    // (scenario_world_app_hotbar.cpp).
+    bool AssignHotbarSlot(int page, int slot, int type, uint32_t id, const std::string& text) override;
+    bool ActivateHotbarSlot(int page, int slot) override;
+    bool PressHotbarKey(int slot) override;
+    bool SetHotbarPage(int page) override;
+    int HotbarPage() const override;
+    HotbarSlotRead HotbarSlotAt(int page, int slot) const override;
+
     // B893 (fall_damage): the fall's live observable and its driver.
     long long PlayerHP() const override;
     bool SimulateFall(float fallHeight) override;
