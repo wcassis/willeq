@@ -2142,3 +2142,13 @@ gestures at a fixed position fable chose. RULED:
 4. Performance is unchanged by fidelity: static panels, batched quads,
    no drag, no z-order negotiation. A card that proposes movable windows
    reopens U07c, not this entry.
+
+## 2026-10-16 — B1085: the chat key latches (enter/escape/slash) latch only while the chat is unfocused, and reset on every focus transition (#405)
+
+One line: a key press may only ever arm the chat shortcuts (open-chat on
+Enter/slash, the ESC window stack) for a frame in which the chat is NOT
+focused -- `RendererEventReceiver::OnEvent()` sets the three latches below
+the focused gate, and `setChatInputFocused()` resets all three in both
+directions, so a press that changed the focus (a submitted Enter, a
+cancelling Escape) can never replay on the first frame in the new state
+(`tests/test_b1085_chat_latches.cpp`).
