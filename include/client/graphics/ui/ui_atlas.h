@@ -10,6 +10,7 @@
 
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/ui/item_icon_sheets.h"
+#include "client/graphics/ui/spell_icon_sheets.h"
 #include <irrlicht.h>
 #include <cstdint>
 #include <string>
@@ -84,12 +85,23 @@ public:
     ItemIconSheets& icons() { return icons_; }
     const ItemIconSheets& icons() const { return icons_; }
 
+    /**
+     * B1077 (GitLab #397): the spell-icon sheets (gem bar / spellbook /
+     * buff families + the A_SpellGemHolder piece), lifted from the
+     * official client's gemicons*.tga / Spells*.tga / Spell_Icons.tga.
+     * Separate pack entries, loaded by load() beside the item sheets; see
+     * UIRenderer::drawSpellIcon().
+     */
+    SpellIconSheets& spellIcons() { return spellIcons_; }
+    const SpellIconSheets& spellIcons() const { return spellIcons_; }
+
 private:
     bool loadJsonFromMemory(const char* data, size_t size);
     void mapSprite(const std::string& name, const irr::core::rect<irr::s32>& rect);
 
     irr::video::ITexture* texture_ = nullptr;
     ItemIconSheets icons_;
+    SpellIconSheets spellIcons_;
     UISpriteRect sprites_[static_cast<int>(UISprite::Count)];
     UISpriteRect emptySprite_{};
 };

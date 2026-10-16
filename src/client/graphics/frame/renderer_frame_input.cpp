@@ -309,6 +309,20 @@ bool FrameComponent::toggleSkillsWindow() {
     return skillsPopupState_.isOpen;
 }
 
+// B1077 (GitLab #397): the spellbook's ONE toggle. The kept body is the
+// slash command's (B1075's closesOnOpen on the open branch only): opening
+// the spellbook closes the inventory popup; closing it closes nothing.
+// Returns the new open state so the /newbook arm can echo it in chat.
+bool FrameComponent::toggleSpellbookWindow() {
+    spellbookState_.isOpen = !spellbookState_.isOpen;
+    if (spellbookState_.isOpen) {
+        if (closesOnOpen(UIWindow::Spellbook, UIWindow::Inventory))
+            inventoryState_.activePopup = PopupType::None;
+    }
+    LOG_INFO(MOD_GRAPHICS, "Spellbook {}", spellbookState_.isOpen ? "opened" : "closed");
+    return spellbookState_.isOpen;
+}
+
 // T368 (B101): the three toggles that replace empty arms. Deliberately NOT
 // mutually exclusive with the centre popups the way toggleSkillsWindow() is --
 // these are HUD panels, not centre popups, and the official client keeps them
@@ -344,6 +358,13 @@ bool FrameComponent::toggleCombatAbilityWindow() {
 
 void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& actions) {
     using RA = RendererAction;
+    // B1077 (GitLab #397): the gem window's CSPW_SpellBook button. The hit
+    // test (static_ui_input.cpp) landed bookClicked; consume it here, once
+    // per frame, through the SAME toggle body Ctrl+B and /newbook use.
+    if (spellGemState_.bookClicked) {
+        spellGemState_.bookClicked = false;
+        toggleSpellbookWindow();
+    }
     for (const auto& event : actions) {
         // Note: Targeting, combat (autorun, autoattack, hail, consider), and clear target
         // actions are now routed through bridgeQueue_ → GraphicsInputHandler → InputActionBridge.
@@ -398,10 +419,9 @@ void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& action
             // T363 (B058): one body, shared with /skills.
             case RA::ToggleSkills: toggleSkillsWindow(); break;
             case RA::TogglePet: togglePetWindow(); break;
-            case RA::ToggleSpellbook:
-                spellbookState_.isOpen = !spellbookState_.isOpen;
-                LOG_INFO(MOD_GRAPHICS, "Spellbook {}", spellbookState_.isOpen ? "opened" : "closed");
-                break;
+            // B1077: one body, shared with /newbook and the gem window's
+            // CSPW_SpellBook button.
+            case RA::ToggleSpellbook: toggleSpellbookWindow(); break;
             case RA::ToggleBuffWindow: toggleBuffWindow(); break;
             // T415 (B320): Alt+C, the oracle's own key.
             case RA::ToggleCombatAbilities: toggleCombatAbilityWindow(); break;

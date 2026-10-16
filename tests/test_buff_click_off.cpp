@@ -65,9 +65,14 @@ uint32_t U32(const uint8_t* p, size_t off) { uint32_t v; std::memcpy(&v, p + off
 // Leg 1 -- hitTestBuffBar() geometry
 // ===================================================================
 //
-// 800x600: buffBar = {8, chatY - 8 - 36, 308, chatY - 8}. Rather than
+// 800x600: buffBar = {8, chatY - 8 - 40, 308, chatY - 8}. Rather than
 // hard-code chatY, every case works from layout.buffBar's own corners --
 // the same source renderBuffBar() and the hit-test both read.
+//
+// B1077 (GitLab #397): the icons are the oracle's 34x34 buttons
+// (EQUI_BuffWindow.xml, buff_layout.h) with 3 px of padding, so the pitch
+// is 34 + 3 = 37 and the bar's 300 px width fits 8 buttons (icon 8 ends at
+// left+294, icon 9 would start at left+301).
 
 class BuffBarHitTest : public ::testing::Test {
 protected:
@@ -77,12 +82,12 @@ protected:
 
     void SetUp() override { layout.computeLayout(800, 600); }
 
-    // Centre of the Nth ICON DRAWN (not the Nth slot) -- icons are 20px
-    // with 2px of padding, packed from the bar's top-left + 2.
+    // Centre of the Nth ICON DRAWN (not the Nth slot) -- B1077: 34px
+    // buttons with 3px of padding, packed from the bar's top-left + 3.
     int iconX(int drawIndex) const {
-        return layout.buffBar.UpperLeftCorner.X + 2 + drawIndex * 22 + 10;
+        return layout.buffBar.UpperLeftCorner.X + 3 + drawIndex * 37 + 17;
     }
-    int iconY() const { return layout.buffBar.UpperLeftCorner.Y + 2 + 10; }
+    int iconY() const { return layout.buffBar.UpperLeftCorner.Y + 3 + 17; }
 };
 
 TEST_F(BuffBarHitTest, EmptyBarIsNotClickableAnywhere) {
@@ -113,8 +118,8 @@ TEST_F(BuffBarHitTest, PackedBarMapsDrawPositionBackToTheSPARSESlot) {
 TEST_F(BuffBarHitTest, GapBetweenIconsHitsNothing) {
     buffs.buffs[0].spellId = 111;
     buffs.buffs[1].spellId = 222;
-    // x = left + 2 + 20 .. +22 is the 2px pad between icon 0 and icon 1.
-    int gapX = layout.buffBar.UpperLeftCorner.X + 2 + 21;
+    // x = left + 3 + 34 .. +37 is the 3px pad between icon 0 and icon 1.
+    int gapX = layout.buffBar.UpperLeftCorner.X + 3 + 36;
     EXPECT_EQ(hitTestBuffBar(layout, buffs, gapX, iconY()), -1);
 }
 
@@ -122,15 +127,19 @@ TEST_F(BuffBarHitTest, BelowTheIconRowHitsNothing) {
     // The duration text sits under the icon; it is not part of the target.
     buffs.buffs[0].spellId = 111;
     EXPECT_EQ(hitTestBuffBar(layout, buffs, iconX(0),
-                             layout.buffBar.UpperLeftCorner.Y + 2 + 25), -1);
+                             layout.buffBar.UpperLeftCorner.Y + 3 + 35), -1);
 }
 
 TEST_F(BuffBarHitTest, SlotsPastTheBarWidthAreNotHittable) {
-    // The bar is 300px wide with 2px padding: floor((300 - 4) / 22) = 13
-    // icons fit, so all 25 occupied slots cannot be reached.
+    // B1077: the bar is 300px wide with 3px padding; icons are 34px buttons
+    // with a 3px pad, so 8 fit (the 8th ends at left + 3 + 8*37 - 3 = left+294)
+    // and a ninth would start past the right edge. renderBuffBar() stops
+    // drawing where the hit-test stops reaching.
     for (int i = 0; i < BuffBarState::MAX_BUFFS; ++i) buffs.buffs[i].spellId = 100 + i;
-    EXPECT_EQ(hitTestBuffBar(layout, buffs, iconX(12), iconY()), 12);
-    EXPECT_EQ(hitTestBuffBar(layout, buffs, iconX(13), iconY()), -1)
+    EXPECT_EQ(hitTestBuffBar(layout, buffs, iconX(7), iconY()), 7);
+    // The first x the ninth icon would start at -- drawn by neither.
+    int ninthX = layout.buffBar.UpperLeftCorner.X + 3 + 8 * 37;
+    EXPECT_EQ(hitTestBuffBar(layout, buffs, ninthX, iconY()), -1)
         << "renderBuffBar() stops drawing here, so the hit-test must too";
 }
 
@@ -166,9 +175,9 @@ protected:
                                   inventory, spellbook, skills, buffs, loot);
     }
     int iconX(int drawIndex) const {
-        return layout.buffBar.UpperLeftCorner.X + 2 + drawIndex * 22 + 10;
+        return layout.buffBar.UpperLeftCorner.X + 3 + drawIndex * 37 + 17;
     }
-    int iconY() const { return layout.buffBar.UpperLeftCorner.Y + 2 + 10; }
+    int iconY() const { return layout.buffBar.UpperLeftCorner.Y + 3 + 17; }
 };
 
 TEST_F(BuffBarClickTest, ClickOnABuffPushesCancelIntentForThatSlot) {
@@ -189,7 +198,7 @@ TEST_F(BuffBarClickTest, ClickOnAnEmptyBarPushesNothingAndIsNotConsumed) {
 TEST_F(BuffBarClickTest, ClickBetweenIconsPushesNothing) {
     buffs.buffs[0].spellId = 111;
     buffs.buffs[1].spellId = 222;
-    click(layout.buffBar.UpperLeftCorner.X + 2 + 21, iconY());
+    click(layout.buffBar.UpperLeftCorner.X + 3 + 36, iconY());
     EXPECT_TRUE(bridge.drainIntents().empty());
 }
 

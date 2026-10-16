@@ -272,6 +272,17 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 		}
 		return "";
 	});
+	// B1077 (GitLab #397): a hotbar SPELL slot draws its spell's gem_icon,
+	// the Gems family of the spell-icon atlas -- the same column the gem
+	// bar reads (spell_icon is 0 on every Titanium row; gem_icon is the
+	// one icon column that carries art).
+	m_hotbar_model->setSpellIconFor([this](uint32_t id) -> uint32_t {
+		if (m_spell_manager) {
+			const auto* spell = m_spell_manager->getSpell(id);
+			if (spell) return spell->gem_icon;
+		}
+		return 0;
+	});
 
 	// S04: Create inventory manager at startup (was lazy-init in ConnectToZone/InitGraphics)
 	// T41: this construction was still folded under EQT_HAS_GRAPHICS even

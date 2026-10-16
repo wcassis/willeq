@@ -11,6 +11,7 @@
 
 #include "client/graphics/text_batch.h"
 #include "client/graphics/ui/hotbar_layout.h"
+#include "client/graphics/ui/spell_icon_atlas.h"  // B1077: the Gems family
 #include "client/graphics/ui/ui_layout.h"
 
 namespace EQT {
@@ -106,10 +107,19 @@ void renderHotbar(UIRenderer& ui, const UILayout& layout,
 
         // Per-kind art. Item slots with a valid icon id draw the dragitem
         // sheets' own decal (UIRenderer::drawItemIcon, ids 500..1723);
-        // everything else -- spell (no icon texture in the shipped atlas),
-        // skill, emote, macro, combat -- draws its name.
-        const bool drewIcon = slot.type == eqt::HotbarSlotType::Item &&
-                              slot.iconId != 0 && ui.drawItemIcon(slotRect, slot.iconId);
+        // B1077 (GitLab #397): a Spell slot draws its spell's gem_icon
+        // (HotbarModel resolves it at publish, the Gems family of the
+        // spell-icon atlas -- the same column the gem bar reads). A gem_icon
+        // at or above the family's 189 cells carries no art and falls to
+        // the name, exactly as the gem bar does; skill, emote, macro and
+        // combat draw their name as before.
+        const bool isSpell = slot.type == eqt::HotbarSlotType::Spell;
+        const bool drewIcon = (slot.type == eqt::HotbarSlotType::Item &&
+                               slot.iconId != 0 && ui.drawItemIcon(slotRect, slot.iconId)) ||
+                              (isSpell && slot.iconId != 0 &&
+                               ui.drawSpellIcon(slotRect,
+                                                EQT::Graphics::SpellIconAtlasLayout::SpellIconSheet::Gems,
+                                                slot.iconId));
         if (!drewIcon && tb && !slot.name.empty()) {
             const std::string label = slot.name;
             const std::string abbrev = label.substr(0, 6);

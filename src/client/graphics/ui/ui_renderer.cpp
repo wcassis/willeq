@@ -189,6 +189,46 @@ bool UIRenderer::drawItemIcon(const irr::core::rect<irr::s32>& rect,
     return true;
 }
 
+bool UIRenderer::blitExternalIcon(const irr::core::rect<irr::s32>& rect,
+                                  const irr::core::rect<irr::s32>& srcRect,
+                                  irr::video::ITexture* tex) {
+    // The shared contract every EXTERNAL-texture icon blit takes
+    // (drawItemIcon, drawSpellIcon, drawSpellGemHolder): same ordering as
+    // drawTexture() -- on the atlas path the blit is queued as a command
+    // carrying its OWN texture, so it replays at its submission position,
+    // and immediate otherwise.
+    if (!driver_ || !tex) return false;
+    const irr::video::SColor white(255, 255, 255, 255);
+    if (atlas_ && atlas_->getTexture()) {
+        atlasQuads_.push_back({rect, srcRect, white, tex});
+        return true;
+    }
+    driver_->draw2DImage(tex, rect, srcRect, nullptr, &white, true);
+    return true;
+}
+
+bool UIRenderer::drawSpellIcon(const irr::core::rect<irr::s32>& rect,
+                               SpellIconAtlasLayout::SpellIconSheet sheet,
+                               uint32_t id) {
+    if (!driver_ || !atlas_) return false;
+
+    irr::core::rect<irr::s32> srcRect;
+    irr::video::ITexture* tex = atlas_->spellIcons().lookup(sheet, id, srcRect);
+    if (!tex) return false;
+
+    return blitExternalIcon(rect, srcRect, tex);
+}
+
+bool UIRenderer::drawSpellGemHolder(const irr::core::rect<irr::s32>& rect) {
+    if (!driver_ || !atlas_) return false;
+
+    irr::core::rect<irr::s32> srcRect;
+    irr::video::ITexture* tex = atlas_->spellIcons().holder(srcRect);
+    if (!tex) return false;
+
+    return blitExternalIcon(rect, srcRect, tex);
+}
+
 void UIRenderer::flushCommands(size_t begin, size_t end) {
     // Flush the queued draw commands IN SUBMISSION ORDER (T294).
     //

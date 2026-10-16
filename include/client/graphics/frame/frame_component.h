@@ -219,6 +219,19 @@ public:
 	// state so the slash arm can echo it without re-reading the member.
 	bool toggleSkillsWindow();
 
+	// ---- B1077 (GitLab #397): the ONE spellbook toggle ----
+	// Three reachable paths, one body: the Ctrl+B keybind
+	// (RendererAction::ToggleSpellbook), the /newbook slash command, and the
+	// gem window's own CSPW_SpellBook button (the oracle's 22x22 toggle at
+	// (10,252); spellGemState_.bookClicked, consumed in processPlayerInput).
+	// Before this, the keybind arm closed NOTHING and the slash arm closed
+	// the inventory per the co-open table -- two bodies, two behaviours.
+	// The kept body is the slash one: B1075's closesOnOpen() says opening
+	// the spellbook closes the inventory (no shared required set), and the
+	// guard is on the OPEN branch only, exactly toggleSkillsWindow().
+	// Returns the new open state so the slash arm can echo it.
+	bool toggleSpellbookWindow();
+
 	// ---- T368 (B101): the three keys that used to reach empty arms ----
 	// The group, pet and buff keys (Alt+P / Alt+F1 / Alt+B since T382's B170
 	// re-measure) each reached a `break;` with

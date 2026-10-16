@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "client/graphics/ui/ui_quad_batch.h"
+#include "client/graphics/ui/spell_icon_atlas.h"
 
 namespace EQT {
 namespace Graphics {
@@ -122,6 +123,29 @@ public:
     bool drawItemIcon(const irr::core::rect<irr::s32>& rect, uint32_t iconId);
 
     /**
+     * B1077 (GitLab #397): draw a spell icon from one of the three spell-icon
+     * families (gem bar / spellbook / buff), addressed by the shared layout
+     * header `client/graphics/ui/spell_icon_atlas.h`.
+     *
+     * Same contract as drawItemIcon(): returns FALSE when there is nothing
+     * to draw (no atlas, no pack entry, or an id the family does not carry)
+     * and every caller keeps its pre-B1077 fallback for that case. The
+     * source cell's ART rect (36x28 for Gems, 40x40 for Spells/Buff) is
+     * minified into the caller's destination rect -- the oracle's gem cell
+     * is 36x28 (CSPW_SpellN) and its buff/spellbook decal is 30x40-ish, so
+     * the destination is the caller's, exactly as for item icons.
+     */
+    bool drawSpellIcon(const irr::core::rect<irr::s32>& rect,
+                       SpellIconAtlasLayout::SpellIconSheet sheet, uint32_t id);
+
+    /**
+     * B1077 (GitLab #397): the A_SpellGemHolder piece (39x32 art inside its
+     * 40x40 cell), drawn behind a gem icon at the caller's rect. Same
+     * false-when-nothing contract as drawSpellIcon().
+     */
+    bool drawSpellGemHolder(const irr::core::rect<irr::s32>& rect);
+
+    /**
      * B992 (GitLab #312): start the next WINDOW in z-order. Everything drawn
      * after this call -- quads and text -- is above everything drawn before
      * it, text included.
@@ -213,6 +237,14 @@ public:
     void setLayeringEnabled(bool enabled) { layeringEnabled_ = enabled; }
 
 private:
+    // B1077 (GitLab #397): the queued-command contract every external-texture
+    // icon blit (drawItemIcon / drawSpellIcon / drawSpellGemHolder) shares:
+    // a command carrying its own texture, replayed at submission position on
+    // the atlas path, immediate otherwise.
+    bool blitExternalIcon(const irr::core::rect<irr::s32>& rect,
+                          const irr::core::rect<irr::s32>& srcRect,
+                          irr::video::ITexture* tex);
+
     // Draw the queued commands [begin, end) in runs (T462).
     void flushCommands(size_t begin, size_t end);
     irr::video::IVideoDriver* driver_ = nullptr;

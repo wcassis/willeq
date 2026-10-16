@@ -7,6 +7,7 @@
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/hotbar_panel.h"   // B1025-H2: hitTestHotbar
+#include "client/graphics/ui/spell_gem_layout.h"  // B1077: the oracle's gem/book rects
 #include "client/hotbar/hotbar_model.h"        // B1025-H2: PAGE_COUNT
 #include "client/graphics/ui/inventory_layout.h"
 #include "client/graphics/ui/tradeskill_panel.h"
@@ -72,6 +73,8 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     // Reset hover states
     hotbar.hoveredSlot = -1;
     spellGems.hoveredGem = -1;
+    spellGems.bookClicked = false;   // B1077: consumed once per frame by FrameComponent
+    spellGems.bookHovered = false;   // B1077
     inventory.hoveredSlot = -1;
     spellbook.hoveredSlot = -1;
     skills.hoveredRow = -1;
@@ -134,14 +137,14 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
         }
     }
 
-    // --- Spell gem hit test (8 vertical slots) ---
+    // --- Spell gem hit test: the oracle's own cell rects (B1077) ---
     if (!overOpenPopup) {
-        int sx = layout.spellGems.UpperLeftCorner.X;
-        int sy = layout.spellGems.UpperLeftCorner.Y;
         for (int i = 0; i < static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT); ++i) {
-            int gy = sy + i * (UILayout::SLOT_SIZE + UILayout::MARGIN);
-            if (mouseX >= sx && mouseX < sx + UILayout::SLOT_SIZE &&
-                mouseY >= gy && mouseY < gy + UILayout::SLOT_SIZE) {
+            const auto gr = SpellGemLayout::gemRect(i);
+            const int gx = layout.spellGems.UpperLeftCorner.X + gr.UpperLeftCorner.X;
+            const int gy = layout.spellGems.UpperLeftCorner.Y + gr.UpperLeftCorner.Y;
+            if (mouseX >= gx && mouseX < gx + gr.getWidth() &&
+                mouseY >= gy && mouseY < gy + gr.getHeight()) {
                 spellGems.hoveredGem = i;
                 consumed = true;
                 if (leftClicked && shift) {
@@ -170,6 +173,20 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                 }
                 break;
             }
+        }
+
+        // B1077: the CSPW_SpellBook button -- the oracle's 22x22 toggle at
+        // (10,252) inside the gem window. A LEFT click lands bookClicked;
+        // FrameComponent consumes it and runs the SAME toggle body Ctrl+B
+        // and /book use (the /newbook body in renderer_slash_commands.cpp).
+        const auto br = SpellGemLayout::bookRect();
+        const int bx = layout.spellGems.UpperLeftCorner.X + br.UpperLeftCorner.X;
+        const int by = layout.spellGems.UpperLeftCorner.Y + br.UpperLeftCorner.Y;
+        if (mouseX >= bx && mouseX < bx + br.getWidth() &&
+            mouseY >= by && mouseY < by + br.getHeight()) {
+            spellGems.bookHovered = true;
+            consumed = true;
+            if (leftClicked) spellGems.bookClicked = true;
         }
     }
 

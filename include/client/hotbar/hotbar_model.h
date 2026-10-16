@@ -52,6 +52,13 @@ public:
     void setNameResolver(NameResolver resolver) { nameResolver_ = std::move(resolver); }
     using SpellAtGem = std::function<uint32_t(uint8_t)>;
     void setSpellAtGem(SpellAtGem reader) { spellAtGem_ = std::move(reader); }
+    // B1077 (GitLab #397): a Spell slot's drawn icon is its spell's gem_icon
+    // (the Gems family of the spell-icon atlas), the same column the gem bar
+    // reads. A slot whose id resolves to nothing (or whose callback is not
+    // installed) stays 0: 0 draws the atlas's first cell, exactly as an
+    // unmemorised gem does.
+    using SpellIconFor = std::function<uint32_t(uint32_t)>;
+    void setSpellIconFor(SpellIconFor resolver) { spellIconFor_ = std::move(resolver); }
     int findSpellGem(uint32_t spellId) const;
     uint32_t spellAtGem(uint8_t gem) const { return spellAtGem_ ? spellAtGem_(gem) : 0; }
 
@@ -98,6 +105,7 @@ private:
     bridge::GameStateBridge* bridge_ = nullptr;
     NameResolver nameResolver_;
     SpellAtGem spellAtGem_;
+    SpellIconFor spellIconFor_;  // B1077
     SaveCallback saveCallback_;
 };
 

@@ -50,7 +50,9 @@ public:
 //
 //   hotbar:         {308, 486, 756, 570}   (B1075: the 1x10 bar, bottom-centre,
 //                                           pushed right of the chat at 800 wide)
-//   spellGems:      {764, 198, 796, 482}   (8 gems, ending at the hotbar's top)
+//   spellGems:      {748, 192, 796, 482}   (B1077: the oracle's 48x290
+//                                           CastSpellWnd, right-aligned,
+//                                           ending at the hotbar's top)
 //   inventoryPopup: {400, 65, 800, 415}    (B1075: 400x350, the layout table's
 //                                           PairRight anchor; at 800 wide the
 //                                           pair fills the screen edge to edge)
@@ -251,17 +253,19 @@ TEST_F(StaticUIInputTest, HotbarCloseHoverFlagsBoxOnly) {
 // --- Spell gems ---
 
 TEST_F(StaticUIInputTest, SpellGemFirstHoverSetsIndexZero) {
-    // The gem bar ends MARGIN above the hotbar window's top (486 at 800x600,
-    // B1075), so gem 0 occupies y [198, 230).
-    bool consumed = input.processInput(770, 214, false, layout, hotbar, gems,
+    // B1077: the gem window is the oracle's 48x290 (spell_gem_layout.h),
+    // right-aligned at {748, 192, 796, 482} at 800x600, so gem 0's cell
+    // (36x28 at the window's (3, 10)) occupies x [751, 787), y [202, 230).
+    bool consumed = input.processInput(770, 216, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(gems.hoveredGem, 0);
 }
 
 TEST_F(StaticUIInputTest, SpellGemLastHoverSetsIndexSeven) {
-    // Gem 7: gy = 198 + 7*36 = 450, occupies y in [450, 482).
-    bool consumed = input.processInput(770, 466, false, layout, hotbar, gems,
+    // Gem 7: the cell at the window's (3, 10+7*30) = y in [422, 450) at
+    // 800x600.
+    bool consumed = input.processInput(770, 436, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(gems.hoveredGem, 7);
@@ -271,7 +275,7 @@ TEST_F(StaticUIInputTest, SpellGemClickPushesCastSpellIntent) {
     TestBridge bridge;
     input.init(&bridge);
 
-    input.processInput(770, 214, /*leftClicked=*/true, layout, hotbar, gems,
+    input.processInput(770, 216, /*leftClicked=*/true, layout, hotbar, gems,
                         inventory, spellbook, skills, buffs, loot);
 
     auto intents = bridge.drainIntents();

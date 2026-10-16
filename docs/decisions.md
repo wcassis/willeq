@@ -2106,3 +2106,38 @@ gestures at a fixed position fable chose. RULED:
 4. Performance is unchanged by fidelity: static panels, batched quads,
    no drag, no z-order negotiation. A card that proposes movable windows
    reopens U07c, not this entry.
+
+## 2026-10-16 — Spell-icon atlas: the three id spaces, row-major, proven (B1077, #397)
+
+Fable has now shipped spell-icon art. `include/client/graphics/ui/
+spell_icon_atlas.h` is the one place the three families are addressed,
+quoted from the oracle's `EQUI_Animations.xml`, and the builder
+(`tools/spell_icon_atlas_builder`) and the runtime loader both include it.
+Standing facts — do not re-derive:
+
+1. **`A_SpellGems` (gemicons01..03.tga) = 7x9 of 36x28 = 189 cells**,
+   addressed by `gem_icon` (field 144); **`A_SpellIcons` (Spells01..07.tga)
+   = 6x6 of 40x40 = 252 cells**, addressed by `spell_icon` (field 143);
+   **`BuffIcons` (Spell_Icons.tga) = 6x6 of 40x40 = 36 cells**, the
+   `BW_Buff*_Button` decal in `EQUI_BuffWindow.xml`. All three are
+   **row-major, zero-based** (`<Vertical>false</Vertical>` + the salvage
+   audit's arithmetic). `indexForId()` is the only bounds check; an id at
+   or above its family's count carries no art and the caller's
+   `drawSpellIcon()` false-return is the "no art" signal (the 4-letter
+   name fallback).
+2. **The Buff sheet is the ONE part-filled family** (23 of 36 cells carry
+   art, scattered) and is therefore the only one that PROVES the grid
+   order — `test_spell_icon_atlas.cpp` pins the row-major reading from that
+   fill (`BuffFillProvesRowMajor` / `ColumnMajorReadingWouldBeWrong`). A
+   new family that is fully populated cannot prove its own order.
+3. The gem bar is the oracle's own `EQUI_CastSpellWnd.xml` window (48x290;
+   gems 36x28 at (3,10+30i); the ninth parked at -5000 per T483; the book
+   button 22x22 at (10,252)) at the layout table's anchor (B1075), and the
+   book button toggles the spellbook through the SAME body Ctrl+B and
+   `/newbook` use. `gem_icon` is the ONLY icon column with art in Titanium
+   (`spell_icon` is 0 everywhere in this export), so the hotbar's Spell
+   slots draw `gem_icon`, resolved at publish by `HotbarModel`.
+
+The atlas is the fourth `scripts/build_textures.sh` recipe and grows
+`willeq.eqe1` by 4,197,056 bytes (three ETC1 family atlases with mips +
+their three `_alpha` companions + the 40x40 `A_SpellGemHolder` piece).
