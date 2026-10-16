@@ -75,7 +75,9 @@ flushed every drain cycle (~50 ms), so a kill mid-zone-in keeps the log (the
 XU4's play.sh teed stdout today; a killed process lost its tail). Set from
 `main()` BEFORE `InitLogging` (`main.cpp`) so the level lines land in the file
 too. The file is ADDITIVE -- stdout/stderr keep everything; an unwritable path
-is one stderr line and it continues. `docs/standards/debug_logging_standards.md`
+is one stderr line and it continues. The drain cadence is 50 ms
+(`logging.h:330`, `drainLoop`'s `sleep_for(milliseconds(50))`).
+`docs/standards/debug_logging_standards.md`
 documents the flag, the env var, and both `--log-file`/`WILLEQ_LOG_FILE` forms.
 
 Two small logging fixes in the same area (fable, #399 note 5330, "if cheap"):
