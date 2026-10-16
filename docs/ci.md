@@ -91,6 +91,10 @@ Wine official client + the `/opt/akk-stack` eqemu containers), so the builds run
   `environment` therefore pins Mesa: `__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json`
   and `LIBGL_ALWAYS_SOFTWARE=1` (llvmpipe, as on the runner VMs; this also keeps CI off the oracle's
   Quadro). A future `x86-gpu` hardware-GL job needs its own grant and must unset both.
+- **One runner, shared checkouts**: `concurrent = 3` gives each slot its own checkout
+  (`builds/<runner>/0..2`), and an x86 job can land in a slot an ARM job used. The ARM cross-build's
+  container writes `build-arm*-noble/cache` as root, which gitlab-runner's `git clean` cannot remove, so
+  the global `GIT_CLEAN_FLAGS` keeps both ARM trees as well (pipeline 1427's hygiene died in the clean).
 - **`CI_JOBS=8`** from the runner's `environment`: `.goldfarm`'s `before_script` exports it as `JOBS`, and
   `build-arm64` as `BUILD_JOBS`, so the host, not this file, sizes its builds.
 - **ccache** at `CCACHE_DIR=/var/cache/ccache-ci` (NVMe root, `max_size = 30G` in its `ccache.conf`).

@@ -45,7 +45,12 @@ variables:
   # (~gitlab-runner/.cache/ccache, 20G per runner, git clean never sees it).
   # A truly cold compile also needs CCACHE_DISABLE=1 (docs/ci.md, "ccache on
   # the x86 runners").
-  GIT_CLEAN_FLAGS: -ffdx -e build -e build-gles2 -e build-headless -e third_party/irrlicht-gles2-x86
+  # B1087 (#407): ONE runner (the ThinkPad) now runs the x86 AND the ARM jobs in
+  # the same checkouts, and the ARM jobs' docker cross-build writes
+  # build-arm*-noble/cache as ROOT, which a gitlab-runner `git clean` cannot
+  # remove (MR !211 pipeline 1427: hygiene died in the clean). The x86 jobs
+  # therefore keep the two ARM trees too, exactly as the ARM jobs always have.
+  GIT_CLEAN_FLAGS: -ffdx -e build -e build-gles2 -e build-headless -e third_party/irrlicht-gles2-x86 -e build-arm-noble -e build-arm64-noble
   # B1012 (#333): ONE WARM TREE PER REF. Two branches' pipelines interleaving
   # on the concurrent=1 runner shared one build/ -- MR !119's `test` stage
   # (pipeline 697) ran over binaries MR !118's `build` stage (698) had just
