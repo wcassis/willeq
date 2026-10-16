@@ -238,7 +238,7 @@ public:
 	// eqt::zone::ZoneComponent -- reach them through Zone().
 	bool Test_IsPendingLogoutDisconnect() const { return m_pending_logout_disconnect; }
 
-	// B1072 (#392): the bounded zone-IN connect (src/client/core/zone_connect.cpp).
+	// B1072 (#392) + B1079 (#399): the bounded zone-in (src/client/core/zone_connect.cpp).
 	// Called every game tick from MovementComponent::UpdateMovement() through
 	// ctx_.lifecycle.TickZoneConnect; public with an explicit clock so a test
 	// can step the deadline (tests/test_zone_connect_timeout.cpp).
@@ -247,6 +247,16 @@ public:
 	// How many zone UDP sessions ConnectToZone/the retry opened this run
 	// (the zone_connect_timeout scenario and the unit test read it).
 	int ZoneConnectOpenCount() const { return m_zone_connect_opens; }
+	// B1079: the last application opcode the ZONE sent (ZoneOnPacketRecv), or
+	// -1 until one arrives -- the escalation's "last opcode seen" (rendered
+	// by the LastZoneOpcodeName() free function beside TickZoneConnect in
+	// zone_connect.cpp).
+	int LastZoneOpcode() const { return m_last_zone_opcode; }
+	// B1079 (#399): the per-phase deadline table (phase_index order), in
+	// milliseconds -- the one place that builds it, so the two arm sites in
+	// ConnectToZone and the unit test read the SAME ten rows. Defined in
+	// zone_connect.cpp straight off the phase_bound constants.
+	static const int* ZonePhaseBoundsMs();
 	// Diagnostic lever for the scenario lane (zone_connect_timeout): the next
 	// `attempts` zone connects go to port `port` on the ZoneServerInfo host
 	// instead of the port world named -- a dead port, so the bound is the only
@@ -750,6 +760,8 @@ private:
 	// per attempt, kZoneConnectRetries retries), armed by ConnectToZone().
 	eqt::zone::ZoneConnectWatchdog m_zone_connect_watchdog;
 	int m_zone_connect_opens = 0;
+	// B1079: last zone-sent application opcode (see LastZoneOpcode()).
+	int m_last_zone_opcode = -1;
 	int m_sim_dead_zone_attempts = 0;
 	uint16_t m_sim_dead_zone_port = 0;
 

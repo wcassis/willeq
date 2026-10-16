@@ -121,10 +121,12 @@ public:
 	using Clock = std::chrono::steady_clock;
 	enum class Action { None, Retry, GiveUp };
 
-	// Arm a fresh zone-in: the deadline starts at the first tracked phase
-	// (ZONE_CONNECTING in production). The table is passed per arm so the
-	// class needs no configuration; `retries` applies to ZONE_CONNECTING
-	// only (B1072).
+	// B1079 (#399) arm: one deadline per phase, in phase_index order (the
+	// production table is zone_connect.cpp's ZonePhaseBoundsMs(), straight off
+	// the phase_bound constants). The deadline starts at the first tracked
+	// phase (ZONE_CONNECTING in production); `retries` applies to
+	// ZONE_CONNECTING only. A test that only exercises the B1072 shape can
+	// pass a flat table of one value.
 	void Arm(const std::string& host, uint16_t port, Clock::time_point now,
 	         const int* timeoutsMs, int retries) {
 		for (int i = 0; i < phase_index::kCount; ++i) boundsMs_[i] = timeoutsMs[i];
@@ -133,28 +135,58 @@ public:
 		port_ = port;
 		attempt_ = 1;
 		maxPhase_ = phase_index::kZoneConnecting;
+		currentPhase_ = phase_index::kUntracked;
 		sessionUp_ = false;
 		graphicsDeadlineSet_ = false;
 		armed_ = true;
 		deadline_ = now + std::chrono::milliseconds(boundsMs_[phase_index::kZoneConnecting]);
 	}
 
-	// B1072's original signature: one timeout for every phase (the connect
-	// bound). Kept so a caller that has not adopted the full table still
-	// gets the B1072 behaviour (every phase bounded by the connect value).
-	void Arm(const std::string& host, uint16_t port, Clock::time_point now, int timeoutMs, int retries) {
-		int single[phase_index::kCount];
-		for (int i = 0; i < phase_index::kCount; ++i) single[i] = timeoutMs;
-		Arm(host, port, now, single, retries);
+	// B1072 shape: ONE value for the whole connect bound (the ZONE_CONNECTING
+	// row the connect/retry shape reads). Kept so the B1072 test compiles
+	// unchanged; production arms the per-phase table above.
+	void Arm(const std::string& host, uint16_t port, Clock::time_point now,
+	         int scalarMs, int retries) {
+		const int one[phase_index::kCount] = { scalarMs, scalarMs, scalarMs, scalarMs,
+			scalarMs, scalarMs, scalarMs, scalarMs, scalarMs, scalarMs };
+		Arm(host, port, now, one, retries);
 	}
 
 	void Disarm() { armed_ = false; }
 
-	// `phase` is the client's current zone phase in the phase_index order
-	// above (kUntracked = a phase the bound does not cover; kDone = the
-	// load finished). Forward movement to a later phase re-baselines the
-	// deadline; the graphics span (the phases at/after kGraphicsLoadingZone)
-	// re-baselines once, at its first entry. At the deadline: Retry while in
+	// B1072 shape, kept as a thin compat entry: `connecting` is the client
+	// still sitting in ZONE_CONNECTING, else it moved past the session and the
+	// bound is done. (Production arms the per-phase table and walks phases
+	// with Tick(int, now) below; the two never mix on one instance.)
+	Action Tick(bool connecting, Clock::time_point now) {
+		if (!armed_) return Action::None;
+		if (!connecting) {
+			armed_ = false;
+			return Action::None;
+		}
+		if (now < deadline_) return Action::None;
+		if (attempt_ <= retries_) {
+			++attempt_;
+			deadline_ = now + std::chrono::milliseconds(boundsMs_[phase_index::kZoneConnecting]);
+			return Action::Retry;
+		}
+		armed_ = false;
+		return Action::GiveUp;
+	}
+
+	// B1079 (#399) arm: `phase` is the client's current zone phase in
+	// phase_index order (kUntracked = a phase the bound does not cover;
+	// kDone = the load finished). The deadline re-baselines ONLY on a
+	// transition to a later tracked phase, never on repeated calls at the
+	// same phase -- a 60 Hz tick that re-baselined every call would push the
+	// deadline forward forever and the bound could not fire (that is the
+	// defect the transition tracking exists to prevent). The graphics span
+	// (the phases at/after kGraphicsLoadingZone) re-baselines once, at its
+	// first entry, and later GRAPHICS_* phases must not extend it (they are
+	// the loading thread's own contiguous progress). A transition BACK to
+	// ZONE_CONNECTING (a mid-session reconnect) re-baselines only while the
+	// attempt is fresh; otherwise it keeps the running deadline, exactly as a
+	// forward regression would. At the deadline: Retry while in
 	// ZONE_CONNECTING and retries remain (re-open the session), else GiveUp
 	// (the escalation).
 	Action Tick(int phase, Clock::time_point now) {
@@ -163,30 +195,36 @@ public:
 			armed_ = false;
 			return Action::None;
 		}
-		if (phase == phase_index::kZoneConnecting) {
-			// A fresh attempt or a mid-session reconnect re-enters the
-			// connect window: re-baseline, keep the retry available.
-			maxPhase_ = phase_index::kZoneConnecting;
-			sessionUp_ = false;
-			deadline_ = now + std::chrono::milliseconds(boundsMs_[phase_index::kZoneConnecting]);
-		} else if (phase < phase_index::kZoneConnecting || phase >= phase_index::kCount) {
-			// kUntracked or an unknown future phase: leave the running
-			// deadline alone (an unknown phase is not evidence the load
-			// regressed; it is not a phase this bound knows how to bound).
-		} else if (phase > maxPhase_) {
-			maxPhase_ = phase;
-			if (phase > phase_index::kZoneConnecting) sessionUp_ = true;
-			if (phase >= phase_index::kGraphicsLoadingZone) {
-				// The graphics span is ONE budget, set at first entry:
-				// later GRAPHICS_* phases must not extend it (they are the
-				// loading thread's own contiguous progress).
-				if (!graphicsDeadlineSet_) {
-					graphicsDeadlineSet_ = true;
-					deadline_ = now + std::chrono::milliseconds(boundsMs_[phase_index::kGraphicsLoadingZone]);
+		if (phase == phase_index::kUntracked)
+			;  // a phase the bound does not cover: leave the deadline alone
+		else if (phase != currentPhase_) {
+			const bool forward = phase > currentPhase_;
+			currentPhase_ = phase;
+			if (forward) {
+				maxPhase_ = phase;
+				if (phase > phase_index::kZoneConnecting) sessionUp_ = true;
+				// The connect deadline is set by Arm (and re-set by the Retry
+				// action), never by entering the connect phase: the initial
+				// kUntracked -> kZoneConnecting tick would otherwise extend
+				// the window by the time to the first tick. Only movement
+				// PAST the connect phase re-baselines here.
+				if (phase > phase_index::kZoneConnecting) {
+					if (phase >= phase_index::kGraphicsLoadingZone) {
+						if (!graphicsDeadlineSet_) {
+							graphicsDeadlineSet_ = true;
+							deadline_ = now + std::chrono::milliseconds(boundsMs_[phase_index::kGraphicsLoadingZone]);
+						}
+					} else {
+						deadline_ = now + std::chrono::milliseconds(boundsMs_[phase]);
+					}
 				}
-			} else {
-				deadline_ = now + std::chrono::milliseconds(boundsMs_[phase]);
 			}
+			// A backward move (the ping-pong shape) never extends the budget:
+			// the running deadline is left alone. A mid-session reconnect that
+			// drops the phase back to ZONE_CONNECTING therefore keeps the
+			// deadline the load had; it is not a fresh connect window (a fresh
+			// zone-in is a fresh Arm, and the reconnect path in everquest.cpp
+			// re-arms if the bound is down).
 		}
 		if (now < deadline_) return Action::None;
 		if (!sessionUp_ && maxPhase_ == phase_index::kZoneConnecting && attempt_ <= retries_) {
@@ -196,13 +234,6 @@ public:
 		}
 		armed_ = false;
 		return Action::GiveUp;
-	}
-
-	// B1072 compatibility: `connecting` = the loading phase is still
-	// ZONE_CONNECTING. Any other tracked phase means the load advanced (or
-	// something else took over): disarm -- exactly B1072's behaviour.
-	Action Tick(bool connecting, Clock::time_point now) {
-		return Tick(connecting ? phase_index::kZoneConnecting : phase_index::kUntracked, now);
 	}
 
 	bool Armed() const { return armed_; }
@@ -248,6 +279,7 @@ private:
 	uint16_t port_ = 0;
 	int attempt_ = 1;
 	int maxPhase_ = phase_index::kZoneConnecting;
+	int currentPhase_ = phase_index::kUntracked;
 	bool sessionUp_ = false;
 	bool graphicsDeadlineSet_ = false;
 	bool armed_ = false;

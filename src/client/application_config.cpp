@@ -385,8 +385,11 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --headless               Run in headless interactive mode\n";
             std::cout << "  --automated              Run in automated/bot mode\n";
             std::cout << "  --log-level=LEVEL        Set log level (NONE, FATAL, ERROR, WARN, INFO, DEBUG, TRACE)\n";
+            std::cout << "                           ('--log-level LEVEL' is accepted too, B1079); an unparseable level is a loud ERROR\n";
             std::cout << "                           If both --log-level= and -d <n> are given, --log-level=\n";
             std::cout << "                           wins (a one-line notice is logged when they disagree)\n";
+            std::cout << "  --log-file=PATH          Also write the log to PATH, line-flushed (B1079; env WILLEQ_LOG_FILE)\n";
+            std::cout << "                           -- the play-box log: survives a kill mid-zone-in, makes the play.sh tee unnecessary\n";
             std::cout << "  --load-mem-audit         Log [LOAD-MEM-AUDIT] memory lines after each zone-load step and the\n";
             std::cout << "                           [memledger] lifecycle points (needs --log-level=INFO or higher)\n";
             std::cout << "                           Env: WILLEQ_BASELINE=1 (original-client feature parity), WILLEQ_LEDGER_TRACE=<category>[:<point>],\n";
