@@ -8,7 +8,9 @@ Compiling is the same story: `scripts/build-gles2-x86.sh` defaults to 24 jobs
 and a worker that ran it was OOM-killed at 04:40Z on 2026-10-13 (`cc1plus`,
 `CONSTRAINT_MEMCG`); since B1046 the script reads its cgroup's `memory.max`
 and clamps `JOBS` to 1 GiB per compiler (4 under the worker cap, 24 elsewhere).
-A card body still says `-j3` for any direct `cmake --build`.
+Since B1087 (#407) a worker does not compile on hermes-ext at all: every
+configure, build and ctest goes through `scripts/hermes/rbuild`, which runs it
+on the ThinkPad (`docs/thinkpad.md`, "Worker builds").
 
 ## What runs where
 
