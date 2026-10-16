@@ -3,7 +3,9 @@
 // the client's model state (the card's criterion B).
 //
 // One seeded GMMgmt character (the config's `character`, Testcaster -- a
-// level-1 wizard). Four slots on page 0, one per hotbar type. Each is
+// level-50 wizard, the b630 caster shape: high enough that the zone's mobs
+// never aggro it, so no leg is interrupted). Four slots on page 0, one per
+// hotbar type. Each is
 // ASSIGNED through the user path (the HotbarAssignIntent H-3 wired to
 // HotbarModel::assignSlot) and ACTIVATED by BOTH routes: the click intent
 // (HotbarActivateIntent, BridgeComponent::onHotbarActivateIntent) and the
@@ -12,7 +14,7 @@
 //
 //   spell  #memspell 288 0 (persists + sends OP_MemorizeSpell, 0-based, so
 //          findSpellGem(288) resolves). Minor Shielding is a self-target
-//          buff the level-1 wizard owns. The proof the SERVER accepted both
+//          buff the caster owns. The proof the SERVER accepted both
 //          casts: buff 288 lands in PlayerBuffSpellIds() (eqemu delivers a
 //          landed buff ONLY as OP_Action type 231 / flag 4 -> BuffManager --
 //          the cast_lands model; a refused cast never reaches it), and the
@@ -45,6 +47,26 @@
 //          ignore_sender, so the actor's line is client-generated) is the
 //          observable; /say has no local echo and cannot be asserted. Both
 //          routes fire the same text -> two echoes.
+//
+// The FISH leg is made deterministic by the #goto shore prep. Lane 1's
+// ruleset has Watermap:CheckForWaterWhenFishing ON (run-3's zone log emitted
+// FISHING_LAND from the probe branch, forage.cpp:246), so CanFish()
+// (forage.cpp:206) runs the probe: a rod tip 30u ahead along the heading at
+// the player's z (FishingRodLength 30, ruletypes.h:419), a FindBestZ ground
+// check (player.z - ground within FishingLineLength 100, ruletypes.h:420),
+// then a 1u-step scan down 100u for water (forage.cpp:240). befallen's own
+// watermap (befallen.wtr) has NO water region (its leaves carry special=0/3
+// only, never 1/7), so there the probe can never return true. The fix is to
+// run the character in FREPORTE (locally loadable -- freporte.s3d is in the
+// client path) and #goto a computed water's edge: the stand (-1325,-850,-70)
+// is land at the water's surface height, heading 320 (225deg) puts the rod
+// tip (-1346,-851) in the deep water body (lane-1 freporte.wtr, water at
+// z in [-112,-70]; the seabed ~42u below the player's z clears the 100u
+// gate). That is exactly the pattern B894's forage_lands proves on a lane
+// (scenario_forage_lands.cpp:178-186: #goto a shore stand, then #fish). With
+// the rod tip over water, CanFish() returns true and GoFish(true)'s
+// guarantee (forage.cpp:302) forces the catch from the common_fish_ids
+// fallback (forage.cpp:269-290) -- the cursor item lands on.
 //
 // Then the PAGE-SWITCH leg: move to page 2 (HotbarPageChangedIntent), and
 // activate an empty page-2 slot through both routes; an empty slot must fire
@@ -101,6 +123,7 @@ static constexpr const char* const kItemErrMarks[1] = { "not found in inventory"
 // Timeline (seconds since the MAIN process's zone-in). Every GM command is a
 // server round trip, so the windows are deliberately generous.
 constexpr double kInvulnOffAt  =  3.0;
+constexpr double kShoreGotoAt  =  3.5;   // #goto the freporte water's edge
 constexpr double kUnmemAt      =  4.5;
 constexpr double kMemAt        =  6.0;    // #memspell <id> 0 (0-based gem 0)
 constexpr double kMaxSkillsAt  =  7.5;
@@ -190,8 +213,11 @@ public:
         }
 
         case Stage::Click: {
-            // CLICK-activate each slot, staggered (the cast takes 2.5s).
-            if (t < kClickEmoteAt) {
+            // CLICK-activate each slot, staggered (the cast takes 2.5s). The
+            // window runs up to (not through) the verify: the emote is the
+            // LAST activation, at kClickEmoteAt, which must sit INSIDE the
+            // window or its `t >= kClickEmoteAt` step can never fire.
+            if (t < kClickVerifyAt) {
                 if (t >= kClickSpellAt && clickStep_ == 0) { clickStep_ = 1; w.ActivateHotbarSlot(kPage, kSlot0); }
                 else if (t >= kClickItemAt && clickStep_ == 1) { clickStep_ = 2; w.ActivateHotbarSlot(kPage, kSlot1); }
                 else if (t >= kClickSkillAt && clickStep_ == 2) { clickStep_ = 3; w.ActivateHotbarSlot(kPage, kSlot2); }
@@ -235,7 +261,10 @@ public:
 
         case Stage::Key: {
             // KEYBOARD-activate each slot, staggered (processHotbarRequests).
-            if (t < kKeyEmoteAt) {
+            // The window runs up to (not through) the verify: the emote is
+            // the LAST activation, at kKeyEmoteAt, which must sit INSIDE the
+            // window or its `t >= kKeyEmoteAt` step can never fire.
+            if (t < kKeyVerifyAt) {
                 if (t >= kKeySpellAt && keyStep_ == 0) { keyStep_ = 1; w.PressHotbarKey(kSlot0); }
                 else if (t >= kKeyItemAt && keyStep_ == 1) { keyStep_ = 2; w.PressHotbarKey(kSlot1); }
                 else if (t >= kKeySkillAt && keyStep_ == 2) { keyStep_ = 3; w.PressHotbarKey(kSlot2); }
@@ -433,6 +462,20 @@ private:
     std::vector<PrepStep> MakePrep() {
         return {
             {kInvulnOffAt,  "/say #set invulnerable off"},
+            // The fish leg: stand at the freporte water's edge. Lane 1's
+            // ruleset runs the water probe (run-3's zone log emitted
+            // FISHING_LAND, forage.cpp:246), and befallen's watermap has no
+            // water region, so the probe only succeeds in a zone that has
+            // water in front of the rod. The stand + heading are computed from
+            // the lane host's own freporte.wtr (freporte_stand2.py in
+            // /home/user/kb-evidence/kb-h5-hotbar-scenario/water): land at the
+            // water's surface height, rod tip 30u ahead in the deep body.
+            // #goto x y z h (gm_commands/goto.cpp:20-46) is in-zone here (the
+            // seed places the char in freporte), so MovePC/ZonePC teleports in
+            // place with the given heading -- the same mechanic B894's
+            // forage_lands uses (scenario_forage_lands.cpp:186). Registered at
+            // GMMgmt (200), which the lane account has, so no status bump.
+            {kShoreGotoAt,  "/say #goto -1325 -850 -70 320"},
             {kUnmemAt,      "/say #unmemspells"},
             {kMemAt,        "/say #memspell " + std::to_string(spellId_) + " 0"},
             {kMaxSkillsAt,  "/say #maxskills"},
