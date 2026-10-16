@@ -1,0 +1,245 @@
+#!/usr/bin/env bash
+# rbuild -- run a kanban worker's configure / build / ctest on the ThinkPad, not
+# inside the worker's own 4 GiB systemd scope on hermes-ext (B1087, #407).
+#
+# WHY: hermes kanban workers run in a transient scope with MemoryMax=4 GiB. A
+# cc1plus or ld OOM-kill inside one worker's scope stalls that worker while it
+# holds the shared dev state.db write lock, and every sibling worker then loses
+# its turn lease (review/NIGHT-2026-10-16/HANDOFF.md: five cascades in one night,
+# 3-5 workers killed each). Workers therefore never compile locally; this script
+# ships the work to the ThinkPad (172.16.200.205, 46 GB, 12 threads, NVMe).
+#
+# HOW: the worker worktrees under /home/user/src/willeq-wt live on hermes-ext and
+# are NFS-exported to the ThinkPad, which mounts them at the SAME path (so every
+# absolute path a compiler or a test prints is the worker's own path). The BUILD
+# TREE is local to the ThinkPad NVMe, $RBUILD_BUILDS_ROOT/<slug>/build, never in
+# the NFS worktree. Each command runs under
+#   systemd-run --user --scope --slice=worker-build.slice \
+#       -p CPUWeight=30 -p IOWeight=30 -p MemoryMax=$RBUILD_MEM
+# with ccache (shared cache dir on the NVMe). Output streams back over ssh and
+# the exit code is the remote command's exit code. If the caller dies (worker
+# killed, ssh dropped) the remote scope is stopped.
+#
+# USAGE (run on hermes-ext, from anywhere):
+#   rbuild <worktree> configure [extra cmake -D args]
+#       CI's build-test configure: Release, tests ON, GRAPHICS+GLES2 ON, DRM OFF,
+#       patched GLES2 Irrlicht (built once per input stamp, cached on the box).
+#   rbuild <worktree> [cmake --build args]      e.g. rbuild $WT --target test_packet
+#       Configures first if the tree has never been configured.
+#   rbuild <worktree> test [ctest args]         e.g. rbuild $WT test -R '^PacketTest\.'
+#       ctest --test-dir <tree> --output-on-failure, run with cwd = the worktree
+#       (as CI does); -j$RBUILD_JOBS is added unless the args carry a -j.
+#       A test counts only for targets built after the last edit.
+#   rbuild <worktree> hygiene
+#       The hygiene net (EQT_GRAPHICS=OFF tree + ctest -L hygiene), no C++ build.
+#   rbuild --status          running remote builds (scopes, memory) + host load
+#   rbuild --kill <slug>     stop every running rbuild scope of that worktree
+#   rbuild --setup-host      (idempotent) install the worker-build.slice user unit
+#
+# <worktree> must be /home/user/src/willeq-wt/<slug> (or a path inside it);
+# anything else is refused. One rbuild per slug runs at a time (a second one
+# waits on a lock); different slugs run in parallel inside worker-build.slice.
+#
+# ENV (caller side): RBUILD_HOST (default user@172.16.200.205), RBUILD_JOBS
+# (default 6), RBUILD_MEM (per-scope MemoryMax, default 16G),
+# RBUILD_BUILDS_ROOT (default /home/user/willeq-builds on the build host).
+#
+# The NFS export + mount + slice set-up is recorded on B1087 (#407).
+
+set -uo pipefail
+
+RBUILD_HOST="${RBUILD_HOST:-user@172.16.200.205}"
+RBUILD_JOBS="${RBUILD_JOBS:-6}"
+RBUILD_MEM="${RBUILD_MEM:-16G}"
+RBUILD_BUILDS_ROOT="${RBUILD_BUILDS_ROOT:-/home/user/willeq-builds}"
+WT_ROOT=/home/user/src/willeq-wt
+
+die() { echo "rbuild: $*" >&2; exit 2; }
+
+usage() { sed -n '/^# USAGE/,/^# The NFS/p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+
+# ---------------------------------------------------------------------------
+# Everything below rb_remote runs ON THE BUILD HOST (shipped with declare -f).
+# Args: <action> <builds_root> <jobs> <mem> [<wt> <slug>] [extra...]
+# ---------------------------------------------------------------------------
+rb_remote() {
+    set -uo pipefail
+    local action=$1 broot=$2 jobs=$3 mem=$4; shift 4
+    local wtroot=/home/user/src/willeq-wt
+    export CCACHE_DIR="$broot/_ccache" CCACHE_MAXSIZE=40G CCACHE_NOHASHDIR=1
+
+    case "$action" in
+    status)
+        echo "== rbuild scopes on $(hostname) =="
+        local u any=0
+        for u in $(systemctl --user list-units --no-legend --plain 'rbuild-*.scope' 2>/dev/null | awk '{print $1}'); do
+            any=1
+            printf '%s  mem=%s  since=%s\n' "$u" \
+                "$(systemctl --user show -p MemoryCurrent --value "$u" | numfmt --to=iec 2>/dev/null)" \
+                "$(systemctl --user show -p ActiveEnterTimestamp --value "$u")"
+        done
+        [ $any = 1 ] || echo "(none running)"
+        echo "== host =="; uptime; free -g | head -2
+        echo "== worker-build.slice =="
+        systemctl --user show -p MemoryCurrent -p MemoryMax -p CPUWeight worker-build.slice 2>/dev/null
+        return 0 ;;
+    kill)
+        local slug=$1
+        local units
+        units=$(systemctl --user list-units --no-legend --plain "rbuild-$slug-*.scope" 2>/dev/null | awk '{print $1}')
+        [ -n "$units" ] || { echo "rbuild: no running scope for slug $slug"; return 1; }
+        echo "stopping: $units"
+        # shellcheck disable=SC2086
+        systemctl --user stop $units
+        return $? ;;
+    setup)
+        mkdir -p "$HOME/.config/systemd/user" "$broot/_ccache"
+        cat > "$HOME/.config/systemd/user/worker-build.slice" <<'EOF'
+# B1087: all hermes-worker rbuild scopes (scripts/hermes/rbuild). Aggregate cap so
+# several workers' builds cannot starve the lane-5 eqemu stack / oracle / CI.
+[Unit]
+Description=hermes kanban worker remote builds (rbuild, B1087)
+
+[Slice]
+CPUWeight=30
+IOWeight=30
+MemoryMax=28G
+EOF
+        systemctl --user daemon-reload
+        systemctl --user show -p MemoryMax -p CPUWeight worker-build.slice
+        return 0 ;;
+    esac
+
+    local wt=$1 slug=$2; shift 2
+    case "$wt" in "$wtroot"/*) ;; *) echo "rbuild: refusing $wt (not under $wtroot)" >&2; return 2 ;; esac
+    if [ ! -f "$wt/CMakeLists.txt" ]; then
+        # the automount may need a poke
+        ls "$wtroot" >/dev/null 2>&1
+        [ -f "$wt/CMakeLists.txt" ] || { echo "rbuild: $wt/CMakeLists.txt not visible on $(hostname) (NFS mount $wtroot?)" >&2; return 2; }
+    fi
+    local sdir="$broot/$slug" B="$broot/$slug/build" H="$broot/$slug/hygiene"
+    mkdir -p "$sdir" "$CCACHE_DIR" "$broot/_irrlicht"
+
+    # Per-slug lock: one rbuild per worktree at a time; others wait.
+    exec 9>"$sdir/.lock"
+    if ! flock -n 9; then
+        echo "rbuild: another rbuild for $slug is running; waiting for it (rbuild --status)" >&2
+        flock 9
+    fi
+
+    # The patched GLES2 Irrlicht, keyed by scripts/ci/irrlicht_input_stamp.sh's
+    # digest of the worktree's inputs; built from a LOCAL mirror of those inputs
+    # so nothing is written into the NFS worktree.
+    rb_irrlicht() {
+        local m="$broot/_irrlicht/mirror-$slug" d out
+        rm -rf "$m"; mkdir -p "$m/docker" "$m/scripts/ci"
+        cp -R "$wt/docker/irrlicht-drm" "$wt/docker/irrlicht-drm-x86" "$wt/docker/irrlicht-drm-patch.py" "$m/docker/" || return 1
+        cp -R "$wt/scripts/build-gles2-x86.sh" "$m/scripts/" || return 1
+        cp -R "$wt/scripts/ci/irrlicht_input_stamp.sh" "$m/scripts/ci/" || return 1
+        bash "$m/scripts/ci/irrlicht_input_stamp.sh" write "$m/stamp.txt" >/dev/null || return 1
+        d=$(tr -d '[:space:]' < "$m/stamp.txt"); d=${d:0:16}
+        out="$broot/_irrlicht/$d"
+        (
+            flock 8
+            if [ ! -f "$out/lib/libIrrlicht.a" ]; then
+                echo "rbuild: building patched Irrlicht for input stamp $d" >&2
+                JOBS=$jobs bash "$m/scripts/build-gles2-x86.sh" --irrlicht-only >&2 || exit 1
+                rm -rf "$out.tmp"; mv "$m/third_party/irrlicht-gles2-x86" "$out.tmp" && mv "$out.tmp" "$out"
+            fi
+        ) 8>"$broot/_irrlicht/.lock" || return 1
+        rm -rf "$m"
+        echo "$out"
+    }
+
+    local unit="rbuild-$slug-$action-$(date +%s)"
+    local -a scope=(systemd-run --user --scope --quiet --collect --unit="$unit" --slice=worker-build.slice
+                    --description="rbuild $slug $action"
+                    -p CPUWeight=30 -p IOWeight=30 -p MemoryMax="$mem" --)
+    local -a ccl=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+    cd "$wt" || return 2
+
+    rb_configure() {
+        local irr gen=()
+        irr=$(rb_irrlicht) || { echo "rbuild: Irrlicht bootstrap failed" >&2; return 1; }
+        [ -f "$B/CMakeCache.txt" ] || gen=(-G Ninja)
+        echo "rbuild: configure $B (source $wt, irrlicht $irr) on $(hostname)" >&2
+        cmake -S "$wt" -B "$B" "${gen[@]}" -DCMAKE_BUILD_TYPE=Release -DEQT_BUILD_TESTS=ON \
+            -DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_DRM=OFF -DEQT_GLES2_IRRLICHT_DIR="$irr" "${ccl[@]}" "$@"
+    }
+
+    # Run one command inside the scope, and stop the scope if our stdin (the
+    # ssh channel, held open by the caller) reaches EOF before it finishes.
+    rb_run() {
+        "${scope[@]}" "$@" </dev/null &
+        local pid=$! rc
+        { while read -r _; do :; done; systemctl --user stop "$unit.scope" 2>/dev/null; } <&0 &
+        local watcher=$!
+        wait "$pid"; rc=$?
+        kill "$watcher" 2>/dev/null
+        return $rc
+    }
+
+    # The scope's bash gets the helpers + the variables they read.
+    export wt slug broot jobs B
+    local defs; defs="$(declare -p ccl); $(declare -f rb_configure rb_irrlicht)"
+    case "$action" in
+    configure)
+        rb_run bash -c "$defs; rb_configure \"\$@\"" rb "$@" ;;
+    build)
+        # (Re)configure first when the tree is new or the worktree's Irrlicht
+        # inputs changed (the cached EQT_GLES2_IRRLICHT_DIR is keyed by them).
+        local t0=$SECONDS rc
+        rb_run bash -c "$defs
+            if [ ! -f \"\$B/CMakeCache.txt\" ] || [ \"\$(sed -n 's/^EQT_GLES2_IRRLICHT_DIR:[A-Z]*=//p' \"\$B/CMakeCache.txt\")\" != \"\$(rb_irrlicht)\" ]; then
+                rb_configure || exit \$?
+            fi
+            cmake --build \"\$B\" -j \"\$jobs\" \"\$@\"" rb "$@"
+        rc=$?
+        echo "rbuild: build exit $rc in $((SECONDS - t0)) s on $(hostname); ccache $(ccache -s 2>/dev/null | grep -m1 -i 'hits:' | tr -s ' ')" >&2
+        return $rc ;;
+    test)
+        [ -f "$B/CTestTestfile.cmake" ] || { echo "rbuild: $B is not configured/built; run rbuild <wt> configure + build first" >&2; return 2; }
+        local jarg=(-j "$jobs") a
+        for a in "$@"; do case "$a" in -j*|--parallel*) jarg=() ;; esac; done
+        rb_run ctest --test-dir "$B" --output-on-failure "${jarg[@]}" "$@" ;;
+    hygiene)
+        rb_run bash -c "cmake -S \"$wt\" -B \"$H\" -DCMAKE_BUILD_TYPE=Release -DEQT_GRAPHICS=OFF -DEQT_BUILD_TESTS=ON >/dev/null && ctest --test-dir \"$H\" -L hygiene -j $jobs --output-on-failure" ;;
+    *) echo "rbuild: unknown action $action" >&2; return 2 ;;
+    esac
+}
+
+# ---------------------------------------------------------------------------
+# Caller side (hermes-ext).
+# ---------------------------------------------------------------------------
+remote() {
+    # Hold the ssh channel's stdin open while this script lives; when the caller
+    # dies the pipe closes, the remote watcher sees EOF and stops the scope.
+    local q
+    q=$(printf '%q ' "$@")
+    ssh -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=4 "$RBUILD_HOST" \
+        "bash -c $(printf '%q' "$(declare -f rb_remote); rb_remote \"\$@\"") rbuild $q" \
+        < <(while kill -0 $$ 2>/dev/null; do sleep 5; done)
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    -h|--help) usage ;;
+    --status) remote status "$RBUILD_BUILDS_ROOT" "$RBUILD_JOBS" "$RBUILD_MEM"; exit $? ;;
+    --kill) [ $# -eq 2 ] || usage; remote kill "$RBUILD_BUILDS_ROOT" "$RBUILD_JOBS" "$RBUILD_MEM" "$2"; exit $? ;;
+    --setup-host) remote setup "$RBUILD_BUILDS_ROOT" "$RBUILD_JOBS" "$RBUILD_MEM"; exit $? ;;
+esac
+
+wt_in=$1; shift
+wt=$(realpath -m -- "$wt_in")
+case "$wt" in "$WT_ROOT"/?*) ;; *) die "refusing '$wt_in': the worktree must be under $WT_ROOT" ;; esac
+slug=${wt#"$WT_ROOT"/}; slug=${slug%%/*}
+case "$slug" in *[!A-Za-z0-9._-]*|.*) die "refusing slug '$slug'" ;; esac
+wt="$WT_ROOT/$slug"
+[ -d "$wt" ] || die "no such worktree: $wt"
+[[ "$RBUILD_JOBS" =~ ^[0-9]+$ ]] || die "RBUILD_JOBS must be a number"
+
+action=build
+case "${1:-}" in
+    configure|test|hygiene) action=$1; shift ;;
+esac
+remote "$action" "$RBUILD_BUILDS_ROOT" "$RBUILD_JOBS" "$RBUILD_MEM" "$wt" "$slug" "$@"

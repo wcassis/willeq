@@ -87,3 +87,34 @@ NFS `/mnt/projects` (pinned-port NFSv3, see `docs/ci.md`), build deps, Docker,
 client copy, the akk-stack clone, `zone_state_spawns` truncated and
 `Zone:StateSavingOnShutdown=false` (B1047 #367: the timorous boot loop). Open:
 the `x86-gpu` GitLab runner registration.
+
+## Worker builds: `scripts/hermes/rbuild` (B1087)
+
+hermes kanban workers never compile inside their 4 GiB scope on hermes-ext
+(an OOM there took sibling workers down with it, `review/NIGHT-2026-10-16/`).
+`scripts/hermes/rbuild <worktree> [configure | <cmake --build args> | test <ctest args> | hygiene]`
+(installed for workers as `~/.local/bin/rbuild` on hermes-ext; usage in the
+script header) runs the step here over ssh and passes the output and exit code
+back.
+
+- **Source over NFS, build tree local.** hermes-ext exports
+  `/home/user/src/willeq-wt` to this box only (`/etc/exports.d/willeq-wt.exports`,
+  `all_squash` to uid/gid 1000, which is `user` on both hosts); the fstab mount
+  here uses the SAME path (NFSv4.2, `soft`, `actimeo=0` so ninja never sees a
+  stale mtime for a file a worker just edited, systemd automount). The build
+  tree is `/home/user/willeq-builds/<slug>/build` on the NVMe, never in the
+  worktree. The patched Irrlicht is built once per
+  `irrlicht_input_stamp.sh` digest into `/home/user/willeq-builds/_irrlicht/`.
+- **Resource control.** Each step is a user scope
+  (`systemd-run --user --scope -p CPUWeight=30 -p IOWeight=30 -p MemoryMax=16G`)
+  inside the user slice `worker-build.slice` (MemoryMax 28G for all worker
+  builds together; `rbuild --setup-host` installs it), `-j6` by default
+  (`RBUILD_JOBS`). ccache lives in `/home/user/willeq-builds/_ccache`; build
+  trees in different worktrees do not share hits, because each tree's paths
+  carry its slug.
+- **Lifecycle.** One rbuild per worktree at a time (a second waits on a lock).
+  If the caller dies the ssh channel closes and the remote scope is stopped.
+  `rbuild --status` lists running builds; `rbuild --kill <slug>` stops one.
+- **Shares the box with CI.** The GitLab runner here builds in `ci-build.slice`
+  at the same time; measured times are on B1087.
+
