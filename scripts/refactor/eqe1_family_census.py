@@ -11,7 +11,11 @@ object's material.
 Parses the EQE1 index directly (client/graphics/eqe1_format.h: EQE1Header is
 16 bytes, every index entry is the 48-byte EQE1IndexEntry — v1/v2 inline, or
 v3 with an 8-byte name tail). Reads only index metadata plus each candidate's
-payload slice (for the SHA-256), so it is fast even over 1,500 packs.
+payload slice (SHA-256 over every multi-owned name), so it is fast even over
+1,500 packs. A row is a DIFFERENT payload in the decisive sense: different
+bytes (the digest), not merely different size/alpha/format — two packs with
+identical size, hasAlpha and format can still hold different pixels, and
+only the digest catches that half.
 
 Usage:
   python3 scripts/refactor/eqe1_family_census.py --eqe1-path DIR [--output FILE]
@@ -88,11 +92,12 @@ def main():
         elif (s + "_obj") in stems or (s + "_chr") in stems:
             families.setdefault(s, set()).add(s)
 
-    by_stem = {}
-    for f in packs:
-        s = pack_stem(f)
-        if s in {a for members in families.values() for a in members}:
-            by_stem[s] = os.path.join(args.eqe1_path, f)
+    all_stems = {a for members in families.values() for a in members}
+    by_stem = {
+        pack_stem(f): os.path.join(args.eqe1_path, f)
+        for f in packs
+        if pack_stem(f) in all_stems
+    }
 
     name_by_family = defaultdict(dict)  # family -> name -> {stem: meta}
     for fam, members in families.items():
@@ -105,13 +110,37 @@ def main():
             for name, payload in meta.items():
                 name_by_family[fam].setdefault(name, {})[s] = payload
 
+    # The digest is the decisive differentiator: two packs with the same
+    # size/alpha/format can still hold different bytes, which is the
+    # invisible half of the collision class. Digest only the payloads of
+    # names held by more than one archive of the family -- one pass over the
+    # index, a payload read per candidate -- so a full tree stays fast.
+    multi = {
+        (fam, name): set(owners)
+        for fam, names in name_by_family.items()
+        for name, owners in names.items()
+        if len(owners) >= 2
+    }
+    for (fam, name), stems in multi.items():
+        for s in stems:
+            meta = parse_pack(
+                    by_stem[s],
+                    payload_digest_for=lambda n, _name=name: n == _name)
+            if name not in meta:
+                continue
+            d, a, p, _ = name_by_family[fam][name][s]
+            name_by_family[fam][name][s] = (d, a, p, meta[name][3])
+
     rows = []
     for fam in sorted(name_by_family):
         for name in sorted(name_by_family[fam]):
             owners = name_by_family[fam][name]
             if len(owners) < 2:
                 continue
-            kinds = {(d, a, p) for (d, a, p, _) in owners.values()}
+            kinds = {
+                (d, a, p, h)
+                for (d, a, p, h) in owners.values()
+            }
             differing = len(kinds) > 1
             if differing:
                 rows.append((fam, name, owners, kinds))
@@ -122,11 +151,14 @@ def main():
     lines.append(f"Tree: `{args.eqe1_path}` ({len(packs)} packs, {len(families)} zone families).")
     lines.append(f"")
     lines.append("A row is a texture name held by >= 2 archives of the same zone")
-    lines.append("family (ZONE / ZONE_obj / ZONE_chr) with a DIFFERENT payload — different")
-    lines.append("dataSize, hasAlpha (=_alpha companion) or payload format. These are the")
-    lines.append("names a name-keyed EQE1 resolution can serve the wrong copy of. (Identical")
-    lines.append("re-holdings of the same name within a family are NOT listed: the configured")
-    lines.append("order already decides, and the bytes agree.)")
+    lines.append("family (ZONE / ZONE_obj / ZONE_chr) with a DIFFERENT payload -- the")
+    lines.append("SHA-256 of the payload bytes (dataSize, hasAlpha (=_alpha companion)")
+    lines.append("and payload format shown as a hint, but two packs with identical")
+    lines.append("size/alpha/format can still hold different pixels, and THAT is the")
+    lines.append("decisive axis). These are the names a name-keyed EQE1 resolution can")
+    lines.append("serve the wrong copy of. (Identical re-holdings of the same name within")
+    lines.append("a family are NOT listed: the bytes agree, so the configured order is")
+    lines.append("harmless.)")
     lines.append(f"")
     lines.append(f"Total differing-content collisions: **{len(rows)}**")
     lines.append(f"")

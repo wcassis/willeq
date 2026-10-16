@@ -2,8 +2,9 @@
 // texture name with DIFFERENT content, and the name-keyed cache collapsed
 // them into one entry.
 //
-// The measured collision (scripts/refactor/eqe1_family_census.py, 59 names
-// across 21 families in data/eqe1_client; headline below): qeytoqrg.s3d
+// The measured collision (scripts/refactor/eqe1_family_census.py: 361
+// names across 172 families in data/eqe1_client, table in
+// refactor/B1083/README.md; qeytoqrg below): qeytoqrg.s3d
 // holds tree70 opaque (no alpha companion) and qeytoqrg_obj.s3d holds tree70
 // WITH its alpha companion. The willow in qeytoqrg drew its foliage as a
 // solid rectangle because the OBJECT's material asked the cache for "tree70"
