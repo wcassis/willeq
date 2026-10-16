@@ -83,6 +83,21 @@ second character on a DIFFERENT account, so isolation is real):
 
 ## Not verified / left open
 
+- **CI green (acceptance D) at this MR head is NOT yet true, and it is not
+  this unit's defect.** This branch carries H-3 (MR !198) and H-4 (MR !199)
+  ahead of `origin/fable`, and both are still in review: their one-line
+  protected-file `CLAUDE.md` count bumps (the DocCounts rows `src/client/
+  input/CLAUDE.md:24` 95→106, the 156→157 `registerCommand` rows, the
+  107→108 `GameEventType` rows, the 50→52 `RendererIntent` row) were left for
+  the orchestrator to apply (the H-3/H-4 review verdicts, the same shape as
+  B1025-H3's own strike). Those rows are RED on any head before H-3/H-4 merge.
+  H-5's own hygiene is green (file sizes, this README's doc counts). The card's
+  acceptance D is met when this MR's pipeline is green, which requires the
+  H-3/H-4 chain to merge first; the orchestrator owns the protected-file edits.
+  Do not call H-5's CI red an H-5 code defect on sight -- read the trace
+  (`glab api .../jobs/<id>/trace`) and confirm the failing ctest is one of the
+  pre-existing rows above, not a hotbar scenario test.
+
 - The free-text emote slot's persistence is the DOCUMENTED fable-vs-official
   gap (official = E<number> index; H-O's oracle measured that form), not an
   oversight: the relog leg asserts the slot is absent, and H-5's README is
