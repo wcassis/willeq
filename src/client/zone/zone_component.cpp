@@ -24,6 +24,7 @@
 #include "client/spell/buff_manager.h"
 #include "client/zone_lines.h"
 #include "client/zone_line_crossing.h"  // B1068
+#include "client/zone/zone_display_name.h"  // B1088 (#408): the loading screen's zone name
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/eq/pfs.h"
 #include "client/bridge/game_state_bridge.h"
@@ -227,6 +228,12 @@ void eqt::zone::ZoneComponent::ZoneProcessZoneChange(const EQ::Net::Packet &p)
 	// unlike producer B, this producer never populates m_game_state.world().pendingZoneHeading()
 	// at all. See refactor/T55_position_state_propagation.md.
 	ctx_.game_state.world().setPendingZone(zone_id, target_x, target_y, target_z, 0.0f);
+
+	// B1088 (#408): an approved zone change is a refresh point -- the target
+	// zone id is known and the loading screen is about to show. Era-table
+	// line now (logged); OP_NewZone's own name follows when the new zone
+	// server connects and may replace it.
+	ZoneDisplayNames::instance().refresh(zone_id);
 
 	// Zone-to-zone transition flow:
 	// 1. Disconnect from current zone server
@@ -990,6 +997,14 @@ void eqt::zone::ZoneComponent::CheckZoneLine()
 		ctx_.game_state.world().setZoneLineTriggerTime(now);
 		ctx_.game_state.world().setPendingZone(result.targetZoneId, result.targetX,
 		                                    result.targetY, result.targetZ, result.heading);
+
+		// B1088 (#408): the target zone id is known NOW (the server approval
+		// only confirms it -- and refresh() is a no-op log-wise when the
+		// shown zone is unchanged), so the loading screen names it from the
+		// era table immediately; OP_NewZone's own name follows at zone-in.
+		if (result.targetZoneId != 0) {
+			ZoneDisplayNames::instance().refresh(result.targetZoneId);
+		}
 
 		LOG_INFO(MOD_ZONE, "Zone line triggered! Target zone: {}, coords: ({:.1f}, {:.1f}, {:.1f}), heading: {:.1f}",
 		        ctx_.game_state.world().pendingZoneId(), ctx_.game_state.world().pendingZoneX(), ctx_.game_state.world().pendingZoneY(), ctx_.game_state.world().pendingZoneZ(), ctx_.game_state.world().pendingZoneHeading());

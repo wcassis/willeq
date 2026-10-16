@@ -399,6 +399,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/inspect_answer.cpp
     src/client/group/group_component.cpp
     src/client/zone/zone_component.cpp
+    src/client/zone/zone_display_name.cpp  # B1088 (#408): the loading screen's zone name
     src/client/movement/movement_component.cpp
     src/client/player/player_component.cpp
     src/client/player/camp_timer.cpp  # B1005 (#324): the camp state machine
@@ -662,6 +663,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/overlays/overlays_component.cpp
         src/client/graphics/overlays/overlays_hud_env.cpp
         src/client/graphics/overlays/overlays_env_managers.cpp  # T467
+        # B1088 (#408): the loading screen's ONE layout (both draw bodies
+        # delegate here, so the two screens cannot drift apart).
+        src/client/graphics/overlays/loading_frame_layout.cpp
         # B994 (#314): the 3D target ring -- TargetIndicator.ini's geometry
         # (device-free) and its one draw call.
         src/client/graphics/overlays/target_ring.cpp
