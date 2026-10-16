@@ -280,6 +280,10 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
                 config.scenarioFizzleSpellId =
                     static_cast<unsigned int>(std::atoi(argv[++i]));
             }
+        } else if (arg == "--scenario-zone") {
+            if (i + 1 < argc) {
+                config.scenarioZoneChangeTargetZone = std::atoll(argv[++i]);
+            }
         } else if (arg == "--script") {
             if (i + 1 < argc) {
                 config.scriptPath = argv[++i];
@@ -346,6 +350,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --scenario-recast-stop-spell <id>  D2 recast-stop spell (default 293 Haze)\n";
             std::cout << "  --scenario-buff-notake-spell <id>  D3: the caster's own beneficial buff (default 293 Haze)\n";
             std::cout << "  --scenario-fizzle-spell <id>    --scenario cast_fizzle: spell the non-GM caster rolls to fizzle (0=refuse)\n";
+            std::cout << "  --scenario-zone <id>            --scenario zone_change_no_flash: the /gmzone target zone (0=refuse)\n";
             std::cout << "  --fpcam <name=value,...>  Override first-person camera tunables at startup (repeatable; same names as /fpcam)\n";
             std::cout << "  --dump-frames-dir <dir>  Video-capture evidence tool: write numbered PNG frames to <dir> (needs --dump-every)\n";
             std::cout << "  --dump-every <N>         Video-capture: dump every Nth rendered frame\n";

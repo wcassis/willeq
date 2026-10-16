@@ -99,6 +99,7 @@ public:
     bool EnterWorldAs(const std::string& name) override;
     long long ZoneConnectOpens() const override;                          // B1072
     bool SimulateUnreachableZoneConnects(int attempts, int port) override;  // B1072
+    long long CharacterSelectActivations() const override;                  // B1081
 
     // B893 (fall_damage): the fall's live observable and its driver.
     long long PlayerHP() const override;

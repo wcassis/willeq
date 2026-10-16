@@ -149,6 +149,7 @@ struct ApplicationConfig {
     unsigned int scenarioRecastStopSpellId = 293; // --scenario-recast-stop-spell <id> (D2)
     unsigned int scenarioBuffNotakeSpellId = 293; // --scenario-buff-notake-spell <id> (D3: the caster's own beneficial buff; the "does not take hold" variant is recorded, not forced, in this rig)
     unsigned int scenarioFizzleSpellId = 0;     // --scenario-fizzle-spell <id> (B leg, non-GM caster)
+    long long scenarioZoneChangeTargetZone = 0;  // --scenario-zone <id> (B1081: zone_change_no_flash's /gmzone target)
 
     // B888 (#204): the world-stage character script (world_script.h). At most
     // one of the three; the spec is parsed against data/char_create.tsv in
@@ -518,6 +519,12 @@ private:
     bool applyCharacterSelect(const ApplicationConfig& config);
     void serviceCharacterSelect();
     bool renderCharacterSelect(float deltaTime);
+    // B1081 (#401): the screen-up count the zone_change_no_flash scenario
+    // reads (CharacterSelectService::Activations, the game thread's
+    // observable for the render thread's "[CHARSELECT] screen up" log).
+    long long CharacterSelectActivations() const {
+        return static_cast<long long>(m_charSelectService.Activations());
+    }
     bool initSpellSystem(const ApplicationConfig& config);
     bool initActionLayer(const ApplicationConfig& config);
     bool initScriptedCommandTour(const ApplicationConfig& config);

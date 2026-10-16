@@ -50,5 +50,14 @@ bool ApplicationScenarioWorld::SimulateUnreachableZoneConnects(int attempts, int
     return true;
 }
 
+// B1081 (#401): the screen-up count the zone_change_no_flash scenario
+// asserts (exactly 1: the fresh login's). It reads the Application's own
+// CharacterSelectService -- the game thread's, and this runs on the game
+// thread. A run that drew the screen (graphics) logs "[CHARSELECT] screen
+// up" at the same moments.
+long long ApplicationScenarioWorld::CharacterSelectActivations() const {
+    return static_cast<long long>(app_.CharacterSelectActivations());
+}
+
 }  // namespace scenario
 }  // namespace eqt

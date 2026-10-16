@@ -83,6 +83,9 @@ public:
     /** The scenario asks for the camp return (IScenario::WantsCampToCharacterSelect). */
     bool WantsCampToCharacterSelect() const { return scenario_ && scenario_->WantsCampToCharacterSelect(); }
 
+    /** B1081 (#401): the lane turns the character-select screen ON (IScenario::WantsCharacterSelectScreen). */
+    bool WantsCharacterSelectScreen() const { return scenario_ && scenario_->WantsCharacterSelectScreen(); }
+
     bool finished() const { return finished_; }
     bool started() const { return started_; }
     double elapsed() const { return elapsed_; }

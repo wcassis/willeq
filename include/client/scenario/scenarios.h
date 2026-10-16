@@ -147,6 +147,12 @@ std::unique_ptr<IScenario> MakeCampDesktopScenario(const ScenarioOptions& option
  *  select after the attempt + one retry, then Enter World again and zone in. */
 std::unique_ptr<IScenario> MakeZoneConnectTimeoutScenario(const ScenarioOptions& options);
 
+// B1081 (#401): the zone-change flash. src/client/scenario/scenario_zone_change_no_flash.cpp.
+
+/** The screen is up for the fresh login; a GM /gmzone to zoneChangeTargetZone
+ *  must not bring it back up -- Pass when Activations() stays at 1. */
+std::unique_ptr<IScenario> MakeZoneChangeNoFlashScenario(const ScenarioOptions& options);
+
 // B893: fall damage. src/client/scenario/scenario_fall_damage.cpp.
 
 /** A synthetic drop through the client's own fall-damage sender; Pass when
