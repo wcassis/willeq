@@ -13,10 +13,17 @@
 # are NFS-exported to the ThinkPad, which mounts them at the SAME path (so every
 # absolute path a compiler or a test prints is the worker's own path). The BUILD
 # TREE is local to the ThinkPad NVMe, $RBUILD_BUILDS_ROOT/<slug>/build, never in
-# the NFS worktree. Each command runs under
-#   systemd-run --user --scope --slice=worker-build.slice \
-#       -p CPUWeight=30 -p IOWeight=30 -p MemoryMax=$RBUILD_MEM
-# with ccache (shared cache dir on the NVMe). Output streams back over ssh and
+# the NFS worktree. Each command runs in a transient SYSTEM scope beside CI's
+# builds:
+#   sudo -n systemd-run --scope --slice=ci-worker.slice \
+#       -p CPUWeight=30 -p IOWeight=30 -p MemoryMax=$RBUILD_MEM \
+#       -- setpriv --reuid=user --regid=user --init-groups -- env <vars> <cmd>
+# (ci.slice/ci-worker.slice: under CI's weight-30 parent, so worker builds yield
+# to the lane-5 oracle exactly as CI does; the exact form is the one
+# /etc/sudoers.d/90-willeq-rbuild allows). When that sudo form is not allowed it
+# falls back to a user scope in the user slice worker-build.slice
+# (`systemd-run --user --scope`, same properties) and says so on stderr.
+# ccache: a shared cache dir on the NVMe. Output streams back over ssh and
 # the exit code is the remote command's exit code. If the caller dies (worker
 # killed, ssh dropped) the remote scope is stopped.
 #
@@ -43,6 +50,8 @@
 # ENV (caller side): RBUILD_HOST (default user@172.16.200.205), RBUILD_JOBS
 # (default 6), RBUILD_MEM (per-scope MemoryMax, default 16G),
 # RBUILD_BUILDS_ROOT (default /home/user/willeq-builds on the build host).
+# RBUILD_MEM must be 1G..16G for the system slice (the sudoers form); any other
+# value uses the user-slice fallback.
 #
 # The NFS export + mount + slice set-up is recorded on B1087 (#407).
 
@@ -66,32 +75,66 @@ rb_remote() {
     set -uo pipefail
     local action=$1 broot=$2 jobs=$3 mem=$4; shift 4
     local wtroot=/home/user/src/willeq-wt
-    export CCACHE_DIR="$broot/_ccache" CCACHE_MAXSIZE=40G CCACHE_NOHASHDIR=1
+    # CCACHE_BASEDIR/NOHASHDIR: coordinated with B1090 (path-independent binary) on #407.
+    export CCACHE_DIR="$broot/_ccache" CCACHE_MAXSIZE=40G CCACHE_NOHASHDIR=1 CCACHE_BASEDIR="$wtroot"
+
+    # Stop one rbuild scope. A system scope's processes all run as `user` (setpriv),
+    # so they are signalled directly -- `systemctl stop` of a system unit would need
+    # root, and the sudoers rule allows only the systemd-run form. A user scope is
+    # stopped with systemctl --user. The scope disappears with its last process.
+    rb_stop_unit() {
+        local u=$1 cg i p
+        cg=$(systemctl show -p ControlGroup --value "$u" 2>/dev/null)
+        if [ -n "$cg" ] && [ -r "/sys/fs/cgroup$cg/cgroup.procs" ]; then
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+                p=$(cat "/sys/fs/cgroup$cg/cgroup.procs" 2>/dev/null)
+                [ -n "$p" ] || return 0
+                # shellcheck disable=SC2086
+                if [ $i -le 5 ]; then kill -TERM $p 2>/dev/null; else kill -KILL $p 2>/dev/null; fi
+                sleep 1
+            done
+            [ -z "$(cat "/sys/fs/cgroup$cg/cgroup.procs" 2>/dev/null)" ]
+            return $?
+        fi
+        systemctl --user stop "$u" 2>/dev/null
+    }
+    # Running rbuild scopes matching a glob, system and user, one per line.
+    rb_units() {
+        { systemctl list-units --no-legend --plain "$1" 2>/dev/null
+          systemctl --user list-units --no-legend --plain "$1" 2>/dev/null; } | awk '{print $1}'
+    }
 
     case "$action" in
     status)
         echo "== rbuild scopes on $(hostname) =="
-        local u any=0
-        for u in $(systemctl --user list-units --no-legend --plain 'rbuild-*.scope' 2>/dev/null | awk '{print $1}'); do
+        local u any=0 where
+        for u in $(rb_units 'rbuild-*.scope'); do
             any=1
-            printf '%s  mem=%s  since=%s\n' "$u" \
-                "$(systemctl --user show -p MemoryCurrent --value "$u" | numfmt --to=iec 2>/dev/null)" \
-                "$(systemctl --user show -p ActiveEnterTimestamp --value "$u")"
+            where=system; systemctl --user cat "$u" >/dev/null 2>&1 && where=user
+            if [ $where = system ]; then
+                printf '%s  [%s %s]  mem=%s  since=%s\n' "$u" "$where" "$(systemctl show -p ControlGroup --value "$u")" \
+                    "$(systemctl show -p MemoryCurrent --value "$u" | numfmt --to=iec 2>/dev/null)" \
+                    "$(systemctl show -p ActiveEnterTimestamp --value "$u")"
+            else
+                printf '%s  [%s worker-build.slice]  mem=%s  since=%s\n' "$u" "$where" \
+                    "$(systemctl --user show -p MemoryCurrent --value "$u" | numfmt --to=iec 2>/dev/null)" \
+                    "$(systemctl --user show -p ActiveEnterTimestamp --value "$u")"
+            fi
         done
         [ $any = 1 ] || echo "(none running)"
         echo "== host =="; uptime; free -g | head -2
-        echo "== worker-build.slice =="
+        echo "== ci-worker.slice (system; rbuild default) =="
+        systemctl show -p MemoryCurrent -p MemoryHigh -p CPUWeight ci-worker.slice 2>/dev/null
+        echo "== worker-build.slice (user; fallback) =="
         systemctl --user show -p MemoryCurrent -p MemoryMax -p CPUWeight worker-build.slice 2>/dev/null
         return 0 ;;
     kill)
-        local slug=$1
-        local units
-        units=$(systemctl --user list-units --no-legend --plain "rbuild-$slug-*.scope" 2>/dev/null | awk '{print $1}')
+        local slug=$1 units u rc=0
+        units=$(rb_units "rbuild-$slug-*.scope")
         [ -n "$units" ] || { echo "rbuild: no running scope for slug $slug"; return 1; }
         echo "stopping: $units"
-        # shellcheck disable=SC2086
-        systemctl --user stop $units
-        return $? ;;
+        for u in $units; do rb_stop_unit "$u" || rc=1; done
+        return $rc ;;
     setup)
         mkdir -p "$HOME/.config/systemd/user" "$broot/_ccache"
         cat > "$HOME/.config/systemd/user/worker-build.slice" <<'EOF'
@@ -152,9 +195,19 @@ EOF
     }
 
     local unit="rbuild-$slug-$action-$(date +%s)"
-    local -a scope=(systemd-run --user --scope --quiet --collect --unit="$unit" --slice=worker-build.slice
-                    --description="rbuild $slug $action"
-                    -p CPUWeight=30 -p IOWeight=30 -p MemoryMax="$mem" --)
+    # The system scope (ci.slice/ci-worker.slice) in EXACTLY the form
+    # /etc/sudoers.d/90-willeq-rbuild allows; setpriv drops to user:user with user's
+    # groups before anything the caller chose runs. sudo resets the environment,
+    # so `env` carries the variables the step needs.
+    local -a scope=(sudo -n /usr/bin/systemd-run --scope --quiet --collect --unit="$unit"
+                    --slice=ci-worker.slice -p CPUWeight=30 -p IOWeight=30 -p MemoryMax="$mem"
+                    -- /usr/bin/setpriv --reuid=user --regid=user --init-groups -- /usr/bin/env)
+    if ! [[ "$mem" =~ ^([1-9]|1[0-6])G$ ]] || ! sudo -n -l "${scope[@]:2}" true >/dev/null 2>&1; then
+        echo "rbuild: system slice not available (sudoers form or RBUILD_MEM=$mem); using the user slice worker-build.slice" >&2
+        scope=(systemd-run --user --scope --quiet --collect --unit="$unit" --slice=worker-build.slice
+               --description="rbuild $slug $action"
+               -p CPUWeight=30 -p IOWeight=30 -p MemoryMax="$mem" -- /usr/bin/env)
+    fi
     local -a ccl=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
     cd "$wt" || return 2
 
@@ -170,9 +223,13 @@ EOF
     # Run one command inside the scope, and stop the scope if our stdin (the
     # ssh channel, held open by the caller) reaches EOF before it finishes.
     rb_run() {
-        "${scope[@]}" "$@" </dev/null &
+        local -a envs=(HOME="$HOME" USER=user LOGNAME=user PATH="$PATH" LANG="${LANG:-C.UTF-8}"
+                       CCACHE_DIR="$CCACHE_DIR" CCACHE_MAXSIZE="$CCACHE_MAXSIZE"
+                       CCACHE_NOHASHDIR="$CCACHE_NOHASHDIR" CCACHE_BASEDIR="$CCACHE_BASEDIR"
+                       wt="$wt" slug="$slug" broot="$broot" jobs="$jobs" B="$B")
+        "${scope[@]}" "${envs[@]}" "$@" </dev/null &
         local pid=$! rc
-        { while read -r _; do :; done; systemctl --user stop "$unit.scope" 2>/dev/null; } <&0 &
+        { while read -r _; do :; done; rb_stop_unit "$unit.scope"; } <&0 &
         local watcher=$!
         wait "$pid"; rc=$?
         kill "$watcher" 2>/dev/null

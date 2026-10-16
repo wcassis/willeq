@@ -105,16 +105,36 @@ back.
   tree is `/home/user/willeq-builds/<slug>/build` on the NVMe, never in the
   worktree. The patched Irrlicht is built once per
   `irrlicht_input_stamp.sh` digest into `/home/user/willeq-builds/_irrlicht/`.
-- **Resource control.** Each step is a user scope
-  (`systemd-run --user --scope -p CPUWeight=30 -p IOWeight=30 -p MemoryMax=16G`)
-  inside the user slice `worker-build.slice` (MemoryMax 28G for all worker
-  builds together; `rbuild --setup-host` installs it), `-j6` by default
-  (`RBUILD_JOBS`). ccache lives in `/home/user/willeq-builds/_ccache`; build
-  trees in different worktrees do not share hits, because each tree's paths
-  carry its slug.
+- **Resource control.** Each step is a transient SYSTEM scope in
+  `ci.slice/ci-worker.slice`, beside CI's `ci-build.slice` under the weight-30
+  parent `ci.slice`, so worker builds yield to the lane-5 oracle exactly as CI
+  builds do. The slice unit is `/etc/systemd/system/ci-worker.slice`
+  (CPUWeight=30, IOWeight=30, MemoryHigh=28G); each scope gets
+  CPUWeight=30, IOWeight=30, MemoryMax=16G. `ci.slice`'s MemoryHigh is 32G
+  since the worker slice joined it (backup `ci.slice.pre-rbuild-slice`).
+  rbuild starts the scope with
+  `sudo -n systemd-run --scope --slice=ci-worker.slice ... -- setpriv --reuid=user --regid=user --init-groups -- env <vars> <cmd>`.
+  `/etc/sudoers.d/90-willeq-rbuild` allows exactly that form and nothing
+  else. It is a sudo regex: an `rbuild-*` unit name, MemoryMax 1G..16G, and the
+  fixed setpriv drop to `user`. Two notes on that form:
+  - It uses `setpriv`, not `systemd-run --uid`, because a `--scope --uid` run
+    kept root's supplementary group 0 (measured).
+  - `user` also holds a general `NOPASSWD: ALL` here, so the drop-in only starts
+    to matter if that rule is narrowed.
+
+  When the sudo form is refused, or `RBUILD_MEM` is outside 1G..16G, rbuild
+  says so and falls back to a user scope in the user slice `worker-build.slice`
+  (MemoryMax 28G; `rbuild --setup-host` installs it). `-j6` is the default
+  (`RBUILD_JOBS`). ccache lives in `/home/user/willeq-builds/_ccache`, with
+  `CCACHE_BASEDIR=/home/user/src/willeq-wt` and `CCACHE_NOHASHDIR=1`. Build
+  trees in different worktrees still miss each other while the compile lines
+  carry slug paths (B1090, #407).
 - **Lifecycle.** One rbuild per worktree at a time (a second waits on a lock).
-  If the caller dies the ssh channel closes and the remote scope is stopped.
-  `rbuild --status` lists running builds; `rbuild --kill <slug>` stops one.
+  If the caller dies, the ssh channel closes and the remote scope is stopped.
+  `rbuild --status` lists running scopes, system and user. `rbuild --kill <slug>`
+  stops one. A system scope's processes all run as `user`, so they are
+  signalled directly (TERM, then KILL). Stopping the unit itself would need
+  root, which the sudoers rule does not grant.
 - **Shares the box with CI.** The GitLab runner here builds in `ci-build.slice`
   at the same time; measured times are on B1087.
 
