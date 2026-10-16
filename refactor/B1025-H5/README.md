@@ -91,9 +91,12 @@ consumed a charge — the server's own record), Testcaster's INI holds exactly
 its three typed slots (Page1Button1=H0, Page1Button2=F8443,
 Page1Button3=J55; the free-text emote slot absent, the documented gap),
 Testbuddy's INI holds only its own J55 (isolation), and 2 plain "Using Bag
-of Bone Dust" activation lines. Client/peer/post logs in
-`/mnt/projects/fable/review/B1025-H5/scenario/` (attached to the task) and
-`/home/user/kb-evidence/kb-h5-hotbar-scenario/scenario/`.
+of Bone Dust" activation lines. The decisive run at the final head
+(f002a7bc, lane-1 22:09–22:22 UTC) left its logs in
+`/home/user/kb-evidence/kb-h5-hotbar-scenario/scenario/` (run12_client.log,
+run12_peer.log, run12_post.log, run12_server.log, run12_scenario.sh.out —
+attached to the task) and a copy in
+`/mnt/projects/fable/review/B1025-H5/scenario/`.
 
 ## Not verified / left open
 
