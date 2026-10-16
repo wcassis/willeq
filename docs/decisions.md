@@ -42,6 +42,22 @@ wiring (CleanupZone calls it) by `test_zone_component.cpp`'s
 `ZoneOutTeardownRunsTheAudioSilence`. A world that cannot read the count
 (-1) fails the scenario rather than passing silently.
 
+**Oracle confirmation (the card's step 1, 2026-10-16):** the official
+client's zone-OUT audio was measured on lane 1 (Pulse monitor of the Wine
+client — the rig has no working ALSA userspace, so a session PulseAudio
+daemon is the capture path). causeway's music + ambient emitters, sustained
+at ~1.2–3.2 k RMS, fade to the noise floor (RMS ≤ 3) ~8 s after
+`/cast Ring of Karana` (of which 7 s is the rank-0 spell's own cast time,
+`spells_new.cast_time` 7000 ms), the floor holds flat for ~1.5 s (no SFX
+tail at 0.25 s resolution), and the destination screen's audio starts only
+then. The destination's zone-in failed on this rig (client back at the
+login screen), so the capture exercises exactly the B1072-class give-up —
+and the old zone's audio still stopped. The 2.0 s fade constant
+(`kZoneOutMusicFadeSeconds`) is therefore bounded above by the measured
+stop and equals the client's own existing zone-music stop; see
+`refactor/B1080/README.md` for the full ledger (envelope, marks, stills,
+the negative sessions).
+
 ## 2026-09-05 — The ceiling covers `tools/` and `benchmarks/` too (T385)
 
 **Decision:** `scripts/refactor/check_file_sizes.sh --all` scans `src/`,
