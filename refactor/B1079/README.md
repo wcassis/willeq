@@ -124,14 +124,23 @@ bound. The plain dead-port arm (B1072: 2 connects) is unchanged.
 
 ## Not verified / left open
 
-- **LIVE run on lanes 1-4 (acceptance B, and the `--log-file` line-for-line
-  check, acceptance C): NOT done in this run.** All four lanes were held by a
-  sibling oracle run (`b1080_oracle`, `eqemu_lock_show`) throughout; the live
-  leg -- run `zone_connect_timeout --scenario-silent-zone` cold and confirm the
-  time-to-character-select against the table, plus a `--log-file` run whose
-  bytes equal stdout -- is left to the QA card (t_4fbaa1fd, step 4/5). The
-  mechanism is proven at the unit and pure state-machine level above; the live
-  run is the remaining leg.
+- **LIVE run on lanes 1-4 (acceptance B): NOT done in this run.** All four
+  lanes were held by sibling runs (`b1080_oracle`, then `B1025-H5
+  hotbar_lifecycle`, per `eqemu_lock_show`) throughout; the live leg -- run
+  `zone_connect_timeout --scenario-silent-zone` cold (SIGSTOP the zone process
+  after ZoneEntry, SIGCONT after) and confirm the time-to-character-select
+  against the table -- is left to the QA card (t_4fbaa1fd, step 4/5). The
+  mechanism is proven at the unit and pure state-machine level above (25/25
+  green); the live run is the remaining leg.
+- **`--log-file` (acceptance C): smoke-tested in this run, live line-for-line
+  left to QA.** `willeq --no-graphics --log-file <path> --log-level INFO`
+  wrote the same lines to the file (evidence:
+  `/home/user/kb-evidence/kb-b1079-zone-in-bound/logfile_smoke.log`), and
+  `--log-level BOGUSLEVEL` (the space form) produced the loud startup ERROR
+  rather than being silently ignored. The line-for-line equality check on a
+  REAL zone-in (where the file and the merged stdout/stderr can only differ in
+  the position of a stderr line that drains in a separate 50 ms cycle --
+  content is preserved and flushed before exit) is QA's step 4, on a lane.
 - The **official client's** own per-phase bound and message are not measured
   (assumed conservative, table above). An oracle capture that shows a
   different value changes one constant.
