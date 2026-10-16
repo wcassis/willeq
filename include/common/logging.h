@@ -260,11 +260,8 @@ public:
                       << " -- continuing without the file\n";
             return false;
         }
-        m_log_file_path = path;
         return true;
     }
-
-    const std::string& LogFilePath() const { return m_log_file_path; }
 
     void unregisterBuffer(std::string* buffers) {
         std::lock_guard<std::mutex> lock(m_registry_mutex);
@@ -420,7 +417,6 @@ private:
     // against the drain writes.
     std::mutex m_file_mutex;
     std::ofstream m_log_file;
-    std::string m_log_file_path;
 
     // Drain thread
     std::thread m_drain_thread;

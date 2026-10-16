@@ -239,7 +239,6 @@ public:
 	bool Armed() const { return armed_; }
 	int Attempt() const { return attempt_; }
 	int Attempts() const { return 1 + retries_; }
-	int TimeoutMs() const { return boundsMs_[phase_index::kZoneConnecting]; }
 	const std::string& Host() const { return host_; }
 	uint16_t Port() const { return port_; }
 	// The furthest phase reached (the escalation's WARN names it).
