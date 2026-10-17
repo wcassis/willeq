@@ -9,6 +9,8 @@
 
 #include "client/graphics/overlays/overlays_component.h"
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/overlays/loading_frame_layout.h"  // B1088: the shared loading-screen body
+#include "client/zone/zone_display_name.h"  // B1088 (#408): the loading screen's zone name
 #include "client/graphics/renderer_zone_merge.h"  // ZoneMergeBuffers complete type (unique_ptr member destruction)
 #include "client/willeq_database.h"
 #include "client/graphics/loading_thread.h"
@@ -173,68 +175,17 @@ void OverlaysComponent::drawLoadingScreen(float progress, const std::wstring& st
 
     LOG_DEBUG(MOD_GRAPHICS_LOAD, "[Loading] {} - {} ({}%)", titleNarrow, stageTextNarrow, percentComplete);
 
-    // Immediately render a frame showing loading progress
-    ctx_.driver->beginScene(true, true, irr::video::SColor(255, 20, 20, 40));
-
-    irr::core::dimension2d<irr::u32> screenSize = ctx_.driver->getScreenSize();
-
-    // Progress bar dimensions
-    const int barWidth = 400;
-    const int barHeight = 30;
-    const int barX = (screenSize.Width - barWidth) / 2;
-    const int barY = (screenSize.Height / 2) + 20;
-
-    // Colors
-    irr::video::SColor bgColor(255, 40, 40, 60);
-    irr::video::SColor borderColor(255, 100, 100, 120);
-    irr::video::SColor fillColor(255, 80, 120, 200);
-
-    // Draw border
-    ctx_.driver->draw2DRectangle(borderColor,
-        irr::core::recti(barX - 2, barY - 2, barX + barWidth + 2, barY + barHeight + 2));
-
-    // Draw background
-    ctx_.driver->draw2DRectangle(bgColor,
-        irr::core::recti(barX, barY, barX + barWidth, barY + barHeight));
-
-    // Draw progress fill
-    float clampedProgress = std::max(0.0f, std::min(1.0f, progress));
-    int fillWidth = static_cast<int>(barWidth * clampedProgress);
-    if (fillWidth > 0) {
-        ctx_.driver->draw2DRectangle(fillColor,
-            irr::core::recti(barX, barY, barX + fillWidth, barY + barHeight));
-    }
-
-    // Draw text using built-in font
-    irr::gui::IGUIFont* font = guienv_ ? guienv_->getBuiltInFont() : nullptr;
-    if (font) {
-        // Dynamic title (e.g., "EverQuest", "Connecting...", "Loading Zone...")
-        irr::core::dimension2d<irr::u32> titleSize = font->getDimension(loadingTitle_.c_str());
-        int titleX = (screenSize.Width - titleSize.Width) / 2;
-        int titleY = barY - 40;
-        font->draw(loadingTitle_.c_str(),
-            irr::core::recti(titleX, titleY, titleX + titleSize.Width, titleY + titleSize.Height),
-            irr::video::SColor(255, 255, 255, 255));
-
-        // Stage text below progress bar
-        irr::core::dimension2d<irr::u32> stageSize = font->getDimension(stageText.c_str());
-        int stageX = (screenSize.Width - stageSize.Width) / 2;
-        int stageY = barY + barHeight + 10;
-        font->draw(stageText.c_str(),
-            irr::core::recti(stageX, stageY, stageX + stageSize.Width, stageY + stageSize.Height),
-            irr::video::SColor(255, 200, 200, 200));
-
-        // Percentage text centered in progress bar
-        std::wstring pctText = std::to_wstring(static_cast<int>(clampedProgress * 100)) + L"%";
-        irr::core::dimension2d<irr::u32> pctSize = font->getDimension(pctText.c_str());
-        int pctX = (screenSize.Width - pctSize.Width) / 2;
-        int pctY = barY + (barHeight - pctSize.Height) / 2;
-        font->draw(pctText.c_str(),
-            irr::core::recti(pctX, pctY, pctX + pctSize.Width, pctY + pctSize.Height),
-            irr::video::SColor(255, 255, 255, 255));
-    }
-
-    ctx_.driver->endScene();
+    // B1088 (#408): the zone-name line, read at draw time from the one value
+    // source (the loading screen's stored "Entering <long name>...", written
+    // on the game thread the moment a target zone id is known). Empty = the
+    // line is not drawn. The LAYOUT is the shared helper -- the same body
+    // LoadingThread::drawLoadingFrame goes through -- so this screen and the
+    // render thread's 0-50 % screen show the same line and cannot drift.
+    const std::string entryNarrow = eqt::ZoneDisplayNames::instance().entryText();
+    const std::wstring entryText(entryNarrow.begin(), entryNarrow.end());
+    EQT::Graphics::drawLoadingFrame(ctx_.driver,
+                                    guienv_ ? guienv_->getBuiltInFont() : nullptr,
+                                    progress, loadingTitle_, entryText, stageText);
 }
 
 void OverlaysComponent::applyEnvironmentalDisplaySettings() {

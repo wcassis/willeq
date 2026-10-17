@@ -156,6 +156,10 @@ struct SlotDisplayInfo {
     bool hasItem = false;
     std::string itemName;       // Short name for display
     uint32_t iconId = 0;        // Item icon ID (for future icon atlas)
+    // B1025-H3 (#345): the item id, fed with hasItem. The hotbar gesture's
+    // item clone carries it to the game thread (the Item activate arm
+    // resolves id -> slot via findItemSlotByItemId, T230's hop).
+    uint32_t itemId = 0;
     int32_t quantity = 1;       // Stack count
     // B442b (#151 rows 19-21): the bag size, 0 = not a container. A RIGHT
     // click on a general slot holding a bag toggles its window.

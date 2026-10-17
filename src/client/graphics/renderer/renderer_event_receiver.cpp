@@ -292,7 +292,13 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::SpellGem7: spellGemCastRequest_ = 6; break;
                     case HA::SpellGem8: spellGemCastRequest_ = 7; break;
 
-                    // Hotbar Slots
+                    // Hotbar Slots -- B1025-H4 (#345): slot N of the
+                    // window's CURRENT page (H-O: "Hot buttons 1-10 are
+                    // 1-0", pages.tsv:2, 27_keys_hb1.png). The page is not
+                    // carried here: the game thread's one HotbarModel owns
+                    // it, and the panel state's currentPage follows the
+                    // model's republish (applyHotbarSlotAssigned), so the
+                    // slot and the page can never disagree.
                     case HA::HotbarSlot1: hotbarActivationRequest_ = 0; break;
                     case HA::HotbarSlot2: hotbarActivationRequest_ = 1; break;
                     case HA::HotbarSlot3: hotbarActivationRequest_ = 2; break;
@@ -303,6 +309,34 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::HotbarSlot8: hotbarActivationRequest_ = 7; break;
                     case HA::HotbarSlot9: hotbarActivationRequest_ = 8; break;
                     case HA::HotbarSlot10: hotbarActivationRequest_ = 9; break;
+
+                    // B1025-H4 (#345): the page keys, H-O's MEASURED
+                    // defaults "pages 1-10 are Shift+1 through Shift+0"
+                    // (pages.tsv:2, 27_keys_hb1.png; eqstr 6562-6571). The
+                    // target page goes out as a RendererAction; its consumer,
+                    // FrameComponent::processPlayerInput (which owns the
+                    // panel state and the bridge), clamps it and pushes the
+                    // SAME intent the page buttons push (static_ui_input.cpp)
+                    // -- one consumer,
+                    // BridgeComponent::onHotbarPageChangedIntent, keeps the
+                    // game-thread HotbarModel and the panel in lockstep, and
+                    // the model's republish is what the panel redraws.
+                    case HA::HotbarPage1: actionQueue_.push_back({RA::HotbarPageChange, 0}); break;
+                    case HA::HotbarPage2: actionQueue_.push_back({RA::HotbarPageChange, 1}); break;
+                    case HA::HotbarPage3: actionQueue_.push_back({RA::HotbarPageChange, 2}); break;
+                    case HA::HotbarPage4: actionQueue_.push_back({RA::HotbarPageChange, 3}); break;
+                    case HA::HotbarPage5: actionQueue_.push_back({RA::HotbarPageChange, 4}); break;
+                    case HA::HotbarPage6: actionQueue_.push_back({RA::HotbarPageChange, 5}); break;
+                    case HA::HotbarPage7: actionQueue_.push_back({RA::HotbarPageChange, 6}); break;
+                    case HA::HotbarPage8: actionQueue_.push_back({RA::HotbarPageChange, 7}); break;
+                    case HA::HotbarPage9: actionQueue_.push_back({RA::HotbarPageChange, 8}); break;
+                    case HA::HotbarPage10: actionQueue_.push_back({RA::HotbarPageChange, 9}); break;
+
+                    // B1025-H4 (#345): the window toggle (Alt+H; the
+                    // RendererAction's own consumer, processPlayerInput).
+                    case HA::ToggleHotbar1Window:
+                        actionQueue_.push_back({RA::ToggleHotbar1Window});
+                        break;
 
                     // Camera Zoom
                     // T486 (item 5): the notch has ONE owner, camera_rig.h's

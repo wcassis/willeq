@@ -267,7 +267,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
             TARGET_LINK_LIBRARIES(test_x11_numpad_e2e X11)
         ENDIF()
     ENDIF()
-    GTEST_DISCOVER_TESTS(test_x11_numpad_e2e DISCOVERY_TIMEOUT 120)
+    # B1091 (#411): the test owns a per-run Xvfb (Xvfb -displayfd) and reaps it
+    # on every exit path; every test-side wait carries a deadline, so a healthy
+    # run finishes in well under a minute. The ctest TIMEOUT is the backstop for
+    # a failure mode the test itself cannot unwind -- without it ctest's default
+    # bound applied, and pipeline 1453's build-test sat >1 h on a stale Xvfb.
+    # PROPERTIES on GTEST_DISCOVER_TESTS is applied by the discovery step at
+    # BUILD time (the test does not exist at configure time), so it cannot be a
+    # plain SET_TESTS_PROPERTIES here.
+    GTEST_DISCOVER_TESTS(test_x11_numpad_e2e DISCOVERY_TIMEOUT 120
+        PROPERTIES TIMEOUT 120)
 ENDIF()
 
 # T400 (board B225): the particle atlas must carry its alpha.
@@ -315,16 +324,22 @@ GTEST_DISCOVER_TESTS(test_spell_sprite_atlas DISCOVERY_TIMEOUT 120)
 # own uifiles/default/dragitem*.tga, cell for cell, plus the column-major
 # id->cell mapping EQUI_Animations.xml declares. Files only -- no device, no
 # GPU, no willeq_core; same shape as test_spell_sprite_atlas above.
-ADD_EXECUTABLE(test_item_icon_atlas
-    test_item_icon_atlas.cpp
-)
-TARGET_COMPILE_DEFINITIONS(test_item_icon_atlas PRIVATE
-    "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
-TARGET_INCLUDE_DIRECTORIES(test_item_icon_atlas PRIVATE
-    ${CMAKE_SOURCE_DIR}/tools
-    ${CMAKE_SOURCE_DIR}/include)
-TARGET_LINK_LIBRARIES(test_item_icon_atlas GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_item_icon_atlas DISCOVERY_TIMEOUT 120)
+# Graphics builds only (B1038): the B1078 squareIn cases reach
+# UIRenderer::squareIn through ui_renderer.h, which includes irrlicht.h, so an
+# EQT_GRAPHICS=OFF configure dies on the missing header unless this target is
+# gated like its neighbours (pipeline 1519's build-headless failure).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_item_icon_atlas
+        test_item_icon_atlas.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_item_icon_atlas PRIVATE
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
+    TARGET_INCLUDE_DIRECTORIES(test_item_icon_atlas PRIVATE
+        ${CMAKE_SOURCE_DIR}/tools
+        ${CMAKE_SOURCE_DIR}/include)
+    TARGET_LINK_LIBRARIES(test_item_icon_atlas GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_item_icon_atlas DISCOVERY_TIMEOUT 120)
+ENDIF()
 
 # B1077 (GitLab #397): the shipped spell icon sheets versus the official
 # client's own uifiles/default/gemicons*.tga, Spells*.tga and

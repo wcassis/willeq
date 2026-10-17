@@ -22,6 +22,7 @@ bool Application::initScenario(const ApplicationConfig& config) {
 
     scenario::ScenarioOptions options;
     options.holdSeconds = config.scenarioHoldSeconds;
+    options.silentZone = config.scenarioSilentZone;  // B1079
     options.castSpellId = config.scenarioSpellId;
     options.expectSelfMaterial = config.scenarioExpectMaterial;
     // B630 (issue #48): the two-client interrupted-cast lane.
@@ -30,6 +31,9 @@ bool Application::initScenario(const ApplicationConfig& config) {
     options.recastStopSpellId = config.scenarioRecastStopSpellId;
     options.buffNotakeVictimId = config.scenarioBuffNotakeSpellId;
     options.fizzleSpellId = config.scenarioFizzleSpellId;
+    // B1088 (#408): the loading_name lane's GM zone request target.
+    options.expectZoneChangeId = config.scenarioZoneId;
+    options.expectZoneName = config.scenarioZoneName;
     // B888 (issue #204): create_character checks what --create-character made.
     if (m_eqClient) {
         const auto& script = m_eqClient->LoginWorld().GetWorldScript();

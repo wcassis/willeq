@@ -7,6 +7,7 @@
 #include "client/graphics/renderer_zone_merge.h"  // ZoneMergeBuffers complete type (unique_ptr member destruction)
 #include "client/willeq_database.h"
 #include "client/graphics/loading_thread.h"
+#include "client/zone/zone_display_name.h"  // B1088 (#408): the loading screen's zone name
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/eqe1_loader.h"
 #include <filesystem>
@@ -835,6 +836,12 @@ void IrrlichtRenderer::hideLoadingScreen() {
     if (isLoading()) return;
     loadingScreenVisible_ = false;
     LOG_DEBUG(MOD_GRAPHICS, "Loading screen hidden");
+
+    // B1088 (#408): the zone is READY -- forget the "Entering <name>..." line
+    // so a stale name never shows for the NEXT load before its zone id is
+    // known. The next refresh() (zone id known) / noteNewZone() (the new
+    // zone's own name) re-derives it; both log the line they store.
+    eqt::ZoneDisplayNames::instance().clearEntry();
 
     // T412 (board B294): the PVS force-update flag write that stood here (and the
     // half-finished comment above it about Tier2 caching camera positions) is

@@ -49,6 +49,7 @@
 #include <vector>
 
 #include "client/graphics/ui/item_icon_atlas.h"
+#include "client/graphics/ui/ui_renderer.h"
 #include "tga_reader.h"
 
 namespace Layout = EQT::Graphics::ItemIconAtlasLayout;
@@ -381,4 +382,41 @@ TEST(ItemIconAtlas, TheEmptyCellInsideTheRangeStillMaps) {
     ASSERT_TRUE(EQT::ToolTGA::load(sheetPath(20), img, error)) << error;
     EXPECT_EQ(cellAlpha(img, x, y), 0u)
         << "dragitem21's (1,4) cell is no longer empty; re-take the census";
+}
+
+// B1078 (GitLab #398): the dragitem decal is a SQUARE (40x40, the oracle's
+// own DecalSize). A cell that is not square must never stretch it, so
+// drawItemIcon blits into UIRenderer::squareIn(rect) -- the centred square
+// of side min(w,h) -- and every call site funnels through that one helper.
+// This pins the helper's own arithmetic: a square cell comes back unchanged
+// (every current call site is a square, so the drawing is pixel-identical to
+// pre-B1078), and a non-square cell comes back as a centred square of the
+// short side's size, never the long side and never the cell's own ratio.
+TEST(ItemIconAtlasSquareIn, ACellThatIsAlreadySquareIsUntouched) {
+    const auto cell = irr::core::rect<irr::s32>(10, 20, 50, 60);
+    EXPECT_EQ(EQT::Graphics::UIRenderer::squareIn(cell), cell);
+}
+
+TEST(ItemIconAtlasSquareIn, ACellThatIsNotSquareBecomesACentredSquare) {
+    // The pre-B1078 merchant row: 25x14 -- the decal was blitted stretched.
+    const auto wide = irr::core::rect<irr::s32>(100, 50, 125, 64);
+    const auto q = EQT::Graphics::UIRenderer::squareIn(wide);
+    EXPECT_EQ(q.getWidth(), 14) << "side is the short side";
+    EXPECT_EQ(q.getHeight(), 14);
+    // Centred: the cell's centre (112, 57) stays the square's centre.
+    EXPECT_EQ(q.getCenter().X, 112);
+    EXPECT_EQ(q.getCenter().Y, 57);
+    EXPECT_EQ(q, irr::core::rect<irr::s32>(105, 50, 119, 64));
+}
+
+TEST(ItemIconAtlasSquareIn, APortraitCellSquaresOnTheShortSideToo) {
+    const auto tall = irr::core::rect<irr::s32>(0, 0, 20, 60);
+    const auto q = EQT::Graphics::UIRenderer::squareIn(tall);
+    EXPECT_EQ(q, irr::core::rect<irr::s32>(0, 20, 20, 40));
+}
+
+TEST(ItemIconAtlasSquareIn, AnEmptyCellYieldsAnEmptySquare) {
+    EXPECT_EQ(EQT::Graphics::UIRenderer::squareIn(
+                  irr::core::rect<irr::s32>(5, 5, 5, 5)),
+              irr::core::rect<irr::s32>(5, 5, 5, 5));
 }

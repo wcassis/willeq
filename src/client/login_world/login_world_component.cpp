@@ -38,6 +38,7 @@
 #include "client/eq.h"
 #include "client/login_world/login_world_component.h"
 #include "client/core/memory_ledger.h"  // B839: the login sub-owner
+#include "client/zone/zone_display_name.h"  // B1088 (#408): the loading screen's zone name
 #include "common/net/posix_udp_transport.h"  // K10: ConnectToLogin/ConnectToWorld moved in from eq.cpp
 #include "common/logging.h"
 #include "common/packet_structs.h"
@@ -684,6 +685,15 @@ void LoginWorldComponent::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 				LOG_DEBUG(MOD_MAIN, "Found our character '{}' at index {}", ctx_.character, i);
 				m_character_select_index = i;
 				found = true;
+				// B1088 (#408): the target zone id is known BEFORE the zone
+				// handshake -- this is the initial-login refresh (era table now,
+				// OP_NewZone's own name later). The INFO line the client logs is
+				// the string the loading screen draws. Once per character, not
+				// once per fresh list (the camp return re-lists and must not
+				// re-log).
+				if (zone != 0) {
+					ZoneDisplayNames::instance().refresh(zone);
+				}
 			}
 		}
 	}
