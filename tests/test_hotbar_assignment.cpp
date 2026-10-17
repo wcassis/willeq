@@ -439,15 +439,18 @@ protected:
     }
 
     // The slot's own rect (hotbar_layout.h -- the hit test's geometry), so
-    // the click lands where hitTestHotbar() says it does.
+    // the click lands where hitTestHotbar() says it does. The orientation is
+    // the LAYOUT TABLE's: at 800x600 the bar is 1x10 (B1075, #395), so the
+    // rect must use layout.hotbarColumns the same way the production hit
+    // test does (hotbar_panel.cpp), not the oracle's stock 2-column default.
     int slotX(int slot) const {
         const auto r = EQT::Graphics::HotbarLayout::slotRect(
-            layout.hotbar, slot);
+            layout.hotbar, slot, layout.hotbarColumns);
         return (r.UpperLeftCorner.X + r.LowerRightCorner.X) / 2;
     }
     int slotY(int slot) const {
         const auto r = EQT::Graphics::HotbarLayout::slotRect(
-            layout.hotbar, slot);
+            layout.hotbar, slot, layout.hotbarColumns);
         return (r.UpperLeftCorner.Y + r.LowerRightCorner.Y) / 2;
     }
 
