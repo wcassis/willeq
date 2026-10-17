@@ -123,6 +123,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_ninth_spell_gem GTest::gtest_main willeq_core)
     TARGET_INCLUDE_DIRECTORIES(test_ninth_spell_gem PRIVATE ${IRRLICHT_INCLUDE_DIR})
     GTEST_DISCOVER_TESTS(test_ninth_spell_gem DISCOVERY_TIMEOUT 120)
+
+    # B1076 (GitLab #396): the spellbook window's geometry, quoted from
+    # EQUI_SpellBookWnd.xml. Pure layout math -- needs only the Irrlicht
+    # headers for the rects, no EverQuest, no device.
+    ADD_EXECUTABLE(test_spellbook_layout
+        test_spellbook_layout.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_spellbook_layout GTest::gtest_main)
+    TARGET_INCLUDE_DIRECTORIES(test_spellbook_layout PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    GTEST_DISCOVER_TESTS(test_spellbook_layout DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T24: BuffManager coverage. BuffManager is constructible standalone from a
