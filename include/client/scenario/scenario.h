@@ -35,6 +35,16 @@ enum class StepResult {
     Fail,
 };
 
+// B1025-H5 (#345): the content IScenarioWorld::HotbarSlotAt() reports back --
+// the model's own HotbarSlotType as an int, the slot's id, and the
+// Emote/Macro command line (empty for the other kinds). A world that cannot
+// read a slot answers all-defaults.
+struct HotbarSlotRead {
+    int type = 0;        // eqt::HotbarSlotType as an int
+    uint32_t id = 0;
+    std::string text;
+};
+
 /**
  * Everything a scenario is allowed to see or do.
  *
@@ -216,6 +226,45 @@ public:
      */
     virtual long long CharacterSelectActivations() const { return -1; }
 
+    // --- B1025-H5 (#345): hotbar controls, through the user path. Same
+    //     "default = cannot do this" rule as the other actions. ---
+    //
+    // `page` is the HotbarModel page (0-9), `slot` the 0-based slot within it.
+    /**
+     * The USER assignment path: a hot button placed on a slot -- the same
+     * HotbarAssignIntent the render thread's hold gesture pushes
+     * (BridgeComponent::onHotbarAssignIntent -> HotbarModel::assignSlot).
+     * `text` is the Emote/Macro command line (empty for the other kinds).
+     */
+    virtual bool AssignHotbarSlot(int page, int slot, int type, uint32_t id, const std::string& text) {
+        (void)page; (void)slot; (void)type; (void)id; (void)text;
+        return false;
+    }
+    /**
+     * The CLICK activation path: HotbarActivateIntent for the slot's current
+     * content (BridgeComponent::onHotbarActivateIntent reads the model's slot
+     * and dispatches by type).
+     */
+    virtual bool ActivateHotbarSlot(int page, int slot) {
+        (void)page; (void)slot;
+        return false;
+    }
+    /** The KEYBOARD activation path: a hotbar keypress the game thread's
+     *  InputActionBridge drains (processHotbarRequests) and dispatches by the
+     *  slot's type. */
+    virtual bool PressHotbarKey(int slot) { (void)slot; return false; }
+    /** The window's page button: HotbarPageChangedIntent -> setCurrentPage. */
+    virtual bool SetHotbarPage(int page) { (void)page; return false; }
+    /** The model's current page (HotbarModel::currentPage); -1 when the
+     *  world cannot read it. */
+    virtual int HotbarPage() const { return -1; }
+    /** The content at (page, slot): type int (eqt::HotbarSlotType) and id;
+     *  the emote/command text for Emote/Macro. All three 0/"" when unreadable. */
+    virtual HotbarSlotRead HotbarSlotAt(int page, int slot) const {
+        (void)page; (void)slot;
+        return {};
+    }
+
     // --- actions ---
     /** Dispatch one slash command line, exactly as --script would. */
     virtual void SendCommand(const std::string& rawLine) = 0;
@@ -382,6 +431,13 @@ struct ScenarioOptions {
      * flaky lane should not pass on the first tick's un-echoed value.
      */
     double fallWaitSeconds = 8.0;
+    /**
+     * B1025-H5 (#345): hotbar_lifecycle. The charged consumable the lane SEEDS
+     * into the caster's inventory (its id is fixed by the lane's seed.sql, not
+     * hunted in the DB) and assigns to a hotbar slot; the card's item leg is
+     * its CHARGE DECREMENT, which the lane's post-check asserts in the DB.
+     */
+    uint32_t hotbarItemId = 8443;
     /**
      * B1088 (#408, loading_name): the target of the scenario's GM zone
      * request -- the SECOND zone-in whose loading screen the post-check

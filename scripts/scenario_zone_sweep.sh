@@ -237,10 +237,11 @@ say "sweeping ${ZN} zone(s) on the ${LANE} lane, char=$CHAR, timeout=${TIMEOUT_S
 
 # ---- the locks, taken in order, released in reverse ------------------------
 if ! eqemu_lock_take "kb-b854-pi-zone-sweep"; then
-    say "eqemu lock is HELD by: $(eqemu_lock_show) -- refusing to run (card rule: block the card, do not wait >10 min)"
+    say "eqemu lease is HELD by: $(eqemu_lock_show) -- refusing to run (card rule: block the card, do not wait >10 min)"
     exit 64
 fi
-say "eqemu lock taken"
+say "eqemu lease taken"
+eqemu_lease_start_renewer  # B1089: a multi-zone sweep runs for hours; it must never be stolen
 PI_LOCK_TAKEN=0
 if [ "$PI" -eq 1 ]; then
     # The Pi is single-tenant (T503): one DRM master, 483 MB, ONE willeq at a
@@ -302,6 +303,7 @@ cleanup() {
     say "stack down"
     # Locks released in REVERSE of acquisition: pi first, eqemu second.
     [ "$PI_LOCK_TAKEN" -eq 1 ] && pi_lock_release "kb-b854-pi-zone-sweep"
+    eqemu_lease_stop_renewer
     eqemu_lock_release
     say "locks released"
 }

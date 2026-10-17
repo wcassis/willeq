@@ -493,7 +493,7 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (39 tests: `FacePickXmlGeometry`, `FileSizeCeiling`, `DocCitations` (+ B1020's
+`hygiene` (40 tests: `FacePickXmlGeometry`, `FileSizeCeiling`, `DocCitations` (+ B1020's
 `DocCitationsSelfTest`, the anchored-citation probes), B1030's
 `DockerfileArm64Derived` (the arm64 Dockerfile stays arch-swapped armhf) and
 `PiEnvLaneResolution` (`scripts/pi/env_selftest.sh`: a PI_LANE that disagrees
@@ -507,8 +507,11 @@ the same archive; SKIPs likewise), `DocClaims` and
 `DocCounts` from T371/T373, plus `CommentClaims`, `TexturesReproducible`,
 `PackReproducible`, `WriteOnlyFields` (T414 Leg C, the field half of the
 reachability ratchet), B1018's `WriteOnlyFieldsSelfTest` (`check_write_only_fields.py --self-test`, the multi-declarator split's own probes) and T450's `DbReproducible`, T455's
-`ZeroCallers`, T486's `ZeroCallersSelfTest` (the classifier's own probes,
-`check_zero_callers.py --self-test`), T491's `VisualGateLedgerAssertions`
+`ZeroCallers` + `ZeroCallersSelfTest` (the classifier's own probes,
+`check_zero_callers.py --self-test`), B1089's `LeaseCoreSelfTest`
+(`scripts/eqemu/lease_selftest.sh`: the lane lease's hermetic net — take,
+renew, TTL, reap, per-host kill and verified release — no ssh, no network),
+T491's `VisualGateLedgerAssertions`
 + `MemoryCapHuntScript` (the memory-ledger half of the visual gate and the
 cap-hunt script, both pure-script checks), T498's `ItemModelsMatchServer`
 (`data/item_models.json` against the committed server export
