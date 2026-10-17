@@ -52,6 +52,8 @@
 #undef protected
 #endif
 
+using namespace EQT::Graphics;
+
 namespace {
 
 // Mirrors ConstrainedTextureCache::cacheKey() (private) -- the documented
@@ -135,10 +137,15 @@ protected:
         return cache_->uploadTexture(name, /*applyPaletteMask=*/false, stem);
     }
 
+#ifdef B1083_STEP7_DRIVER_NAME_STORED
+    // Post-fix state: read the STORED name off the entry (private map, via
+    // the #define-private include above). Absent pre-fix -- the red there is
+    // the public-API driver name alone.
     const ConstrainedTextureCache::CachedTexture* entry(const std::string& key) const {
         auto it = cache_->cache_.find(key);
         return it == cache_->cache_.end() ? nullptr : &it->second;
     }
+#endif
 };
 
 }  // namespace
@@ -162,6 +169,7 @@ TEST_F(DriverNameFixture, SingleArchiveEntryKeepsThePreB1083Name) {
 
     // The driver-facing name is the pre-B1083 plain name, not internalKey.
     EXPECT_EQ(nameOf(tex), name);
+#ifdef B1083_STEP7_DRIVER_NAME_STORED
     // ...and it is STORED on the entry (decided once, not re-derived).
     const auto* e = entry(keyForTest(name, "qeynos2", /*masked=*/false));
     ASSERT_NE(e, nullptr);
@@ -170,6 +178,7 @@ TEST_F(DriverNameFixture, SingleArchiveEntryKeepsThePreB1083Name) {
     // The cache-map key is still the full (archive, name, mask) key -- the
     // B1083 keying ruling is untouched by the fix.
     EXPECT_EQ(e->texture, tex);
+#endif
 }
 
 // The willow (qeytoqrg tree70): the SAME name, DIFFERENT bytes, two
@@ -193,13 +202,14 @@ TEST_F(DriverNameFixture, CrossArchiveTwinTakesTheFullKey) {
     EXPECT_EQ(nameOf(zoneTex), name) << "the family-first member keeps base's plain name";
     EXPECT_EQ(nameOf(objTex), keyForTest(name, "qeytoqrg_obj", /*masked=*/false))
         << "the second member takes the full internalKey (no driver fold)";
-
+#ifdef B1083_STEP7_DRIVER_NAME_STORED
     const auto* zoneEntry = entry(keyForTest(name, "qeytoqrg", false));
     const auto* objEntry = entry(keyForTest(name, "qeytoqrg_obj", false));
     ASSERT_NE(zoneEntry, nullptr);
     ASSERT_NE(objEntry, nullptr);
     EXPECT_EQ(zoneEntry->driverName, name);
     EXPECT_EQ(objEntry->driverName, keyForTest(name, "qeytoqrg_obj", false));
+#endif
 
     // Each request keeps ITS OWN pixels (the scoping the willow relies on).
     EXPECT_EQ(cache_->getTexture(name, false, "qeytoqrg"), zoneTex);
@@ -230,10 +240,11 @@ TEST_F(DriverNameFixture, MaskedAndUnmaskedKeepDistinctDriverNames) {
     EXPECT_NE(nameOf(plain), nameOf(masked));
     EXPECT_EQ(nameOf(plain), name) << "unmasked family-first: the plain name";
     EXPECT_EQ(nameOf(masked), name + "\x01masked") << "masked family-first: the P46d name";
-
+#ifdef B1083_STEP7_DRIVER_NAME_STORED
     const auto* maskedEntry = entry(keyForTest(name, "arch", /*masked=*/true));
     ASSERT_NE(maskedEntry, nullptr);
     EXPECT_EQ(maskedEntry->driverName, name + "\x01masked");
+#endif
 }
 
 // A PENDING sibling (decoded, not yet promoted) already counts: the zone
