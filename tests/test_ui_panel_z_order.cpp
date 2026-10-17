@@ -449,19 +449,24 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
         // per-slot frames are solid draws there, so the HUD rose from 18 to
         // 59 draws. The atlas pins are unchanged: every one of those is one
         // atlas quad plus the shared panel texture.
-        {"hud", [] {}, {4, 4, 6, 1}, {59, 59, 6, 1}},
-        {"inventory", [&] { inv_.activePopup = PopupType::Inventory; }, {31, 35, 7, 2}, {82, 84, 7, 2}},
+        // B1077: the fixture's renderSpellGemPanel adds the always-on spell
+        // gem bar to every frame -- a constant +4 draws on the atlas path
+        // (one texture run for the bar's icons + one quad + the shared panel)
+        // and +3 on the fallback path (no atlas run), across every scenario;
+        // layers/groups unchanged. Re-taken 2026-10-17 on the ThinkPad.
+        {"hud", [] {}, {8, 8, 6, 1}, {62, 62, 6, 1}},
+        {"inventory", [&] { inv_.activePopup = PopupType::Inventory; }, {35, 39, 7, 2}, {85, 87, 7, 2}},
         // What B899's workaround drew for three open bags: the topmost only.
         // The Forge (350,100) also covers inventory text, so even one bag is a
         // real split (the shipped bleed was there too).
         {"inv+forge", [&] {
              inv_.activePopup = PopupType::Inventory;
              openForge(containers_);
-         }, {34, 42, 8, 3}, {92, 96, 8, 3}},
+         }, {38, 46, 8, 3}, {95, 99, 8, 3}},
         {"inv+3 bags", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
-         }, {47, 63, 10, 5}, {109, 117, 10, 5}},
+         }, {51, 67, 10, 5}, {112, 120, 10, 5}},
         {"full", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
@@ -472,7 +477,7 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
              cursor_.iconId = 1001;
              cursor_.mouseX = 560;
              cursor_.mouseY = 420;
-         }, {48, 64, 13, 5}, {125, 136, 13, 6}},
+         }, {52, 68, 13, 5}, {128, 139, 13, 6}},
     };
 
     for (bool fallback : {false, true}) {
