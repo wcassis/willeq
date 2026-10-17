@@ -6,6 +6,58 @@ Newest entries first. Each entry: decision, rationale, implications.
 
 ---
 
+## 2026-10-16 — The zone-OUT audio teardown: silence at CleanupZone, counted for the lane (B1080, #400)
+
+**Decision:** leaving a zone silences its audio at the zone-OUT boundary, not
+at the next zone-in. `ZoneAudioManager::silenceForZoneOut(fadeSeconds)` stops
+every emitter (its looped SFX channel freed, B1074), frees the one-shot SFX
+channels (`AudioManager::stopAllSounds()`) and fades the zone music
+(`stopMusic(fade)`). It is called from `ZoneComponent::CleanupZone()` — the
+single point every zone-OUT path funnels through (graceful zone-out,
+handshake timeout, logout, the B1072 fresh-login give-up) — and is idempotent
+and a safe no-op with no zone loaded. It must NOT be called on a zone IN: the
+destination zone's `loadZone()` / `AudioManager::onZoneChange()` re-arms
+emitters and music, and the next zone's music region is a different one.
+
+**Rationale:** before this, a zone's audio outlived the zone. `unloadZone()`
+ran only in the NEXT zone's `loadZone()`, and `onZoneChange()` only on zone
+ENTRY, so while the loading screen was up — including a stalled zone-in that
+gave up (B1072) and sat back at character select — the leaving zone's music
+and every zero-cooldown emitter kept playing: nothing in a zone-OUT path
+stopped them (the emitters are stopped only by range, day/night switch,
+`unloadZone()`/`pause()`, or the manager's own lifetime; B1074's loop rule
+guarantees the zero-cooldown ones hold their channels for as long as the
+listener is in range). Fixing it at CleanupZone() catches every path at once;
+fixing each path individually would leave the next one open.
+
+**Implications:** the lane can assert the teardown without audio. A
+headless `--scenario` run has no audio system (`InitializeAudio()` runs only
+from the graphics init), so the `zone_connect_timeout` scenario asserts on
+`ZoneAudioSilenceCount()` — a teardown counter incremented in every build,
+WITH_AUDIO on or off, counting the silence PATH, not the sound. The audio
+EFFECT (emitters cleared, loops freed, one-shots freed, music faded and
+stopped) is pinned by `test_zone_sound_emitters.cpp`'s
+`ZoneAudioSilenceForZoneOutTest` over the real qeynos2 loops + music; the
+wiring (CleanupZone calls it) by `test_zone_component.cpp`'s
+`ZoneOutTeardownRunsTheAudioSilence`. A world that cannot read the count
+(-1) fails the scenario rather than passing silently.
+
+**Oracle confirmation (the card's step 1, 2026-10-16):** the official
+client's zone-OUT audio was measured on lane 1 (Pulse monitor of the Wine
+client — the rig has no working ALSA userspace, so a session PulseAudio
+daemon is the capture path). causeway's music + ambient emitters, sustained
+at 0–4.5 k RMS (dead second at t=209, ~1 s ramp-up, peak 4502 at t=244), fade to the noise floor (RMS ≤ 3) ~8 s after
+`/cast Ring of Karana` (of which 7 s is the rank-0 spell's own cast time,
+`spells_new.cast_time` 7000 ms), the floor holds flat for ~1.5 s (no SFX
+tail at 0.25 s resolution), and the destination screen's audio starts only
+then. The destination's zone-in failed on this rig (client back at the
+login screen), so the capture exercises exactly the B1072-class give-up —
+and the old zone's audio still stopped. The 2.0 s fade constant
+(`kZoneOutMusicFadeSeconds`) is therefore bounded above by the measured
+stop and equals the client's own existing zone-music stop; see
+`refactor/B1080/README.md` for the full ledger (envelope, marks, stills,
+the negative sessions).
+
 ## 2026-09-05 — The ceiling covers `tools/` and `benchmarks/` too (T385)
 
 **Decision:** `scripts/refactor/check_file_sizes.sh --all` scans `src/`,
@@ -2170,3 +2222,155 @@ spelling anywhere in the tree is a regression: `test_robe_texture_range`
 (the measured table) and `test_robe_entity_prep` (chest material 10 takes the
 robe body variant through `createAnimatedNodeWithEquipment()`) are red on the
 old 11..16 header and green at the fix.
+## 2026-10-16 — Spell-icon atlas: the three id spaces, row-major, proven (B1077, #397)
+
+Fable has now shipped spell-icon art. `include/client/graphics/ui/
+spell_icon_atlas.h` is the one place the three families are addressed,
+quoted from the oracle's `EQUI_Animations.xml`, and the builder
+(`tools/spell_icon_atlas_builder`) and the runtime loader both include it.
+Standing facts — do not re-derive:
+
+1. **`A_SpellGems` (gemicons01..03.tga) = 7x9 of 36x28 = 189 cells**,
+   addressed by `gem_icon` (field 144); **`A_SpellIcons` (Spells01..07.tga)
+   = 6x6 of 40x40 = 252 cells**, addressed by `spell_icon` (field 143);
+   **`BuffIcons` (Spell_Icons.tga) = 6x6 of 40x40 = 36 cells**, the
+   `BW_Buff*_Button` decal in `EQUI_BuffWindow.xml`. All three are
+   **row-major, zero-based** (`<Vertical>false</Vertical>` + the salvage
+   audit's arithmetic). `indexForId()` is the only bounds check; an id at
+   or above its family's count carries no art and the caller's
+   `drawSpellIcon()` false-return is the "no art" signal (the 4-letter
+   name fallback).
+2. **The Buff sheet is the ONE part-filled family** (23 of 36 cells carry
+   art, the empties being ids 23..35, a trailing run — id 14, the diagonal
+   cell row 2 col 2, carries art) and is therefore the only one that
+   PROVES the grid order — `test_spell_icon_atlas.cpp` pins the row-major
+   reading from that fill (`BuffFillProvesRowMajor` /
+   `ColumnMajorReadingWouldBeWrong`, from id 24: empty row-major, populated
+   column-major). A new family that is fully populated cannot prove its own
+   order.
+3. The gem bar is the oracle's own `EQUI_CastSpellWnd.xml` window (48x290;
+   gems 36x28 at (3,10+30i); the ninth parked at -5000 per T483; the book
+   button 22x22 at (10,252)) at the layout table's anchor (B1075), and the
+   book button toggles the spellbook through the SAME body Ctrl+B and
+   `/newbook` use. `gem_icon` is the ONLY icon column with art in Titanium
+   (`spell_icon` is 0 everywhere in this export), so the hotbar's Spell
+   slots draw `gem_icon`, resolved at publish by `HotbarModel`.
+
+The atlas is the fourth `scripts/build_textures.sh` recipe and grows
+`willeq.eqe1` by 4,197,056 bytes (three ETC1 family atlases with mips +
+their three `_alpha` companions + the 40x40 `CW_SpellGemHolder` piece;
+the first leg's `A_SpellGemHolder` cut was replaced by the 2026-10-17
+ruling below, same pack size, new bytes).
+
+## 2026-10-17 — B1077 fix leg: the gem bar's holder is the CW piece, not the A piece (MR !210 finding 4)
+
+The oracle answers the question. All eight `CSPW_SpellN` pieces in
+`EQUI_CastSpellWnd.xml` carry `<Holder>CW_SpellGemHolder</Holder>`, and
+the file DEFINES it locally (line 5): `classic_pieces01.tga` at (41,123),
+36x28 — a socket frame 1:1 with the 36x28 gem cell. B1077's first leg had
+shipped `A_SpellGemHolder` from `EQUI_Animations.xml` (window_pieces02.tga
+(208,216), 39x32) — 3 px wider / 4 px taller than the cell — which is the
+piece the oracle's `EQUI_CursorAttachment.xml` and HotButtonWnd use.
+Ruled per the oracle rule (copy the official client's UI/behavior; prefer
+the client files): **the gem bar ships `CW_SpellGemHolder`**. The header
+holder constants, the atlas builder, the test and the pack pins all moved
+in one leg; `docs/decisions.md`'s 2026-10-16 entry and
+`refactor/B1077/README.md` carry the measurement. The same leg restated
+two committed wrong numbers from fresh measurement: the gem census over
+`data/willeq.db` (8,066 rows) is 128 rows / 11 distinct ids (189, 190,
+191, 193, 194, 195, 202, 204, 208, 211, 215) at or above 189 — not "26
+ids / 25 spells"; and the buff sheet's empties are ids 23..35 — id 14
+carries art (alpha sum 77,520).
+
+## 2026-10-16 — B1081: the zone-change world reconnect does not bring up the character-select screen (#401)
+
+One line: the screen may come up only while the world is in a character-select
+stage, so `CharacterSelectService::tick()` keeps it down for the frames in
+which `LoginWorldComponent::IsZoningReconnect()` is true — the zone-change
+latch (`ZoneToZoneInProgress`, set in `ProcessDeferredZoneChange` and latched
+across the teardown) AND the zoning pass's `OP_EnterWorld` not yet out; a
+fresh login, the B1005 camp return and the B1072 give-up all clear the latch
+before their reconnect, so they still bring the screen up, exactly as before
+(the screen-up count is asserted in `tests/test_zone_change_no_flash.cpp` and
+the `zone_change_no_flash` scenario: one screen-up for the whole
+login→zone-in→`/gmzone`→zone-change run, measured in
+`CharacterSelectService::Activations()`).
+
+`/gmzone` needs the same wire fix to be testable at all: `OP_GMZoneRequest`
+(0x1306) is only the QUERY half — eqemu's reply carries the target zone's
+safe coords and a success flag, and the CHANGE is the client's second
+one-word packet, `OP_GMZoneRequest2` (0x244c), which eqemu's
+`Handle_OP_GMZoneRequest2` answers with `GoToSafeCoords` (akk-stack
+`/mnt/projects/akk-stack/code/zone/client_packet.cpp:7142`,
+`/mnt/projects/akk-stack/code/zone/zoning.cpp:1074`). fable's handler only
+logged the approval, so a live `/gmzone <char> <other_zone>` was a silent
+no-op on every lane and the scenario's transition arm could never be
+reached. It now queues the confirm on an approved reply; a denied reply
+sends nothing. (The live leg that found this: `refactor/B1081/README.md`.)
+
+## 2026-10-16 — a stalled zone-in is bounded at every phase, and a zone that ANSWERED is never re-connected (B1079, #399)
+
+Will's 2026-10-15 XU4 hang (#399): an in-session zone change (zone load #2,
+past the session) sat on the loading screen until it was killed. B1072's
+watchdog bounded only `ZONE_CONNECTING` and disarmed the moment the phase
+moved past it. RULED:
+
+1. **Every zone-in loading phase carries a deadline** (`zone_connect_watchdog.h`,
+   the `phase_bound` table, sources in `refactor/B1079/README.md`): the connect
+   phase is measured (B1072 census, 2x the max); the five network-tail phases
+   are assumed (no per-phase census exists in-tree, stated as such); the four
+   `GRAPHICS_*` phases share one budget (2x the slowest blessed Pi cold load).
+   A stalled load costs ONE phase's own budget, and the escalation names the
+   stuck phase and the last opcode the zone sent, then lands on a fresh world
+   login (character select / auto Enter World) -- never a hang, never a
+   process exit. The bound covers a zone load #N, not only a cold login,
+   because the deadline walks the CURRENT loading phase, not "still connecting".
+2. **A zone that ANSWERED is never re-connected.** The ONE retry of the zone
+   connect applies to `ZONE_CONNECTING` only. Once the session is up (the phase
+   has advanced past it -- the zone has seen our `OP_ZoneEntry`), the
+   escalation is a no-retry give-up: re-opening the session would duplicate the
+   zone entry. This is the standing distinction from B1072's shape (session
+   never came up -> one connect retry). A unit that wants a re-connect after the
+   session is up reopens this entry.
+3. **The play box keeps its log** (`--log-file PATH` / `WILLEQ_LOG_FILE`): the
+   logger writes the SAME lines to a file, line-flushed every drain cycle, so a
+   kill mid-zone-in keeps the log. The file is ADDITIVE (stdout/stderr keep
+   everything; an unwritable path is one stderr line, never a silencer). Both
+   `--log-level=LEVEL` and the space form `--log-level LEVEL` are accepted; an
+   unparseable level is a loud startup `ERROR`, never a silent no-op.
+   `refactor/B1079/README.md` and `docs/standards/debug_logging_standards.md`.
+
+## 2026-10-17 — B1078: a window draws at the oracle's OWN size, scaled only by ONE uniform factor, and the 40x40 dragitem decal is never stretched (#398)
+
+Will's 2026-10-15 play session: "the vendor window item icons are
+squashed and appear unnaturally square". Measured root cause: the
+merchant (374x480), inventory (428x460) and tradeskill (400x525) windows
+mapped their oracle geometry into fable's fixed 400x350 popup with TWO
+different factors (x by the width ratio, y by the height ratio), and the
+merchant blitted the 40x40 dragitem decal into the full list cell --
+25x14 at every resolution. RULED (extending the B1075 ruling, 2026-10-15):
+
+1. **A window draws at the oracle's OWN size**, anchored by the layout
+   table (the bank/options precedent). Where the screen cannot fit it
+   (the middle band is 384 tall at 800x600), the scale is ONE uniform
+   factor -- the min of the width and height ratios, capped at 1 -- applied
+   to the whole window, never an x factor and a different y factor
+   (that anisotropy is the defect). Merchant 80% at 800x600, inventory
+   83%, tradeskill 73%; at 1024x768 and up all three are 100% except the
+   inventory at 1024 (94%, width-bound) and the tradeskill at 1280x720
+   (96%, width-bound).
+2. **Every `drawItemIcon()` call site blits a square.** The decal is the
+   oracle's own 40x40 cell, so a cell that is not one must never stretch
+   it: `UIRenderer::squareIn(cell)` (the centred square of side min(w,h),
+   identity on a square cell) is the one helper, applied in the funnel and
+   asserted per call site at all four `kSupportedResolutions` by
+   `tests/test_item_icon_rects.cpp`. The merchant's measured row pitch is
+   24 (UIGAP-ORACLE/152), so its icon column is 24x24 at the window's own
+   size; `ORACLE_ROW_H` was 20 and is 24, `ROWS_VISIBLE` follows
+   (15, not 16 -- integer division).
+3. **Draw and click read the SAME rect** (T57's rule, applied to the
+   fix-leg's live defect): the tradeskill editbox-defocus hit test read
+   `layout.centerPopup` while the draw reads `TradeskillLayout::
+   windowRect()`; it now reads the drawn rect. `refactor/B1078/README.md`
+   (before/after rect tables, measured dump).
+

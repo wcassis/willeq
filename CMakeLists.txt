@@ -407,6 +407,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/inspect_answer.cpp
     src/client/group/group_component.cpp
     src/client/zone/zone_component.cpp
+    src/client/zone/zone_display_name.cpp  # B1088 (#408): the loading screen's zone name
     src/client/movement/movement_component.cpp
     src/client/player/player_component.cpp
     src/client/player/camp_timer.cpp  # B1005 (#324): the camp state machine
@@ -547,9 +548,14 @@ SET(CLIENT_CORE_SOURCES
     src/client/scenario/scenario_world_app_trade.cpp  # UIGAP-live2
     src/client/scenario/scenario_camp.cpp  # B1005 (#324)
     src/client/scenario/scenario_zone_connect_timeout.cpp  # B1072 (#392)
+    src/client/scenario/scenario_zone_change_no_flash.cpp  # B1081 (#401)
     src/client/scenario/scenario_world_app_camp.cpp  # B1005
     src/client/scenario/scenario_fall_damage.cpp  # B893 (#209)
+    src/client/scenario/scenario_loading_name.cpp  # B1088 (#408)
     src/client/scenario/scenario_ranged_single_shot.cpp  # B900 (#216)
+    src/client/scenario/scenario_hotbar_lifecycle.cpp  # B1025-H5 (#345)
+    src/client/scenario/scenario_hotbar_isolation_assign.cpp  # B1025-H5 (#345) peer
+    src/client/scenario/scenario_world_app_hotbar.cpp  # B1025-H5 (#345)
     src/client/scenario/scenario_application_wiring.cpp
     # Bridge sources
     src/client/bridge/console_bridge.cpp
@@ -670,6 +676,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/overlays/overlays_component.cpp
         src/client/graphics/overlays/overlays_hud_env.cpp
         src/client/graphics/overlays/overlays_env_managers.cpp  # T467
+        # B1088 (#408): the loading screen's ONE layout (both draw bodies
+        # delegate here, so the two screens cannot drift apart).
+        src/client/graphics/overlays/loading_frame_layout.cpp
         # B994 (#314): the 3D target ring -- TargetIndicator.ini's geometry
         # (device-free) and its one draw call.
         src/client/graphics/overlays/target_ring.cpp
@@ -814,6 +823,9 @@ IF(EQT_GRAPHICS)
         # T430 (board B376): the item-icon sheets, lazily loaded from the
         # pack and addressed by include/client/graphics/ui/item_icon_atlas.h.
         src/client/graphics/ui/item_icon_sheets.cpp
+        # B1077 (GitLab #397): the spell-icon sheets, loaded beside the item
+        # sheets and addressed by include/client/graphics/ui/spell_icon_atlas.h.
+        src/client/graphics/ui/spell_icon_sheets.cpp
         src/client/graphics/ui/static_ui_input.cpp
         src/client/graphics/ui/static_ui_cursor.cpp  # B442
         src/client/graphics/ui/quantity_window.cpp  # B442
@@ -823,6 +835,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/static_panels.cpp
         # B1025-H2: the stock hotbar window (its own TU, M00).
         src/client/graphics/ui/hotbar_panel.cpp
+        # B1025-H3: the hotbar assignment gesture (its own TU, M00).
+        src/client/graphics/ui/hotbar_assignment.cpp
         src/client/graphics/ui/chat_wrap_cache.cpp
         src/client/graphics/ui/ui_quad_batch.cpp
         src/client/graphics/ui/bitmap_glyph_table.cpp
@@ -1025,6 +1039,15 @@ ADD_LIBRARY(willeq_core STATIC ${ALL_CORE_SOURCES})
 # one and stays.
 # Pinned by test_zone_geometry_atlas_layout.
 TARGET_COMPILE_DEFINITIONS(willeq_core PUBLIC EQT_HAS_TEXTURE_ATLAS)
+# B1079 (#399): eqe1_loader.cpp compiles inside willeq_core WITHOUT
+# EQT_HAS_LOGGING, so its lines were raw fprintf -- stderr ERROR immediately,
+# stdout INFO only when stdout flushed (the 2026-10-15 "last line is an
+# ERROR" misread was that buffering, #399 note 3). With the define, every
+# message goes through the logger: one ordered stream, and the --log-file
+# sink sees them. The standalone test tools (test_eqe1_loader,
+# test_eqe1_stale_pack) do not link willeq_core and compile eqe1_loader.cpp
+# themselves -- they keep the fprintf path by definition.
+TARGET_COMPILE_DEFINITIONS(willeq_core PRIVATE EQT_HAS_LOGGING)
 # SQLite for WilleqDatabase
 TARGET_INCLUDE_DIRECTORIES(willeq_core PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
 TARGET_COMPILE_DEFINITIONS(willeq_core PRIVATE SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
@@ -2032,6 +2055,23 @@ ADD_EXECUTABLE(item_icon_atlas_builder
     tools/item_icon_atlas_builder.cpp
 )
 TARGET_INCLUDE_DIRECTORIES(item_icon_atlas_builder PRIVATE
+    ${CMAKE_SOURCE_DIR}/tools
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+# B1077 (GitLab #397): spell icon atlas builder. Reads the official client's
+# own uifiles/default/gemicons0{1,2,3}.tga (A_SpellGems, 7x9 of 36x28),
+# Spells0{1..7}.tga (A_SpellIcons, 6x6 of 40x40) and Spell_Icons.tga
+# (BuffIcons, 6x6 of 40x40) -- the three families EQUI_Animations.xml
+# declares -- plus the A_SpellGemHolder piece of window_pieces02.tga, and
+# packs them into data/textures/spell_icons{gems,spells,buff}.bmp (each
+# 1024x1024) + spell_icon_holder.bmp (40x40). Header-only inputs
+# (tga_reader.h, bmp32_writer.h) plus the shared layout header, so it links
+# nothing.
+ADD_EXECUTABLE(spell_icon_atlas_builder
+    tools/spell_icon_atlas_builder.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(spell_icon_atlas_builder PRIVATE
     ${CMAKE_SOURCE_DIR}/tools
     ${CMAKE_SOURCE_DIR}/include
 )

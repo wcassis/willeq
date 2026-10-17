@@ -37,7 +37,9 @@
 
 #include "client/eq.h"
 #include "client/login_world/login_world_component.h"
+#include "client/zone/zone_component.h"  // B1081: IsZoningReconnect()
 #include "client/core/memory_ledger.h"  // B839: the login sub-owner
+#include "client/zone/zone_display_name.h"  // B1088 (#408): the loading screen's zone name
 #include "common/net/posix_udp_transport.h"  // K10: ConnectToLogin/ConnectToWorld moved in from eq.cpp
 #include "common/logging.h"
 #include "common/packet_structs.h"
@@ -65,6 +67,14 @@ const char* eqcrypt_block(const char *buffer_in, size_t buffer_in_sz, char* buff
 
 namespace eqt {
 namespace login_world {
+
+// B1081 (#401), defined HERE (not in the header) because including the zone
+// header from login_world_component.h would put its `class EverQuest;`
+// forward declaration before eq.h's definition -- the two declarations would
+// not merge and eq.h's class body would be rejected in every TU.
+bool LoginWorldComponent::IsZoningReconnect() const {
+	return ctx_.Zone().ZoneToZoneInProgress() && !m_enter_world_sent;
+}
 
 void LoginWorldComponent::SetCredentials(const std::string& host, int port, const std::string& user,
                                          const std::string& pass, const std::string& server)
@@ -684,6 +694,15 @@ void LoginWorldComponent::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 				LOG_DEBUG(MOD_MAIN, "Found our character '{}' at index {}", ctx_.character, i);
 				m_character_select_index = i;
 				found = true;
+				// B1088 (#408): the target zone id is known BEFORE the zone
+				// handshake -- this is the initial-login refresh (era table now,
+				// OP_NewZone's own name later). The INFO line the client logs is
+				// the string the loading screen draws. Once per character, not
+				// once per fresh list (the camp return re-lists and must not
+				// re-log).
+				if (zone != 0) {
+					ZoneDisplayNames::instance().refresh(zone);
+				}
 			}
 		}
 	}

@@ -22,6 +22,7 @@ bool Application::initScenario(const ApplicationConfig& config) {
 
     scenario::ScenarioOptions options;
     options.holdSeconds = config.scenarioHoldSeconds;
+    options.silentZone = config.scenarioSilentZone;  // B1079
     options.castSpellId = config.scenarioSpellId;
     options.expectSelfMaterial = config.scenarioExpectMaterial;
     // B630 (issue #48): the two-client interrupted-cast lane.
@@ -30,6 +31,11 @@ bool Application::initScenario(const ApplicationConfig& config) {
     options.recastStopSpellId = config.scenarioRecastStopSpellId;
     options.buffNotakeVictimId = config.scenarioBuffNotakeSpellId;
     options.fizzleSpellId = config.scenarioFizzleSpellId;
+    // B1081 (#401): the zone_change_no_flash /gmzone target.
+    options.zoneChangeTargetZone = config.scenarioZoneChangeTargetZone;
+    // B1088 (#408): the loading_name lane's GM zone request target.
+    options.expectZoneChangeId = config.scenarioZoneId;
+    options.expectZoneName = config.scenarioZoneName;
     // B888 (issue #204): create_character checks what --create-character made.
     if (m_eqClient) {
         const auto& script = m_eqClient->LoginWorld().GetWorldScript();
@@ -97,6 +103,21 @@ bool Application::initScenario(const ApplicationConfig& config) {
     if (m_scenarioRunner->WantsCampToCharacterSelect()) {
         m_eqClient->Player().SetCampReturnsToCharacterSelect(true);
         LOG_INFO(MOD_SCENARIO, "scenario lane: /camp returns to character select on this run");
+    }
+    // B1081 (#401): zone_change_no_flash needs the screen UP for its first
+    // login -- so a zone change can then be measured against it. A headless
+    // --scenario run never shows it otherwise (CharacterSelectScreenWanted
+    // takes the explicit flag only for scenario runs), and with the screen
+    // up the client's automatic Enter World is suppressed, so the scenario
+    // presses its own (IScenarioWorld::EnterWorldAs, the body the screen's
+    // Enter World posts to) and the runner starts it without a pre-flight
+    // (WantsPreFlight). The observable is CharacterSelectService::
+    // Activations(), the game-thread half of the render thread's "[CHARSELECT]
+    // screen up" log line.
+    if (m_scenarioRunner->WantsCharacterSelectScreen()) {
+        m_charSelect = std::make_unique<login_world::CharacterSelectChannel>();
+        m_eqClient->LoginWorld().SetCharacterSelectScreen(true);
+        LOG_INFO(MOD_SCENARIO, "scenario lane: the character-select screen is up for this run");
     }
 
     scenario::ScenarioRunner* runner = m_scenarioRunner.get();

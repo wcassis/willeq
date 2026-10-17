@@ -531,6 +531,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 slot.hasItem = d.hasItem;
                 slot.itemName = d.hasItem ? d.itemName : "";
                 slot.iconId = d.hasItem ? d.iconId : 0;
+                slot.itemId = d.hasItem ? d.itemId : 0;  // B1025-H3
                 slot.quantity = d.hasItem ? d.quantity : 0;
                 slot.bagSlots = d.hasItem ? d.bagSlots : 0;  // B442b
                 // T60: an equip-slot change usually means the player's
@@ -543,6 +544,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 slot.hasItem = d.hasItem;
                 slot.itemName = d.hasItem ? d.itemName : "";
                 slot.iconId = d.hasItem ? d.iconId : 0;
+                slot.itemId = d.hasItem ? d.itemId : 0;  // B1025-H3
                 slot.quantity = d.hasItem ? d.quantity : 0;
                 // B442b (#151 rows 19-21): a bag here is right-click toggleable.
                 slot.bagSlots = d.hasItem ? d.bagSlots : 0;
@@ -594,6 +596,17 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             EQT::Graphics::applyCursorCoinChanged(
                 renderer_->Frame().cursorState_,
                 std::get<state::CursorCoinChangedData>(event.data));
+        }
+        break;
+    // B1025-H3 (GitLab #345): the /hotbutton command's hot button, a social
+    // button the game thread produced (eqstr 13278-13283). It lands on the
+    // cursor and waits for a click on a hotbar slot; the render thread clears
+    // it locally on a place, so the game thread never republishes a clear.
+    case state::GameEventType::HotbarAssignPending:
+        if (renderer_) {
+            EQT::Graphics::applyHotbarAssignPending(
+                renderer_->Frame().cursorState_,
+                std::get<state::HotbarAssignPendingData>(event.data));
         }
         break;
     // B442b (#151 rows 31-35): a drop / destroy prompt the game composed.

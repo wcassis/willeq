@@ -22,6 +22,7 @@
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/inventory_layout.h"  // T294: paperdollRect()
 #include "client/graphics/ui/item_icon_atlas.h"    // T430: the icon sheets
+#include "client/graphics/ui/spell_gem_layout.h"    // B1077: the oracle's gem cells
 #include "client/graphics/text_batch.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/constrained_renderer_config.h"
@@ -205,7 +206,8 @@ TEST_F(UIAtlasPixelTest, DrawSpriteBarHPIsVisible) {
 
 // The exact panel T272 photographed: a Ready gem's state-coloured border.
 // gemColor(1) is SColor(255, 100, 200, 100) and the border is the 1px top
-// edge of the gem's 32px slot.
+// edge of the gem cell. B1077: the cell is the oracle's 36x28 at the
+// window's (3, 10), so the top edge is 10 px below the window's top.
 TEST_F(UIAtlasPixelTest, SpellGemReadyBorderIsGreen) {
     UIRenderer ui;
     ui.init(driver_, atlas_.get(), &textBatch_);
@@ -215,8 +217,10 @@ TEST_F(UIAtlasPixelTest, SpellGemReadyBorderIsGreen) {
     gems.gems[0].gemState = 1;  // Ready
     gems.gems[0].spellName = "Minor Shielding";
 
-    const irr::s32 x = layout_.spellGems.UpperLeftCorner.X;
-    const irr::s32 y = layout_.spellGems.UpperLeftCorner.Y;
+    const irr::s32 x = layout_.spellGems.UpperLeftCorner.X +
+                       EQT::Graphics::SpellGemLayout::kGemX;
+    const irr::s32 y = layout_.spellGems.UpperLeftCorner.Y +
+                       EQT::Graphics::SpellGemLayout::kGemFirstY;
 
     irr::video::SColor got = renderAndSample(ui, x + 16, y, [&](UIRenderer& r) {
         renderSpellGemPanel(r, layout_, gems);
@@ -230,7 +234,9 @@ TEST_F(UIAtlasPixelTest, SpellGemReadyBorderIsGreen) {
 }
 
 // T272's memorize destination marker: a 2px gold (255,215,0) border on the
-// picked gem. This is the marker that prompted the whole unit.
+// picked gem. This is the marker that prompted the whole unit. B1077: the
+// cell's left edge is at the window's X=3, so sample the left edge, where
+// only the marker is drawn (no icon art, no key label).
 TEST_F(UIAtlasPixelTest, SpellGemMemorizeTargetMarkerIsGold) {
     UIRenderer ui;
     ui.init(driver_, atlas_.get(), &textBatch_);
@@ -238,11 +244,12 @@ TEST_F(UIAtlasPixelTest, SpellGemMemorizeTargetMarkerIsGold) {
     SpellGemPanelState gems;
     gems.memorizeTargetGem = 5;  // gem A6, the one T272 picked live
 
-    const irr::s32 x = layout_.spellGems.UpperLeftCorner.X;
+    const irr::s32 x = layout_.spellGems.UpperLeftCorner.X +
+                       EQT::Graphics::SpellGemLayout::kGemX;
     const irr::s32 y = layout_.spellGems.UpperLeftCorner.Y +
-                       5 * (UILayout::SLOT_SIZE + UILayout::MARGIN);
+                       EQT::Graphics::SpellGemLayout::gemRect(5).UpperLeftCorner.Y;
 
-    irr::video::SColor got = renderAndSample(ui, x + 16, y, [&](UIRenderer& r) {
+    irr::video::SColor got = renderAndSample(ui, x, y + 5, [&](UIRenderer& r) {
         renderSpellGemPanel(r, layout_, gems);
     });
 
@@ -262,11 +269,12 @@ TEST_F(UIAtlasPixelTest, SpellGemWithoutMarkerIsNotGold) {
     SpellGemPanelState gems;
     gems.memorizeTargetGem = 5;
 
-    const irr::s32 x = layout_.spellGems.UpperLeftCorner.X;
+    const irr::s32 x = layout_.spellGems.UpperLeftCorner.X +
+                       EQT::Graphics::SpellGemLayout::kGemX;
     const irr::s32 y = layout_.spellGems.UpperLeftCorner.Y +
-                       2 * (UILayout::SLOT_SIZE + UILayout::MARGIN);  // gem A3
+                       EQT::Graphics::SpellGemLayout::gemRect(2).UpperLeftCorner.Y;  // gem A3
 
-    irr::video::SColor got = renderAndSample(ui, x + 16, y, [&](UIRenderer& r) {
+    irr::video::SColor got = renderAndSample(ui, x, y + 5, [&](UIRenderer& r) {
         renderSpellGemPanel(r, layout_, gems);
     });
 

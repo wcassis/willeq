@@ -120,14 +120,17 @@ public:
 };
 
 // 800x600 geometry, same source of truth as test_static_ui_panels.cpp:
-//   centerPopup: {264, 65, 664, 415}, spellGems: {764, 198, 796, 482}
-//   (B1075: the spellbook is the layout table's CentreSlot; the gem bar ends
-//   MARGIN above the 1x10 hotbar's top, y=486)
+//   centerPopup: {264, 65, 664, 415}, spellGems: {748, 192, 796, 482}
+//   (B1075: the spellbook is the layout table's CentreSlot; the gem window
+//   is right-aligned and ends MARGIN above the 1x10 hotbar's top, y=486;
+//   B1077: the oracle's 48x290 window, so it is wider than the old gem bar)
 // Spellbook rows: startY = 65 + 24 = 89, LINE_H 28 + MARGIN 4 = 32 pitch.
 //   row 0 -> y in [89, 117)    -> probe y=100
 //   row 1 -> y in [121, 149)   -> probe y=130
-// Gems: gy = 198 + i*36, 32 tall. gem 0 -> y in [198, 230) -> probe y=214
-//                                   gem 2 -> y in [270, 302) -> probe y=286
+// Gems (B1077): the oracle's 36x28 cells at (3, 10+30i) in the window,
+// screen x in [751, 787) (probe x=770), top y = 192 + 10 + 30i = 202 + 30i.
+//   gem 0 -> y in [202, 230) -> probe y=216
+//                                   gem 2 -> y in [262, 290) -> probe y=286
 class SpellbookClickTest : public ::testing::Test {
 protected:
     UILayout layout;
@@ -249,7 +252,7 @@ TEST_F(SpellbookClickTest, GemClickWithSpellbookClosedStillCasts) {
     // The cast gesture is only diverted while the book is open -- pin that
     // the ordinary case is untouched.
     spellbook.isOpen = false;
-    click(770, 214);  // gem 0
+    click(770, 216);  // gem 0 (B1077: the oracle's cell at the window's (3,10))
 
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);

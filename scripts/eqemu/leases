@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# B1089 (#409): the lane-lease STATUS VIEW.
+#
+# One line per lease across eqemu lanes 1-5 + XU4 (the PI_LANE devices only
+# if they adopt the helper -- see refactor/B1089/README.md):
+#
+#   lane  state    card/run                  host         pid  purpose         age  touched  expiry_s
+#   1     HELD     t_fb7ce46c/1020           hermes-ext   1020 scenario zone_in 12m  0m      839
+#   5     FREE     -
+#   xu4   EXPIRED  manual/4321               hermes-ext   4321 play             120m 60m     0
+#
+# state is FREE / HELD / EXPIRED (the record's last_touched vs the TTL);
+# age is since acquired_at, touched since last_touched, expiry is the
+# record's own seconds-to-TTL. A host that cannot be reached prints
+# UNREACHABLE (short ssh ConnectTimeout, queried in parallel) instead of
+# hanging. Plain text; the lanes' first monitoring piece.
+#
+#   scripts/eqemu/leases              # the TTL: LANE_LEASE_TTL_S (900 s)
+
+set -u
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TOLL="${LANE_LEASE_TTL_S:-900}"
+
+# _lease_line <lane> <ssh-target> <store> -- one line on stdout. Ships the
+# core fresh each time (a stale remote copy must never show an old state)
+# into a per-query file so parallel queries of the SAME host (lane 5 and
+# its oracle share the ThinkPad) cannot clobber each other.
+_lease_line() {
+    local lane="$1" ssh="$2" store="$3" out rc
+    out="$( { scp -q -o BatchMode=yes -o ConnectTimeout=5 \
+            "${SCRIPT_DIR}/lease_core.sh" "${ssh}:/tmp/.b1089-core.$$.sh" 2>/dev/null &&
+             ssh -n -o BatchMode=yes -o ConnectTimeout=5 "${ssh}" \
+            "mkdir -p '${store}' && mv -f /tmp/.b1089-core.$$.sh '${store}/lease_core.sh'; LEASE_STORE='${store}' LEASE_TTL_S='${TOLL}' bash '${store}/lease_core.sh' show"; } 2>&1)"; rc=$?
+    if [ ${rc} -ne 0 ] && [ ${rc} -ne 1 ]; then
+        printf '%-5s %-8s %s\n' "${lane}" "UNREACHABLE" "$(echo "${out}" | head -1 | head -c 80)"
+        return
+    fi
+    local state="" card="" run="" host="" pid="" purpose="" acq="" lt="" exp_in="" k v
+    while IFS='=' read -r k v; do
+        case "${k}" in
+            state) state="${v}" ;; card) card="${v}" ;; run) run="${v}" ;;
+            host) host="${v}" ;; pid) pid="${v}" ;; purpose) purpose="${v}" ;;
+            acquired_at) acq="${v}" ;; last_touched) lt="${v}" ;;
+            expires_in) exp_in="${v}" ;;
+        esac
+    done <<< "${out}"
+    [ -n "${state}" ] || { printf '%-5s %-8s %s\n' "${lane}" "FREE" "- (no record)"; return; }
+    local now age="" touch_age=""
+    now="$(date +%s)"
+    [ -n "${acq}" ] && age="$(( (now - acq) / 60 ))m"
+    [ -n "${lt}" ] && touch_age="$(( (now - lt) / 60 ))m"
+    printf '%-5s %-8s %-26s %-12s %-6s %-16s %-5s %-8s %s\n' \
+        "${lane}" "${state}" "${card}/${run}" "${host:-?}" "${pid:-?}" \
+        "${purpose:-?}" "${age}" "${touch_age}" "${exp_in:-0}"
+}
+
+# The lane table mirrors scripts/eqemu/env.sh (lanes 1-5, named, never
+# addressed). Lane 5's store is on the ThinkPad's local disk, never
+# /mnt/projects (the NAS NFS export shared with dev-u24's local lane).
+TMPD="$(mktemp -d)"; trap 'rm -rf "${TMPD}"' EXIT
+jobs=()
+hosts=(172.16.200.99 172.16.200.98 172.16.200.97 172.16.200.96 172.16.200.205)
+for L in 1 2 3 4 5; do
+    if [ "${L}" = 5 ]; then
+        # Lane 5 is the ThinkPad: the store is on its LOCAL disk, beside the
+        # stack (/opt/akk-stack is user-writable; /var/lib is not; and
+        # /mnt/projects is the NAS NFS export shared with dev-u24's local
+        # lane -- the exact defect the lease fixes).
+        STORE=/opt/akk-stack/.eqemu-lease/lane5
+    else
+        STORE=/mnt/projects/.eqemu-lease/lane"${L}"
+    fi
+    ( _lease_line "lane${L}" "user@${hosts[L-1]}" "${STORE}" > "${TMPD}/lane${L}" ) &
+    jobs+=("$!")
+done
+( _lease_line "xu4" "user@10.0.30.127" "/home/user/.willeq-lease/xu4" > "${TMPD}/xu4" ) &
+jobs+=("$!")
+printf 'B1089 lane leases (ttl %ss) at %s\n' "${TOLL}" "$(date -Iseconds)"
+printf '%-5s %-8s %-26s %-12s %-6s %-16s %-5s %-8s %s\n' \
+    lane state "card/run" host pid purpose age touched expiry_s
+for j in "${jobs[@]}"; do wait "${j}" 2>/dev/null; done
+for L in 1 2 3 4 5; do cat "${TMPD}/lane${L}" 2>/dev/null || true; done
+cat "${TMPD}/xu4" 2>/dev/null || true

@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# B1089 (#409): the lane-lease CLI.
+#
+# One helper for every lane: eqemu lanes 1-5 and the XU4. The record lives
+# ON the lane's own host (lanes 1-4: the eqemu VM; lane 5: the ThinkPad's
+# LOCAL disk -- never /mnt/projects, the NFS export shared with dev-u24's
+# local lane; XU4: on the box). Every take / takeover-of-expired / renew /
+# release is ONE flock critical section there.
+#
+#   scripts/eqemu/lease take  --lane 3 --card kb-b1089 --run t_fb7ce46c --purpose "scenario zone_in"
+#   scripts/eqemu/lease renew --lane 3 --card kb-b1089 --run t_fb7ce46c
+#   scripts/eqemu/lease release --lane 3 --card kb-b1089 --run t_fb7ce46c
+#   scripts/eqemu/lease show  --lane 3
+#   scripts/eqemu/lease reap  --lane 3 --dead-runs /tmp/deadruns.txt [--dry]
+#   scripts/eqemu/leases                  # one line per lane, 1-5 + XU4
+#
+# Holder identity: --card/--run are the human path; a kanban run sources
+# scripts/eqemu/env.sh's eqemu_lock_take, which fills them from the kanban
+# environment (card = HERMES_KANBAN_TASK, run = the kanban run id). A
+# missing identity is allowed and recorded as `manual`/<pid>.
+#
+# Exit codes (the documented lease codes, next to scenario.sh's 64-69):
+#   0    ok;  1    lane HELD by another card (take);  2    corrupt record
+#   63   LEASE_EXPIRED: renew/release of a lease that is no longer ours --
+#          stderr carries the holder and the re-acquire one-liner
+#   64   usage;  65  lane host unreachable / helper could not be shipped
+#
+# TTL: LANE_LEASE_TTL_S (one env var, default 900 s). A 30-min scenario is
+# never stolen because the lane scripts renew before every lane operation
+# and from inside their wait loops.
+
+set -u
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+LANE="" CARD="" RUN="" PID="" PURPOSE="" DRY=0 DEADRUNS="" TRACK_HOST=""
+CMD=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        take|renew|release|show|reap|track) CMD="$1"; shift ;;
+        --lane) LANE="$2"; shift 2 ;;
+        --card) CARD="$2"; shift 2 ;;
+        --run)  RUN="$2"; shift 2 ;;
+        --pid)  PID="$2"; shift 2 ;;
+        --purpose) PURPOSE="$2"; shift 2 ;;
+        --dead-runs) DEADRUNS="$2"; shift 2 ;;
+        --host) TRACK_HOST="$2"; shift 2 ;;
+        --dry) DRY=1; shift ;;
+        -h|--help)
+            sed -n '2,30p' "$0"; exit 0
+            ;;
+        *) echo "lease: unknown argument '$1'" >&2; exit 64 ;;
+    esac
+done
+[ -n "${CMD}" ] || { echo "usage: scripts/eqemu/lease <take|renew|release|show|reap|track> --lane <1-5|xu4> [opts]" >&2; exit 64; }
+[ -n "${LANE}" ] || { echo "lease: --lane is required (1-5 or xu4)" >&2; exit 64; }
+
+# The card/run defaults: kanban environment, else the explicit flags, else
+# manual/<pid>. renew/release need the EXACT identity, so --card and --run
+# are mandatory for them (a human guessing is how B922's blind rm came to
+# be); take accepts the defaults.
+[ -n "${CARD}" ] || CARD="${HERMES_KANBAN_TASK:-manual}"
+[ -n "${RUN}" ] || RUN="${HERMES_KANBAN_RUN_ID:-${CARD}}"
+[ -n "${PID}" ] || PID="${HERMES_KANBAN_RUN_ID:-$$}"
+case "${CMD}" in
+    renew|release)
+        [ "${CARD}" != manual ] && [ "${RUN}" != manual ] || \
+            { echo "lease: ${CMD} needs --card and --run (the lease's exact identity)" >&2; exit 64; }
+        ;;
+esac
+
+# renew/release/reap ship their identity as the env of the remote core.
+export LANE_LEASE_CARD="${CARD}" LANE_LEASE_RUN="${RUN}" LANE_LEASE_PID="${PID}"
+[ -n "${PURPOSE}" ] && export LANE_LEASE_PURPOSE="${PURPOSE}"
+
+case "${LANE}" in
+    1|2|3|4|5)
+        export EQEMU_LANE="${LANE}"
+        source "${SCRIPT_DIR}/env.sh"
+        case "${CMD}" in
+            take)    eqemu_lease_take "${PURPOSE:-manual take}" ;;
+            renew)   eqemu_lease_renew "${PURPOSE:-manual renew}" ;;
+            release) eqemu_lease_release ;;
+            show)    eqemu_lease_show ;;
+            reap)
+                [ -n "${DEADRUNS}" ] || { echo "lease: reap needs --dead-runs <file>" >&2; exit 64; }
+                if [ "${DRY}" = 1 ]; then
+                    eqemu_lease_reap "${DEADRUNS}" --dry
+                else
+                    eqemu_lease_reap "${DEADRUNS}"
+                fi
+                ;;
+            track)
+                [ -n "${RUN}" ] && [ "${RUN}" != manual ] && [ -n "${PID}" ] && \
+                    eqemu_lease_track "${RUN}" "${PID}" "${PURPOSE:-}" "${TRACK_HOST:-}" || \
+                    { echo "lease: track needs --run <run> --pid <pid> [--purpose <why>] [--host <h>]" >&2; exit 64; }
+                ;;
+        esac
+        exit $?
+        ;;
+    xu4)
+        # The XU4 is not an eqemu lane: source env.sh (default lane 1 --
+        # harmless: the xu4_lease_* functions only use the store + ssh
+        # target) so they exist.
+        source "${SCRIPT_DIR}/env.sh"
+        case "${CMD}" in
+            take)    xu4_lease_take "${PURPOSE:-manual take}" ;;
+            renew)   xu4_lease_renew "${PURPOSE:-manual renew}" ;;
+            release) xu4_lease_release ;;
+            show)    xu4_lease_show ;;
+            reap)
+                [ -n "${DEADRUNS}" ] || { echo "lease: reap needs --dead-runs <file>" >&2; exit 64; }
+                if [ "${DRY}" = 1 ]; then
+                    xu4_lease_reap "${DEADRUNS}" --dry
+                else
+                    xu4_lease_reap "${DEADRUNS}"
+                fi
+                ;;
+            track)
+                [ -n "${RUN}" ] && [ "${RUN}" != manual ] && [ -n "${PID}" ] && \
+                    xu4_lease_track "${RUN}" "${PID}" "${PURPOSE:-}" "${TRACK_HOST:-}" || \
+                    { echo "lease: track needs --run <run> --pid <pid> [--purpose <why>] [--host <h>]" >&2; exit 64; }
+                ;;
+        esac
+        exit $?
+        ;;
+    *)
+        echo "lease: unknown lane '${LANE}' (1-5 or xu4)" >&2
+        exit 64
+        ;;
+esac

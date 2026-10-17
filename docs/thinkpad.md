@@ -100,7 +100,8 @@ Provisioning evidence: `review/THINKPAD/README.md`.
 - Builds: `scripts/build-gles2-x86.sh` with `JOBS=12` takes about six minutes cold
   (the GitLab runner VMs take 25-30); no 4 GiB cgroup here, but a card that uses
   the box says so and leaves it as found.
-- The lane lock discipline is the same as lanes 1-4 (`eqemu_lock_take`), and the
+- The lane discipline is the same as lanes 1-4 (B1089: the eqemu lock is now a
+  **lease** — `eqemu_lock_take`, `docs/ci.md` "Lane leases"), and the
   oracle VM conventions apply with the box as its own oracle host.
 
 ## Done on the box (2026-10-13)
