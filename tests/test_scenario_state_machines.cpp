@@ -152,7 +152,9 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     // of these fixes, when only B894 + B900 had merged). B760 (#45) adds
     // its repeated cast-tail lane: two casters and their two peers. B1072
     // (#392) adds zone_connect_timeout (tests/test_zone_connect_timeout.cpp).
-    EXPECT_EQ(names.size(), 41u);
+    // B1081 (#401) adds zone_change_no_flash
+    // (tests/test_zone_change_no_flash.cpp).
+    EXPECT_EQ(names.size(), 42u);
     EXPECT_TRUE(IsScenarioName("zone_connect_timeout"));
     EXPECT_TRUE(IsScenarioName("camp_to_charselect"));
     EXPECT_TRUE(IsScenarioName("camp_desktop"));
