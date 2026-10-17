@@ -3,6 +3,7 @@
 
 #include "client/graphics/ui/char_backdrop_scene.h"
 
+#include "client/data_paths.h"
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/ui/explore_screen.h"  // ExploreCameraVerb full definition
@@ -22,23 +23,22 @@ namespace ui {
 namespace {
 
 constexpr float kRadToDeg = 180.0f / 3.14159265358979323846f;
-constexpr float kPi = 3.14159265358979323846f;
+constexpr float kPiOver180 = 3.14159265358979323846f / 180.0f;
 // A row's character-stand node: a small upright box on the pedestal (the click
-// target). Its exact height/placement is ASSUMED (the README's "Left open" lists
-// the per-row positions as assumed, not measured); it is a click target, not a
-// skinned character (the race loader's character is the follow-up seam).
+// target). Its exact height/placement is ASSUMED (the README's "Left open"
+// lists the per-row positions as assumed, not measured); it is a click target,
+// not a skinned character (the race loader's character is the follow-up seam).
 constexpr float kCharStandH = 6.0f;
 constexpr float kCharStandW = 1.5f;
-// The free camera's starting vantage, looking into the showroom (the arch and
-// central platform sit near the origin). The exact vantage is ASSUMED -- the
-// measured fact is only that the camera moves on a held key (forward), not
-// where it starts.
-constexpr float kCamX = 0.0f, kCamY = 8.0f, kCamZ = 26.0f;
-constexpr float kTargetX = 0.0f, kTargetY = 2.0f, kTargetZ = 0.0f;
+// The free camera's starting orbit state, looking into the showroom (the arch
+// and central platform sit near the origin). The exact vantage is ASSUMED --
+// the measured fact is only that the camera moves on a held key (forward),
+// not where it starts.
+constexpr float kCamElevationDeg0 = 10.0f;
+constexpr float kCamDistance0 = 26.0f;
 constexpr float kForwardSpeed = 12.0f;   // world units / s (assumed default)
 constexpr float kStrafeSpeed = 12.0f;
-constexpr float kOrbitSpeed = 1.0f;      // deg / rad of verb (the verb is radians)
-constexpr float kZoomSpeed = 6.0f;       // fov deg / (verb unit)
+constexpr float kOrbitSpeed = 1.0f;      // deg per rad of verb (the verb is radians)
 // A click is a selection only when it lands within this many pixels of a
 // stand's projected center (a backdrop hit is not a selection; a far miss keeps
 // the cursor, the machine's own rule).
@@ -66,10 +66,10 @@ irr::scene::IMesh* buildMesh(irr::video::IVideoDriver* driver,
                 if (vi >= g.vertexCount || remap.count(vi)) continue;
                 // Vertices stay RAW local (Z-up). The Z-up->Y-up swap and the
                 // placement rotation are both carried by the NODE's rotation
-                // (applyPlacement), which composes rot_change * placement -- the
-                // reference importer's own order (Rz*ry * R_y*rx * R_x*rz *
-                // rot_change). Swapping here would be wrong: the placement
-                // rotation must act on the raw (pre-swap) coordinates.
+                // (applyPlacement), which composes placement * zupToYup -- the
+                // reference importer's own order. Swapping here would be wrong:
+                // the placement rotation must act on the raw (pre-swap)
+                // coordinates.
                 irr::video::S3DVertex v;
                 v.Pos = irr::core::vector3df(g.positions[static_cast<size_t>(vi) * 3 + 0],
                                              g.positions[static_cast<size_t>(vi) * 3 + 1],
@@ -106,10 +106,11 @@ irr::scene::IMesh* buildMesh(irr::video::IVideoDriver* driver,
                 // copies (ownForeignMemory=false), so no lifetime is needed.
                 EQT::Graphics::DecodedImage img = EQT::Graphics::DDSDecoder::decode(d);
                 if (img.isValid()) {
+                    void* pixels = img.pixels.data();
                     irr::video::IImage* image =
                         driver->createImageFromData(irr::video::ECF_A8R8G8B8,
                                                     irr::core::dimension2d<irr::u32>(img.width, img.height),
-                                                    img.pixels.data(), false);
+                                                    pixels, false);
                     if (image) {
                         tex = driver->addTexture(texName.c_str(), image);
                         image->drop();
@@ -162,8 +163,8 @@ irr::scene::IMesh* buildBoxMesh(float w, float h, float d, irr::video::SColor co
     return mesh;
 }
 
-// The node's transform: the placement rotation (about the model's local axes,
-// in world space) FOLLOWED BY the Z-up->Y-up swap. Irrlicht composes a node's
+// The node's transform: the placement rotation (about the model's local axes)
+// FOLLOWED BY the Z-up->Y-up swap. Irrlicht composes a node's
 // setRotation/setPosition as Rotation * Translation, and setRotationDegrees
 // (x,y,z) builds R_y(y)*R_x(x)*R_z(z) (the reference importer's own order), so
 // the node's rotation = placementRotation * zupToYup, applied to a raw local
@@ -177,198 +178,209 @@ void applyPlacement(irr::scene::ISceneNode* node, const EQT::Graphics::ClzPlacem
     zupToYup(0, 0) = 1; zupToYup(0, 1) = 0; zupToYup(0, 2) = 0;
     zupToYup(1, 0) = 0; zupToYup(1, 1) = 0; zupToYup(1, 2) = 1;
     zupToYup(2, 0) = 0; zupToYup(2, 1) = 1; zupToYup(2, 2) = 0;
-    irr::core::matrix4 m = zupToYup;
     irr::core::matrix4 place;
     place.setRotationDegrees(irr::core::vector3df(pl.rx * kRadToDeg, pl.ry * kRadToDeg, pl.rz * kRadToDeg));
-    m = place * m;
+    irr::core::matrix4 m = place * zupToYup;
     node->setPosition(irr::core::vector3df(pl.x, pl.y, pl.z));
     node->setRotation(m.getRotationDegrees());
 }
 
 }  // namespace
 
-class CharBackdropScene::Impl {
-public:
-    static std::string clzPath();  // WILLEQ_CLZ overrides the shipped path
-    bool init(EQT::Graphics::IrrlichtRenderer& renderer);
-    void clear();
-    void update(const EQT::Graphics::ExploreCameraVerb& verb, float dtMs);
-    void setCharacter(int row, uint16_t race, uint8_t gender, const EQT::Graphics::EntityAppearance&);
-    void clearCharacter(int row);
-    int characterCount() const { return static_cast<int>(charNodes_.size()); }
-    int nodeCount() const { return static_cast<int>(backdropNodes_.size()); }
-    int rowForClick(int x, int y);
+CharBackdropScene::CharBackdropScene() = default;
+CharBackdropScene::~CharBackdropScene() { clear(); }
 
-    irr::scene::ISceneManager* smgr = nullptr;
-    irr::video::IVideoDriver* driver = nullptr;
-    EQT::Graphics::PfsArchive archive;
-    EQT::Graphics::ClzZone zone;
-    std::unordered_map<std::string, std::vector<char>> texData;
-
-    irr::scene::ISceneNode* root = nullptr;
-    std::vector<irr::scene::ISceneNode*> backdropNodes_;
-    std::unordered_map<std::string, irr::scene::IMesh*> meshes;  // model name -> shared mesh
-    std::unordered_map<std::string, irr::video::ITexture*> texCache;
-    std::vector<irr::scene::ISceneNode*> charNodes_;  // row -> node (sparse)
-    irr::scene::ICameraSceneNode* camera = nullptr;
-    // The free camera's orbit state (the fork's camera is target-based; there
-    // is no moveForward/lookAt, so we own the azimuth/elevation/distance and
-    // re-derive position and look each update).
-    float camAzimuthDeg = 0.0f;
-    float camElevationDeg = 10.0f;
-    float camDistance = 26.0f;
-    // Brace-init: the paren form (kTargetX, kTargetY, kTargetZ) is the
-    // most-vexing-parse (GCC tries the function-declaration reading first),
-    // so the camera state is brace-initialized.
-    irr::core::vector3df camTarget{kTargetX, kTargetY, kTargetZ};
-    irr::core::vector3df camPos{kCamX, kCamY, kCamZ};
-};
-
-std::string CharBackdropScene::Impl::clzPath() {
+namespace {
+// WILLEQ_CLZ overrides the shipped path (the test's seam); otherwise the
+// client-tree copy (data/eq_client/clz.eqg, resolved like every other
+// shipped file) is the first one that exists. The absolute candidate is the
+// dev VM's P1999 root, where the archive ships at the client tree's top
+// level.
+std::string clzPath() {
     const char* env = std::getenv("WILLEQ_CLZ");
     if (env && *env) return env;
-    const std::string candidates[] = {"/mnt/projects/EverQuestP1999/clz.eqg", "data/eq_client/clz.eqg"};
+    const std::string candidates[] = {
+        "/mnt/projects/EverQuestP1999/clz.eqg",
+        eqt::ResolveDataPath("data/eq_client/clz.eqg"),
+    };
     for (const auto& c : candidates) {
-        if (std::filesystem::exists(c)) return c;
+        if (!c.empty() && std::filesystem::exists(c)) return c;
     }
     return "";
 }
+}  // namespace
 
-bool CharBackdropScene::Impl::init(EQT::Graphics::IrrlichtRenderer& renderer) {
-    if (root) return true;  // idempotent
-    smgr = renderer.getSceneManager();
-    driver = renderer.getDriver();
-    if (!smgr) return false;  // pre-init: the host retries next frame
+bool CharBackdropScene::init(EQT::Graphics::IrrlichtRenderer& renderer) {
+    return init(renderer.getSceneManager(), renderer.getDriver());
+}
+
+bool CharBackdropScene::init(irr::scene::ISceneManager* mainSmgr, irr::video::IVideoDriver* driver) {
+    if (scene_) return true;  // idempotent
+    if (!mainSmgr || !driver) return false;  // pre-init: the host retries next frame
     const std::string path = clzPath();
     if (path.empty()) {
         LOG_WARN(MOD_GRAPHICS, "[BACKDROP] clz.eqg not found (WILLEQ_CLZ unset)");
         return false;
     }
-    if (!archive.open(path)) {
+    if (!archive_.open(path)) {
         LOG_WARN(MOD_GRAPHICS, "[BACKDROP] clz.eqg failed to open: {}", path);
         return false;
     }
-    if (!zone.loadZone(archive)) {
-        LOG_WARN(MOD_GRAPHICS, "[BACKDROP] clz zone failed to parse: {}", zone.error);
+    if (!zone_.loadZone(archive_)) {
+        LOG_WARN(MOD_GRAPHICS, "[BACKDROP] clz zone failed to parse: {}", zone_.error);
+        archive_.close();
         return false;
     }
-    root = smgr->addEmptySceneNode();
-    // The free camera, at the showroom vantage, looking into the room.
-    camera = smgr->addCameraSceneNode(nullptr, camPos, camTarget, -1, true);
-    camera->setTarget(camTarget);
-    camera->setRotation(irr::core::vector3df(camElevationDeg, camAzimuthDeg, 0.0f));
+    // The CC-2 idiom: an OWN scene manager (the zone path's manager is the
+    // production one and this must not touch its graph); the driver is
+    // borrowed for image/texture upload.
+    scene_ = mainSmgr->createNewSceneManager(false);
+    driver_ = driver;
+    if (!scene_) {
+        archive_.close();
+        return false;
+    }
+    root_ = scene_->addEmptySceneNode();
+    // The free camera, at the showroom vantage, looking into the room (the
+    // scene's own, not the pre-zone frame's active camera).
+    camera_ = scene_->addCameraSceneNode(nullptr, camPos_, camTarget_, -1, false);
+    if (camera_) {
+        camera_->setTarget(camTarget_);
+        camera_->setRotation(irr::core::vector3df(camElevationDeg_, camAzimuthDeg_, 0.0f));
+        camera_->setAspectRatio(1280.0f / 1024.0f);
+    }
+    // The showroom's lights (three-point, the CharacterModelView idiom).
+    scene_->setAmbientLight(irr::video::SColorf(0.24f, 0.24f, 0.31f, 1.0f));
+    irr::scene::ILightSceneNode* key = scene_->addLightSceneNode(
+        nullptr, irr::core::vector3df(100, 300, 100), irr::video::SColorf(1.0f, 1.0f, 1.0f), 300.0f);
+    irr::scene::ILightSceneNode* fill = scene_->addLightSceneNode(
+        nullptr, irr::core::vector3df(-100, 100, -100), irr::video::SColorf(0.47f, 0.47f, 0.63f), 300.0f);
+    if (key) key->getLightData().Type = irr::video::ELT_POINT;
+    if (fill) fill->getLightData().Type = irr::video::ELT_POINT;
     // One mesh per distinct model, placed per placement. The terrain is model 0.
-    for (const auto& pl : zone.placements) {
-        if (pl.modelIndex < 0 || pl.modelIndex >= static_cast<int32_t>(zone.modelNames.size())) {
+    for (const auto& pl : zone_.placements) {
+        if (pl.modelIndex < 0 || pl.modelIndex >= static_cast<int32_t>(zone_.modelNames.size())) {
             continue;
         }
-        const std::string& model = zone.modelNames[static_cast<size_t>(pl.modelIndex)];
+        const std::string& model = zone_.modelNames[static_cast<size_t>(pl.modelIndex)];
         irr::scene::IMesh* mesh = nullptr;
-        auto it = meshes.find(model);
-        if (it != meshes.end()) {
+        auto it = meshes_.find(model);
+        if (it != meshes_.end()) {
             mesh = it->second;
         } else {
             EQT::Graphics::ClzGeometry g;
-            if (zone.loadModel(archive, static_cast<size_t>(pl.modelIndex), g) && g.valid()) {
+            if (zone_.loadModel(archive_, static_cast<size_t>(pl.modelIndex), g) && g.valid()) {
                 for (const auto& tn : g.textureNames) {
-                    if (tn.empty() || texData.count(tn)) continue;
+                    if (tn.empty() || texData_.count(tn)) continue;
                     std::vector<char> d;
-                    if (archive.get(tn, d)) texData[tn] = std::move(d);
+                    if (archive_.get(tn, d)) texData_[tn] = std::move(d);
                 }
-                mesh = buildMesh(driver, g, texData, texCache);
-                meshes[model] = mesh;
+                mesh = buildMesh(driver_, g, texData_, texCache_);
+                meshes_[model] = mesh;
             } else {
-                LOG_WARN(MOD_GRAPHICS, "[BACKDROP] model {} failed: {}", model, zone.error);
+                LOG_WARN(MOD_GRAPHICS, "[BACKDROP] model {} failed: {}", model, zone_.error);
             }
         }
         if (!mesh) continue;
-        irr::scene::ISceneNode* node = smgr->addMeshSceneNode(mesh, root);
+        irr::scene::ISceneNode* node = scene_->addMeshSceneNode(mesh, root_);
         if (node) {
             applyPlacement(node, pl);
             backdropNodes_.push_back(node);
         }
     }
     LOG_INFO(MOD_GRAPHICS, "[BACKDROP] clz showroom up: {} models, {} placed nodes",
-             meshes.size(), backdropNodes_.size());
+             meshes_.size(), backdropNodes_.size());
     return !backdropNodes_.empty();
 }
 
-void CharBackdropScene::Impl::clear() {
-    for (auto* n : backdropNodes_) if (n) n->remove();
+void CharBackdropScene::clear() {
+    if (scene_) {
+        for (auto* n : backdropNodes_) {
+            if (n) n->remove();
+        }
+        for (auto* n : charNodes_) {
+            if (n) n->remove();
+        }
+        if (camera_) camera_->remove();
+        if (root_) root_->remove();
+    }
     backdropNodes_.clear();
-    for (auto* n : charNodes_) if (n) n->remove();
     charNodes_.clear();
-    if (root) { root->remove(); root = nullptr; }
-    if (camera) { camera->remove(); camera = nullptr; }
-    for (auto& [name, m] : meshes) if (m) m->drop();
-    meshes.clear();
-    texData.clear();
-    for (auto& [name, t] : texCache) if (t) t->drop();
-    texCache.clear();
+    camera_ = nullptr;
+    root_ = nullptr;
+    if (scene_) {
+        scene_->drop();  // drops its nodes/meshes/lights
+        scene_ = nullptr;
+    }
+    texCache_.clear();  // the textures are the DRIVER's (the borrowed
+    // driver's cache owns and deletes them on device teardown); dropping
+    // them here would be a double-free in that teardown.
+    meshes_.clear();  // the scene manager's drop destroyed them
+    texData_.clear();
+    archive_.close();
 }
 
-void CharBackdropScene::Impl::update(const EQT::Graphics::ExploreCameraVerb& verb, float dtMs) {
-    if (!camera) return;
+void CharBackdropScene::update(const EQT::Graphics::ExploreCameraVerb& verb, float dtMs) {
+    if (!camera_) return;
     if (!verb.active()) return;
     const float dt = dtMs / 1000.0f;
-    const irr::core::vector3df target = camTarget;
-    const irr::core::vector3df toTarget = target - camPos;
-    const float toLen = toTarget.X * toTarget.X + toTarget.Y * toTarget.Y + toTarget.Z * toTarget.Z;
     // The camera's axes: look = toTarget. The right axis (horizontal,
     // perpendicular to the look) is cross(look, worldUp) = (-look.Z, 0,
     // look.X). Forward moves the camera along -look (toward the target);
     // strafe along the right axis.
-    const irr::core::vector3df look(toLen > 1e-9f ? toTarget : irr::core::vector3df(0, 0, -1));
+    const irr::core::vector3df toTarget = camTarget_ - camPos_;
+    const float toLen2 = toTarget.X * toTarget.X + toTarget.Y * toTarget.Y + toTarget.Z * toTarget.Z;
+    irr::core::vector3df look(0.0f, 0.0f, -1.0f);
+    if (toLen2 > 1e-9f) {
+        const float inv = 1.0f / std::sqrt(toLen2);
+        look = irr::core::vector3df(toTarget.X * inv, toTarget.Y * inv, toTarget.Z * inv);
+    }
     const irr::core::vector3df rgt(-look.Z, 0.0f, look.X);
     if (verb.forward != 0.0f) {
-        camPos.X += -look.X * verb.forward * kForwardSpeed * dt;
-        camPos.Y += -look.Y * verb.forward * kForwardSpeed * dt;
-        camPos.Z += -look.Z * verb.forward * kForwardSpeed * dt;
+        camPos_.X += -look.X * verb.forward * kForwardSpeed * dt;
+        camPos_.Y += -look.Y * verb.forward * kForwardSpeed * dt;
+        camPos_.Z += -look.Z * verb.forward * kForwardSpeed * dt;
     }
     if (verb.strafe != 0.0f) {
-        camPos.X += rgt.X * verb.strafe * kStrafeSpeed * dt;
-        camPos.Z += rgt.Z * verb.strafe * kStrafeSpeed * dt;
+        camPos_.X += rgt.X * verb.strafe * kStrafeSpeed * dt;
+        camPos_.Z += rgt.Z * verb.strafe * kStrafeSpeed * dt;
     }
-    if (verb.orbitX != 0.0f) camAzimuthDeg += verb.orbitX * kOrbitSpeed * kRadToDeg;
+    if (verb.orbitX != 0.0f) camAzimuthDeg_ += verb.orbitX * kOrbitSpeed * kRadToDeg;
     if (verb.orbitY != 0.0f) {
-        camElevationDeg = std::max(-89.0f, std::min(89.0f, camElevationDeg + verb.orbitY * kOrbitSpeed * kRadToDeg));
+        camElevationDeg_ = std::max(-89.0f, std::min(89.0f, camElevationDeg_ + verb.orbitY * kOrbitSpeed * kRadToDeg));
     }
     if (verb.zoom != 0.0f) {
-        camDistance = std::max(3.0f, camDistance * (1.0f - verb.zoom * 0.05f));
+        camDistance_ = std::max(3.0f, camDistance_ * (1.0f - verb.zoom * 0.05f));
     }
-    // Re-derive position from the orbit state (orbit/zoom change where we sit;
-    // forward/strafe already moved us, which is then re-expressed as a new
-    // azimuth/elevation/distance toward the target).
-    const irr::core::vector3df d = camPos - target;
-    const float dist = std::sqrt(d.X * d.X + d.Y * d.Y + d.Z * d.Z);
+    // Re-derive the orbit state from where we now sit (forward/strafe moved
+    // the camera; that motion is re-expressed as azimuth/elevation/distance
+    // toward the target), then re-derive the position from it.
     if (verb.forward != 0.0f || verb.strafe != 0.0f) {
-        camDistance = dist;
-        camAzimuthDeg = std::atan2(d.X, d.Z) * kRadToDeg;
-        camElevationDeg = std::atan2(d.Y, std::sqrt(d.X * d.X + d.Z * d.Z)) * kRadToDeg;
+        const irr::core::vector3df d = camPos_ - camTarget_;
+        camDistance_ = std::max(3.0f, std::sqrt(d.X * d.X + d.Y * d.Y + d.Z * d.Z));
+        camAzimuthDeg_ = std::atan2(d.X, d.Z) * kRadToDeg;
+        camElevationDeg_ = std::atan2(d.Y, std::sqrt(d.X * d.X + d.Z * d.Z)) * kRadToDeg;
     }
-    const float azRad = camAzimuthDeg * 3.14159265358979323846f / 180.0f;
-    const float elRad = camElevationDeg * 3.14159265358979323846f / 180.0f;
-    camPos.X = target.X + camDistance * std::cos(elRad) * std::sin(azRad);
-    camPos.Y = target.Y + camDistance * std::sin(elRad);
-    camPos.Z = target.Z + camDistance * std::cos(elRad) * std::cos(azRad);
-    camera->setPosition(camPos);
-    camera->setTarget(target);
-    camera->setRotation(irr::core::vector3df(camElevationDeg, camAzimuthDeg, 0.0f));
-    camera->setAspectRatio(1280.0f / 1024.0f);
+    const float azRad = camAzimuthDeg_ * kPiOver180;
+    const float elRad = camElevationDeg_ * kPiOver180;
+    camPos_.X = camTarget_.X + camDistance_ * std::cos(elRad) * std::sin(azRad);
+    camPos_.Y = camTarget_.Y + camDistance_ * std::sin(elRad);
+    camPos_.Z = camTarget_.Z + camDistance_ * std::cos(elRad) * std::cos(azRad);
+    camera_->setPosition(camPos_);
+    camera_->setTarget(camTarget_);
+    camera_->setRotation(irr::core::vector3df(camElevationDeg_, camAzimuthDeg_, 0.0f));
 }
 
-void CharBackdropScene::Impl::setCharacter(int row, uint16_t, uint8_t, const EQT::Graphics::EntityAppearance&) {
-    if (!root || row < 0) return;
-    if (static_cast<size_t>(row) < charNodes_.size() && charNodes_[row]) {
-        charNodes_[row]->remove();
-        charNodes_[row] = nullptr;
-    }
+void CharBackdropScene::setCharacter(int row, uint16_t, uint8_t, const EQT::Graphics::EntityAppearance&) {
+    if (!root_ || row < 0) return;
+    clearCharacter(row);
     // A click stand: a small upright box on the pedestal. The exact per-row
     // position is assumed (README "Left open"); the race loader's skinned
     // character is the follow-up seam, not this slice.
     irr::scene::IMesh* box = buildBoxMesh(kCharStandW, kCharStandH, kCharStandW,
                                           irr::video::SColor(255, 220, 120, 120));
-    irr::scene::ISceneNode* node = smgr->addMeshSceneNode(box, root);
+    irr::scene::ISceneNode* node = scene_->addMeshSceneNode(box, root_);
+    box->drop();
     if (node) {
         // The central pedestal is row 1; the side pedestals are rows 0 and 2.
         const float x = static_cast<float>(row - 1) * 6.0f;
@@ -376,31 +388,39 @@ void CharBackdropScene::Impl::setCharacter(int row, uint16_t, uint8_t, const EQT
         if (static_cast<size_t>(row) >= charNodes_.size()) charNodes_.resize(static_cast<size_t>(row) + 1);
         charNodes_[row] = node;
     }
-    box->drop();
 }
 
-void CharBackdropScene::Impl::clearCharacter(int row) {
+void CharBackdropScene::clearCharacter(int row) {
     if (row < 0 || static_cast<size_t>(row) >= charNodes_.size()) return;
-    if (charNodes_[row]) { charNodes_[row]->remove(); charNodes_[row] = nullptr; }
+    if (charNodes_[row]) {
+        charNodes_[row]->remove();
+        charNodes_[row] = nullptr;
+    }
 }
 
-int CharBackdropScene::Impl::rowForClick(int sx, int y) {
-    if (!camera || !driver) return -1;
-    const size_t n = charNodes_.size();
-    if (n == 0) return -1;
+int CharBackdropScene::characterCount() const {
+    int n = 0;
+    for (auto* nd : charNodes_) {
+        if (nd) ++n;
+    }
+    return n;
+}
+
+int CharBackdropScene::rowForClick(int sx, int y) {
+    if (!camera_ || !driver_) return -1;
     // Project each stand's center to screen space and pick the nearest to the
     // click (a backdrop hit is NOT a selection; a far miss keeps the cursor,
     // the machine's rule). The projection is name_tag_batch's: the ONE
     // projection x view product, multiplyWith1x4Matrix, divide by the fourth
     // (w) component, NDC -> pixel.
-    const irr::core::rect<irr::s32>& vp = driver->getViewPort();
-    const irr::s32 halfW = static_cast<irr::s32>(vp.getWidth() / 2);
-    const irr::s32 halfH = static_cast<irr::s32>(vp.getHeight() / 2);
-    irr::core::matrix4 projView = camera->getProjectionMatrix();
-    projView *= camera->getViewMatrix();
+    const irr::core::rect<irr::s32>& vp = driver_->getViewPort();
+    const irr::f32 halfW = static_cast<irr::f32>(vp.getWidth()) * 0.5f;
+    const irr::f32 halfH = static_cast<irr::f32>(vp.getHeight()) * 0.5f;
+    irr::core::matrix4 projView = camera_->getProjectionMatrix();
+    projView *= camera_->getViewMatrix();
     int best = -1;
     float bestDist = 1e30f;
-    for (size_t row = 0; row < n; ++row) {
+    for (size_t row = 0; row < charNodes_.size(); ++row) {
         irr::scene::ISceneNode* node = charNodes_[row];
         if (!node) continue;
         const irr::core::vector3df c =
@@ -411,7 +431,7 @@ int CharBackdropScene::Impl::rowForClick(int sx, int y) {
         const irr::f32 zDiv = p[3] == 0.0f ? 1.0f : irr::core::reciprocal(p[3]);
         const float px = halfW + halfW * (p[0] * zDiv);
         const float py = halfH - halfH * (p[1] * zDiv);
-        if (px < 0 || px > halfW * 2 || py < 0 || py > halfH * 2) continue;
+        if (px < 0 || px > vp.getWidth() || py < 0 || py > vp.getHeight()) continue;
         const float dist = (px - sx) * (px - sx) + (py - y) * (py - y);
         if (dist < bestDist) {
             bestDist = dist;
@@ -422,35 +442,33 @@ int CharBackdropScene::Impl::rowForClick(int sx, int y) {
     return best;
 }
 
-CharBackdropScene::CharBackdropScene() : impl_(std::make_unique<Impl>()) {}
-CharBackdropScene::~CharBackdropScene() = default;
-
-bool CharBackdropScene::init(EQT::Graphics::IrrlichtRenderer& renderer) { return impl_->init(renderer); }
-void CharBackdropScene::clear() { impl_->clear(); }
-void CharBackdropScene::update(const EQT::Graphics::ExploreCameraVerb& v, float dtMs) { impl_->update(v, dtMs); }
-void CharBackdropScene::setCharacter(int row, uint16_t race, uint8_t gender, const EQT::Graphics::EntityAppearance& a) {
-    impl_->setCharacter(row, race, gender, a);
-}
-void CharBackdropScene::clearCharacter(int row) { impl_->clearCharacter(row); }
-int CharBackdropScene::characterCount() const { return impl_->characterCount(); }
-int CharBackdropScene::nodeCount() const { return impl_->nodeCount(); }
-int CharBackdropScene::rowForClick(int x, int y) { return impl_->rowForClick(x, y); }
-
 void CharBackdropScene::renderScene(EQT::Graphics::IrrlichtRenderer& renderer) {
-    if (!impl_->root) return;  // not stood up
-    irr::scene::ISceneManager* smgr = renderer.getSceneManager();
-    irr::video::IVideoDriver* driver = renderer.getDriver();
-    if (!smgr || !driver) return;
+    renderScene(renderer.getDriver());
+}
+
+void CharBackdropScene::renderScene(irr::video::IVideoDriver* driver) {
+    if (!scene_ || !camera_) return;  // not stood up
+    if (!driver) return;
+    // The camera's own projection aspect must match what is actually on
+    // screen (the host draws the backdrop full-window; the headless test's
+    // null viewport is 64x64). The camera's matrices are built by its
+    // render() during drawAll -- which also means the first click projection
+    // is valid only after the first frame, exactly as in the host (a click is
+    // a post-frame event).
+    const irr::core::rect<irr::s32>& vp = driver->getViewPort();
+    if (vp.getHeight() > 0) {
+        camera_->setAspectRatio(static_cast<irr::f32>(vp.getWidth()) /
+                                static_cast<irr::f32>(vp.getHeight()));
+    }
     // The scene's own camera renders the showroom; the host's UI draws over it
-    // in the same frame (the oracle's layering: 3D select scene, then the UI).
-    driver->setTextureFilter(irr::video::ETF_BILINEAR);
-    smgr->setCamera(impl_->camera);
-    smgr->setDrawDistance(-1.0f);
-    smgr->removeAllLights();
-    smgr->addLightSceneNode(irr::core::vector3df(100, 300, 100), irr::core::vector3df(255, 255, 255, 255), -1);
-    smgr->addLightSceneNode(irr::core::vector3df(-100, 100, -100), irr::core::vector3df(120, 120, 160, 255), -1);
-    smgr->setAmbientLight(irr::video::SColor(255, 60, 60, 80));
-    smgr->drawAndRenderScene(true, true);
+    // in the same frame (the oracle's layering: 3D select scene, then the
+    // UI). The pre-zone frame's active camera is swapped back, so the rest of
+    // the frame (the UI is 2D) and the next zone are untouched.
+    prevActiveCamera_ = scene_->getActiveCamera();
+    scene_->setActiveCamera(camera_);
+    scene_->drawAll();
+    scene_->setActiveCamera(prevActiveCamera_);
+    prevActiveCamera_ = nullptr;
 }
 
 }  // namespace ui

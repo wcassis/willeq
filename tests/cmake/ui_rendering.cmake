@@ -507,6 +507,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_explore_screen DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B888-CC3 (#204): the 3D clz backdrop scene (the "3D slice") -- headless on an
+# EDT_NULL device (the CC-2 headless idiom, no zone): the clz showroom stands
+# up from clz.eqg's members (terrain + 29 .mod, one mesh per distinct model,
+# the free camera), the held `d` camera verb moves the camera (the measured
+# forward), the click projects to the account's row (miss -> -1), the
+# per-row stands round-trip, and the pre-zone memory delta is measured.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_explore_backdrop
+        test_explore_backdrop.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_explore_backdrop PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_explore_backdrop GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_explore_backdrop PRIVATE "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
+    GTEST_DISCOVER_TESTS(test_explore_backdrop DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T434: the Options window -- geometry against EQUI_OptionsWindow.xml, the
 # T363 disabled-control rule, the three wired sliders, the Alt+O binding and
 # the persistence round trip. Device-free like its siblings.

@@ -29,24 +29,30 @@ struct Slice {
     bool empty() const { return n == 0; }
 };
 
-// A NUL-terminated name at `off` (offset from the buffer start, which is the
-// string table's base in this file's convention).
-std::string nameAt(const char* base, size_t len, uint32_t off) {
-    if (off + 1 > len) {
+// A NUL-terminated name. `off` is relative to the STRING TABLE's base (the
+// EQG convention: every name/property offset in a member is a displacement
+// from the string table's first byte, NOT from the member's start -- the
+// member's header precedes the table). `stringTable` points at that first
+// byte; `tableLen` is how many bytes from there (up to the member's end) are
+// readable. An out-of-range or empty name is "".
+std::string nameAt(const char* stringTable, size_t tableLen, uint32_t off) {
+    if (off >= tableLen) {
         return "";
     }
-    const char* s = base + off;
+    const char* s = stringTable + off;
     size_t i = 0;
-    while (i < len - off && s[i] != '\0') {
+    while (i < tableLen - off && s[i] != '\0') {
         ++i;
     }
     return std::string(s, i);
 }
 
 // The member name a clz.zon model list entry maps to in the archive (PfsArchive
-// lowercases names, so the whole lookup is lowercase): TER_* -> <stem>.ter,
-// everything else -> <name>.mod. A ')' in the EQG name is a '(' placeholder the
-// reference importer also rewrites to '_'.
+// lowercases names, so the whole lookup is lowercase): the EQG model names
+// CARRY their own extension -- `TER_clz.TER` (the terrain fragment) and
+// `OBJ_*.MOD` (the statics). The archive member is the lowercased name with
+// the `.TER`/`.MOD` suffix swapped for `.ter`/`.mod`. A ')' in the EQG name is
+// a placeholder the reference importer rewrites to '_'.
 std::string memberNameForModel(const std::string& modelName) {
     std::string s = modelName;
     std::transform(s.begin(), s.end(), s.begin(),
@@ -56,8 +62,13 @@ std::string memberNameForModel(const std::string& modelName) {
             c = '_';
         }
     }
-    const bool terrain = s.rfind("ter_", 0) == 0;
-    return s + (terrain ? ".ter" : ".mod");
+    if (s.size() > 4 && s.substr(s.size() - 4) == ".ter") {
+        return s;  // the terrain fragment is already the archive member's name
+    }
+    if (s.size() > 4 && s.substr(s.size() - 4) == ".mod") {
+        return s;  // the statics ship as their .mod members
+    }
+    return s + ".mod";  // extensionless model name: assume a static
 }
 
 // One material's property walk: the texture filename is the type-2 property
@@ -97,6 +108,10 @@ bool parseGeometry(const char* buf, size_t len, bool isTerrain, ClzGeometry& out
     }
 
     size_t pos = geoStart;
+    // The string table: every name/property offset in this member is a
+    // displacement from its first byte (buf + stringBase), not from buf.
+    const char* stringTable = buf + stringBase;
+    const size_t tableLen = len - stringBase;
     std::vector<MaterialInfo> materials(matCount);
     for (uint32_t m = 0; m < matCount; ++m) {
         if (pos + 16 > len) {
@@ -108,7 +123,7 @@ bool parseGeometry(const char* buf, size_t len, bool isTerrain, ClzGeometry& out
         (void)rdU32(buf + pos + 8);       // shader offset (unused)
         const uint32_t propCount = rdU32(buf + pos + 12);
         pos += 16;
-        materials[m].name = nameAt(buf, len, nameOff);
+        materials[m].name = nameAt(stringTable, tableLen, nameOff);
         for (uint32_t j = 0; j < propCount; ++j) {
             if (pos + 12 > len) {
                 error = "material property overruns the member";
@@ -119,9 +134,9 @@ bool parseGeometry(const char* buf, size_t len, bool isTerrain, ClzGeometry& out
             const uint32_t pValue = rdU32(buf + pos + 8);
             pos += 12;
             if (pType == 2) {
-                const std::string pname = nameAt(buf, len, pName);
+                const std::string pname = nameAt(stringTable, tableLen, pName);
                 if (pname.find("TextureDiffuse") != std::string::npos) {
-                    materials[m].texture = nameAt(buf, len, pValue);
+                    materials[m].texture = nameAt(stringTable, tableLen, pValue);
                 }
             }
         }
@@ -223,11 +238,15 @@ bool parseClzZone(const char* bytes, size_t len, ClzZone& out, std::string& erro
         error = "model list overruns clz.zon";
         return false;
     }
+    // The string table sits at byte 28 (after the 28-byte header); every name
+    // offset below is a displacement from its first byte, not from byte 0.
+    const char* stringTable = bytes + 28;
+    const size_t tableLen = len - 28;
     out.modelNames.clear();
     out.placements.clear();
     for (uint32_t m = 0; m < modelCount; ++m) {
         const uint32_t off = rdU32(bytes + geoStart + static_cast<size_t>(m) * 4);
-        out.modelNames.push_back(nameAt(bytes, len, off));
+        out.modelNames.push_back(nameAt(stringTable, tableLen, off));
     }
     // Version 1 (clz): 36-byte placements, no varint skip. (The reference
     // importer reads a varint per placement only when version > 1; clz.zon's
@@ -242,7 +261,7 @@ bool parseClzZone(const char* bytes, size_t len, ClzZone& out, std::string& erro
         const char* p = bytes + placStart + static_cast<size_t>(o) * 36;
         ClzPlacement& pl = out.placements[o];
         pl.modelIndex = rdI32(p);
-        pl.name = nameAt(bytes, len, rdU32(p + 4));
+        pl.name = nameAt(stringTable, tableLen, rdU32(p + 4));
         pl.x = rdF32(p + 8);
         pl.y = rdF32(p + 12);
         pl.z = rdF32(p + 16);
@@ -272,7 +291,7 @@ bool ClzZone::loadZone(PfsArchive& archive) {
     ddsCount = modCount = litCount = 0;
     for (const auto& n : names) {
         if (n.size() > 4) {
-            const std::string ext = n.substr(n.size() - 3);
+            const std::string ext = n.substr(n.size() - 4);
             if (ext == ".dds") {
                 ++ddsCount;
             } else if (ext == ".mod") {

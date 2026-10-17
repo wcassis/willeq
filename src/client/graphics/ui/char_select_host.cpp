@@ -12,6 +12,7 @@
 
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/renderer_event_receiver.h"
+#include "client/graphics/ui/char_backdrop_scene.h"
 #include "client/graphics/ui/char_preview_host.h"
 #include "client/graphics/ui/char_preview_scene.h"
 #include "client/graphics/ui/char_select_layout.h"
@@ -30,6 +31,7 @@ CharacterSelectHost::~CharacterSelectHost() = default;  // unique_ptr<CharPrevie
 
 CharacterSelectHost::CharacterSelectHost() {
     preview_ = std::make_unique<eqt::ui::CharPreviewScene>();  // B888-CC2: the 3D model
+    backdrop_ = std::make_unique<eqt::ui::CharBackdropScene>();  // B888-CC3: the clz showroom
     if (!data_.loadShipped()) {
         // The select screen still works; "Create a New Character" then opens
         // an empty creation screen whose Next can never submit.
@@ -83,11 +85,10 @@ bool isExploreButtonClick(int x, int y, const UILayout& layout) {
            y >= r.UpperLeftCorner.Y && y < r.LowerRightCorner.Y;
 }
 // B888-CC3: the row a click on the backdrop scene selects (-1 = nothing hit).
-// The 3D slice (the clz showroom's character nodes) implements the raycast;
-// until it stands up the models, every click is a miss and the selection
-// cursor is kept (the machine's own rule for a miss, oracle-consistent:
-// A4/A5 showed no selection change from a non-landing click).
-int backdropRowForClick(int, int) { return -1; }
+// The 3D slice (the clz showroom's character nodes) implements the raycast.
+int backdropRowForClick(eqt::ui::CharBackdropScene* backdrop, int x, int y) {
+    return backdrop ? backdrop->rowForClick(x, y) : -1;
+}
 // B888-CC2: the preview's model, from the screen's state. The SELECT screen
 // stands up the selected row's body (race/gender/face from the T14 wire);
 // the CREATION screen stands up the sample model of the page-0 race + gender
@@ -128,6 +129,37 @@ bool CharacterSelectHost::frame(IrrlichtRenderer& renderer, eqt::login_world::Ch
         // manager off the renderer's, so nothing of the zone scene graph is
         // touched.
         const bool onSelectScreen = !state_.create.isOpen;
+        // B888-CC3: the 3D clz backdrop (the showroom behind the select
+        // screen). Stand it up (idempotent), and while Explore is open apply
+        // the held-key camera verb and draw the scene + the account's
+        // character stands BEFORE the screen draws, so the UI (the EXW
+        // plates) draws over it -- the oracle's layering (3D select scene,
+        // then the UI, MEASURED oracle-a6 A3/A9). Outside Explore the scene
+        // is not drawn: the select screen's own model preview stands in the
+        // model area, and the backdrop's draw costs a full scene render the
+        // screen does not show.
+        const bool inExplore = state_.exploreOpen && !state_.create.isOpen && !state_.confirm.isOpen;
+        backdrop_->init(renderer);
+        if (inExplore) {
+            backdrop_->update(
+                EQT::Graphics::exploreCameraVerb(state_, rx && rx->isKeyDown(irr::KEY_KEY_D)), dt * 1000.0f);
+            const size_t rowCount = state_.rows.size();
+            for (size_t row = 0; row < rowCount; ++row) {
+                const auto& r = state_.rows[row];
+                const auto app = eqt::graphics::selectPreviewAppearance(r.race, r.gender, r.face,
+                                                                        r.hair_color, r.hair_style);
+                if (app.valid) {
+                    backdrop_->setCharacter(static_cast<int>(row), static_cast<uint16_t>(r.race),
+                                            r.gender, app.appearance);
+                } else {
+                    backdrop_->clearCharacter(static_cast<int>(row));
+                }
+            }
+            for (size_t row = rowCount; row < 8; ++row) {
+                backdrop_->clearCharacter(static_cast<int>(row));
+            }
+            backdrop_->renderScene(renderer);
+        }
         // The frame's left click, read ONCE: wasLeftButtonClicked() is a
         // read-and-reset, and both the Rotate toggle and the screen's own
         // click handling below consume it. Reading it here, before the
@@ -195,7 +227,7 @@ bool CharacterSelectHost::frame(IrrlichtRenderer& renderer, eqt::login_world::Ch
                     // an account row (one model node per row), -1 when it hits
                     // nothing. The select window is HIDDEN in this mode, so
                     // the screen's own click resolution does not run.
-                    const int row = backdropRowForClick(cx, cy);
+                    const int row = backdropRowForClick(backdrop_.get(), cx, cy);
                     exploreSelectRow(state_, row);
                 } else if (isExploreButtonClick(cx, cy, layout)) {
                     enterExplore(state_);   // CSW_Explore_Button (now live): open the mode
