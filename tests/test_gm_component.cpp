@@ -188,6 +188,9 @@ TEST_F(GmComponentTest, ShortGMZoneReplySendsNoConfirm) {
     std::vector<uint8_t> tooShort(100, 0);
     ReplayZone(eq, HC_OP_GMZoneRequest, tooShort);
     EXPECT_FALSE(eq.Gm().Test_GetLastGMZoneRequest2().sent);
+}
+
+// ===================================================================
 // 5. B1088: an APPROVED GM zone request initiates the transition
 //    (OP_ZoneChange handshake), a denied one does not
 // ===================================================================
