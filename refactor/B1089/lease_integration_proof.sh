@@ -27,7 +27,14 @@ ACTIVE="kb-b1089-active"
 REAPRUN="kb-b1089-reap"
 LIVE="kb-b1089-live"
 TTL=900   # the default, deliberately: the idle hold IS the default TTL.
-export LANE_LEASE_TTL_S="$TTL"
+export LANE_LEASE_TTL_S="${TTL}"
+# The lane's ssh target, from ONE table (env.sh): lanes are 99/98/97/96/205,
+# so a literal "172.16.200.${LANE}" is wrong for every lane (it points at
+# 172.16.200.1-4 -- no such host; the (iii) plant died there). Resolved by
+# sourcing env.sh in a child and echoing the variable (EQEMU_SSH is not
+# exported by env.sh, so `env` never shows it).
+LANE_SSH="$(EQEMU_LANE="${LANE}" bash -c "source '$REPO/scripts/eqemu/env.sh' >/dev/null 2>&1; echo \"\${EQEMU_SSH:-user@\${EQEMU_HOST}}\"")"
+[ -n "${LANE_SSH}" ] || { echo "cannot resolve the lane-${LANE} ssh target" >&2; exit 1; }
 
 say() { echo "[$(date -u +%FT%TZ)] $*" | tee -a "$OUT/proof.log"; }
 leases_snap() { # <label>
@@ -49,7 +56,7 @@ CLEANED=0
 cleanup() {
     [ "${CLEANED}" = 1 ] && return 0
     CLEANED=1
-    [ -n "${PLANT:-}" ] && ssh -n -o BatchMode=yes "user@172.16.200.${LANE}" "kill ${PLANT} 2>/dev/null" 2>/dev/null
+    [ -n "${PLANT:-}" ] && ssh -n -o BatchMode=yes "${LANE_SSH}" "kill ${PLANT} 2>/dev/null" 2>/dev/null
     for i in "${IDLE}" "${ACTIVE}" "${REAPRUN}" "${LIVE}"; do
         bash "$L" release --lane "$LANE" --card "$i" --run "$i" --pid "$$" >/dev/null 2>&1
     done
@@ -120,7 +127,7 @@ leases_snap "4-active-released"
 # stdout: with `&` it does, and ssh waits for that pipe to close before
 # returning (the B1089 proof's first (iii) attempt died exactly there).
 plant() { # <lane> -> prints the pid
-    ssh -n -o BatchMode=yes "user@172.16.200.$1" \
+    ssh -n -o BatchMode=yes "${LANE_SSH}" \
         "setsid sleep 300 </dev/null >/dev/null 2>&1 & P=\$!; echo \$P" | tail -n1 | tr -d '[:space:]'
 }
 
@@ -136,12 +143,12 @@ bash "$L" reap --lane "$LANE" --dead-runs "$OUT/deadruns.txt" --dry > "$OUT/reap
 grep -q "DRY run=${REAPRUN}: would release lease" "$OUT/reap_dry.log" || { say "FAIL: dry log missing would-release: $(cat "$OUT/reap_dry.log")"; exit 1; }
 grep -q "DRY run=${REAPRUN}: would kill 1 tracked pids" "$OUT/reap_dry.log" || say "WARN: dry log missing the would-kill line"
 sleep 2
-ssh -n -o BatchMode=yes "user@172.16.200.$LANE" "kill -0 ${PLANT}" 2>/dev/null || { say "FAIL: DRY reap killed the planted pid"; exit 1; }
+ssh -n -o BatchMode=yes "${LANE_SSH}" "kill -0 ${PLANT}" 2>/dev/null || { say "FAIL: DRY reap killed the planted pid"; exit 1; }
 bash "$L" show --lane "$LANE" 2>&1 | grep -q "state=HELD" || { say "FAIL: DRY reap released the lease"; exit 1; }
 say "dry: would-release + would-kill reported, nothing changed -- expected"
 bash "$L" reap --lane "$LANE" --dead-runs "$OUT/deadruns.txt" > "$OUT/reap.log" 2>&1 || { say "FAIL: reap rc=$?"; exit 1; }
 sleep 2
-ssh -n -o BatchMode=yes "user@172.16.200.$LANE" "kill -0 ${PLANT}" 2>/dev/null && { say "FAIL: planted pid ${PLANT} still alive after reap"; exit 1; }
+ssh -n -o BatchMode=yes "${LANE_SSH}" "kill -0 ${PLANT}" 2>/dev/null && { say "FAIL: planted pid ${PLANT} still alive after reap"; exit 1; }
 say "planted pid ${PLANT} dead -- expected"
 bash "$L" show --lane "$LANE" 2>&1 | grep -q "state=FREE" || { say "FAIL: reap did not release the dead run's lease"; exit 1; }
 say "(iii-a) PASS: reap released the dead run's lease and killed exactly its pid"
@@ -154,13 +161,13 @@ LIVEPLANT="$(plant "$LANE")"
 bash "$L" track --lane "$LANE" --run "$LIVE" --pid "$LIVEPLANT" --purpose "live holder's pid" >/dev/null 2>&1 || { say "FAIL: live track"; exit 1; }
 bash "$L" reap --lane "$LANE" --dead-runs "$OUT/deadruns.txt" > "$OUT/reap2.log" 2>&1 || { say "FAIL: reap2 rc=$?"; exit 1; }
 sleep 2
-ssh -n -o BatchMode=yes "user@172.16.200.$LANE" "kill -0 ${LIVEPLANT}" 2>/dev/null || { say "FAIL: the reap killed the LIVE run's pid ${LIVEPLANT}"; exit 1; }
+ssh -n -o BatchMode=yes "${LANE_SSH}" "kill -0 ${LIVEPLANT}" 2>/dev/null || { say "FAIL: the reap killed the LIVE run's pid ${LIVEPLANT}"; exit 1; }
 bash "$L" show --lane "$LANE" 2>&1 | grep -q "card=${LIVE}" && bash "$L" show --lane "$LANE" 2>&1 | grep -q "state=HELD" \
     || { say "FAIL: the reap took the LIVE holder's lease"; exit 1; }
 say "(iii-b) PASS: reap with the dead list left the live holder's lease and pid untouched"
 leases_snap "4-live-holding-after-reap2"
 bash "$L" release --lane "$LANE" --card "$LIVE" --run "$LIVE" --pid "$$" >/dev/null 2>&1 || say "WARN: live release rc=$?"
-ssh -n -o BatchMode=yes "user@172.16.200.$LANE" "kill ${LIVEPLANT} 2>/dev/null" 2>/dev/null
+ssh -n -o BatchMode=yes "${LANE_SSH}" "kill ${LIVEPLANT} 2>/dev/null" 2>/dev/null
 PLANT="" LIVEPLANT=""
 leases_snap "5-final-free"
 say "PROOF PASS lane=$LANE"
