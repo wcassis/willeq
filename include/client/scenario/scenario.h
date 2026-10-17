@@ -173,6 +173,15 @@ public:
     virtual bool AtCharacterSelect() const { return false; }
     /** The names on the latest character list, slot order. */
     virtual std::vector<std::string> CharacterListNames() const { return {}; }
+    /**
+     * B1081 (#401): the character this run will enter the world as, BEFORE a
+     * zone-in: the entry at the select screen's cursor on the character
+     * list, or the run's configured character when the list is still owed.
+     * "" when the world cannot know (the base). zone_change_no_flash reads
+     * it in WaitList -- game-state's player name is empty until the zone
+     * session is up, so PlayerName() is the wrong source there.
+     */
+    virtual std::string CharacterSelectName() const { return {}; }
     /** OP_SendCharInfo deliveries this session; -1 not readable. */
     virtual long long CharacterListGeneration() const { return -1; }
     /** Enter World for a listed name (the screen's button); false if refused. */

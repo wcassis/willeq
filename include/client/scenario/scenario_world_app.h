@@ -95,6 +95,7 @@ public:
     int CampPhase() const override;
     bool AtCharacterSelect() const override;
     std::vector<std::string> CharacterListNames() const override;
+    std::string CharacterSelectName() const override;
     long long CharacterListGeneration() const override;
     bool EnterWorldAs(const std::string& name) override;
     long long ZoneConnectOpens() const override;                          // B1072

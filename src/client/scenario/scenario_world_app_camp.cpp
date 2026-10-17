@@ -31,6 +31,21 @@ std::vector<std::string> ApplicationScenarioWorld::CharacterListNames() const {
     return names;
 }
 
+// B1081 (#401): the entry at the select screen's cursor, else the run's
+// configured character (the scenario config names exactly one character,
+// and the automatic Enter World -- suppressed while the screen is up --
+// would have entered it too). Empty neither = the scenario's WaitList has
+// nothing to Enter World as.
+std::string ApplicationScenarioWorld::CharacterSelectName() const {
+    const auto& lw = client_.LoginWorld();
+    const int idx = lw.GetCharacterSelectIndex();
+    const auto& list = lw.GetCharacterSelectList();
+    if (idx >= 0 && idx < static_cast<int>(list.size()) && !list[idx].name.empty()) {
+        return list[idx].name;
+    }
+    return app_.ConfiguredCharacter();
+}
+
 long long ApplicationScenarioWorld::CharacterListGeneration() const {
     return static_cast<long long>(client_.LoginWorld().CharacterListGeneration());
 }

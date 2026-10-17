@@ -284,6 +284,7 @@ struct FakeWorld : eqt::scenario::IScenarioWorld {
     std::string ZoneName() const override { return zone; }
     int OtherPlayerCount() const override { return 0; }
     std::string PlayerName() const override { return me; }
+    std::string CharacterSelectName() const override { return me; }
     std::vector<uint32_t> PlayerBuffSpellIds() const override { return {}; }
     long long PeerEquipmentMaterial(const std::string&, int) const override { return -1; }
     long long SelfEquipmentMaterial(int) const override { return -1; }

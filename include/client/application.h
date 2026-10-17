@@ -385,6 +385,10 @@ public:
     long long CharacterSelectActivations() const {
         return static_cast<long long>(m_charSelectService.Activations());
     }
+    // B1081 (#401): the configured character, pre-zone-in -- game-state's
+    // player name is empty until the zone session is up, so a scenario that
+    // acts AT the character-select screen names its character from here.
+    std::string ConfiguredCharacter() const { return m_config.character; }
 
     /** B998 (#318): whether `config` shows the character-select screen
      *  (login_world/character_select.h, CharacterSelectScreenWanted). Public

@@ -60,20 +60,28 @@ public:
 
     StepResult Step(IScenarioWorld& w, const ScenarioTick& tick) override {
         switch (stage_) {
-        case Stage::WaitList:
+        case Stage::WaitList: {
             if (w.CharacterSelectActivations() < 1) {
                 return StepResult::Running;  // the fresh login's list is still owed
             }
-            if (!w.EnterWorldAs(w.PlayerName())) {
-                SetReason("Enter World as " + w.PlayerName() + " was refused by the screen");
+            // The character this run enters the world as: the select
+            // screen's cursor entry, else the run's configured character
+            // (game-state's player name is empty pre-zone-in).
+            const std::string who = w.CharacterSelectName();
+            if (who.empty()) {
+                SetReason("no character to enter the world as: the list is empty and no configured character");
+                return StepResult::Fail;
+            }
+            if (!w.EnterWorldAs(who)) {
+                SetReason("Enter World as " + who + " was refused by the screen");
                 return StepResult::Fail;
             }
             w.Note("zone_change_no_flash: screen up (activations " +
-                   std::to_string(w.CharacterSelectActivations()) + "), Enter World " +
-                   w.PlayerName());
+                   std::to_string(w.CharacterSelectActivations()) + "), Enter World " + who);
             stage_ = Stage::FirstZone;
             return StepResult::Running;
-        case Stage::FirstZone:
+        }
+        case Stage::FirstZone: {
             if (w.IsFullyZonedIn() && !w.ZoneName().empty()) {
                 if (w.PlayerName().empty()) {
                     SetReason("the character name is unknown -- a GM character is needed for /gmzone");
@@ -91,7 +99,8 @@ public:
                 stage_ = Stage::Transition;
             }
             return StepResult::Running;
-        case Stage::Transition:
+        }
+        case Stage::Transition: {
             if (w.IsFullyZonedIn() && !w.ZoneName().empty() && w.ZoneName() != firstZone_) {
                 const long long a = w.CharacterSelectActivations();
                 if (a != 1) {
@@ -119,6 +128,7 @@ public:
             }
             return StepResult::Running;
         }
+        }  // switch
         return StepResult::Running;
     }
 
