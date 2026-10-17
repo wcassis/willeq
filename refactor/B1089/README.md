@@ -25,7 +25,9 @@ host. The design is `scripts/eqemu/lease_core.sh` + `lease_lib.sh`
   untouched. A named host's pids are killed over raw ssh; an unreachable
   host is reported, never fatal.
 - Exit codes: 0 ok; 1 held by another (named); 2 corrupt record; 63
-  LEASE_EXPIRED; 64 usage/identity; 65 unreachable.
+  LEASE_EXPIRED; 64 usage/identity; 65 unreachable, OR a release that
+  returned 0 but whose re-show still names this exact identity (a silent
+  ssh no-op must never claim the lane free — the verified release, below).
 
 ## Evidence
 
@@ -83,3 +85,66 @@ host. The design is `scripts/eqemu/lease_core.sh` + `lease_lib.sh`
   share card ids + lane + log and collide (run 4/5). All of this is why
   the proof reclaims its own leftovers at start and the launcher refuses
   a concurrent start.
+- **Lane 5, local-disk store** (`/opt/akk-stack/.eqemu-lease/lane5`,
+  ThinkPad NVMe, never `/mnt/projects`): take -> show (state=HELD,
+  host=thinkpad) -> release -> state=FREE, all driven FROM the ThinkPad
+  (2026-10-17 04:31Z). That exposed the last client bug: a client on the
+  lane's own host sshed to itself and 65'd; `_lease_client_cmd` now runs
+  the core in-process when `hostname` / `hostname -I` matches the lane
+  host (host check, not lane — lanes 1-4 never fire it).
+- **Lanes 1-3** (2026-10-17 04:37Z): take -> show -> release -> FREE each,
+  through the same helper (lane 4 carries the long proof above).
+- **The status view** (`scripts/eqemu/leases`, from hermes-ext,
+  `leases-final.txt`): one line per lane 1-5 + XU4, parallel ssh, no hang,
+  all FREE at capture.
+- **Hermetic net + docs green in CI's own environment** (rbuild on the
+  ThinkPad, 2026-10-17 04:29Z): the full hygiene label 39/39 PASS,
+  `LeaseCoreSelfTest` among them. The two failures it first caught were
+  this unit's own: `DocCounts` (the new test takes the fragment 39->40,
+  `docs/module_map.md` corrected) and `OracleSessionSafety` (B1089's
+  `oracle_session.sh` renamed the gate's "lane lock held" to "lane lease
+  held" and starts the renewer; the test's stub updated in lockstep).
+
+## Not verified / left open
+
+- **A real `scenario.sh` or oracle 20-min run over the live renewer is NOT
+  among the evidence.** The long proof proves the lease mechanism with a
+  60-s renewing holder; the converted live runners (`scenario.sh`'s wait
+  loop, `oracle_session.sh`'s renewer, the ledger/pose/sweep runners)
+  have been converted and their wrapper path is proven by the local
+  smoke (`lease_smoke_local.sh`), but no 20-min live scenario was re-run
+  under the new lease in this card's window (the lanes were shared with
+  other cards). The first real scenario run on any lane is the remaining
+  proof.
+- **The reap's per-host ssh kill is proven by the ssh-shim hermetic case
+  and by a live `sleep` on lane 4 (the proof's (iii))** — but never against
+  a real `parecord` / `eqgame.exe` / Xvfb process. The tracking call
+  (`eqemu_lease_track <run> <pid> <purpose> [host]`) is present in the
+  call sites; its live end-to-end reap against an oracle process is the
+  next thing to exercise (a FOLLOW-UP, not a card).
+- **XU4's lease is proven (take/show/release on the box), but the XU4
+  has no renewer yet** — its callers are short operations (a single ssh),
+  so TTL 900 s is plenty; a future long XU4 operation must start the
+  renewer like the lane scripts do.
+- **The Pi lanes were NOT moved onto the helper** (scope: "PI_LANE
+  devices only if you move pi_lock_* onto the helper"). `pi_lock_*`
+  stays as-is; `scripts/eqemu/leases` reports only the eqemu lanes + XU4.
+- **Lane 1's stack was left as found** (down, per the card); every proof
+  release verified FREE by re-show (the verified release, not just rc=0).
+
+## Proposed solo-prompt sentence
+
+For the solo prompt's lane section (edited by Fable/Will, not this card):
+
+> "Lanes are LEASED, not locked (`docs/ci.md` 'Lane leases', B1089): take
+> with `eqemu_lock_take <owner>` (or `bash scripts/eqemu/lease take
+> --lane N --card <card> --run <run> --purpose ...`), leave the lane free
+> on the way out (`eqemu_lock_release` — a verified release; rc=65 means
+> it did NOT free), and if a lane is HELD by a card that is no longer
+> running, `bash scripts/eqemu/lease reap --lane N --dead-runs <file>`
+> returns it (releases the lease and kills exactly that dead run's
+> tracked pids; a live run's processes are never touched). A quiet lane
+> frees itself at the 900 s TTL; a held lane renews itself — an error 63
+> ('lease expired, re-lease: ...') means your lease lapsed, so re-take
+> and re-do the operation. Never write to a lane's store path by hand;
+> a hand-rolled ssh gets no renewal and loses the lane at TTL."
