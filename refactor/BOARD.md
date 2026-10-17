@@ -465,19 +465,24 @@ it without taking that measurement first.
   icon texture is not in the shipped atlas), close box, `HotbarPageChangedIntent`.
   The stock client cannot show Hotbars 2-4 (the XML gives them zero size; the
   H-O oracle measured them invisible even forced on), so there is no geometry
-  for bars 2-4. **H-3** (the slot-assignment gesture,
-  `refactor/B1025-H3/README.md`) — the H-O press-and-hold-then-click gesture:
-  hold on a gem / combat-ability row / main-inventory item / occupied slot
-  clones a hot button onto the cursor (`HotbarAssignPending` for the
-  `/hotbutton` command's social button), a slot click places it
-  (`HotbarAssignIntent` -> `HotbarModel::assignSlot()`, the first production
-  caller; the zero-caller seam row is struck), a hold on an occupied slot
-  clears its source (`HotbarClearIntent` -> `clearSlot()`, its first
-  production caller), a world click dismisses it. What remains is the live
-  feature scenario. The H0 partial official-client capture
-  (`refactor/B1025-H0/README.md`) and its "Not captured / not verified"
-  cases (the exact hold threshold, the INI letter-code taxonomy) remain
-  open; this item is not closed.
+  for bars 2-4. Chain: **H-3** (MR !198, in review) — the slot-ASSIGNMENT
+  gesture (hold-to-pickup, place, clear, `/hotbutton`), the first production
+  caller of `HotbarModel::assignSlot`; **H-4** (MR !199, in review) — the
+  official page keys (Shift+1..0) and window toggle (Alt+H) with their
+  Options Keys rows, addressed through the one `HotbarModel` page
+  (`refactor/B1025-H4/README.md`). **H-5** (this item's live CI feature
+  scenario, MR !207, `refactor/B1025-H5/README.md`) — the gap-rule test the
+  issue's acceptance requires: `hotbar_lifecycle` (+ the `hotbar_isolation_
+  assign` peer) drives the hotbar's whole user path on a lane and asserts
+  only server/chat observables (the buff, the charge decrement, the client's
+  own cast/use/emote lines, the #fish catch, the per-character INI bytes for
+  persistence + isolation). Its lane run PASSED on lane 1 (run 12, 2026-10-16
+  22:09–22:22 UTC: exit 0 + post-check PASS, logs attached to the task and in
+  `refactor/B1025-H5/README.md`), and the MR !207 pipeline is green at
+  983df6c0. The H0 partial official-client capture
+  (`refactor/B1025-H0/README.md`) and its "Not captured / not verified" cases
+  remain open; H-3 (MR !198) and H-4 (MR !199) are in review, so this item
+  closes when the chain merges.
 - **B988** (A) → issue #307. Will 2026-10-05: "make the nobocache flag opt-in
   (off by default) and fix the stale docs". A DRM client now leaves
   `LIMA_DEBUG` untouched (Lima's BO cache on); `WILLEQ_LIMA_NOBOCACHE=1`
@@ -7345,8 +7350,10 @@ client uses every field.
   ignored by the drain) and `SimulationInput::cameraTarget`,
   `EntityVisual::corpseYOffset` (computed per corpse, never applied to the
   node), `ParticleEmitter::spawnRadius_` (seven callers set it; the spawn does
-  not use it), `SpellEffectInstance::spellID`, `RendererEvent::intData`,
-  `SpellActionInfo::level2`. Same class as B296 one layer down: a producer
+  not use it), `SpellEffectInstance::spellID`, `SpellActionInfo::level2`.
+  `RendererEvent::intData` closed by B1025-H4 (the hotbar page keys' first
+  consumer: `FrameComponent::processPlayerInput`'s `HotbarPageChange` arm).
+  Same class as B296 one layer down: a producer
   computes a value for a consumer that never reads it. Closes per field. Found
   by T414 Leg C.
 

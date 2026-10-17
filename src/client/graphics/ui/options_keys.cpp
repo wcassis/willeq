@@ -26,7 +26,9 @@ const char* const kNames[kCategoryCount] = {
     "Commands",     // measured (..._keys_Commands_page1.png)
     "Target",       // fable's grouping
     "Spells",       // fable's grouping
-    "Hot Buttons",  // fable's grouping
+    "Hot Buttons",  // fable's grouping (window 1: the ten buttons + B1025-H4's
+                    // ten page keys + the window toggle = the oracle's
+                    // "Hotbar 1" page, pages.tsv:2, 27_keys_hb1.png)
     "Camera",       // fable's grouping
     "UI",           // measured (..._keys_UI_page1..4.png)
     "Debug",        // fable's own developer toggles, no oracle counterpart
@@ -46,7 +48,10 @@ const std::vector<std::vector<HA>>& table() {
         {HA::SpellGem1, HA::SpellGem2, HA::SpellGem3, HA::SpellGem4, HA::SpellGem5,
          HA::SpellGem6, HA::SpellGem7, HA::SpellGem8},
         {HA::HotbarSlot1, HA::HotbarSlot2, HA::HotbarSlot3, HA::HotbarSlot4, HA::HotbarSlot5,
-         HA::HotbarSlot6, HA::HotbarSlot7, HA::HotbarSlot8, HA::HotbarSlot9, HA::HotbarSlot10},
+         HA::HotbarSlot6, HA::HotbarSlot7, HA::HotbarSlot8, HA::HotbarSlot9, HA::HotbarSlot10,
+         HA::HotbarPage1, HA::HotbarPage2, HA::HotbarPage3, HA::HotbarPage4, HA::HotbarPage5,
+         HA::HotbarPage6, HA::HotbarPage7, HA::HotbarPage8, HA::HotbarPage9, HA::HotbarPage10,
+         HA::ToggleHotbar1Window},
         {HA::ToggleCameraMode, HA::CameraZoomIn, HA::CameraZoomOut, HA::CameraOrbitLeft,
          HA::CameraOrbitRight, HA::CameraPitchUp, HA::CameraPitchDown, HA::CameraRaise,
          HA::CameraLower},
