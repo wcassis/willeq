@@ -258,3 +258,44 @@ The earlier companion-alpha material-gate hypothesis (take 3, commit
 `7a6d47ec`) was REFUTED live and reverted at `eaf15dc0` — the smear buffers
 drew mat=256 SOLID, so the alpha-variant path was never the mechanism. Do
 not re-apply it. The WILLEQ_B1051_TRACE net stays in the branch.
+
+## The XU4 device A/B (2026-10-17, merged head 4dd9efe0)
+
+The named guards (Lieutenant Arathur, Guard Dunix) are absent from the
+10.0.30.23 `qeynos2` roster in every run since 2026-10-16 (the GT leg's
+`log_gt_etc1.log`: 100 `Loaded spawn` lines, 77 unique names, zero
+`Arathur`/`Dunix`; `/target` + `/moveto` + `/face` all "not found"), so the
+device leg used `Guard_Treitan` (spawn 45, ID 5, race 71, `QCM` skeleton —
+the same multi-part class as the x86 proof, 5 u from the saved pose).
+Binary: the published `ci-arm/3345ebdac0794c30e1465445c44a91379d853836`
+(MR !173 armhf publish, BUILD_INFO sha matches). Three legs: `gt_etc1`
+(`--eqe1-path`), `gt_rgba` (no `--eqe1-path`), `gt_etc1_trace`
+(`WILLEQ_B1051_TRACE=1` on the ETC1 config). Evidence:
+`/home/user/kb-evidence/b1051-xu4-after/gt_pull/`.
+
+**The client fix is active on the device.** Entity 5 in the ETC1 leg: the
+per-part ETC1 upload burst (04:29:18.151-18.165, 25 distinct weapon/hilt,
+qcm body, qcf head and qguard parts) completes 90 ms BEFORE the mesh build
+(Step8f 04:29:18.255), and the draw binds 16 distinct tex0 objects per frame
+(f1481-f1485, `gt_etc1_trace/log`) — the same class of distinct per-buffer
+binding the x86 proof showed. (The pre-fix log, `b1051-followup/cont_etc1_client.log`,
+shows the same pre-build burst at 15:48:01.867-01.870 before its Step8f
+15:48:01.895, so the upload timestamps alone cannot isolate which of the two
+fix commits closed the race — but the x86 lane-2 before/after stills did:
+textureless body pre-fix, distinct parts post-fix.) The client now binds
+distinct per-part textures on BOTH drivers.
+
+**The device still smears — the residual fault is the driver.** Vision read
+of the ETC1 config: the body is ONE flat wood-grain surface at frames 40 and
+60 (`etc1_f040.png`, `etc1_f060.png`). Same binary, same pose: the RGBA
+config renders the distinct gold helmet, emblem and grey trim
+(`rgba_f040.png`, `rgba_f060.png`), and the x86 llvmpipe run of the same head
+renders distinct parts. Coarse 24-level colour count of the central figure
+crop: ETC1 65-74 vs RGBA 103-122 (`b1051_pixel_check.py`). Per the 2026-10-15
+01:00Z ruling this is the (1) branch — a Panfrost/Midgard defect in ETC1
+sampling of DISTINCT per-part buffers — not the client. The
+`etc1_decode_probe` (mesa-probe/) cannot be run on the box (no cross-toolchain
+on the host; compiling there is forbidden), so the Mesa commit/line is still
+open; a `xu4` preset or a Mesa patch is a decision for Will (direction (2)
+fallback). Box left as found: no process, work dir removed, UI ini absent,
+launcher hash unchanged.

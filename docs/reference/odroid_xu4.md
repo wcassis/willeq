@@ -145,6 +145,43 @@ not NPC defect counts. `refactor/B1051/README.md` "Take-2 resumption" names
 the stills, commands, log lines and cleanup checks. No new Mesa mechanism or
 `xu4` preset follows from this non-reproduction.
 
+**2026-10-17 device A/B (continuation, `Guard_Treitan`):** the named guards are
+absent from the 10.0.30.23 `qeynos2` roster in every run since 2026-10-16
+(the GT leg's `log_gt_etc1.log`: 100 `Loaded spawn` lines, 77 unique names,
+zero `Arathur`/`Dunix`; `/target` + `/moveto` + `/face` all
+"not found"), so the device leg used the roster's `Guard_Treitan` (spawn 45,
+ID 5, race 71, `QCM` skeleton, 13-buffer multi-part class per `held items`
+line 2026-10-17 04:29:22.912 — same class as the x86 proof; 5 u from the
+saved pose).
+The published MR !173 binary at `ci-arm/3345ebdac0794c30e1465445c44a91379d853836`
+now loads **25 per-part ETC1 uploads** in the on-demand path
+(`log_gt_etc1.log` 04:29:18.151-18.165: weapon/hilt, qcm body, qcf head and
+qguard parts) 90 ms BEFORE the mesh build (Step8f 04:29:18.255), and
+`WILLEQ_B1051_TRACE` shows the draw binds **16 distinct tex0 objects per
+frame** (f1481-f1485: tex0=15/23/24/158/212/223/224/228/229/230/249/250/251/278/
+279/536, `gt_etc1_trace/log`) — the same class of distinct per-buffer binding
+the x86 proof showed (whose before/after stills isolated the fix's effect:
+textureless body pre-fix, distinct parts post-fix).
+Yet the vision read of the ETC1 config still shows the body as ONE flat
+wood-grain surface at frames 40 and 60 (`etc1_f040.png`, `etc1_f060.png`),
+while the SAME binary's raw RGBA config renders the distinct gold helmet,
+emblem and grey trim (`rgba_f040.png`, `rgba_f060.png`), and the x86 llvmpipe
+run of the same head renders distinct parts. Coarse 24-level colour count of
+the central figure crop: ETC1 65-74 vs RGBA 103-122
+(`b1051_pixel_check.py`, run on the pulled stills). The residual device fault
+is therefore the ETC1 sampling of DISTINCT per-part buffers on
+Panfrost/Midgard — a driver-side defect per the ruling's (1) branch, not the
+client (the client now binds distinct per-part textures on BOTH drivers).
+The `etc1_decode_probe` cannot be run on the box (no cross-toolchain on this
+host; compiling on the box is forbidden), so the Mesa commit/line is still
+open. Box left as found: no process, work dir removed, UI ini absent,
+launcher hash unchanged. x86 pipeline at the merged head 4dd9efe0
+(pipeline 1539): hygiene/build-headless/build-test/gate/zone-budget-census
+success, build-arm success (goldens byte-identical — gate success). MR !173
+stays Draft until the driver ruling: acceptance (guards distinct on device)
+is not met, and a `xu4` preset or Mesa patch is a decision for Will
+(direction (2) fallback per the 2026-10-15 01:00Z ruling).
+
 ## Kernel and module state on the box
 
 Armbian 26.05 (6.6.129) shipped Panfrost but had this defect; its headers are not packaged. Armbian 26.8.3

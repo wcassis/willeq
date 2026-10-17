@@ -13727,6 +13727,18 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
   the WILLEQ_B1051_TRACE net is retained. x86 lane-2 after-verification:
   Guard_Treitan (race 71, qeynos2) ETC1 == RGBA distinct parts, single-buffer
   zone ETC1 still correct, per-buffer tex0 objects distinct at draw; evidence
-  `~/kb-evidence/b1051-followup/`. `refactor/B1051/README.md` "The client
-  fix", `docs/reference/odroid_xu4.md`. Open: the XU4 after-still leg (both
-  guards via the ci-arm armhf publish, MR !173) and Will's play session.
+  `~/kb-evidence/b1051-followup/`. **XU4 device A/B (2026-10-17, merged head
+  4dd9efe0):** the named guards are absent from the live qeynos2 roster, so
+  the leg used Guard_Treitan (spawn 45, ID 5, race 71, same class); the
+  published armhf binary's fix is active (per-part ETC1 uploads 90 ms before
+  the mesh build; 16 distinct per-buffer tex0 bound per frame), yet the ETC1
+  body STILL renders one flat wood-grain surface while the SAME binary's
+  raw RGBA config renders distinct parts — the residual fault is ETC1
+  sampling of distinct per-part buffers on Panfrost/Midgard (the ruling's
+  driver branch; the `etc1_decode_probe` cannot run on the box: no
+  cross-toolchain on the host, compiling there is forbidden, so the Mesa
+  commit/line is open). Evidence `~/kb-evidence/b1051-xu4-after/gt_pull/`.
+  `refactor/B1051/README.md` "The client fix" + "The XU4 device A/B",
+  `docs/reference/odroid_xu4.md`. Open: a `xu4` preset or a Mesa patch —
+  Will's call (direction (2) fallback per the 2026-10-15 01:00Z ruling); MR
+  !173 stays Draft until that ruling, and Will's play session.
