@@ -362,11 +362,13 @@ TEST_F(UiPanelZOrderTest, ThePurseCountsAreCoveredByTheConfirmationDialog) {
     confirm_.open(1, "ARE YOU SURE you wish to drop your Rusty Long Sword on the ground?");
     // B1075 (#395): the layout table moved the inventory to the right half of
     // the side-by-side pair, out from under the centred dialog at 800x600.
-    // This case is about TEXT LAYERING, not placement, so it stages the
-    // overlap it needs: the inventory in the pre-B1075 shared centre box
-    // {200,125,600,475}, where the purse counts sit under the dialog.
+    // B1078 (GitLab #398): the inventory's window anchors at that slot's LEFT
+    // (428x460 at one uniform factor), so it only reaches the centred dialog
+    // when the slot sits left enough: window {280,48,595,429} carries the
+    // coin column (x 519..551) under the dialog's right part (263..537).
+    // This case is about TEXT LAYERING, not placement.
     UILayout stacked = layout_;
-    stacked.inventoryPopup = {200, 125, 600, 475};
+    stacked.inventoryPopup = {280, 125, 680, 475};
     expectLowerTextCovered(
         "inventory under confirmation",
         [&] {
@@ -449,19 +451,26 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
         // per-slot frames are solid draws there, so the HUD rose from 18 to
         // 59 draws. The atlas pins are unchanged: every one of those is one
         // atlas quad plus the shared panel texture.
-        {"hud", [] {}, {4, 4, 6, 1}, {59, 59, 6, 1}},
-        {"inventory", [&] { inv_.activePopup = PopupType::Inventory; }, {31, 35, 7, 2}, {82, 84, 7, 2}},
+        // B1077 adds the always-on gem bar to every fixture frame: +4 draws
+        // on the atlas path, +3 on fallback; the B1078 band-scaled inventory
+        // keeps its one-group flush and bag-covering group counts below.
+        // Re-taken on the merged 800x600 layout (chat=120).
+        {"hud", [] {}, {8, 8, 6, 1}, {62, 62, 6, 1}},
+        // B1078 (GitLab #398): the inventory window moved to the band-anchored
+        // 428x460 (one uniform factor), so its own flush is one group now
+        // (was two) and every bag-covering scenario lost 1 group.
+        {"inventory", [&] { inv_.activePopup = PopupType::Inventory; }, {35, 35, 7, 1}, {85, 85, 7, 1}},
         // What B899's workaround drew for three open bags: the topmost only.
         // The Forge (350,100) also covers inventory text, so even one bag is a
         // real split (the shipped bleed was there too).
         {"inv+forge", [&] {
              inv_.activePopup = PopupType::Inventory;
              openForge(containers_);
-         }, {34, 42, 8, 3}, {92, 96, 8, 3}},
+         }, {38, 42, 8, 2}, {95, 97, 8, 2}},
         {"inv+3 bags", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
-         }, {47, 63, 10, 5}, {109, 117, 10, 5}},
+         }, {51, 63, 10, 4}, {112, 118, 10, 4}},
         {"full", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
@@ -472,7 +481,7 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
              cursor_.iconId = 1001;
              cursor_.mouseX = 560;
              cursor_.mouseY = 420;
-         }, {48, 64, 13, 5}, {125, 136, 13, 6}},
+         }, {52, 64, 13, 4}, {128, 137, 13, 5}},
     };
 
     for (bool fallback : {false, true}) {

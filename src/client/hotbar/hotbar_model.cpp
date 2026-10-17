@@ -147,7 +147,15 @@ void HotbarModel::publishSlot(HotbarAddress address) {
     data.type = slot.type;
     data.id = slot.id;
     data.name = slot.name;
+    // B1077 (GitLab #397): a Spell slot's icon is its spell's gem_icon,
+    // resolved at publish so a JSON-loaded slot (which carries no iconId)
+    // still draws. A Spell with no resolvable icon, and every non-Spell
+    // slot, fall back to the stored iconId.
     data.iconId = slot.iconId;
+    if (slot.type == HotbarSlotType::Spell && spellIconFor_) {
+        const uint32_t spellIcon = spellIconFor_(slot.id);
+        if (spellIcon != 0) data.iconId = spellIcon;
+    }
     data.emoteText = slot.emoteText;
     bridge_->pushEvent(state::GameEvent(
         state::GameEventType::HotbarSlotAssigned, std::move(data)));

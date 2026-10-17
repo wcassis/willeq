@@ -18,19 +18,23 @@
 #define protected public
 #include "client/eq.h"
 #include "client/spell/spell_manager.h"
+#include "client/graphics/ui/spell_gem_layout.h"  // B1077: the oracle's cell size
 #include "client/graphics/ui/ui_renderer.h"
 #undef private
 #undef protected
 
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/ui_layout.h"
+#include "client/graphics/ui/buff_layout.h"  // B1077: the buff buttons
 #include "spell_wire_payloads.h"
 #include "zone_stream_test_utils.h"
 
 #include <irrlicht.h>
 
+#include <cctype>
 #include <iterator>
 #include <set>
+#include <string>
 #include <vector>
 
 using namespace zonetest;
@@ -130,9 +134,11 @@ namespace {
 
 // renderSpellGemPanel() on the null driver, no atlas: every sprite and rect
 // is queued as a solid quad (UIRenderer::drawSprite fallback), so the queue
-// is the emitted geometry. A gem slot is SLOT_SIZE square and sits at the
+// is the emitted geometry. B1077: a gem cell is the oracle's own 36x28
+// (spell_gem_layout.h) at the window's X=3, not a SLOT_SIZE square at the
 // panel's own x.
 void ExpectEightOnScreenSlots(irr::u32 w, irr::u32 h) {
+    using namespace EQT::Graphics::SpellGemLayout;
     irr::SIrrlichtCreationParameters params;
     params.DriverType = irr::video::EDT_NULL;
     params.WindowSize = irr::core::dimension2d<irr::u32>(w, h);
@@ -148,12 +154,12 @@ void ExpectEightOnScreenSlots(irr::u32 w, irr::u32 h) {
     EQT::Graphics::SpellGemPanelState panel;
     EQT::Graphics::renderSpellGemPanel(ui, layout, panel);
 
-    constexpr irr::s32 S = EQT::Graphics::UILayout::SLOT_SIZE;
+    const irr::s32 cellX = layout.spellGems.UpperLeftCorner.X + kGemX;
     std::set<irr::s32> slotRows;
     for (const auto& q : ui.atlasQuads_) {
         const auto& r = q.destRect;
-        if (r.getWidth() == S && r.getHeight() == S &&
-            r.UpperLeftCorner.X == layout.spellGems.UpperLeftCorner.X) {
+        if (r.getWidth() == kGemW && r.getHeight() == kGemH &&
+            r.UpperLeftCorner.X == cellX) {
             slotRows.insert(r.UpperLeftCorner.Y);
             EXPECT_GE(r.UpperLeftCorner.Y, 0) << w << "x" << h;
             EXPECT_LE(r.LowerRightCorner.X, static_cast<irr::s32>(w)) << w << "x" << h;
@@ -173,4 +179,166 @@ TEST(NinthSpellGem, PanelEmitsExactlyEightOnScreenSlotsAt800x600) {
 
 TEST(NinthSpellGem, PanelEmitsExactlyEightOnScreenSlotsAt1280x720) {
     ExpectEightOnScreenSlots(1280, 720);
+}
+
+// ── B1077 (GitLab #397): the window geometry, re-read from the oracle XML ──
+//
+// The layout headers (spell_gem_layout.h, buff_layout.h) quote the official
+// client's UI xml. These cases re-read the xml and compare, so a skin that
+// changes (or a quote that slips) is a red test, and the panel's drawn rects
+// are proven to be the xml's rects.
+
+namespace {
+
+const char* kUifilesDir = "/mnt/projects/EverQuestP1999/uifiles/default";
+
+std::string readXml(const std::string& name) {
+    std::ifstream f(std::string(kUifilesDir) + "/" + name);
+    std::string s((std::istreambuf_iterator<char>(f)),
+                  std::istreambuf_iterator<char>());
+    return s;
+}
+
+// The (Location, Size) rect of one named item inside a UI xml. The FIRST
+// item="NAME" match is the element's own opening tag (the <Pieces> references
+// that name it inside CastSpellWnd come *before* the element), so the tag
+// after the probe must actually open the element -- and the search window
+// ends at that element's closing tag, so a later sibling's tags can never
+// bleed in.
+bool xmlItemRect(const std::string& xml, const std::string& item,
+                 int& x, int& y, int& w, int& h) {
+    const std::string probe = "item=\"" + item + "\"";
+    const size_t i = xml.find(probe);
+    if (i == std::string::npos) return false;
+    const size_t openA = xml.rfind('<', i - 1);
+    if (openA == std::string::npos) return false;
+    const size_t sp = xml.find_first_of(" />", openA + 1);
+    const std::string tag = (sp == std::string::npos)
+        ? xml.substr(openA + 1, i - openA - 1)
+        : xml.substr(openA + 1, sp - openA - 1);
+    const std::string closeTag = "</" + tag + ">";
+    const size_t end = xml.find(closeTag, i + probe.size());
+    if (end == std::string::npos) return false;
+    const std::string seg = xml.substr(openA, end - openA);
+    auto grab = [&](const std::string& after, const std::string& t) -> int {
+        const size_t a = seg.find(after);
+        if (a == std::string::npos) return -1;
+        const size_t b = seg.find("<" + t + ">", a);
+        if (b == std::string::npos) return -1;
+        const size_t c = seg.find("</" + t + ">", b);
+        if (c == std::string::npos) return -1;
+        std::string v = seg.substr(b + t.size() + 2,
+                                   c - (b + t.size() + 2));
+        while (!v.empty() && std::isspace(static_cast<unsigned char>(v.front())))
+            v.erase(v.begin());
+        while (!v.empty() && std::isspace(static_cast<unsigned char>(v.back())))
+            v.pop_back();
+        return v.empty() ? -1 : std::stoi(v);
+    };
+    x = grab("<Location>", "X");
+    y = grab("<Location>", "Y");
+    w = grab("<Size>", "CX");
+    h = grab("<Size>", "CY");
+    return x >= -10000 && y >= -10000 && w > 0 && h > 0;
+}
+
+// The first <tag> value after a marker string, or -1.
+int firstTagAfter(const std::string& seg, const std::string& marker,
+                  const std::string& tag) {
+    const size_t a = seg.find(marker);
+    if (a == std::string::npos) return -1;
+    const size_t b = seg.find("<" + tag + ">", a);
+    if (b == std::string::npos) return -1;
+    const size_t c = seg.find("</" + tag + ">", b);
+    if (c == std::string::npos) return -1;
+    std::string v = seg.substr(b + tag.size() + 2,
+                               c - (b + tag.size() + 2));
+    while (!v.empty() && std::isspace(static_cast<unsigned char>(v.front())))
+        v.erase(v.begin());
+    while (!v.empty() && std::isspace(static_cast<unsigned char>(v.back())))
+        v.pop_back();
+    return v.empty() ? -1 : std::stoi(v);
+}
+
+}  // namespace
+
+TEST(SpellGemLayout, CastSpellWndQuotedFromTheOracleXml) {
+    const std::string xml = readXml("EQUI_CastSpellWnd.xml");
+    if (xml.empty()) GTEST_SKIP() << "EQ client tree not mounted at " << kUifilesDir;
+
+    using namespace EQT::Graphics::SpellGemLayout;
+    // The window: 48x290, Style_Sizable false.
+    int x = 0, y = 0, w = 0, h = 0;
+    ASSERT_TRUE(xmlItemRect(xml, "CastSpellWnd", x, y, w, h));
+    EXPECT_EQ(w, kWindowW) << "CastSpellWnd CX";
+    EXPECT_EQ(h, kWindowH) << "CastSpellWnd CY";
+
+    // The eight shown gems: CSPW_Spell0..7, 36x28 at (3, 10+30i) -- and the
+    // same rect the panel draws (gemRect).
+    for (int i = 0; i < kGemCount; ++i) {
+        ASSERT_TRUE(xmlItemRect(xml, "CSPW_Spell" + std::to_string(i),
+                                x, y, w, h))
+            << "CSPW_Spell" << i;
+        EXPECT_EQ(w, kGemW) << "CSPW_Spell" << i << " CX";
+        EXPECT_EQ(h, kGemH) << "CSPW_Spell" << i << " CY";
+        EXPECT_EQ(x, kGemX) << "CSPW_Spell" << i << " X";
+        EXPECT_EQ(y, kGemFirstY + i * kGemPitchY) << "CSPW_Spell" << i << " Y";
+        const auto r = gemRect(i);
+        EXPECT_EQ(r.UpperLeftCorner.X, x);
+        EXPECT_EQ(r.UpperLeftCorner.Y, y);
+        EXPECT_EQ(r.getWidth(), kGemW);
+        EXPECT_EQ(r.getHeight(), kGemH);
+    }
+
+    // CSPW_Spell8 is the one parked at -5000 with no size (T483: shown
+    // nowhere). It has no <Size> at all, so only its Location is quoted.
+    {
+        const std::string probe = "item=\"CSPW_Spell8\"";
+        const size_t i = xml.find(probe);
+        ASSERT_NE(i, std::string::npos);
+        const size_t openA = xml.rfind('<', i - 1);
+        const size_t sp = xml.find_first_of(" />", openA + 1);
+        const std::string tag = xml.substr(openA + 1, sp - openA - 1);
+        const size_t end = xml.find("</" + tag + ">", i + probe.size());
+        const std::string seg = xml.substr(openA, end - openA);
+        EXPECT_EQ(firstTagAfter(seg, "Location", "X"), -5000)
+            << "CSPW_Spell8 X must stay off-screen";
+    }
+
+    // CSPW_SpellBook: 22x22 at (10,252) -- the book button.
+    ASSERT_TRUE(xmlItemRect(xml, "CSPW_SpellBook", x, y, w, h));
+    EXPECT_EQ(w, kBookW);
+    EXPECT_EQ(h, kBookH);
+    EXPECT_EQ(x, kBookX);
+    EXPECT_EQ(y, kBookY);
+    const auto b = bookRect();
+    EXPECT_EQ(b.UpperLeftCorner.X, x);
+    EXPECT_EQ(b.UpperLeftCorner.Y, y);
+}
+
+TEST(BuffWindowLayout, BuffButtonsQuotedFromTheOracleXml) {
+    const std::string xml = readXml("EQUI_BuffWindow.xml");
+    if (xml.empty()) GTEST_SKIP() << "EQ client tree not mounted at " << kUifilesDir;
+
+    using namespace EQT::Graphics::BuffLayout;
+    // The fifteen shown buttons: 34x34, columns 3/48/93, rows 3/49/95/141/187.
+    for (int i = 0; i < kShownCount; ++i) {
+        int x = 0, y = 0, w = 0, h = 0;
+        ASSERT_TRUE(xmlItemRect(xml, "BW_Buff" + std::to_string(i) + "_Button",
+                                x, y, w, h))
+            << "BW_Buff" << i << "_Button";
+        EXPECT_EQ(w, kButtonSize) << "BW_Buff" << i << " CX";
+        EXPECT_EQ(h, kButtonSize) << "BW_Buff" << i << " CY";
+        EXPECT_EQ(x, kColumnX[i % kCols]) << "BW_Buff" << i << " X";
+        EXPECT_EQ(y, kRowY[i / kCols]) << "BW_Buff" << i << " Y";
+    }
+
+    // The decal: 30x30 at the button's (2,2) corner.
+    const size_t i = xml.find("BW_Buff0_Button");
+    ASSERT_NE(i, std::string::npos);
+    const std::string seg = xml.substr(i, 1200);
+    EXPECT_EQ(firstTagAfter(seg, "DecalOffset", "X"), kDecalOffset)
+        << "DecalOffset X";
+    EXPECT_EQ(firstTagAfter(seg, "DecalSize", "CX"), kDecalSize)
+        << "DecalSize CX";
 }

@@ -822,6 +822,9 @@ IF(EQT_GRAPHICS)
         # T430 (board B376): the item-icon sheets, lazily loaded from the
         # pack and addressed by include/client/graphics/ui/item_icon_atlas.h.
         src/client/graphics/ui/item_icon_sheets.cpp
+        # B1077 (GitLab #397): the spell-icon sheets, loaded beside the item
+        # sheets and addressed by include/client/graphics/ui/spell_icon_atlas.h.
+        src/client/graphics/ui/spell_icon_sheets.cpp
         src/client/graphics/ui/static_ui_input.cpp
         src/client/graphics/ui/static_ui_cursor.cpp  # B442
         src/client/graphics/ui/quantity_window.cpp  # B442
@@ -2051,6 +2054,23 @@ ADD_EXECUTABLE(item_icon_atlas_builder
     tools/item_icon_atlas_builder.cpp
 )
 TARGET_INCLUDE_DIRECTORIES(item_icon_atlas_builder PRIVATE
+    ${CMAKE_SOURCE_DIR}/tools
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+# B1077 (GitLab #397): spell icon atlas builder. Reads the official client's
+# own uifiles/default/gemicons0{1,2,3}.tga (A_SpellGems, 7x9 of 36x28),
+# Spells0{1..7}.tga (A_SpellIcons, 6x6 of 40x40) and Spell_Icons.tga
+# (BuffIcons, 6x6 of 40x40) -- the three families EQUI_Animations.xml
+# declares -- plus the A_SpellGemHolder piece of window_pieces02.tga, and
+# packs them into data/textures/spell_icons{gems,spells,buff}.bmp (each
+# 1024x1024) + spell_icon_holder.bmp (40x40). Header-only inputs
+# (tga_reader.h, bmp32_writer.h) plus the shared layout header, so it links
+# nothing.
+ADD_EXECUTABLE(spell_icon_atlas_builder
+    tools/spell_icon_atlas_builder.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(spell_icon_atlas_builder PRIVATE
     ${CMAKE_SOURCE_DIR}/tools
     ${CMAKE_SOURCE_DIR}/include
 )
