@@ -440,13 +440,10 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
         ctx_.Frame().newUIEnabled_ = !ctx_.Frame().newUIEnabled_;
         chat(fmt::format("New static UI: {}", ctx_.Frame().newUIEnabled_ ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/newbook") {
-        ctx_.Frame().spellbookState_.isOpen = !ctx_.Frame().spellbookState_.isOpen;
-        // B1075: what opening the spellbook closes is the co-open table's call.
-        if (ctx_.Frame().spellbookState_.isOpen &&
-            closesOnOpen(UIWindow::Spellbook, UIWindow::Inventory)) {
-            ctx_.Frame().inventoryState_.activePopup = PopupType::None;
-        }
-        chat(fmt::format("New UI spellbook: {}", ctx_.Frame().spellbookState_.isOpen ? "OPEN" : "CLOSED"));
+        // B1077: the shared body -- the Ctrl+B keybind and the gem window's
+        // CSPW_SpellBook button reach the same toggleSpellbookWindow().
+        const bool open = ctx_.Frame().toggleSpellbookWindow();
+        chat(fmt::format("New UI spellbook: {}", open ? "OPEN" : "CLOSED"));
     } else if (cmd == "/newbookprev") {
         if (ctx_.Frame().spellbookState_.currentPage > 0) ctx_.Frame().spellbookState_.currentPage--;
     } else if (cmd == "/newbooknext") {
