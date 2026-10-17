@@ -862,6 +862,10 @@ IF(EQT_GRAPHICS)
         # the Rotate spin).
         src/client/graphics/ui/char_preview_host.cpp
         src/client/graphics/ui/char_preview_scene.cpp
+        # B888-CC3 (#204): the Explore mode's device-free state machine
+        # (open/esc, click-to-select, Enter enters with the list cursor, the
+        # free-camera verbs).
+        src/client/graphics/ui/explore_screen.cpp
         # T436 (board B429): the merchant, bank and cursor-attachment
         # windows -- one TU per panel (M00).
         src/client/graphics/ui/merchant_panel.cpp

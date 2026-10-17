@@ -16,6 +16,7 @@
 #include "client/graphics/ui/char_preview_scene.h"
 #include "client/graphics/ui/char_select_layout.h"
 #include "client/graphics/ui/char_select_panel.h"
+#include "client/graphics/ui/explore_screen.h"
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/login_world/character_select.h"
 #include "common/logging.h"
@@ -72,6 +73,21 @@ bool isRotateClick(bool leftClicked, RendererEventReceiver* rx, const UILayout& 
     return x >= r.UpperLeftCorner.X && x < r.LowerRightCorner.X &&
            y >= r.UpperLeftCorner.Y && y < r.LowerRightCorner.Y;
 }
+// B888-CC3 (GitLab #204): a click on the select window's Explore button
+// (CSW_Explore_Button, now live). Not while the mode is open, the creation
+// screen is up, the delete prompt is modal, or a request is in flight --
+// enterExplore() guards all of it; this only does the hit test.
+bool isExploreButtonClick(int x, int y, const UILayout& layout) {
+    const auto r = CharSelectLayout::exploreRect(layout.screenW, layout.screenH);
+    return x >= r.UpperLeftCorner.X && x < r.LowerRightCorner.X &&
+           y >= r.UpperLeftCorner.Y && y < r.LowerRightCorner.Y;
+}
+// B888-CC3: the row a click on the backdrop scene selects (-1 = nothing hit).
+// The 3D slice (the clz showroom's character nodes) implements the raycast;
+// until it stands up the models, every click is a miss and the selection
+// cursor is kept (the machine's own rule for a miss, oracle-consistent:
+// A4/A5 showed no selection change from a non-landing click).
+int backdropRowForClick(int, int) { return -1; }
 // B888-CC2: the preview's model, from the screen's state. The SELECT screen
 // stands up the selected row's body (race/gender/face from the T14 wire);
 // the CREATION screen stands up the sample model of the page-0 race + gender
@@ -136,8 +152,29 @@ bool CharacterSelectHost::frame(IrrlichtRenderer& renderer, eqt::login_world::Ch
         if (rx) {
             // The keyboard: the creation name field, or ESC on the prompt, or
             // (B1082) Up/Down navigation and Enter/Return.
+            //
+            // B888-CC3 (GitLab #204): Explore mode. Escape CLOSES Explore
+            // (MEASURED, oracle-a6 A9: Esc returns to the normal select screen)
+            // and is otherwise this screen's, never the world's. Enter/Return
+            // while Explore is open goes through the Explore machine (the
+            // list-selected character enters -- oracle-b1), not the select
+            // screen's own Enter. The free camera moves on the held keys
+            // (forward on `d` measured, oracle-a6 A6) -- the held set is
+            // read from the receiver each frame (the 3D slice applies it to
+            // the backdrop scene), so here the keys are simply Explore's.
             while (rx->hasPendingKeyEvents()) {
                 const auto e = rx->popKeyEvent();
+                if (state_.exploreOpen && !state_.confirm.isOpen) {
+                    if (e.key == irr::KEY_ESCAPE) {
+                        exitExplore(state_);
+                        continue;   // Esc is consumed by Explore; nothing else gets it
+                    }
+                    if (e.key == irr::KEY_RETURN) {
+                        handle(exploreEnterWorld(state_), channel);
+                        continue;
+                    }
+                    continue;   // the camera keys (e.g. `d`) are Explore's; the held set drives the scene
+                }
                 handle(applyCharSelectKey(state_, e.key, e.character), channel);
             }
             // Spent here so a key typed into the name field is not replayed
@@ -151,9 +188,22 @@ bool CharacterSelectHost::frame(IrrlichtRenderer& renderer, eqt::login_world::Ch
             // lowers it again.
             rx->setChatInputFocused(true);
             if (leftClicked) {
-                handle(applyCharSelectClick(state_, layout, rx->getClickMouseX(), rx->getClickMouseY(),
-                                            false, data_, ++seed_, renderer.Diagnostics().isUsingOldModels()),
-                       channel);
+                const int cx = rx->getClickMouseX(), cy = rx->getClickMouseY();
+                if (state_.exploreOpen && !state_.confirm.isOpen) {
+                    // A click in Explore selects the character whose model was
+                    // clicked: the backdrop scene's raycast maps the click to
+                    // an account row (one model node per row), -1 when it hits
+                    // nothing. The select window is HIDDEN in this mode, so
+                    // the screen's own click resolution does not run.
+                    const int row = backdropRowForClick(cx, cy);
+                    exploreSelectRow(state_, row);
+                } else if (isExploreButtonClick(cx, cy, layout)) {
+                    enterExplore(state_);   // CSW_Explore_Button (now live): open the mode
+                } else {
+                    handle(applyCharSelectClick(state_, layout, cx, cy,
+                                                false, data_, ++seed_, renderer.Diagnostics().isUsingOldModels()),
+                           channel);
+                }
             }
             if (rx->wasRightButtonClicked()) {
                 handle(applyCharSelectClick(state_, layout, rx->getClickMouseX(), rx->getClickMouseY(),

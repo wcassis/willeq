@@ -36,6 +36,21 @@ the per-step ledger is `explore.tsv` beside this file.
   eqemu *server* zone table and the server never serves `clz` (the char-select
   backdrop is client-internal -- the pcap's empty zone connection, A2 above).
   No post-Velious ruling is needed; the implementation proceeds (step 2).
+- [measured] the format is a P1999 terrain archive, not fable's zone format:
+  `clz.eqg` holds 256 members -- 68 DDS textures, 29 `.mod` + 157 `.lit`
+  static objects, `ter_clz.ter`/`.lit` (the terrain fragment), `clz.zon`,
+  and **no `.wld`** (census in `ExploreScreen.BackdropZoneLoadsHeadless`,
+  which pins exactly those counts). The `.eqg` extension is how the P1999-era
+  client shipped its terrain archives (every zone at the P1999 root is
+  `<zone>.eqg` + `<zone>.s3d`; a fable-loaded zone like anguish ships BOTH,
+  but the 22 MB `.eqg` is the terrain half and fable never reads it).
+  Fable resolves a zone to `<zone>.s3d` (`zone_component.cpp:808`) and
+  FATALs on a WLD-less archive (`zone_component.cpp:837`), and **`clz`
+  ships no `.s3d` anywhere on the host** -- so the 3D slice's format work is
+  parsing `ter_clz.ter` + the `.mod`/`.lit` static objects straight from the
+  `.eqg` (the PFS-open leg is the only production path that reaches them
+  today), in the host's own scene manager, without touching the
+  production zone path.
 
 ## Explore mode
 
@@ -88,17 +103,63 @@ the per-step ledger is `explore.tsv` beside this file.
   model mesh (the fixed root coordinates may have been just off the figure).
   The B-step already proves the selection cursor drives Enter, so the selection
   mechanism is observable but not yet pinned to a click.
+- **The free camera's non-forward verbs.** `exploreCameraVerb()` maps only
+  what was measured (forward on `d`); its strafe/orbit/zoom fields are the
+  seam the 3D slice (the clz backdrop scene, which owns the camera) fills
+  when orbit/zoom get measured. It is rowed in `EXEMPT_TESTS_GROUPS`
+  (`check_zero_callers.py`, B888-CC3) until that slice lands.
 
-## Implementation leg (NOT started)
+## Implementation leg
 
 Step 2 (load the backdrop scene in the CC-2 host, place the characters, the
 Explore free-camera + click-select + Enter/Esc state machine, the
 ExploreModeWindow overlay from the XML rects) and step 3 (tests, memory delta,
-docs) are not started. CC-2 (the pre-zone render host, `char_preview_host.h` /
+docs). CC-2 (the pre-zone render host, `char_preview_host.h` /
 `char_preview_scene.{h,cpp}` -- a `CharacterModelView` in its own scene manager,
-**no zone geometry**) is now merged into fable (tip `4e987f0c`). The
-implementation leg needs the backdrop `.s3d` name (above) before it can load
-the zone geometry.
+**no zone geometry**) is now merged into fable (tip `4e987f0c`). The backdrop's
+scene file (the last "left open" item) is measured above: the `clz` zone,
+shipped as `clz.eqg` -- the PFS-open leg of the production zone-load path
+works against it, but its member census (no `.wld`, `ter_clz.ter` + `.mod`
+static models instead) means standing the geometry is the 3D slice's own
+format work, not a free reuse of `S3DLoader::loadZone` (run 1042, below).
+
+### Progress, run 1042 (2026-10-17)
+
+- The backdrop's scene file is the ONE "left open" item and is now [measured]
+  (`clz` -> `clz.eqg`, PFS, in-era; above). The implementation proceeds.
+- **Device-free layer LANDED and tested** (`test_explore_screen`, 11 cases,
+  green on the x86 dev tree): the Explore state machine
+  (`explore_screen.{h,cpp}` -- open/esc, click-to-row selection with a miss
+  keeping the cursor, Enter entering with the LIST cursor per oracle-b1, the
+  free-camera verb: forward on `d` is the only MEASURED verb, the rest are the
+  unmeasured orbit/zoom seam) and the EXW_ExploreModeWindow overlay layout
+  (`explore_layout.h`, quoted from the stock XML and checked against it by
+  `ExploreLayout.MatchesTheXml`). The host wires the button live (CSW_Explore_Button
+  is no longer the greyed T363 control; hit-test `isExploreButtonClick`),
+  routes Enter/Esc through the machine while the mode is open, hides the left
+  list window and draws the EXW overlay in its place (MEASURED, oracle-a6
+  A3/A9). `ExploreScreen.BackdropZoneLoadsHeadless` pins the backdrop's
+  format facts: `clz.eqg` opens as a PFS archive, its 256-member census is
+  measured (68 DDS + 29 `.mod` + 157 `.lit` + `ter_clz.ter`/`.lit` +
+  `clz.zon`, **no `.wld`**) and `S3DLoader::loadZone` refuses exactly that
+  WLD-less archive (skips where the file is absent; `WILLEQ_CLZ` overrides
+  the path).
+- **The 3D backdrop scene (the `clz` zone content in the host's own scene
+  manager + the account's character nodes + the free camera + the click
+  raycast) is NOT landed yet.** Per the measured format fact above, standing
+  the geometry is the 3D slice's own format work: parse `ter_clz.ter`
+  (the P1999-era terrain fragment) and/or the 29 `.mod` + 157 `.lit` static
+  models straight out of the `.eqg` (or extend the loader with a WLD-less
+  leg), WITHOUT touching the production zone path. The seam is sized: the
+  geometry-to-mesh idiom is `equipment_model_loader.cpp:500-599`
+  (per-textureIndex buffers over `ZoneGeometry` vertices/triangles), and the
+  own-scene-manager + render-to-texture idiom is the CC-2 paperdoll
+  (`char_preview_scene.cpp`). The host's `backdropRowForClick()` currently
+  returns -1 (every click a miss, the machine's own rule, oracle-consistent
+  with A4/A5) until the model nodes stand up. `exploreCameraVerb()` is rowed
+  in `EXEMPT_TESTS_GROUPS` (`check_zero_callers.py`, B888-CC3) until that
+  slice wires it -- the other four Explore functions are live in
+  `char_select_host.cpp`. See `FOLLOW-UP` in the run's completion comment.
 
 ## Driver fixes made this run (committed on this branch)
 

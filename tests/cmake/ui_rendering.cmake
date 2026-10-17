@@ -437,6 +437,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_char_preview DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B888-CC3 (#204): the Explore mode -- the device-free state machine
+# (open/esc, click-selection, Enter enters with the list cursor, the free-
+# camera verbs) and the EXW_ExploreModeWindow overlay layout against the stock
+# EQUI_CharacterSelect.xml. Device-free.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_explore_screen
+        test_explore_screen.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_explore_screen PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_explore_screen GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_explore_screen PRIVATE "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
+    GTEST_DISCOVER_TESTS(test_explore_screen DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T434: the Options window -- geometry against EQUI_OptionsWindow.xml, the
 # T363 disabled-control rule, the three wired sliders, the Alt+O binding and
 # the persistence round trip. Device-free like its siblings.

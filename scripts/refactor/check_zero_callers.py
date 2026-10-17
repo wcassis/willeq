@@ -492,6 +492,8 @@ BOARD_REASONS.update({
         "the T415/T419 recipe window (TradeskillPanelState, EQUI_TradeskillWnd) -- since B899 (#215, Will 2026-09-23: the recipe half is out of baseline) no event opens it, so its close applier is reached only from its tests; deleting the window is a follow-up, not done mid-unit",
     "B972":
         "the particle VBO path's GL-handle accessor -- the draw reads the member itself; the accessor (name_tag_batch's buffer-handle convention) exists for the stream-buffer test suite's observation window, and no production or test caller has landed yet",
+    "B888-CC3":
+        "the Explore free-camera verb (explore_screen.h) -- the held-key verbs of the select-screen backdrop's free camera; the clz backdrop scene (CC-3's 3D half, which owns that camera and would feed the held `d` set to it) is not landed, so the verb is reached only from test_explore_screen until that slice",
 })
 
 # (owner, name) -> the board entry that owns it.  Same contract as
@@ -870,6 +872,13 @@ EXEMPT_TESTS_GROUPS = {
     ("(free)", "findControlClass"): "observer",
     ("(free)", "dispositionText"): "observer",
     ("(free)", "applyTradeskillContainerClosed"): "B899",
+    # B888-CC3 (#204): the Explore free-camera verb. The 3D clz backdrop scene
+    # (which would feed the held `d` set to its camera) is the NOT-yet-landed
+    # part of CC-3; until it lands this machine's verb has no production
+    # caller, so it is a boarded never-wired row (refactor/B888-CC3/README.md
+    # "Not verified"), not dead code -- enterExplore/exitExplore/
+    # exploreSelectRow/exploreEnterWorld are live in char_select_host.cpp.
+    ("(free)", "exploreCameraVerb"): "B888-CC3",
     # B888 (#204): the era data's full lists and row sources are the tests'
     # window onto the oracle rows the production lookups filter. (B998 hosted
     # the creation screen on the character-select screen, which made its
