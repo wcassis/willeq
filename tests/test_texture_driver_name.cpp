@@ -35,22 +35,26 @@
 #include <vector>
 
 #ifdef EQT_HAS_GRAPHICS
-#include "client/graphics/constrained_texture_cache.h"
-#include "client/graphics/constrained_renderer_config.h"
-#include "common/logging.h"
-#include <irrlicht.h>
-
-// The post-fix-only assertions read the stored name on the entry (private).
-// Defined for THIS tree by tests/cmake/renderer_guards.cmake; absent on the
-// pre-fix tree, where those assertions compile out and the red is the
-// public-API one (the texture's own driver name).
+// The post-fix-only assertions read the stored name on the entry (private):
+// with B1083_STEP7_DRIVER_NAME_STORED (defined for THIS tree by
+// tests/cmake/renderer_guards.cmake, absent pre-fix) the cache header is
+// included through the #define-private idiom (same as
+// test_constrained_texture_cache.cpp) -- the config header must follow it so
+// its own members are accessible the same way (the eviction test does
+// exactly this). Pre-fix: plain include, no private access, and the red is
+// the public-API driver name alone.
 #ifdef B1083_STEP7_DRIVER_NAME_STORED
 #define private public
 #define protected public
+#endif
 #include "client/graphics/constrained_texture_cache.h"
+#include "client/graphics/constrained_renderer_config.h"
+#ifdef B1083_STEP7_DRIVER_NAME_STORED
 #undef private
 #undef protected
 #endif
+#include "common/logging.h"
+#include <irrlicht.h>
 
 using namespace EQT::Graphics;
 
@@ -301,29 +305,38 @@ TEST_F(DriverNameFixture, EvictRestoreRecreatesUnderTheSameName) {
     const auto bmp = makeTestBmp(kSide, kSide, 10, 250, 10);
     const size_t kBytes = size_t(kSide) * kSide * 4;
 
-    // The restore source (a registered provider, like a zone's .s3d).
+    // The restore sources (registered providers, like a zone's .s3d). BOTH
+    // names are served: the restore of the evicted texture must evict the
+    // filler to make room, and an unsourceable filler would be PINNED
+    // (B947) -- the restore would then fail and the pin is what this test
+    // must not hit (the B944 residency test's provider serves every name).
     class Provider : public TextureSourceProvider {
     public:
-        const std::string kName = "b1083_step7_evict";
-        std::vector<char> bytes;
-        bool hasSource(const std::string& n) override { return n == kName; }
+        static const char* kMain() { return "b1083_step7_evict"; }
+        static const char* kFiller() { return "b1083_step7_filler"; }
+        std::vector<char> mainBytes;
+        std::vector<char> fillerBytes;
+        bool hasSource(const std::string& n) override {
+            return n == kMain() || n == kFiller();
+        }
         bool readSource(const std::string& n, std::vector<char>& out) override {
-            if (n != kName) return false;
-            out = bytes;
+            if (n == kMain()) out = mainBytes;
+            else if (n == kFiller()) out = fillerBytes;
+            else return false;
             return true;
         }
     } source;
-    source.bytes = bmp;
+    source.mainBytes = bmp;
 
     // A ceiling that fits ONE texture (the residency test's per-texture
     // figure): the second upload evicts the first.
     const auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::TNT);
-    config.textureMemoryBytes = kBytes;
-    config.enableMipmaps = false;
-    config.maxTextureDimension = 256;
-    cache_ = std::make_unique<ConstrainedTextureCache>(config);
+    auto cfg = config;
+    cfg.textureMemoryBytes = kBytes;
+    cfg.enableMipmaps = false;
+    cfg.maxTextureDimension = 256;
+    cache_ = std::make_unique<ConstrainedTextureCache>(cfg);
     cache_->setDriver(driver_);
-    cache_->addSourceProvider(&source);
 
     irr::video::ITexture* tex = promote(name, bmp, /*stem=*/"");
     ASSERT_NE(tex, nullptr);
@@ -334,6 +347,8 @@ TEST_F(DriverNameFixture, EvictRestoreRecreatesUnderTheSameName) {
 
     // Evict it (the second upload busts the one-texture ceiling).
     const auto filler = makeTestBmp(kSide, kSide, 250, 10, 10);
+    source.fillerBytes = filler;
+    cache_->addSourceProvider(&source);
     irr::video::ITexture* fillerTex = promote("b1083_step7_filler", filler, "");
     ASSERT_NE(fillerTex, nullptr);
     ASSERT_FALSE(cache_->isResident(name)) << "the first entry must have been evicted";
