@@ -117,7 +117,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_forage_fishing PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 TARGET_COMPILE_DEFINITIONS(test_forage_fishing PRIVATE
-    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 GTEST_DISCOVER_TESTS(test_forage_fishing DISCOVERY_TIMEOUT 120)
 
 # T317: the guild opcodes' rank fields, and where the player's real rank lives
@@ -162,7 +162,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_first_person_eye_anatomy PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_first_person_eye_anatomy GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_first_person_eye_anatomy PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_first_person_eye_anatomy DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -176,8 +176,8 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_entity_size_change PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_entity_size_change GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_entity_size_change PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}"
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")"
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_entity_size_change DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -191,8 +191,8 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_corpse_death_pose PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_corpse_death_pose GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_corpse_death_pose PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}"
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")"
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_corpse_death_pose DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -207,7 +207,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_entity_build_scheduler PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_entity_build_scheduler GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_entity_build_scheduler PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_entity_build_scheduler DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -221,7 +221,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_entity_collision_z_offset PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_entity_collision_z_offset GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_entity_collision_z_offset PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_entity_collision_z_offset DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -405,5 +405,5 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_consider_text PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 TARGET_COMPILE_DEFINITIONS(test_consider_text PRIVATE
-    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 GTEST_DISCOVER_TESTS(test_consider_text DISCOVERY_TIMEOUT 120)

@@ -612,7 +612,7 @@ TEST_F(TrackingRouteB895, TrackListPrintsTheVisibleRowsHeadlessly) {
 TEST_F(TrackingRouteB895, SlashTrackReachesTheSameBodyAsTheButton) {
     EQ::SkillManager* sm = eq.GetSkillManager();
     ASSERT_NE(sm, nullptr);
-    ASSERT_TRUE(EQ::SkillCapTable::instance().load(WILLEQ_REPO_ROOT "/config/skill_caps.json"));
+    ASSERT_TRUE(EQ::SkillCapTable::instance().load(WILLEQ_REPO_PATH("config/skill_caps.json")));
     sm->initialize(4 /*Ranger*/, 1, 10);
     bridge.drainEvents();
     handler.trackTarget(303);
@@ -625,7 +625,7 @@ TEST_F(TrackingRouteB895, SlashTrackReachesTheSameBodyAsTheButton) {
 // OP_TrackUnknown at the same instant. Asserted at the source, because no
 // headless EverQuest has a zone connection to capture the queue from.
 TEST(TrackingWireB895, TheAbilitySendsTrackAndTrackUnknown) {
-    std::ifstream in(WILLEQ_REPO_ROOT "/src/client/skill/skill_manager.cpp");
+    std::ifstream in(WILLEQ_REPO_PATH("src/client/skill/skill_manager.cpp"));
     std::stringstream ss;
     ss << in.rdbuf();
     const std::string src = ss.str();

@@ -622,7 +622,7 @@ TEST(VisionAmbientCompositionT396Test, NoUserAmbientMultiplierRemains) {
 // The production site calls it -- so the order above is the one that ships.
 TEST(VisionAmbientCompositionT396Test, UpdateTimeOfDayUsesTheComposition) {
     const char* kRendererTU =
-        WILLEQ_REPO_ROOT "/src/client/graphics/renderer/irrlicht_renderer.cpp";
+        WILLEQ_REPO_PATH("src/client/graphics/renderer/irrlicht_renderer.cpp");
     std::ifstream in(kRendererTU);
     ASSERT_TRUE(in.good()) << "cannot open " << kRendererTU;
     std::stringstream ss;

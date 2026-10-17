@@ -89,4 +89,9 @@ for char in Testchar Testmelee Testcaster Testbuddy; do
 done
 echo "seed.sh: roster verified (Testchar, Testmelee, Testcaster, Testbuddy)"
 
+# B1047 (#367) / B1025-H5 (#345): no roster character may be STORED in
+# timorous (it never finishes loading on the lanes). Idempotent.
+echo "== seed.sh: moving any roster character out of timorous =="
+mysql_exec "$(cat "${SCRIPT_DIR}/roster_zone_seed.sql")"
+
 echo "== seed.sh: done — account and character ready =="

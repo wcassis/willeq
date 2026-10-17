@@ -26,7 +26,7 @@ IF(WITH_AUDIO)
         ${CMAKE_SOURCE_DIR}/src/client/audio/midi_player.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_midi_player_prealloc PRIVATE WITH_AUDIO
-        WILLEQ_TEST_SF2_PATH="${CMAKE_SOURCE_DIR}/data/1mgm.sf2")
+        "WILLEQ_TEST_SF2_PATH=WILLEQ_REPO_PATH(\"data/1mgm.sf2\")")
     TARGET_LINK_LIBRARIES(test_midi_player_prealloc GTest::gtest_main ${FMT_LIB})
     GTEST_DISCOVER_TESTS(test_midi_player_prealloc DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -42,7 +42,7 @@ IF(WITH_AUDIO)
         ${CMAKE_SOURCE_DIR}/src/client/audio/audio_mixer.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_midi_stop_race PRIVATE WITH_AUDIO
-        WILLEQ_TEST_SF2_PATH="${CMAKE_SOURCE_DIR}/data/1mgm.sf2")
+        "WILLEQ_TEST_SF2_PATH=WILLEQ_REPO_PATH(\"data/1mgm.sf2\")")
     TARGET_LINK_LIBRARIES(test_midi_stop_race GTest::gtest_main ${FMT_LIB})
     GTEST_DISCOVER_TESTS(test_midi_stop_race DISCOVERY_TIMEOUT 120)
 ENDIF()
