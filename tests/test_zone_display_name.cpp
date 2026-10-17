@@ -20,6 +20,7 @@
 
 #include "client/zone/zone_display_name.h"
 #include "client/login_world/character_select.h"
+#include "client/graphics/overlays/loading_frame_layout.h"
 
 #include <irrlicht.h>
 #include <algorithm>
