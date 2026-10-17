@@ -397,9 +397,10 @@ void ZoneLoadComponent::loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx) {
 
             // Build variant prefixes
             std::vector<std::string> variantPrefixes;
-            if (ctx.vis->appearance.texture >= 10) {
+            if (isRobeTexture(ctx.vis->appearance.texture)) {
+                // Robe materials 10..16 (isRobeTexture) use the "clk" prefix
                 char buf[32];
-                snprintf(buf, sizeof(buf), "clk%02d", ctx.vis->appearance.texture - 10);
+                snprintf(buf, sizeof(buf), "clk%02d", getRobeClkTextureNumber(ctx.vis->appearance.texture));
                 variantPrefixes.push_back(buf);
             } else if (ctx.vis->appearance.texture > 0) {
                 char buf[32];

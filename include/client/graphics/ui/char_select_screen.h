@@ -102,6 +102,10 @@ CharSelectAction pressCharButton(CharSelectScreenState& s, int n,
                                  bool useOldModels = true);
 /** CSW_Enter_World_Button. */
 CharSelectAction pressEnterWorld(CharSelectScreenState& s);
+/** B1082 (GitLab #402): Up / Down -- move the selection one row, wrapping within
+ *  the occupied rows (MEASURED, refactor/B1082/README.md). Selecting sends
+ *  nothing, exactly as the click path (pressCharButton) does. */
+void moveSelection(CharSelectScreenState& s, int delta);
 /** CSW_Delete_Button: open the prompt (nothing is sent yet). */
 void pressDelete(CharSelectScreenState& s);
 /** The prompt's Yes / No (and its timeout, and ESC, as No). */
@@ -112,8 +116,11 @@ CharSelectAction fromCharCreateAction(CharSelectScreenState& s, const CharCreate
 /** Per-frame time: the delete prompt's timeout. */
 void tickCharSelect(CharSelectScreenState& s, float dt);
 
-/** A key: the creation name field when it holds the caret, ESC closes the prompt. */
-void applyCharSelectKey(CharSelectScreenState& s, irr::EKEY_CODE key, wchar_t ch);
+/** A key: the creation name field when it holds the caret, ESC closes the prompt.
+ *  B1082 (GitLab #402): also Up/Down (move the selection) and Enter/Return
+ *  (OP_EnterWorld for the selected row) -- returned as an action exactly like
+ *  the click path. */
+CharSelectAction applyCharSelectKey(CharSelectScreenState& s, irr::EKEY_CODE key, wchar_t ch);
 
 }  // namespace Graphics
 }  // namespace EQT

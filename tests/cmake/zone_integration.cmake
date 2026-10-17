@@ -18,7 +18,7 @@ IF(EQT_GRAPHICS)
         test_entity_viewer_regression.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_entity_viewer_regression PRIVATE
-        GLES2_ZONE_BENCHMARK_BIN="$<TARGET_FILE:gles2_zone_benchmark>")
+        "GLES2_ZONE_BENCHMARK_BIN=WILLEQ_BIN_PATH_OF(\"$<TARGET_FILE_NAME:gles2_zone_benchmark>\")")
     TARGET_LINK_LIBRARIES(test_entity_viewer_regression GTest::gtest_main)
     ADD_DEPENDENCIES(test_entity_viewer_regression gles2_zone_benchmark)
     GTEST_DISCOVER_TESTS(test_entity_viewer_regression DISCOVERY_TIMEOUT 120)
@@ -38,8 +38,8 @@ IF(EQT_GRAPHICS)
         test_sg_batch_door_pixel_ab.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_sg_batch_door_pixel_ab PRIVATE
-        GLES2_ZONE_BENCHMARK_BIN="$<TARGET_FILE:gles2_zone_benchmark>"
-        WILLEQ_SRC="${CMAKE_SOURCE_DIR}")
+        "GLES2_ZONE_BENCHMARK_BIN=WILLEQ_BIN_PATH_OF(\"$<TARGET_FILE_NAME:gles2_zone_benchmark>\")"
+        "WILLEQ_SRC=WILLEQ_REPO_PATH(\"\")")
     TARGET_LINK_LIBRARIES(test_sg_batch_door_pixel_ab GTest::gtest_main)
     ADD_DEPENDENCIES(test_sg_batch_door_pixel_ab gles2_zone_benchmark)
     GTEST_DISCOVER_TESTS(test_sg_batch_door_pixel_ab DISCOVERY_TIMEOUT 120)
@@ -57,7 +57,7 @@ ADD_EXECUTABLE(test_headless_shutdown
     test_headless_shutdown.cpp
 )
 TARGET_COMPILE_DEFINITIONS(test_headless_shutdown PRIVATE
-    WILLEQ_BIN_PATH="$<TARGET_FILE:willeq>")
+    "WILLEQ_BIN_PATH=WILLEQ_BIN_PATH_OF(\"$<TARGET_FILE_NAME:willeq>\")")
 TARGET_LINK_LIBRARIES(test_headless_shutdown GTest::gtest_main)
 ADD_DEPENDENCIES(test_headless_shutdown willeq)
 GTEST_DISCOVER_TESTS(test_headless_shutdown DISCOVERY_TIMEOUT 120)
@@ -247,7 +247,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_player_moved_heading_units PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 TARGET_COMPILE_DEFINITIONS(test_player_moved_heading_units PRIVATE
-    WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
 GTEST_DISCOVER_TESTS(test_player_moved_heading_units DISCOVERY_TIMEOUT 120)
 
 # T88: headless position-frame round-trip regression tests (inbound
@@ -319,8 +319,8 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_camp PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 TARGET_COMPILE_DEFINITIONS(test_camp PRIVATE
-    WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
-    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")"
+    "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 GTEST_DISCOVER_TESTS(test_camp DISCOVERY_TIMEOUT 120)
 
 # B1072 (GitLab #392): the zone-IN connect bound -- ZoneConnectWatchdog on a

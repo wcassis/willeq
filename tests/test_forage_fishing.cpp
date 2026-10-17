@@ -54,7 +54,7 @@ using eqt::state::GameEventType;
 
 namespace {
 
-constexpr const char* kShippedCaps = WILLEQ_REPO_ROOT "/config/skill_caps.json";
+const char* const kShippedCaps = WILLEQ_REPO_PATH("config/skill_caps.json");  // B1090: run-time root
 
 // Class ids as the server (and the PlayerProfile) numbers them.
 constexpr uint8_t kWarrior = 1;

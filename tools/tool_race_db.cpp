@@ -5,6 +5,7 @@
 #include <fstream>
 
 #include "client/willeq_database.h"
+#include "common/willeq_paths.h"  // WILLEQ_DB_REAL_PATH resolves at run time (B1090)
 
 bool openWilleqRaceDatabase() {
     static EQT::WilleqDatabase db;
