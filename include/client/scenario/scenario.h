@@ -193,6 +193,8 @@ public:
      * -1 not readable.
      */
     virtual long long ZoneAudioSilenceCount() const { return -1; }
+    /** B1079: arm the "zone answered then went silent" lever (the next ConnectToZone's handshake is pinned past ZONE_CONNECTING); false if unsupported. */
+    virtual bool SimulateZoneSilentAfterHandshake() { return false; }
 
     // --- actions ---
     /** Dispatch one slash command line, exactly as --script would. */
@@ -349,6 +351,22 @@ struct ScenarioOptions {
      * flaky lane should not pass on the first tick's un-echoed value.
      */
     double fallWaitSeconds = 8.0;
+    /**
+     * B1079 (#399): the zone_connect_timeout "zone answered then went silent"
+     * arm (the 2026-10-15 XU4 shape). When set, after /camp -> character
+     * select the arm Enter-Worlds with the client's silent-zone lever armed
+     * alongside ONE dead-port connect (SimulateUnreachableZoneConnects(1)):
+     * the connection goes to a dead port (stable silence -- the stale
+     * connect is erased without a StatusDisconnected, so nothing
+     * re-connects), and the handshake's ZONE_CONNECTING is pinned to
+     * ZONE_RECEIVING_PROFILE, as if the zone had answered the session and
+     * OP_ZoneEntry and then gone quiet. The bound must walk that phase to
+     * its own deadline and escalate WITHOUT a connect retry (a re-connect
+     * would duplicate OP_ZoneEntry), landing on character select within the
+     * profile bound and inside the connect bound. Default false = the plain
+     * dead-port arm.
+     */
+    bool silentZone = false;
 };
 
 class IScenario {
