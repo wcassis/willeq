@@ -68,7 +68,7 @@
 // ZONE_CONNECTING re-baselines on every entry (it is the retry's own
 // window, and a mid-session reconnect re-enters it). Worst case from a
 // fresh Arm: 30 s (connect, plus one 30 s retry window) + 5 x 10 s (the
-// network tail) + 80 s (the graphics span) = 230 s, i.e. under four
+// network tail) + 80 s (the graphics span) = 190 s, i.e. under four
 // minutes before the escalation. In practice a stalled load sits in ONE
 // phase and costs that phase's own budget.
 

@@ -64,7 +64,7 @@ connecting, ...)` disarmed on the first tick where the phase was not
 | `GRAPHICS_LOADING_ZONE` .. `GRAPHICS_FINALIZING` | 80 s, ONE budget | **measured**: 2x the slowest blessed Pi COLD load, refactor/T186 (orangepi cold befallen 38.65/36.66 s, warm re-zone 23.39 s). A re-zone is faster, so the same bound covers load #N with margin. |
 
 Worst case from a fresh Arm: 30 s + 30 s (the one retry) + 5 x 10 s + 80 s =
-230 s, under four minutes. In practice a stalled load sits in ONE phase and
+190 s, under four minutes. In practice a stalled load sits in ONE phase and
 costs that phase's own budget.
 
 ## `--log-file` / `WILLEQ_LOG_FILE` (the play box)

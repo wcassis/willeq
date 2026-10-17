@@ -771,8 +771,11 @@ private:
 	// m_game_state.world().zoneChangeApproved(): set here, processed at the top of UpdateMovement().
 	bool m_pending_logout_disconnect = false;
 
-	// B1072 (#392): the zone-IN connect bound (ZoneComponent::kZoneConnectTimeoutMs
-	// per attempt, kZoneConnectRetries retries), armed by ConnectToZone().
+	// B1072 (#392) + B1079 (#399): the zone-IN bound over the WHOLE loading
+	// span, per the per-phase table ZonePhaseBoundsMs() (zone_connect.cpp) --
+	// the connect phase is ZoneComponent::kZoneConnectTimeoutMs with
+	// kZoneConnectRetries retries, limited to ZONE_CONNECTING -- armed by
+	// ConnectToZone().
 	eqt::zone::ZoneConnectWatchdog m_zone_connect_watchdog;
 	int m_zone_connect_opens = 0;
 	// B1079: last zone-sent application opcode (see LastZoneOpcode()).
