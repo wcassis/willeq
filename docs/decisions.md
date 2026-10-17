@@ -2203,3 +2203,37 @@ moved past it. RULED:
    unparseable level is a loud startup `ERROR`, never a silent no-op.
    `refactor/B1079/README.md` and `docs/standards/debug_logging_standards.md`.
 
+## 2026-10-17 — B1078: a window draws at the oracle's OWN size, scaled only by ONE uniform factor, and the 40x40 dragitem decal is never stretched (#398)
+
+Will's 2026-10-15 play session: "the vendor window item icons are
+squashed and appear unnaturally square". Measured root cause: the
+merchant (374x480), inventory (428x460) and tradeskill (400x525) windows
+mapped their oracle geometry into fable's fixed 400x350 popup with TWO
+different factors (x by the width ratio, y by the height ratio), and the
+merchant blitted the 40x40 dragitem decal into the full list cell --
+25x14 at every resolution. RULED (extending the B1075 ruling, 2026-10-15):
+
+1. **A window draws at the oracle's OWN size**, anchored by the layout
+   table (the bank/options precedent). Where the screen cannot fit it
+   (the middle band is 384 tall at 800x600), the scale is ONE uniform
+   factor -- the min of the width and height ratios, capped at 1 -- applied
+   to the whole window, never an x factor and a different y factor
+   (that anisotropy is the defect). Merchant 80% at 800x600, inventory
+   83%, tradeskill 73%; at 1024x768 and up all three are 100% except the
+   inventory at 1024 (94%, width-bound) and the tradeskill at 1280x720
+   (96%, width-bound).
+2. **Every `drawItemIcon()` call site blits a square.** The decal is the
+   oracle's own 40x40 cell, so a cell that is not one must never stretch
+   it: `UIRenderer::squareIn(cell)` (the centred square of side min(w,h),
+   identity on a square cell) is the one helper, applied in the funnel and
+   asserted per call site at all four `kSupportedResolutions` by
+   `tests/test_item_icon_rects.cpp`. The merchant's measured row pitch is
+   24 (UIGAP-ORACLE/152), so its icon column is 24x24 at the window's own
+   size; `ORACLE_ROW_H` was 20 and is 24, `ROWS_VISIBLE` follows
+   (15, not 16 -- integer division).
+3. **Draw and click read the SAME rect** (T57's rule, applied to the
+   fix-leg's live defect): the tradeskill editbox-defocus hit test read
+   `layout.centerPopup` while the draw reads `TradeskillLayout::
+   windowRect()`; it now reads the drawn rect. `refactor/B1078/README.md`
+   (before/after rect tables, measured dump).
+
