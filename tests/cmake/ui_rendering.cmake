@@ -513,6 +513,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_target_ring DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1088 (#408): the loading screen's zone-name lookup -- unknown id -> empty,
+# verbatim name (no "The" stripping), OP_NewZone override, the stored
+# "Entering <name>..." line read at draw time, and the line's pixels through
+# the shared layout (headless GLES2; self-skips without a device).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_zone_display_name
+        test_zone_display_name.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_zone_display_name PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_zone_display_name GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_zone_display_name DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B995 (#315): the Display > Particles sub-pages -- sub-tab switching, the
 # Spell/Env knobs persisted as eqclient.ini floats, and each knob reaching the
 # particle systems (the worker's spawn density, the shared draw rule).

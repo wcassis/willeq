@@ -159,5 +159,11 @@ std::unique_ptr<IScenario> MakeFallDamageScenario(const ScenarioOptions& options
 // ammo count dropped by one. See scenario_ranged_single_shot.cpp.
 std::unique_ptr<IScenario> MakeRangedSingleShotScenario(const ScenarioOptions& options);
 
+// B1088 (#408): the loading screen's "Entering <zone long name>..." line,
+// live. Zone in (the era table's first line), then a GM zone request to
+// expectZoneChangeId (the second refresh); the post-check asserts both INFO
+// lines. See scenario_loading_name.cpp.
+std::unique_ptr<IScenario> MakeLoadingNameScenario(const ScenarioOptions& options);
+
 }  // namespace scenario
 }  // namespace eqt
