@@ -86,9 +86,6 @@ public:
      */
     void noteNewZone(uint32_t zoneId, const std::string& longName);
 
-    /** Test seam: make the shown line exactly `entry` ("" clears it). */
-    void setEntryForTest(std::string entry);
-
     /**
      * "Zone ready" clear: forget the shown zone so a stale name never shows
      * for the NEXT load before its id is known. The next refresh()/

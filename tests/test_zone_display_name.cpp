@@ -69,7 +69,6 @@ TEST(ZoneDisplayName, TheNewZoneOverrideShadowsTheEraTable) {
 
 TEST(ZoneDisplayName, RefreshStoresAndReadsBackTheShownLine) {
     ZoneDisplayNames& names = ZoneDisplayNames::instance();
-    names.setEntryForTest("");  // isolate from any earlier test's state
     names.clearEntry();
     const uint32_t id = 54321;  // unknown id -> only the override names it
     names.setOverride(id, "Omn Gora");
@@ -85,7 +84,6 @@ TEST(ZoneDisplayName, RefreshStoresAndReadsBackTheShownLine) {
 TEST(ZoneDisplayName, NoteNewZoneReDerivesOnlyForTheShownZone) {
     ZoneDisplayNames& names = ZoneDisplayNames::instance();
     names.clearEntry();
-    names.setEntryForTest("");
     // Shown zone is an id NO source knows (not in the era table, no override):
     // the line is empty until the server's own name arrives.
     const uint32_t id = 999999;

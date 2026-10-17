@@ -126,11 +126,6 @@ void ZoneDisplayNames::noteNewZone(uint32_t zoneId, const std::string& longName)
     }
 }
 
-void ZoneDisplayNames::setEntryForTest(std::string entry) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    entry_ = std::move(entry);
-}
-
 void ZoneDisplayNames::clearEntry() {
     shownZoneId_.store(0, std::memory_order_relaxed);
     std::lock_guard<std::mutex> lock(mutex_);
