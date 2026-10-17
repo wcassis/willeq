@@ -42,17 +42,44 @@ host. The design is `scripts/eqemu/lease_core.sh` + `lease_lib.sh`
 - **Local client end-to-end** (`lease_smoke_local.sh`): `eqemu_lock_take`
   -> `eqemu_lock_show` -> renewer start/renew/stop -> `eqemu_lock_release`,
   through the exact wrapper names the converted call sites use. PASS.
-- **The long proof** (`lease_integration_proof.sh`, lane 4, default
-  900 s TTL, ~39 min, `proof-run1/`):
+- **The long proof** (`lease_integration_proof.sh`, lane 4, default 900 s
+  TTL, ~39 min). **PASS, run 7** (`proof-run7/`, 2026-10-17 03:18-03:59Z):
   - (i) idle PASS — a taker that never renews frees the lane at the 900 s
-    TTL (verified by a second taker taking over at t=17m30s).
+    TTL (a second taker takes over at t=17m30s; nothing is killed by
+    expiry).
   - (ii) active PASS — a holder renewing every 60 s kept the lane for
     20+ minutes; steal attempts at t=4m/12m/20m all refused (rc=1, holder
     named).
-  - (iii) reap — the FIRST run (proof-run1) failed at its very first step,
-    before touching the lease: the plant command
-    `setsid sleep 300 & echo $!` over ssh hangs, because the backgrounded
-    child inherits ssh's stdout and ssh waits for that pipe to close. The
-    plant is fixed (child fds redirected); `proof-run1/` is kept as the
-    record, and the corrected run's output is `proof/` in the evidence
-    dir.
+  - (iii) reap PASS — a dead run's planted tracked pid is killed by reap
+    and its lease released; a second reap with the same dead list leaves a
+    LIVE holder's lease and pid untouched.
+
+  The first six runs are kept in the evidence dir (`proof-run1/`,
+  `proof/`, `proof-run5-corrupted/`, `proof-run6/`) — they are as much a
+  record of what the proof CAUGHT as of the lease:
+  1. run 1, (iii): the plant `setsid sleep 300 & echo $!` over ssh hangs —
+     the backgrounded child inherits ssh's stdout. Fixed: child fds
+     redirected (`plant()`).
+  2. run 4, reclaim: `reap` 64'd on a `deadruns` file that WAS shipped —
+     the core resolved the relative name against the ssh login CWD, not
+     the store. Fixed: store-relative resolution + local-mode copy
+     (`lease_core.sh`); red-before pinned by self-test case 10b.
+  3. run 5: a release that returned 0 left the record in place (a silent
+     ssh no-op) — a caller believed the lane was free while still held.
+     Fixed: verified release (re-show, rc=65 if still ours, `lease_lib.sh`).
+  4. run 6, (iii): the proof's direct ssh lines built `user@172.16.200.$LANE`
+     — 172.16.200.4 does not exist (lanes are .99/.98/.97/.96/.205).
+     Fixed: `LANE_SSH` resolved from the env.sh lane table.
+  5. every run: the `trap ERR` on the steal-attempt line `out=$(take); rc=$?`
+     wrote a spurious `exit=1` mid-run (VAR=$(cmd) failing fires the ERR
+     trap; `cmd && {…}` does not — verified with a probe). Fixed: a single
+     EXIT trap writes the real verdict once (verified with a 3-path
+     harness); the exit file is now absent until the proof actually ends.
+
+  Operational notes (these are MY mistakes, not the lease's): a
+  `terminal(background=true)` process is reaped when the agent turn ends,
+  so the proof must be launched detached (the `launch_proof_once.sh`
+  guard in the evidence dir); and only ONE proof may run at a time — two
+  share card ids + lane + log and collide (run 4/5). All of this is why
+  the proof reclaims its own leftovers at start and the launcher refuses
+  a concurrent start.
