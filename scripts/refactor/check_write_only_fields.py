@@ -367,8 +367,6 @@ EXEMPT = {
         ("boarded", "B346: emitter spawn radius set by seven callers, unused in the spawn"),
     ("SpellEffectInstance", "spellID"):
         ("boarded", "B346: FX instance records the spell and nothing looks it up"),
-    ("RendererEvent", "intData"):
-        ("boarded", "B346: renderer event payload with no consumer"),
     ("SpellActionInfo", "level2"):
         ("boarded", "B346: OP_Action field with no consumer"),
 }

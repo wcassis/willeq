@@ -179,6 +179,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_hotkey_dispatch_census DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1025-H4 (#345): the hotbar window's page and toggle keys -- the shipped
+# table's Shift+1..0 / Alt+H resolve to the right receiver outputs, and
+# the production consumer pushes the page intent / flips the window flag.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_hotbar_key_routing
+        test_hotbar_key_routing.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_hotbar_key_routing PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_hotbar_key_routing GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_hotbar_key_routing PRIVATE
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
+    GTEST_DISCOVER_TESTS(test_hotbar_key_routing DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T343 (B002): the autorun arm in processCommonInput. Behavioural on a
 # device-less renderer (the flag lives on PlayerCameraComponent), plus the two
 # source-pinned ends the behavioural test cannot reach -- the receiver's queue
@@ -525,6 +539,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_target_ring PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_target_ring GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_target_ring DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1088 (#408): the loading screen's zone-name lookup -- unknown id -> empty,
+# verbatim name (no "The" stripping), OP_NewZone override, the stored
+# "Entering <name>..." line read at draw time, and the line's pixels through
+# the shared layout (headless GLES2; self-skips without a device).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_zone_display_name
+        test_zone_display_name.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_zone_display_name PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_zone_display_name GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_zone_display_name DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # B995 (#315): the Display > Particles sub-pages -- sub-tab switching, the
@@ -1038,6 +1065,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_skill_reachability PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_skill_reachability GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_skill_reachability DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1025-H3 (GitLab #345): the hotbar assignment gesture's state machine --
+# the hold timer (tickHotbarHold), the deferred-action holder
+# (HotButtonHolder), the pickup clear (stepHotbarGesture), the /hotbutton
+# command's button (applyHotbarAssignPending), the placement displacement,
+# and the end-to-end press loops through the REAL StaticUIInput. Same
+# graphics gate as test_skill_reachability (it drives StaticUIInput); no
+# device, no layout assets -- the slot geometry is hotbar_layout.h's own
+# functions. See refactor/B1025-H3/README.md.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_hotbar_assignment
+        test_hotbar_assignment.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_hotbar_assignment PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_hotbar_assignment GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_hotbar_assignment DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T272: the spellbook popup's click -> MemorizeSpellIntent -> SpellManager

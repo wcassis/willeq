@@ -353,6 +353,34 @@ struct HotbarPageChangedIntent {
     int page = 0;
 };
 
+// B1025-H3 (#345): the hot button the cursor carries, placed on a hotbar slot.
+// The producer is the render thread's hotbar window (a left click on a slot
+// with a hot button on the cursor) or -- for an item -- the cursor's own item
+// gesture while a hot button rides along; the consumer is
+// BridgeComponent::onHotbarAssignIntent, the first production caller of
+// HotbarModel::assignSlot() (the test-seam comment above it is struck).
+// `address` is the destination; `type`/`id`/`text`/`iconId` describe the
+// button in the model's own numbering (hotbar_slot_type.h).
+struct HotbarAssignIntent {
+    int page = 0;
+    int slot = 0;
+    HotbarSlotType type = HotbarSlotType::Empty;
+    uint32_t id = 0;
+    std::string text;     // Emote/Macro text; empty for the other kinds
+    uint32_t iconId = 0;
+};
+
+// B1025-H3 (#345): a hotbar button picked UP off a slot by the hold gesture.
+// The press on the occupied slot puts the button on the cursor AND clears the
+// source slot (H-O "hotbar-pickup": "source INI key removed"); the consumer
+// (BridgeComponent::onHotbarClearIntent) calls HotbarModel::clearSlot, the
+// first production caller. The button itself crosses back as a
+// HotbarAssignIntent when it is placed.
+struct HotbarClearIntent {
+    int page = 0;
+    int slot = 0;
+};
+
 // --- Inventory ---
 
 struct MoveItemIntent {
@@ -516,6 +544,8 @@ using RendererIntent = std::variant<
     // Hotbar (D20b2)
     HotbarActivateIntent,
     HotbarPageChangedIntent,   // B1025-H2
+    HotbarAssignIntent,        // B1025-H3
+    HotbarClearIntent,         // B1025-H3
     // Tradeskill
     TradeskillCombineIntent,
     TradeskillCloseIntent,

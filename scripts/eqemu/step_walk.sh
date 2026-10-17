@@ -91,10 +91,11 @@ sed "s/\"host\"\([[:space:]]*:[[:space:]]*\)\"[^\"]*\"/\"host\"\1\"${CLIENT_HOST
 
 # ---- 1. the lock ----------------------------------------------------------
 if ! eqemu_lock_take "${UNIT} step_walk.sh"; then
-    say "eqemu lock is HELD by: $(eqemu_lock_show) -- refusing to run"
+    say "eqemu lease is HELD by: $(eqemu_lock_show) -- refusing to run"
     exit 64
 fi
-say "lock taken (lane ${EQEMU_LANE}, host ${EQEMU_HOST})"
+say "lease taken (lane ${EQEMU_LANE}, host ${EQEMU_HOST})"
+eqemu_lease_start_renewer
 
 UPPED=0
 SNAP="$OUT/snapshot_before.tsv"
@@ -125,8 +126,9 @@ cleanup() {
             eqemu_world_start
         fi
     fi
+    eqemu_lease_stop_renewer
     eqemu_lock_release
-    say "lock released"
+    say "lease released"
 }
 trap cleanup EXIT INT TERM
 

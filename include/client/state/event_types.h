@@ -185,6 +185,15 @@ enum class GameEventType {
     // B442b (GitLab #151 rows 31-35): a Yes/No confirmation the game thread
     // composed (eqstr 9057 drop / 2043 destroy, with the held item's name).
     ConfirmationRequested,
+    // B1025-H3 (GitLab #345): a hot button landed on the cursor (the /hotbutton
+    // command, eqstr 13278-13283 -- a social button, HotbarSlotType::Emote
+    // with the macro as text). The render thread draws it; it crosses back to
+    // the game thread only as HotbarAssignIntent. The hold-to-pickup gesture
+    // sets the cursor's hot button LOCALLY in the render thread and never
+    // publishes this. Cleared implicitly: the render thread zeroes the hot
+    // button when it is placed, dropped on the world, or replaced by an item
+    // pick-up -- there is no game-thread state to clear, so no cleared event.
+    HotbarAssignPending,
 };
 
 

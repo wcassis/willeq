@@ -52,11 +52,15 @@ real behavior are the deliverable, not coverage theater.
   (session-replay oracle `docs/plans/session_replay_oracle.md`,
   pcap tests, recorded captures) — they exist precisely so protocol
   tests don't need a live server. If a unit genuinely needs live
-  eqemu, take the lock first: create
-  `/mnt/projects/.eqemu-lock` on the eqemu VM (172.16.200.99; take it with
-  `eqemu_lock_take` from `scripts/eqemu/env.sh`) containing your session name +
-  date; remove it at server shutdown. If the lock exists, wait. The
-  perf session honors the same lock.
+  eqemu, take the lane's LEASE first (B1089: the lock is now a TTL lease whose
+  record lives on the lane's own host; `docs/ci.md` "Lane leases"): take it with
+  `eqemu_lock_take` from `scripts/eqemu/env.sh`, naming your card + run. The
+  lease expires after `LANE_LEASE_TTL_S` (900 s) of silence — expiry releases
+  the lane only, never kills anything; a live long run keeps it by renewing
+  (`eq_remote` renews on every lane touch, long scripts start
+  `eqemu_lease_start_renewer`), and a stale holder's renew fails with 63 plus
+  the re-acquire one-liner. If the lane is HELD by someone else, wait. The
+  perf session honors the same lease.
 
 ## Test quality bar
 

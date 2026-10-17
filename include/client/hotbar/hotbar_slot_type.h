@@ -55,4 +55,20 @@ inline const char* hotbarSlotTypeName(HotbarSlotType type) {
     return "Unknown";
 }
 
+// B1025-H3 (GitLab #345): what the cursor carries while a hotbar assignment
+// is in flight. The KIND of button (model numbering, above) plus the source
+// it came from: a held spell gem (the gem INDEX; the model's id is the
+// spell at that gem, resolved by the game thread at assignment time), a
+// combat-ability window row (the skill id), an inventory item (the item id)
+// or the /hotbutton command (an Emote, eqstr 13278-13283). Local render
+// state only -- it is fed by the hold timer (the render thread itself) and by
+// the HotbarAssignPending event (the /hotbutton command), and it crosses back
+// to the game thread only as HotbarAssignIntent.
+struct HotButtonCarried {
+    HotbarSlotType type = HotbarSlotType::Empty;
+    uint32_t id = 0;
+    std::string text;   // Emote/Macro text; empty for the other kinds
+    uint32_t iconId = 0;
+};
+
 } // namespace eqt

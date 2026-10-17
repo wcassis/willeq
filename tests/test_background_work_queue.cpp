@@ -196,11 +196,40 @@ TEST(BackgroundWorkQueue, IdleTransitions) {
     q.stop();
 }
 
+// B1092 (#412): the original version of this test submitted 20 items whose
+// processor slept 20 ms each and then called stop() "immediately", asserting
+// count < 20. That encoded WALL TIME: it assumed stop() would reach the queue
+// within 20 x 20 ms of the first submit. Under CI load the main thread was
+// descheduled longer than that between the last submit() and stop(), so the
+// worker legitimately finished all 20 items first and count == 20 failed the
+// assertion (pipelines 1441 job 7743 and 1451 job 7797, 406 ms test duration
+// == exactly 20 x 20 ms; the worker drained the whole batch because the drain
+// loop never re-checked running_ once it had popped item 0).
+//
+// The deterministic version asserts the queue's contract directly: the
+// in-flight item completes, the queued items are left unprocessed, stop()
+// returns, and the queue reports idle. Every transition is signalled, not
+// slept, so the test holds under any scheduling:
+//   - item 0's processor records "in flight" BEFORE blocking on a gate, so
+//     the main thread knows the worker has popped item 0 and is mid-batch;
+//   - stop() is started only after that signal, so it necessarily lands with
+//     item 0 in flight (not before the batch starts);
+//   - the main thread waits on isStopping() (running_ false) BEFORE opening
+//     the gate; the drain loop's running_ check is under the same request
+//     lock stop() stores behind, so the worker is guaranteed to observe the
+//     stop before it can pop item 1.
 TEST(BackgroundWorkQueue, StopWhileItemsPending) {
     std::atomic<int> processedCount{0};
+    std::atomic<bool> inFlight{false};
+    std::atomic<bool> gateOpen{false};
     BackgroundWorkQueue<TestRequest, TestResult> q(
-        [&processedCount](TestRequest&& req) -> TestResult {
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        [&](TestRequest&& req) -> TestResult {
+            if (req.id == 0) {
+                inFlight.store(true, std::memory_order_release);
+                // Block in item 0 until the test thread opens the gate.
+                while (!gateOpen.load(std::memory_order_acquire))
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
             processedCount.fetch_add(1, std::memory_order_relaxed);
             return {req.id, "done", true};
         });
@@ -209,11 +238,36 @@ TEST(BackgroundWorkQueue, StopWhileItemsPending) {
     for (int i = 0; i < 20; ++i)
         q.submit({i, "item"});
 
-    // Stop immediately — should not hang, and not all items need to be processed
-    q.stop();
+    // Wait until the worker has popped item 0 and is processing it.
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!inFlight.load(std::memory_order_acquire) &&
+           std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    ASSERT_TRUE(inFlight.load(std::memory_order_acquire));
 
-    int count = processedCount.load(std::memory_order_relaxed);
-    EXPECT_LT(count, 20);
+    // stop() on its own thread (the production shutdown path is a call from a
+    // thread other than the worker); it joins the worker, so it returns only
+    // when the worker has exited. Started now, with item 0 in flight, so it
+    // necessarily lands mid-batch.
+    std::thread stopper{[&] { q.stop(); }};
+
+    // Wait until the stop has taken effect (running_ false). Only then open
+    // the gate: item 0 finishes, and the drain loop's running_ check (under
+    // the request lock stop() wrote behind) makes the worker exit without
+    // popping item 1.
+    deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!q.isStopping() && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    ASSERT_TRUE(q.isStopping());
+
+    gateOpen.store(true, std::memory_order_release);
+    stopper.join();  // stop() has returned, worker has exited
+
+    // Exactly the in-flight item completed; items 1..19 were left in the queue
+    // and the queue reports idle (the stop's drain exit must still mark idle).
+    EXPECT_EQ(processedCount.load(std::memory_order_relaxed), 1);
+    EXPECT_EQ(q.getPendingCount(), 19u);
+    EXPECT_TRUE(q.isIdle());
 }
 
 // B606 (#189) deleted setBatchHooks()/onBatchBegin_/onBatchEnd_ (zero callers;

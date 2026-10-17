@@ -50,6 +50,13 @@ bool ApplicationScenarioWorld::SimulateUnreachableZoneConnects(int attempts, int
     return true;
 }
 
+// B1080 (#400): the zone-OUT teardown's audio-silence count (the counter
+// CleanupZone() increments in every build -- a headless --scenario run has
+// no audio system, but the count still proves the silence path ran).
+long long ApplicationScenarioWorld::ZoneAudioSilenceCount() const {
+    return client_.Zone().ZoneAudioSilenceCount();
+}
+
 // B1079 (#399): the "zone answered then went silent" lever (EverQuest::
 // SimulateZoneSilentAfterHandshake, zone_connect.cpp / everquest.cpp). The
 // silent arm of zone_connect_timeout.
