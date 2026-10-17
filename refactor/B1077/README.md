@@ -13,24 +13,33 @@ spellbook/buff rows ← `spell_icon`) and nothing drew them.
 (Spells01..07.tga, 6x6 of 40x40, 252 cells), `BuffIcons` (Spell_Icons.tga,
 6x6 of 40x40, 36 cells). Row-major, zero-based — `<Vertical>false</Vertical>`
 plus the salvage audit's arithmetic (the 2026-10-15 issue note). The Buff
-family is the one PART-FILLED sheet: 23 of 36 cells carry art, scattered
-(ids 14, 23, 24..35 empty), so it alone proves the cell ORDER —
-`test_spell_icon_atlas.cpp` pins `BuffFillProvesRowMajor` +
-`ColumnMajorReadingWouldBeWrong` from that fill. `gem_icon` (field 144)
-indexes Gems, `spell_icon` (field 143) indexes Spells; the buff window's
-`BW_Buff*_Button` decal is `BuffIcons` (`EQUI_BuffWindow.xml`'s
-`ButtonDrawTemplate NormalDecal`).
+family is the one PART-FILLED sheet: 23 of 36 cells carry art, the empties
+being ids 23..35 (row 3 col 5 plus the whole of rows 4 and 5) — a trailing
+run. (Id 14, the diagonal cell row 2 col 2, carries art: alpha sum 77,520,
+re-measured 2026-10-17; the first leg's "ids 14, 23, 24..35 empty" was a
+wrong number.) The fill alone proves the cell ORDER — id 24 is an EMPTY cell
+row-major but a POPULATED cell column-major — and `test_spell_icon_atlas.cpp`
+pins `BuffFillProvesRowMajor` + `ColumnMajorReadingWouldBeWrong` from it.
+`gem_icon` (field 144) indexes Gems, `spell_icon` (field 143) indexes Spells;
+the buff window's `BW_Buff*_Button` decal is `BuffIcons` (`EQUI_BuffWindow.xml`'s
+`ButtonDrawTemplate NormalDecal`). The export's own population (re-measured
+2026-10-17 over data/willeq.db, 8,066 rows): gem_icon is -1 on 112 rows,
+in-sheet on 7,826, and 128 rows carry one of 11 distinct ids (189, 190, 191,
+193, 194, 195, 202, 204, 208, 211, 215) that outrun the 189-cell family —
+those resolve to nothing, by design. The first leg's "26 ids (189..215)
+outrun the gem family / 25 spells have such ids" + the dead
+`kGemIdAboveSheets = 26` constant were wrong numbers and are dropped.
 
 **Atlas + builder (step 2).** `tools/spell_icon_atlas_builder` lifts the
-three families plus the `A_SpellGemHolder` piece of window_pieces02.tga
+three families plus the `CW_SpellGemHolder` piece of classic_pieces01.tga
 into `data/textures/spell_icons{gems,spells,buff}.bmp` (each 1024x1024,
 POW2) + `spell_icon_holder.bmp` (40x40). One header shared by builder and
 runtime loader (`spell_icon_sheets.{h,cpp}`, beside `ItemIconAtlas`). The
 builder is the FOURTH recipe in `scripts/build_textures.sh` (alongside the
 64 procedural, T417's spell-sprite sheet and T430's item-icon sheets); pins
 updated (`data/textures.sha256`, `data/willeq.eqe1.sha256` — the pack grew
-9,726,596 → 13,923,652 bytes, +4,197,056: three ETC1 family atlases with
-mips + their three ETC1 `_alpha` companions + the 40x40 holder piece).
+9,726,596 bytes in the first leg's holder; the fix leg re-cut the holder
+piece, same pack size, new pin — measured at the bottom of this file).
 
 **Blit (step 3).** `UIRenderer::drawSpellIcon(rect, sheet, id)` and
 `drawSpellGemHolder(rect)`, same queued-command / false-when-nothing
@@ -50,6 +59,19 @@ fallback only. The book button toggles the spellbook through the SAME
 `closesOnOpen`). Hit tests come from the same table (`static_ui_input.cpp`);
 a gem's click rect = its drawn rect.
 
+**The holder (fix leg, finding 4) — the CW piece is shipped, not the A piece.**
+The first leg shipped `A_SpellGemHolder` (window_pieces02.tga (208,216) 39x32,
+EQUI_Animations.xml line 12495) even though the gem bar's own window,
+`EQUI_CastSpellWnd.xml`, names AND locally defines a different one: all eight
+`CSPW_SpellN` carry `<Holder>CW_SpellGemHolder</Holder>`, and the file's line 5
+defines it as `classic_pieces01.tga` at (41,123), 36x28 — a socket frame 1:1
+with the 36x28 gem cell. The A piece is 3 px wider / 4 px taller than the cell
+and is the piece the oracle's `EQUI_CursorAttachment.xml` and HotButtonWnd use.
+Per the oracle rule (copy the official client's UI/behavior; prefer the client
+files), the fix leg moved the header holder constants + the builder + the test
++ the pack pins all to `CW_SpellGemHolder`; the ruling is one entry in
+`docs/decisions.md` (2026-10-17, B1077 fix leg).
+
 **Buff bar / hotbar / spellbook (step 5).** `include/client/graphics/ui/buff_layout.h`
 quotes `EQUI_BuffWindow.xml`: 15 live buttons (Buff0..14) 34x34, columns
 3/48/93, rows 3/49/95/141/187, decal 30x30 at the button's (2,2) corner —
@@ -61,7 +83,7 @@ draw too. Spellbook rows draw `spell.iconId` through the Spells family at
 26x26 at the row's left.
 
 **Tests.** `test_spell_icon_atlas` (builder output cell-for-cell vs the
-source TGAs, row-major proof, hand-read ids, holder piece — 10 cases);
+source TGAs, row-major proof, hand-read ids, holder piece — 11 cases);
 `test_ninth_spell_gem` + `test_buff_click_off` + `test_ui_atlas_pixels` +
 `test_static_ui_panels` + `test_spellbook_memorize` retargeted to the
 oracle geometry; the two NEW geometry pin cases
@@ -110,3 +132,44 @@ in a quote is a red test.
   `tests/goldens/` was touched.
 - The `docs/decisions.md` entry and the root-CLAUDE.md count updates land
   with the MR merge (orchestrator applies the CLAUDE.md EDITS).
+
+## Fix leg (2026-10-17, MR !210 review findings 2, 3, 4)
+
+Review t_82c9a071 (MR notes 5418/5419) closed findings 2-4 in one leg; the
+CODE and TESTS were already verified correct by QA + review, so this leg
+touched only the three findings plus docs:
+
+- **Finding 4 (oracle mismatch, oracle-answered) — ship the CW holder.**
+  All eight `CSPW_SpellN` in `EQUI_CastSpellWnd.xml` carry
+  `<Holder>CW_SpellGemHolder</Holder>` and the file DEFINES it locally
+  (line 5): `classic_pieces01.tga` (41,123), 36x28 — 1:1 with the gem cell.
+  The first leg shipped the 39x32 `A_SpellGemHolder` of
+  window_pieces02.tga (EQUI_Animations.xml) instead. The header holder
+  constants (`kHolderW/H/SrcX/SrcY`), the builder (`packHolder()` reads
+  classic_pieces01.tga), the test (constants + `HolderEqualsTheCwWindowPiecesCut`
+  re-reads the CW cut) and the pack pins all moved to the CW piece. Ruling
+  in `docs/decisions.md` (2026-10-17, B1077 fix leg).
+- **Finding 2 (wrong number) — the gem census.** Re-measured 2026-10-17
+  over data/willeq.db (8,066 rows): 128 rows carry `gem_icon >= 189`,
+  spanning 11 distinct ids {189,190,191,193,194,195,202,204,208,211,215}.
+  The first leg's "26 ids (189..215) outrun the gem family" / "25 spells
+  have such ids" and the dead `kGemIdAboveSheets = 26` constant are
+  restated/dropped (spell_icon_atlas.h, this README).
+- **Finding 3 (wrong number) — the buff-empty set.** Re-measured 2026-10-17
+  over Spell_Icons.tga: the true empties are ids 23..35 (13 cells, a
+  trailing run; kBuffPopulated=23 and the tests were already right). Id 14
+  carries art (alpha sum 77,520); the header's "ids 14, 23 and 24..35
+  empty" prose is corrected, and id 24 stays the order-proving cell, as
+  `BuffFillProvesRowMajor` already used it.
+
+Measured (2026-10-17, hermes-ext): the three family BMPs regenerate
+bit-identical to their pins (only the holder input changed); the new
+`spell_icon_holder.bmp` is 13de32369bcb38df... (the 36x28 CW cut on a
+40x40 canvas); the shared pack was rebuilt from the same inputs — same
+size, 13,923,652 bytes, new bytes (pin now
+02a3d6e4e71fa1681291972eb40bae956a14153a9309a318b1831c0a193c0084) — and
+`build_willeq_pack.sh --check` passes against the pin. `test_spell_icon_atlas`
+runs green against the regenerated assets; hygiene + DocCounts are the CI
+legs (build-test + gate are the code-green signal for this leg — the 4
+root-CLAUDE.md DocCounts rows stay red until the orchestrator applies MR
+note #5414).

@@ -7,11 +7,13 @@
 # uifiles/default/dragitem1..34.tga, all 1224 40x40 item icons on two
 # 1024x1024 sheets, board B376), and B1077's spell_icons{gems,spells,buff}.bmp
 # + spell_icon_holder.bmp (the official client's gemicons*.tga / spells*.tga /
-# Spell_Icons.tga sheets, GitLab #397). B1077 grew the pack 9,726,596 ->
-# 13,923,652 bytes, +4,197,056: three ETC1 family atlases with mips plus their
-# three ETC1 _alpha companions and the 40x40 holder piece, and every zone's
-# eqe1MappedBytes rises by exactly that.
+# Spell_Icons.tga sheets + its CW_SpellGemHolder piece of classic_pieces01.tga,
+# GitLab #397). B1077 grew the pack 9,726,596 -> 13,923,652 bytes, +4,197,056:
+# three ETC1 family atlases with mips plus their three ETC1 _alpha companions
+# and the 40x40 holder piece, and every zone's eqe1MappedBytes rises by
+# exactly that. The B1077 fix leg re-cut the holder piece (CW_SpellGemHolder,
+# 36x28) -- same pack size, new bytes.
 # Pinned here so a drift in
 # either input, or a hand-edit of the shared pack, is a ctest FAIL
 # (PackReproducible). Update this line in the SAME commit that changes an input.
-ec457a925b02acfa672bd4b6b1a85564224442e4ed5259e6ef53f123f617800d  willeq.eqe1
+02a3d6e4e71fa1681291972eb40bae956a14153a9309a318b1831c0a193c0084  willeq.eqe1

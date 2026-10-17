@@ -2189,10 +2189,13 @@ Standing facts — do not re-derive:
    `drawSpellIcon()` false-return is the "no art" signal (the 4-letter
    name fallback).
 2. **The Buff sheet is the ONE part-filled family** (23 of 36 cells carry
-   art, scattered) and is therefore the only one that PROVES the grid
-   order — `test_spell_icon_atlas.cpp` pins the row-major reading from that
-   fill (`BuffFillProvesRowMajor` / `ColumnMajorReadingWouldBeWrong`). A
-   new family that is fully populated cannot prove its own order.
+   art, the empties being ids 23..35, a trailing run — id 14, the diagonal
+   cell row 2 col 2, carries art) and is therefore the only one that
+   PROVES the grid order — `test_spell_icon_atlas.cpp` pins the row-major
+   reading from that fill (`BuffFillProvesRowMajor` /
+   `ColumnMajorReadingWouldBeWrong`, from id 24: empty row-major, populated
+   column-major). A new family that is fully populated cannot prove its own
+   order.
 3. The gem bar is the oracle's own `EQUI_CastSpellWnd.xml` window (48x290;
    gems 36x28 at (3,10+30i); the ninth parked at -5000 per T483; the book
    button 22x22 at (10,252)) at the layout table's anchor (B1075), and the
@@ -2203,4 +2206,26 @@ Standing facts — do not re-derive:
 
 The atlas is the fourth `scripts/build_textures.sh` recipe and grows
 `willeq.eqe1` by 4,197,056 bytes (three ETC1 family atlases with mips +
-their three `_alpha` companions + the 40x40 `A_SpellGemHolder` piece).
+their three `_alpha` companions + the 40x40 `CW_SpellGemHolder` piece;
+the first leg's `A_SpellGemHolder` cut was replaced by the 2026-10-17
+ruling below, same pack size, new bytes).
+
+## 2026-10-17 — B1077 fix leg: the gem bar's holder is the CW piece, not the A piece (MR !210 finding 4)
+
+The oracle answers the question. All eight `CSPW_SpellN` pieces in
+`EQUI_CastSpellWnd.xml` carry `<Holder>CW_SpellGemHolder</Holder>`, and
+the file DEFINES it locally (line 5): `classic_pieces01.tga` at (41,123),
+36x28 — a socket frame 1:1 with the 36x28 gem cell. B1077's first leg had
+shipped `A_SpellGemHolder` from `EQUI_Animations.xml` (window_pieces02.tga
+(208,216), 39x32) — 3 px wider / 4 px taller than the cell — which is the
+piece the oracle's `EQUI_CursorAttachment.xml` and HotButtonWnd use.
+Ruled per the oracle rule (copy the official client's UI/behavior; prefer
+the client files): **the gem bar ships `CW_SpellGemHolder`**. The header
+holder constants, the atlas builder, the test and the pack pins all moved
+in one leg; `docs/decisions.md`'s 2026-10-16 entry and
+`refactor/B1077/README.md` carry the measurement. The same leg restated
+two committed wrong numbers from fresh measurement: the gem census over
+`data/willeq.db` (8,066 rows) is 128 rows / 11 distinct ids (189, 190,
+191, 193, 194, 195, 202, 204, 208, 211, 215) at or above 189 — not "26
+ids / 25 spells"; and the buff sheet's empties are ids 23..35 — id 14
+carries art (alpha sum 77,520).
