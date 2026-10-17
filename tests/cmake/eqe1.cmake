@@ -12,7 +12,7 @@ ADD_EXECUTABLE(test_eqe1_loader
 TARGET_INCLUDE_DIRECTORIES(test_eqe1_loader PRIVATE ${CMAKE_SOURCE_DIR}/include)
 # B1039: the fallback tree when /mnt/projects/EverQuest_ETC1 is absent (macOS).
 TARGET_COMPILE_DEFINITIONS(test_eqe1_loader PRIVATE
-    EQE1_REPO_TREE="${CMAKE_SOURCE_DIR}/data/eqe1_client")
+    "EQE1_REPO_TREE=WILLEQ_REPO_PATH(\"data/eqe1_client\")")
 ADD_TEST(NAME test_eqe1_loader COMMAND test_eqe1_loader)
 
 # B930 (#248): the STALE pack must fail loudly by pack name + version.

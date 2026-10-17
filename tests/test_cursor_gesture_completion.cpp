@@ -121,7 +121,8 @@ struct Rig {
         const bool took =
             input.processInput(x, y, left, l, hotbar, gems, inv, book, skills, buffs, loot, mods.shift);
         // The rig never lets one click land on two windows (the inventory
-        // popup and the merchant share centerPopup; a test opens one at a time).
+        // popup and the merchant sit side by side since B1075, so a click on one
+        // never reaches the other).
         input.processCommerceInput(x, y, left && !took, l, merchant, bank, cursor);
         input.setFrameClickState(false, {}, &cursor);
     }
@@ -461,14 +462,14 @@ TEST(ConfirmationDialog, YesPushesTheConfirmForItsPurposeAndNoPushesNothing) {
 TEST(DestroyButton, AsksOnlyWithAnItemHeldAndOverlapsNoSlot) {
     Rig rig;
     const auto d = InventoryLayout::destroyButtonRect(rig.l);
-    EXPECT_TRUE(rig.l.centerPopup.isRectCollided(d));
+    EXPECT_TRUE(rig.l.inventoryPopup.isRectCollided(d));
     for (int i = 0; i < InventoryLayout::TOTAL_SLOTS; ++i) {
         EXPECT_FALSE(InventoryLayout::slotRect(rig.l, i).isRectCollided(d)) << "slot " << i;
     }
     for (int c = 0; c < InventoryLayout::COIN_COUNT; ++c) {
         EXPECT_FALSE(InventoryLayout::coinRect(rig.l, c).isRectCollided(d));
     }
-    EXPECT_EQ(d.getWidth(), 50 * rig.l.centerPopup.getWidth() / 428) << "IW_Destroy CX=50, scaled";
+    EXPECT_EQ(d.getWidth(), 50 * rig.l.inventoryPopup.getWidth() / 428) << "IW_Destroy CX=50, scaled";
 
     rig.clickRect(d);
     EXPECT_TRUE(rig.bridge.drainIntents().empty()) << "nothing held: nothing asked";

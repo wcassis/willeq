@@ -1,0 +1,59 @@
+# B888-CC2 (#204): the character select + creation 3D preview oracle leg.
+#
+# Captures (card step 1):
+#   - the select screen with its 3D model: Rotate in its default state, then
+#     toggled -- the still PAIRS around the toggle (spin period/direction
+#     read from the video; whether the spin stops read from the pair diff),
+#     plus the model's framing (pixel height) off the stills;
+#   - the creation screen's sample model for Human male and Gnome female
+#     (the swap on race + gender, per CC-1's open-creation verb);
+#   - the Set Face picker over the Human-male creation page (CC-1's
+#     FacePick state) -- its row geometry is measured from this still.
+#
+# PLAN COLUMN FORMAT (verified against the driver's dispatcher):
+#   verb<TAB>target<TAB>hold_ms<TAB>still_name<TAB>expected-text?
+#   `wait` is 4-col (verb, ms, 0, label). `still` is a no-op mark: the
+#   LABEL goes in col2 (target); its still is the step shot. `click` is
+#   4-col (verb, x,y, 0, label). `open-creation` is verb, race, gender,
+#   still_name, [expected-text]. `open-face` is verb, 0, 0, still_name.
+#   Leave the open-creation 5th col EMPTY: the driver then asserts its own
+#   default postcondition ('Character Creation'). Putting a label there
+#   OVERRIDES the expected text and the assertion fails on a non-screen
+#   label (run oracle9: 'expected human-male').
+#
+# Coordinate notes (lane rig: root 1280x1024, the client window at the root
+# origin, 1280x800; stills crop 1280x800+0+30; jclicks are ROOT coords):
+#   CSW_Rotate_Button   the select window is vertically centred in the 800px
+#                       client: the client origin is (14, (800-484)/2+8) =
+#                       (14,166) window-content, Rotate's XML centre
+#                       (14+168+24, 166+60+16) = (206,242) window-content.
+#                       The driver's measured jclicks are ROOT = display +
+#                       (0,+29..31) (gender 252 = display 221 + 31; the
+#                       create slot 315 = display 287 + 28): root (206,272).
+#                       The still pair around it verifies the toggle took
+#                       (if it did not, the ledger says so and the click is
+#                       re-measured off the still).
+#   open-creation       the driver's own verb (race_y/gender_x table,
+#                       verified by its selected_at checks).
+#   open-face           the driver's own verb (root 37,252, B1057).
+
+login	Testchar	0
+wait	8000	0	select_settle
+still	select_before_toggle
+click	206,272	0	rotate_toggle
+wait	4000	0	rotate_settle
+still	select_after_toggle_1
+wait	2500	0	select_toggle_gap
+still	select_after_toggle_2
+open-creation	Human	Male	create_human_male_model
+wait	8000	0	human-male-settle
+still	create_human_male_model_2
+open-face	0	0	create_human_male_face_open
+wait	4000	0	face-open-settle
+still	create_human_male_face_open_2
+close-creation	0	0	back-to-select
+wait	6000	0	gnome-prep
+open-creation	Gnome	Female	create_gnome_female_model
+wait	8000	0	gnome-settle
+still	create_gnome_female_model_2
+close-creation	0	0	done

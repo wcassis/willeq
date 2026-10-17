@@ -139,12 +139,10 @@ constexpr irr::s32 DONE_H = 24;
  * CENTRED (see the flagged deviation), clamped so it is always wholly on
  * screen.
  */
+// B1075 (#395): the layout table's PairLeft anchor (inventory+bank is a
+// required co-open set), at the oracle's own unscaled size.
 inline irr::core::rect<irr::s32> windowRect(const UILayout& layout) {
-    irr::s32 x = (layout.screenW - WINDOW_W) / 2;
-    irr::s32 y = (layout.screenH - WINDOW_H) / 2;
-    if (x < 0) x = 0;
-    if (y < 0) y = 0;
-    return irr::core::rect<irr::s32>(x, y, x + WINDOW_W, y + WINDOW_H);
+    return layout.placePairLeft(WINDOW_W, WINDOW_H);
 }
 
 /** Style_Titlebar: the row holding <Text>Bank</Text>. */

@@ -2066,3 +2066,87 @@ not just timorous_f1/f2 (stated here; the MR stays DRAFT until Will blesses).
 The Pi leg of the fix (lane 1, same pose, debug5 + debug4 lit floor) is a
 separate card after the bless; the bias is in NDC-z and argues
 platform-independent, but Lima has not re-measured it.
+
+## 2026-10-15 — UI style: the oracle governs a window's CONTENT, a fable layout table governs its PLACEMENT (Will, "I like your idea. run with it"; B1075)
+
+Will's decision point (2026-10-15, after seeing the 2x5 hotbar land on the
+XU4): the old draggable WindowManager UI cost frames and was deleted
+(U07c); the static UI was meant to copy a World-of-Warcraft style fixed
+layout; the official EverQuest UI is faithful-but-unfriendly. The two are
+NOT in conflict, because the performance fix was about placement and
+drawing (fixed anchors, batched quads), not about whose design a window
+copies, and the tree had already converged on a hybrid: every window
+since the reset uses the oracle's own geometry, art, controls and
+gestures at a fixed position fable chose. RULED:
+
+1. **The ORACLE governs what a window contains and how it behaves**:
+   geometry of its controls, art, gestures, server round trips, pages,
+   persistence keys. Every feature-gap card keeps needing an oracle
+   capture and a repeatable test (feature-gap rules, 2026-09-23).
+   "More user-friendly than the official client" has no oracle and is
+   OUT of scope until it has a way to be verified.
+2. **A fable LAYOUT TABLE governs where a window sits, its orientation,
+   and which windows must be open at the same time.** The table is one
+   place (`include/client/graphics/ui/ui_layout.h`'s anchors, named per
+   window) plus a list of REQUIRED CO-OPEN SETS -- at least
+   inventory+trade, inventory+bank, inventory+merchant, inventory+loot,
+   spellbook+spell gems, any centre popup+chat+hotbar+target+group -- and
+   a ctest that asserts no two windows of a required set overlap at every
+   supported resolution (800x600, 1024x768, 1280x720, 1920x1080). The
+   "centre popups are mutually exclusive" rule is RETIRED where a
+   co-open set needs two of them: inventory+merchant was impossible under
+   it, which is exactly the class of gap this ruling exists to close.
+3. **The arrangement of a repeated control is layout, not content**: the
+   hotbar's ten buttons may be laid 1x10 or 2x5 by the table; its oracle
+   tests cover gestures, pages and persistence, none of which depend on
+   where button 6 sits. The WoW-style layout puts the hotbar bottom
+   centre, 1x10 (its pre-H2 place); the table says so and the B1025
+   hotbar cards are untouched. Will can override the orientation in the
+   table without reopening this ruling.
+4. Performance is unchanged by fidelity: static panels, batched quads,
+   no drag, no z-order negotiation. A card that proposes movable windows
+   reopens U07c, not this entry.
+
+## 2026-10-15 — B1082: the character-select keyboard mirrors the measured official client (#402; Will's XU4 report)
+
+Will's report (2026-10-15 XU4 play sessions): "The arrow keys up/down do not
+change which character is selected but they should. The enter key should load
+the selected character." MEASURED on the official Titanium client (oracle
+lane 1; `refactor/B1082/README.md` carries the ledger, stills, video and the
+pcap as ground truth):
+
+1. **Up/Down move the selection one row and wrap at the ends — within the
+   occupied rows only** (the highlight cycles the 8-button list, but the name
+   line and the 3D model only ever reflect an occupied row, so the
+   enterable selection is bounded by the occupied rows). **Navigation sends
+   NOTHING to the server** — zero C→S packets on any Down/Up in the pcap.
+2. **Enter/Return sends `OP_EnterWorld` for the selected row** — the SAME
+   72-byte payload as the Enter World button's click. Nothing selected is
+   inert.
+3. **The delete prompt ignores everything but ESC** (ESC = No, as B998):
+   Enter/Return do not answer it, no keys navigate or type while it is up; it
+   closes on its own ~10 s timeout.
+4. **Escape with no prompt up leaves pre-zone** (server-select), as before —
+   no quit confirmation prompt.
+
+Ruled into `applyCharSelectKey()` (`char_select_screen.cpp`): it now RETURNS
+the `CharSelectAction` exactly like the click path; `KEY_DOWN`/`KEY_UP` go
+through the new `moveSelection(s, delta)` (one occupied row, wrap at the
+ends, gated on blocked/prompt/create like every other press), `KEY_RETURN`
+goes through `pressEnterWorld` (the Enter World button's own body — the
+numpad Enter maps to the same receiver code). The host
+(`char_select_host.cpp`) routes the returned action through `handle()` and
+keeps spending Enter/Escape/Slash so nothing replays in-zone (B1085). Tests:
+`CharacterSelectKeys.*` in `tests/test_character_select.cpp` (wrap without
+sending, Enter for the arrow-chosen row, prompt ignores everything but
+Escape).
+
+## 2026-10-16 — B1085: the chat key latches (enter/escape/slash) latch only while the chat is unfocused, and reset on every focus transition (#405)
+
+One line: a key press may only ever arm the chat shortcuts (open-chat on
+Enter/slash, the ESC window stack) for a frame in which the chat is NOT
+focused -- `RendererEventReceiver::OnEvent()` sets the three latches below
+the focused gate, and `setChatInputFocused()` resets all three in both
+directions, so a press that changed the focus (a submitted Enter, a
+cancelling Escape) can never replay on the first frame in the new state
+(`tests/test_b1085_chat_latches.cpp`).

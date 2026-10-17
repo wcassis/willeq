@@ -143,7 +143,7 @@ TooltipTarget resolveTooltipTarget(const ItemTooltipScene& s) {
         return t;
     }
     if (s.inventory && s.inventory->activePopup == PopupType::Inventory &&
-        inside(s.layout->centerPopup, mx, my)) {
+        inside(s.layout->inventoryPopup, mx, my)) {
         t.window = TooltipWindow::Inventory;
         for (int i = 0; i < InventoryLayout::TOTAL_SLOTS; ++i) {
             if (!inside(InventoryLayout::slotRect(*s.layout, i), mx, my)) continue;

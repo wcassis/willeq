@@ -37,7 +37,7 @@ using namespace zonetest;
 
 namespace {
 
-constexpr const char* kShippedCaps = WILLEQ_REPO_ROOT "/config/skill_caps.json";
+const char* const kShippedCaps = WILLEQ_REPO_PATH("config/skill_caps.json");  // B1090: run-time root
 
 // Class ids as the server (and the PlayerProfile) numbers them.
 constexpr uint8_t kWarrior = 1;
@@ -288,7 +288,7 @@ TEST_F(SkillGateBypassTest, TrackGateRunsBeforeTargetResolution) {
 
 TEST_F(SkillGateBypassTest, MissingCapFileLeavesEveryCommandPermitted) {
     auto& table = EQ::SkillCapTable::instance();
-    ASSERT_FALSE(table.load(WILLEQ_REPO_ROOT "/config/no_such_skill_caps.json"));
+    ASSERT_FALSE(table.load(WILLEQ_REPO_PATH("config/no_such_skill_caps.json")));
     ASSERT_FALSE(table.isLoaded());
 
     auto& skills = Skills(kRogue);

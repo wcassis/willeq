@@ -101,7 +101,19 @@ SET(CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE PRE_TEST)
 # of ctest's working directory") -- it just was never generalised. This
 # makes it available everywhere so the next test that needs a repo file
 # inherits it instead of rediscovering the trap.
-ADD_COMPILE_DEFINITIONS(WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+#
+# B1090: the root is resolved at RUN time, not baked in. An absolute path in a
+# -D made every compile line differ per worktree, so ccache never reused an
+# object across worktrees (1301 of 2484 compile lines, B1087/#407). The header
+# below is force-included into every test TU: it defines WILLEQ_REPO_ROOT,
+# EQ_CLIENT_DATA_PATH and WILLEQ_CONSTRAINED_PRESETS_JSON as run-time
+# `const char*` expressions and WILLEQ_REPO_PATH("rel") for the per-target
+# path defines in tests/cmake/*.cmake. The root comes from
+# <build>/willeq_paths.txt (root CMakeLists.txt) or $WILLEQ_REPO_ROOT; the
+# order is in include/common/willeq_paths.h. A per-target path define is
+# written "NAME=WILLEQ_REPO_PATH(\"repo/relative\")", never with
+# ${CMAKE_SOURCE_DIR} (hygiene: tests/test_willeq_paths.cpp).
+ADD_COMPILE_OPTIONS("SHELL:-include common/willeq_paths.h")
 
 # Common include directories for tests
 INCLUDE_DIRECTORIES(
@@ -110,12 +122,13 @@ INCLUDE_DIRECTORIES(
     ${CMAKE_SOURCE_DIR}/third_party
 )
 
-# Default EQ client path (resolved at configure time, overridable via EQ_CLIENT_PATH env var)
-ADD_COMPILE_DEFINITIONS(EQ_CLIENT_DATA_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
-
-# P39: path to the real shipped constrained-presets JSON, so tests can load
-# it directly (not a synthetic copy) and assert against production values.
-ADD_COMPILE_DEFINITIONS(WILLEQ_CONSTRAINED_PRESETS_JSON="${CMAKE_SOURCE_DIR}/config/constrained_presets.json")
+# Default EQ client path: EQ_CLIENT_DATA_PATH (common/willeq_paths.h, B1090) =
+# <repo>/data/eq_client, overridable by the EQ_CLIENT_DATA_PATH env var; tests
+# still honour EQ_CLIENT_PATH first where they always did.
+#
+# P39: WILLEQ_CONSTRAINED_PRESETS_JSON (same header) is the real shipped
+# constrained-presets JSON, so tests load it directly (not a synthetic copy)
+# and assert against production values.
 
 # SQLite flags for WilleqDatabase (needed by any target pulling in willeq_database.cpp/sqlite3.c)
 ADD_COMPILE_DEFINITIONS(SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
