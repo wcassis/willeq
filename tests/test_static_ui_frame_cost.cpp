@@ -498,7 +498,11 @@ TEST_F(StaticUiFrameCostTest, TheOpenInventoryFlushIssuesAtMostTwoDrawsPerTextur
     // buttons + the label), the close box and the ten per-slot frames raise
     // the list from 164 to 210 commands (4 text entries: the two button
     // glyphs, the page label and the close X).
-    EXPECT_EQ(s.commands, 210u);
+    // B1077: +7 commands on EVERY frame (the always-on spell gem bar the
+    // fixture renders via renderSpellGemPanel, same here whether or not the
+    // inventory popup is open): 210 -> 217 and 107 -> 114. Text entries are
+    // unchanged (the gem glyphs are quads, not text).
+    EXPECT_EQ(s.commands, 217u);
     EXPECT_EQ(s.textEntries, 54u);
     ASSERT_GT(s.textureRuns, 0u);
     EXPECT_LT(s.textureRuns, s.commands / 4)
@@ -510,7 +514,7 @@ TEST_F(StaticUiFrameCostTest, TheOpenInventoryFlushIssuesAtMostTwoDrawsPerTextur
     inv_.activePopup = PopupType::None;
     img = renderFrames([&] { submitStaticUI(); }, &s);
     if (img) img->drop();
-    EXPECT_EQ(s.commands, 107u);
+    EXPECT_EQ(s.commands, 114u);
     EXPECT_EQ(s.textEntries, 29u);
     EXPECT_LE(s.driverDraws, 2 * s.textureRuns);
 }

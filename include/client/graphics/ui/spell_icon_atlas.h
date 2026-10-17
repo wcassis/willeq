@@ -1,7 +1,8 @@
 // spell_icon_atlas.h -- the layout of data/textures/spell_icons{gems,spells,
 // buff}.bmp + spell_icon_holder.bmp, the spell-icon art lifted from the
 // official client's own gemicons*.tga / spells*.tga / Spell_Icons.tga sheets
-// and the A_SpellGemHolder piece of window_pieces02.tga.
+// and the CW_SpellGemHolder piece of classic_pieces01.tga (the holder
+// EQUI_CastSpellWnd.xml itself names and locally defines).
 //
 // B1077 (GitLab #397; Will 2026-10-15 play session: "Spell icons were missing
 // from the spellbook. Spell gems on the spell gem hotbar are also missing.").
@@ -22,14 +23,16 @@
 //     field 144  NewIcon      -> spells.gem_icon
 //
 // Measured 2026-10-16 over the mounted Titanium export (8,066 spell rows,
-// data/willeq.db): spell_icon is 0 on EVERY row; gem_icon is populated
-// 0..215 (min -1 on 112 rows, which resolve to nothing). Consequence, and it
-// is the honest reading of the data, not a defect: in a Titanium session the
-// SPELLBOOK and the BUFF window resolve to cell 0 of their families and draw
-// it, while the GEM BAR is the one family whose ids actually carry distinct
-// art. The spell and buff id spaces are still shipped and addressable -- they
-// are the oracle's own, and a build whose export does populate field 143
-// resolves against them with no code change.
+// data/willeq.db): spell_icon is 0 on EVERY row; gem_icon is -1 on 112 rows
+// (resolving to nothing), in-sheet on 7,826 rows, and 128 rows carry one of
+// 11 distinct ids that outrun the gem family (189, 190, 191, 193, 194, 195,
+// 202, 204, 208, 211, 215). Consequence, and it is the honest reading of the
+// data, not a defect: in a Titanium session the SPELLBOOK and the BUFF window
+// resolve to cell 0 of their families and draw it, while the GEM BAR is the
+// one family whose ids actually carry distinct art. The spell and buff id
+// spaces are still shipped and addressable -- they are the oracle's own, and
+// a build whose export does populate field 143 resolves against them with no
+// code change.
 //
 // ONE ANIMATION PER FAMILY, quoted from the oracle's own
 // uifiles/default/EQUI_Animations.xml (2026-10-16):
@@ -54,8 +57,9 @@
 // a fire bolt) all land on their spells' art only under the row-major,
 // zero-based mapping (below); a column-major reading of the same four ids
 // would land on four unrelated cells. The Buff family is the one part-filled
-// sheet (23/36) and its fill itself proves the order: id 14 is an EMPTY cell
-// row-major (row 2, col 2) but a POPULATED cell column-major (col 2, row 2).
+// sheet (23/36) and its fill itself proves the order: id 24 is an EMPTY cell
+// row-major (row 4, col 0) but a POPULATED cell column-major (row 0, col 4 --
+// the fifth across the top row).
 //
 // THE INDEXING CONVENTION is the salvage source's own. The pre-static-UI tree
 // (`0f25cb57^`, item_icon_loader.cpp getSpellIcon, salvaged for this card)
@@ -73,13 +77,18 @@
 // ── WHICH FAMILY EACH WINDOW USES ───────────────────────────────────────────
 //     GEM BAR     gem_icon (field 144) indexes A_SpellGems (gemicons*.tga).
 //                 EQUI_CastSpellWnd.xml's CSPW_SpellN pieces are <SpellGem>
-//                 with <Holder>CW_SpellGemHolder</Holder>; the holder art is
-//                 A_SpellGemHolder, a piece of window_pieces02.tga. Field 144's
-//                 population (e.g. Glimpse=24, Summon Food=35, Firestrike=51)
-//                 lands on populated gemicons cells; a gem_icon of 189 or
-//                 above is OUTSIDE the 3-sheet family (189 cells) and resolves
-//                 to nothing -- 25 spells in this export have such ids, and
-//                 drawing nothing is the answer, not an invented icon.
+//                 with <Holder>CW_SpellGemHolder</Holder>, and the file
+//                 DEFINES it locally (line 5): classic_pieces01.tga at
+//                 (41,123), 36x28 -- a socket frame 1:1 with the gem cell.
+//                 That is the holder fable ships (below); the A_SpellGemHolder
+//                 piece of window_pieces02.tga (39x32, oversized) is the
+//                 other clients' holder (CursorAttachment, HotButtonWnd).
+//                 Field 144's population (e.g. Glimpse=24, Summon Food=35,
+//                 Firestrike=51) lands on populated gemicons cells; 128 spell
+//                 rows in this export carry one of 11 distinct ids at or
+//                 above 189 -- OUTSIDE the 3-sheet family (189 cells) -- and
+//                 they resolve to nothing: drawing nothing is the answer, not
+//                 an invented icon.
 //     SPELLBOOK   spell_icon (field 143) indexes A_SpellIcons (Spells*.tga) --
 //                 the family the salvage loader indexed, and the only one
 //                 field 143 can name (0 on every Titanium row -> cell 0 of
@@ -92,7 +101,7 @@
 //     BUFF BAR    EQUI_BuffWindow.xml's BW_BuffN_Button pieces carry
 //                 <NormalDecal>BuffIcons</NormalDecal> -- the BuffIcons
 //                 animation (Spell_Icons.tga, one 6x6 sheet, 23 of 36 cells
-//                 populated; the empties are scattered, not a trailing run).
+//                 populated; the empties are ids 23..35, a trailing run).
 //                 The buff's id column is field 143 (spell_icon),
 //                 0 everywhere in this export, so every buff draws cell 0 of
 //                 Spell_Icons (row 0 col 0, a sword icon in the sheet) until an
@@ -115,8 +124,8 @@
 // COST. Four more ordinary pack entries, ETC1 with mips plus an ETC1
 // `_alpha` companion each (T411): spell_icons_gems, spell_icons_spells,
 // spell_icons_buff (32-bit cut-outs on transparency, sampled through UI2D_FS
-// on unit 1) and spell_icon_holder (the A_SpellGemHolder piece, 39x32, lifted
-// from window_pieces02.tga (208,216) the way ui_atlas_builder lifts the coin
+// on unit 1) and spell_icon_holder (the CW_SpellGemHolder piece, 36x28, lifted
+// from classic_pieces01.tga (41,123) the way ui_atlas_builder lifts the coin
 // strip from window_pieces01.tga).
 
 #pragma once
@@ -154,24 +163,26 @@ constexpr int kSourceSheetEdge = 256;
 // Cells that actually carry art (re-measured 2026-10-16 over the mounted
 // sheets; pinned by test_spell_icon_atlas.cpp against the source TGAs):
 // gemicons 3x63, Spells 7x36 -- every cell. The Buff sheet is the ONE
-// part-filled family: 23 of its 36 cells carry art, and the empties are
-// scattered -- ids 14 (row 2 col 2), 23 (row 3 col 5) and 24..35 (rows 4 and
-// 5) -- not a trailing run. A part-filled sheet is exactly the census that
-// distinguishes a cell ORDER: id 24 is an EMPTY cell row-major (row 4, col 0)
-// but a POPULATED cell column-major (row 0, col 4 -- the fifth across the
-// top row), so test_spell_icon_atlas.cpp pins the buff family's
-// ordering from the fill, where the two full families cannot. (Id 14 does not
-// work: on a square 6x6 grid it is on the diagonal, the SAME physical cell
-// under both orders.) A fact about the ART, not a bound the lookup
-// enforces: an empty cell is still addressable and resolves to nothing
-// drawn, the ItemIconAtlas rule.
+// part-filled family: 23 of its 36 cells carry art, and the empties are ids
+// 23..35 -- row 3 col 5 plus the whole of rows 4 and 5 -- a trailing run,
+// not scattered. (Id 14, the diagonal cell row 2 col 2, carries art: alpha
+// sum 77,520, re-measured 2026-10-17.) A part-filled sheet is exactly the
+// census that distinguishes a cell ORDER: id 24 is an EMPTY cell row-major
+// (row 4, col 0) but a POPULATED cell column-major (row 0, col 4 -- the
+// fifth across the top row), so test_spell_icon_atlas.cpp pins the buff
+// family's ordering from the fill, where the two full families cannot.
+// (Id 14 does not work as the order-proving cell: on a square 6x6 grid it
+// is on the diagonal, the SAME physical cell under both orders.) A fact
+// about the ART, not a bound the lookup enforces: an empty cell is still
+// addressable and resolves to nothing drawn, the ItemIconAtlas rule.
 constexpr int kGemPopulated = 189;
 constexpr int kSpellPopulated = 252;
 constexpr int kBuffPopulated = 23;
 
-// The id space's own population, from the export, for the record:
-// gem_icon runs 0..215, so 26 ids (189..215) outrun the gem family.
-constexpr int kGemIdAboveSheets = 26;
+// The id space's own population, from the export, for the record (re-measured
+// 2026-10-17 over data/willeq.db): gem_icon is -1 on 112 rows, in-sheet on
+// 7,826, and 128 rows carry one of 11 distinct ids (189, 190, 191, 193, 194,
+// 195, 202, 204, 208, 211, 215) that outrun the gem family's 189 cells.
 
 // ── The packed atlases ─────────────────────────────────────────────────────
 constexpr int kCellSize = 40;
@@ -189,13 +200,18 @@ static_assert(kCellSize % 4 == 0 && kAtlasEdge % 4 == 0,
 static_assert(kCellSize >= kGemCellW && kCellSize >= kGemCellH,
               "the gem art must fit inside its 40x40 cell");
 
-// The A_SpellGemHolder piece: window_pieces02.tga at (208,216), 39x32
-// (EQUI_Animations.xml's A_SpellGemHolder). One ordinary pack entry beside
-// the three families.
-constexpr int kHolderW = 39;
-constexpr int kHolderH = 32;
-constexpr int kHolderSrcX = 208;
-constexpr int kHolderSrcY = 216;
+// The CW_SpellGemHolder piece: classic_pieces01.tga at (41,123), 36x28 --
+// the holder EQUI_CastSpellWnd.xml names AND locally defines (all eight
+// CSPW_SpellN carry <Holder>CW_SpellGemHolder</Holder>). 36x28 is 1:1 with
+// the gem cell. The alternative, A_SpellGemHolder (window_pieces02.tga
+// (208,216), 39x32, EQUI_Animations.xml), is 3 px wider / 4 px taller than
+// the cell and is the piece the oracle's CursorAttachment and HotButtonWnd
+// use; the gem bar ships the CW piece (docs/decisions.md, B1077 fix leg).
+// One ordinary pack entry beside the three families.
+constexpr int kHolderW = 36;
+constexpr int kHolderH = 28;
+constexpr int kHolderSrcX = 41;
+constexpr int kHolderSrcY = 123;
 
 // The three id spaces, so a caller cannot index one family with an id meant
 // for another.

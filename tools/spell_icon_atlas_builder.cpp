@@ -1,6 +1,6 @@
 // tools/spell_icon_atlas_builder.cpp -- packs the official client's own
 // spell-icon art into data/textures/spell_icons{gems,spells,buff}.bmp and
-// the A_SpellGemHolder piece into spell_icon_holder.bmp.
+// the CW_SpellGemHolder piece into spell_icon_holder.bmp.
 //
 // B1077 (GitLab #397). Will's 2026-10-15 play session: "Spell icons were
 // missing from the spellbook. Spell gems on the spell gem hotbar are also
@@ -9,8 +9,11 @@
 //
 // INPUT. `<uifiles>/default/gemicons0{1,2,3}.tga` (A_SpellGems, 7x9 grid of
 // 36x28 cells), `Spells0{1..7}.tga` (A_SpellIcons, 6x6 of 40x40) and
-// `Spell_Icons.tga` (BuffIcons, 6x6 of 40x40), plus the A_SpellGemHolder
-// piece of `window_pieces02.tga` at (208,216) 39x32.
+// `Spell_Icons.tga` (BuffIcons, 6x6 of 40x40), plus the CW_SpellGemHolder
+// piece of `classic_pieces01.tga` at (41,123) 36x28 -- the holder
+// EQUI_CastSpellWnd.xml names and locally defines (docs/decisions.md,
+// B1077 fix leg: the oracle's own CastSpellWnd holder, 1:1 with the gem cell,
+// not the 39x32 A_SpellGemHolder of window_pieces02.tga).
 //
 // LAYOUT. `include/client/graphics/ui/spell_icon_atlas.h` is the ONE source
 // of truth -- the grids, the row-major cell order (all three families are
@@ -49,7 +52,7 @@ namespace {
 // contributes nothing however it is sampled.
 std::vector<std::vector<uint8_t>> g_atlases;
 
-// The holder piece: 40x40 canvas, the 39x32 art at (0,0), the rest empty so
+// The holder piece: 40x40 canvas, the 36x28 art at (0,0), the rest empty so
 // it packs like every other 40x40 cell of the sheet.
 std::vector<uint8_t> g_holder;
 
@@ -157,7 +160,7 @@ bool packOneSheet(SpellIconSheet sheet, const std::string& uifilesDir,
 }
 
 bool packHolder(const std::string& uifilesDir) {
-    const std::string path = uifilesDir + "/window_pieces02.tga";
+    const std::string path = uifilesDir + "/classic_pieces01.tga";
 
     EQT::ToolTGA::Image img;
     std::string error;
@@ -195,7 +198,7 @@ bool packHolder(const std::string& uifilesDir) {
                               4 + 3];
     if (alpha == 0) {
         fprintf(stderr,
-                "Error: the A_SpellGemHolder piece at (%d,%d) is fully "
+                "Error: the CW_SpellGemHolder piece at (%d,%d) is fully "
                 "transparent\n",
                 Layout::kHolderSrcX, Layout::kHolderSrcY);
         return false;
@@ -281,7 +284,7 @@ int main(int argc, char** argv) {
     }
     if (!packHolder(uifilesPath)) {
         fprintf(stderr, "Refusing to write a partial spell icon atlas "
-                        "(the A_SpellGemHolder piece failed).\n");
+                        "(the CW_SpellGemHolder piece failed).\n");
         return 1;
     }
 
@@ -322,7 +325,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Error: failed to write %s\n", holderPath.c_str());
         return 1;
     }
-    printf("Wrote %s (%dx%d, the %dx%d A_SpellGemHolder piece)\n",
+    printf("Wrote %s (%dx%d, the %dx%d CW_SpellGemHolder piece)\n",
            holderPath.c_str(), Layout::kCellSize, Layout::kCellSize,
            Layout::kHolderW, Layout::kHolderH);
 

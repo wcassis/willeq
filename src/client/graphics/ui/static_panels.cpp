@@ -486,7 +486,7 @@ void renderSpellGemPanel(UIRenderer& ui, const UILayout& layout,
         const auto& gem = state.gems[i];
         ui.drawSprite(slotRect, static_cast<uint8_t>(UISprite::SlotBackground));
 
-        // B1077: the A_SpellGemHolder piece behind the icon (the oracle's
+        // B1077: the CW_SpellGemHolder piece behind the icon (the oracle's
         // SpellGemDrawTemplate <Holder>), then the gem icon itself -- the
         // Gems family at the spell's gem_icon (SpellGemState::iconId).
         if (gem.spellId != 0) {

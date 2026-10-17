@@ -87,7 +87,7 @@ public:
 
     /**
      * B1077 (GitLab #397): the spell-icon sheets (gem bar / spellbook /
-     * buff families + the A_SpellGemHolder piece), lifted from the
+     * buff families + the CW_SpellGemHolder piece), lifted from the
      * official client's gemicons*.tga / Spells*.tga / Spell_Icons.tga.
      * Separate pack entries, loaded by load() beside the item sheets; see
      * UIRenderer::drawSpellIcon().

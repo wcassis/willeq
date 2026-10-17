@@ -148,7 +148,7 @@ fi
 
 # B1077 (GitLab #397): a FOURTH recipe. The spell icon sheets are lifted from
 # the official client's uifiles/default/gemicons*.tga, Spells*.tga and
-# Spell_Icons.tga (plus the A_SpellGemHolder piece of window_pieces02.tga),
+# Spell_Icons.tga (plus the CW_SpellGemHolder piece of classic_pieces01.tga),
 # so like the item icons they cannot come out of generate_textures. All four
 # tools write into the same directory and the pin file covers the union.
 if [ ! -x "$BIN_DIR/spell_icon_atlas_builder" ]; then

@@ -148,7 +148,7 @@ public:
                        SpellIconAtlasLayout::SpellIconSheet sheet, uint32_t id);
 
     /**
-     * B1077 (GitLab #397): the A_SpellGemHolder piece (39x32 art inside its
+     * B1077 (GitLab #397): the CW_SpellGemHolder piece (36x28 art inside its
      * 40x40 cell), drawn behind a gem icon at the caller's rect. Same
      * false-when-nothing contract as drawSpellIcon().
      */
