@@ -1031,6 +1031,8 @@ EXEMPT_TESTS_GROUPS = {
     ("FrameComponent", "seedFrustumDebugBoxForTest"): "seam",
     ("GmComponent", "Test_GetLastGMHideMe"): "seam",
     ("GmComponent", "Test_GetLastGMSummon"): "seam",
+    # B1081 (#401): the OP_GMZoneRequest2 confirm packet, test_gm_component.
+    ("GmComponent", "Test_GetLastGMZoneRequest2"): "seam",
     ("LoginWorldComponent", "ReplayLoginPacket"): "seam",
     ("LoginWorldComponent", "ReplayWorldPacket"): "seam",
     # B1081 (#401): the zone-change reconnect window, test_zone_change_no_flash.

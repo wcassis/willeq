@@ -73,6 +73,41 @@ the character this way. The gain of the production caller demotes
 `GetCharacterSelectIndex()` out of check_zero_callers.py's `EXEMPT_TESTS`
 table (tests-only → reached in production); the fix commit removes the row.
 
+## The /gmzone confirm (live leg, lane 4, 2026-10-17)
+
+The first lane-4 live run showed the GATE working end to end — `Enter World
+Testchar`, the screen up exactly once (Activations == 1) — but the zone
+change itself never happened: the server answered `OP_GMZoneRequest` with
+success=1 ("GM zone request approved for zone 303") and then nothing zoned,
+and the scenario timed out on its transition deadline.
+
+The oracle wire shows why. `OP_GMZoneRequest` (0x1306) is only the QUERY
+half: eqemu's `Handle_OP_GMZoneRequest` (akk-stack zone/client_packet.cpp
+7066-7130) looks up the target zone's safe coords and replies with them
+plus a success flag. The CHANGE is a second, one-word packet — the client
+sends `OP_GMZoneRequest2` (0x244c, `patch_Titanium.conf` line 138) carrying
+the uint32 zone id, and eqemu's `Handle_OP_GMZoneRequest2`
+(client_packet.cpp 7132-7143) is what performs it: `GoToSafeCoords(zonereq,
+0)` (zoning.cpp 1074) → `MovePC(..., ZoneToSafeCoords)`. fable's
+`ZoneProcessGMZoneRequest` only logged the approval, so a live
+`/gmzone <char> <other_zone>` was a silent no-op for every cross-zone
+move — and `/gmzone` is the only on-demand cross-zone trigger, so the
+scenario could never reach its transition arm (and therefore the flash
+window) on any lane.
+
+Fix: on an approved reply, `ZoneProcessGMZoneRequest` (gm_component.cpp)
+builds and queues `OP_GMZoneRequest2` with the reply's zone id; a denied
+reply (success=0) sends nothing and keeps the "Zone request denied."
+system message. The new `HC_OP_GMZoneRequest2 = 0x244c` in eq_opcodes.h
+cites both server halves. `Test_GetLastGMZoneRequest2` is the T217/T229
+seam (opcode + zone word + raw bytes), classified in
+check_zero_callers.py's EXEMPT as "seam".
+
+Lane 4 detail: its eqemu DB ships only zones 1 and 2, so the lane-4 leg
+targets `--zone 2` (qeynos) from Testchar's home 1 (freporte) — a genuine
+cross-zone change, which is what the scenario requires (a same-zone move
+relocates in place and has no world reconnect to gate).
+
 ## The tests
 
 tests/test_zone_change_no_flash.cpp — the gate over the real EverQuest rig
@@ -88,3 +123,8 @@ socket) are irrelevant to the gate.
 `Test_SetZoneToZoneInProgressForSeam` (zone_component.h) already existed and
 is reused; the new `Test_EnterWorldSentForSeam` is the only new seam,
 classified in check_zero_callers.py's EXEMPT.
+
+tests/test_gm_component.cpp gains the /gmzone-confirm quartet over the same
+rig: the approved reply builds `OP_GMZoneRequest2` with the exact oracle
+opcode (0x244c) and the reply's zone word; a denied reply sends nothing but
+still delivers "Zone request denied."; a short reply is ignored.
