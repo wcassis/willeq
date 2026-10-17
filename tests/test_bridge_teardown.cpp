@@ -188,8 +188,10 @@ TEST(HotbarPersistence, ExistingInvalidCharacterFileIsNeverReplacedByLegacyImpor
 
 TEST(HotbarPersistence, RealCapturedCharacterIniRoundTrips) {
     // Copied byte-for-byte from the H-O official-client evidence.
-    const auto captured = std::filesystem::path(__FILE__).parent_path() /
-        "fixtures/hotbar/testchar-after-skill.ini";
+    // B1090: the repo root, not __FILE__ -- a ccache hit from another
+    // worktree would carry THAT worktree's __FILE__ into this binary.
+    const auto captured = std::filesystem::path(WILLEQ_REPO_ROOT) /
+        "tests/fixtures/hotbar/testchar-after-skill.ini";
     const auto dir = std::filesystem::temp_directory_path() /
         ("willeq_h1_capture_" + std::to_string(::getpid()));
     std::filesystem::create_directories(dir / "ui");

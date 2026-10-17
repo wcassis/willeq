@@ -245,8 +245,23 @@ public:
     bool escapeKeyPressed() { bool v = escapeKeyPressed_; escapeKeyPressed_ = false; return v; }
 
     // Chat focus state (set by renderer, read by GraphicsInputHandler on the
-    // game thread -- atomic, same discipline as the flags)
-    void setChatInputFocused(bool focused) { chatInputFocused_.store(focused, std::memory_order_relaxed); }
+    // game thread -- atomic, same discipline as the flags).
+    // B1085 (#405): EVERY transition resets the three chat key latches in
+    // both directions. OnEvent() now sets the latches only while the chat is
+    // UNFOCUSED (below the focused gate), and the frame's own open/submit/
+    // cancel calls this right after the press that changed the focus -- so
+    // that press is consumed by the transition and can never replay as an
+    // "open chat" / "run the ESC handler" on the first frame in the new
+    // state. The B998 character-select host's hand-spending of the three
+    // latches (char_select_host.cpp) rides on the same call: its
+    // setChatInputFocused(true) IS the shared reset now, and behaviour is
+    // unchanged (it spends them and re-arms the gate on every frame).
+    void setChatInputFocused(bool focused) {
+        chatInputFocused_.store(focused, std::memory_order_relaxed);
+        enterKeyPressed_ = false;
+        slashKeyPressed_ = false;
+        escapeKeyPressed_ = false;
+    }
     bool isChatInputFocused() const { return chatInputFocused_.load(std::memory_order_relaxed); }
 
 private:

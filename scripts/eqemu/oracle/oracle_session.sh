@@ -90,6 +90,10 @@ if ! eqemu_lock_take "$OWNER"; then say "lane lock held: $(eqemu_lock_show || :)
 LOCKED=1
 printf '%s\n' "$OWNER" >"$OUT/session.started"
 if ! bash "$REPO/scripts/eqemu/up.sh" >>"$OUT/driver.log" 2>&1 || ! eqemu_stack_ready; then STATUS=65; exit "$STATUS"; fi
+# B1047 (#367): keep the roster out of timorous, BEFORE the snapshot so the
+# restore keeps it (scripts/eqemu/roster_zone_seed.sql); a plan's zone row
+# below still seeds any zone per run.
+eqemu_roster_zone_seed >>"$OUT/driver.log" 2>&1 || { STATUS=65; exit "$STATUS"; }
 eqemu_snapshot "$OUT/db-before.tsv" || { STATUS=65; exit "$STATUS"; }
 CHAR_IDS=$(eqemu_sql "SELECT id FROM character_data WHERE name IN ('Testcaster','Testchar') ORDER BY id;" | paste -sd, -)
 [[ -n $CHAR_IDS ]] || { STATUS=65; exit "$STATUS"; }
@@ -148,7 +152,7 @@ if grep -qE '^# create-clicks=template$|^(click|wait)-template'$'\t' "$PLAN"; th
         --remote-dir "$REMOTE_DIR" --out "$OUT/broker" --rig "lane$LANE" 2>>"$OUT/broker.log" &
     BROKER_PID=$!
 fi
-remote "bash ~/eq-oracle/uigap-scripts/oracle_remote.sh run '$REMOTE_DIR'" >"$OUT/remote.log" 2>&1
+remote "bash ~/eq-oracle/uigap-scripts/oracle_remote.sh run '$REMOTE_DIR' $LANE" >"$OUT/remote.log" 2>&1
 RC=$?
 stop_broker
 if (( RC == 67 )); then STATUS=67; else STATUS=$RC; fi

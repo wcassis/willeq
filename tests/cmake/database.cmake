@@ -26,7 +26,7 @@ ADD_EXECUTABLE(test_spell_database
     ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
     ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
 )
-TARGET_COMPILE_DEFINITIONS(test_spell_database PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_COMPILE_DEFINITIONS(test_spell_database PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 TARGET_LINK_LIBRARIES(test_spell_database GTest::gtest_main ${FMT_LIB} dl)
 GTEST_DISCOVER_TESTS(test_spell_database DISCOVERY_TIMEOUT 120)
 
@@ -42,7 +42,7 @@ ADD_EXECUTABLE(test_spells_eff_reader
     ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
     ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
 )
-TARGET_COMPILE_DEFINITIONS(test_spells_eff_reader PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_COMPILE_DEFINITIONS(test_spells_eff_reader PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 TARGET_LINK_LIBRARIES(test_spells_eff_reader GTest::gtest_main ${FMT_LIB} dl)
 GTEST_DISCOVER_TESTS(test_spells_eff_reader DISCOVERY_TIMEOUT 120)
 
@@ -58,7 +58,7 @@ ADD_EXECUTABLE(test_spell_visual_selection
     ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
     ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
 )
-TARGET_COMPILE_DEFINITIONS(test_spell_visual_selection PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_COMPILE_DEFINITIONS(test_spell_visual_selection PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 TARGET_LINK_LIBRARIES(test_spell_visual_selection GTest::gtest_main ${FMT_LIB} dl)
 GTEST_DISCOVER_TESTS(test_spell_visual_selection DISCOVERY_TIMEOUT 120)
 
@@ -75,5 +75,5 @@ TARGET_LINK_LIBRARIES(test_willeq_database GTest::gtest_main ${FMT_LIB} ${ZLIB_L
 # T257: the concurrent-open tests fork readers against the REAL tracked
 # file on its real filesystem (the race is NFS-specific and inter-process).
 TARGET_COMPILE_DEFINITIONS(test_willeq_database PRIVATE
-    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 GTEST_DISCOVER_TESTS(test_willeq_database DISCOVERY_TIMEOUT 120)
