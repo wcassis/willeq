@@ -6,6 +6,58 @@ Newest entries first. Each entry: decision, rationale, implications.
 
 ---
 
+## 2026-10-16 — The zone-OUT audio teardown: silence at CleanupZone, counted for the lane (B1080, #400)
+
+**Decision:** leaving a zone silences its audio at the zone-OUT boundary, not
+at the next zone-in. `ZoneAudioManager::silenceForZoneOut(fadeSeconds)` stops
+every emitter (its looped SFX channel freed, B1074), frees the one-shot SFX
+channels (`AudioManager::stopAllSounds()`) and fades the zone music
+(`stopMusic(fade)`). It is called from `ZoneComponent::CleanupZone()` — the
+single point every zone-OUT path funnels through (graceful zone-out,
+handshake timeout, logout, the B1072 fresh-login give-up) — and is idempotent
+and a safe no-op with no zone loaded. It must NOT be called on a zone IN: the
+destination zone's `loadZone()` / `AudioManager::onZoneChange()` re-arms
+emitters and music, and the next zone's music region is a different one.
+
+**Rationale:** before this, a zone's audio outlived the zone. `unloadZone()`
+ran only in the NEXT zone's `loadZone()`, and `onZoneChange()` only on zone
+ENTRY, so while the loading screen was up — including a stalled zone-in that
+gave up (B1072) and sat back at character select — the leaving zone's music
+and every zero-cooldown emitter kept playing: nothing in a zone-OUT path
+stopped them (the emitters are stopped only by range, day/night switch,
+`unloadZone()`/`pause()`, or the manager's own lifetime; B1074's loop rule
+guarantees the zero-cooldown ones hold their channels for as long as the
+listener is in range). Fixing it at CleanupZone() catches every path at once;
+fixing each path individually would leave the next one open.
+
+**Implications:** the lane can assert the teardown without audio. A
+headless `--scenario` run has no audio system (`InitializeAudio()` runs only
+from the graphics init), so the `zone_connect_timeout` scenario asserts on
+`ZoneAudioSilenceCount()` — a teardown counter incremented in every build,
+WITH_AUDIO on or off, counting the silence PATH, not the sound. The audio
+EFFECT (emitters cleared, loops freed, one-shots freed, music faded and
+stopped) is pinned by `test_zone_sound_emitters.cpp`'s
+`ZoneAudioSilenceForZoneOutTest` over the real qeynos2 loops + music; the
+wiring (CleanupZone calls it) by `test_zone_component.cpp`'s
+`ZoneOutTeardownRunsTheAudioSilence`. A world that cannot read the count
+(-1) fails the scenario rather than passing silently.
+
+**Oracle confirmation (the card's step 1, 2026-10-16):** the official
+client's zone-OUT audio was measured on lane 1 (Pulse monitor of the Wine
+client — the rig has no working ALSA userspace, so a session PulseAudio
+daemon is the capture path). causeway's music + ambient emitters, sustained
+at 0–4.5 k RMS (dead second at t=209, ~1 s ramp-up, peak 4502 at t=244), fade to the noise floor (RMS ≤ 3) ~8 s after
+`/cast Ring of Karana` (of which 7 s is the rank-0 spell's own cast time,
+`spells_new.cast_time` 7000 ms), the floor holds flat for ~1.5 s (no SFX
+tail at 0.25 s resolution), and the destination screen's audio starts only
+then. The destination's zone-in failed on this rig (client back at the
+login screen), so the capture exercises exactly the B1072-class give-up —
+and the old zone's audio still stopped. The 2.0 s fade constant
+(`kZoneOutMusicFadeSeconds`) is therefore bounded above by the measured
+stop and equals the client's own existing zone-music stop; see
+`refactor/B1080/README.md` for the full ledger (envelope, marks, stills,
+the negative sessions).
+
 ## 2026-09-05 — The ceiling covers `tools/` and `benchmarks/` too (T385)
 
 **Decision:** `scripts/refactor/check_file_sizes.sh --all` scans `src/`,
@@ -2170,3 +2222,36 @@ spelling anywhere in the tree is a regression: `test_robe_texture_range`
 (the measured table) and `test_robe_entity_prep` (chest material 10 takes the
 robe body variant through `createAnimatedNodeWithEquipment()`) are red on the
 old 11..16 header and green at the fix.
+
+## 2026-10-16 — a stalled zone-in is bounded at every phase, and a zone that ANSWERED is never re-connected (B1079, #399)
+
+Will's 2026-10-15 XU4 hang (#399): an in-session zone change (zone load #2,
+past the session) sat on the loading screen until it was killed. B1072's
+watchdog bounded only `ZONE_CONNECTING` and disarmed the moment the phase
+moved past it. RULED:
+
+1. **Every zone-in loading phase carries a deadline** (`zone_connect_watchdog.h`,
+   the `phase_bound` table, sources in `refactor/B1079/README.md`): the connect
+   phase is measured (B1072 census, 2x the max); the five network-tail phases
+   are assumed (no per-phase census exists in-tree, stated as such); the four
+   `GRAPHICS_*` phases share one budget (2x the slowest blessed Pi cold load).
+   A stalled load costs ONE phase's own budget, and the escalation names the
+   stuck phase and the last opcode the zone sent, then lands on a fresh world
+   login (character select / auto Enter World) -- never a hang, never a
+   process exit. The bound covers a zone load #N, not only a cold login,
+   because the deadline walks the CURRENT loading phase, not "still connecting".
+2. **A zone that ANSWERED is never re-connected.** The ONE retry of the zone
+   connect applies to `ZONE_CONNECTING` only. Once the session is up (the phase
+   has advanced past it -- the zone has seen our `OP_ZoneEntry`), the
+   escalation is a no-retry give-up: re-opening the session would duplicate the
+   zone entry. This is the standing distinction from B1072's shape (session
+   never came up -> one connect retry). A unit that wants a re-connect after the
+   session is up reopens this entry.
+3. **The play box keeps its log** (`--log-file PATH` / `WILLEQ_LOG_FILE`): the
+   logger writes the SAME lines to a file, line-flushed every drain cycle, so a
+   kill mid-zone-in keeps the log. The file is ADDITIVE (stdout/stderr keep
+   everything; an unwritable path is one stderr line, never a silencer). Both
+   `--log-level=LEVEL` and the space form `--log-level LEVEL` are accepted; an
+   unparseable level is a loud startup `ERROR`, never a silent no-op.
+   `refactor/B1079/README.md` and `docs/standards/debug_logging_standards.md`.
+

@@ -119,6 +119,15 @@ public:
         return idle_.load(std::memory_order_acquire);
     }
 
+    /// True once stop() has signalled shutdown (running_ is false). Lets a
+    /// test order around the stop deterministically (B1092, #412): a test
+    /// that blocks the in-flight item on a gate can wait here, then release
+    /// the gate, so the drain loop's running_ check is guaranteed to have
+    /// landed before the next item is processed.
+    bool isStopping() const {
+        return !running_.load(std::memory_order_acquire);
+    }
+
     /// Approximate number of pending requests.
     size_t getPendingCount() const {
         if (isPoolBacked())
@@ -163,10 +172,24 @@ private:
                 resultQueue_.push_back(std::move(result));
             }
 
-            // Drain remaining requests in this batch
+            // Drain remaining requests in this batch. B1092 (#412): the
+            // running_ check is part of the drain, not only of the top-of-loop
+            // check above — without it, once the worker had popped the first
+            // item of a batch, stop() was ignored for the WHOLE batch: the
+            // loop kept popping and processing until the queue ran empty, so a
+            // stop() arriving under load (main thread descheduled between
+            // submit and stop) returned only after every queued item had been
+            // processed. The check lives UNDER requestMutex_, the same lock
+            // stop() stores running_=false behind, so a stop that landed
+            // mid-batch is observed by the very next iteration (mutex
+            // release/acquire synchronisation — a plain relaxed load outside
+            // the lock could in principle keep seeing the stale value on a
+            // weakly-ordered platform).
             while (true) {
                 {
                     std::lock_guard<std::mutex> lock(requestMutex_);
+                    if (!running_.load(std::memory_order_relaxed))
+                        break;
                     if (requestQueue_.empty()) {
                         idle_.store(true, std::memory_order_release);
                         break;
@@ -178,6 +201,12 @@ private:
                 std::lock_guard<std::mutex> lock(resultMutex_);
                 resultQueue_.push_back(std::move(result));
             }
+            // The drain also exits when running_ went false (stop() arrived
+            // mid-batch) with the queue still holding the tail; mark idle so
+            // isIdle() does not report a busy worker the stop has already
+            // joined.
+            if (!running_.load(std::memory_order_relaxed))
+                idle_.store(true, std::memory_order_release);
 
             FlushThreadLog();
         }

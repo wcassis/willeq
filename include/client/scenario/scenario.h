@@ -181,6 +181,20 @@ public:
     virtual long long ZoneConnectOpens() const { return -1; }
     /** B1072: the next `attempts` zone connects go to `port` on the zone host; false if unsupported. */
     virtual bool SimulateUnreachableZoneConnects(int attempts, int port) { (void)attempts; (void)port; return false; }
+    /**
+     * B1080 (#400): how many zone-OUT teardowns ran the audio silence
+     * (ZoneComponent::ZoneAudioSilenceCount). Every zone-OUT path funnels
+     * through CleanupZone(), so this counts a graceful zone-out, the
+     * handshake timeout, a logout and the B1072 fresh-login give-up alike.
+     * The count works even when the audio managers are null (a headless
+     * --scenario run has no audio system: InitializeAudio() runs only from
+     * the graphics init) -- it counts the teardown, not the sound; the audio
+     * EFFECT of the silence is pinned by tests/test_zone_sound_emitters.cpp.
+     * -1 not readable.
+     */
+    virtual long long ZoneAudioSilenceCount() const { return -1; }
+    /** B1079: arm the "zone answered then went silent" lever (the next ConnectToZone's handshake is pinned past ZONE_CONNECTING); false if unsupported. */
+    virtual bool SimulateZoneSilentAfterHandshake() { return false; }
 
     // --- actions ---
     /** Dispatch one slash command line, exactly as --script would. */
@@ -337,6 +351,22 @@ struct ScenarioOptions {
      * flaky lane should not pass on the first tick's un-echoed value.
      */
     double fallWaitSeconds = 8.0;
+    /**
+     * B1079 (#399): the zone_connect_timeout "zone answered then went silent"
+     * arm (the 2026-10-15 XU4 shape). When set, after /camp -> character
+     * select the arm Enter-Worlds with the client's silent-zone lever armed
+     * alongside ONE dead-port connect (SimulateUnreachableZoneConnects(1)):
+     * the connection goes to a dead port (stable silence -- the stale
+     * connect is erased without a StatusDisconnected, so nothing
+     * re-connects), and the handshake's ZONE_CONNECTING is pinned to
+     * ZONE_RECEIVING_PROFILE, as if the zone had answered the session and
+     * OP_ZoneEntry and then gone quiet. The bound must walk that phase to
+     * its own deadline and escalate WITHOUT a connect retry (a re-connect
+     * would duplicate OP_ZoneEntry), landing on character select within the
+     * profile bound and inside the connect bound. Default false = the plain
+     * dead-port arm.
+     */
+    bool silentZone = false;
 };
 
 class IScenario {
