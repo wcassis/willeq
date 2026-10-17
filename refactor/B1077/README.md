@@ -182,7 +182,14 @@ at :301/:320/:430 and 63→67 32-bit at :422) — identical to a local run of
 `check_doc_counts.py` at the head, none of them in B1077's files. `build-test`
 and `gate` are stage-gated behind hygiene (no `needs: []`), so they are SKIPPED
 while those 4 rows stay red; `zone-budget-census` (gate stage, `needs: []`)
-passed. The code-green signal for the leg is therefore the local test runs
-above plus the hygiene trace; the full build-test+gate green comes when the
-orchestrator applies note #5414's 4 root-CLAUDE.md lines and the pipeline
-re-runs (the narrow QA pass re-grades that head).
+passed. `test_spell_icon_atlas` is 11/11 on the ThinkPad at both fix-leg
+heads (including `HolderEqualsTheCwWindowPiecesCut`) and
+`test_texture_alpha_census` (which names the holder entry) compiles clean;
+the full build-test+gate green comes when the orchestrator applies
+note #5414's 4 root-CLAUDE.md lines and the pipeline re-runs (the narrow QA
+pass re-grades that head). The finish commit 01fac9e9 is code-touching
+(two comment-only line fixes in ui_atlas.h + test_texture_alpha_census.cpp
+that still named the SHIPPED piece as A_SpellGemHolder), so its MR pipeline
+1542 is a code-change pipeline: hygiene first (same 4 rows), then
+build-test + gate — the same outcome as 1540 unless the orchestrator
+applies note #5414 in the meantime.
