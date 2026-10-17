@@ -390,6 +390,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_position_store_coherence DISCOVERY_TIMEOUT 120)
 
+# B1088 (#408) fix leg: the OP_NewZone zone_long_name READ, through the real
+# packet handler (ZoneProcessNewZone, src/client/zone/zone_entry.cpp). The
+# lookup unit (test_zone_display_name.cpp) and the zone-identity test
+# (test_position_store_coherence.cpp) never fed the long-name field OFF THE
+# WIRE, so the one read that carries B1088's refresh guarantee was untested.
+# Same replay-seam idiom, no network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_zone_newzone_display_name
+    test_zone_newzone_display_name.cpp
+)
+TARGET_LINK_LIBRARIES(test_zone_newzone_display_name GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_zone_newzone_display_name PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_zone_newzone_display_name DISCOVERY_TIMEOUT 120)
+
 # T05: login/world replay seam smoke test (ReplayLoginPacket/ReplayWorldPacket
 # -> DispatchLoginPacket/DispatchWorldPacket). Same replay-seam idiom as
 # test_zone_connection_flow above -- no network, no graphics, no live
