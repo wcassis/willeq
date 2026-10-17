@@ -32,6 +32,10 @@ namespace ui {
 // complete type is char_preview_scene.h; the host's destructor is defined in
 // the .cpp where it is included.
 class CharPreviewScene;
+// B888-CC3 (#204): the 3D clz backdrop (the showroom the Explore mode moves
+// through). Same layering: incomplete here, complete type
+// char_backdrop_scene.h in the .cpp.
+class CharBackdropScene;
 }
 }  // namespace eqt
 
@@ -61,6 +65,7 @@ private:
     CharSelectScreenState state_;
     eqt::charcreate::CharCreateData data_;   // data/char_create.tsv, B888's era data
     std::unique_ptr<eqt::ui::CharPreviewScene> preview_;  // B888-CC2: the 3D model
+    std::unique_ptr<eqt::ui::CharBackdropScene> backdrop_;  // B888-CC3: the clz showroom
     uint64_t seenView_ = 0;
     uint32_t seed_ = 0;
     bool quit_ = false;

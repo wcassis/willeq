@@ -464,6 +464,10 @@ SET(CLIENT_CORE_SOURCES
     # the BSP tree (water detection / zone lines). Both were mis-listed under
     # GRAPHICS_SOURCES.
     src/client/graphics/eq/pfs.cpp
+    # B888-CC3 (#204): the clz character-select backdrop's DEVICE-FREE format
+    # layer -- pure bytes -> geometry, no renderer dependency (the same class
+    # as pfs.cpp above). The headless test links it.
+    src/client/graphics/ui/clz_backdrop.cpp
     src/client/graphics/eq/wld_loader.cpp
     src/client/graphics/eq/wld_fragments_material.cpp
     src/client/graphics/eq/wld_fragments_mesh.cpp
@@ -866,6 +870,10 @@ IF(EQT_GRAPHICS)
         # (open/esc, click-to-select, Enter enters with the list cursor, the
         # free-camera verbs).
         src/client/graphics/ui/explore_screen.cpp
+        # B888-CC3 (#204): the 3D clz backdrop scene -- the showroom geometry
+        # (ter_clz.ter + the 29 .mod, placed by clz.zon) stood up in the
+        # pre-zone scene manager, the free camera, and the click-to-row raycast.
+        src/client/graphics/ui/char_backdrop_scene.cpp
         # T436 (board B429): the merchant, bank and cursor-attachment
         # windows -- one TU per panel (M00).
         src/client/graphics/ui/merchant_panel.cpp
