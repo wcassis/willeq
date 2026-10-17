@@ -166,7 +166,7 @@ std::vector<Entry> itemIconSet() {
 // ── The spell icon sheets ───────────────────────────────────────────────────
 // B1077 (GitLab #397). The official client's own gemicons*.tga / spells*.tga /
 // Spell_Icons.tga art, packed into three 1024x1024 family atlases plus the
-// 40x40 A_SpellGemHolder piece by tools/spell_icon_atlas_builder. The gem bar,
+// 40x40 CW_SpellGemHolder piece by tools/spell_icon_atlas_builder. The gem bar,
 // spellbook, buff bar and hotbar draw them through UIRenderer::drawSpellIcon()
 // -> draw2DImage with useAlphaChannelOfTexture=true -- the same UI2D_FS
 // alpha-blend path item icons take, which since T411 samples the ETC1

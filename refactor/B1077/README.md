@@ -169,7 +169,20 @@ bit-identical to their pins (only the holder input changed); the new
 size, 13,923,652 bytes, new bytes (pin now
 02a3d6e4e71fa1681291972eb40bae956a14153a9309a318b1831c0a193c0084) — and
 `build_willeq_pack.sh --check` passes against the pin. `test_spell_icon_atlas`
-runs green against the regenerated assets; hygiene + DocCounts are the CI
-legs (build-test + gate are the code-green signal for this leg — the 4
-root-CLAUDE.md DocCounts rows stay red until the orchestrator applies MR
-note #5414).
+runs green against the regenerated assets (11/11 on the ThinkPad, including
+`HolderEqualsTheCwWindowPiecesCut`); `test_texture_alpha_census` (which names
+the holder entry) compiles clean — its one line still calling the shipped
+piece `A_SpellGemHolder` (besides `ui_atlas.h`'s loader doc) was corrected in
+this same leg.
+
+Pipeline 1540 at head f216bd70 (hygiene job 8134, read from its trace):
+37/38 hygiene tests pass; the ONE failure is DocCounts, on exactly the 4
+pre-existing root-CLAUDE.md rows from MR note #5414 (T417/T430's 67→71 BMPs
+at :301/:320/:430 and 63→67 32-bit at :422) — identical to a local run of
+`check_doc_counts.py` at the head, none of them in B1077's files. `build-test`
+and `gate` are stage-gated behind hygiene (no `needs: []`), so they are SKIPPED
+while those 4 rows stay red; `zone-budget-census` (gate stage, `needs: []`)
+passed. The code-green signal for the leg is therefore the local test runs
+above plus the hygiene trace; the full build-test+gate green comes when the
+orchestrator applies note #5414's 4 root-CLAUDE.md lines and the pipeline
+re-runs (the narrow QA pass re-grades that head).
