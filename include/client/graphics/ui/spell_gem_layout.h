@@ -9,13 +9,16 @@
 // the data, eight are shown" (T483). The spellbook toggle button
 // (CSPW_SpellBook) is 22x22 at (10,252).
 //
-// The gem art is the A_SpellGemHolder piece (window_pieces02.tga (208,216)
-// 39x32, spell_icon_atlas.h) drawn behind the gem icon (the Gems family of
-// the spell-icon atlas). The holder is 39x32; the gem cell is 36x28, so the
-// holder overflows the cell by 3 px right and 4 px bottom. The oracle draws
-// the holder at the cell's origin (no centering), so the overflow clips
-// against the window border. fable draws the holder at the cell's origin
-// too, in a 40x40 atlas cell, minified into the caller's dest rect.
+// The gem art is the CW_SpellGemHolder piece (classic_pieces01.tga
+// (41,123) 36x28, spell_icon_atlas.h) drawn behind the gem icon (the Gems
+// family of the spell-icon atlas). The holder is 36x28 -- 1:1 with the gem
+// cell -- because EQUI_CastSpellWnd.xml names AND locally defines
+// CW_SpellGemHolder at the cell's own size (the B1077 fix leg's CW-vs-A
+// ruling, docs/decisions.md; the 39x32 A_SpellGemHolder of
+// window_pieces02.tga is the oracle's CursorAttachment/HotButtonWnd piece).
+// The oracle draws the holder at the cell's origin (no centering); fable
+// draws the holder at the cell's origin too, in a 40x40 atlas cell,
+// minified into the caller's dest rect.
 //
 // PLACEMENT is the layout table's (B1075 ruling): the anchor is
 // UIAnchor::RightEdgeAboveHotbar; the SIZE is the oracle's 48x290.

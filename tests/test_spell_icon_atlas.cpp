@@ -16,7 +16,7 @@
  *
  *  1. The CENSUS. 3 gemicon sheets x 63 cells (7x9 of 36x28), 7 spell sheets
  *     x 36 (6x6 of 40x40) and 1 buff sheet of 36 cells, 23 of which carry
- *     art (the empties scattered: ids 14, 23 and 24..35). The gem and spell
+ *     art (the empties are the trailing run ids 23..35). The gem and spell
  *     families are FULL; the buff sheet is the one part-filled family. Both
  *     numbers are read back off the source files, not asserted from the
  *     header alone, so a change to the mounted client tree is a failure
@@ -37,8 +37,11 @@
  *
  *  3. EVERY CELL. Every cell of the three shipped family BMPs equals its
  *     source cell (the gem art at its native 36x28 in the 40x40 cell, the
- *     rest transparent), and the holder BMP equals the A_SpellGemHolder
- *     piece of window_pieces02.tga at (208,216) 39x32.
+ *     rest transparent), and the holder BMP equals the CW_SpellGemHolder
+ *     piece of classic_pieces01.tga at (41,123) 36x28 -- the holder
+ *     EQUI_CastSpellWnd.xml names and locally defines (the B1077 fix leg's
+ *     CW-vs-A ruling, docs/decisions.md), not the 39x32 A_SpellGemHolder of
+ *     window_pieces02.tga.
  *
  * Reads files only: the four BMPs and the 11 source TGAs. No device, no
  * GPU, no renderer. The TGA decode is the same header-only
@@ -142,7 +145,7 @@ bool sourcesAvailable() {
                     std::ios::binary);
     if (!f.good()) return false;
     f.clear();
-    std::ifstream g(std::string(kUifilesDir) + "/window_pieces02.tga",
+    std::ifstream g(std::string(kUifilesDir) + "/classic_pieces01.tga",
                     std::ios::binary);
     return g.good();
 }
@@ -221,11 +224,13 @@ TEST(SpellIconAtlasLayout, MatchesTheAnimationXmlDeclaration) {
     EXPECT_EQ(Layout::kCellSize, 40);
     EXPECT_EQ(Layout::kAtlasEdge, 1024);
     EXPECT_EQ(Layout::kCellsPerAtlas, 625);
-    // The holder piece (A_SpellGemHolder, line 12495).
-    EXPECT_EQ(Layout::kHolderW, 39);
-    EXPECT_EQ(Layout::kHolderH, 32);
-    EXPECT_EQ(Layout::kHolderSrcX, 208);
-    EXPECT_EQ(Layout::kHolderSrcY, 216);
+    // The holder piece (CW_SpellGemHolder, EQUI_CastSpellWnd.xml line 5:
+    // classic_pieces01.tga (41,123) 36x28 -- the holder the gem bar's own
+    // window names and defines).
+    EXPECT_EQ(Layout::kHolderW, 36);
+    EXPECT_EQ(Layout::kHolderH, 28);
+    EXPECT_EQ(Layout::kHolderSrcX, 41);
+    EXPECT_EQ(Layout::kHolderSrcY, 123);
     EXPECT_STREQ(Layout::atlasName(SpellIconSheet::Gems), "spell_icons_gems");
     EXPECT_STREQ(Layout::atlasName(SpellIconSheet::Spells),
                  "spell_icons_spells");
@@ -560,15 +565,15 @@ TEST(SpellIconAtlas, ColumnMajorReadingWouldBeWrong) {
     }
 }
 
-// The holder piece, re-read from window_pieces02.tga.
-TEST(SpellIconAtlas, HolderEqualsTheWindowPiecesCut) {
+// The holder piece, re-read from classic_pieces01.tga.
+TEST(SpellIconAtlas, HolderEqualsTheCwWindowPiecesCut) {
     if (!sourcesAvailable()) {
         GTEST_SKIP() << "EQ client tree not mounted at " << kUifilesDir;
     }
     EQT::ToolTGA::Image img;
     std::string error;
     ASSERT_TRUE(EQT::ToolTGA::load(std::string(kUifilesDir) +
-                                       "/window_pieces02.tga",
+                                       "/classic_pieces01.tga",
                                    img, error))
         << error;
     ASSERT_GE(img.width, Layout::kHolderSrcX + Layout::kHolderW);

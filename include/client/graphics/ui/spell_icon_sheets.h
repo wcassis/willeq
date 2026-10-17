@@ -61,7 +61,7 @@ public:
                                  irr::core::rect<irr::s32>& srcRect) const;
 
     /**
-     * The 40x40 A_SpellGemHolder piece (its 39x32 art at the (0,0) origin),
+     * The 40x40 CW_SpellGemHolder piece (its 36x28 art at the (0,0) origin),
      * or nullptr if the sheets were never loaded.
      */
     irr::video::ITexture* holder(irr::core::rect<irr::s32>& srcRect) const;
