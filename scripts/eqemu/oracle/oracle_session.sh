@@ -70,11 +70,12 @@ cleanup() {
             diff -q "$OUT/login-accounts-before.tsv" "$OUT/login-accounts-after.tsv" >>"$OUT/driver.log" 2>&1 || STATUS=66
         fi
         bash "$REPO/scripts/eqemu/down.sh" >>"$OUT/driver.log" 2>&1 || STATUS=66
+        eqemu_lease_stop_renewer
         current=$(eqemu_lock_show || :)
-        if [[ $current == "$OWNER "* ]]; then
+        if [[ $current == "$OWNER "* || $current == *"$OWNER "* ]]; then
             eqemu_lock_release || STATUS=66
         else
-            say "lock owner changed; refusing release: $current"
+            say "lease owner changed; refusing release: $current"
             STATUS=66
         fi
         if eqemu_lock_show >/dev/null 2>&1 || eqemu_stack_ready; then STATUS=66; fi
@@ -86,8 +87,11 @@ cleanup() {
 }
 trap 'cleanup' EXIT
 trap 'STATUS=65; exit 65' INT TERM
-if ! eqemu_lock_take "$OWNER"; then say "lane lock held: $(eqemu_lock_show || :)"; STATUS=64; exit "$STATUS"; fi
+if ! eqemu_lock_take "$OWNER"; then say "lane lease held: $(eqemu_lock_show || :)"; STATUS=64; exit "$STATUS"; fi
 LOCKED=1
+# B1089: a capture can run 20+ min; the renewer keeps the lease live while
+# the oracle leg runs, and dies with this script (never after it).
+eqemu_lease_start_renewer
 printf '%s\n' "$OWNER" >"$OUT/session.started"
 if ! bash "$REPO/scripts/eqemu/up.sh" >>"$OUT/driver.log" 2>&1 || ! eqemu_stack_ready; then STATUS=65; exit "$STATUS"; fi
 eqemu_snapshot "$OUT/db-before.tsv" || { STATUS=65; exit "$STATUS"; }

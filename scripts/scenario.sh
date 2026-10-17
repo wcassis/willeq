@@ -200,10 +200,13 @@ lane_check "$CONFIG" || exit 65
 
 # ---- 1. the lock, taken atomically -----------------------------------------
 if ! eqemu_lock_take "${UNIT} scenario.sh ${SCENARIO}"; then
-    say "eqemu lock is HELD by: $(eqemu_lock_show) -- refusing to run"
+    say "eqemu lease is HELD by: $(eqemu_lock_show) -- refusing to run"
     exit 64
 fi
-say "lock taken"
+say "lease taken (lane ${EQEMU_LANE}, host ${EQEMU_HOST})"
+# B1089: a 30-min scenario must never be stolen -- the renewer renews
+# every LANE_LEASE_TTL_S/3 (floor 60 s) and dies with this script.
+eqemu_lease_start_renewer
 
 CLEANED=0
 RESTORE_BAD=0
@@ -225,8 +228,9 @@ cleanup() {
         eqemu_world_start
         say "eqemu-server container restarted (--keep-server)"
     fi
+    eqemu_lease_stop_renewer
     eqemu_lock_release
-    say "lock released"
+    say "lease released"
 }
 trap cleanup EXIT INT TERM
 
