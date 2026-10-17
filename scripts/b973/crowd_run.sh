@@ -107,11 +107,12 @@ EOF
 } > "$OUT/run_meta.txt"
 
 if ! eqemu_lock_take "$OWNER"; then
-    say "eqemu lock is HELD by: $(eqemu_lock_show) -- refusing to run"
+    say "eqemu lease is HELD by: $(eqemu_lock_show) -- refusing to run"
     rm -rf "$BIN_DIR"
     exit 64
 fi
-say "lock taken: $(eqemu_lock_show)"
+say "lease taken: $(eqemu_lock_show)"
+eqemu_lease_start_renewer
 BEFORE="$OUT/snapshot_before.tsv"
 AFTER="$OUT/snapshot_after.tsv"
 CLIENT_PID=""
@@ -125,10 +126,11 @@ cleanup() {
     [ -n "$CURRENT_ZONE" ] && kill_zone "$CURRENT_ZONE"
     if [ -s "$BEFORE" ]; then eqemu_restore_snapshot "$BEFORE" "$AFTER" say || RESTORE_BAD=1; fi
     timeout 170 bash "$REPO/scripts/eqemu/down.sh" >>"$OUT/stack_down.log" 2>&1
+    eqemu_lease_stop_renewer
     eqemu_lock_release
     rm -rf "$BIN_DIR"
     echo "end_utc=$(date -u +%FT%TZ) restore_bad=$RESTORE_BAD" >> "$OUT/run_meta.txt"
-    say "stack down, lock released; lock-show (empty = free): '$(eqemu_lock_show)'"
+    say "stack down, lease released; lease-show (FREE = free): '$(eqemu_lock_show)'"
 }
 trap 'cleanup; exit 130' INT TERM
 trap cleanup EXIT

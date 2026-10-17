@@ -225,28 +225,30 @@ TEST(RecipeListT419, ScrollBoundsFollowTheVisibleRowCount) {
 }
 
 // The geometry. COMBW_LeftSideArea's children, quoted in tradeskill_layout.h
-// and mapped onto centerPopup the way T415 mapped the right side: at 800x600
-// the popup is {256,65,656,415} (B1075: CentreSlot; B1077's wider 48px gem
-// column shifts it left 8px from 264), x scale 400/400, y scale 350/525.
+// and mapped into the window the way T415 mapped the right side: at 800x600
+// B1078's window is {264,48,556,431} (one uniform factor, 384/525 = 73% of
+// the oracle's 400x525, in the centre slot at the band's top).
 TEST(RecipeListLayoutT419, LeftSideRectsAreTheOraclesScaled) {
     const UILayout l = layout800();
 
     // COMBW_MinTrivialEdit  absolute (108,4)  50x24
-    EXPECT_EQ(rectStr(TradeskillLayout::minTrivialEditRect(l)), "{364,67,414,83}");
+    EXPECT_EQ(rectStr(TradeskillLayout::minTrivialEditRect(l)), "{342,50,378,67}");
     // COMBW_MaxTrivialEdit  absolute (108,30) 50x24
-    EXPECT_EQ(rectStr(TradeskillLayout::maxTrivialEditRect(l)), "{364,85,414,101}");
+    EXPECT_EQ(rectStr(TradeskillLayout::maxTrivialEditRect(l)), "{342,69,378,86}");
     // COMBW_SearchTextEdit  absolute (108,56) 80x24
-    EXPECT_EQ(rectStr(TradeskillLayout::searchEditRect(l)), "{364,102,444,118}");
+    EXPECT_EQ(rectStr(TradeskillLayout::searchEditRect(l)), "{342,88,400,105}");
     // COMBW_SearchButton    absolute (52,84)  100x20
-    EXPECT_EQ(rectStr(TradeskillLayout::searchButtonRect(l)), "{308,121,408,134}");
+    EXPECT_EQ(rectStr(TradeskillLayout::searchButtonRect(l)), "{301,109,374,123}");
     // COMBW_KnownRecipeText absolute (4,126)  234x20
-    EXPECT_EQ(rectStr(TradeskillLayout::recipeListLabelRect(l)), "{260,149,494,162}");
-    // COMBW_RecipeList      absolute (4,148)  234x325
-    EXPECT_EQ(rectStr(TradeskillLayout::recipeListRect(l)), "{260,163,494,379}");
+    EXPECT_EQ(rectStr(TradeskillLayout::recipeListLabelRect(l)), "{266,139,436,153}");
+    // COMBW_RecipeList      absolute (4,148)  234x325 -- endpoint-scaled,
+    // so the frame's bottom lands on the last row's bottom (not on a
+    // separately divided height).
+    EXPECT_EQ(rectStr(TradeskillLayout::recipeListRect(l)), "{266,156,437,393}");
     // COMBW_AddFavoriteButton / RemoveFavoriteButton / ShowFavoritesButton
-    EXPECT_EQ(rectStr(TradeskillLayout::addFavoriteRect(l)), "{260,397,320,413}");
-    EXPECT_EQ(rectStr(TradeskillLayout::removeFavoriteRect(l)), "{322,397,382,413}");
-    EXPECT_EQ(rectStr(TradeskillLayout::showFavoritesRect(l)), "{382,397,442,413}");
+    EXPECT_EQ(rectStr(TradeskillLayout::addFavoriteRect(l)), "{266,412,309,429}");
+    EXPECT_EQ(rectStr(TradeskillLayout::removeFavoriteRect(l)), "{312,412,355,429}");
+    EXPECT_EQ(rectStr(TradeskillLayout::showFavoritesRect(l)), "{355,412,398,429}");
 }
 
 // The rows tile the listbox, in order, and the two columns are the XML's
@@ -281,12 +283,14 @@ TEST(RecipeListLayoutT419, RowsTileTheListboxAndTheColumnsAreTheOracles) {
 
 // Containment at five resolutions, and the left side must not collide with
 // the container half T415 drew on the right.
-TEST(RecipeListLayoutT419, TheLeftSideFitsThePopupAndClearsTheRightSide) {
+TEST(RecipeListLayoutT419, TheLeftSideFitsTheWindowAndClearsTheRightSide) {
     const struct { int w, h; } resolutions[] = {
         {640, 480}, {800, 600}, {1024, 768}, {1280, 1024}, {1920, 1080}};
     for (const auto& rc : resolutions) {
         const UILayout l = layoutAt(rc.w, rc.h);
-        const auto& p = l.centerPopup;
+        // B1078 (GitLab #398): the frame is the tradeskill's own window,
+        // not the centre slot it sits in.
+        const auto& p = TradeskillLayout::windowRect(l);
 
         std::vector<irr::core::rect<irr::s32>> left = {
             TradeskillLayout::minTrivialLabelRect(l),

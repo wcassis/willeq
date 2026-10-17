@@ -196,24 +196,63 @@ TEST(UiLayoutCoOpen, CoOpenTableReplacesTheMutualExclusionRule) {
 TEST(UiLayoutCoOpen, SizesAreTheWindowsOwnOnlyTheAnchorMoves) {
     for (const auto& res : kSupportedResolutions) {
         const UILayout l = layoutAt(res.w, res.h);
-        for (UIWindow w : {UIWindow::Inventory, UIWindow::Merchant, UIWindow::Loot,
-                           UIWindow::Spellbook, UIWindow::Skills, UIWindow::Tradeskill}) {
-            const Rect r = windowRectFor(w, l);
-            EXPECT_EQ(r.getWidth(), UILayout::POPUP_W) << layoutRow(w).name;
-            EXPECT_EQ(r.getHeight(), UILayout::POPUP_H) << layoutRow(w).name;
+        // B1078 (GitLab #398): the three rescaled windows are the oracle's own
+        // size at a ONE uniform factor that fits them into the middle band
+        // (their headers' scalePct), capped at native. So the factor is 1
+        // whenever the band can hold the native size, and the rect is the
+        // oracle's number to the pixel; otherwise the WHOLE window shrinks
+        // uniformly (w and h by the same factor), never anisotropically.
+        struct Scaled {
+            UIWindow w;
+            irr::s32 nativeW;
+            irr::s32 nativeH;
+            irr::s32 (*f)(const UILayout&);
+        };
+        for (const auto& s : {Scaled{UIWindow::Inventory, 428, 460, &InventoryLayout::scalePct},
+                               Scaled{UIWindow::Merchant, 374, 480, &MerchantLayout::scalePct}}) {
+            const irr::s32 f = s.f(l);
+            const Rect r = windowRectFor(s.w, l);
+            EXPECT_EQ(r.getWidth(), s.nativeW * f / 100) << layoutRow(s.w).name;
+            EXPECT_EQ(r.getHeight(), s.nativeH * f / 100) << layoutRow(s.w).name;
         }
+        {
+            const irr::s32 f = TradeskillLayout::scalePct(l);
+            const Rect r = windowRectFor(UIWindow::Tradeskill, l);
+            EXPECT_EQ(r.getWidth(), 400 * f / 100);
+            EXPECT_EQ(r.getHeight(), 525 * f / 100);
+        }
+        // The unchanged windows keep their own sizes.
+        EXPECT_EQ(windowRectFor(UIWindow::Loot, l).getWidth(), UILayout::POPUP_W);
+        EXPECT_EQ(windowRectFor(UIWindow::Loot, l).getHeight(), UILayout::POPUP_H);
+        EXPECT_EQ(windowRectFor(UIWindow::Spellbook, l).getWidth(), UILayout::POPUP_W);
+        EXPECT_EQ(windowRectFor(UIWindow::Spellbook, l).getHeight(), UILayout::POPUP_H);
+        EXPECT_EQ(windowRectFor(UIWindow::Skills, l).getWidth(), UILayout::POPUP_W);
+        EXPECT_EQ(windowRectFor(UIWindow::Skills, l).getHeight(), UILayout::POPUP_H);
         EXPECT_EQ(windowRectFor(UIWindow::Bank, l).getWidth(), BankLayout::WINDOW_W);
         EXPECT_EQ(windowRectFor(UIWindow::Bank, l).getHeight(), BankLayout::WINDOW_H);
         EXPECT_EQ(windowRectFor(UIWindow::Trade, l).getWidth(), TradeLayout::WINDOW_W);
         EXPECT_EQ(windowRectFor(UIWindow::Trade, l).getHeight(), TradeLayout::WINDOW_H);
         EXPECT_EQ(windowRectFor(UIWindow::Give, l).getWidth(), GiveLayout::WINDOW_W);
         EXPECT_EQ(windowRectFor(UIWindow::Give, l).getHeight(), GiveLayout::WINDOW_H);
-        // PairLeft windows sit against the inventory's left side, top-aligned.
-        for (UIWindow w : {UIWindow::Merchant, UIWindow::Bank, UIWindow::Trade, UIWindow::Give}) {
+        // B1078 anchors: the merchant and the inventory take the pair's left
+        // and right slots and top-anchor at the middle band's top (the
+        // 350-tall popup top predates the band); the tradeskill anchors at
+        // the centre slot's left, band top. Bank/trade/give keep
+        // placePairLeft (right-aligned in the left slot, top-aligned with
+        // the inventory).
+        const auto m = windowRectFor(UIWindow::Merchant, l);
+        EXPECT_EQ(m.UpperLeftCorner.X, l.partnerPopup.UpperLeftCorner.X) << "merchant x";
+        EXPECT_EQ(m.UpperLeftCorner.Y, l.middleBand.UpperLeftCorner.Y) << "merchant y";
+        const auto inv = windowRectFor(UIWindow::Inventory, l);
+        EXPECT_EQ(inv.UpperLeftCorner.X, l.inventoryPopup.UpperLeftCorner.X) << "inventory x";
+        EXPECT_EQ(inv.UpperLeftCorner.Y, l.middleBand.UpperLeftCorner.Y) << "inventory y";
+        const auto ts = windowRectFor(UIWindow::Tradeskill, l);
+        EXPECT_EQ(ts.UpperLeftCorner.X, l.centerPopup.UpperLeftCorner.X) << "tradeskill x";
+        EXPECT_EQ(ts.UpperLeftCorner.Y, l.middleBand.UpperLeftCorner.Y) << "tradeskill y";
+        for (UIWindow w : {UIWindow::Bank, UIWindow::Trade, UIWindow::Give}) {
             const Rect r = windowRectFor(w, l);
             EXPECT_EQ(r.LowerRightCorner.X, l.partnerPopup.LowerRightCorner.X) << layoutRow(w).name;
             EXPECT_EQ(r.UpperLeftCorner.Y, l.inventoryPopup.UpperLeftCorner.Y) << layoutRow(w).name;
-            EXPECT_LE(r.LowerRightCorner.X, l.inventoryPopup.UpperLeftCorner.X) << layoutRow(w).name;
         }
     }
 }

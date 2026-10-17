@@ -179,16 +179,16 @@ TEST(TradeskillWindowT415, WorldSlotsFeedTheGridAndOthersDoNot) {
 //   COMBW_RequiredIcon<i>: Location ((i%2)*42, (i/2)*42), Size 42x42
 TEST(TradeskillLayoutT415, SlotRectsAreTheOraclesScaled) {
     const UILayout l = layout800();
-    // popup is {256,65,656,415} (B1075: the CentreSlot anchor at 800x600; B1077
-    // widened the right-edge gem column to the oracle's 48px CastSpellWnd, so the
-    // band -- and thus the centred popup -- shifted left 8px from 264); x scale 400/400, y scale 350/525
+    // B1078 (GitLab #398): the window is {264,48,556,431} at 800x600 (the
+    // oracle's 400x525 at ONE uniform factor of 384/525, the band's height,
+    // anchored at the centre slot's left and the band's top).
     struct Case { int i; int x0, y0, x1, y1; };
     const Case cases[] = {
-        {0, 535, 145, 577, 173},
-        {1, 577, 145, 619, 173},
-        {2, 535, 173, 577, 201},
-        {8, 535, 257, 577, 285},
-        {9, 577, 257, 619, 285},
+        {0, 467, 135, 497, 165},
+        {1, 498, 135, 528, 165},
+        {2, 467, 166, 497, 196},
+        {8, 467, 258, 497, 288},
+        {9, 498, 258, 528, 288},
     };
     for (const auto& c : cases) {
         const auto r = TradeskillLayout::slotRect(l, c.i);
@@ -207,24 +207,26 @@ TEST(TradeskillLayoutT415, TitleCombineAndCloseAreTheOraclesScaled) {
     const UILayout l = layout800();
 
     const auto title = TradeskillLayout::titleRect(l);
-    EXPECT_EQ(rectStr(title), "{498,111,654,124}");
+    EXPECT_EQ(rectStr(title), "{440,99,553,113}");
 
     const auto combine = TradeskillLayout::combineRect(l);
-    EXPECT_EQ(rectStr(combine), "{516,287,636,307}");
+    EXPECT_EQ(rectStr(combine), "{453,291,540,312}");
 
     const auto close = TradeskillLayout::closeRect(l);
-    EXPECT_EQ(rectStr(close), "{516,399,636,413}");
+    EXPECT_EQ(rectStr(close), "{453,413,540,429}");
 }
 
-// Every rect lies inside the popup and the two buttons do not collide with
+// Every rect lies inside the window and the two buttons do not collide with
 // the slot grid -- the T57/T60 containment invariant, at five resolutions.
-TEST(TradeskillLayoutT415, EverythingFitsInsideTheCenterPopup) {
+TEST(TradeskillLayoutT415, EverythingFitsInsideTheWindow) {
     const struct { int w, h; } resolutions[] = {
         {640, 480}, {800, 600}, {1024, 768}, {1280, 1024}, {1920, 1080}};
     for (const auto& rc : resolutions) {
         UILayout l;
         l.computeLayout(rc.w, rc.h);
-        const auto& p = l.centerPopup;
+        // B1078 (GitLab #398): the frame is the tradeskill's own window,
+        // not the centre slot it sits in.
+        const auto& p = TradeskillLayout::windowRect(l);
 
         std::vector<irr::core::rect<irr::s32>> all;
         for (int i = 0; i < TradeskillPanelState::MAX_SLOTS; ++i) {
@@ -396,23 +398,20 @@ TEST(CombatAbilityWindowT415, AbilityRowsAreCappedAtTheOraclesEightButtons) {
 TEST(CombatAbilityLayoutT415, RectsAreTheOraclesVerbatim) {
     const UILayout l = layout800();
 
-    // B1077: the window anchors left of the gem column, which widened to the
-    // oracle's 48px CastSpellWnd, so the whole window (and every interior rect)
-    // shifts left 16px from the pre-B1077 {586,112,760,262}.
     const auto win = CombatAbilityLayout::windowRect(l);
     EXPECT_EQ(win.getWidth(), CombatAbilityLayout::ORACLE_WINDOW_W);
     EXPECT_EQ(win.getHeight(), CombatAbilityLayout::ORACLE_WINDOW_H);
-    EXPECT_EQ(rectStr(win), "{570,112,744,262}");
+    EXPECT_EQ(rectStr(win), "{586,112,760,262}");
 
-    EXPECT_EQ(rectStr(CombatAbilityLayout::effectIconRect(l)), "{575,136,595,156}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::effectLabelRect(l)), "{598,137,727,157}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::gaugeRect(l)), "{581,162,697,172}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::skillSelectRect(l)), "{694,160,731,174}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::effectIconRect(l)), "{591,136,611,156}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::effectLabelRect(l)), "{614,137,743,157}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::gaugeRect(l)), "{597,162,713,172}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::skillSelectRect(l)), "{710,160,747,174}");
 
-    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 0)), "{572,177,612,217}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 3)), "{692,177,732,217}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 4)), "{572,217,612,257}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 7)), "{692,217,732,257}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 0)), "{588,177,628,217}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 3)), "{708,177,748,217}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 4)), "{588,217,628,257}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 7)), "{708,217,748,257}");
 
     EXPECT_EQ(CombatAbilityLayout::buttonRect(l, -1).getWidth(), 0);
     EXPECT_EQ(CombatAbilityLayout::buttonRect(l, 8).getWidth(), 0);

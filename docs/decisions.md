@@ -6,6 +6,58 @@ Newest entries first. Each entry: decision, rationale, implications.
 
 ---
 
+## 2026-10-16 — The zone-OUT audio teardown: silence at CleanupZone, counted for the lane (B1080, #400)
+
+**Decision:** leaving a zone silences its audio at the zone-OUT boundary, not
+at the next zone-in. `ZoneAudioManager::silenceForZoneOut(fadeSeconds)` stops
+every emitter (its looped SFX channel freed, B1074), frees the one-shot SFX
+channels (`AudioManager::stopAllSounds()`) and fades the zone music
+(`stopMusic(fade)`). It is called from `ZoneComponent::CleanupZone()` — the
+single point every zone-OUT path funnels through (graceful zone-out,
+handshake timeout, logout, the B1072 fresh-login give-up) — and is idempotent
+and a safe no-op with no zone loaded. It must NOT be called on a zone IN: the
+destination zone's `loadZone()` / `AudioManager::onZoneChange()` re-arms
+emitters and music, and the next zone's music region is a different one.
+
+**Rationale:** before this, a zone's audio outlived the zone. `unloadZone()`
+ran only in the NEXT zone's `loadZone()`, and `onZoneChange()` only on zone
+ENTRY, so while the loading screen was up — including a stalled zone-in that
+gave up (B1072) and sat back at character select — the leaving zone's music
+and every zero-cooldown emitter kept playing: nothing in a zone-OUT path
+stopped them (the emitters are stopped only by range, day/night switch,
+`unloadZone()`/`pause()`, or the manager's own lifetime; B1074's loop rule
+guarantees the zero-cooldown ones hold their channels for as long as the
+listener is in range). Fixing it at CleanupZone() catches every path at once;
+fixing each path individually would leave the next one open.
+
+**Implications:** the lane can assert the teardown without audio. A
+headless `--scenario` run has no audio system (`InitializeAudio()` runs only
+from the graphics init), so the `zone_connect_timeout` scenario asserts on
+`ZoneAudioSilenceCount()` — a teardown counter incremented in every build,
+WITH_AUDIO on or off, counting the silence PATH, not the sound. The audio
+EFFECT (emitters cleared, loops freed, one-shots freed, music faded and
+stopped) is pinned by `test_zone_sound_emitters.cpp`'s
+`ZoneAudioSilenceForZoneOutTest` over the real qeynos2 loops + music; the
+wiring (CleanupZone calls it) by `test_zone_component.cpp`'s
+`ZoneOutTeardownRunsTheAudioSilence`. A world that cannot read the count
+(-1) fails the scenario rather than passing silently.
+
+**Oracle confirmation (the card's step 1, 2026-10-16):** the official
+client's zone-OUT audio was measured on lane 1 (Pulse monitor of the Wine
+client — the rig has no working ALSA userspace, so a session PulseAudio
+daemon is the capture path). causeway's music + ambient emitters, sustained
+at 0–4.5 k RMS (dead second at t=209, ~1 s ramp-up, peak 4502 at t=244), fade to the noise floor (RMS ≤ 3) ~8 s after
+`/cast Ring of Karana` (of which 7 s is the rank-0 spell's own cast time,
+`spells_new.cast_time` 7000 ms), the floor holds flat for ~1.5 s (no SFX
+tail at 0.25 s resolution), and the destination screen's audio starts only
+then. The destination's zone-in failed on this rig (client back at the
+login screen), so the capture exercises exactly the B1072-class give-up —
+and the old zone's audio still stopped. The 2.0 s fade constant
+(`kZoneOutMusicFadeSeconds`) is therefore bounded above by the measured
+stop and equals the client's own existing zone-music stop; see
+`refactor/B1080/README.md` for the full ledger (envelope, marks, stills,
+the negative sessions).
+
 ## 2026-09-05 — The ceiling covers `tools/` and `benchmarks/` too (T385)
 
 **Decision:** `scripts/refactor/check_file_sizes.sh --all` scans `src/`,
@@ -2261,4 +2313,38 @@ moved past it. RULED:
    `--log-level=LEVEL` and the space form `--log-level LEVEL` are accepted; an
    unparseable level is a loud startup `ERROR`, never a silent no-op.
    `refactor/B1079/README.md` and `docs/standards/debug_logging_standards.md`.
+
+## 2026-10-17 — B1078: a window draws at the oracle's OWN size, scaled only by ONE uniform factor, and the 40x40 dragitem decal is never stretched (#398)
+
+Will's 2026-10-15 play session: "the vendor window item icons are
+squashed and appear unnaturally square". Measured root cause: the
+merchant (374x480), inventory (428x460) and tradeskill (400x525) windows
+mapped their oracle geometry into fable's fixed 400x350 popup with TWO
+different factors (x by the width ratio, y by the height ratio), and the
+merchant blitted the 40x40 dragitem decal into the full list cell --
+25x14 at every resolution. RULED (extending the B1075 ruling, 2026-10-15):
+
+1. **A window draws at the oracle's OWN size**, anchored by the layout
+   table (the bank/options precedent). Where the screen cannot fit it
+   (the middle band is 384 tall at 800x600), the scale is ONE uniform
+   factor -- the min of the width and height ratios, capped at 1 -- applied
+   to the whole window, never an x factor and a different y factor
+   (that anisotropy is the defect). Merchant 80% at 800x600, inventory
+   83%, tradeskill 73%; at 1024x768 and up all three are 100% except the
+   inventory at 1024 (94%, width-bound) and the tradeskill at 1280x720
+   (96%, width-bound).
+2. **Every `drawItemIcon()` call site blits a square.** The decal is the
+   oracle's own 40x40 cell, so a cell that is not one must never stretch
+   it: `UIRenderer::squareIn(cell)` (the centred square of side min(w,h),
+   identity on a square cell) is the one helper, applied in the funnel and
+   asserted per call site at all four `kSupportedResolutions` by
+   `tests/test_item_icon_rects.cpp`. The merchant's measured row pitch is
+   24 (UIGAP-ORACLE/152), so its icon column is 24x24 at the window's own
+   size; `ORACLE_ROW_H` was 20 and is 24, `ROWS_VISIBLE` follows
+   (15, not 16 -- integer division).
+3. **Draw and click read the SAME rect** (T57's rule, applied to the
+   fix-leg's live defect): the tradeskill editbox-defocus hit test read
+   `layout.centerPopup` while the draw reads `TradeskillLayout::
+   windowRect()`; it now reads the drawn rect. `refactor/B1078/README.md`
+   (before/after rect tables, measured dump).
 

@@ -21,7 +21,7 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 - Handles movement keys, mouse input, text input, debug toggles
 
 **HotkeyManager** (`hotkey_manager.h`) — Configurable key binding system:
-- `HotkeyAction` enum (**95** actions plus a `Count` sentinel, re-counted UIGAP-small -- T471 read 102, T461 99, T415 95, T371 94; B905 (#225) DELETED eight Global actions that were bound and had no consumer (`ToggleUILock`, `SaveUILayout`, `ResetUIDefaults`, `ConfirmDialog`, `CancelDialog`, `SubmitInput`, `CancelInput`, `ChatAutocomplete`): none is on the oracle's Options > Keys pages and, Global, they shadowed Tab (CycleTargets), Escape and Return. `tests/test_hotkey_dispatch_census.cpp` presses every default AND shipped binding on a real `RendererEventReceiver` and fails on a shadowed binding or one with no consumer; the key table grows with every UI panel, T461 added the four camera-orbit actions and T471 `CameraRaise`/`CameraLower`, binding all six to the official Camera-page keys T466 measured) covering movement, toggles, targeting, interaction
+- `HotkeyAction` enum (**106** actions plus a `Count` sentinel, re-counted B1025-H4 -- B1025-H4 read 106 (ten `HotbarPage1..10` + `ToggleHotbar1Window`, the official page keys and window toggle, H-O's measured defaults), T471 102, T461 99, T415 95, T371 94; B905 (#225) DELETED eight Global actions that were bound and had no consumer (`ToggleUILock`, `SaveUILayout`, `ResetUIDefaults`, `ConfirmDialog`, `CancelDialog`, `SubmitInput`, `CancelInput`, `ChatAutocomplete`): none is on the oracle's Options > Keys pages and, Global, they shadowed Tab (CycleTargets), Escape and Return. `tests/test_hotkey_dispatch_census.cpp` presses every default AND shipped binding on a real `RendererEventReceiver` and fails on a shadowed binding or one with no consumer; the key table grows with every UI panel, T461 added the four camera-orbit actions, T471 `CameraRaise`/`CameraLower`, binding all six to the official Camera-page keys T466 measured, and B1025-H4 the hotbar page/toggle keys, binding all eleven to the official Hotbar-1-page keys H-O measured) covering movement, toggles, targeting, interaction
 - `HotkeyBinding` struct: key code + `ModifierFlags` (Ctrl/Shift/Alt) + action
 - `HotkeyMode` enum: Global (always active) vs Player (gameplay only)
 - Loads/saves from `config/hotkeys.json`, supports runtime overrides from `willeq.json`
@@ -37,7 +37,7 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 Implementation split across eight TUs in `src/client/action/` (J04, plus
 T268/T269/T280): `command_processor.cpp` holds the core (parse, dispatch,
 registry queries), `command_processor_registration.cpp` holds
-`registerBuiltinCommands()` and its **156** `registerCommand({…})` calls
+`registerBuiltinCommands()` and its **157** `registerCommand({…})` calls
 (T347 added `/cleartarget`, B899 `/bag`, B897 `/friends` and `/ignore`; `tests/goldens/command_registration_order_g03.txt`
 pins the count and the order — read the golden, not this line), and the
 handlers live in `command_processor_{social,spells_gm,world,bank,loot,train}.cpp`

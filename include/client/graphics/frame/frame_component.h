@@ -270,6 +270,12 @@ public:
 	// popups. Returns the new open state.
 	bool toggleCombatAbilityWindow();
 
+	// B1025-H4 (#345): "Toggle Hotbar 1 window" (eqstr 6587), Alt+H (H-O,
+	// pages.tsv:2, 27_keys_hb1.png). The hotbar window's show/hide toggle --
+	// the same flip the panel's close box does on click, on
+	// hotbarState_.isOpen. Returns the new open state.
+	bool toggleHotbar1Window();
+
 	// ---- T434: the Options window's toggle ----
 	// Before this the ONLY arm for the bound key was a bare `break;` in
 	// processCommonInput() with the comment "WindowManager removed -- options

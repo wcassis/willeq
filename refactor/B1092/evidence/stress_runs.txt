@@ -1,0 +1,14 @@
+label=FIXED bin=/home/user/kb-b1092-evidence/bin_new host=thinkpad start=2026-10-17T05:59:45Z
+FIXED: PASS (200 repeats, 45667ms, loadavg at start=3.83/1.27/1.03)
+end 2026-10-17T06:00:37Z
+label=OLD-HEADER-CONTROL bin=/home/user/kb-b1092-evidence/bin_oldaccess host=thinkpad start=2026-10-17T06:00:50Z
+OLD-HEADER-CONTROL: FAIL (200 repeats, 45931ms, loadavg at start=7.65/2.93/1.62)
+end 2026-10-17T06:01:42Z
+label=before-rate bin=/home/user/kb-b1092-evidence/bin_prefix total=200 start=2026-10-17T06:30:52Z
+loadavg=10.69/9.54/7.21
+before-rate: 200 pass / 0 fail of 200 (pre-fix binary, old wall-time test)
+end 2026-10-17T06:30:53Z
+label=acceptance-200-full-suite bin=/home/user/kb-b1092-evidence/bin_worktree host=thinkpad start=2026-10-17T06:38:44Z
+loadavg=1.68/3.66/5.34
+result: PASS (45804ms, 4000 individual test OKs)
+end 2026-10-17T06:39:29Z

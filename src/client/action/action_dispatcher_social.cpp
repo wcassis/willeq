@@ -203,6 +203,28 @@ ActionResult ActionDispatcher::activateHotbarCommandSlot(HotbarSlotType type, co
     return ActionResult::Success();
 }
 
+// B1025-H3 (GitLab #345): /hotbutton -- the game thread's one hot-button
+// producer. The oracle (H-O gestures.tsv "social-command": `/hotbutton H0 1
+// /say hi`) creates a social button on the cursor: an Emote whose text is the
+// macro. The handler publishes HotbarAssignPending; the render thread lands it
+// on the cursor (IrrlichtBridge's arm -> applyHotbarAssignPending) and draws
+// it; a click on a hotbar slot crosses it back as HotbarAssignIntent, the
+// same assignment the hold gesture uses.
+ActionResult ActionDispatcher::createHotbutton(const std::string& text) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+    if (text.empty()) {
+        // eqstr 13283: "Error.  Could not create hotbutton.  Type /hotbutton
+        // for help." (the oracle's double space after the periods).
+        return ActionResult::Failure("Error.  Could not create hotbutton.  Type /hotbutton for help.");
+    }
+    if (!m_handler->createHotbutton(text)) {
+        return ActionResult::Failure("Error.  Could not create hotbutton.  Type /hotbutton for help.");
+    }
+    // eqstr 13282: "Successfully created hotbutton".
+    return ActionResult::Success("Successfully created hotbutton");
+}
+
 // ========== Spellbook Actions ==========
 
 ActionResult ActionDispatcher::forgetSpell(uint8_t gemSlot) {
