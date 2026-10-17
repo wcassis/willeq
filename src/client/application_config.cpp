@@ -252,6 +252,10 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
                 config.scenarioSpellId =
                     static_cast<unsigned int>(std::atoi(argv[++i]));
             }
+        } else if (arg == "--scenario-silent-zone") {
+            // B1079 (#399): zone_connect_timeout's "zone answered then went
+            // silent" arm (the 2026-10-15 XU4 shape). Boolean, no value.
+            config.scenarioSilentZone = true;
         } else if (arg == "--scenario-expect-material") {
             if (i + 1 < argc) {
                 config.scenarioExpectMaterial = std::atoll(argv[++i]);
@@ -344,6 +348,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --timeout <s>            --scenario: overall wall-clock budget (default 300)\n";
             std::cout << "  --scenario-hold <s>      --scenario two_client_survive: how long the pair must hold (default 300)\n";
             std::cout << "  --scenario-spell <id>    --scenario cast_lands: beneficial spell to memorise and cast (default 288, Minor Shielding)\n";
+            std::cout << "  --scenario-silent-zone   --scenario zone_connect_timeout: the 'zone answered then went silent' arm (B1079)\n";
             std::cout << "  --scenario-expect-material <n>  --scenario equip_actor_return: assert our OWN primary material is <n> (T498)\n";
             std::cout << "  --scenario-cast-target <name>   --scenario cast_interrupt*: the character to target (B630 two-client lane)\n";
             std::cout << "  --scenario-success-spell <id>   --scenario cast_interrupt_chain: D1 nuke to let finish (default 372)\n";
@@ -390,8 +395,11 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --headless               Run in headless interactive mode\n";
             std::cout << "  --automated              Run in automated/bot mode\n";
             std::cout << "  --log-level=LEVEL        Set log level (NONE, FATAL, ERROR, WARN, INFO, DEBUG, TRACE)\n";
+            std::cout << "                           ('--log-level LEVEL' is accepted too, B1079); an unparseable level is a loud ERROR\n";
             std::cout << "                           If both --log-level= and -d <n> are given, --log-level=\n";
             std::cout << "                           wins (a one-line notice is logged when they disagree)\n";
+            std::cout << "  --log-file=PATH          Also write the log to PATH, line-flushed (B1079; env WILLEQ_LOG_FILE)\n";
+            std::cout << "                           -- the play-box log: survives a kill mid-zone-in, makes the play.sh tee unnecessary\n";
             std::cout << "  --load-mem-audit         Log [LOAD-MEM-AUDIT] memory lines after each zone-load step and the\n";
             std::cout << "                           [memledger] lifecycle points (needs --log-level=INFO or higher)\n";
             std::cout << "                           Env: WILLEQ_BASELINE=1 (original-client feature parity), WILLEQ_LEDGER_TRACE=<category>[:<point>],\n";

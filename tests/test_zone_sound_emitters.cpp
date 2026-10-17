@@ -8,6 +8,9 @@
 #include "client/audio/audio_mixer.h"
 #include "client/audio/sfx_manager.h"
 #include "client/audio/sound_buffer.h"
+// B1080 (#400): silenceForZoneOut's measured music fade is the ZoneComponent
+// constant kZoneOutMusicFadeSeconds.
+#include "client/zone/zone_component.h"
 
 #include <chrono>
 #include <cstdint>
@@ -636,6 +639,138 @@ TEST_F(ZoneAudioLoopUnloadTest, Qeynos2AmbientLoopsAndUnloadFreesEveryChannel) {
     zone_->unloadZone();
     EXPECT_EQ(activeLoopingSfxChannels(), 0);
     EXPECT_EQ(zone_->getActiveEmitterCount(), 0u);
+}
+
+// =============================================================================
+// B1080 (#400): silenceForZoneOut() -- the zone-OUT audio teardown
+// =============================================================================
+//
+// The AUDIO-EFFECT half of B1080. CleanupZone() (the zone session teardown,
+// every zone-OUT path funnels through it) calls ZoneAudioManager::
+// silenceForZoneOut() so the leaving zone is quiet while the loading screen
+// is up: before this, unloadZone() ran only in the NEXT zone's loadZone() and
+// AudioManager::onZoneChange() only on zone ENTRY, so a stalled zone-in kept
+// the old zone's music and every zero-cooldown emitter playing (Will 2026-10-15,
+// "I still hear in-zone music and spell sound effects"). The WIRING (the
+// teardown calls it) is pinned by test_zone_component.cpp's
+// ZoneOutTeardownRunsTheAudioSilence and the zone_connect_timeout scenario;
+// this pins that calling it QUIETS the zone.
+
+class ZoneAudioSilenceForZoneOutTest : public ::testing::Test {
+protected:
+    std::unique_ptr<AudioManager> audio_;
+    std::unique_ptr<ZoneAudioManager> zone_;
+
+    void SetUp() override {
+        if (!std::filesystem::exists(EQ_PATH + "/qeynos2_sounds.eff")) {
+            GTEST_SKIP() << "qeynos2_sounds.eff not found under " << EQ_PATH;
+        }
+        audio_ = std::make_unique<AudioManager>();
+        if (!audio_->initialize(EQ_PATH, /*forceLoopback=*/true)) {
+            GTEST_SKIP() << "AudioManager loopback init failed";
+        }
+        zone_ = std::make_unique<ZoneAudioManager>();
+        zone_->setAudioManager(audio_.get());
+    }
+
+    void TearDown() override {
+        zone_.reset();
+        if (audio_) audio_->shutdown();
+        audio_.reset();
+    }
+
+    int activeLoopingSfxChannels() {
+        int n = 0;
+        for (int h = 0; h < AudioMixer::MAX_SFX_CHANNELS; ++h) {
+            MixChannel* ch = audio_->getMixer()->getChannel(h);
+            if (ch && ch->active.load() && ch->looping) ++n;
+        }
+        return n;
+    }
+};
+
+// The zone we are leaving goes quiet: every zero-cooldown emitter stops (its
+// loop's SFX channel frees, B1074), every one-shot SFX channel frees, the zone
+// music fades out, and the emitter list empties -- so NOTHING of the old zone
+// survives into the loading screen.
+TEST_F(ZoneAudioSilenceForZoneOutTest, SilenceForZoneOutQuietsEmittersOneShotsAndMusic) {
+    ASSERT_TRUE(zone_->loadZone("qeynos2", EQ_PATH));
+    // The same in-range listener as the B1074 unload test: inside both
+    // seq 100880 (r=190) and seq 100886 (r=100), each id 162 (LOOP "space")
+    // day and night.
+    const glm::vec3 listener(-130.0f, -588.0f, 10.0f);
+    audio_->setListenerPosition(listener, glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
+    zone_->update(0.016f, listener, /*isDay=*/false);
+
+    const int loops = activeLoopingSfxChannels();
+    if (loops == 0) {
+        GTEST_SKIP() << "qeynos2 ambient sample did not resolve from the client files";
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    zone_->update(0.3f, listener, false);
+    ASSERT_EQ(activeLoopingSfxChannels(), loops) << "the ambience loops before the silence";
+
+    // A one-shot SFX channel the zone's own mixer holds (a spell SFX is the
+    // thing Will still heard). id 139 is in the preload set; skip the half if
+    // its asset does not resolve from the client files.
+    bool oneShotPlaying = false;
+    if (auto buf = audio_->getSoundBuffer(139); buf && buf->isValid()) {
+        audio_->playSound(139);
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        for (int h = 0; h < AudioMixer::MAX_SFX_CHANNELS && !oneShotPlaying; ++h) {
+            MixChannel* ch = audio_->getMixer()->getChannel(h);
+            if (ch && ch->active.load() && !ch->looping) oneShotPlaying = true;
+        }
+    }
+
+    // The zone music, started the way zone entry starts it.
+    audio_->onZoneChange("qeynos2");
+    const bool musicPlaying = audio_->isMusicPlaying();
+
+    // THE zone-OUT teardown: everything this zone's audio owns goes quiet.
+    zone_->silenceForZoneOut(eqt::zone::ZoneComponent::kZoneOutMusicFadeSeconds);
+
+    // Emitters and their loops: immediate.
+    EXPECT_EQ(zone_->getActiveEmitterCount(), 0u) << "every emitter must stop at zone-out";
+    EXPECT_EQ(zone_->getEmitterCount(), 0u) << "the emitter list empties (the next zone's loadZone starts fresh)";
+    EXPECT_FALSE(zone_->isZoneLoaded());
+    EXPECT_EQ(activeLoopingSfxChannels(), 0) << "the looped ambience channels free at zone-out";
+
+    // One-shot SFX channels: freed immediately (stopAllSounds frees every
+    // channel; the fade applies to the music, not the one-shots).
+    if (oneShotPlaying) {
+        bool anyOneShot = false;
+        for (int h = 0; h < AudioMixer::MAX_SFX_CHANNELS; ++h) {
+            MixChannel* ch = audio_->getMixer()->getChannel(h);
+            if (ch && ch->active.load() && !ch->looping) anyOneShot = true;
+        }
+        EXPECT_FALSE(anyOneShot) << "the one-shot SFX channels free at zone-out";
+    }
+
+    // The zone music: stopMusic(fade) defers the stop to the fade; once the
+    // fade elapses the player is stopped. Wait it out (2.0 s fade + margin).
+    if (musicPlaying) {
+        bool stopped = false;
+        for (int i = 0; i < 350 && !stopped; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            stopped = !audio_->isMusicPlaying();
+        }
+        EXPECT_TRUE(stopped) << "the zone music fades out and stops at zone-out";
+    }
+}
+
+// The silence is idempotent and safe when nothing is loaded: a give-up on a
+// run that never zoned in (the B1072 give-up with no zone session, and every
+// /dev-end path) must not touch audio that was never started -- no crash, no
+// change of state.
+TEST_F(ZoneAudioSilenceForZoneOutTest, SilenceForZoneOutIsASafeNoOpWhenNothingIsLoaded) {
+    EXPECT_FALSE(zone_->isZoneLoaded());
+    zone_->silenceForZoneOut(eqt::zone::ZoneComponent::kZoneOutMusicFadeSeconds);
+    zone_->silenceForZoneOut(eqt::zone::ZoneComponent::kZoneOutMusicFadeSeconds);
+    EXPECT_FALSE(zone_->isZoneLoaded());
+    EXPECT_EQ(zone_->getEmitterCount(), 0u);
+    EXPECT_FALSE(audio_->isMusicPlaying());
+    EXPECT_EQ(activeLoopingSfxChannels(), 0);
 }
 
 #else

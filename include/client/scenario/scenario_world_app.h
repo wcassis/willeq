@@ -101,6 +101,8 @@ public:
     long long ZoneConnectOpens() const override;                          // B1072
     bool SimulateUnreachableZoneConnects(int attempts, int port) override;  // B1072
     long long CharacterSelectActivations() const override;                  // B1081
+    long long ZoneAudioSilenceCount() const override;                     // B1080
+    bool SimulateZoneSilentAfterHandshake() override;                        // B1079
 
     // B893 (fall_damage): the fall's live observable and its driver.
     long long PlayerHP() const override;

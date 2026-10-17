@@ -141,6 +141,7 @@ struct ApplicationConfig {
     double scenarioTimeoutSeconds = 300.0;      // --timeout <s>
     double scenarioStartDeadlineSeconds = 120.0;  // zone-in deadline -> exit 3
     double scenarioHoldSeconds = 300.0;         // --scenario-hold <s>
+    bool scenarioSilentZone = false;            // --scenario-silent-zone (B1079): zone_connect_timeout's "answered then went silent" arm
     unsigned int scenarioSpellId = 288;         // --scenario-spell <id> (B484: 288 is castable by the config's class; 46 was not)
     long long scenarioExpectMaterial = -1;      // --scenario-expect-material <n> (T498)
     // B630 (issue #48): the two-client interrupted-cast lane.
