@@ -119,7 +119,7 @@ constexpr int kDoneY = 5;
 
 // Half-page art tiles: 256 wide, top 256 px pages + bottom 107 px strip.
 constexpr int kHalfPageW = 256;
-constexpr int kHalfPageH = 360;
+constexpr int kBackdropStripH = 107;  // the XML's bottom control strips
 
 // --- Window-relative rects ---------------------------------------------
 
@@ -193,15 +193,28 @@ inline irr::core::rect<irr::s32> doneRect() {
                                      kDoneY + kDoneH);
 }
 
-// The backdrop half-page art rects (left, right). The right half is
-// clamped to the 510 px window width (256*2 = 512 overflows by 2 px;
-// the art's right 2 px clip against the window edge).
-inline irr::core::rect<irr::s32> leftBackdropRect() {
-    return irr::core::rect<irr::s32>(0, 0, kHalfPageW, kHalfPageH);
+// The backdrop book art: the XML tiles FOUR StaticAnimations, not two
+// half-pages -- SBW_SpellBook1 (0,0) and 2 (256,0) are 256x256 page
+// halves, SBW_SpellBook3 (0,256) and 4 (256,256) are 256x107 control
+// strips; together they fill 512x363, and the window's 510x360 clips the
+// right 2 px and the bottom 3 px.
+inline irr::core::rect<irr::s32> backdropTopPageRect() {
+    return irr::core::rect<irr::s32>(0, 0, kHalfPageW, kHalfPageW);
 }
 
-inline irr::core::rect<irr::s32> rightBackdropRect() {
-    return irr::core::rect<irr::s32>(kHalfPageW, 0, kWindowW, kHalfPageH);
+inline irr::core::rect<irr::s32> backdropRightTopRect() {
+    return irr::core::rect<irr::s32>(kHalfPageW, 0, kHalfPageW * 2,
+                                     kHalfPageW);
+}
+
+inline irr::core::rect<irr::s32> backdropBottomStripRect() {
+    return irr::core::rect<irr::s32>(0, kHalfPageW, kHalfPageW,
+                                     kHalfPageW + kBackdropStripH);
+}
+
+inline irr::core::rect<irr::s32> backdropRightBottomRect() {
+    return irr::core::rect<irr::s32>(kHalfPageW, kHalfPageW, kHalfPageW * 2,
+                                     kHalfPageW + kBackdropStripH);
 }
 
 }  // namespace SpellBookLayout

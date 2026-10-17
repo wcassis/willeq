@@ -45,7 +45,7 @@ TEST(SpellBookLayout, WindowSizeIsTheOracle510x360) {
     EXPECT_EQ(kWindowW, 510);
     EXPECT_EQ(kWindowH, 360);
     EXPECT_EQ(kHalfPageW, 256);
-    EXPECT_EQ(kHalfPageH, 360);
+    EXPECT_EQ(kBackdropStripH, 107);
 }
 
 // The sixteen spell buttons, verbatim from the XML. Row-major per page
@@ -142,12 +142,15 @@ TEST(SpellBookLayout, EverythingFitsInTheWindow) {
     }
 }
 
-// Backdrop: two 256x360 half-pages side by side fill the window width.
-TEST(SpellBookLayout, BackdropHalvesFillTheWindow) {
-    const irr::core::rect<irr::s32> l = leftBackdropRect();
-    const irr::core::rect<irr::s32> r = rightBackdropRect();
-    EXPECT_EQ(l.UpperLeftCorner, irr::core::position2d<irr::s32>(0, 0));
-    EXPECT_EQ(l.LowerRightCorner, irr::core::position2d<irr::s32>(256, 360));
-    EXPECT_EQ(r.UpperLeftCorner, irr::core::position2d<irr::s32>(256, 0));
-    EXPECT_EQ(r.LowerRightCorner, irr::core::position2d<irr::s32>(510, 360));
+// Backdrop: the XML's four tiles -- two 256x256 page halves and two
+// 256x107 control strips.
+TEST(SpellBookLayout, BackdropTilesMatchTheXml) {
+    const irr::core::rect<irr::s32> a = backdropTopPageRect();
+    const irr::core::rect<irr::s32> b = backdropRightTopRect();
+    const irr::core::rect<irr::s32> c = backdropBottomStripRect();
+    const irr::core::rect<irr::s32> d = backdropRightBottomRect();
+    EXPECT_EQ(a, irr::core::rect<irr::s32>(0, 0, 256, 256));
+    EXPECT_EQ(b, irr::core::rect<irr::s32>(256, 0, 512, 256));
+    EXPECT_EQ(c, irr::core::rect<irr::s32>(0, 256, 256, 363));
+    EXPECT_EQ(d, irr::core::rect<irr::s32>(256, 256, 512, 363));
 }

@@ -846,12 +846,14 @@ EXEMPT_TESTS_GROUPS = {
     # XML-quoted geometry; the production render body (renderSpellbookPopup)
     # and hit test draw from the same table in the render/input step.
     ("(free)", "doneRect"): "observer",
-    ("(free)", "leftBackdropRect"): "observer",
+    ("(free)", "backdropBottomStripRect"): "observer",
+    ("(free)", "backdropRightBottomRect"): "observer",
+    ("(free)", "backdropRightTopRect"): "observer",
+    ("(free)", "backdropTopPageRect"): "observer",
     ("(free)", "leftPageNumRect"): "observer",
     ("(free)", "memorizeGaugeRect"): "observer",
     ("(free)", "pageDownRect"): "observer",
     ("(free)", "pageUpRect"): "observer",
-    ("(free)", "rightBackdropRect"): "observer",
     ("(free)", "rightPageNumRect"): "observer",
     ("(free)", "slotIconRect"): "observer",
     ("(free)", "slotNameRect"): "observer",
