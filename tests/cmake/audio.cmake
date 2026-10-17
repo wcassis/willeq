@@ -61,7 +61,7 @@ IF(WITH_AUDIO)
         ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
         ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
     )
-    TARGET_COMPILE_DEFINITIONS(test_eff_loader PRIVATE WITH_AUDIO WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    TARGET_COMPILE_DEFINITIONS(test_eff_loader PRIVATE WITH_AUDIO "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_LINK_LIBRARIES(test_eff_loader GTest::gtest_main ${FMT_LIB} dl)
     GTEST_DISCOVER_TESTS(test_eff_loader DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -120,7 +120,7 @@ IF(WITH_AUDIO)
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_sound_assets PRIVATE WITH_AUDIO
-        WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_LINK_LIBRARIES(test_sound_assets ${AUDIO_COMMON_TEST_LIBS})
     GTEST_DISCOVER_TESTS(test_sound_assets DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -345,7 +345,7 @@ IF(WITH_AUDIO)
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_pfs_sound_load PRIVATE WITH_AUDIO
-        WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_LINK_LIBRARIES(test_pfs_sound_load ${AUDIO_COMMON_TEST_LIBS})
     GTEST_DISCOVER_TESTS(test_pfs_sound_load DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -392,7 +392,7 @@ IF(WITH_AUDIO)
     )
     TARGET_COMPILE_DEFINITIONS(test_music_player_soundfont_lifetime PRIVATE
         WITH_AUDIO
-        WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+        "WILLEQ_EQ_CLIENT_PATH=WILLEQ_REPO_PATH(\"data/eq_client\")")
     TARGET_LINK_LIBRARIES(test_music_player_soundfont_lifetime
         GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
     GTEST_DISCOVER_TESTS(test_music_player_soundfont_lifetime DISCOVERY_TIMEOUT 120)
@@ -418,7 +418,7 @@ IF(WITH_AUDIO)
     )
     TARGET_COMPILE_DEFINITIONS(test_soundfont_release PRIVATE
         WITH_AUDIO
-        WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+        "WILLEQ_EQ_CLIENT_PATH=WILLEQ_REPO_PATH(\"data/eq_client\")")
     TARGET_LINK_LIBRARIES(test_soundfont_release
         GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
     GTEST_DISCOVER_TESTS(test_soundfont_release DISCOVERY_TIMEOUT 120)
@@ -435,7 +435,7 @@ IF(WITH_AUDIO)
     )
     TARGET_COMPILE_DEFINITIONS(test_audio_startup_peak PRIVATE
         WITH_AUDIO
-        WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+        "WILLEQ_EQ_CLIENT_PATH=WILLEQ_REPO_PATH(\"data/eq_client\")")
     TARGET_LINK_LIBRARIES(test_audio_startup_peak
         GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
     # B845 (board B845): register the three cases by hand instead of
@@ -484,7 +484,7 @@ IF(WITH_AUDIO)
     )
     TARGET_COMPILE_DEFINITIONS(test_audio_ledger_attribution PRIVATE
         WITH_AUDIO
-        WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+        "WILLEQ_EQ_CLIENT_PATH=WILLEQ_REPO_PATH(\"data/eq_client\")")
     TARGET_LINK_LIBRARIES(test_audio_ledger_attribution
         GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
     GTEST_DISCOVER_TESTS(test_audio_ledger_attribution DISCOVERY_TIMEOUT 120)
@@ -505,7 +505,7 @@ IF(WITH_AUDIO)
     )
     TARGET_COMPILE_DEFINITIONS(test_sfx_single_pcm_cache PRIVATE
         WITH_AUDIO
-        WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+        "WILLEQ_EQ_CLIENT_PATH=WILLEQ_REPO_PATH(\"data/eq_client\")")
     TARGET_LINK_LIBRARIES(test_sfx_single_pcm_cache
         GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
     GTEST_DISCOVER_TESTS(test_sfx_single_pcm_cache DISCOVERY_TIMEOUT 120)

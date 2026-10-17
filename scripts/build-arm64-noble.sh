@@ -81,10 +81,14 @@ fi
 
 echo ""
 echo "--- Cross-compiling willeq ---"
+# B1087: the shared host ccache, when ARM_CCACHE_DIR names one (scripts/ci/arm_ccache.sh).
+source "$PROJECT_DIR/scripts/ci/arm_ccache.sh"
+arm_ccache_docker_args "$IMAGE_NAME"
 docker run --rm \
     -v "$PROJECT_DIR:/src:ro" \
     -v "$OUTPUT_DIR/bin:/output" \
     -v "$BUILD_CACHE:/build" \
+    "${ARM_CCACHE_ARGS[@]}" \
     -e "ENABLE_GRAPHICS=${ENABLE_GRAPHICS}" \
     -e "ENABLE_AUDIO=${ENABLE_AUDIO}" \
     -e "ENABLE_GLES2=${ENABLE_GLES2}" \
