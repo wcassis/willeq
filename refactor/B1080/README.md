@@ -117,7 +117,10 @@ destination's `loadZone()` re-arms emitters and music as before.
 `scripts/refactor/check_doc_counts.py` green on the pushed tip; the full
 suite + visual gate run in the MR pipeline. No bless-only file touched
 (goldens, baselines, ratchets, `constrained_presets.json`, `third_party/` —
-none in the diff).
+none in the diff). The final push merged origin/fable (the ThinkPad-CI
+change, MR !211) in, because B1087 made CI refuse builds on the old runner
+topology; the re-trigger commit (9f30921f) carries this paragraph so the MR
+pipeline runs against the merged head rather than a bare merge commit.
 
 ## CLAUDE.md EDITS
 
