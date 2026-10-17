@@ -9,6 +9,9 @@
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/inventory_layout.h"
+#include "client/graphics/ui/spell_gem_layout.h"   // B1077
+#include "client/graphics/ui/buff_layout.h"       // B1077
+#include "client/graphics/ui/spell_icon_atlas.h"   // B1077
 #include "client/inventory/inventory_constants.h"
 #include "client/chat/chat_message_buffer.h"
 #include "client/chat/chat_text_colors.h"
@@ -258,7 +261,7 @@ void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
     if (inv.activePopup != PopupType::Inventory) return;
 
     auto* tb = ui.getTextBatch();
-    const auto& popup = layout.inventoryPopup;
+    const auto& popup = InventoryLayout::windowRect(layout);
 
     // Panel background
     ui.drawPanel(popup);
@@ -449,16 +452,15 @@ int resolveMemorizeGem(const SpellGemPanelState& state) {
 void renderSpellGemPanel(UIRenderer& ui, const UILayout& layout,
                          const SpellGemPanelState& state) {
     auto* tb = ui.getTextBatch();
-    constexpr irr::s32 SLOT = UILayout::SLOT_SIZE;
-    constexpr irr::s32 PAD = UILayout::MARGIN;
+    // B1077 (GitLab #397): the oracle's CastSpellWnd -- 48x290, unscaled
+    // (EQUI_CastSpellWnd.xml, quoted in spell_gem_layout.h). The window rect
+    // layout.spellGems IS the window (the anchor is the table's, B1075);
+    // every rect below is window-relative, so the hit test reads the same
+    // functions.
+    const auto& win = layout.spellGems;
 
     // Panel background
-    irr::core::rect<irr::s32> bg(
-        layout.spellGems.UpperLeftCorner.X - 2,
-        layout.spellGems.UpperLeftCorner.Y - 2,
-        layout.spellGems.LowerRightCorner.X + 2,
-        layout.spellGems.LowerRightCorner.Y + 2);
-    ui.drawSprite(bg, static_cast<uint8_t>(UISprite::PanelBackground));
+    ui.drawSprite(win, static_cast<uint8_t>(UISprite::PanelBackground));
 
     // Gem state colors
     auto gemColor = [](uint8_t gemState) -> irr::video::SColor {
@@ -474,15 +476,35 @@ void renderSpellGemPanel(UIRenderer& ui, const UILayout& layout,
     static const char* gemLabels[EQT::VISIBLE_SPELL_GEM_COUNT] = {"A1","A2","A3","A4","A5","A6","A7","A8"};
 
     for (int i = 0; i < static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT); ++i) {
-        irr::s32 x = layout.spellGems.UpperLeftCorner.X;
-        irr::s32 y = layout.spellGems.UpperLeftCorner.Y + i * (SLOT + PAD);
-        irr::core::rect<irr::s32> slotRect(x, y, x + SLOT, y + SLOT);
+        // CSPW_Spell0..7: 36x28 at (3, 10+30i) inside the window.
+        irr::core::rect<irr::s32> slotRect(win.UpperLeftCorner.X + SpellGemLayout::kGemX,
+                                           win.UpperLeftCorner.Y + SpellGemLayout::gemRect(i).UpperLeftCorner.Y,
+                                           win.UpperLeftCorner.X + SpellGemLayout::kGemX + SpellGemLayout::kGemW,
+                                           win.UpperLeftCorner.Y + SpellGemLayout::gemRect(i).UpperLeftCorner.Y + SpellGemLayout::kGemH);
 
         // Slot background with gem state tint
         const auto& gem = state.gems[i];
         ui.drawSprite(slotRect, static_cast<uint8_t>(UISprite::SlotBackground));
 
-        // State-colored border
+        // B1077: the CW_SpellGemHolder piece behind the icon (the oracle's
+        // SpellGemDrawTemplate <Holder>), then the gem icon itself -- the
+        // Gems family at the spell's gem_icon (SpellGemState::iconId).
+        if (gem.spellId != 0) {
+            ui.drawSpellGemHolder(slotRect);
+            if (!ui.drawSpellIcon(slotRect,
+                                  EQT::Graphics::SpellIconAtlasLayout::SpellIconSheet::Gems,
+                                  gem.iconId)) {
+                // No pack entry (or a gem_icon the family does not carry):
+                // the pre-B1077 4-letter abbreviation is the FALLBACK.
+                if (tb) {
+                    std::string abbrev = gem.spellName.substr(0, 4);
+                    tb->addTextCentered(abbrev, slotRect,
+                                        irr::video::SColor(255, 220, 220, 220));
+                }
+            }
+        }
+
+        // State-colored border, drawn OVER the icon
         if (gem.spellId != 0 && gem.gemState > 0) {
             ui.drawFrame(slotRect, gemColor(gem.gemState));
         } else {
@@ -513,26 +535,40 @@ void renderSpellGemPanel(UIRenderer& ui, const UILayout& layout,
             ui.drawRect(slotRect, irr::video::SColor(alpha, 0, 0, 0));
         }
 
-        // Spell name (abbreviated)
-        if (gem.spellId != 0 && tb) {
-            std::string abbrev = gem.spellName.substr(0, 4);
-            tb->addText(abbrev, x + 2, y + SLOT / 2 - 6,
-                irr::video::SColor(255, 220, 220, 220));
-        }
-
         // Alt+N key label
         if (tb) {
-            tb->addText(gemLabels[i], x + SLOT - 14, y + SLOT - 12,
-                irr::video::SColor(150, 180, 180, 100));
+            tb->addText(gemLabels[i], slotRect.LowerRightCorner.X - 14,
+                        slotRect.LowerRightCorner.Y - 12,
+                        irr::video::SColor(150, 180, 180, 100));
         }
+    }
+
+    // CSPW_SpellBook: the 22x22 book toggle at (10,252). Clicking it runs
+    // the SAME body Ctrl+B and /book use (static_ui_input.cpp); while the
+    // book is open the button is lit.
+    {
+        irr::core::rect<irr::s32> bookRect(win.UpperLeftCorner.X + SpellGemLayout::kBookX,
+                                           win.UpperLeftCorner.Y + SpellGemLayout::kBookY,
+                                           win.UpperLeftCorner.X + SpellGemLayout::kBookX + SpellGemLayout::kBookW,
+                                           win.UpperLeftCorner.Y + SpellGemLayout::kBookY + SpellGemLayout::kBookH);
+        ui.drawSprite(bookRect, static_cast<uint8_t>(UISprite::SlotBackground));
+        ui.drawFrame(bookRect, state.bookHovered ? irr::video::SColor(255, 255, 215, 0)
+                                                 : irr::video::SColor(255, 80, 80, 80));
+        if (tb) tb->addTextCentered("B", bookRect, irr::video::SColor(255, 220, 220, 220));
     }
 }
 
 // T277: the buff bar's geometry, shared by the renderer and the hit-test so
 // a click can never land on a different slot than the one drawn under it.
+// B1077: the per-buff content is the oracle's own button (EQUI_BuffWindow.xml,
+// buff_layout.h): a 34x34 BlueIconBackground carrying a 30x30 BuffIcons decal
+// at its (2,2) corner. The 20x20 icon was fable's guess; the padding is the
+// bar's own (the 40 px strip fits the 34 px button with 3 px top/bottom).
 namespace {
-constexpr irr::s32 kBuffIcon = 20;  // Small buff icons
-constexpr irr::s32 kBuffPad = 2;
+constexpr irr::s32 kBuffIcon = BuffLayout::kButtonSize;   // 34
+constexpr irr::s32 kBuffPad = 3;                          // (40 - 34) / 2
+constexpr irr::s32 kBuffDecal = BuffLayout::kDecalSize;   // 30
+constexpr irr::s32 kBuffDecalOff = BuffLayout::kDecalOffset;  // 2
 
 // True when the bar draws at all -- an empty bar has no background and no
 // icons, so nothing there is clickable.
@@ -595,9 +631,19 @@ void renderBuffBar(UIRenderer& ui, const UILayout& layout,
 
         irr::core::rect<irr::s32> iconRect(x, y, x + ICON, y + ICON);
 
-        // Colored background based on beneficial/detrimental (simplified: always blue-ish)
-        ui.drawRect(iconRect, irr::video::SColor(200, 30, 50, 120));
-        ui.drawFrame(iconRect, irr::video::SColor(255, 80, 100, 180));
+        // The oracle's BlueIconBackground frame, then the BuffIcons decal --
+        // the 30x30 art at the button's (2,2) corner, the spell_icon column
+        // through the Buff family (spell_icon_sheets; 0 everywhere in this
+        // export, so every buff draws the family's cell 0 until an export
+        // populates the column). No decal (no pack) leaves the bare frame.
+        ui.drawSprite(iconRect, static_cast<uint8_t>(UISprite::SlotBackground));
+        irr::core::rect<irr::s32> decal(iconRect.UpperLeftCorner.X + kBuffDecalOff,
+                                        iconRect.UpperLeftCorner.Y + kBuffDecalOff,
+                                        iconRect.UpperLeftCorner.X + kBuffDecalOff + kBuffDecal,
+                                        iconRect.UpperLeftCorner.Y + kBuffDecalOff + kBuffDecal);
+        ui.drawSpellIcon(decal,
+                         EQT::Graphics::SpellIconAtlasLayout::SpellIconSheet::Buff,
+                         buff.iconId);
 
         // Abbreviated spell name
         if (tb) {
@@ -893,14 +939,24 @@ void renderSpellbookPopup(UIRenderer& ui, const UILayout& layout,
 
         const auto& spell = state.spells[i];
 
+        // B1077 (GitLab #397): the spell's own icon -- spell_icon (field 143)
+        // through the Spells family, the column the bridge hands this entry.
+        // The oracle's spellbook rows are 28 px tall, so the 40x40 decal is
+        // minified into a 26x26 square at the row's left; the no-pack
+        // fallback is nothing, the name already carries the identification.
+        irr::core::rect<irr::s32> iconRect(startX + 2, y + 1, startX + 28, y + 27);
+        ui.drawSpellIcon(iconRect,
+                         EQT::Graphics::SpellIconAtlasLayout::SpellIconSheet::Spells,
+                         spell.iconId);
+
         if (tb) {
             // Level
             std::string lvlStr = fmt::format("L{}", spell.level);
-            tb->addText(lvlStr, startX + 4, y + 6,
+            tb->addText(lvlStr, startX + 32, y + 6,
                 irr::video::SColor(255, 150, 150, 150));
 
             // Spell name
-            tb->addText(spell.name, startX + 30, y + 6,
+            tb->addText(spell.name, startX + 58, y + 6,
                 irr::video::SColor(255, 220, 220, 255));
         }
     }

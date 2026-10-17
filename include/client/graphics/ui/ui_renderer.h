@@ -11,10 +11,12 @@
 #pragma once
 
 #include <irrlicht.h>
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
 #include "client/graphics/ui/ui_quad_batch.h"
+#include "client/graphics/ui/spell_icon_atlas.h"
 
 namespace EQT {
 namespace Graphics {
@@ -109,6 +111,14 @@ public:
     /**
      * T430 (board B376): draw an item icon from the dragitem sheets.
      *
+     * B1078 (GitLab #398): the 40x40 dragitem decal is a SQUARE, and a cell
+     * that is not one must never stretch it -- so the destination is
+     * `squareIn(rect)`, the centred square of side min(w,h), applied here
+     * at the one place every call site funnels through rather than at each
+     * caller. A cell that is already square (every site today: the bank's
+     * 36x36 art, the container's 40x40 cell, the hotbar's 32x32 slot, the
+     * cursor's 40x40 decal, the merchant's 24x24 row icon) is unchanged.
+     *
      * Returns FALSE when there is nothing to draw -- no atlas, no pack entry,
      * or an icon id outside the 500..1723 the official sheets carry -- and
      * every caller keeps its pre-T430 text placeholder for that case, so a
@@ -120,6 +130,47 @@ public:
      * caller's and the 40x40 cell is minified into it.
      */
     bool drawItemIcon(const irr::core::rect<irr::s32>& rect, uint32_t iconId);
+
+    /**
+     * B1077 (GitLab #397): draw a spell icon from one of the three spell-icon
+     * families (gem bar / spellbook / buff), addressed by the shared layout
+     * header `client/graphics/ui/spell_icon_atlas.h`.
+     *
+     * Same contract as drawItemIcon(): returns FALSE when there is nothing
+     * to draw (no atlas, no pack entry, or an id the family does not carry)
+     * and every caller keeps its pre-B1077 fallback for that case. The
+     * source cell's ART rect (36x28 for Gems, 40x40 for Spells/Buff) is
+     * minified into the caller's destination rect -- the oracle's gem cell
+     * is 36x28 (CSPW_SpellN) and its buff/spellbook decal is 30x40-ish, so
+     * the destination is the caller's, exactly as for item icons.
+     */
+    bool drawSpellIcon(const irr::core::rect<irr::s32>& rect,
+                       SpellIconAtlasLayout::SpellIconSheet sheet, uint32_t id);
+
+    /**
+     * B1077 (GitLab #397): the CW_SpellGemHolder piece (36x28 art inside its
+     * 40x40 cell), drawn behind a gem icon at the caller's rect. Same
+     * false-when-nothing contract as drawSpellIcon().
+     */
+    bool drawSpellGemHolder(const irr::core::rect<irr::s32>& rect);
+
+    /**
+     * B1078 (GitLab #398): the centred square of side min(w,h) inside `cell`.
+     *
+     * THE ONE helper for blitting an item icon into a cell that is not
+     * square: the 40x40 dragitem decal is a SQUARE, so a non-square cell
+     * must never stretch it (the pre-B1078 merchant row blitted it into a
+     * 25x14 box). A cell that IS already square gets back its own rect.
+     * Callers pass their layout's cell rect; the helper owns no geometry of
+     * its own, so draw and hit test keep reading the same layout table.
+     */
+    static irr::core::rect<irr::s32> squareIn(
+            const irr::core::rect<irr::s32>& cell) {
+        const irr::s32 side = std::min(cell.getWidth(), cell.getHeight());
+        const irr::s32 x = cell.getCenter().X - side / 2;
+        const irr::s32 y = cell.getCenter().Y - side / 2;
+        return irr::core::rect<irr::s32>(x, y, x + side, y + side);
+    }
 
     /**
      * B992 (GitLab #312): start the next WINDOW in z-order. Everything drawn
@@ -213,6 +264,14 @@ public:
     void setLayeringEnabled(bool enabled) { layeringEnabled_ = enabled; }
 
 private:
+    // B1077 (GitLab #397): the queued-command contract every external-texture
+    // icon blit (drawItemIcon / drawSpellIcon / drawSpellGemHolder) shares:
+    // a command carrying its own texture, replayed at submission position on
+    // the atlas path, immediate otherwise.
+    bool blitExternalIcon(const irr::core::rect<irr::s32>& rect,
+                          const irr::core::rect<irr::s32>& srcRect,
+                          irr::video::ITexture* tex);
+
     // Draw the queued commands [begin, end) in runs (T462).
     void flushCommands(size_t begin, size_t end);
     irr::video::IVideoDriver* driver_ = nullptr;

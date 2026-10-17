@@ -488,7 +488,7 @@ ROWS = [
      lambda r: count_shipped_bmps(r, only_32bit=True),
      "T406 wrote '60 of the 64'; T417 and T430 each added a 32-bit sheet",
      [("CLAUDE.md",
-       r"\*\*(\d+) of the 67 shipped 32-bit with their")]),
+       r"\*\*(\d+) of the \d+ shipped 32-bit with their")]),
 
     ("hygiene ctest tests",
      count_hygiene_tests,

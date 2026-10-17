@@ -30,6 +30,7 @@
 #include "client/graphics/ui/item_display_panel.h"
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/static_ui_input.h"
+#include "client/graphics/ui/spell_gem_layout.h"  // B1077
 #include "client/graphics/ui/ui_layout.h"
 #include "client/spell/spell_data.h"
 #include "client/spell/spell_display_text.h"
@@ -254,7 +255,7 @@ TEST(SpellDisplayT425, ShiftClickingAGemAsksForTheSpellDisplay) {
 
     const int gx = l.spellGems.UpperLeftCorner.X + 3;
     const int gy = l.spellGems.UpperLeftCorner.Y
-                 + 2 * (UILayout::SLOT_SIZE + UILayout::MARGIN) + 3;
+                 + 2 * EQT::Graphics::SpellGemLayout::kGemPitchY + 14;  // B1077
 
     input.processInput(gx, gy, /*leftClicked=*/true, l, hotbar, gems, inv, book,
                        skills, buffs, loot, /*shift=*/true);
@@ -264,9 +265,9 @@ TEST(SpellDisplayT425, ShiftClickingAGemAsksForTheSpellDisplay) {
     ASSERT_NE(req, nullptr) << "shift+click on a gem produced no SpellDisplayRequestIntent";
     EXPECT_EQ(req->spellId, 15u);
 
-    // An EMPTY gem describes nothing.
+    // An EMPTY gem describes nothing. B1077: gem A6's cell centre.
     const int emptyY = l.spellGems.UpperLeftCorner.Y
-                     + 5 * (UILayout::SLOT_SIZE + UILayout::MARGIN) + 3;
+                     + 5 * EQT::Graphics::SpellGemLayout::kGemPitchY + 14;
     input.processInput(gx, emptyY, /*leftClicked=*/true, l, hotbar, gems, inv, book,
                        skills, buffs, loot, /*shift=*/true);
     EXPECT_TRUE(bridge.drainIntents().empty());
@@ -291,7 +292,7 @@ TEST(SpellDisplayT425, APlainGemClickStillCasts) {
 
     const int gx = l.spellGems.UpperLeftCorner.X + 3;
     const int gy = l.spellGems.UpperLeftCorner.Y
-                 + 2 * (UILayout::SLOT_SIZE + UILayout::MARGIN) + 3;
+                 + 2 * EQT::Graphics::SpellGemLayout::kGemPitchY + 14;  // B1077
 
     input.processInput(gx, gy, /*leftClicked=*/true, l, hotbar, gems, inv, book,
                        skills, buffs, loot, /*shift=*/false);
