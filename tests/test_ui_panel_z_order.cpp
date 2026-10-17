@@ -451,23 +451,26 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
         // per-slot frames are solid draws there, so the HUD rose from 18 to
         // 59 draws. The atlas pins are unchanged: every one of those is one
         // atlas quad plus the shared panel texture.
-        {"hud", [] {}, {4, 4, 6, 1}, {59, 59, 6, 1}},
+        // B1077 adds the always-on gem bar to every fixture frame: +4 draws
+        // on the atlas path, +3 on fallback; the B1078 band-scaled inventory
+        // keeps its one-group flush and bag-covering group counts below.
+        // Re-taken on the merged 800x600 layout (chat=120).
+        {"hud", [] {}, {8, 8, 6, 1}, {62, 62, 6, 1}},
         // B1078 (GitLab #398): the inventory window moved to the band-anchored
         // 428x460 (one uniform factor), so its own flush is one group now
         // (was two) and every bag-covering scenario lost 1 group.
-        // Retaken 2026-10-17 (atlas + fallback, 800x600, chat=120).
-        {"inventory", [&] { inv_.activePopup = PopupType::Inventory; }, {31, 31, 7, 1}, {82, 82, 7, 1}},
+        {"inventory", [&] { inv_.activePopup = PopupType::Inventory; }, {35, 35, 7, 1}, {85, 85, 7, 1}},
         // What B899's workaround drew for three open bags: the topmost only.
         // The Forge (350,100) also covers inventory text, so even one bag is a
         // real split (the shipped bleed was there too).
         {"inv+forge", [&] {
              inv_.activePopup = PopupType::Inventory;
              openForge(containers_);
-         }, {34, 38, 8, 2}, {92, 94, 8, 2}},
+         }, {38, 42, 8, 2}, {95, 97, 8, 2}},
         {"inv+3 bags", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
-         }, {47, 59, 10, 4}, {109, 115, 10, 4}},
+         }, {51, 63, 10, 4}, {112, 118, 10, 4}},
         {"full", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
@@ -478,7 +481,7 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
              cursor_.iconId = 1001;
              cursor_.mouseX = 560;
              cursor_.mouseY = 420;
-         }, {48, 60, 13, 4}, {125, 134, 13, 5}},
+         }, {52, 64, 13, 4}, {128, 137, 13, 5}},
     };
 
     for (bool fallback : {false, true}) {

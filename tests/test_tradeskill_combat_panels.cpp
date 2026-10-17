@@ -179,16 +179,16 @@ TEST(TradeskillWindowT415, WorldSlotsFeedTheGridAndOthersDoNot) {
 //   COMBW_RequiredIcon<i>: Location ((i%2)*42, (i/2)*42), Size 42x42
 TEST(TradeskillLayoutT415, SlotRectsAreTheOraclesScaled) {
     const UILayout l = layout800();
-    // B1078 (GitLab #398): the window is {264,48,556,431} at 800x600 (the
-    // oracle's 400x525 at ONE uniform factor of 384/525, the band's height,
-    // anchored at the centre slot's left and the band's top).
+    // B1078's single 73% factor is still height-limited (middleBand height
+    // 384); B1077's 48px gem column moves its right edge 16px left and the
+    // centre-slot/window origin 8px left: {256,48,548,431} at 800x600.
     struct Case { int i; int x0, y0, x1, y1; };
     const Case cases[] = {
-        {0, 467, 135, 497, 165},
-        {1, 498, 135, 528, 165},
-        {2, 467, 166, 497, 196},
-        {8, 467, 258, 497, 288},
-        {9, 498, 258, 528, 288},
+        {0, 459, 135, 489, 165},
+        {1, 490, 135, 520, 165},
+        {2, 459, 166, 489, 196},
+        {8, 459, 258, 489, 288},
+        {9, 490, 258, 520, 288},
     };
     for (const auto& c : cases) {
         const auto r = TradeskillLayout::slotRect(l, c.i);
@@ -207,13 +207,13 @@ TEST(TradeskillLayoutT415, TitleCombineAndCloseAreTheOraclesScaled) {
     const UILayout l = layout800();
 
     const auto title = TradeskillLayout::titleRect(l);
-    EXPECT_EQ(rectStr(title), "{440,99,553,113}");
+    EXPECT_EQ(rectStr(title), "{432,99,545,113}");
 
     const auto combine = TradeskillLayout::combineRect(l);
-    EXPECT_EQ(rectStr(combine), "{453,291,540,312}");
+    EXPECT_EQ(rectStr(combine), "{445,291,532,312}");
 
     const auto close = TradeskillLayout::closeRect(l);
-    EXPECT_EQ(rectStr(close), "{453,413,540,429}");
+    EXPECT_EQ(rectStr(close), "{445,413,532,429}");
 }
 
 // Every rect lies inside the window and the two buttons do not collide with
@@ -398,20 +398,24 @@ TEST(CombatAbilityWindowT415, AbilityRowsAreCappedAtTheOraclesEightButtons) {
 TEST(CombatAbilityLayoutT415, RectsAreTheOraclesVerbatim) {
     const UILayout l = layout800();
 
+    // The CombatAbilityWnd is right-aligned to middleBand. B1077's wider
+    // gem window shifts that band's right edge from 760 to 744 (-16px);
+    // B1078 keeps the 174x150 oracle window unscaled, so every X moves -16.
+
     const auto win = CombatAbilityLayout::windowRect(l);
     EXPECT_EQ(win.getWidth(), CombatAbilityLayout::ORACLE_WINDOW_W);
     EXPECT_EQ(win.getHeight(), CombatAbilityLayout::ORACLE_WINDOW_H);
-    EXPECT_EQ(rectStr(win), "{586,112,760,262}");
+    EXPECT_EQ(rectStr(win), "{570,112,744,262}");
 
-    EXPECT_EQ(rectStr(CombatAbilityLayout::effectIconRect(l)), "{591,136,611,156}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::effectLabelRect(l)), "{614,137,743,157}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::gaugeRect(l)), "{597,162,713,172}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::skillSelectRect(l)), "{710,160,747,174}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::effectIconRect(l)), "{575,136,595,156}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::effectLabelRect(l)), "{598,137,727,157}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::gaugeRect(l)), "{581,162,697,172}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::skillSelectRect(l)), "{694,160,731,174}");
 
-    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 0)), "{588,177,628,217}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 3)), "{708,177,748,217}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 4)), "{588,217,628,257}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 7)), "{708,217,748,257}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 0)), "{572,177,612,217}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 3)), "{692,177,732,217}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 4)), "{572,217,612,257}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 7)), "{692,217,732,257}");
 
     EXPECT_EQ(CombatAbilityLayout::buttonRect(l, -1).getWidth(), 0);
     EXPECT_EQ(CombatAbilityLayout::buttonRect(l, 8).getWidth(), 0);
