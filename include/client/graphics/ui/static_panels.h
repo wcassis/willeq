@@ -567,8 +567,8 @@ struct SpellbookPopupState {
     int swapFirstSlot = -1;
 
     // T413 (board B296): memorisation progress, from SpellMemorizingData.
-    // The oracle puts this gauge in the SPELLBOOK, not on the gem — see
-    // spellbookMemorizeGaugeRect() below for the quoted XML.
+    // The oracle puts this gauge in the SPELLBOOK, not on the gem — the
+    // render draws it at SpellBookLayout::memorizeGaugeRect().
     bool isMemorizing = false;
     uint8_t memorizeGemSlot = 0;
     uint32_t memorizeProgressMs = 0;
@@ -602,22 +602,11 @@ struct SpellbookPopupState {
 void applySpellMemorizing(SpellbookPopupState& state,
                           const eqt::state::SpellMemorizingData& data);
 
-/**
- * T413: the memorisation gauge's rect, the oracle's own, scaled into the
- * centre popup exactly the way InventoryLayout::coinRect()/paperdollRect()
- * scale theirs (proportional, integer division).
- *
- * Quoted from /mnt/projects/EverQuestP1999/uifiles/default/EQUI_SpellBookWnd.xml:
- *
- *   <Gauge item="SBW_Memorize_Gauge">
- *     <Location><X>204</X><Y>312</Y></Location>
- *     <Size><CX>100</CX><CY>8</CY></Size>
- *     <EQType>9</EQType>
- *   </Gauge>
- *
- * inside  <Screen item="SpellBookWnd">  <Size><CX>510</CX><CY>360</CY></Size>.
- */
-irr::core::rect<irr::s32> spellbookMemorizeGaugeRect(const UILayout& layout);
+// B1076 (#396): the old scaled spellbookMemorizeGaugeRect() is gone — the
+// window now draws at the oracle's own 510x360 (layout.bookPopup), so the
+// gauge is `SpellBookLayout::memorizeGaugeRect()` (the quoted 100x8 at
+// (204,312)) blitted 1:1 through the render body's winRect(); the placement
+// is pinned by test_spellbook_layout.
 
 /** Render spellbook popup (center screen). */
 void renderSpellbookPopup(UIRenderer& ui, const UILayout& layout,

@@ -704,21 +704,6 @@ void applySpellMemorizing(SpellbookPopupState& state,
     state.memorizeTotalMs = data.totalMs;
 }
 
-irr::core::rect<irr::s32> spellbookMemorizeGaugeRect(const UILayout& layout) {
-    // EQUI_SpellBookWnd.xml, quoted in the header: gauge (204,312) 100x8
-    // inside a 510x360 screen.
-    constexpr int kOracleX = 204, kOracleY = 312;
-    constexpr int kOracleW = 100, kOracleH = 8;
-    constexpr int kOracleWinW = 510, kOracleWinH = 360;
-
-    const auto& popup = layout.centerPopup;
-    const irr::s32 x = popup.UpperLeftCorner.X + kOracleX * popup.getWidth() / kOracleWinW;
-    const irr::s32 y = popup.UpperLeftCorner.Y + kOracleY * popup.getHeight() / kOracleWinH;
-    const irr::s32 w = kOracleW * popup.getWidth() / kOracleWinW;
-    const irr::s32 h = kOracleH * popup.getHeight() / kOracleWinH;
-    return {x, y, x + w, y + h};
-}
-
 void renderCastingBar(UIRenderer& ui, const UILayout& layout,
                       const CastingBarState& state) {
     if (!state.isCasting) return;
