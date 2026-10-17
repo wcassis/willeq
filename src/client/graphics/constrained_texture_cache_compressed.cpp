@@ -483,8 +483,19 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
     // wrapExternalTexture() does the same name-based dedup as addTexture()
     // (findTexture(name); if found, returns the EXISTING texture, silently
     // discarding this upload). See uploadTexture()'s identical fix/comment.
+    //
+    // B1083 Step 7 (#403 ruling, option A): the wrapped name is the entry's
+    // STORED driverName (decideDriverName(), family-first) -- the pre-B1083
+    // name for the family's first member (which is what the base EQE1 path
+    // handed the driver: internalKey, equal to name[+masked] when no stem
+    // axis existed), the full internalKey for a later cross-archive twin so
+    // the driver cannot fold two different images. The alpha companion's
+    // name is the SAME decision + "_alpha": base was internalKey + "_alpha",
+    // and for a family-first entry driverName == base's internalKey, so the
+    // gate's companion names are byte-identical to base too.
+    const std::string driverName = entry.driverName;
     irr::video::ITexture* texture = static_cast<irr::video::ITexture*>(
-        gles2WrapTexture(driver_, cacheEntryKey.c_str(), texId,
+        gles2WrapTexture(driver_, driverName.c_str(), texId,
                          entry.width, entry.height,
                          mainChain));  // B948 (GitLab #266): the main chain only
 
@@ -498,7 +509,7 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
     // Wrap alpha companion texture if present
     irr::video::ITexture* alphaTexture = nullptr;
     if (alphaTexId) {
-        std::string alphaName = cacheEntryKey + "_alpha";
+        std::string alphaName = driverName + "_alpha";
         alphaTexture = static_cast<irr::video::ITexture*>(
             gles2WrapTexture(driver_, alphaName.c_str(), alphaTexId,
                              entry.width, entry.height,
@@ -530,6 +541,9 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
     cached.hasAlpha = entry.hasAlpha;
     cached.isETC1 = true;  // H02d: companion-based alpha pipeline
     cached.lruIterator = std::prev(lruOrder_.end());
+    // B1083 Step 7 (#403 ruling, option A): the driver-side name, decided
+    // ONCE above and stored (evict->restore keeps the object and its name).
+    cached.driverName = driverName;
     // B944: the pack entry is where an eviction restores from (the pack is
     // mapped, so this costs a struct, not the pixels).
     cached.source = CachedTexture::Source::Compressed;
@@ -809,8 +823,14 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedV2(
     }
 
     // P46d: cacheEntryKey, not `name` — see uploadCompressedETC1()'s identical fix.
+    // B1083 Step 7 (#403 ruling, option A): the wrapped name is the entry's
+    // STORED driverName (decideDriverName(), family-first) — see
+    // uploadCompressedETC1()'s comment for the full rationale (base's EQE1
+    // name for a family-first member, the full internalKey for a later
+    // cross-archive twin).
+    const std::string driverName = entry.driverName;
     irr::video::ITexture* texture = static_cast<irr::video::ITexture*>(
-        gles2WrapTexture(driver_, cacheEntryKey.c_str(), texId,
+        gles2WrapTexture(driver_, driverName.c_str(), texId,
                          entry.width, entry.height,
                          static_cast<unsigned int>(gpuSize)));
 
@@ -834,6 +854,9 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedV2(
     cached.hasAlpha = entry.hasAlpha;
     cached.isETC1 = false;
     cached.lruIterator = std::prev(lruOrder_.end());
+    // B1083 Step 7 (#403 ruling, option A): the driver-side name, decided
+    // ONCE above and stored (evict->restore keeps the object and its name).
+    cached.driverName = driverName;
     cached.source = CachedTexture::Source::Compressed;  // B944: restore source
     cached.compressed = entry;
     // B1083 dedupe: the content identity a later sibling-archive request

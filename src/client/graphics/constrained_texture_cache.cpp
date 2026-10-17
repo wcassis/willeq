@@ -350,6 +350,67 @@ void ConstrainedTextureCache::dropAliasesTo(const std::string& key) {
     }
 }
 
+// B1083 Step 7 (#403 ruling, option A): the family-first driver name -- see
+// decideDriverName() in the header for the full rationale (the draw-order
+// regression, the willow, the eviction/restore stability). Called at STORE
+// time (getOrLoad, under mutex_) for the entry about to be stored under
+// `internalKey`; the answer is carried on the pending entry to the
+// CachedTexture at promote time.
+std::string ConstrainedTextureCache::decideDriverName(const std::string& name,
+                                                       const std::string& internalKey) const {
+    // The mask axis is the internalKey's OWN (splitCacheKey is cacheKey's
+    // exact inverse), so the family is (name, that mask) and the P46d
+    // answer for a family-first member is cacheKey(name, "", mask) --
+    // `name` itself when unmasked.
+    std::string keyName;
+    std::string keyStem;
+    const bool keyMasked = [&]() {
+        bool masked = false;
+        splitCacheKey(internalKey, keyName, keyStem, masked);
+        return masked;
+    }();
+    const std::string familyFirstName = cacheKey(name, "", keyMasked);
+
+    // A different key of this (name, mask) family already STORED means this
+    // is not the family's first member. The first member stored (load
+    // order) keeps the plain name; every later member takes the full
+    // internalKey, whatever the promote order -- the store name is
+    // load-order-stable, and no two members can ever claim the plain name.
+    // The range argument mirrors findContentTwin(): cache_ (std::map) key
+    // order puts the plain key first, then the \x01-suffixed variants.
+    auto isFamilyMember = [&](const std::string& key) -> bool {
+        if (key == internalKey) return false;
+        if (key.size() == name.size()) {
+            return key == familyFirstName;
+        }
+        if (key.compare(0, name.size(), name) != 0) return false;
+        std::string realName;
+        std::string stem;
+        bool masked = false;
+        splitCacheKey(key, realName, stem, masked);
+        return realName == name && masked == keyMasked;
+    };
+
+    // Already-promoted members.
+    for (auto it = cache_.lower_bound(name);
+         it != cache_.end() && it->first.compare(0, name.size(), name) == 0; ++it) {
+        if (isFamilyMember(it->first)) return internalKey;
+    }
+    // Stored-but-not-yet-promoted members.
+    for (const auto& [key, pending] : decodedEntries_) {
+        if (isFamilyMember(key)) return internalKey;
+    }
+    for (const auto& [key, pending] : compressedEntries_) {
+        if (isFamilyMember(key)) return internalKey;
+    }
+    // A dedupe alias recording this key points at a stored family member --
+    // treat the family as occupied.
+    for (const auto& [alias, target] : deduped_) {
+        if (isFamilyMember(alias)) return internalKey;
+    }
+    return familyFirstName;  // family-first: the pre-B1083 P46d name
+}
+
 ConstrainedTextureCache::ConstrainedTextureCache(const ConstrainedRendererConfig& config)
     : config_(config)
 {
@@ -544,6 +605,10 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
         // keys. Only genuinely different same-name textures (qeytoqrg
         // tree70, DXT1-vs-DXT5) keep two entries -- the willow fix itself.
         compressedEntries_[internalKey] = *compressed;
+        // B1083 Step 7 (#403 ruling, option A): decide the driver-facing
+        // name at STORE time (load-order-stable family-first) and carry it
+        // on the entry to the promote path -- see decideDriverName().
+        compressedEntries_[internalKey].driverName = decideDriverName(name, internalKey);
         LOG_TRACE(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' EQE1 hit ({}x{}, {} mips{}){}",
                   name, compressed->width, compressed->height, compressed->mipLevels,
                   compressed->hasAlpha ? ", alpha" : "",
@@ -630,6 +695,10 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     // content-identical scoped request into the entry this image becomes
     // (one GPU entry serves both keys).
     decoded.contentDigest = decodedContentDigest(decoded.rgbaPixels, width, height, hasAlpha);
+    // B1083 Step 7 (#403 ruling, option A): decide the driver-facing name at
+    // STORE time (load-order-stable family-first), BEFORE this key itself is
+    // stored -- the decision skips the request's own key.
+    decoded.driverName = decideDriverName(name, internalKey);
     decodedEntries_[internalKey] = std::move(decoded);
 
     LOG_DEBUG(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' decoded ({}x{}, alpha={}{})",
@@ -727,8 +796,20 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     // returned the SAME (unmasked) GPU texture — caught by this unit's own
     // discard-fire re-verification, which found identical pointers for both
     // uploads until this fix.
+    //
+    // B1083 Step 7 (#403 ruling, option A): the name addTexture() sees is
+    // the entry's STORED driverName, decided ONCE at store time by
+    // decideDriverName() and carried on the pending entry -- family-first:
+    // the pre-B1083 P46d name when this is the first member of its
+    // (name, mask) family, the full internalKey for a later cross-archive
+    // twin (the willow's _obj copy). The P46d distinctness the comment
+    // above protects still holds: the mask suffix is always present, and a
+    // second member's name differs from the first by the stem. The stored
+    // name is what an evict->restore re-creates under too (the object
+    // keeps its name).
+    const std::string driverName = entry.driverName;
     irr::video::ITexture* texture =
-        createDecodedTexture(internalKey, entry.rgbaPixels, entry.width, entry.height);
+        createDecodedTexture(driverName, entry.rgbaPixels, entry.width, entry.height);
 
     bool hasAlpha = entry.hasAlpha;
     int width = entry.width;
@@ -752,6 +833,10 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     cached.sizeBytes = textureSize;
     cached.hasAlpha = hasAlpha;
     cached.lruIterator = std::prev(lruOrder_.end());
+    // B1083 Step 7 (#403 ruling, option A): the driver-side name, decided
+    // ONCE above and stored -- an evict->restore re-creates this object
+    // (storage adopted, object kept) under exactly this name.
+    cached.driverName = driverName;
     // B944: an eviction can restore this from a registered
     // TextureSourceProvider (the raw bytes are the caller's and are gone).
     // B947: or from the origin the caller named, checked against the digest.

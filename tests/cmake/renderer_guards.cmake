@@ -35,6 +35,27 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_constrained_texture_cache DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1083 Step 7 (GitLab #403, ruling 2026-10-17 option A): the driver-facing
+# name of a cache entry is decided ONCE at store time (family-first) and
+# stored -- a single-archive family keeps the pre-B1083 name (which restores
+# the gate zones' base draw order), a cross-archive twin takes the full
+# internalKey (the willow survives the driver's name-dedup), and an
+# evict->restore re-creates the entry under the SAME name. EDT_NULL for the
+# name decision; the evict/restore round-trip uses a real EDT_OGLES2
+# surfaceless device and self-skips without EGL.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_texture_driver_name
+        test_texture_driver_name.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_texture_driver_name PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    # Post-fix state: the stored driverName field exists, so the test's
+    # private-field assertions compile in (the red-before run at the pre-fix
+    # tree omits the define and gets the public-API red instead).
+    TARGET_COMPILE_DEFINITIONS(test_texture_driver_name PRIVATE B1083_STEP7_DRIVER_NAME_STORED)
+    TARGET_LINK_LIBRARIES(test_texture_driver_name GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_texture_driver_name DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B1083 (GitLab #403): a zone family's packs (zone + _obj) hold the same name
 # with different content; the (archive, name) cache key + source-first EQE1
 # resolution keeps each copy for the material that came from it. Two

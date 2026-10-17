@@ -102,6 +102,11 @@ struct DecodedEntry {
     // ConstrainedTextureCache::decodedContentDigest); a scoped request whose
     // digest matches an existing (name, mask) entry reuses that entry.
     uint64_t contentDigest = 0;
+    // B1083 Step 7 (#403 ruling, option A): the name the DRIVER will see
+    // when this entry is promoted (see decideDriverName()) -- decided at
+    // STORE time, so it is load-order-stable whatever the promote order is,
+    // and carried into CachedTexture.driverName there.
+    std::string driverName;
 };
 
 // LRU texture cache with memory budget enforcement
@@ -512,6 +517,10 @@ private:
         const uint8_t* alphaData;
         uint32_t alphaDataSize;
         uint8_t  payloadFormat = 0;  // EQE1PayloadFormat; 0 == EQE1_PAYLOAD_ETC1
+        // B1083 Step 7 (#403 ruling, option A): the driver-facing name,
+        // decided at STORE time by decideDriverName() and carried to the
+        // CachedTexture at promote time (DecodedEntry.driverName, same role).
+        std::string driverName;
     };
     const CompressedEntry* findCompressedEntry(const std::string& name,
                                                const std::string& sourceArchiveStem = "");
@@ -731,6 +740,17 @@ private:
         // / decodedContentDigest()) recorded at store time; a scoped request
         // whose digest matches a (name, mask) twin reuses the twin's entry.
         uint64_t contentDigest = 0;
+        // B1083 Step 7 (#403 ruling, option A): the name the DRIVER sees
+        // (addTexture / gles2WrapTexture) -- decided ONCE at store time by
+        // decideDriverName() (DecodedEntry.driverName /
+        // CompressedEntry.driverName) and carried here at promote, so an
+        // evict->restore (which keeps this object and re-adopts its
+        // storage) re-creates it under the SAME name. Family-first: the
+        // first STORED entry of a (name, mask) family takes the pre-B1083
+        // name (name [+ \x01masked]); a later cross-archive twin takes the
+        // full internalKey. See decideDriverName() for why this is what the
+        // draw order (textureGroupId's FNV input) and the willow need.
+        std::string driverName;
         // B947: an eviction found no restore source; never evicted again.
         bool pinned = false;
     };
@@ -816,6 +836,39 @@ private:
     // destroyEntry / clear). The aliasers re-fold, or resolve on their own,
     // when they next promote or query. Call while holding mutex_.
     void dropAliasesTo(const std::string& key);
+    // B1083 Step 7 (#403 ruling, option A): decide the name the DRIVER sees
+    // for the entry about to be STORED under `internalKey`, ONCE at store
+    // time (getOrLoad, under mutex_), and the caller carries it on the
+    // pending entry into CachedTexture.driverName at promote time.
+    // Family-first: the pre-B1083 P46d name (cacheKey(name, "", mask) --
+    // `name`, or `name\x01masked`, where `mask` is internalKey's own mask
+    // axis) when NO OTHER key of this (name, mask) family is already stored
+    // (cache_/decodedEntries_/compressedEntries_ -- a dedupe alias points at
+    // such a key, so it counts too); the full internalKey (stem included)
+    // for a later, genuinely separate family member.
+    //
+    // Why: the name is the driver-side identity -- textureGroupId()'s FNV
+    // input, and the materialKey the merge sort orders by. B1083's stem axis
+    // made every S3D upload carry the \x01@<stem>\x01 suffix, re-shuffling
+    // every group ID and (in the single-archive gate zones) the whole draw
+    // order (the 197 px regression -- refactor/B1083/gate_ledger_diff.md).
+    // Family-first hands the driver base's exact name whenever the family
+    // never spans two archives, which is every one of the five gate zones.
+    // The willow (qeytoqrg tree70, zone vs _obj, DIFFERENT bytes) is the
+    // two-member family: the zone copy (loaded first, configured order) is
+    // family-first and keeps base's plain name; the _obj copy takes the
+    // stem-suffixed full key, so the driver's name-dedup (findTexture in
+    // addTexture / gles2WrapTexture) cannot fold the two images and the
+    // alpha-tested foliage survives. The naive "always the plain name"
+    // would share one driver name with that second copy and discard its
+    // image. P46d's distinct-name invariant holds: the mask suffix is
+    // always present, and the stem suffix only adds distinctness.
+    //
+    // Stored (not re-derived): an evict->restore re-creates the same object
+    // under the same name by construction, and a zone unload clears the
+    // maps so the next zone's first member is family-first again -- the
+    // decision is per-promote, and stable for the entry's lifetime.
+    std::string decideDriverName(const std::string& name, const std::string& internalKey) const;
     // FNV-1a 64 over everything a compressed entry uploads (payload +
     // companion, and the shape fields a raw byte run would not cover) --
     // the content identity the ruling dedupes on.
