@@ -94,6 +94,10 @@ LOCKED=1
 eqemu_lease_start_renewer
 printf '%s\n' "$OWNER" >"$OUT/session.started"
 if ! bash "$REPO/scripts/eqemu/up.sh" >>"$OUT/driver.log" 2>&1 || ! eqemu_stack_ready; then STATUS=65; exit "$STATUS"; fi
+# B1047 (#367): keep the roster out of timorous, BEFORE the snapshot so the
+# restore keeps it (scripts/eqemu/roster_zone_seed.sql); a plan's zone row
+# below still seeds any zone per run.
+eqemu_roster_zone_seed >>"$OUT/driver.log" 2>&1 || { STATUS=65; exit "$STATUS"; }
 eqemu_snapshot "$OUT/db-before.tsv" || { STATUS=65; exit "$STATUS"; }
 CHAR_IDS=$(eqemu_sql "SELECT id FROM character_data WHERE name IN ('Testcaster','Testchar') ORDER BY id;" | paste -sd, -)
 [[ -n $CHAR_IDS ]] || { STATUS=65; exit "$STATUS"; }

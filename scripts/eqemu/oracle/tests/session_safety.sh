@@ -36,6 +36,7 @@ eqemu_inventory_snapshot() { printf 'inventory\n' >"$1"; }
 eqemu_world_stop() { :; }
 eqemu_restore_snapshot() { cp "$1" "$2"; }
 eqemu_inventory_restore() { :; }
+eqemu_roster_zone_seed() { printf 'roster_zone_seed\n' >>"$OUT/sql.log"; }
 eqemu_sql() {
     printf '%s\n' "$1" >>"$OUT/sql.log"
     case "$1" in
