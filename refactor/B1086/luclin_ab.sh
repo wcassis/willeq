@@ -28,7 +28,7 @@ trap cleanup EXIT
 if eqemu_lock_show >/dev/null 2>&1; then echo 'lane 5 lease held' >&2; exit 64; fi
 ssh -o BatchMode=yes "$ORACLE" "mkdir -p '$REMOTE' && cp '$CLIENT/eqclient.ini' '$ORIGINAL'"
 RESTORE_ARMED=1
-scp -q "$REPO/refactor/B1086/set_facepick_luclin.py" "$ORACLE:$SCRIPT"
+scp -q "$REPO/scripts/eqemu/oracle/set_facepick_luclin.py" "$ORACLE:$SCRIPT"
 ssh -o BatchMode=yes "$ORACLE" "cmp '$ORIGINAL' '$CLIENT/eqclient.ini'"
 for state in false_before true false_after; do
     if [[ -e $OUT/$state/session.started ]]; then

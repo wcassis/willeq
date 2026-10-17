@@ -501,7 +501,9 @@ creation_pair_open() {
 # gap; threshold 48 (the midpoint) keeps ~26 units of margin on each side.
 # The picker's y rows are constant per control (face 348, hair 368, haircolor
 # 388, eyes 408, beard 428, beardcolor 448, wode 468), measured from the
-# lane-5 modal; the image crop is +0+30-offset (import crops 1280x800+0+30).
+# lane-5 modal; the pixel rows below are in the 1280x800 still. Import keeps
+# a +0+30 virtual page origin, so clear it BEFORE a convert crop. Clearing
+# it afterward samples 30 pixels above the arrow strip.
 # $1 image, $2 race, $3 gender, $4 tsv path. Emits one line: race, gender,
 # image, then label=0/1 for the seven pickers (face first, wode last).
 facepick_probe_tsv() {
@@ -510,7 +512,7 @@ facepick_probe_tsv() {
         printf '%s\t%s\t%s\t' "$race" "$gender" "$image"
         for row in 'face:348' 'hair:368' 'haircolor:388' 'eyes:408' 'beard:428' 'beardcolor:448' 'wode:468'; do
             label=${row%%:*}; yrow=${row##*:}
-            mean=$(convert "$image" -crop "20x12+138+$((yrow-6-30))" +repage -colorspace Gray -format '%[fx:mean*255]' info: 2>/dev/null)
+            mean=$(convert "$image" +repage -crop "20x12+138+$((yrow-6-30))" +repage -colorspace Gray -format '%[fx:mean*255]' info: 2>/dev/null)
             [[ $mean =~ ^[0-9.]+$ ]] || { echo "facepick_probe_tsv: bad mean on $label" >&2; return 65; }
             vis=$(awk -v m="$mean" 'BEGIN { print (m > 48) ? 1 : 0 }')
             printf '%s=%s ' "$label" "$vis"
@@ -531,7 +533,7 @@ facepick_row_count() {
     local row label yrow mean n=0
     for row in 'face:348' 'hair:368' 'haircolor:388' 'eyes:408' 'beard:428' 'beardcolor:448' 'wode:468'; do
         label=${row%%:*}; yrow=${row##*:}
-        mean=$(convert "$1" -crop "20x12+138+$((yrow-6-30))" +repage -colorspace Gray -format '%[fx:mean*255]' info: 2>/dev/null)
+        mean=$(convert "$1" +repage -crop "20x12+138+$((yrow-6-30))" +repage -colorspace Gray -format '%[fx:mean*255]' info: 2>/dev/null)
         [[ $mean =~ ^[0-9.]+$ ]] || continue
         if [[ $(awk -v m="$mean" 'BEGIN { print (m > 48) ? 1 : 0 }') == 1 ]]; then n=$((n+1)); fi
     done
@@ -751,6 +753,11 @@ stop_capture() {
     # under the lane lock; leave no Wine client alive.
     pkill -TERM -x eqgame.exe 2>/dev/null || :
     sleep 2
+    if [[ -f $DIR/eqclient-global-original.ini ]]; then
+        cp "$DIR/eqclient-global-original.ini" "$CLIENT/eqclient.ini" || return 65
+        cmp -s "$DIR/eqclient-global-original.ini" "$CLIENT/eqclient.ini" || return 65
+        touch "$DIR/eqclient-global-restored"
+    fi
     if [[ -s $DIR/character-file.txt && -f $DIR/character-original.ini && ! -e $DIR/character-restored ]]; then
         cp "$(cat "$DIR/character-file.txt")" "$DIR/character-after.ini" || :
         cp "$DIR/character-original.ini" "$(cat "$DIR/character-file.txt")" || return 65
@@ -777,6 +784,12 @@ if ! xdpyinfo -display :99 >/dev/null 2>&1; then
     xdpyinfo -display :99 >/dev/null 2>&1 || exit 65
 fi
 cp "$CLIENT/eqclient.ini" "$DIR/eqclient-before.ini"
+LUCLIN_MODELS=$(sed -n 's/^# use-luclin-models=//p' "$DIR/plan.tsv" | head -1)
+[[ -z $LUCLIN_MODELS || $LUCLIN_MODELS == true ]] || exit 65
+if [[ $LUCLIN_MODELS == true ]]; then
+    cp "$CLIENT/eqclient.ini" "$DIR/eqclient-global-original.ini" || exit 65
+    python3 /home/user/eq-oracle/uigap-scripts/set_facepick_luclin.py || exit 65
+fi
 CHARACTER=$(awk -F'\t' '$1=="login" {print $2; exit}' "$DIR/plan.tsv")
 [[ $CHARACTER =~ ^[A-Za-z]+$ ]] || exit 65
 INI_UNSET=$(sed -n 's/^# ini-unset=//p' "$DIR/plan.tsv" | head -1)

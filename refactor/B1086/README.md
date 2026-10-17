@@ -37,6 +37,32 @@ containers or ready stack. The wrapper restored the original `eqclient.ini`
 after each run and at exit; the final `cmp` returned 0. Its `ab.log` ends
 `lane_restored=1`, `cleanup exit=0`.
 
+**Harness confirmation.** The first post-fix one-pair smoke
+(`take3-harness-smoke-run1155/`) failed before character select:
+`login.log` says `eqgame.exe is gone (try 1)`, no picker still or `rows.tsv`
+was produced, and `oracle_report.py` reported an uncaptured login step.
+Its `driver.log` ends `cleanup exit=65 lane=5 lock=state=FREE`; its global
+INI backup compared equal after cleanup. This remains a failed attempt, not
+a pass. A fresh retry with the same code and
+`luclin_confirm_plan.tsv` (`# use-luclin-models=true`) returned **0** at
+`take3-harness-smoke-retry-run1155/`. Its `rows.tsv` contains one
+Barbarian-male row with all seven features `=1`; the still
+`02_barbarian-male.png` visibly shows them. `eqclient-global-restored`
+exists, the original INI `cmp` returned 0, the database snapshot restored
+byte-identically, `status.sh` found the stack down, and the lease was FREE.
+This proves the repo driver can start from a stock FALSE INI, enable Luclin
+without a manual host step, pass its own row gate, and restore the lane.
+
+The driver fix also corrects a second, independent defect the A/B exposed:
+`identify -verbose` reports the imported 1280x800 still has virtual page
+geometry `1280x1024+0+30`. ImageMagick `convert` respected that origin when
+cropping; the old `-crop ... +repage` classified the actual seven-row TRUE
+still as one row because it sampled above the arrows. Both
+`facepick_row_count()` and `facepick_probe_tsv()` now do `+repage -crop ...`.
+The full26 plan explicitly opts into Luclin; `oracle_session.sh` installs the
+repo's `set_facepick_luclin.py` on the paired oracle host, and
+`oracle_remote.sh` saves and restores `eqclient.ini` for opted-in plans.
+
 **Mechanism and run classification.** `UseLuclin<Race><Gender>=FALSE` selects
 the classic model, whose picker exposes FACE only here; enabling the 26
 in-era per-race keys selects Luclin models and their full feature list. The
@@ -50,6 +76,11 @@ classic FACE-only view. `data/char_create_faces.tsv` already records
 `visible_classic` separately from Luclin visibility. The fix belongs in
 `oracle_session.sh` / `oracle_remote.sh` setup and teardown, plus their
 face-picker row probe; no renderer, Wine, package or host change is needed.
+
+**FOLLOW-UP:** `t_d8b06d8c` (CC-1 full26 lane-5 re-run) is ready to unblock.
+The full26 plan now enables Luclin automatically and the first pair passed
+the same driver in the one-pair confirmation; the full26 run and its
+matrix3 cross-check remain that card's work, not evidence claimed here.
 
 ## Superseded take-2 diagnosis (historical; claims below withdrawn)
 
