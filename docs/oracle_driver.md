@@ -63,6 +63,22 @@ lanes 1-4 (the run passes its lane as the third argument to
   `timeline.tsv` (`face-open attempt=N at=37,251`), so a lane-5 run
   proves whether the FIRST click opened the modal (the acceptance bar: a
   retry is a focus/sequence defect, not an acceptable settle).
+- **The Set Face half-render gate** (B1086, #406): the open shape above fixes
+  the modal NOT OPENING; the half-render (it opens, shows the FACE row and the
+  button strip, and never renders the other six picker rows) is a separate
+  defect that is NOT vendor-specific — it reproduces on lane 1 (Xvfb +
+  llvmpipe) and lane 5 (Xorg + NVIDIA 580) on the same eqgame.exe, wine 9.0,
+  and client data. `facepick_row_count` (the `facepick-rows` row-count >= 2
+  gate) is the discriminator: half-open counts 1 (FACE strip ≈ 74 mean, the
+  six others ≈ 21, 0-255 scale, threshold 48), a rendered list counts 7. The
+  strip crop is page-relative on the `+0+30` still (`20x12+138+(yrow-6-30)`);
+  the `-30` is correct, proven by a synthetic crop-semantics test, not a
+  30px bug. The regression appeared between 2026-10-13 ~09:00 (last full
+  capture) and 2026-10-15 17:04 (first half-open); a one-knob sweep
+  (wine version, GLX vendor, fresh display, zero-state account, libx11,
+  eqemu server, verified close→reopen) exonerates every reachable variable,
+  so the gate is correct and stays — it is failing on a guest-side fact that
+  no one-knob probe on this box reaches. See `refactor/B1086/README.md`.
 
 `install.sh` also writes `~/eq-oracle/uigap-scripts/.oracle-repo`, so the
 installed copy can be invoked from outside the checkout until that checkout
