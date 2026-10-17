@@ -506,6 +506,73 @@ TEST(CharacterSelectButtons, QuitAndTheGreyedControls) {
 }
 
 // ===========================================================================
+// B1082 (GitLab #402): the select screen's keyboard -- MEASURED on the official
+// client (refactor/B1082/README.md)
+// ===========================================================================
+
+TEST(CharacterSelectKeys, UpDownMoveTheSelectionOneRowAndWrapWithoutSending) {
+    Rig r;
+    r.World(HC_OP_SendCharInfo, RecordedCharInfo());
+    r.Tick();
+    r.Clear();
+    ASSERT_EQ(r.screen.selected, 0);
+    r.Do(applyCharSelectKey(r.screen, irr::KEY_DOWN, 0));
+    EXPECT_EQ(r.screen.selected, 1) << "Down -> the next occupied row";
+    EXPECT_TRUE(r.Ops().empty()) << "MEASURED: selecting sends nothing";
+    r.Do(applyCharSelectKey(r.screen, irr::KEY_DOWN, 0));
+    EXPECT_EQ(r.screen.selected, 2);
+    // Wraps within the occupied rows -- never into the empty "Create a New
+    // Character" slots (the model stays present on the official client).
+    r.Do(applyCharSelectKey(r.screen, irr::KEY_DOWN, 0));
+    EXPECT_EQ(r.screen.selected, 0) << "Down on the last occupied row wraps to the first";
+    r.Do(applyCharSelectKey(r.screen, irr::KEY_UP, 0));
+    EXPECT_EQ(r.screen.selected, 2) << "Up on the first occupied row wraps to the last";
+    EXPECT_TRUE(r.Ops().empty()) << "and still nothing on the wire";
+    r.Tick();
+    EXPECT_TRUE(r.channel.active()) << "navigation does not leave the screen";
+}
+
+TEST(CharacterSelectKeys, EnterAndReturnEnterTheWorldForTheSelectedRow) {
+    Rig r;
+    r.World(HC_OP_ExpansionInfo, kExpansion);
+    r.World(HC_OP_SendCharInfo, RecordedCharInfo());
+    r.Tick();
+    r.Clear();
+    ASSERT_EQ(r.screen.selected, 0);
+    r.Do(applyCharSelectKey(r.screen, irr::KEY_DOWN, 0));
+    r.Do(applyCharSelectKey(r.screen, irr::KEY_DOWN, 0));   // Testmelee (row 2)
+    ASSERT_EQ(r.screen.selected, 2);
+    r.Do(applyCharSelectKey(r.screen, irr::KEY_RETURN, 0));   // Enter/Return
+    ASSERT_EQ(r.Ops(), (std::vector<uint16_t>{HC_OP_EnterWorld}));
+    EXPECT_EQ(NameAt(r.Last(HC_OP_EnterWorld)), "Testmelee") << "the arrow-chosen row, not the first";
+    EXPECT_FALSE(r.channel.active());
+}
+
+TEST(CharacterSelectKeys, TheDeletePromptIgnoresEverythingButEscape) {
+    Rig r;
+    r.World(HC_OP_SendCharInfo, RecordedCharInfo());
+    r.Tick();
+    r.Clear();
+    r.Click(L::charButtonRect(Rig::kW, Rig::kH, 2));
+    r.Click(L::deleteRect(Rig::kW, Rig::kH));
+    ASSERT_TRUE(r.screen.confirm.isOpen);
+    // MEASURED: the prompt does not answer Yes/No on Enter and does not
+    // navigate or type while up.
+    applyCharSelectKey(r.screen, irr::KEY_RETURN, 0);
+    EXPECT_TRUE(r.screen.confirm.isOpen) << "Enter does not answer the prompt";
+    applyCharSelectKey(r.screen, irr::KEY_DOWN, 0);
+    applyCharSelectKey(r.screen, irr::KEY_KEY_A, static_cast<wchar_t>('a'));
+    EXPECT_TRUE(r.screen.confirm.isOpen);
+    EXPECT_EQ(r.screen.selected, 2) << "arrows are inert under the prompt";
+    r.Tick();
+    EXPECT_TRUE(r.Ops().empty());
+    applyCharSelectKey(r.screen, irr::KEY_ESCAPE, 0);   // the measured No
+    EXPECT_FALSE(r.screen.confirm.isOpen);
+    r.Tick();
+    EXPECT_TRUE(r.Ops().empty());
+}
+
+// ===========================================================================
 // Create: B888's screen, hosted
 // ===========================================================================
 
