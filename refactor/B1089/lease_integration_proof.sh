@@ -58,6 +58,15 @@ trap 'echo 1 > "$OUT/exit"' ERR
 say "PROOF START lane=$LANE out=$OUT ttl=${TTL}s (pid $$)"
 say "stack pre-state: $(stack_running) running container(s)"
 stack_down
+# Reclaim this proof's OWN leftovers from a previous crashed run (a run
+# reaching this line has no earlier instance of itself alive: they share
+# these exact card/run ids). Releasing them is reap's job -- the proof's
+# card ids are on the dead list by definition. NO-OP when the lane is free.
+RECLAIM="$(printf '%s\n' "$IDLE" "$ACTIVE" "$REAPRUN" "$LIVE")"
+echo "${RECLAIM}" > "$OUT/reclaim.txt"
+bash "$L" reap --lane "$LANE" --dead-runs "$OUT/reclaim.txt" > "$OUT/reclaim.log" 2>&1 \
+    && say "reclaimed any leftover proof leases: $(grep -c 'released\|killed' "$OUT/reclaim.log" 2>/dev/null || echo 0) action(s)" \
+    || say "WARN: reclaim rc=$? (a LIVE holder on the lane will be refused later by its own rules)"
 leases_snap "0-before"
 
 # ---------------------------------------------------------------- (i) idle

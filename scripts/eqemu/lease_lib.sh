@@ -151,8 +151,27 @@ eqemu_lease_renew() {
 }
 
 # eqemu_lease_release -- owner-checked (this closes B922 #241 for the
-# eqemu half). 0 = released (or already free); 63 = not ours.
+# eqemu half). 0 = released (or already free); 63 = not ours. VERIFIED:
+# after a successful release the lane is re-shown; if the record still
+# names this exact identity, the release silently no-op'd (an ssh flake)
+# and this returns 65 instead of a false 0 -- a release must never claim
+# "free" while the lane is still held by us.
 eqemu_lease_release() {
+    local rc out card run
+    eqemu_lease_release_impl
+    rc=$?
+    [ ${rc} -eq 0 ] || return ${rc}
+    out="$(eqemu_lease_show 2>/dev/null)"; rc=$?
+    card="$(printf '%s\n' "${out}" | sed -n 's/^card=//p' | head -n1)"
+    run="$(printf '%s\n' "${out}" | sed -n 's/^run=//p' | head -n1)"
+    if [ -n "${card}" ] && [ "${card}" = "${LANE_LEASE_CARD:-}" ] && [ "${run}" = "${LANE_LEASE_RUN:-}" ]; then
+        echo "lease ${LANE_LEASE_CARD}: WARNING: release returned 0 but the record is still present (card=${card} run=${run}) -- the lane is NOT free; retry the release" >&2
+        return 65
+    fi
+    return 0
+}
+
+eqemu_lease_release_impl() {
     _lease_client_cmd "${EQEMU_LEASE_STORE}" release
 }
 
@@ -341,11 +360,24 @@ xu4_lease_renew() {  # xu4_lease_renew <purpose> -- 63 when lost
     _lease_client_cmd "${XU4_LEASE_STORE}" renew "${1:-renew}"
 }
 xu4_lease_release() {
-    local rc
-    _lease_client_cmd "${XU4_LEASE_STORE}" release
+    local rc out card run
+    xu4_lease_release_impl
     rc=$?
-    [ ${rc} -eq 0 ] && export LANE_LEASE_HELD_XU4=0
-    return ${rc}
+    [ ${rc} -eq 0 ] || return ${rc}
+    # Same verification as the eqemu side: a release that returned 0 must
+    # have freed the lane.
+    out="$(xu4_lease_show 2>/dev/null)"; rc=$?
+    card="$(printf '%s\n' "${out}" | sed -n 's/^card=//p' | head -n1)"
+    run="$(printf '%s\n' "${out}" | sed -n 's/^run=//p' | head -n1)"
+    if [ -n "${card}" ] && [ "${card}" = "${LANE_LEASE_CARD:-}" ] && [ "${run}" = "${LANE_LEASE_RUN:-}" ]; then
+        echo "lease xu4: WARNING: release returned 0 but the record is still present (card=${card} run=${run}) -- the lane is NOT free; retry the release" >&2
+        return 65
+    fi
+    export LANE_LEASE_HELD_XU4=0
+    return 0
+}
+xu4_lease_release_impl() {
+    _lease_client_cmd "${XU4_LEASE_STORE}" release
 }
 xu4_lease_show() {
     _lease_client_cmd "${XU4_LEASE_STORE}" show
