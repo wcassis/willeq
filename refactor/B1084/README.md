@@ -65,34 +65,54 @@ see below).
   parent for material 10 (1/4 fail — exactly the bug), GREEN at the head** —
   `red_run.tsv`.
 
-## Oracle leg (lanes)
+## Oracle leg (lane 5) — RUN, 2026-10-17
 
-The official-client session (material-10 robe + a 11..16 robe, in-zone and at
-character select, ledger + stills) runs on a lane through
-`scripts/eqemu/oracle/oracle_session.sh`. At the time of writing it is NOT
-YET RUN, and the reason is concrete:
+One official-client session through `scripts/eqemu/oracle/oracle_session.sh`
+(lane 5, ThinkPad rig) covered BOTH halves of the range in a single
+seated character — Testcaster (id 67, High Elf female Wizard, gm 1):
 
-- **Lane 1's oracle rig is held by a LIVE b1080 session** — `b1080_oracle`
-  since 2026-10-16T10:48, and its `client_audio.wav` is still being written
-  (a running capture on oracle VM .91), so the lock is live, not stale.
-  Must wait for it to release.
-- **Lanes 2/3/4's eqemu-server container will not stay up** (host .98/.97):
-  `up.sh` reports the loginserver/world/zone "adopting" 25-26 already-running
-  procs, yet the `akk-stack-eqemu-server-1` container is absent a moment later
-  and `eqemu_stack_ready` is false. This is a lane-infra problem on the
-  shared hosts, not a code defect; it needs the lane operators.
+- **Material 10 at character select.** Chest slot 22 (server numbering)
+  was seeded by the host with item 11641 (Crimson Robe of Alendine,
+  material 10) before login, so the character is auto-selected wearing the
+  mat-10 robe. `01_char_select.png` is the still: the select preview shows
+  the character **clothed in a red robe** — the official client draws the
+  material-10 robe body + texture (the exact case fable drew naked). The
+  in-zone part of the session was first-person camera throughout, so no
+  in-zone mat-10 third-person still exists in this capture; the dense video
+  sample (29 frames, t=80..220s) confirms: red robe in every third-person
+  frame (character select), first-person in every in-zone frame, no naked
+  model anywhere.
+- **Material 11 in-zone, third-person, via the GM path.** `/say #summonitem
+  1320 0` (Flowing Black Robe, material 11) + `/putdown 17` (chest, Titanium
+  numbering); `10_mat11_equipped.png` shows the character in-zone **clothed
+  in a black robe** — the same dafch11/clk05 body mesh, a visibly different
+  texture from the mat-10 red.
 
-The range is independently settled by the archive + item-table census above,
-which is what the predicate and its tests are pinned to; the oracle stills are
-the remaining live confirmation.
+Ledger: `ledger_check.txt` = **0 broken references**; `steps.tsv` carries
+one row per step with epoch bounds and per-step opcodes/INI-diff files;
+raw `capture.pcap` + `video.mp4` in the same directory. Session evidence:
+`/home/user/kb-evidence/kb-b1084-robe-material-10/oracle_mat10/`.
 
-## Not verified / left open
+The `isNPCOnlyTexture` claim: the zone has no NPC carrying robe texture 10
+that this session could still, so that half rests on the archive census
+(`dafch10xx` is the robe body, `archive_census.tsv`) rather than a live NPC
+still — left open, not a gap in the 10..16 range itself.
 
-- The **oracle stills** (acceptance A/D) and the **fable-side still of the
-  same seeded character** (D): pending a free, working lane (see above).
-- The CI **build/gate leg**: pipeline 1422's `hygiene` and
-  `zone-budget-census` failed only on **runner placement** — they landed on a
-  `thinkpad` runner that the job's own `x86-build` guard refused
-  (`refusing to build on thinkpad`); fable pipelines 1408/1406 pass on the
-  real runners, and local hygiene + both new tests are green at the head.
-  A fresh pipeline (25904c69) re-places the jobs.
+## Fable still (lane 5) — RUN, 2026-10-17
+
+The same seeded character through the FIXED client, headless EGL/X11 on
+the ThinkPad's lane-5 stack (willeq build of this branch): Testcaster
+zoned in, `#summonitem 11641` + `/putdown 17` equipped the mat-10 robe
+(chat log: "Put Crimson Robe of Alendine in Chest [1]"), chase camera
+still. **The robe mesh + crimson texture draw for material 10** — no
+naked body, no missing texture
+(`/home/user/kb-evidence/kb-b1084-robe-material-10/fable_still/
+b1084_fable_mat10_chase.png`). Proposed visual_gate golden (BLESS, not
+committed — Will's rule: new goldens are PROPOSED).
+
+## CI
+
+Pipeline **1491** on head `62468359` (MR !212): hygiene, build-headless,
+build-test, gate, zone-budget-census all **success** (thinkpad runner per
+B1087/!211). Pipeline 1477 (the pre-B1090-fix head) failed build-test only
+on the `WILLEQ_DATA_DIR` runtime path that commit `62468359` corrected.
