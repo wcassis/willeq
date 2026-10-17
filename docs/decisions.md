@@ -2202,3 +2202,4 @@ moved past it. RULED:
    `--log-level=LEVEL` and the space form `--log-level LEVEL` are accepted; an
    unparseable level is a loud startup `ERROR`, never a silent no-op.
    `refactor/B1079/README.md` and `docs/standards/debug_logging_standards.md`.
+
