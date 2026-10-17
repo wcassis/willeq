@@ -10,6 +10,10 @@ cat >"$FIXTURE/scripts/eqemu/env.sh" <<'EOF'
 eqemu_lock_take() { [[ $PROBE_CASE != held ]]; }
 eqemu_lock_show() { if [[ $PROBE_CASE == held ]]; then echo 'other-owner held'; elif [[ ! -e $OUT/released ]]; then echo "$OWNER held"; else return 1; fi; }
 eqemu_lock_release() { touch "$OUT/released"; }
+# B1089: the driver now starts/stops the lease renewer around the capture;
+# the offline fixture has no lease, so these are no-ops.
+eqemu_lease_start_renewer() { :; }
+eqemu_lease_stop_renewer() { :; }
 eqemu_stack_ready() { [[ ! -e $OUT/down ]]; }
 EOF
 cat >"$FIXTURE/scripts/eqemu/restore_lib.sh" <<'EOF'
@@ -65,7 +69,7 @@ for lane in 0 6 5; do
     set -e
     [[ $rc == 64 ]] || { echo "lane $lane returned $rc, expected 64"; exit 1; }
     if [[ $lane == 5 ]]; then
-        grep -q 'lane lock held' "$FIXTURE/lane$lane.log" || { echo 'lane 5 refused before the lock'; exit 1; }
+        grep -q 'lane lease held' "$FIXTURE/lane$lane.log" || { echo 'lane 5 refused before the lock'; exit 1; }
     else
         grep -q '^usage: ' "$FIXTURE/lane$lane.log" || { echo "lane $lane not refused at usage"; exit 1; }
         [[ ! -e $OUT ]] || { echo "lane $lane created its output dir"; exit 1; }
