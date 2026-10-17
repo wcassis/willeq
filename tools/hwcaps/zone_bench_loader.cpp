@@ -35,6 +35,7 @@
 #include "client/graphics/load_mem_audit.h"
 #include "client/core/memory_ledger.h"
 #include "client/core/gl_driver_census.h"  // B1016: the gate's [gldriver] net
+#include "common/willeq_paths.h"  // WILLEQ_EQE1_INDEX_REAL_PATH resolves at run time (B1090)
 
 #ifdef EQT_HAS_GLES2
 extern bool gles2CreateStaticHWBuffer(void* driver, const void* meshBuffer);

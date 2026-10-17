@@ -17,6 +17,10 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <string>
+#include <vector>
+
+#include <stdlib.h>  // mkdtemp
 
 #include "client/graphics/frame/frame_component.h"
 #include "client/graphics/irrlicht_renderer.h"
@@ -225,7 +229,15 @@ protected:
     FrameComponent& F() { return renderer.Frame(); }
 
     void SetUp() override {
-        dir = fs::path(::testing::TempDir()) / "b834_client";
+        // B1090: a UNIQUE dir per process. The fixed /tmp/b834_client was
+        // shared by ctest's parallel test processes and by concurrent CI jobs
+        // on one runner, so one case's ofstream truncated TOTD.txt while
+        // another read it (MR !218 pipeline 1459: the TOTD never popped).
+        std::string tmpl = (fs::path(::testing::TempDir()) / "b834_client_XXXXXX").string();
+        std::vector<char> name(tmpl.begin(), tmpl.end());
+        name.push_back('\0');
+        ASSERT_NE(::mkdtemp(name.data()), nullptr);
+        dir = name.data();
         fs::create_directories(dir / "help" / "tips");
         std::ofstream(dir / "help" / "tips" / "ctxinventory.html")
             << "<TITLE>Inventory Tip window</TITLE><BODY>Inventory Tips<br>- equip</BODY>";
@@ -235,6 +247,10 @@ protected:
         renderer.Context().loadingScreenVisible = false;
         F().uiPrefsLoaded_ = true;
         F().uiLayout_.computeLayout(1024, 768);
+    }
+    void TearDown() override {
+        std::error_code ec;
+        fs::remove_all(dir, ec);
     }
 };
 

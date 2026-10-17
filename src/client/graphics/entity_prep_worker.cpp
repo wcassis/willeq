@@ -268,7 +268,7 @@ void EntityPrepWorker::prepVariantTextures(const PrepRequest& req, PrepResult& r
                    [](unsigned char c) { return std::tolower(c); });
 
     // For body texture variants, EQ generates texture names like:
-    // clk<NN> for robes (texture >= 10), or <race>ch<NN> for chest armor, etc.
+    // clk<NN> for robes (isRobeTexture, materials 10..16), or <race>ch<NN> for chest armor, etc.
     // These textures may already be in the race model's texture map or in armor archives.
     // We decode DDS or BMP textures found that match variant patterns.
 
@@ -322,10 +322,10 @@ void EntityPrepWorker::prepVariantTextures(const PrepRequest& req, PrepResult& r
     //        hn (hands), lg (legs), ft (feet)
     // Also: clk<NN> for cloaks/robes
     std::vector<std::string> variantPrefixes;
-    if (appearance.texture >= 10) {
-        // Robe textures use "clk" prefix
+    if (isRobeTexture(appearance.texture)) {
+        // Robe materials 10..16 (isRobeTexture) use the "clk" prefix
         char buf[32];
-        snprintf(buf, sizeof(buf), "clk%02d", appearance.texture - 10);
+        snprintf(buf, sizeof(buf), "clk%02d", getRobeClkTextureNumber(appearance.texture));
         variantPrefixes.push_back(buf);
     } else if (appearance.texture > 0) {
         // Armor textures use race-specific prefixes

@@ -69,7 +69,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     # compile definitions: PUBLIC on willeq_core now, flows in through the
     # link; the WILLEQ_DB_REAL_PATH half is unrelated and stays.)
     TARGET_COMPILE_DEFINITIONS(test_texture_eviction_character_restore PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_LINK_LIBRARIES(test_texture_eviction_character_restore GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_texture_eviction_character_restore DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -149,7 +149,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_software_cursor_eviction PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_software_cursor_eviction GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_software_cursor_eviction PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_software_cursor_eviction DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -164,7 +164,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_environment_texture_eviction PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_environment_texture_eviction GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_environment_texture_eviction PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_environment_texture_eviction DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -179,7 +179,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_environment_manager_construction PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_environment_manager_construction GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_environment_manager_construction PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_environment_manager_construction DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -194,7 +194,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_door_texture_eviction PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_door_texture_eviction GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_door_texture_eviction PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_door_texture_eviction DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -210,7 +210,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_spell_visual_vocabulary PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_COMPILE_DEFINITIONS(test_spell_visual_vocabulary PRIVATE
-        WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_LINK_LIBRARIES(test_spell_visual_vocabulary GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_spell_visual_vocabulary DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -336,7 +336,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_target_outline_pass PRIVATE
         ${CMAKE_SOURCE_DIR}/include ${IRRLICHT_INCLUDE_DIR})
     TARGET_COMPILE_DEFINITIONS(test_target_outline_pass PRIVATE
-        TARGET_OUTLINE_OVERLAY_SOURCE="${CMAKE_SOURCE_DIR}/src/client/graphics/overlays/overlays_component.cpp")
+        "TARGET_OUTLINE_OVERLAY_SOURCE=WILLEQ_REPO_PATH(\"src/client/graphics/overlays/overlays_component.cpp\")")
     TARGET_LINK_LIBRARIES(test_target_outline_pass GTest::gtest_main)
     GTEST_DISCOVER_TESTS(test_target_outline_pass DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -449,6 +449,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_frame_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1085 (GitLab #405): the three chat key latches (enter/escape/slash) latch
+# ONLY while the chat is unfocused and every setChatInputFocused()
+# transition resets them. The frame-input half runs the production policy
+# bodies (processChatInput's enter/slash checks, applyTextEntryKey(),
+# handleEscapeKey()) through the same bare, never-Init()'d IrrlichtRenderer
+# idiom as test_frame_component above.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_b1085_chat_latches
+        test_b1085_chat_latches.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_b1085_chat_latches PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_b1085_chat_latches GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_b1085_chat_latches DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T329 (B041): the NavmeshChanged bridge arm forwarding to
 # OverlaysComponent::setNavmesh. Same bare, never-Init()'d IrrlichtRenderer
 # idiom as test_overlays_component above, plus a real eqt::bridge::
@@ -470,7 +485,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     # spell DB and reads src/client/core/everquest.cpp, so it owns its main()
     # (GTest::gtest, not gtest_main) and needs the DB path.
     TARGET_COMPILE_DEFINITIONS(test_vision_buff_fade_wire PRIVATE
-        WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_LINK_LIBRARIES(test_vision_buff_fade_wire GTest::gtest willeq_core)
     GTEST_DISCOVER_TESTS(test_vision_buff_fade_wire DISCOVERY_TIMEOUT 120)
 
@@ -650,7 +665,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_read_and_reset_ownership PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_read_and_reset_ownership GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_read_and_reset_ownership PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_read_and_reset_ownership DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -781,7 +796,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     # T396 (B211): the composition-order cases read the renderer TU to prove
     # updateTimeOfDay() still calls composeSceneAmbient().
     TARGET_COMPILE_DEFINITIONS(test_vision_ambient PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_vision_ambient DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -809,7 +824,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_weather_ambient_modifier PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_weather_ambient_modifier GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_weather_ambient_modifier PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_weather_ambient_modifier DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -824,7 +839,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_weather_darkening_oracle PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_weather_darkening_oracle GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_weather_darkening_oracle PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_weather_darkening_oracle DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -839,7 +854,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_scene_ambient_recompute PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_scene_ambient_recompute GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_scene_ambient_recompute PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_scene_ambient_recompute DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -855,6 +870,6 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_entity_light_node_lifetime PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_entity_light_node_lifetime GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_entity_light_node_lifetime PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_entity_light_node_lifetime DISCOVERY_TIMEOUT 120)
 ENDIF()

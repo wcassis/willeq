@@ -72,7 +72,7 @@ ADD_EXECUTABLE(test_daybreak_crc_capture
     ${CMAKE_SOURCE_DIR}/src/common/net/crc32.cpp
 )
 TARGET_COMPILE_DEFINITIONS(test_daybreak_crc_capture PRIVATE
-    T321_CRC_CAPTURE="${CMAKE_SOURCE_DIR}/tests/data/t321_crc_capture.txt")
+    "T321_CRC_CAPTURE=WILLEQ_REPO_PATH(\"tests/data/t321_crc_capture.txt\")")
 TARGET_LINK_LIBRARIES(test_daybreak_crc_capture GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
 GTEST_DISCOVER_TESTS(test_daybreak_crc_capture DISCOVERY_TIMEOUT 120)
 
