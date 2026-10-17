@@ -591,15 +591,15 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
             // forward.
             if (leftClicked && inBook(EQT::Graphics::SpellBookLayout::pageDownRect()) &&
                 spellbook.currentPage > 0) {
-                spellbook.currentPage -= SpellBookPopupState::SPELLS_PER_PAGE;
+                spellbook.currentPage -= SpellbookPopupState::SPELLS_PER_PAGE;
                 if (spellbook.currentPage < 0) spellbook.currentPage = 0;
                 consumed = true;
                 onPiece = true;
             }
             if (leftClicked && inBook(EQT::Graphics::SpellBookLayout::pageUpRect()) &&
                 spellbook.currentPage < (spellbook.pageCount() - 1) *
-                                            SpellBookPopupState::SPELLS_PER_PAGE) {
-                spellbook.currentPage += SpellBookPopupState::SPELLS_PER_PAGE;
+                                            SpellbookPopupState::SPELLS_PER_PAGE) {
+                spellbook.currentPage += SpellbookPopupState::SPELLS_PER_PAGE;
                 consumed = true;
                 onPiece = true;
             }
