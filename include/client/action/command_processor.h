@@ -363,6 +363,9 @@ private:
     ActionResult cmdTaunt(const std::string& args);
     // T156: /useskill — the ONLY scriptable route to SkillManager::activateSkill.
     ActionResult cmdUseSkill(const std::string& args);
+    // B1025-H3 (GitLab #345): /hotbutton [Name] <Color> [Text] -- a social
+    // hot button on the cursor (eqstr 13278-13283).
+    ActionResult cmdHotbutton(const std::string& args);
     ActionResult cmdAutofire(const std::string& args);
     ActionResult cmdRange(const std::string& args);
     ActionResult cmdAssist(const std::string& args);

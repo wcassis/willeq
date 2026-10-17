@@ -97,6 +97,19 @@ struct HotbarSlotAssignedData {
     std::string emoteText;              // T156: for Emote slots (was dropped here)
 };
 
+// B1025-H3 (GitLab #345): a hot button the cursor carries while a hotbar
+// assignment is in flight. Published by the game thread for /hotbutton (eqstr
+// 13278-13283, the one hot button it can create -- a social button,
+// HotbarSlotType::Emote with the macro as text). The render thread's
+// hold-to-pickup gesture writes CursorAttachmentState directly and never
+// publishes this.
+struct HotbarAssignPendingData {
+    HotbarSlotType type = HotbarSlotType::Empty;
+    uint32_t id = 0;
+    std::string text;
+    uint32_t iconId = 0;
+};
+
 struct SkillActivationFeedbackData {
     uint8_t skillId;
     bool success;

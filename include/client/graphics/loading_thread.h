@@ -128,10 +128,15 @@ public:
     // Render one frame of the loading screen.
     // Public so the render thread can draw the loading screen during the
     // network handshake phase (0-50%) before the loading thread starts.
+    // B1088 (#408): one body for both screens -- the shared layout in
+    // loading_frame_layout.h (OverlaysComponent::drawLoadingScreen goes
+    // through the same function), with the zone-name line centred between
+    // the title and the bar.
     static void drawLoadingFrame(irr::video::IVideoDriver* driver,
                                  irr::gui::IGUIFont* font,
                                  float progress,
                                  const std::wstring& title,
+                                 const std::wstring& entryText,
                                  const std::wstring& stageText);
 
 private:

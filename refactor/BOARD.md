@@ -8935,17 +8935,23 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
 
 - **B440** (B) `include/client/graphics/ui/cursor_attachment_layout.h`, → issue #150
   `/mnt/projects/EverQuestP1999/uifiles/default/EQUI_CursorAttachment.xml` --
-  **two of the CursorAttachment screen's three pieces have no fable producer.**
+  **one of the CursorAttachment screen's three pieces has no fable producer**
+  (B1025-H3 struck CA_SpellGem's half, below).
   The oracle's screen is `CA_Anim`, `CA_Anim2` and `CA_SpellGem`, all three at
   the same `<Location>(5,5)</Location>`, so at most one is ever visible; the
   official client shows `CA_Anim` for an item and `CA_SpellGem` for a spell
   being scribed off a scroll. fable's cursor holds an ITEM and nothing else --
   `InventoryManager`'s `cursorQueue_` is a queue of `ItemInstance` -- so T436
   drew `CA_Anim` and left the other two undrawn rather than inventing a state
-  to fill them. Closes when there is a cursor-held SPELL to draw (the scribe
-  path already exists: `ScribeSpellIntent` carries a `sourceSlot`), or when it
-  is established that Titanium never puts one there and the two elements are
-  recorded as deliberately unused. Found by T436.
+  to fill them. **B1025-H3 (2026-10-15, #345) struck the CA_SpellGem half**:
+  the hotbar assignment gesture's hot button (a held gem, ability row,
+  inventory item, or the `/hotbutton` command's social button) draws
+  CA_SpellGem's own box at the mouse (hotbar_assignment.cpp's
+  `renderHotbarCursorAttachment`, an item button reusing T430's dragitem
+  decal) -- its producer, and B440's closure condition ("a cursor-held
+  spell/button to draw") is met. CA_Anim2 (the second item piece) is still
+  undrawn: the item button is one decal, as the oracle's frames (H-O,
+  /home/user/kb-evidence/kb-h0-hotbar-oracle/) show. Found by T436.
 
 - ~~**B441** (C) `src/client/graphics/ui/bank_panel.cpp` (`BW_ChangeButton`), → issue #26
   `include/client/graphics/ui/bank_layout.h` -- **the bank window's Change

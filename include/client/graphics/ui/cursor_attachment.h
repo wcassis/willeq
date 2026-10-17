@@ -26,10 +26,12 @@
 #include <string>
 
 #include "client/graphics/ui/ui_layout.h"
+#include "client/hotbar/hotbar_slot_type.h"
 
 namespace eqt { namespace state {
 struct InventorySlotChangedData;
 struct CursorCoinChangedData;
+struct HotbarAssignPendingData;
 } }
 
 namespace EQT {
@@ -55,6 +57,32 @@ struct CursorAttachmentState {
     uint32_t coinAmount = 0;
 
     bool holdsCoin() const { return coinAmount > 0; }
+
+    // B1025-H3 (#345): the HOT BUTTON the cursor carries while a hotbar
+    // assignment is in flight -- a held spell gem, a combat-ability row, an
+    // inventory item or the /hotbutton command's social button. It is LOCAL
+    // render state: the render thread's hold timer sets it, the game
+    // thread's HotbarAssignPending event (the /hotbutton command) sets it,
+    // and it crosses back to the game thread only as HotbarAssignIntent when
+    // it is placed. It is cleared locally (placement, world drop, being
+    // replaced by an item pick-up) -- the game thread's model never knows it
+    // exists, so there is no "cleared" event.
+    bool hasHotbutton = false;
+    eqt::HotButtonCarried hotbutton;
+
+    void clearHotbutton() {
+        hasHotbutton = false;
+        hotbutton = eqt::HotButtonCarried{};
+    }
+
+    // B1025-H3 (#345): the hold timer's frame-local state, read and written
+    // by tickHotbarHold (hotbar_assignment.h). `holdElapsedMs` accumulates
+    // the pointer's time on its source; the holdSource* fields are what that
+    // source is, so a move off it (or onto a different source) resets the
+    // accumulator rather than crediting one source's time to another.
+    float holdElapsedMs = 0.0f;
+    uint8_t holdSourceKind = 0;
+    uint32_t holdSourceId = 0;
 
     // Where the pointer was on the frame this was last drawn. Written once
     // per frame by FrameComponent::renderStaticUI() from the event receiver,
