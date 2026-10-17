@@ -82,6 +82,8 @@ const Entry kScenarios[] = {
     {"hotbar_lifecycle", &MakeHotbarLifecycleScenario},
     // B1025-H5 (#345): the lifecycle's peer -- acceptance C (isolation).
     {"hotbar_isolation_assign", &MakeHotbarIsolationAssignScenario},
+    // B1088 (#408): the loading screen's "Entering <zone long name>..." line.
+    {"loading_name", &MakeLoadingNameScenario},
 };
 
 }  // namespace

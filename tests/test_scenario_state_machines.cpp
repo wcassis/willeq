@@ -154,9 +154,11 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     // (#392) adds zone_connect_timeout (tests/test_zone_connect_timeout.cpp).
     // B1025-H5 (#345) adds its hotbar pair: hotbar_lifecycle + the
     // hotbar_isolation_assign peer.
-    EXPECT_EQ(names.size(), 43u);
+    // B1088 (#408) adds loading_name (the loading-screen name lane).
+    EXPECT_EQ(names.size(), 44u);
     EXPECT_TRUE(IsScenarioName("hotbar_lifecycle"));
     EXPECT_TRUE(IsScenarioName("hotbar_isolation_assign"));
+    EXPECT_TRUE(IsScenarioName("loading_name"));
     EXPECT_TRUE(IsScenarioName("zone_connect_timeout"));
     EXPECT_TRUE(IsScenarioName("camp_to_charselect"));
     EXPECT_TRUE(IsScenarioName("camp_desktop"));
@@ -186,6 +188,8 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     EXPECT_TRUE(IsScenarioName("cast_buff_notake"));
     EXPECT_TRUE(IsScenarioName("cast_interrupt_observe"));
     EXPECT_TRUE(IsScenarioName("cast_fizzle"));
+    // B1088 (#408): the loading-screen name lane.
+    EXPECT_TRUE(IsScenarioName("loading_name"));
     // B760: the repeated cast-tail lane.
     EXPECT_TRUE(IsScenarioName("cast_tail_repeat_quiet"));
     EXPECT_TRUE(IsScenarioName("cast_tail_repeat_traffic"));

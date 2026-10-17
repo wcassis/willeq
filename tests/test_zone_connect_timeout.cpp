@@ -410,6 +410,7 @@ TEST(ZoneConnectTimeout, SilentZoneEscalatesOnTheProfileBudgetWithoutAConnectRet
 struct FakeWorld : eqt::scenario::IScenarioWorld {
     bool zonedIn = true, atSelect = false, leverOk = true;
     long long gen = 1, opens = 1;
+    long long silences = 0;  // B1080: the teardown audio-silence count
     int leverAttempts = 0, leverPort = 0, enters = 0;
     bool silentLever = false, silentLeverOk = true;
     std::vector<std::string> sent;
@@ -425,6 +426,7 @@ struct FakeWorld : eqt::scenario::IScenarioWorld {
     long long CharacterListGeneration() const override { return gen; }
     bool EnterWorldAs(const std::string& n) override { ++enters; atSelect = false; return n == "Testbuddy"; }
     long long ZoneConnectOpens() const override { return opens; }
+    long long ZoneAudioSilenceCount() const override { return silences; }
     bool SimulateUnreachableZoneConnects(int a, int p) override { leverAttempts = a; leverPort = p; return leverOk; }
     bool SimulateZoneSilentAfterHandshake() override { silentLever = true; return silentLeverOk; }
     void SendCommand(const std::string& l) override { sent.push_back(l); }
@@ -465,6 +467,9 @@ struct ScenarioRig {
             ASSERT_EQ(w.leverPort, 1);
         }
         ASSERT_EQ(w.enters, 1);
+        // B1080: in the real world the give-up's teardown (AbandonZoneConnect
+        // -> CleanupZone) runs the audio silence exactly once.
+        ++w.silences;
     }
 };
 
@@ -510,6 +515,33 @@ TEST(ZoneConnectTimeoutScenario, FailsWhenTheLeverDidNotTake) {
     r.ToBound();
     r.w.zonedIn = true;
     EXPECT_EQ(r.At(40.0), StepResult::Fail);
+}
+
+// B1080 (#400): the give-up must have run the zone audio silence. No
+// increment since the baseline -> the leaving zone's audio kept playing:
+// FAIL, with the reason naming the audio.
+TEST(ZoneConnectTimeoutScenario, FailsWhenTheGiveUpDidNotSilenceTheZoneAudio) {
+    ScenarioRig r;
+    r.ToBound();
+    r.w.opens = 3;
+    r.w.atSelect = true;
+    r.w.gen = 3;
+    r.w.silences = 0;  // no teardown silence ran
+    EXPECT_EQ(r.At(93.0), StepResult::Fail);
+    EXPECT_NE(r.s->Reason().find("zone audio silence"), std::string::npos);
+}
+
+// B1080 (#400): a world that cannot read the count cannot verify the fix
+// (the default IScenarioWorld body returns -1): FAIL, not a silent pass.
+TEST(ZoneConnectTimeoutScenario, FailsWhenTheSilenceCountIsUnreadable) {
+    ScenarioRig r;
+    r.ToBound();
+    r.w.opens = 3;
+    r.w.atSelect = true;
+    r.w.gen = 3;
+    r.w.silences = -1;  // "not readable"
+    EXPECT_EQ(r.At(93.0), StepResult::Fail);
+    EXPECT_NE(r.s->Reason().find("unreadable"), std::string::npos);
 }
 
 // ---------------------------------------------------------------------------

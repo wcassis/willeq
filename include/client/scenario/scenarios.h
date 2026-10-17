@@ -173,5 +173,11 @@ std::unique_ptr<IScenario> MakeHotbarLifecycleScenario(const ScenarioOptions& op
 // peer's file (and vice versa). The verdict lives in the post-check, not here.
 std::unique_ptr<IScenario> MakeHotbarIsolationAssignScenario(const ScenarioOptions& options);
 
+// B1088 (#408): the loading screen's "Entering <zone long name>..." line,
+// live. Zone in (the era table's first line), then a GM zone request to
+// expectZoneChangeId (the second refresh); the post-check asserts both INFO
+// lines. See scenario_loading_name.cpp.
+std::unique_ptr<IScenario> MakeLoadingNameScenario(const ScenarioOptions& options);
+
 }  // namespace scenario
 }  // namespace eqt

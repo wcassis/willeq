@@ -99,6 +99,7 @@ public:
     bool EnterWorldAs(const std::string& name) override;
     long long ZoneConnectOpens() const override;                          // B1072
     bool SimulateUnreachableZoneConnects(int attempts, int port) override;  // B1072
+    long long ZoneAudioSilenceCount() const override;                     // B1080
     bool SimulateZoneSilentAfterHandshake() override;                        // B1079
 
     // B1025-H5 (#345): hotbar controls, through the user path
