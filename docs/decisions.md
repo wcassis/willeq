@@ -2184,3 +2184,14 @@ before their reconnect, so they still bring the screen up, exactly as before
 the `zone_change_no_flash` scenario: one screen-up for the whole
 login→zone-in→`/gmzone`→zone-change run, measured in
 `CharacterSelectService::Activations()`).
+
+`/gmzone` needs the same wire fix to be testable at all: `OP_GMZoneRequest`
+(0x1306) is only the QUERY half — eqemu's reply carries the target zone's
+safe coords and a success flag, and the CHANGE is the client's second
+one-word packet, `OP_GMZoneRequest2` (0x244c), which eqemu's
+`Handle_OP_GMZoneRequest2` answers with `GoToSafeCoords` (akk-stack
+zone/client_packet.cpp 7132-7143, zoning.cpp 1074). fable's handler only
+logged the approval, so a live `/gmzone <char> <other_zone>` was a silent
+no-op on every lane and the scenario's transition arm could never be
+reached. It now queues the confirm on an approved reply; a denied reply
+sends nothing. (The live leg that found this: `refactor/B1081/README.md`.)

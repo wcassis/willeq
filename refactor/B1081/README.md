@@ -108,6 +108,29 @@ targets `--zone 2` (qeynos) from Testchar's home 1 (freporte) — a genuine
 cross-zone change, which is what the scenario requires (a same-zone move
 relocates in place and has no world reconnect to gate).
 
+### Live result (head e3e92346, 2026-10-17, lane 4)
+
+- `zone_change_no_flash --zone 2`: **PASS (exit 0)** — `Enter World
+  Testchar`, screen up exactly once (Activations == 1), `GM zone request
+  approved for zone 2`, `GM zone request2 sent for zone 2`, zone change
+  freporte → qeynos2 added zero screen-ups at 1.7 s after the /gmzone.
+  Verdict log: `/home/user/kb-evidence/kb-b1081-charselect-flash/leg1_zone_
+  change_no_flash_PASS_lane4_zone2.log`.
+- `camp_to_charselect`: **PASS (exit 0)** — camp still brings the select
+  screen up (the B1005 negative). Verdict log: `.../leg2_camp_to_
+  charselect_PASS_lane4.log`.
+- Red at the parent: with the gate's one early-return disabled
+  (character_select_service.cpp), `ZoneChangeReconnectDoesNotReActivateThe
+  Screen` fails with `Activations() Which is: 2`; the two legitimate
+  screen-ups (camp return, B1072 give-up) still pass, showing the gate is
+  the flash-specific line. Restored at the head, all 19 tests of the three
+  affected targets are green.
+
+Not verified / left open: the rbuild ThinkPad runner's `user` account cannot
+write /tmp, so 5 tests that write /tmp capture files (SessionRecorder x4,
+HotkeyDispatchCensus.AUserFileBinding...) fail THERE (6016/6021 green);
+they pass under CI's gitlab-runner user, which is how ctest is meant to run.
+
 ## The tests
 
 tests/test_zone_change_no_flash.cpp — the gate over the real EverQuest rig
