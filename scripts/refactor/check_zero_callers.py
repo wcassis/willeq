@@ -1126,7 +1126,9 @@ EXEMPT_TESTS_GROUPS = {
     ("IrrlichtRenderer", "isNewUIEnabled"): "observer",
     ("LoginWorldComponent", "CharacterSelectReturns"): "observer",  # B1005
     ("LoginWorldComponent", "GetAccountId"): "observer",
-    ("LoginWorldComponent", "GetCharacterSelectIndex"): "observer",
+    # B1081 (#401): GetCharacterSelectIndex gained a production caller
+    # (ApplicationScenarioWorld::CharacterSelectName) -- removed from this
+    # tests-only table; it is now classified by its live caller.
     ("LoginWorldComponent", "GetChatConnectionType"): "observer",
     ("LoginWorldComponent", "GetChatServerHost"): "observer",
     ("LoginWorldComponent", "GetChatServerPort"): "observer",
