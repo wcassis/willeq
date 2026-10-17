@@ -476,11 +476,13 @@ it without taking that measurement first.
   assign` peer) drives the hotbar's whole user path on a lane and asserts
   only server/chat observables (the buff, the charge decrement, the client's
   own cast/use/emote lines, the #fish catch, the per-character INI bytes for
-  persistence + isolation). Its lane run + attached log complete acceptance
-  A (in flight on lane 1 at commit time, behind the B1080 oracle lock). The
-  H0 partial official-client capture
+  persistence + isolation). Its lane run PASSED on lane 1 (run 12, 2026-10-16
+  22:09–22:22 UTC: exit 0 + post-check PASS, logs attached to the task and in
+  `refactor/B1025-H5/README.md`), and the MR !207 pipeline is green at
+  983df6c0. The H0 partial official-client capture
   (`refactor/B1025-H0/README.md`) and its "Not captured / not verified" cases
-  remain open; this item is not closed.
+  remain open; H-3 (MR !198) and H-4 (MR !199) are in review, so this item
+  closes when the chain merges.
 - **B988** (A) → issue #307. Will 2026-10-05: "make the nobocache flag opt-in
   (off by default) and fix the stale docs". A DRM client now leaves
   `LIMA_DEBUG` untouched (Lima's BO cache on); `WILLEQ_LIMA_NOBOCACHE=1`
