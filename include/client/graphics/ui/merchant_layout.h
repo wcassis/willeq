@@ -1,15 +1,24 @@
 /*
  * MerchantLayout -- the merchant window's geometry, and the only place it is
- * computed (T436, board B429).
+ * computed (T436, board B429; B1078, GitLab #398).
  *
- * THE PLACEMENT IS THE ORACLE'S, NOT OURS -- the same rule and the same
- * arithmetic TradeskillLayout (T415) and InventoryLayout::coinRect() (T393)
- * follow: quote the official client's own element, map it proportionally
- * from the oracle window's size onto fable's fixed 400x350
- * `UILayout::centerPopup`, integer division, no rounding policy to drift.
- * B1075 (#395): the box is now `UILayout::partnerPopup` -- the same 400x350,
- * anchored PairLeft in the layout table, beside the inventory
- * (inventory+merchant is a required co-open set).
+ * THE PLACEMENT IS THE ORACLE'S, NOT OURS -- B1078 (2026-10-15, Will's play
+ * session: "the vendor window item icons are squashed"): the window now
+ * draws at the oracle's OWN 374x480, anchored by the layout table's PairLeft
+ * anchor, and every interior rect is the XML's own number OFFSET BY THE
+ * ANCHOR -- the same unscaled rule bank_layout.h (T436) and options_layout.h
+ * (T434) follow. B1075's ruling allows it: "windows keep their size, the
+ * oracle's".
+ *
+ * THE ONE DEVIATION is UNIFORM scaling, only where the screen cannot fit the
+ * window: ONE factor (the min of the width and height ratios, capped at 1)
+ * is applied to the whole window and the PairLeft anchor keeps it against
+ * the inventory (B1078's co-open shape). At 800x600 that factor is
+ * 350/374: the pair spans edge to edge and the merchant is the one that
+ * gives the pixels -- uniformly. At 1024x768 and up the factor is 1 and
+ * every rect is the XML's own number to the pixel. ONE factor, never two:
+ * the old `scaled()` mapped x by 400/374 and y by 350/480 into fable's
+ * 400x350 partnerPopup, which is exactly the anisotropy B1078 removes.
  *
  * Source: /mnt/projects/EverQuestP1999/uifiles/default/EQUI_MerchantWnd.xml
  *
@@ -30,20 +39,11 @@
  *       <Pieces>MW_Sell_Button</Pieces>
  *       <Pieces>MW_Done_Button</Pieces>
  *
- * SCALED, and the reason is the oracle's own: `Style_Sizable true` AND a
- * window 505px tall from its <Location> down, which does not fit the 640x480
- * fable supports. That is exactly the condition under which T415 mapped the
- * tradeskill window proportionally onto `centerPopup`, so the merchant window
- * takes the same route. (T434's Options window went the other way because its
- * shipped size is 400x452 at EVERY resolution `defaults.ini` lists; the
- * merchant window has no such record -- `defaults.ini` gives `[MerchantWnd]`
- * no Width/Height keys at all.)
- *
  * Every child is anchor-positioned. `AnchorToLeft/ToTop == false` means the
  * offset is measured from the parent's RIGHT / BOTTOM edge -- the rule T415
  * and T421 both write out. Resolved against the 374x480 window:
  *
- *   <Label item ="MW_MerchantName">
+ *   <Label item = "MW_MerchantName">
  *       Left   4, ToLeft true  -> x0 = 4
  *       Top    4, ToTop  true  -> y0 = 4
  *       Right  4, ToLeft false -> x1 = 374-4  = 370
@@ -53,8 +53,8 @@
  *     almost the whole window and lies UNDER the item list. An EQ <Label>
  *     draws its text at the TOP of its box and paints no background, so the
  *     visible result is a centred name on the window's first row -- which is
- *     what the official client shows. fable draws the text at the top of the
- *     quoted rect for the same reason; the box is not filled.
+ *     what the official client shows. fable draws the text in the top row
+ *     of the quoted rect for the same reason; the box is not filled.
  *
  *   <Listbox item = "MW_ItemList">
  *       4 / 28 / 4(from right) / 50(from bottom)
@@ -79,11 +79,11 @@
  *       <DecalOffset>(2,2)</DecalOffset> <DecalSize>40x40</DecalSize>
  *     => the icon itself is (86,436) 40x40
  *
- *   <Label item ="MW_SelectedItemLabel">
+ *   <Label item = "MW_SelectedItemLabel">
  *       130 / 44(from bottom) / 90(from right) / 28(from bottom)
  *     => (130,436)-(284,452), i.e. 154 x 16
  *
- *   <Label item ="MW_SelectedPriceLabel">
+ *   <Label item = "MW_SelectedPriceLabel">
  *       130 / 26(from bottom) / 90(from right) / 6(from bottom)
  *     => (130,454)-(284,474), i.e. 154 x 20
  *
@@ -111,11 +111,15 @@
  * never instantiates it. It is not drawn here either, and it is not a gap.
  *
  * TWO NUMBERS ARE NOT THE ORACLE'S, both flagged rather than dressed up:
- *  - ROW_H, the item list's row height. `MW_ItemList` is a <Listbox>; the XML
- *    gives its rect and its seven column widths and says nothing about how
- *    tall a row is, because the official client measures that from the window
- *    font at runtime. 20 in oracle space, matching TradeskillLayout's own
- *    flagged choice for `COMBW_RecipeList`.
+ *  - ROW_H, the item list's row height. `MW_ItemList` is a <Listbox>; the
+ *    XML gives its rect and its seven column widths and says nothing about
+ *    how tall a row is. 24 is MEASURED (2026-10-15,
+ *    review/UIGAP-ORACLE/152/run1.M02_lclick_merchant_row_Ale.png, 1024x768,
+ *    window at native 374x480): the row names sit at y 266/290/314, i.e. a
+ *    24 px pitch. The row icon there is a uniformly down-scaled square
+ *    (~22 px inside the 24 px column); the column itself IS 24 wide in the
+ *    XML, so at the window's own size the icon cell is 24x24 and
+ *    `UIRenderer::squareIn()`'s identity.
  *  - The window CHROME. `Style_Titlebar true` / `Style_Closebox true` draw a
  *    bar whose height comes from the font and the `WDT_Def` art, neither of
  *    which is a number in a shipped file. fable's centre popups have no
@@ -137,7 +141,7 @@ namespace MerchantLayout {
 constexpr irr::s32 ORACLE_WINDOW_W = 374;
 constexpr irr::s32 ORACLE_WINDOW_H = 480;
 
-// MW_MerchantName, resolved above.
+// MW_MerchantName.
 constexpr irr::s32 ORACLE_NAME_X = 4;
 constexpr irr::s32 ORACLE_NAME_Y = 4;
 constexpr irr::s32 ORACLE_NAME_W = 366;
@@ -157,10 +161,10 @@ enum Column {
     COL_PLAT = 3, COL_GOLD = 4, COL_SILVER = 5, COL_COPPER = 6
 };
 
-// NOT the oracle's -- see the header comment.
-constexpr irr::s32 ORACLE_ROW_H = 20;
+// MEASURED 2026-10-15, UIGAP-ORACLE/152 (the header comment).
+constexpr irr::s32 ORACLE_ROW_H = 24;
 // The heading strip the <Heading>/<Header> entries occupy, one row tall.
-constexpr int ROWS_VISIBLE = (ORACLE_LIST_H - ORACLE_ROW_H) / ORACLE_ROW_H;  // 19
+constexpr int ROWS_VISIBLE = (ORACLE_LIST_H - ORACLE_ROW_H) / ORACLE_ROW_H;  // 16
 
 // MW_SelectedItem and its A_DragItem decal.
 constexpr irr::s32 ORACLE_SELECTED_X = 84;
@@ -194,70 +198,111 @@ constexpr irr::s32 ORACLE_DONE_BTN_Y = 436;
 constexpr irr::s32 ORACLE_DONE_BTN_W = 64;
 constexpr irr::s32 ORACLE_DONE_BTN_H = 38;
 
+// --- THE ONE scaling body (B1078) -----------------------------------------
+
 /**
- * Map an oracle-window rect into `layout.partnerPopup`, proportionally.
- * THE one scaling body -- every rect below and both hit tests go through it,
- * so what is drawn and what is clicked cannot drift (T57's rule).
+ * The ONE uniform factor in per-cent (100 = unscaled) that fits the oracle
+ * 374x480 window into the middle band: the min of the band's width and height
+ * ratios, capped at 1. ONE factor, never two (B1078).
  */
-inline irr::core::rect<irr::s32> scaled(const UILayout& layout,
-                                        irr::s32 x, irr::s32 y,
-                                        irr::s32 w, irr::s32 h) {
-    const auto& popup = layout.partnerPopup;
-    const irr::s32 pw = popup.getWidth();
-    const irr::s32 ph = popup.getHeight();
-    const irr::s32 sx = popup.UpperLeftCorner.X + x * pw / ORACLE_WINDOW_W;
-    const irr::s32 sy = popup.UpperLeftCorner.Y + y * ph / ORACLE_WINDOW_H;
-    const irr::s32 sw = w * pw / ORACLE_WINDOW_W;
-    const irr::s32 sh = h * ph / ORACLE_WINDOW_H;
-    return irr::core::rect<irr::s32>(sx, sy, sx + sw, sy + sh);
-}
-
-/** MW_MerchantName. */
-inline irr::core::rect<irr::s32> nameRect(const UILayout& layout) {
-    return scaled(layout, ORACLE_NAME_X, ORACLE_NAME_Y,
-                  ORACLE_NAME_W, ORACLE_NAME_H);
+inline irr::s32 scalePct(const UILayout& layout) {
+    const auto& b = layout.middleBand;
+    irr::s32 f = std::min(b.getWidth() * 100 / ORACLE_WINDOW_W,
+                          b.getHeight() * 100 / ORACLE_WINDOW_H);
+    return f < 100 ? f : 100;
 }
 
 /**
- * The top row of MW_MerchantName's box -- where an EQ <Label> actually paints
- * its text. The quoted rect is 452 tall (see the header comment); the name
- * is one row of it, and this is the band fable centres the text in.
+ * The window, in screen coordinates (B1078): the oracle's own 374x480 at a
+ * ONE uniform factor (`scalePct`), anchored in the pair's LEFT slot
+ * (`partnerPopup`'s left edge) and top-anchored at the middle band's top,
+ * clamped wholly on screen. The inventory takes the pair's RIGHT slot
+ * (`inventoryPopup`), so the two are neighbours with the pair's own 0-gap.
+ * At 1024x768 and up the factor is 1 and every rect is the XML's own number
+ * to the pixel; at 800x600 the band is only 384 tall, so the factor is
+ * 384/480 and the whole window shrinks uniformly -- never a separate x and y
+ * factor, which is the anisotropy B1078 exists to kill. The draw body, every
+ * interior rect below and the hit tests all read THIS rect, so what is drawn
+ * and what is clicked cannot drift (T57's rule).
+ */
+inline irr::core::rect<irr::s32> windowRect(const UILayout& layout) {
+    const irr::s32 f = scalePct(layout);
+    const irr::s32 w = ORACLE_WINDOW_W * f / 100;
+    const irr::s32 h = ORACLE_WINDOW_H * f / 100;
+    const irr::s32 x = layout.partnerPopup.UpperLeftCorner.X;
+    const irr::s32 y = layout.middleBand.UpperLeftCorner.Y;
+    return layout.clampOnScreen(x, y, w, h);
+}
+
+/**
+ * Map an oracle-window rect onto `windowRect()`, with ONE uniform factor
+ * (B1078: never an x factor and a different y factor). Integer arithmetic
+ * throughout, no rounding policy to drift.
+ */
+inline irr::core::rect<irr::s32> at(const UILayout& layout, irr::s32 x,
+                                    irr::s32 y, irr::s32 w, irr::s32 h) {
+    const auto win = windowRect(layout);
+    const irr::s32 f = scalePct(layout);
+    const irr::s32 sx = win.UpperLeftCorner.X + x * f / 100;
+    const irr::s32 sy = win.UpperLeftCorner.Y + y * f / 100;
+    return irr::core::rect<irr::s32>(sx, sy, sx + w * f / 100, sy + h * f / 100);
+}
+
+/** The whole MW_MerchantName box (fable fills nothing of it). */
+inline irr::core::rect<irr::s32> nameRect(const UILayout& layout) {
+    return at(layout, ORACLE_NAME_X, ORACLE_NAME_Y,
+              ORACLE_NAME_W, ORACLE_NAME_H);
+}
+
+/**
+ * The top row of MW_MerchantName's box -- where an EQ <Label> actually
+ * paints its text. The quoted rect is 452 tall (see the header comment);
+ * the name is one row of it, and this is the band fable centres the text in.
  */
 inline irr::core::rect<irr::s32> nameTextRect(const UILayout& layout) {
-    return scaled(layout, ORACLE_NAME_X, ORACLE_NAME_Y, ORACLE_NAME_W,
-                  ORACLE_ROW_H);
+    return at(layout, ORACLE_NAME_X, ORACLE_NAME_Y, ORACLE_NAME_W,
+              ORACLE_ROW_H);
 }
 
 /** MW_ItemList, the whole sunken box. */
 inline irr::core::rect<irr::s32> listRect(const UILayout& layout) {
-    return scaled(layout, ORACLE_LIST_X, ORACLE_LIST_Y,
-                  ORACLE_LIST_W, ORACLE_LIST_H);
+    return at(layout, ORACLE_LIST_X, ORACLE_LIST_Y,
+              ORACLE_LIST_W, ORACLE_LIST_H);
 }
 
 /** The heading strip, one row tall, at the top of the list box. */
 inline irr::core::rect<irr::s32> listHeaderRect(const UILayout& layout) {
-    return scaled(layout, ORACLE_LIST_X, ORACLE_LIST_Y,
-                  ORACLE_LIST_W, ORACLE_ROW_H);
+    return at(layout, ORACLE_LIST_X, ORACLE_LIST_Y,
+              ORACLE_LIST_W, ORACLE_ROW_H);
 }
 
 /** On-screen row `i` (0 = the first row under the heading strip). */
 inline irr::core::rect<irr::s32> listRowRect(const UILayout& layout, int i) {
     if (i < 0 || i >= ROWS_VISIBLE) return irr::core::rect<irr::s32>(0, 0, 0, 0);
-    return scaled(layout, ORACLE_LIST_X,
-                  ORACLE_LIST_Y + ORACLE_ROW_H + i * ORACLE_ROW_H,
-                  ORACLE_LIST_W, ORACLE_ROW_H);
+    return at(layout, ORACLE_LIST_X,
+              ORACLE_LIST_Y + ORACLE_ROW_H + i * ORACLE_ROW_H,
+              ORACLE_LIST_W, ORACLE_ROW_H);
 }
 
 /**
  * One oracle x mapped to a screen x. The column cells are built from TWO of
- * these rather than from an origin plus a scaled width: `scaled(x) +
- * scaled(w)` and `scaled(x + w)` differ by a pixel under integer division,
- * which opens a 1px gap between adjacent columns. Both edges of every cell
- * go through this, so the seven columns tile exactly.
+ * these rather than from an origin plus a scaled width: `at(x) + at(w)` and
+ * `at(x + w)` can differ by a pixel under integer division, which opens a
+ * 1px gap between adjacent columns. Both edges of every cell go through
+ * this, so the seven columns tile exactly.
  */
 inline irr::s32 scaledX(const UILayout& layout, irr::s32 x) {
-    const auto& popup = layout.partnerPopup;
-    return popup.UpperLeftCorner.X + x * popup.getWidth() / ORACLE_WINDOW_W;
+    const auto win = windowRect(layout);
+    const irr::s32 f = scalePct(layout);
+    return win.UpperLeftCorner.X + x * f / 100;
+}
+
+/** The oracle y of one row's top edge, inside the list box. */
+inline irr::s32 rowTopY(const UILayout& layout, int i) {
+    const auto win = windowRect(layout);
+    const irr::s32 f = scalePct(layout);
+    return win.UpperLeftCorner.Y +
+           (ORACLE_LIST_Y + ORACLE_ROW_H + i * ORACLE_ROW_H) * f / 100;
 }
 
 /** The oracle x of column `c`'s left edge, inside the list box. */
@@ -271,12 +316,12 @@ inline irr::s32 columnOracleX(int c) {
 inline irr::core::rect<irr::s32> listCellRect(const UILayout& layout, int i,
                                               int c) {
     if (c < 0 || c >= COLUMN_COUNT) return irr::core::rect<irr::s32>(0, 0, 0, 0);
-    const auto row = listRowRect(layout, i);
-    if (row.getWidth() == 0) return irr::core::rect<irr::s32>(0, 0, 0, 0);
+    if (i < 0 || i >= ROWS_VISIBLE) return irr::core::rect<irr::s32>(0, 0, 0, 0);
+    const irr::s32 top = rowTopY(layout, i);
+    const irr::s32 bottom = rowTopY(layout, i + 1);
     return irr::core::rect<irr::s32>(
-        scaledX(layout, columnOracleX(c)), row.UpperLeftCorner.Y,
-        scaledX(layout, columnOracleX(c) + ORACLE_COL_W[c]),
-        row.LowerRightCorner.Y);
+        scaledX(layout, columnOracleX(c)), top,
+        scaledX(layout, columnOracleX(c) + ORACLE_COL_W[c]), bottom);
 }
 
 /** Column `c` of the heading strip. */
@@ -292,39 +337,39 @@ inline irr::core::rect<irr::s32> listHeaderCellRect(const UILayout& layout,
 
 /** MW_SelectedItem's 42x42 button. */
 inline irr::core::rect<irr::s32> selectedItemRect(const UILayout& layout) {
-    return scaled(layout, ORACLE_SELECTED_X, ORACLE_SELECTED_Y,
-                  ORACLE_SELECTED_W, ORACLE_SELECTED_H);
+    return at(layout, ORACLE_SELECTED_X, ORACLE_SELECTED_Y,
+              ORACLE_SELECTED_W, ORACLE_SELECTED_H);
 }
 
 /** The A_DragItem decal inside it, at DecalOffset/DecalSize. */
 inline irr::core::rect<irr::s32> selectedDecalRect(const UILayout& layout) {
-    return scaled(layout, ORACLE_SELECTED_X + ORACLE_DECAL_OFFSET,
-                  ORACLE_SELECTED_Y + ORACLE_DECAL_OFFSET,
-                  ORACLE_DECAL_SIZE, ORACLE_DECAL_SIZE);
+    return at(layout, ORACLE_SELECTED_X + ORACLE_DECAL_OFFSET,
+              ORACLE_SELECTED_Y + ORACLE_DECAL_OFFSET,
+              ORACLE_DECAL_SIZE, ORACLE_DECAL_SIZE);
 }
 
 /** MW_SelectedItemLabel. */
 inline irr::core::rect<irr::s32> selectedItemLabelRect(const UILayout& layout) {
-    return scaled(layout, ORACLE_ITEM_LABEL_X, ORACLE_ITEM_LABEL_Y,
-                  ORACLE_ITEM_LABEL_W, ORACLE_ITEM_LABEL_H);
+    return at(layout, ORACLE_ITEM_LABEL_X, ORACLE_ITEM_LABEL_Y,
+              ORACLE_ITEM_LABEL_W, ORACLE_ITEM_LABEL_H);
 }
 
 /** MW_SelectedPriceLabel. */
 inline irr::core::rect<irr::s32> selectedPriceLabelRect(const UILayout& layout) {
-    return scaled(layout, ORACLE_PRICE_LABEL_X, ORACLE_PRICE_LABEL_Y,
-                  ORACLE_PRICE_LABEL_W, ORACLE_PRICE_LABEL_H);
+    return at(layout, ORACLE_PRICE_LABEL_X, ORACLE_PRICE_LABEL_Y,
+              ORACLE_PRICE_LABEL_W, ORACLE_PRICE_LABEL_H);
 }
 
 /** MW_Buy_Button and MW_Sell_Button, which share one rect in the XML. */
 inline irr::core::rect<irr::s32> tradeButtonRect(const UILayout& layout) {
-    return scaled(layout, ORACLE_TRADE_BTN_X, ORACLE_TRADE_BTN_Y,
-                  ORACLE_TRADE_BTN_W, ORACLE_TRADE_BTN_H);
+    return at(layout, ORACLE_TRADE_BTN_X, ORACLE_TRADE_BTN_Y,
+              ORACLE_TRADE_BTN_W, ORACLE_TRADE_BTN_H);
 }
 
 /** MW_Done_Button. */
 inline irr::core::rect<irr::s32> doneButtonRect(const UILayout& layout) {
-    return scaled(layout, ORACLE_DONE_BTN_X, ORACLE_DONE_BTN_Y,
-                  ORACLE_DONE_BTN_W, ORACLE_DONE_BTN_H);
+    return at(layout, ORACLE_DONE_BTN_X, ORACLE_DONE_BTN_Y,
+              ORACLE_DONE_BTN_W, ORACLE_DONE_BTN_H);
 }
 
 }  // namespace MerchantLayout
