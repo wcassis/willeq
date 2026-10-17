@@ -1,4 +1,57 @@
-# B1086 (#406): Set Face half-render — diagnosis (take 2, corrected)
+# B1086 (#406): Set Face half-open — classic-model picker
+
+## Take 3: the classic-model picker (2026-10-17, lane 5)
+
+**Verdict:** the one-knob A/B confirmed the harness-state explanation. With
+the same lane, Testchar, Barbarian male pair and `facepick-rows` plan, the
+official client rendered FACE only with `UseLuclin*` false, all seven rows
+after the 26 in-era keys were enabled, and FACE only when the original INI
+was restored. These are separate client starts because `eqclient.ini` is read
+at startup; no other capture input was changed. The take-2 physical-KVM-host
+suspect below is **withdrawn**. `172.16.200.3` is the guest's DHCP gateway,
+and the lane-1 oracle renders with llvmpipe inside its guest, not on an
+unreachable KVM host.
+
+The experiment used `luclin_ab.sh` with `luclin_ab_plan.tsv`. Its three final
+stills are under
+`/home/user/kb-evidence/kb-b1086-setface-halfrender/take3-ab-run1155/`,
+one `<state>/02_barbarian-male.png` per row below. The existing evidence
+`probe_rows.py` read the PNG pixels directly at the seven calibrated arrow
+strips (>48 visible); each still was also visually inspected. This direct
+pixel read matters: the current driver's ImageMagick probe falsely rejected
+the TRUE still (its PNG retains a `+0+30` page origin, but the probe crops
+before `+repage`, sampling 30 pixels too high). The driver exits 65 in all
+three captures; its FALSE failures are expected, while its TRUE failure is
+the separate harness-probe defect to fix in take 3.
+
+| State | INI keys at capture start | Visible rows | Still | Driver exit |
+|---|---:|---:|---|---:|
+| FALSE before | 0 TRUE, 29 FALSE | 1 (FACE) | `false_before/02_barbarian-male.png` | 65 |
+| TRUE | 26 TRUE, 3 FALSE | 7 (FACE, HAIR, HAIR COLOR, EYES, BEARD, BEARD COLOR, WODE) | `true/02_barbarian-male.png` | 65 (false probe rejection) |
+| FALSE after | 0 TRUE, 29 FALSE | 1 (FACE) | `false_after/02_barbarian-male.png` | 65 |
+
+Each `oracle_session.sh` capture restored its database snapshot and stopped
+the stack before releasing its lane-5 lease (`driver.log` ends
+`lock=state=FREE`); `EQEMU_LANE=5 bash scripts/eqemu/status.sh` found no
+containers or ready stack. The wrapper restored the original `eqclient.ini`
+after each run and at exit; the final `cmp` returned 0. Its `ab.log` ends
+`lane_restored=1`, `cleanup exit=0`.
+
+**Mechanism and run classification.** `UseLuclin<Race><Gender>=FALSE` selects
+the classic model, whose picker exposes FACE only here; enabling the 26
+in-era per-race keys selects Luclin models and their full feature list. The
+good-era lane-1 `facepick-endpoints/endpoint_setup.sh` and CC1 WIRE's
+`setup_remote.sh` explicitly ran `set_facepick_luclin.py` and restored the
+INI after capture. Their saved `eqclient.ini.before` files have 0 TRUE keys
+because they are the *pre-toggle backups*, not the state used in the run.
+The later lane-5 full26 and B1086 probes used `oracle_session.sh`, which did
+not apply that script; their FALSE `eqclient.ini` files show the expected
+classic FACE-only view. `data/char_create_faces.tsv` already records
+`visible_classic` separately from Luclin visibility. The fix belongs in
+`oracle_session.sh` / `oracle_remote.sh` setup and teardown, plus their
+face-picker row probe; no renderer, Wine, package or host change is needed.
+
+## Superseded take-2 diagnosis (historical; claims below withdrawn)
 
 **Verdict (one line):** the card's "both lanes fail, so look at what the two
 lanes SHARE" premise is REFUTED by the evidence — lane 5 was re-provisioned
