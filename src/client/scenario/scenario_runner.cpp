@@ -76,7 +76,21 @@ bool ScenarioRunner::Tick(float deltaTime) {
     elapsed_ += static_cast<double>(deltaTime);
 
     if (!started_) {
-        if (world_.IsFullyZonedIn()) {
+        if (!scenario_->WantsPreFlight()) {
+            // B1081 (#401): zone_change_no_flash turns the character-select
+            // screen on and presses its own Enter World -- the client never
+            // auto-zones-in while the screen is up (WorldProcessExpansion-
+            // Info), so a pre-flight wait for IsFullyZonedIn would wait out
+            // the start deadline and report a could-not-start for a run that
+            // was fine. Start at t=0 and let the scenario drive its own
+            // zone-in.
+            started_ = true;
+            startedAt_ = elapsed_;
+            std::ostringstream os;
+            os << "scenario '" << scenario_->Name() << "' starting without a pre-flight (it "
+               << "drives its own zone-in)";
+            world_.Note(os.str());
+        } else if (world_.IsFullyZonedIn()) {
             started_ = true;
             startedAt_ = elapsed_;
             std::ostringstream os;

@@ -20,11 +20,33 @@ using namespace zonetest;
 
 namespace {
 
+// Minimal fake bridge, the same idiom GMFindTest's (test_gm_summon_find.cpp):
+// only the drain side is exercised -- the denial message's route
+// (ChatOutput::System, chat_output.cpp:24-33).
+class TestBridge : public eqt::bridge::GameStateBridge {
+public:
+    void applyEvent(const eqt::state::GameEvent&) override {}
+};
+
 class GmComponentTest : public ::testing::Test {
 protected:
-    GmComponentTest() : eq(MakeEq()) {}
+    GmComponentTest() : eq(MakeEq()) { eq.setBridge(&bridge); }
+    ~GmComponentTest() override { eq.setBridge(nullptr); }
     EverQuest eq;
+    TestBridge bridge;
 };
+
+// The denial path publishes through ChatOutput (chat_output.cpp:24-33),
+// which needs a bridge to be observable; same idiom as GMFindTest's.
+std::vector<std::string> DrainSystemMessages(eqt::bridge::GameStateBridge& b) {
+    std::vector<std::string> out;
+    for (auto& ev : b.drainEvents()) {
+        if (ev.type == eqt::state::GameEventType::SystemMessage) {
+            out.push_back(std::get<eqt::state::ChatMessageData>(ev.data).message);
+        }
+    }
+    return out;
+}
 
 // ===================================================================
 // 1. It constructs against a real EverQuest in headless mode
@@ -98,7 +120,78 @@ TEST_F(GmComponentTest, SummonBodyCarriesGMPositionAsServerFloats) {
 }
 
 // ===================================================================
-// 4. B1088: an APPROVED GM zone request initiates the transition
+// 4. B1081 (#401): an APPROVED GM zone reply triggers the zone-confirm
+//    packet. eqemu's Handle_OP_GMZoneRequest2 (zone/client_packet.cpp:
+//    7132-7143) is the half that performs the change -- GoToSafeCoords
+//    (zoning.cpp:1074). Until B1081, ZoneProcessGMZoneRequest only
+//    logged the approval, so a live /gmzone <char> <zone> never zoned
+//    and the zone_change_no_flash scenario could never reach its
+//    transition arm.
+// ===================================================================
+
+// The approval reply as eqemu's Handle_OP_GMZoneRequest builds it: the
+// same 88-byte GMZoneRequest_Struct with the target zone's safe coords
+// and success=1 (client_packet.cpp:7108-7126).
+std::vector<uint8_t> GMZoneApprovalReply(const std::string& charname, uint32_t zone_id,
+                                         uint32_t success, float x = 0.0f,
+                                         float y = 0.0f, float z = 0.0f, float heading = 0.0f) {
+    return BuildPayload(2 + sizeof(EQT::GMZoneRequest_Struct), [&](EQ::Net::DynamicPacket& p) {
+        p.PutCString(2, charname.c_str());
+        p.PutUInt32(2 + 64, zone_id);
+        p.PutFloat(2 + 68, x);
+        p.PutFloat(2 + 72, y);
+        p.PutFloat(2 + 76, z);
+        p.PutFloat(2 + 80, heading);
+        p.PutUInt32(2 + 84, success);
+    });
+}
+
+TEST_F(GmComponentTest, GMZoneRequest2SeamStartsEmpty) {
+    EXPECT_FALSE(eq.Gm().Test_GetLastGMZoneRequest2().sent);
+}
+
+TEST_F(GmComponentTest, ApprovedGMZoneReplySendsZoneConfirm) {
+    ReplayZone(eq, HC_OP_GMZoneRequest, GMZoneApprovalReply("Testchar", 303, 1));
+
+    const auto& sent = eq.Gm().Test_GetLastGMZoneRequest2();
+    ASSERT_TRUE(sent.sent) << "an approved reply must confirm (the oracle's second packet)";
+    ASSERT_EQ(sent.bytes.size(), 6u) << "OP_GMZoneRequest2 is a uint32 zone id";
+    EXPECT_EQ(sent.zone_id, 303u);
+
+    uint16_t opcode = static_cast<uint16_t>(sent.bytes[0] | (sent.bytes[1] << 8));
+    EXPECT_EQ(opcode, HC_OP_GMZoneRequest2);
+    EXPECT_EQ(opcode, 0x244c) << "oracle opcode (patch_Titanium.conf: OP_GMZoneRequest2=0x244c)";
+    EXPECT_NE(opcode, HC_OP_GMZoneRequest) << "the confirm is NOT a re-query";
+
+    uint32_t zone_word = 0;
+    std::memcpy(&zone_word, sent.bytes.data() + 2, 4);
+    EXPECT_EQ(zone_word, 303u) << "eqemu reads exactly this word: GoToSafeCoords(zonereq, 0)";
+}
+
+TEST_F(GmComponentTest, DeniedGMZoneReplySendsNoConfirm) {
+    // success=0: the server refused (unknown zone, insufficient GM rank).
+    // Confirming anyway would be a lie the server's own GM check rejects.
+    ReplayZone(eq, HC_OP_GMZoneRequest, GMZoneApprovalReply("Testchar", 303, 0));
+
+    const auto& sent = eq.Gm().Test_GetLastGMZoneRequest2();
+    EXPECT_FALSE(sent.sent);
+    EXPECT_TRUE(sent.bytes.empty());
+
+    // The denial must still reach the player -- that was the handler's
+    // only pre-B1081 behaviour and it is unchanged.
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_EQ(msgs[0], "Zone request denied.");
+}
+
+TEST_F(GmComponentTest, ShortGMZoneReplySendsNoConfirm) {
+    std::vector<uint8_t> tooShort(100, 0);
+    ReplayZone(eq, HC_OP_GMZoneRequest, tooShort);
+    EXPECT_FALSE(eq.Gm().Test_GetLastGMZoneRequest2().sent);
+}
+
+// ===================================================================
+// 5. B1088: an APPROVED GM zone request initiates the transition
 //    (OP_ZoneChange handshake), a denied one does not
 // ===================================================================
 

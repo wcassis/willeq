@@ -548,6 +548,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/scenario/scenario_world_app_trade.cpp  # UIGAP-live2
     src/client/scenario/scenario_camp.cpp  # B1005 (#324)
     src/client/scenario/scenario_zone_connect_timeout.cpp  # B1072 (#392)
+    src/client/scenario/scenario_zone_change_no_flash.cpp  # B1081 (#401)
     src/client/scenario/scenario_world_app_camp.cpp  # B1005
     src/client/scenario/scenario_fall_damage.cpp  # B893 (#209)
     src/client/scenario/scenario_loading_name.cpp  # B1088 (#408)

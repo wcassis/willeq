@@ -2282,6 +2282,32 @@ two committed wrong numbers from fresh measurement: the gem census over
 ids / 25 spells"; and the buff sheet's empties are ids 23..35 — id 14
 carries art (alpha sum 77,520).
 
+## 2026-10-16 — B1081: the zone-change world reconnect does not bring up the character-select screen (#401)
+
+One line: the screen may come up only while the world is in a character-select
+stage, so `CharacterSelectService::tick()` keeps it down for the frames in
+which `LoginWorldComponent::IsZoningReconnect()` is true — the zone-change
+latch (`ZoneToZoneInProgress`, set in `ProcessDeferredZoneChange` and latched
+across the teardown) AND the zoning pass's `OP_EnterWorld` not yet out; a
+fresh login, the B1005 camp return and the B1072 give-up all clear the latch
+before their reconnect, so they still bring the screen up, exactly as before
+(the screen-up count is asserted in `tests/test_zone_change_no_flash.cpp` and
+the `zone_change_no_flash` scenario: one screen-up for the whole
+login→zone-in→`/gmzone`→zone-change run, measured in
+`CharacterSelectService::Activations()`).
+
+`/gmzone` needs the same wire fix to be testable at all: `OP_GMZoneRequest`
+(0x1306) is only the QUERY half — eqemu's reply carries the target zone's
+safe coords and a success flag, and the CHANGE is the client's second
+one-word packet, `OP_GMZoneRequest2` (0x244c), which eqemu's
+`Handle_OP_GMZoneRequest2` answers with `GoToSafeCoords` (akk-stack
+`/mnt/projects/akk-stack/code/zone/client_packet.cpp:7142`,
+`/mnt/projects/akk-stack/code/zone/zoning.cpp:1074`). fable's handler only
+logged the approval, so a live `/gmzone <char> <other_zone>` was a silent
+no-op on every lane and the scenario's transition arm could never be
+reached. It now queues the confirm on an approved reply; a denied reply
+sends nothing. (The live leg that found this: `refactor/B1081/README.md`.)
+
 ## 2026-10-16 — a stalled zone-in is bounded at every phase, and a zone that ANSWERED is never re-connected (B1079, #399)
 
 Will's 2026-10-15 XU4 hang (#399): an in-session zone change (zone load #2,

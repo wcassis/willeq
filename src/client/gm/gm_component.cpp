@@ -261,6 +261,31 @@ void eqt::gm::GmComponent::ZoneProcessGMZoneRequest(const EQ::Net::Packet &p)
 	if (gm->success) {
 		LOG_INFO(MOD_MAIN, "GM zone request approved for zone {}", gm->zone_id);
 
+		// B1081 (#401): approval is a QUERY reply, not the zone change. The
+		// oracle sends OP_GMZoneRequest2 (0x244c, a uint32 zone id) and only
+		// THEN does eqemu perform the move -- Handle_OP_GMZoneRequest2
+		// (zone/client_packet.cpp:7132-7143) checks GM status and calls
+		// GoToSafeCoords(zonereq, 0) (zoning.cpp:1074 -> MovePC(...,
+		// ZoneToSafeCoords)). Until this, the handler only LOGGED the
+		// approval, so a live /gmzone <char> <other_zone> was a silent
+		// no-op: the server said "approved", nothing zoned, and the
+		// zone_change_no_flash scenario (B1081's lane) could never reach its
+		// transition arm.
+		EQ::Net::DynamicPacket packet;
+		packet.PutUInt16(0, HC_OP_GMZoneRequest2);
+		packet.PutUInt32(2, static_cast<uint32_t>(gm->zone_id));
+
+		m_test_last_gm_zone_request2.sent = true;
+		m_test_last_gm_zone_request2.zone_id = gm->zone_id;
+		m_test_last_gm_zone_request2.bytes.assign(
+			static_cast<const uint8_t*>(packet.Data()),
+			static_cast<const uint8_t*>(packet.Data()) + packet.Length());
+
+		if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
+			ctx_.net.SafeQueueZone(packet);
+		}
+		LOG_INFO(MOD_MAIN, "GM zone request2 sent for zone {}", gm->zone_id);
+
 		// B1088 (#408): an APPROVED GM zone request is the official client's
 		// cue to initiate the transition itself -- eqemu's
 		// Handle_OP_GMZoneRequest (akk-stack code/zone/client_packet.cpp:7066)
