@@ -101,16 +101,17 @@ void eqt::zone::ZoneComponent::ZoneProcessNewZone(const EQ::Net::Packet &p)
 			zone_id = p.GetUInt16(686);
 		}
 
-		// B1088 (#408): the server's long name (NewZone_Struct offset 94,
-		// packet offset 96, right after zone_short_name) is AUTHORITATIVE for
-		// this zone and is the only source that knows the ids the era table
-		// omits (tutorialb). noteNewZone stores it and re-derives the loading
-		// screen's stored name when this IS the zone being entered (logged
-		// only when the line changes). An empty field leaves the era table's
-		// answer in place. Bounded GetCString: the scan stops at the packet
-		// end, and the struct's 278-char field is NUL-terminated in practice.
-		if (p.Length() >= 97 && zone_id != 0) {
-			const std::string longName = p.GetCString(96);
+		// B1088 (#408): the server's long name (NewZone_Struct struct
+		// offset 96 = packet offset 98, right after zone_short_name) is
+		// AUTHORITATIVE for this zone and is the only source that knows the
+		// ids the era table omits (tutorialb). noteNewZone stores it and
+		// re-derives the loading screen's stored name when this IS the zone
+		// being entered (logged only when the line changes). An empty field
+		// leaves the era table's answer in place. Bounded GetCString: the
+		// scan stops at the packet end, and the struct's 278-char field is
+		// NUL-terminated in practice.
+		if (p.Length() >= 99 && zone_id != 0) {
+			const std::string longName = p.GetCString(98);
 			ZoneDisplayNames::instance().noteNewZone(zone_id, longName);
 		}
 

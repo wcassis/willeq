@@ -29,8 +29,9 @@ correction).
 - **Primary:** the era table's long name via the ONE existing parser
   `eqt::login_world::LoadEraZoneLongNames()` (`character_select.cpp`) —
   `data/era_zones.tsv`, col 4. No second TSV loader.
-- **Override:** the server's `OP_NewZone zone_long_name[278]` (packet
-  offset 96, after `zone_short_name`; parsed in `ZoneProcessNewZone()`),
+- **Override:** the server's `OP_NewZone zone_long_name[278]` (struct
+  offset 96 = packet offset 98, after `zone_short_name`; parsed in
+  `ZoneProcessNewZone()`),
   stored via `noteNewZone()`. It is authoritative for that zone and is the
   only source that knows the ids the era table omits (`tutorialb`). An
   empty field leaves the era table's answer in place.

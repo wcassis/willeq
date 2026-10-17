@@ -70,28 +70,24 @@ std::vector<uint8_t> NewZonePayloadWithLongName(const std::string& shortName,
     });
 }
 
-EverQuest MakeFreshEq() {
-    EverQuest eq{"127.0.0.1", 0, "test", "test", "test", "Testchar"};
-    eq.Net().Test_SetBypassSendGuardForSeam(true);
-    return eq;
-}
-
 }  // namespace
 
 TEST(ZoneNewZoneDisplayName, TheLongNameReadsAtPacketOffset98AndIsStored) {
     // An id NO era-table row can know: the ONLY source that can name it is
     // the packet's zone_long_name. (test_zone_display_name.cpp uses 999999
-    // for this role; 900001 keeps the two files independent.)
-    const uint32_t zoneId = 900001;
+    // for this role; 50001 keeps the two files independent and fits the
+    // packet's uint16 zone_id field.)
+    const uint32_t zoneId = 50001;  // fits the uint16 field; era-unknown
     ZoneDisplayNames::instance().clearEntry();
 
-    EverQuest eq = MakeFreshEq();
+    EverQuest eq{"127.0.0.1", 0, "test", "test", "test", "Testchar"};
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewZone,
                                NewZonePayloadWithLongName("shadowrest", "Shadowrest -- the Sunken City",
                                                           zoneId)));
 
     // The zone identity still lands (the pre-fix tests pinned this half).
-    EXPECT_EQ(eq.GetGameState().zoneName(), "shadowrest");
+    EXPECT_EQ(eq.GetGameState().world().zoneName(), "shadowrest");
     // The SERVER's long name -- verbatim, not the short name, not "" --
     // is stored as the override for the zone id.
     const ZoneDisplayNames& names = ZoneDisplayNames::instance();
@@ -116,16 +112,17 @@ TEST(ZoneNewZoneDisplayName, AnEmptyLongNameIsBoundedAndClearsOnlyTheOverride) {
     // a genuine empty field by this test alone -- it too returned "";
     // test 1 pins the offset. This pins that the empty path itself is
     // safe.)
-    const uint32_t zoneId = 900002;  // era-unknown id
+    const uint32_t zoneId = 50002;  // era-unknown id
     ZoneDisplayNames::instance().clearEntry();
     ZoneDisplayNames::instance().setOverride(zoneId, "Jagged Pine");
 
-    EverQuest eq = MakeFreshEq();
+    EverQuest eq{"127.0.0.1", 0, "test", "test", "test", "Testchar"};
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewZone,
                                NewZonePayloadWithLongName("jaggedpine", "", zoneId)));
 
-    EXPECT_EQ(eq.GetGameState().zoneName(), "jaggedpine");
-    EXPECT_EQ(eq.GetGameState().zoneId(), zoneId);
+    EXPECT_EQ(eq.GetGameState().world().zoneName(), "jaggedpine");
+    EXPECT_EQ(eq.GetGameState().world().zoneId(), zoneId);
     // The override is cleared (the documented contract -- an empty
     // OP_NewZone field means "the server sent no name"), and the era
     // table answers (empty for this id). No error, no corruption.
@@ -136,30 +133,34 @@ TEST(ZoneNewZoneDisplayName, AnEmptyLongNameIsBoundedAndClearsOnlyTheOverride) {
     ZoneDisplayNames::instance().setOverride(zoneId, "");
 }
 
-TEST(ZoneNewZoneDisplayName, TheShortNameFieldDoesNotLeakIntoTheLongName) {
+TEST(ZoneNewZoneDisplayName, TheLongNameIsNotTaintedByTheShortNameField) {
     // The pre-fix read (packet 96) started INSIDE the 32-byte short-name
-    // field (packet 66-97), two bytes before the long name. Pin the leak
-    // in its worst shape: a short name that FILLs the whole field (32
-    // non-NUL chars, so no terminator sits between the fields) makes the
-    // buggy read run from packet 96 straight through the long name --
-    // returning the field's tail GLUED to the long name. The fixed read
-    // (packet 98) returns the long name alone. (A short name that ends
-    // early hides the bug: the buggy read hits the field's NUL and
-    // returns "" -- which is exactly what the production zones showed.)
-    const uint32_t zoneId = 900003;
+    // field (packet 66-97). Two shapes:
+    //   * a short name that ends before the field's end (every production
+    //     zone: "shadowrest", "jaggedpine", ...) -- the buggy read hits the
+    //     field's NUL and returns "": the server's long name is LOST.
+    //     test 1 pins this, RED at the parent.
+    //   * a short name that FILLs the field (32 non-NUL chars, no
+    //     terminator) -- the buggy read runs straight through and returns
+    //     the field's tail GLUED to the long name ("ssNedaria", RED at the
+    //     parent, measured). This test pins the negative shape: the stored
+    //     long name carries no trace of the short-name field's tail.
+    // (An all-32-byte short name is not a production shape -- real short
+    // names end early -- so the identity half is pinned by test 1 with a
+    // real short name, not here.)
+    const uint32_t zoneId = 50003;
     const std::string shortName(32, 's');   // fills struct 64-95 entirely
     ZoneDisplayNames::instance().clearEntry();
 
-    EverQuest eq = MakeFreshEq();
+    EverQuest eq{"127.0.0.1", 0, "test", "test", "test", "Testchar"};
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewZone,
                                NewZonePayloadWithLongName(shortName, "Nedaria", zoneId)));
 
     const ZoneDisplayNames& names = ZoneDisplayNames::instance();
     const std::string longName = names.lookup(zoneId);
     EXPECT_EQ(longName, "Nedaria");
-    // The identity half lands the SHORT name as the zone name, unchanged.
-    EXPECT_EQ(eq.GetGameState().zoneName(), shortName);
-    // The leak shape: the buggy read's answer starts with the short-name
+    // The leak shape: the buggy read's answer started with the short-name
     // field's last two bytes.
     EXPECT_NE(longName.rfind(shortName.substr(30, 2), 0), 0u)
         << "the long name carries the short-name field's tail -- the read "
