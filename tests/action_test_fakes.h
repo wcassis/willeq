@@ -202,6 +202,13 @@ public:
         auto it = inventoryByItemId.find(itemId);
         return it == inventoryByItemId.end() ? int16_t(-1) : it->second;
     }
+    // B1025-H3 (#345): /hotbutton. Recorded; `hotbuttonPublishFails` simulates
+    // a headless run (no bridge) so the dispatcher's refusal is testable.
+    bool hotbuttonPublishFails = false;
+    bool createHotbutton(const std::string& text) override {
+        record("createHotbutton", text);
+        return !hotbuttonPublishFails;
+    }
     // T141
     void equip(const std::string& args) override { record("equip", args); }
     void readItem(const std::string& args) override { record("readItem", args); }

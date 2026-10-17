@@ -465,11 +465,24 @@ it without taking that measurement first.
   icon texture is not in the shipped atlas), close box, `HotbarPageChangedIntent`.
   The stock client cannot show Hotbars 2-4 (the XML gives them zero size; the
   H-O oracle measured them invisible even forced on), so there is no geometry
-  for bars 2-4. What remains is **H-3** (the slot-ASSIGNMENT gesture:
-  right-click/drag a gem or item onto a slot — `HotbarModel::assignSlot`
-  still has no production caller) and the live feature scenario. The
-  H0 partial official-client capture (`refactor/B1025-H0/README.md`) and its
-  "Not captured / not verified" cases remain open; this item is not closed.
+  for bars 2-4. Chain: **H-3** (MR !198, in review) — the slot-ASSIGNMENT
+  gesture (hold-to-pickup, place, clear, `/hotbutton`), the first production
+  caller of `HotbarModel::assignSlot`; **H-4** (MR !199, in review) — the
+  official page keys (Shift+1..0) and window toggle (Alt+H) with their
+  Options Keys rows, addressed through the one `HotbarModel` page
+  (`refactor/B1025-H4/README.md`). **H-5** (this item's live CI feature
+  scenario, MR !207, `refactor/B1025-H5/README.md`) — the gap-rule test the
+  issue's acceptance requires: `hotbar_lifecycle` (+ the `hotbar_isolation_
+  assign` peer) drives the hotbar's whole user path on a lane and asserts
+  only server/chat observables (the buff, the charge decrement, the client's
+  own cast/use/emote lines, the #fish catch, the per-character INI bytes for
+  persistence + isolation). Its lane run PASSED on lane 1 (run 12, 2026-10-16
+  22:09–22:22 UTC: exit 0 + post-check PASS, logs attached to the task and in
+  `refactor/B1025-H5/README.md`), and the MR !207 pipeline is green at
+  983df6c0. The H0 partial official-client capture
+  (`refactor/B1025-H0/README.md`) and its "Not captured / not verified" cases
+  remain open; H-3 (MR !198) and H-4 (MR !199) are in review, so this item
+  closes when the chain merges.
 - **B988** (A) → issue #307. Will 2026-10-05: "make the nobocache flag opt-in
   (off by default) and fix the stale docs". A DRM client now leaves
   `LIMA_DEBUG` untouched (Lima's BO cache on); `WILLEQ_LIMA_NOBOCACHE=1`
@@ -7337,8 +7350,10 @@ client uses every field.
   ignored by the drain) and `SimulationInput::cameraTarget`,
   `EntityVisual::corpseYOffset` (computed per corpse, never applied to the
   node), `ParticleEmitter::spawnRadius_` (seven callers set it; the spawn does
-  not use it), `SpellEffectInstance::spellID`, `RendererEvent::intData`,
-  `SpellActionInfo::level2`. Same class as B296 one layer down: a producer
+  not use it), `SpellEffectInstance::spellID`, `SpellActionInfo::level2`.
+  `RendererEvent::intData` closed by B1025-H4 (the hotbar page keys' first
+  consumer: `FrameComponent::processPlayerInput`'s `HotbarPageChange` arm).
+  Same class as B296 one layer down: a producer
   computes a value for a consumer that never reads it. Closes per field. Found
   by T414 Leg C.
 
@@ -8930,17 +8945,23 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
 
 - **B440** (B) `include/client/graphics/ui/cursor_attachment_layout.h`, → issue #150
   `/mnt/projects/EverQuestP1999/uifiles/default/EQUI_CursorAttachment.xml` --
-  **two of the CursorAttachment screen's three pieces have no fable producer.**
+  **one of the CursorAttachment screen's three pieces has no fable producer**
+  (B1025-H3 struck CA_SpellGem's half, below).
   The oracle's screen is `CA_Anim`, `CA_Anim2` and `CA_SpellGem`, all three at
   the same `<Location>(5,5)</Location>`, so at most one is ever visible; the
   official client shows `CA_Anim` for an item and `CA_SpellGem` for a spell
   being scribed off a scroll. fable's cursor holds an ITEM and nothing else --
   `InventoryManager`'s `cursorQueue_` is a queue of `ItemInstance` -- so T436
   drew `CA_Anim` and left the other two undrawn rather than inventing a state
-  to fill them. Closes when there is a cursor-held SPELL to draw (the scribe
-  path already exists: `ScribeSpellIntent` carries a `sourceSlot`), or when it
-  is established that Titanium never puts one there and the two elements are
-  recorded as deliberately unused. Found by T436.
+  to fill them. **B1025-H3 (2026-10-15, #345) struck the CA_SpellGem half**:
+  the hotbar assignment gesture's hot button (a held gem, ability row,
+  inventory item, or the `/hotbutton` command's social button) draws
+  CA_SpellGem's own box at the mouse (hotbar_assignment.cpp's
+  `renderHotbarCursorAttachment`, an item button reusing T430's dragitem
+  decal) -- its producer, and B440's closure condition ("a cursor-held
+  spell/button to draw") is met. CA_Anim2 (the second item piece) is still
+  undrawn: the item button is one decal, as the oracle's frames (H-O,
+  /home/user/kb-evidence/kb-h0-hotbar-oracle/) show. Found by T436.
 
 - ~~**B441** (C) `src/client/graphics/ui/bank_panel.cpp` (`BW_ChangeButton`), → issue #26
   `include/client/graphics/ui/bank_layout.h` -- **the bank window's Change

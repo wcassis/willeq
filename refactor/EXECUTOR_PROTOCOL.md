@@ -161,17 +161,23 @@ bit-deterministic across build types (T403).
 smoke test for the could-not-start exit found T405's server UP and logged a
 character in under another unit's lock (B306). Before ANY command that could
 open a connection to the eqemu server (172.16.200.99:5998 — its own VM since
-2026-09-12, `EQEMU_HOST` in `scripts/eqemu/env.sh`), read the lock with
-`source scripts/eqemu/env.sh; eqemu_lock_show`;
-if it exists and is not yours, do not run the command.
+2026-09-12, `EQEMU_HOST` in `scripts/eqemu/env.sh`), read the lane's LEASE with
+`source scripts/eqemu/env.sh; eqemu_lock_show` (B1089: the lock is now a
+lease, `docs/ci.md` "Lane leases");
+if it is HELD and is not yours, do not run the command.
 - LOCK FIRST (cross-session protocol, refactor/TESTING_CHARTER.md):
-  take the lock (`/mnt/projects/.eqemu-lock` ON the eqemu VM, so NFS and non-NFS
-  dev machines share it) ATOMICALLY — check-then-create is
-  a race (T224 clobbered T222's lock 90s after seeing it absent). Use:
-  `source scripts/eqemu/env.sh; eqemu_lock_take T###` (noclobber over ssh);
-  release with `eqemu_lock_release`
-  — exit 0 means you own it; non-zero means another session does: STOP and
-  report, never overwrite. DELETE it after clean shutdown. This applies to every server use, no exceptions.
+  take the lane's LEASE (`scripts/eqemu/env.sh`; the record lives ON the lane's
+  own host, one flock critical section per operation, TTL `LANE_LEASE_TTL_S`
+  default 900 s) ATOMICALLY — check-then-take is a race (T224 clobbered T222's
+  lock 90s after seeing it absent). Use:
+  `source scripts/eqemu/env.sh; eqemu_lock_take T###`; release with
+  `eqemu_lock_release`
+  — exit 0 means you own it; 1 means another session does (named): STOP and
+  report, never overwrite. A holder that dies is quiet: its lane frees at the
+  TTL (nothing is ever killed by expiry), and a renewal by an old holder fails
+  loudly with 63 plus the re-acquire one-liner. Long scripts start the
+  background renewer (`eqemu_lease_start_renewer`) right after taking. This
+  applies to every server use, no exceptions.
 ⚠ **THE CONTAINER STARTS A WORLD BY ITSELF (T449, fixed T457, board B483).**
 The akk-stack `eqemu-server` image auto-runs `/tmp/spire-launcher` on boot, so
 ~45 s after a bare `docker compose up -d mariadb eqemu-server` — with no

@@ -144,10 +144,11 @@ say "lane EQEMU_HOST=$EQEMU_HOST, client config host $cfg_host (verified)"
 
 # ---- 1. lock -------------------------------------------------------------------
 if ! eqemu_lock_take "$OWNER"; then
-    say "eqemu lock is HELD by: $(eqemu_lock_show) -- refusing to run"
+    say "eqemu lease is HELD by: $(eqemu_lock_show) -- refusing to run"
     exit 64
 fi
-say "lock taken: $(eqemu_lock_show)"
+say "lease taken: $(eqemu_lock_show)"
+eqemu_lease_start_renewer
 
 BEFORE="$OUT/snapshot_before.tsv"
 AFTER="$OUT/snapshot_after.tsv"
@@ -164,9 +165,10 @@ cleanup() {
     fi
     eqemu_restore_snapshot "$BEFORE" "$AFTER" say || RESTORE_BAD=1
     bash "$REPO/scripts/eqemu/down.sh" >>"$OUT/server.log" 2>&1
+    eqemu_lease_stop_renewer
     eqemu_lock_release
     rm -rf "$BIN_DIR"
-    say "stack down, lock released; lock now: '$(eqemu_lock_show)'"
+    say "stack down, lease released; lease now: '$(eqemu_lock_show)'"
 }
 trap 'cleanup; exit 130' INT TERM
 trap cleanup EXIT

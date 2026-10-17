@@ -47,5 +47,5 @@ if [ "$KEEP" -eq 0 ]; then
 else
     eqemu_world_start; say "eqemu-server container restarted (--keep-server)"
 fi
-[ "$RELEASE" -eq 1 ] && { eqemu_lock_release; say "lock released"; }
+[ "$RELEASE" -eq 1 ] && { eqemu_lock_release; say "lease released"; }
 exit $RC

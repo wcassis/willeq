@@ -162,7 +162,7 @@ Legend: Done | Partial | Not Implemented
 | Target info | Done | |
 | Spell book popup | Done | Searchable, click-to-memorise (no drag; T444) |
 | Spell gem bar | Done | 8 gems with casting bar |
-| Hotbar | Done | 10 slots, keys 1-0, content-typed |
+| Hotbar | Done | One window x 10 pages x 10 buttons (stock `EQUI_HotButtonWnd.xml`), content-typed slots (spell/item/skill/social), the hold-to-pickup assignment gesture (B1025-H3), the official page keys Shift+1..0 and Alt+H toggle (B1025-H4), per-character persisted (`UI_<Char>_<Server>.ini`); pinned by the `hotbar_lifecycle` live scenario (B1025-H5) |
 | Group panel | Done | HP/mana bars |
 | Pet panel | Done | Commands and status |
 | Buff bar | Done | Duration timers |
