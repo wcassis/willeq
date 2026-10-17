@@ -633,7 +633,11 @@ TEST_F(StaticUiFrameCostTest, TheTextFlushIsBatchedOnBothPaths) {
         if (img) img->drop();
         const char* path = fallback ? "fallback path" : "atlas path";
         EXPECT_GT(s.textEntries, 40u) << path;
-        EXPECT_EQ(s.layerGroups, 2u) << path;
+        // B1078 (GitLab #398): the inventory window anchors in the pair's
+        // right slot at the band's top -- clear of the chat panel at 800x600
+        // -- so its text and the chat's flush in ONE group now (the pre-B1078
+        // window's bottom edge crossed the chat, splitting the flush).
+        EXPECT_EQ(s.layerGroups, 1u) << path;
         EXPECT_LE(s.textDraws, 2u * s.layerGroups)
             << path << ": " << s.textDraws << " text draws for " << s.textEntries
             << " entries in " << s.layerGroups << " flush groups";

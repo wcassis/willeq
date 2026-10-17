@@ -324,16 +324,22 @@ GTEST_DISCOVER_TESTS(test_spell_sprite_atlas DISCOVERY_TIMEOUT 120)
 # own uifiles/default/dragitem*.tga, cell for cell, plus the column-major
 # id->cell mapping EQUI_Animations.xml declares. Files only -- no device, no
 # GPU, no willeq_core; same shape as test_spell_sprite_atlas above.
-ADD_EXECUTABLE(test_item_icon_atlas
-    test_item_icon_atlas.cpp
-)
-TARGET_COMPILE_DEFINITIONS(test_item_icon_atlas PRIVATE
-    "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
-TARGET_INCLUDE_DIRECTORIES(test_item_icon_atlas PRIVATE
-    ${CMAKE_SOURCE_DIR}/tools
-    ${CMAKE_SOURCE_DIR}/include)
-TARGET_LINK_LIBRARIES(test_item_icon_atlas GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_item_icon_atlas DISCOVERY_TIMEOUT 120)
+# Graphics builds only (B1038): the B1078 squareIn cases reach
+# UIRenderer::squareIn through ui_renderer.h, which includes irrlicht.h, so an
+# EQT_GRAPHICS=OFF configure dies on the missing header unless this target is
+# gated like its neighbours (pipeline 1519's build-headless failure).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_item_icon_atlas
+        test_item_icon_atlas.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_item_icon_atlas PRIVATE
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
+    TARGET_INCLUDE_DIRECTORIES(test_item_icon_atlas PRIVATE
+        ${CMAKE_SOURCE_DIR}/tools
+        ${CMAKE_SOURCE_DIR}/include)
+    TARGET_LINK_LIBRARIES(test_item_icon_atlas GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_item_icon_atlas DISCOVERY_TIMEOUT 120)
+ENDIF()
 
 # T406 (board B266): the census of every shipped BMP's alpha, its consumer's
 # blend, and the willeq.eqe1 payload that carries it. Reads files only (the

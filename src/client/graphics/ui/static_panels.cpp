@@ -258,7 +258,7 @@ void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
     if (inv.activePopup != PopupType::Inventory) return;
 
     auto* tb = ui.getTextBatch();
-    const auto& popup = layout.inventoryPopup;
+    const auto& popup = InventoryLayout::windowRect(layout);
 
     // Panel background
     ui.drawPanel(popup);

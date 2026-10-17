@@ -362,11 +362,13 @@ TEST_F(UiPanelZOrderTest, ThePurseCountsAreCoveredByTheConfirmationDialog) {
     confirm_.open(1, "ARE YOU SURE you wish to drop your Rusty Long Sword on the ground?");
     // B1075 (#395): the layout table moved the inventory to the right half of
     // the side-by-side pair, out from under the centred dialog at 800x600.
-    // This case is about TEXT LAYERING, not placement, so it stages the
-    // overlap it needs: the inventory in the pre-B1075 shared centre box
-    // {200,125,600,475}, where the purse counts sit under the dialog.
+    // B1078 (GitLab #398): the inventory's window anchors at that slot's LEFT
+    // (428x460 at one uniform factor), so it only reaches the centred dialog
+    // when the slot sits left enough: window {280,48,595,429} carries the
+    // coin column (x 519..551) under the dialog's right part (263..537).
+    // This case is about TEXT LAYERING, not placement.
     UILayout stacked = layout_;
-    stacked.inventoryPopup = {200, 125, 600, 475};
+    stacked.inventoryPopup = {280, 125, 680, 475};
     expectLowerTextCovered(
         "inventory under confirmation",
         [&] {
@@ -450,18 +452,22 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
         // 59 draws. The atlas pins are unchanged: every one of those is one
         // atlas quad plus the shared panel texture.
         {"hud", [] {}, {4, 4, 6, 1}, {59, 59, 6, 1}},
-        {"inventory", [&] { inv_.activePopup = PopupType::Inventory; }, {31, 35, 7, 2}, {82, 84, 7, 2}},
+        // B1078 (GitLab #398): the inventory window moved to the band-anchored
+        // 428x460 (one uniform factor), so its own flush is one group now
+        // (was two) and every bag-covering scenario lost 1 group.
+        // Retaken 2026-10-17 (atlas + fallback, 800x600, chat=120).
+        {"inventory", [&] { inv_.activePopup = PopupType::Inventory; }, {31, 31, 7, 1}, {82, 82, 7, 1}},
         // What B899's workaround drew for three open bags: the topmost only.
         // The Forge (350,100) also covers inventory text, so even one bag is a
         // real split (the shipped bleed was there too).
         {"inv+forge", [&] {
              inv_.activePopup = PopupType::Inventory;
              openForge(containers_);
-         }, {34, 42, 8, 3}, {92, 96, 8, 3}},
+         }, {34, 38, 8, 2}, {92, 94, 8, 2}},
         {"inv+3 bags", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
-         }, {47, 63, 10, 5}, {109, 117, 10, 5}},
+         }, {47, 59, 10, 4}, {109, 115, 10, 4}},
         {"full", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
@@ -472,7 +478,7 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
              cursor_.iconId = 1001;
              cursor_.mouseX = 560;
              cursor_.mouseY = 420;
-         }, {48, 64, 13, 5}, {125, 136, 13, 6}},
+         }, {48, 60, 13, 4}, {125, 134, 13, 5}},
     };
 
     for (bool fallback : {false, true}) {

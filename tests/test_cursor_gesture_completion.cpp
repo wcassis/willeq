@@ -480,14 +480,21 @@ TEST(ConfirmationDialog, YesPushesTheConfirmForItsPurposeAndNoPushesNothing) {
 TEST(DestroyButton, AsksOnlyWithAnItemHeldAndOverlapsNoSlot) {
     Rig rig;
     const auto d = InventoryLayout::destroyButtonRect(rig.l);
-    EXPECT_TRUE(rig.l.inventoryPopup.isRectCollided(d));
+    // B1078 (GitLab #398): the frame is the inventory's own window; check
+    // containment explicitly (isRectCollided is a collision test, not a
+    // containment test).
+    const auto win = InventoryLayout::windowRect(rig.l);
+    EXPECT_GE(d.UpperLeftCorner.X, win.UpperLeftCorner.X);
+    EXPECT_GE(d.UpperLeftCorner.Y, win.UpperLeftCorner.Y);
+    EXPECT_LE(d.LowerRightCorner.X, win.LowerRightCorner.X);
+    EXPECT_LE(d.LowerRightCorner.Y, win.LowerRightCorner.Y);
     for (int i = 0; i < InventoryLayout::TOTAL_SLOTS; ++i) {
         EXPECT_FALSE(InventoryLayout::slotRect(rig.l, i).isRectCollided(d)) << "slot " << i;
     }
     for (int c = 0; c < InventoryLayout::COIN_COUNT; ++c) {
         EXPECT_FALSE(InventoryLayout::coinRect(rig.l, c).isRectCollided(d));
     }
-    EXPECT_EQ(d.getWidth(), 50 * rig.l.inventoryPopup.getWidth() / 428) << "IW_Destroy CX=50, scaled";
+    EXPECT_EQ(d.getWidth(), 50 * win.getWidth() / 428) << "IW_Destroy CX=50, scaled";
 
     rig.clickRect(d);
     EXPECT_TRUE(rig.bridge.drainIntents().empty()) << "nothing held: nothing asked";

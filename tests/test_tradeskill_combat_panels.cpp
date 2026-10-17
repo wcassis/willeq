@@ -179,14 +179,16 @@ TEST(TradeskillWindowT415, WorldSlotsFeedTheGridAndOthersDoNot) {
 //   COMBW_RequiredIcon<i>: Location ((i%2)*42, (i/2)*42), Size 42x42
 TEST(TradeskillLayoutT415, SlotRectsAreTheOraclesScaled) {
     const UILayout l = layout800();
-    // popup is {264,65,664,415} (B1075: the CentreSlot anchor at 800x600); x scale 400/400, y scale 350/525
+    // B1078 (GitLab #398): the window is {264,48,556,431} at 800x600 (the
+    // oracle's 400x525 at ONE uniform factor of 384/525, the band's height,
+    // anchored at the centre slot's left and the band's top).
     struct Case { int i; int x0, y0, x1, y1; };
     const Case cases[] = {
-        {0, 543, 145, 585, 173},
-        {1, 585, 145, 627, 173},
-        {2, 543, 173, 585, 201},
-        {8, 543, 257, 585, 285},
-        {9, 585, 257, 627, 285},
+        {0, 467, 135, 497, 165},
+        {1, 498, 135, 528, 165},
+        {2, 467, 166, 497, 196},
+        {8, 467, 258, 497, 288},
+        {9, 498, 258, 528, 288},
     };
     for (const auto& c : cases) {
         const auto r = TradeskillLayout::slotRect(l, c.i);
@@ -205,24 +207,26 @@ TEST(TradeskillLayoutT415, TitleCombineAndCloseAreTheOraclesScaled) {
     const UILayout l = layout800();
 
     const auto title = TradeskillLayout::titleRect(l);
-    EXPECT_EQ(rectStr(title), "{506,111,662,124}");
+    EXPECT_EQ(rectStr(title), "{440,99,553,113}");
 
     const auto combine = TradeskillLayout::combineRect(l);
-    EXPECT_EQ(rectStr(combine), "{524,287,644,307}");
+    EXPECT_EQ(rectStr(combine), "{453,291,540,312}");
 
     const auto close = TradeskillLayout::closeRect(l);
-    EXPECT_EQ(rectStr(close), "{524,399,644,413}");
+    EXPECT_EQ(rectStr(close), "{453,413,540,429}");
 }
 
-// Every rect lies inside the popup and the two buttons do not collide with
+// Every rect lies inside the window and the two buttons do not collide with
 // the slot grid -- the T57/T60 containment invariant, at five resolutions.
-TEST(TradeskillLayoutT415, EverythingFitsInsideTheCenterPopup) {
+TEST(TradeskillLayoutT415, EverythingFitsInsideTheWindow) {
     const struct { int w, h; } resolutions[] = {
         {640, 480}, {800, 600}, {1024, 768}, {1280, 1024}, {1920, 1080}};
     for (const auto& rc : resolutions) {
         UILayout l;
         l.computeLayout(rc.w, rc.h);
-        const auto& p = l.centerPopup;
+        // B1078 (GitLab #398): the frame is the tradeskill's own window,
+        // not the centre slot it sits in.
+        const auto& p = TradeskillLayout::windowRect(l);
 
         std::vector<irr::core::rect<irr::s32>> all;
         for (int i = 0; i < TradeskillPanelState::MAX_SLOTS; ++i) {

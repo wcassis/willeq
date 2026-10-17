@@ -98,7 +98,7 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     const irr::core::vector2di at(mouseX, mouseY);
     const bool overOpenPopup =
         (inventory.activePopup == PopupType::Inventory &&
-         layout.inventoryPopup.isPointInside(at)) ||
+         InventoryLayout::windowRect(layout).isPointInside(at)) ||
         ((spellbook.isOpen || skills.isOpen) && layout.centerPopup.isPointInside(at)) ||
         (loot.isOpen && layout.partnerPopup.isPointInside(at));
 
@@ -282,10 +282,11 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     // shared source also used by renderInventoryPopup() (T57). No
     // slot-position arithmetic here.
     if (inventory.activePopup == PopupType::Inventory) {
-        if (mouseX >= layout.inventoryPopup.UpperLeftCorner.X &&
-            mouseX < layout.inventoryPopup.LowerRightCorner.X &&
-            mouseY >= layout.inventoryPopup.UpperLeftCorner.Y &&
-            mouseY < layout.inventoryPopup.LowerRightCorner.Y) {
+        const auto invWin = InventoryLayout::windowRect(layout);
+        if (mouseX >= invWin.UpperLeftCorner.X &&
+            mouseX < invWin.LowerRightCorner.X &&
+            mouseY >= invWin.UpperLeftCorner.Y &&
+            mouseY < invWin.LowerRightCorner.Y) {
             consumed = true;
             for (int i = 0; i < InventoryLayout::TOTAL_SLOTS; ++i) {
                 irr::core::rect<irr::s32> r = InventoryLayout::slotRect(layout, i);
@@ -661,11 +662,14 @@ bool StaticUIInput::processPanelInput(int mouseX, int mouseY, bool leftClicked,
                 }
             }
         } else if (leftClicked &&
-                   layout.centerPopup.isPointInside(
+                   TradeskillLayout::windowRect(layout).isPointInside(
                        irr::core::vector2di(mouseX, mouseY))) {
-            // The tradeskill window IS layout.centerPopup (TradeskillLayout
-            // maps the oracle's 400x525 onto it), so this is "clicked in the
-            // window but not in an editbox".
+            // The rect the window is DRAWN into (renderTradeskillPopup's
+            // drawPanel), not layout.centerPopup: B1078 moved the tradeskill
+            // window to the oracle's own 400x525 at its own uniform factor,
+            // and a hit test reading a different rect would let a click in
+            // the drawn window fail to defocus the editbox (T57's rule:
+            // draw and click read the SAME layout).
             if (auto* prev = tradeskill.focusedEntry()) {
                 prev->inputActive = false;
             }
