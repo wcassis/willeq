@@ -85,7 +85,7 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     const irr::core::vector2di at(mouseX, mouseY);
     const bool overOpenPopup =
         (inventory.activePopup == PopupType::Inventory &&
-         layout.inventoryPopup.isPointInside(at)) ||
+         InventoryLayout::windowRect(layout).isPointInside(at)) ||
         ((spellbook.isOpen || skills.isOpen) && layout.centerPopup.isPointInside(at)) ||
         (loot.isOpen && layout.partnerPopup.isPointInside(at));
 
@@ -178,10 +178,11 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     // shared source also used by renderInventoryPopup() (T57). No
     // slot-position arithmetic here.
     if (inventory.activePopup == PopupType::Inventory) {
-        if (mouseX >= layout.inventoryPopup.UpperLeftCorner.X &&
-            mouseX < layout.inventoryPopup.LowerRightCorner.X &&
-            mouseY >= layout.inventoryPopup.UpperLeftCorner.Y &&
-            mouseY < layout.inventoryPopup.LowerRightCorner.Y) {
+        const auto invWin = InventoryLayout::windowRect(layout);
+        if (mouseX >= invWin.UpperLeftCorner.X &&
+            mouseX < invWin.LowerRightCorner.X &&
+            mouseY >= invWin.UpperLeftCorner.Y &&
+            mouseY < invWin.LowerRightCorner.Y) {
             consumed = true;
             for (int i = 0; i < InventoryLayout::TOTAL_SLOTS; ++i) {
                 irr::core::rect<irr::s32> r = InventoryLayout::slotRect(layout, i);
