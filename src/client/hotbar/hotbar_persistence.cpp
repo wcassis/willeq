@@ -114,7 +114,16 @@ bool parseButtons(const std::string& text, const HotbarModel& model,
 std::string encoded(const HotbarSlot& slot, const HotbarModel& model) {
     if (!slot.sourceCode.empty()) return slot.sourceCode;
     switch (slot.type) {
-        case HotbarSlotType::Emote: return "E" + std::to_string(slot.id);
+        case HotbarSlotType::Emote:
+            // A FREE-TEXT social (emoteText set, the fable form H-3's user
+            // path stores) has no INI code: the official client's social is an
+            // emote INDEX (E<number>, the H-O oracle's measured form), and a
+            // macro's text is not one. Encoding the free-text form as E0 would
+            // write a slot that reads back as a broken emote 0, so it encodes
+            // to nothing and SaveCharacterHotbar skips it -- the documented
+            // fable-vs-official gap (B1025-H5).
+            if (!slot.emoteText.empty()) return {};
+            return "E" + std::to_string(slot.id);
         case HotbarSlotType::Skill:
         case HotbarSlotType::Combat: return "J" + std::to_string(slot.id);
         case HotbarSlotType::Item: return "F" + std::to_string(slot.id);
@@ -180,8 +189,15 @@ bool SaveCharacterHotbar(const std::string& character, const std::string& server
         for (int s = 0; s < HotbarModel::SLOT_COUNT; ++s) {
             const auto& slot = model.getSlot({p, s});
             const auto value = encoded(slot, model);
-            if (slot.type != HotbarSlotType::Empty &&
-                (value.empty() || !slot.emoteText.empty())) return false;
+            // A slot that cannot be written (an Emote/Macro with no INI code,
+            // i.e. a FREE-TEXT social -- the official client's E<number> index
+            // form does carry one) is skipped, NOT refused: B1025-H5 found
+            // the whole-file refusal it used to do. A single non-persistable
+            // slot used to lose EVERY OTHER slot's assignments on the next
+            // load, because the save is one [HotButtons] section. The social
+            // slot itself is the documented fable-vs-official gap (H-5 README):
+            // it survives this session but not the relog.
+            if (slot.type != HotbarSlotType::Empty && value.empty()) continue;
             if (value.empty()) continue;
             output += "Page" + std::to_string(p + 1) + "Button" +
                       std::to_string(s + 1) + "=" + value + "\n";

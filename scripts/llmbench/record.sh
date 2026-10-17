@@ -92,10 +92,11 @@ echo "[record] preflight ok: binary $BIN_SRC" >&2
 
 # ---------------------------------------------------------------- the lock --
 if ! eqemu_lock_take "${UNIT} llmbench record ${CORPUS}"; then
-    say "eqemu lock HELD by: $(eqemu_lock_show) -- refusing to run"
+    say "eqemu lease HELD by: $(eqemu_lock_show) -- refusing to run"
     exit 64
 fi
-say "lock taken by ${UNIT}"
+say "lease taken by ${UNIT}"
+eqemu_lease_start_renewer
 
 # scenario.sh's sql(), unchanged.  The statement travels as ARGV, never on
 # stdin: `eq_remote` is `ssh -n`, which drops stdin, and a `mysql < dump.sql`
@@ -191,8 +192,9 @@ cleanup() {
         eqemu_world_start
         say "eqemu-server container restarted (--keep-server)"
     fi
+    eqemu_lease_stop_renewer
     eqemu_lock_release
-    say "lock released"
+    say "lease released"
 }
 trap cleanup EXIT INT TERM
 

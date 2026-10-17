@@ -459,6 +459,23 @@ ADD_TEST(NAME OracleRemoteStopSafety
     COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/remote_stop_safety.sh)
 SET_TESTS_PROPERTIES(OracleRemoteStopSafety PROPERTIES LABELS "hygiene")
 
+# B1089 (#409): the lane lease's hermetic net. The core
+# (scripts/eqemu/lease_core.sh) is host-side and self-contained, so running
+# it against a temp dir IS the unit test -- no ssh, no network, no lane
+# host. Covers: take on a free lane, second taker refused, show HELD with
+# expires_in, non-owner release refused (rc=63, the B922 owner-check half),
+# owner renew extends last_touched, TTL expiry -> EXPIRED, takeover after
+# expiry names the former holder, the former holder's renew fails with 63 +
+# the re-lease one-liner, re-acquire after release, reap releases a dead
+# run's lease and kills exactly its tracked pids (a live run's process is
+# untouched), reap --dry releases nothing and kills nothing, a five-way
+# concurrent take race (exactly one winner under flock), and a corrupt
+# record (refused, not deleted). ~5 s (three sub-second TTL sleeps), plain
+# "hygiene" label. Red-before is N/A: the helper is new.
+ADD_TEST(NAME LeaseCoreSelfTest
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/eqemu/lease_selftest.sh)
+SET_TESTS_PROPERTIES(LeaseCoreSelfTest PROPERTIES LABELS "hygiene" TIMEOUT 120)
+
 # B1058 (#378): the oracle driver's template library located over the archived
 # corpus (review/B1058/corpus): every positive within 1 px of its measured
 # centre and above min_score, every negative below it, cv2 and numpy agreeing

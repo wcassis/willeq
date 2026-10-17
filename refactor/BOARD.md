@@ -467,12 +467,20 @@ it without taking that measurement first.
   H-O oracle measured them invisible even forced on), so there is no geometry
   for bars 2-4. Chain: **H-3** (merged, MR !198) — the slot-ASSIGNMENT gesture
   (hold-to-pickup, place, clear, `/hotbutton`), the first production caller of
-  `HotbarModel::assignSlot`; **H-4** (this item's keys, `refactor/B1025-H4/README.md`)
-  — the official page keys (Shift+1..0) and window toggle (Alt+H) with their
-  Options Keys rows, addressed through the one `HotbarModel` page. What remains
-  is the live feature scenario (H-5). The H0 partial official-client capture
-  (`refactor/B1025-H0/README.md`) and its "Not captured / not verified" cases
-  remain open; this item is not closed.
+  `HotbarModel::assignSlot`; **H-4** (this item's keys, MR !199, in review,
+  `refactor/B1025-H4/README.md`) — the official page keys (Shift+1..0) and
+  window toggle (Alt+H) with their Options Keys rows, addressed through the
+  one `HotbarModel` page; **H-5** (merged, MR !207, `refactor/B1025-H5/README.md`)
+  — the gap-rule test the issue's acceptance requires: `hotbar_lifecycle` (+
+  the `hotbar_isolation_assign` peer) drives the hotbar's whole user path on a
+  lane and asserts only server/chat observables (the buff, the charge
+  decrement, the client's own cast/use/emote lines, the #fish catch, the
+  per-character INI bytes for persistence + isolation). Its lane run PASSED on
+  lane 1 (run 12, 2026-10-16 22:09–22:22 UTC: exit 0 + post-check PASS, logs
+  attached to the task and in `refactor/B1025-H5/README.md`). The H0 partial
+  official-client capture (`refactor/B1025-H0/README.md`) and its "Not
+  captured / not verified" cases remain open; H-4 (MR !199) is in review, so
+  this item closes when it merges.
 - **B988** (A) → issue #307. Will 2026-10-05: "make the nobocache flag opt-in
   (off by default) and fix the stale docs". A DRM client now leaves
   `LIMA_DEBUG` untouched (Lima's BO cache on); `WILLEQ_LIMA_NOBOCACHE=1`
