@@ -1,187 +1,169 @@
-# B1086 (#406): lane-5 Set Face half-render — diagnosis
+# B1086 (#406): Set Face half-render — diagnosis (take 2, corrected)
 
-**Verdict (one line):** the picker's picker-list render broke on the oracle
-guests between 2026-10-13 ~09:00 and 2026-10-15 17:04, and the break is NOT in
-any guest-side variable reachable by a one-knob probe — wine, GL vendor, the
-X display session, per-character client state, the EQ client data, the client
-binary, the eqemu server, or the oracle harness's open gesture are all
-measured exonerated. The card's "pre-reprovision wine" premise is FALSE
-(matrix3, the last full-list capture, ran on lane 1 which was never
-re-provisioned, on the same wine 9.0 and same eqgame.exe md5). The half-open
-is a genuine client render state (not a driver/OCR/crop artifact), verified at
-pixel level on both lanes and on a brand-new display server. What the half-open
-rests on — a guest-side fact that changed in that window and that no
-read-only probe on this box can name without a host change — is left open for
-Will (the card's step-4 recommendation is therefore: keep the gate, run the
-next knob under Will's host access, and see the one-knob table below for what
-remains).
+**Verdict (one line):** the card's "both lanes fail, so look at what the two
+lanes SHARE" premise is REFUTED by the evidence — lane 5 was re-provisioned
+fresh AFTER the last full-list capture and was never good, so the two lanes
+never rendered the full list in the same era and cannot localize a shared
+variable. The flip is a LANE-1-SPECIFIC regression, bracketed to
+**2026-10-13 08:44 (last confirmed good) → 2026-10-15 16:59 (first confirmed
+bad)**. Every lane-1 guest-side variable reachable on this box — client
+binary, client data + UI XML + atlas, eqclient.ini, wine, the wine prefix,
+wine's D3D9/GLX DLLs, libx11/xcb1, the running kernel, the GL userspace
+(mesa/gallium/llvmpipe 25.2.8 + libdril_dri), the Xvfb session, the eqemu
+server (source + database + config), and the guest-side oracle harness — is
+measured unchanged or exonerated in that window. The only remaining suspect
+is the lane-1 guest's **physical host** (the guest is a KVM VM whose GL path
+exits into the host's llvmpipe over virtio-gpu), which is unreachable by SSH
+from this box (172.16.200.3, connection refused) and which leaves NO
+guest-side trace (dpkg/apt/mtime) when it changes.
 
-Acceptance A is met in its "proven root cause" half: the mechanism is named,
-its prediction checked, and a one-knob table shows the variables that do NOT
-flip it plus the variable class that must flip it. A full 7-row capture on the
-current stack was NOT produced (no knob available to this box flips it); that
-is stated plainly, not papered over.
+Acceptance A is met in its "every step's search attached as empty, bracket
+narrowed" branch (see the one-knob table). The one-knob A/B (revert → 7
+rows) CANNOT be produced from this box because the residual candidate sits on
+an unreachable host; that is the narrowed next step, not a papered-over gap.
+Lane 5's eqemu lock was never taken (no lane-5 capture was needed after the
+premise was refuted); the lane-1 stack was left down and strays cleaned,
+Xvfb :99 untouched.
 
-## Mechanism (B1007 #328 gate)
+## What take 2 changed relative to the parent
 
-**The fact:** the official client (eqgame.exe, Titanium) opens the Set Face
-picker in TWO visible states. State 1 ("half-open") shows the FACE heading,
-the FACE picker row, and the Random/Accept/Cancel strip; the other six rows
-(HAIR, HAIR COLOR, EYES, BEARD, BEARD COLOR, WOAD) are absent from the frame.
-State 2 ("rendered") shows all seven rows. The driver's row-count probe
-(`facepick_row_count`, oracle_remote.sh:530) reads the white-arrow strip
-`20x12+138+(yrow-6-30)` per row on the `+0+30` page still (a page-relative
-crop, proven in `/home/user/kb-evidence/kb-b1086-setface-halfrender/cropcheck.py`
-and `im_page_test2.sh`) and thresholds at mean>48 (0–255 scale): state 1
-counts 1 (FACE ≈ 74, the six others ≈ 21), state 2 counts 7.
+1. **The "both lanes share" premise is refuted.**
+   `host-era-evidence.md` already showed the ThinkPad's first wine install was
+   10-13 15:31 and its first NVIDIA install 10-13 15:27, with its first-ever
+   boot at 10-13 15:18. Its first Set Face capture was 10-14 20:50 (b888cc1-
+   full26d) — already half-open. Every full-list capture (matrix3 10-13 04:10,
+   matrix4 06:16–08:44, facepick-endpoints 11:57) ran on **lane 1**. So
+   "lane 5 is an independent confirmation of a shared variable" is false:
+   lane 5 has only ever shown the bad state. The flip variable, if it is
+   shared between the lanes at all, would have had to hit lane 1 before
+   10-13 08:44 and lane 5 at its 10-13 15:29 re-provision — i.e. it is a
+   lane-1 regression with a coincidentally fresh-bad lane 5, not a common
+   ancestor. All localization therefore happens on lane 1.
 
-**The prediction it makes:** if the guest can render state 2, some one-knob
-change (wine, GL, display, per-character state, client data, server) will
-flip state 1 → state 2 while everything else is held. If no such knob flips
-it, the break is in a guest-side fact that the probe does not reach.
+2. **The bracket is corrected.** The parent used "good 10-13 ~09:00" but the
+   B1048 session it leaned on (10-13 15:11) never opened the picker (its video
+   frames show the main creation page, picker not open — re-verified here from
+   163 extracted frames). The confirmed-good end is matrix4's last pair
+   (woodelf-female, 10-13 08:44, 7 rows); the confirmed-bad end is
+   cc2preview10 (10-15 16:59, 1 row). No face-picker capture exists between.
 
-**Checked (this run, 2026-10-17):** every reachable one-knob change was
-tested, held, and measured. None flips it. The flip window is therefore
-bracketed to a guest-side fact outside the one-knob set.
+3. **libx11 exonerated by matrix4's OWN stills.** The parent's exoneration
+   cited `m4check.py` against a visibility.tsv that is a byte-copy of
+   matrix3's (`diff -q` identical). Re-measured matrix4's own per-pair stills:
+   the HAIR row (present for every race) reads 17972 (0–65535) — full — for
+   ALL 24 pairs, both before (gnome-male 06:57) and after (gnome-female 07:03,
+   halfelf 07:06–07:12, …) the 06:59:58 `libx11-6:i386` upgrade. (An earlier
+   strip at the beardcolor row showed a mid-run "flip" that turned out to be
+   the legitimate male/female feature difference — women have no BEARD/BEARD
+   COLOR rows — and ogre's 2-row list is ogre's real feature set, both
+   vision-confirmed against the stills.) So the 06:59 upgrade did not flip
+   anything; the good era survives through 08:44.
 
-## Timeline (both lanes, same binary, same wine, same client data)
+4. **The flip is reproducible on the current guest today** (2026-10-17
+   19:32–19:37): the literal good-era driver (`manual_probe_lane1.sh`: drive-
+   login → creation → verified Barbarian-male selection → matrix3 net-zero-drag
+   open → 120 s settle) yields face=70.28 with hair/haircolor/eyes/beard/
+   beardcolor/wode all 23.4–24.96, static across the whole 120 s — 1 row,
+   same as every prior bad-era capture. Good-era gesture + verified selection
+   cannot recover the list.
 
-| date / time | lane | display | GL | still | rows |
-|---|---|---|---|---|---|
-| 10-13 04:10 | 1 | Xvfb :99 (up since 10-09) | — (pre-GLX-standard) | facepick-matrix3/barbarian-male/open/00.png | **7** |
-| 10-13 06:23–08:44 | 1 | Xvfb :99 | — | facepick-matrix4/*/open/00.png (13 pairs) | **7** (m4check.py) |
-| 10-13 06:59:58 | 1 | — | — | libx11-6:i386 1.8.7-1build1 → 1.8.7-1ubuntu0.1 (apt) | — |
-| 10-13 ~11:57 | 1 | — | — | facepick-endpoints (last known-good lane-1 still) | 7 |
-| 10-13 15:18–15:31 | 5 | Xorg :99 (fresh) | NVIDIA 580.178.04 | lane-5 re-provision (B1055) | — |
-| 10-14 20:50 | 5 | Xorg :99 | NVIDIA | b888cc1-full26d/02_barbarian-male.png | **1** (first bad, lane 5) |
-| 10-14 23:34 | 5 | Xorg :99 | NVIDIA | b888cc1-pilot3/02_barbarian-male-face-not-rendered.png | **1** |
-| 10-15 17:04 | 1 | Xvfb :99 (same, since 10-09) | llvmpipe | sessions/cc2preview10 (first bad, lane 1) | **1** |
-| 10-17 (this run) | 1 | Xvfb :99 | llvmpipe | fresh-acct2-stills, crr/firstopen.png | **1** |
-| 10-17 (this run) | 1 | **fresh Xvfb :98** | llvmpipe | b1086-freshxvfb (live row-measure, 110s) | **1** |
-| 10-17 (this run) | 1 | Xvfb :99 | llvmpipe | crr/reopen.png (verified close→reopen) | **1** |
+## Lane-1 exoneration table (corrected window 10-13 08:44 → 10-15 16:59)
 
-Two independent first-bad observations, two independent display servers
-(Xvfb on lane 1, Xorg on lane 5), two independent GL vendors (llvmpipe vs
-NVIDIA) — same eqgame.exe md5 `a9de1b8cc5c451b32084656fcacf1103` (3,981,312
-bytes) on both, same wine 9.0, same client data tree (byte-compared mtimes in
-the window).
-
-## One-knob table (each row: the knob, held or changed, and the measured result)
-
-| # | knob | state tested | result | evidence |
+| # | variable | state in window | verdict | evidence |
 |---|---|---|---|---|
-| 1 | GLX vendor | NVIDIA 580.178.04 (lane 5) vs llvmpipe (lane 1) | BOTH half-open | l5/l5-full26d-02.png + fresh-acct2-stills |
-| 2 | wine version | 9.0~repack-4build3, constant since 10-08 (lane 1 apt history) | unchanged; still half-open | lane1_full_window.sh |
-| 3 | display session | long-lived Xvfb :99 (since 10-09) vs FRESH Xvfb :98 (this run) | BOTH half-open (fresh :98: face=70.28, others 23.6–24.98, static 110s) | b1086-freshxvfb2.log, fxvfb/ |
-| 4 | per-character client state | fresh zero-state account `willeq_b1086` (0 characters, 0 per-char INIs) | half-open | fresh-acct2.log, fresh-acct2-stills/ |
-| 5 | libx11-6:i386 | 1.8.7-1ubuntu0.1 (upgraded 10-13 06:59:58) | matrix4 stills 10-13 06:23–08:44, i.e. AFTER the upgrade, all 7 rows → exonerated | m4check.py on m4/ |
-| 6 | eqgame.exe | md5 identical on both lanes, unchanged | n/a — constant across good and bad | host-era-evidence.md |
-| 7 | EQ client data (models, UI, .eqe1) | only 3 empty maps/*.txt touched in window; no UI/face/model file | constant across good and bad | lane1_clientdata_window.sh |
-| 8 | wineprefix system/user.reg | 0 files under the prefix changed in the window | constant | lane1_final_vars.sh |
-| 9 | eqemu server (akk-stack) | source last commit 2026-01-10; container restarted on the SAME cadence in the good era (10-13 09:38–11:57) as the bad era (10-13 14:47–15:17, 10-14 03:35–19:02); only log files touched in window | exonerated | lanehost_server.sh, lane1_server_window.sh |
-| 10 | oracle harness open gesture | good-era matrix3 (net-zero drag, immediate still, 7 rows on 10-13) vs current facepick-rows (same net-zero drag, 24s settle, close→reopen fallback) — and a verbatim close→reopen at matrix3's exact (124,519) with VERIFIED close | current stills 1 row; **verified close→reopen STILL 1 row** (crr/reopen.png byte-identical to crr/firstopen.png: face 74.08, six others 21.0–22.6) | crrcheck.py, crr/*.png |
+| 1 | eqgame.exe | md5 a9de1b8cc5c451b32084656fcacf1103, 3,981,312 B, mtime 2026-02-11 | unchanged | lane1 guest, both eras |
+| 2 | client data (models/.s3d/.eqe1) | 0 non-per-character files changed in window (only maps/*.txt + per-char INIs written at login) | unchanged | find on /home/user/eq-oracle/client |
+| 3 | EQUI_FacePick.xml, uifiles/*.xml, UI atlas | all 2026-02-11 (the tree's layout date); 0 XML in window | unchanged | find -name "*.xml" |
+| 4 | eqclient.ini | only LastCharSel/LastSysInfoDate (session stamps); no UI/render key | unchanged | diff vs facepick-wire/eqclient.ini.before (10-13 08:38) |
+| 5 | wine | 9.0~repack-4build3 since 10-08 02:10 (first install in log); no change | unchanged | /var/log/dpkg.log* |
+| 6 | wine prefix (system.reg/user.reg/dosdevices) | 0 files in window (current mtimes are this run's logins) | unchanged | find on WINEPREFIX |
+| 7 | wine D3D9/GLX DLLs in prefix (wined3d/d3d9/gdi32) | all 10-08 02:16 (prefix creation) | unchanged | ls --time-style |
+| 8 | libx11-6 / libx11-xcb1 (amd64+i386), libx11-data | upgraded 10-13 06:59 (BEFORE the window); matrix4 straddled it and stayed full-list | exonerated by matrix4's own stills | 49-matrix4-all.sh, m4/*.png |
+| 9 | running kernel | 6.8.0-146, booted 10-08 01:39, still running; 6.8.0-147 installed 10-15 06:55 but NEVER BOOTED (inert; /boot has both, btime 10-08) | unchanged for the running system | uname -r, uptime -s, ls /boot |
+| 10 | GL userspace: mesa 25.2.8, libgallium, llvmpipe, libdril_dri.so | all 2024-era / Oct 1 2025 build dates; 0 in window | unchanged | dpkg -l, /usr/lib{,32}/…/dri |
+| 11 | Xvfb :99 (the display server the client renders into) | same process (pid 27723) up since 10-09 09:57, args unchanged, in both eras | unchanged | ps -o lstart |
+| 12 | eqemu server (akk-stack @ 172.16.200.99) | 0 source/config/data files in window (404 hits = runtime logs only); peq DB: no table updated in window (char_create_combinations NULL, character tables NULL); host booted 09-12, kernel 139 unchanged | unchanged | find on akk-stack, information_schema.tables |
+| 13 | oracle harness on the guest (env.sh, login, ui-lib, oracle_remote) | 0 scripts changed in window (env.sh's 4-lane edit was 10-13 05:58, pre-window) | unchanged | find on /mnt/projects/eq-oracle + /home/user/eq-oracle |
+| 14 | the open gesture (net-zero drag) | the LITERAL good-era driver (verified selection + matrix3 click_control + 120 s settle) run 2026-10-17 19:32 → 1 row | exonerated — bad state reproduces with the good-era gesture | b1086-live-bad-*.log, b1086-manual-probe/ |
+| 15 | per-character / account state | fresh zero-state account also half-open (parent), and today's run uses the standing account | exonerated | parent fresh-acct2; this run |
+| 16 | **the guest's PHYSICAL HOST** | the guest is a KVM VM (kvm-clock, virtio_gpu); its GL path is 32-bit eqgame → wine wined3d → i386 libGL/libGLX → libdril_dri.so (virtio_gpu_dri) → virtio ring → HOST-side llvmpipe. The host (gateway 172.16.200.3) is NOT reachable by SSH from this box (connection refused), so its dpkg/journal/kernel cannot be read from here. A host-side change (host kernel's virtio-gpu module, KVM/qemu version, host llvmpipe, or a live migration to a differently-provisioned host) would change guest rendering with ZERO guest-side dpkg/apt/mtime trace. | **UNREACHED — residual suspect** | guest: systemd-detect-virt=kvm, /sys/class/drm/card0 (Virtio 1.0 GPU), libdril_dri strings, ping 172.16.200.3 (up) vs ssh (refused) |
 
-Row 10 is the load-bearing one. The CC1 merge's `facepick-rows` comment says
-"re-open does NOT re-render the picker list on this rig" — and the verified
-close→reopen (popup_open confirmed false between close and reopen) confirms it
-today. But matrix3's own `pick()` loop (which closes before every re-open and
-re-renders) produced 7-row stills on 10-13. Same gesture, same client, same
-wine, same display; the re-render stopped happening in the window. That is a
-guest-side render regression, not a harness artifact.
+Row 16 is the narrowing: the parent's "guest-side fact invisible to dpkg" is
+concretized. On the guest there is nothing left that changed and could reach
+the client's render path; the one thing that changed nothing in the guest but
+sits directly under the guest's render path is the host it runs on.
 
-## The decisive stills (byte-level)
+## Mechanism + prediction (B1007 #328)
 
-- Good: `facepick-matrix3/barbarian-male/open/00.png` (10-13 04:10) — 7 bright rows.
-- Bad: `crr/firstopen.png` (10-17, lane 1, Xvfb :99) — face 74.08, six others 20.66–22.55.
-- Bad (reopen): `crr/reopen.png` — byte-identical to firstopen at all seven strips.
-- Bad (fresh display): live row-measure 110s, face 70.28, others 23.6–24.98, static.
-- Bad (lane 5, NVIDIA): l5/l5-full26d-02.png, l5/l5-pilot3-02.png.
+**The fact:** the client's D3D9 UI ("Choose Your Appearance" list) renders
+either all feature rows (good) or only the FACE row + Random/Accept/Cancel
+strip (bad), and the choice is made by the GL backend the 32-bit process
+resolves at load: i386 libGLdispatch → i386 libdril_dri.so (Mesa DRI
+dispatcher) → the `virtio_gpu` DRI driver, whose actual shading runs on the
+HOST's llvmpipe over the virtio ring (there is no GPU in the guest). The
+picker-list draw is the one D3D9 path that stops rendering after the flip;
+the model, buttons and FACE row (and the whole rest of the client) keep
+rendering, which is why the state looks like "half-open" rather than a GL
+failure.
 
-Measurement method: 20x12 strip at x138–158, top at `yrow-6-30` for a `+0+30`
-page still (or `yrow-6` for a `+0+0` full grab), 0–255 mean, threshold 48. The
-`+0+30` page-relative crop semantics were proven with a synthetic IM test
-(im_page_test2.sh) — the driver's `-30` is CORRECT, not a 30px bug.
+**The prediction it makes:** if a host-side render change (host llvmpipe/
+KVM/virtio-gpu, or a migration) is the flip, then (a) the guest must show the
+good state on a host that carries the pre-window stack and the bad state on
+the post-window one — a one-host A/B flips 1 row ↔ 7 rows with the guest
+byte-identical (same eqgame.exe md5, same wine, same prefix, same display
+server); (b) the flip would appear WITHOUT any guest dpkg/apt/mtime event
+(exactly what is observed: 0 relevant guest changes in the window); (c) the
+host change would be visible in the HOST's dpkg.log/journal/boot record, not
+the guest's. If instead the flip were guest-side, one of rows 1–15 would show
+an in-window change and reverting it on the (unmodified) guest would restore
+the list — none does.
 
-## Fix recommendation for Will (step 4 of the card)
+**Checked:** rows 1–15 all read "unchanged/exonerated" above; row 16 could
+not be read from this box. The prediction (a) is the decisive next probe and
+it needs access to 172.16.200.3 (or a re-provision of the lane-1 guest on a
+known host), which this box does not have.
 
-No host-side fix can be recommended from this box, because no guest-side
-one-knob variable flips the render. The remaining candidates, in order of what
-the evidence says, are:
+## Decisive stills
 
-1. **A guest-side kernel/ABI fact that changed on BOTH lanes' guests in the
-   window, invisible to dpkg/apt.** Lane 1's guest has NOT rebooted since 10-08
-   (kernel 6.8.0-146 still running; 147 installed 10-15 but never booted), so
-   on lane 1 the kernel is NOT the flip — but lane 5's guest DID boot a new
-   kernel at the 10-13 15:29 re-provision. That asymmetry means the flip is
-   not "the guest kernel"; it is something both guests share that lane 1's
-   guest picked up WITHOUT a reboot. The only lane-1 guest file changes in the
-   window are libx11-6:i386 (exonerated by matrix4), python3-jwt/urllib3, an
-   unbooted kernel, and audio — none of which touches the client's GLX path.
-   **The remaining suspect is a wine-side in-memory / runtime fact that does
-   not show in dpkg: a wine prefix file, a wine-loaded DLL, or a wine
-   codepath triggered by a changed dependency's loaded state.** The prefix's
-   system.reg/user.reg mtimes (10-17 09:16/09:14) are from THIS run's logins,
-   so they do not bracket the window; a byte-level prefix diff between a
-   pre-10-13 snapshot and today is the next probe, and it needs a prefix
-   snapshot from the good era (none exists on this box).
-2. **A host-side GLX driver fact on BOTH lanes.** Lane 1's GLX path (llvmpipe
-   under Xvfb) and lane 5's (NVIDIA 580 under Xorg) share the wine GLX shim,
-   not the host driver. If the shim's behavior changed (wine update, or a
-   dependency the shim resolves at load), both lanes would break together.
-   Again, wine 9.0 is constant per apt; the shim's loaded dependencies are
-   the check — `ldd` on the wine libglx1.so at good-era vs now, which needs a
-   good-era ldd capture.
-
-**Concrete next steps (Will's host access, or a card with it):**
-- A byte-level diff of the wine prefix (system.reg, user.reg, the dosdevices,
-  the drive_c/windows/system32 DLLs) between a pre-10-13 snapshot and today.
-  No pre-10-13 snapshot exists on this box — this is the gap.
-- `ldd` on the wine `libglx1.so` / `libwine.so` at the good era and now; any
-  newly-loaded or version-changed dependency is the suspect.
-- If both are clean: the regression is in a guest-side fact that a read-only
-  probe cannot reach (e.g. a guest-side GLX driver state that persisted across
-  the lane-5 re-provision and was independently acquired by lane-1's guest
-  through an unknown path). At that point the practical fix is a lane re-provision
-  of BOTH lanes (a host change, Will's call) and re-running matrix3 to confirm
-  the 7-row render is restored — which would also confirm the regression is
-  in the guest, not the harness or the client.
-
-**The facepick-rows gate (row-count >= 2) is correct and must stay.** It
-fails loudly on the half-open state, which is the right behavior; the bug is
-that the state it is failing on now occurs on EVERY open, not intermittently.
-
-## Not verified / left open
-
-- No pre-10-13 wine prefix snapshot exists on this box → cannot diff the
-  prefix across the window. LEFT OPEN.
-- No pre-10-13 `ldd` capture of the wine GLX shim exists → cannot diff the
-  shim's loaded dependencies. LEFT OPEN.
-- The lane-1 guest's kernel (146, since 10-08) is NOT the flip, but the
-  mechanism by which lane-1's guest acquired the break without a reboot is
-  unknown. LEFT OPEN.
-- A full 7-row capture on the current stack was NOT produced. LEFT OPEN —
-  requires Will's host access or a lane re-provision.
+- Good: `facepick-matrix3/barbarian-male/open/00.png` (10-13 04:10) and
+  `facepick-matrix4/human-male/open/00.png` (10-13 07:38, POST-libx11) — 6–7
+  labeled rows, gold arrows (vision-confirmed this run; m4/*.png pulled).
+- Good (last): matrix4 woodelf-female 08:44 — 7 rows (strip 17972 HAIR).
+- Bad (era): `sessions/cc2preview10_20261015T165921/13_face-open-settle.png`
+  (10-15 16:59) — FACE only, no arrows (vision-confirmed).
+- Bad (today, good-era driver): `b1086-manual-probe/04_settle-120s.png`
+  (10-17 19:37) — face 70.28, others 23.4–24.96, static 110 s (live log
+  `b1086-live-bad-*.log` on the guest).
+- Race-specific rows are NOT the flip: ogre = FACE+EYES (2 rows) and women =
+  no beard rows are the correct per-race lists (vision-confirmed against
+  matrix4 stills), and they are present identically in the good era.
 
 ## Downstream (FOLLOW-UP per the card)
 
-- t_d8b06d8c (CC-1 full26 re-run): CANNOT run until the list renders. Its
-  gate (row-count >= 2) is correct; it is failing on a guest-side regression,
-  not a gate defect.
-- CC-4 IoU gate (MR !200): same — the reference stills it scores against were
-  captured in the good era; scoring them against today's half-open stills is
-  meaningless. Cannot run.
+- t_d8b06d8c (CC-1 full26 re-run) and the CC-4 IoU gate (MR !200) remain
+  blocked: the row-count gate is correct; the client genuinely half-opens on
+  the current lane-1 host. They unblock when a lane-1 capture renders 7 rows,
+  which per rows 1–16 requires the host-side A/B (row 16), not a guest fix.
+- **The fix card must run the host A/B:** read 172.16.200.3's
+  /var/log/dpkg.log* + journal + boot record for 2026-10-13 08:44 →
+  10-15 16:59 (kernel/KVM/libvirt/mesa-llvmpipe/virtio-gpu, any migration or
+  live-ops event), then revert the hit (or re-provision the lane-1 guest on a
+  pre-window host) and re-run `manual_probe_lane1.sh` — 7 rows on revert and
+  1 row again on restore is the one-knob proof. Until then the CC-1 full26 and
+  CC-4 gate stay disabled.
 
 ## Evidence index (all under /home/user/kb-evidence/kb-b1086-setface-halfrender/)
 
 | file | what it is |
 |---|---|
-| host-era-evidence.md | good/bad era per-lane evidence, md5s, apt history |
-| matrix_capture3.sh | the GOOD 7-row producer (pulled from the guest, dated 10-13) |
-| m4/ m4post/ | matrix4 stills (10-13, post-libx11-upgrade, all 7 rows) |
-| m4check.py | measures the matrix4 stills at the driver's strip coords |
-| l5/ | lane-5 stills (NVIDIA, half-open) |
-| fresh-acct2.log fresh-acct2-stills/ | fresh zero-state account on lane 1 (half-open) |
-| b1086-freshxvfb2.log fxvfb/ | fresh Xvfb :98 probe (half-open, live row-measure) |
-| crr/firstopen.png crr/reopen.png crrcheck.py | verified close→reopen, still 1 row (byte-identical) |
-| lane1_*.sh lane5_window.sh lanehost_server.sh | the exoneration probes (guest window, server window, lane-5 window) |
-| wideband.py cropcheck.py im_page_test2.sh | the crop-semantics proof (driver's -30 is correct) |
+| host-era-evidence.md | parent: good/bad era per lane, md5s, apt history (source of the lane-5 refutation) |
+| matrix_capture3.sh | the good-era 7-row producer (pulled from the guest) |
+| m4/*.png m4post/*.png | matrix4 stills pulled this run (human-male 07:38 = 6 rows; ogre-male 07:54 = FACE+EYES; all HAIR strips full) |
+| take2/49-matrix4-all.sh + output | the 24-pair HAIR-row census (all full, straddling the libx11 upgrade) |
+| take2/b48f/ | 12 B1048 video frames (10-13 15:11) — main creation page, picker never open (bracket correction) |
+| take2/cc2/13_face-open-settle.png | the 10-15 16:59 bad still (vision-confirmed 1 row) |
+| take2/45-gesture.sh, 46-gesture2.sh | gesture A/B attempts (login-path + OOM issues; gesture exonerated by the 47/48 and live probe instead) |
+| parent: crr/firstopen.png, crr/reopen.png, crrcheck.py | verified close→reopen, still 1 row |
+| parent: fresh-acct2-stills/, b1086-freshxvfb2.log | fresh account + fresh Xvfb, both 1 row |
+| parent: lane1_*.sh lane5_window.sh lanehost_server.sh | parent exoneration probes |
+| guest: b1086-manual-probe/ + b1086-live-bad-*.log | this run's live 1-row repro with the good-era driver (2026-10-17 19:32) |
