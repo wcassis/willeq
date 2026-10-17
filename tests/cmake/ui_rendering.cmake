@@ -79,7 +79,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_robe_entity_prep PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_robe_entity_prep GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_robe_entity_prep PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_robe_entity_prep DISCOVERY_TIMEOUT 120)
 ENDIF()
 
