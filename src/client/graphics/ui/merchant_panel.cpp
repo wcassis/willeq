@@ -174,15 +174,22 @@ void renderMerchantPopup(UIRenderer& ui, const UILayout& layout,
         // window the reason three producers filled an iconId nothing drew.
         const auto iconCell = MerchantLayout::listCellRect(
             layout, row, MerchantLayout::COL_ICON);
-        const bool drewIcon = ui.drawItemIcon(iconCell, item.iconId);
+        // The decal's ACTUAL blit destination: squareIn() of the cell. The
+        // cell is square at the window's own size (24x24, the XML's column
+        // and the measured 24px row pitch) but comes back 19x19 under the
+        // 800x600 uniform factor, and the helper then blits the centred
+        // square -- pin that shape (test test_item_icon_rects) rather than
+        // an assumption.
+        const auto decal = UIRenderer::squareIn(iconCell);
+        const bool drewIcon = ui.drawItemIcon(decal, item.iconId);
         if (!tb) continue;
         if (!drewIcon && item.iconId != 0) {
             // The pre-T430 fallback every icon site keeps: a client with no
             // pack still says which icon it would have drawn.
             tb->addText(item.itemName.substr(
                             0, std::min<size_t>(3, item.itemName.size())),
-                        iconCell.UpperLeftCorner.X + 2,
-                        iconCell.UpperLeftCorner.Y + 2, kText);
+                        decal.UpperLeftCorner.X + 2,
+                        decal.UpperLeftCorner.Y + 2, kText);
         }
 
         const auto nameCell = MerchantLayout::listCellRect(

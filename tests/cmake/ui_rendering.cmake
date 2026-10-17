@@ -434,6 +434,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_ui_layout_coopen DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1078 (#398): every item-icon decal rect is SQUARE at every supported
+# resolution -- each drawItemIcon() call site, through the same layout
+# functions the render bodies call. The other half of B1078's net:
+# test_item_icon_atlas pins squareIn() itself, this pins that every caller
+# hands it a square cell. Same shape as test_ui_layout_coopen: header-only
+# layout code behind the irrlicht rect type, so it is gated at registration
+# (B1038).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_item_icon_rects test_item_icon_rects.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_item_icon_rects PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_item_icon_rects GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_item_icon_rects DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B998 (#318): the character-select screen -- layout vs EQUI_CharacterSelect.xml,
 # the list from a recorded OP_SendCharInfo, buttons -> requests -> packets
 # through the real service and the world replay seam, the configured-character

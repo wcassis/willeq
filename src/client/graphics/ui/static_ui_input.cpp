@@ -505,11 +505,14 @@ bool StaticUIInput::processPanelInput(int mouseX, int mouseY, bool leftClicked,
                 }
             }
         } else if (leftClicked &&
-                   layout.centerPopup.isPointInside(
+                   TradeskillLayout::windowRect(layout).isPointInside(
                        irr::core::vector2di(mouseX, mouseY))) {
-            // The tradeskill window IS layout.centerPopup (TradeskillLayout
-            // maps the oracle's 400x525 onto it), so this is "clicked in the
-            // window but not in an editbox".
+            // The rect the window is DRAWN into (renderTradeskillPopup's
+            // drawPanel), not layout.centerPopup: B1078 moved the tradeskill
+            // window to the oracle's own 400x525 at its own uniform factor,
+            // and a hit test reading a different rect would let a click in
+            // the drawn window fail to defocus the editbox (T57's rule:
+            // draw and click read the SAME layout).
             if (auto* prev = tradeskill.focusedEntry()) {
                 prev->inputActive = false;
             }

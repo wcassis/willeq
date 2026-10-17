@@ -13,10 +13,11 @@
  * THE ONE DEVIATION is UNIFORM scaling, only where the screen cannot fit the
  * window: ONE factor (the min of the width and height ratios, capped at 1)
  * is applied to the whole window and the PairLeft anchor keeps it against
- * the inventory (B1078's co-open shape). At 800x600 that factor is
- * 350/374: the pair spans edge to edge and the merchant is the one that
- * gives the pixels -- uniformly. At 1024x768 and up the factor is 1 and
- * every rect is the XML's own number to the pixel. ONE factor, never two:
+ * the inventory (B1078's co-open shape). At 800x600 that factor is 80%
+ * (384/480): the pair spans edge to edge, the band is 384 tall, and the
+ * merchant is the one that gives the pixels -- uniformly, the min of the
+ * width (100%) and height (80%) ratios. At 1024x768 and up the factor is 1
+ * and every rect is the XML's own number to the pixel. ONE factor, never two:
  * the old `scaled()` mapped x by 400/374 and y by 350/480 into fable's
  * 400x350 partnerPopup, which is exactly the anisotropy B1078 removes.
  *
@@ -164,7 +165,7 @@ enum Column {
 // MEASURED 2026-10-15, UIGAP-ORACLE/152 (the header comment).
 constexpr irr::s32 ORACLE_ROW_H = 24;
 // The heading strip the <Heading>/<Header> entries occupy, one row tall.
-constexpr int ROWS_VISIBLE = (ORACLE_LIST_H - ORACLE_ROW_H) / ORACLE_ROW_H;  // 16
+constexpr int ROWS_VISIBLE = (ORACLE_LIST_H - ORACLE_ROW_H) / ORACLE_ROW_H;  // 15
 
 // MW_SelectedItem and its A_DragItem decal.
 constexpr irr::s32 ORACLE_SELECTED_X = 84;
