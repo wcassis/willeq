@@ -404,6 +404,7 @@ private:
 	void onCastSpellIntent(const eqt::events::CastSpellIntent& i);
 	void onMemorizeSpellIntent(const eqt::events::MemorizeSpellIntent& i);
 	void onScribeSpellIntent(const eqt::events::ScribeSpellIntent& i);
+	void onScribeSpellFromScrollIntent(const eqt::events::ScribeSpellFromScrollIntent& i);
 	void onSpellbookStateIntent(const eqt::events::SpellbookStateIntent& i);
 	void onBuffCancelIntent(const eqt::events::BuffCancelIntent& i);
 	void onSkillActivateIntent(const eqt::events::SkillActivateIntent& i);

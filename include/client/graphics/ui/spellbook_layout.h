@@ -106,6 +106,13 @@ constexpr int kGaugeH = 8;
 constexpr int kGaugeX = 204;
 constexpr int kGaugeY = 312;
 
+// Scribe gauge: the XML's SBW_Scribe_Gauge -- the SAME 100x8 piece at the
+// same (204,312) place (the oracle lists the gauge twice; the window draws
+// one, whichever action is in flight), FillTint (176,64,0) against the
+// memorize tint (200,0,200).
+constexpr int kScribeGaugeX = 204;
+constexpr int kScribeGaugeY = 312;
+
 // Invisible whole-page hit targets: 1x1.
 constexpr int kMemPage0X = 66;
 constexpr int kMemPage1X = 296;

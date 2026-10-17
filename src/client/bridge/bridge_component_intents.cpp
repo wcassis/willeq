@@ -496,6 +496,45 @@ void eqt::bridge::BridgeComponent::onScribeSpellIntent(const eqt::events::Scribe
 	ctx_.Merchant().ScribeSpellFromScroll(i.spellId, i.bookSlot, i.sourceSlot);
 }
 
+// B1076 (GitLab #396): the book's two-click scribe, the gesture half of
+// /scribe. Same wire sequence, same producer rules, from a RENDER-thread
+// click instead of a typed command: resolve the destination book slot,
+// pre-flight the refusals and the empty cursor, put the scroll on the
+// cursor FIRST (pickupItem's MoveItemIntent, FIFO ahead of the scribe),
+// then the scribe itself.
+void eqt::bridge::BridgeComponent::onScribeSpellFromScrollIntent(const eqt::events::ScribeSpellFromScrollIntent& i) {
+	if (!ctx_.spell_manager) {
+		ctx_.out.System("Cannot scribe - spell system not available.");
+		return;
+	}
+	if (std::string refusal = ctx_.Merchant().ScribeRefusalMessage(i.spellId); !refusal.empty()) {
+		ctx_.out.System(refusal);
+		return;
+	}
+	const int32_t bookSlot = ctx_.spell_manager->findFreeSpellbookSlot();
+	if (bookSlot < 0) {
+		ctx_.out.System("Your spellbook is full.");
+		return;
+	}
+	if (!ctx_.bridge) {
+		ctx_.out.System("Cannot scribe - no bridge attached.");
+		return;
+	}
+	if (i.sourceSlot != eqt::inventory::CURSOR_SLOT) {
+		if (ctx_.inventory_manager && ctx_.inventory_manager->hasCursorItem()) {
+			ctx_.out.System("Your cursor is full - put down what you are holding first.");
+			return;
+		}
+		// setSpellForScribe() -> pickupItem() pushes the MoveItemIntent;
+		// the ScribeSpellIntent after it drains in the same FIFO pass, so
+		// the OP_MemorizeSpell reaches the server with the scroll already
+		// on the cursor (T276's ordering rule, /scribe's body).
+		ctx_.inventory_manager->setSpellForScribe(i.spellId, i.sourceSlot);
+	}
+	ctx_.bridge->pushIntent(eqt::events::ScribeSpellIntent{
+		i.spellId, static_cast<uint16_t>(bookSlot), i.sourceSlot});
+}
+
 void eqt::bridge::BridgeComponent::onSpellbookStateIntent(const eqt::events::SpellbookStateIntent& i) {
 	ctx_.Entities().SendSpawnAppearance(AT_ANIMATION, i.isOpen ? 110 : 100);
 }
@@ -1163,6 +1202,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::CastSpellIntent& i) { onCastSpellIntent(i); },
 			[this](const eqt::events::MemorizeSpellIntent& i) { onMemorizeSpellIntent(i); },
 			[this](const eqt::events::ScribeSpellIntent& i) { onScribeSpellIntent(i); },
+			[this](const eqt::events::ScribeSpellFromScrollIntent& i) { onScribeSpellFromScrollIntent(i); },
 			[this](const eqt::events::SpellbookStateIntent& i) { onSpellbookStateIntent(i); },
 			[this](const eqt::events::BuffCancelIntent& i) { onBuffCancelIntent(i); },
 			[this](const eqt::events::SkillActivateIntent& i) { onSkillActivateIntent(i); },

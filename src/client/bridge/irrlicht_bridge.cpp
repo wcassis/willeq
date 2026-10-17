@@ -534,6 +534,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 slot.itemId = d.hasItem ? d.itemId : 0;  // B1025-H3
                 slot.quantity = d.hasItem ? d.quantity : 0;
                 slot.bagSlots = d.hasItem ? d.bagSlots : 0;  // B442b
+                slot.scrollSpellId = d.hasItem ? d.scrollSpellId : 0;  // B1076
                 // T60: an equip-slot change usually means the player's
                 // EntityAppearance changed too (WearChange) — mark the
                 // paperdoll dirty so it picks it up next time it renders.
@@ -548,6 +549,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 slot.quantity = d.hasItem ? d.quantity : 0;
                 // B442b (#151 rows 19-21): a bag here is right-click toggleable.
                 slot.bagSlots = d.hasItem ? d.bagSlots : 0;
+                slot.scrollSpellId = d.hasItem ? d.scrollSpellId : 0;  // B1076
             } else if (EQT::Graphics::applyCursorSlotChanged(
                            renderer_->Frame().cursorState_, d)) {
                 // T436 (board B429): the CURSOR slot (30, or the wire's 33).

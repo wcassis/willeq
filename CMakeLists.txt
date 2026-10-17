@@ -825,6 +825,10 @@ IF(EQT_GRAPHICS)
         # B1077 (GitLab #397): the spell-icon sheets, loaded beside the item
         # sheets and addressed by include/client/graphics/ui/spell_icon_atlas.h.
         src/client/graphics/ui/spell_icon_sheets.cpp
+        # B1076 (GitLab #396): the composed spellbook backdrop (the four book
+        # tiles + the Done X in one 512x363 pack entry, tool-composed from the
+        # official default_spellbook01-05.tga).
+        src/client/graphics/ui/spellbook_backdrop_loader.cpp
         src/client/graphics/ui/static_ui_input.cpp
         src/client/graphics/ui/static_ui_cursor.cpp  # B442
         src/client/graphics/ui/quantity_window.cpp  # B442

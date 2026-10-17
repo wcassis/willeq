@@ -60,6 +60,12 @@ struct InventorySlotChangedData {
     // 0 for anything that is not a container -- so the render thread knows a
     // RIGHT click on this slot opens a bag window rather than the display.
     uint8_t bagSlots = 0;
+    // B1076 (GitLab #396): the spell the scroll teaches (ItemInstance's
+    // field-154 Scroll.Effect, 0 for a non-scroll). The book's two-step
+    // scribe gesture (click a scroll, then click an open slot) needs the
+    // spell id on the RENDER thread, which never touches the game-thread
+    // InventoryManager. Fed at the same three publishers as itemId.
+    uint32_t scrollSpellId = 0;
 };
 
 // B442b (#151 row 29): the coin on the cursor. The official client draws the

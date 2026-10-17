@@ -164,6 +164,11 @@ struct SlotDisplayInfo {
     // B442b (#151 rows 19-21): the bag size, 0 = not a container. A RIGHT
     // click on a general slot holding a bag toggles its window.
     uint8_t bagSlots = 0;
+    // B1076 (GitLab #396): the spell the scroll teaches (field 154, 0 for a
+    // non-scroll). The book's scribe gesture (click a scroll, then click an
+    // open slot) reads it here -- the render thread keeps no shadow of the
+    // game-thread InventoryManager.
+    uint32_t scrollSpellId = 0;
 };
 
 // Cached inventory state for rendering
@@ -524,8 +529,42 @@ struct SpellbookPopupState {
     bool isOpen = false;
     std::vector<SpellbookDisplayEntry> spells;  // All scribed spells
     int currentPage = 0;                        // 0-based page index
-    static constexpr int SPELLS_PER_PAGE = 8;
-    int hoveredSlot = -1;                       // 0-7 within current page
+    // B1076 (GitLab #396): the oracle's spread is TWO 2x4 pages open at once
+    // (SBW_Spell0..15, spellbook_layout.h), so a "page" of this popup is the
+    // whole 16-slot spread -- the old single-page-of-8 text list is gone.
+    static constexpr int SPELLS_PER_PAGE = 16;
+    int hoveredSlot = -1;                       // 0-15 within current page
+
+    // B1076 (GitLab #396): the Done "X" (SBW_DoneButton, 13x13 at (449,5)) --
+    // the oracle's own close control. Set by the input hit test, consumed
+    // ONCE per frame by FrameComponent, which runs the SAME toggle body
+    // Ctrl+B, /book and ESC use (toggleSpellbookWindow / the ESC stack), so
+    // the close path is one body, not a second. Consumed-and-reset like
+    // SpellGemPanelState::bookClicked (B1077's book button).
+    bool doneClicked = false;
+
+    // B1076 (GitLab #396): the two-click scribe, latched between its two
+    // clicks (the oracle's own Spellbook Tip: click a spell scroll in the
+    // inventory, THEN click an open slot in the book). `scribScrollSlot` is
+    // the scroll's inventory slot and `scribScrollSpell` the spell it
+    // teaches (read off the slot cache's scrollSpellId at the first click);
+    // -1/0 = the gesture is not armed. A second click on an empty slot
+    // consumes it (pushing ScribeSpellFromScrollIntent); a click on an
+    // occupied slot, the Done X, or a new scroll click re-arms / clears it.
+    // Client-local until the second click -- nothing goes to the server
+    // until then, so a change of mind costs no packets.
+    int scribScrollSlot = -1;
+    uint32_t scribScrollSpell = 0;
+
+    // B1076 (GitLab #396): the client-local spell swap. Capture 4 measured
+    // that a right-click on a book slot sends NO wire packet (the empty
+    // 11_slot0_rclick opcodes) -- the stock client only latches a pending
+    // destination, and the swap commits when the second slot is clicked.
+    // -1 = no swap in flight. The commit is /swap's local half (the two
+    // slots exchange their spells on the model via the same intent the
+    // command uses); a right-click on the already-latched slot or the Done
+    // X cancels it.
+    int swapFirstSlot = -1;
 
     // T413 (board B296): memorisation progress, from SpellMemorizingData.
     // The oracle puts this gauge in the SPELLBOOK, not on the gem — see
@@ -534,6 +573,16 @@ struct SpellbookPopupState {
     uint8_t memorizeGemSlot = 0;
     uint32_t memorizeProgressMs = 0;
     uint32_t memorizeTotalMs = 0;
+
+    // B1076 (GitLab #396): the scribe gauge, the oracle's SBW_Scribe_Gauge
+    // (same 100x8 piece at the same place as the memorize gauge; the window
+    // draws whichever action is in flight, tint (176,64,0) against the
+    // memorize tint (200,0,200)). There is no authoritative per-frame scribe
+    // progress on the wire (the server confirms with SpellScribeCompleted),
+    // so the gauge shows the in-flight attempt: full while a scribe request
+    // is pending, cleared by the completion/clearing event. `progress` is
+    // 0..1 (1 = a scribe is in flight).
+    float scribeProgress = 0.0f;
 
     float memorizeProgress() const {
         if (!isMemorizing || memorizeTotalMs == 0) return 0.0f;

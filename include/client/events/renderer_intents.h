@@ -207,6 +207,24 @@ struct ScribeSpellIntent {
     int16_t sourceSlot;
 };
 
+// B1076 (GitLab #396): the spellbook's two-click scribe gesture, measured on
+// the lane-1 official client (oracle capture 4, step 41: a LEFT press on a
+// spell scroll in the inventory, then a LEFT press on an open slot in the
+// book). The RENDER thread knows both halves: the scroll's spell id comes
+// off the slot cache (InventorySlotChangedData::scrollSpellId, field 154)
+// and the book slot is one of its own rects. It does NOT know the
+// destination BOOK slot (0..399, the server's own numbering the UI has no
+// view of) -- /scribe takes it from SpellManager::findFreeSpellbookSlot()
+// (T276's rule: the stock client picks it, a wrong slot silently
+// overwrites a known spell). The consumer does that resolution and the
+// cursor-move pre-flight in ONE body, then runs /scribe's exact wire
+// sequence (MoveItemIntent to the cursor, then ScribeSpellIntent, FIFO in
+// the same drain) -- one producer, one packet order.
+struct ScribeSpellFromScrollIntent {
+    uint32_t spellId;
+    int16_t sourceSlot;  // the scroll's inventory slot (Titanium numbering)
+};
+
 struct SpellbookStateIntent {
     bool isOpen;  // Sends appearance animation
 };
@@ -533,6 +551,7 @@ using RendererIntent = std::variant<
     CastSpellIntent,
     MemorizeSpellIntent,
     ScribeSpellIntent,
+    ScribeSpellFromScrollIntent,
     SpellbookStateIntent,
     // Buffs
     BuffCancelIntent,
