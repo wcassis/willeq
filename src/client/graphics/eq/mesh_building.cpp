@@ -236,17 +236,17 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
 
                 if (bodyTextureVariant > 0) {
                     // Check for CLK (robe) textures first
-                    // Pattern: clkXXYY.bmp where XX is robe clk number (04-10), YY is variant (01-06)
-                    // Robe textures 10-16 map to clk04-clk10
+                    // Pattern: clkXXYY.bmp where XX is the robe's clk number (04-10), YY is the page
+                    // Robe materials 10..16 (isRobeTexture) map to clk04..clk10
                     if (lowerTexName.length() >= 10 && lowerTexName.substr(0, 3) == "clk" &&
-                        bodyTextureVariant >= 10 && bodyTextureVariant <= 16) {
+                        isRobeTexture(bodyTextureVariant)) {
                         // Extract the page number (last 2 digits before .bmp)
                         // clk0401.bmp -> page = "01"
                         std::string pageNum = lowerTexName.substr(5, 2);
 
                         // Calculate target CLK number from robe texture
-                        // Texture 10 -> clk04, 11 -> clk05, ..., 16 -> clk10
-                        int targetClk = bodyTextureVariant - 6;
+                        // Material 10 -> clk04, 11 -> clk05, ..., 16 -> clk10
+                        int targetClk = getRobeClkTextureNumber(bodyTextureVariant);
 
                         char clkTexName[32];
                         snprintf(clkTexName, sizeof(clkTexName), "clk%02d%s.bmp", targetClk, pageNum.c_str());
