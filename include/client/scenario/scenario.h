@@ -191,6 +191,8 @@ public:
     virtual long long ZoneConnectOpens() const { return -1; }
     /** B1072: the next `attempts` zone connects go to `port` on the zone host; false if unsupported. */
     virtual bool SimulateUnreachableZoneConnects(int attempts, int port) { (void)attempts; (void)port; return false; }
+    /** B1079: arm the "zone answered then went silent" lever (the next ConnectToZone's handshake is pinned past ZONE_CONNECTING); false if unsupported. */
+    virtual bool SimulateZoneSilentAfterHandshake() { return false; }
 
     // --- B1025-H5 (#345): hotbar controls, through the user path. Same
     //     "default = cannot do this" rule as the other actions. ---
@@ -393,6 +395,22 @@ struct ScenarioOptions {
      * its CHARGE DECREMENT, which the lane's post-check asserts in the DB.
      */
     uint32_t hotbarItemId = 8443;
+    /**
+     * B1079 (#399): the zone_connect_timeout "zone answered then went silent"
+     * arm (the 2026-10-15 XU4 shape). When set, after /camp -> character
+     * select the arm Enter-Worlds with the client's silent-zone lever armed
+     * alongside ONE dead-port connect (SimulateUnreachableZoneConnects(1)):
+     * the connection goes to a dead port (stable silence -- the stale
+     * connect is erased without a StatusDisconnected, so nothing
+     * re-connects), and the handshake's ZONE_CONNECTING is pinned to
+     * ZONE_RECEIVING_PROFILE, as if the zone had answered the session and
+     * OP_ZoneEntry and then gone quiet. The bound must walk that phase to
+     * its own deadline and escalate WITHOUT a connect retry (a re-connect
+     * would duplicate OP_ZoneEntry), landing on character select within the
+     * profile bound and inside the connect bound. Default false = the plain
+     * dead-port arm.
+     */
+    bool silentZone = false;
 };
 
 class IScenario {

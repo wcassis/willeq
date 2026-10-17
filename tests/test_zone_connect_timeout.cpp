@@ -194,17 +194,173 @@ TEST(ZoneConnectTimeout, HeadlessLogsInToWorldAgainInsteadOfExiting) {
 }
 
 TEST(ZoneConnectTimeout, AZoneThatAnswersInTimeIsLeftAlone) {
+    // B1079: a zone that ANSWERS is no longer disarmed at the first phase
+    // change (that was B1072's shape -- the bound then stopped at 20 % the
+    // moment the session came up, which is exactly the gap #399 found).
+    // Instead the bound walks the whole span and only clears on COMPLETE: a
+    // load that progresses through every phase and finishes is left alone,
+    // never reconnected, never escalated.
     Client c;
     c.ServerInfo();
-    // The PlayerProfile moved the phase on (ZoneProcessPlayerProfile).
-    c.eq.SetLoadingPhase(LoadingPhase::ZONE_RECEIVING_PROFILE);
-    c.TickAt(1000);
+    // Walk the loading span the way a healthy zone-in does it, one phase
+    // ahead at a time, comfortably inside each phase's own budget.
+    const LoadingPhase phases[] = {
+        LoadingPhase::ZONE_RECEIVING_PROFILE,
+        LoadingPhase::ZONE_RECEIVING_SPAWNS,
+        LoadingPhase::ZONE_REQUEST_PHASE,
+        LoadingPhase::ZONE_PLAYER_READY,
+        LoadingPhase::ZONE_AWAITING_CONFIRM,
+        LoadingPhase::GRAPHICS_LOADING_ZONE,
+        LoadingPhase::GRAPHICS_FINALIZING,
+        LoadingPhase::COMPLETE,
+    };
+    int at = 0;
+    for (const auto phase : phases) {
+        c.eq.SetLoadingPhase(phase);
+        c.TickAt(++at * 1000);   // 1 s per phase, far under any bound
+        EXPECT_NE(c.eq.ZoneConnectOpenCount(), 1 + at) << "no reconnect while advancing";
+    }
+    // COMPLETE disarmed the bound; later ticks do nothing more.
     EXPECT_FALSE(c.eq.ZoneConnectWatchdog().Armed());
-    c.TickAt(5 * kT);
-    EXPECT_EQ(c.eq.ZoneConnectOpenCount(), 1);
-    EXPECT_EQ(c.eq.GetLoadingPhase(), LoadingPhase::ZONE_RECEIVING_PROFILE);
+    const int opens = c.eq.ZoneConnectOpenCount();
+    c.TickAt(100 * 1000);
+    EXPECT_EQ(c.eq.ZoneConnectOpenCount(), opens);
+    EXPECT_EQ(c.eq.GetLoadingPhase(), LoadingPhase::COMPLETE);
     EXPECT_FALSE(c.eq.LoginWorld().CharacterSelectScreen());
 }
+
+// ---------------------------------------------------------------------------
+// B1079: the per-phase bound over the pure state machine
+// ---------------------------------------------------------------------------
+
+namespace {
+// The production table in phase_index order (mirrors EverQuest::
+// ZonePhaseBoundsMs, which the client-side tests read). Fully qualified:
+// phase_bound / phase_index are NESTED namespaces in the header, not symbols,
+// so a using-declaration is not possible.
+const int* KBounds() {
+    static const int b[eqt::zone::phase_index::kCount] = {
+        eqt::zone::phase_bound::kZoneConnectingMs,
+        eqt::zone::phase_bound::kZoneReceivingProfileMs,
+        eqt::zone::phase_bound::kZoneReceivingSpawnsMs,
+        eqt::zone::phase_bound::kZoneRequestPhaseMs,
+        eqt::zone::phase_bound::kZonePlayerReadyMs,
+        eqt::zone::phase_bound::kZoneAwaitingConfirmMs,
+        eqt::zone::phase_bound::kGraphicsLoadingZoneMs,
+        eqt::zone::phase_bound::kGraphicsLoadingModelsMs,
+        eqt::zone::phase_bound::kGraphicsCreatingEntitiesMs,
+        eqt::zone::phase_bound::kGraphicsFinalizingMs };
+    return b;
+}
+}  // namespace
+
+TEST(ZoneConnectWatchdog, PerPhaseTableIsPinnedToTheHeader) {
+    const int* b = KBounds();
+    EXPECT_EQ(b[eqt::zone::phase_index::kZoneConnecting], 30000);
+    for (int i = 1; i <= 5; ++i)
+        EXPECT_EQ(b[i], 10000) << "network tail phases are each 10 s";
+    for (int i = 6; i < eqt::zone::phase_index::kCount; ++i)
+        EXPECT_EQ(b[i], 80000) << "graphics span phases share one 80 s budget";
+}
+
+TEST(ZoneConnectWatchdog, AZoneSilentAfterZoneEntryIsEscalated) {
+    // The #399 shape: the session came up, OP_ZoneEntry went out, the zone
+    // then went silent in ZONE_RECEIVING_PROFILE. B1072 disarmed here and the
+    // client hung; B1079 keeps the bound running and escalates at the
+    // profile phase's own budget.
+    eqt::zone::ZoneConnectWatchdog w;
+    const auto t0 = Clock::time_point{} + std::chrono::hours(1);
+    w.Arm("10.0.0.2", 7016, t0, KBounds(), 1);
+    // Session up (past connect), now sitting in the profile phase.
+    EXPECT_EQ(w.Tick(eqt::zone::phase_index::kZoneReceivingProfile, t0), Action::None);
+    // Inside the 10 s profile budget: wait.
+    EXPECT_EQ(w.Tick(eqt::zone::phase_index::kZoneReceivingProfile, t0 + milliseconds(9999)), Action::None);
+    // The budget runs out: escalate (NOT a retry — the session is up, so a
+    // retry would duplicate OP_ZoneEntry).
+    EXPECT_EQ(w.Tick(eqt::zone::phase_index::kZoneReceivingProfile, t0 + milliseconds(10000)), Action::GiveUp);
+    EXPECT_FALSE(w.Armed());
+    EXPECT_EQ(w.PhaseIndex(), eqt::zone::phase_index::kZoneReceivingProfile);
+}
+
+TEST(ZoneConnectWatchdog, AForwardMoveGetsTheLaterPhasesBudget) {
+    // Forward movement to a later tracked phase re-baselines to that phase's
+    // own budget (a load that reaches spawns is progressing, so it gets the
+    // spawns budget). A later tick at the SAME phase does not extend it
+    // further (the 60 Hz re-baseline defect).
+    eqt::zone::ZoneConnectWatchdog w;
+    const auto t0 = Clock::time_point{} + std::chrono::hours(1);
+    w.Arm("h", 1, t0, KBounds(), 1);
+    w.Tick(eqt::zone::phase_index::kZoneReceivingProfile, t0);
+    // The profile budget runs out -> escalate (this is the #399 shape, and it
+    // proves the forward re-baseline below does not accidentally hide it).
+    EXPECT_EQ(w.Tick(eqt::zone::phase_index::kZoneReceivingProfile, t0 + milliseconds(10000)), Action::GiveUp);
+    w.Arm("h", 1, t0, KBounds(), 1);
+    // Move on in time: a healthy load reaches spawns 4 s into the profile.
+    EXPECT_EQ(w.Tick(eqt::zone::phase_index::kZoneReceivingProfile, t0 + milliseconds(4000)), Action::None);
+    EXPECT_EQ(w.Tick(eqt::zone::phase_index::kZoneReceivingSpawns, t0 + milliseconds(4000)), Action::None);  // budget t0+14000
+    // Repeated ticks at the SAME phase do not push the deadline:
+    EXPECT_EQ(w.Tick(eqt::zone::phase_index::kZoneReceivingSpawns, t0 + milliseconds(13000)), Action::None);
+    // ...and the re-baselined budget ends it at t0+14000, not the old profile.
+    EXPECT_EQ(w.Tick(eqt::zone::phase_index::kZoneReceivingSpawns, t0 + milliseconds(14000)), Action::GiveUp);
+}
+
+TEST(ZoneConnectWatchdog, ABackwardMoveNeverExtendsTheBudget) {
+    // A backward move (a load regressing from spawns to the connect phase,
+    // the ping-pong shape) keeps the running deadline: it cannot extend the
+    // budget. Here the connect window from Arm (t0+30000) is still running,
+    // so a regression is a no-op and the load still escalates on time.
+    eqt::zone::ZoneConnectWatchdog w;
+    const auto t0 = Clock::time_point{} + std::chrono::hours(1);
+    w.Arm("h", 1, t0, KBounds(), 1);
+    w.Tick(eqt::zone::phase_index::kZoneReceivingProfile, t0);      // budget t0+10000
+    EXPECT_EQ(w.Tick(eqt::zone::phase_index::kZoneReceivingSpawns, t0 + milliseconds(4000)), Action::None);  // budget t0+14000
+    // 8 s in, the load regresses to the connect phase: deadline held at t0+14000.
+    EXPECT_EQ(w.Tick(eqt::zone::phase_index::kZoneConnecting, t0 + milliseconds(8000)), Action::None);
+    // ...and it still escalates at the running deadline, not a fresh 30 s.
+    EXPECT_EQ(w.Tick(eqt::zone::phase_index::kZoneConnecting, t0 + milliseconds(14000)), Action::GiveUp);
+}
+
+TEST(ZoneConnectWatchdog, ARegressionOutOfTheGraphicsSpanKeepsTheLongBudget) {
+    // A load that enters the graphics span and then REGRESSES into the
+    // network tail keeps the span's long budget (one stuck load = one 80 s
+    // budget), so the downgrade cannot both shorten and restart it.
+    eqt::zone::ZoneConnectWatchdog w;
+    const auto t0 = Clock::time_point{} + std::chrono::hours(1);
+    w.Arm("h", 1, t0, KBounds(), 1);
+    w.Tick(eqt::zone::phase_index::kZoneReceivingProfile, t0);
+    w.Tick(eqt::zone::phase_index::kGraphicsLoadingZone, t0 + milliseconds(5000));   // budget t0+85000
+    // 60 s into the span, the load regresses back to the network tail:
+    EXPECT_EQ(w.Tick(eqt::zone::phase_index::kZoneReceivingProfile, t0 + milliseconds(65000)), Action::None);
+    // ...the span's budget is still what ends it, not a short 10 s profile.
+    EXPECT_EQ(w.Tick(eqt::zone::phase_index::kZoneReceivingProfile, t0 + milliseconds(85000)), Action::GiveUp);
+}
+
+TEST(ZoneConnectWatchdog, TheGraphicsSpanIsOneSharedBudget) {
+    // The four GRAPHICS_* phases are the loading thread's own contiguous
+    // progress: entering the span sets ONE deadline, and later graphics
+    // phases do not re-baseline it.
+    eqt::zone::ZoneConnectWatchdog w;
+    const auto t0 = Clock::time_point{} + std::chrono::hours(1);
+    w.Arm("h", 1, t0, KBounds(), 1);
+    w.Tick(eqt::zone::phase_index::kZoneReceivingProfile, t0);
+    w.Tick(eqt::zone::phase_index::kGraphicsLoadingZone, t0 + milliseconds(2000));   // budget t0+2000+80000
+    w.Tick(eqt::zone::phase_index::kGraphicsLoadingModels, t0 + milliseconds(30000));
+    w.Tick(eqt::zone::phase_index::kGraphicsCreatingEntities, t0 + milliseconds(60000));
+    // Inside the shared 80 s span (from the span's first entry at t0+2000):
+    EXPECT_EQ(w.Tick(eqt::zone::phase_index::kGraphicsFinalizing, t0 + milliseconds(80000)), Action::None);
+    // ...and the span's own budget ends it, not some later graphics phase:
+    EXPECT_EQ(w.Tick(eqt::zone::phase_index::kGraphicsFinalizing, t0 + milliseconds(2000 + 80000)), Action::GiveUp);
+}
+
+TEST(ZoneConnectWatchdog, CompleteDisarmsWithoutEscalation) {
+    eqt::zone::ZoneConnectWatchdog w;
+    const auto t0 = Clock::time_point{} + std::chrono::hours(1);
+    w.Arm("h", 1, t0, KBounds(), 1);
+    w.Tick(eqt::zone::phase_index::kZoneReceivingProfile, t0);
+    EXPECT_EQ(w.Tick(eqt::zone::phase_index::kDone, t0 + milliseconds(50)), Action::None);
+    EXPECT_FALSE(w.Armed());
+}
+
 
 TEST(ZoneConnectTimeout, TheScenarioLeverRedirectsOnlyTheAttemptsItWasGiven) {
     Client c;
@@ -215,6 +371,38 @@ TEST(ZoneConnectTimeout, TheScenarioLeverRedirectsOnlyTheAttemptsItWasGiven) {
     EXPECT_EQ(c.eq.ZoneConnectWatchdog().Port(), 9) << "the bound still names world's port";
 }
 
+// B1079: the "zone answered then went silent" escalation, over the real client.
+// The lever pins the handshake past ZONE_CONNECTING (the zone's PlayerProfile
+// arrived), the connect is a dead port (port 9, nothing answers), and the
+// bound must walk the PROFILE phase's own 10 s budget and escalate WITHOUT a
+// connect retry (a re-connect would duplicate OP_ZoneEntry) -- landing on
+// character select on the profile budget, not the 30 s connect bound.
+TEST(ZoneConnectTimeout, SilentZoneEscalatesOnTheProfileBudgetWithoutAConnectRetry) {
+    Client c;
+    auto& lw = c.eq.LoginWorld();
+    lw.ReplayWorldPacket(HC_OP_SendCharInfo, CharInfo({"Testbuddy"}).data(), 1704);
+    c.eq.Player().SetCampReturnsToCharacterSelect(true);   // a run with the screen
+    c.eq.SimulateZoneSilentAfterHandshake();
+    c.ServerInfo();
+    // The handshake is pinned past ZONE_CONNECTING:
+    EXPECT_EQ(c.eq.GetLoadingPhase(), LoadingPhase::ZONE_RECEIVING_PROFILE);
+    EXPECT_EQ(c.eq.ZoneConnectOpenCount(), 1);
+    // Walk the profile budget; the escalation lands on character select on the
+    // profile phase's own ~10 s budget (the first tick re-baselines the
+    // deadline to now + 10 s).
+    int escalateAt = -1;
+    for (int ms = 1000; ms <= 40000; ms += 1000) {
+        c.TickAt(ms);
+        if (lw.CharacterSelectScreen()) { escalateAt = ms; break; }
+    }
+    ASSERT_GT(escalateAt, 0) << "the silent zone escalated (never a hang)";
+    // The zone answered, so NO connect retry: exactly one open, still.
+    EXPECT_EQ(c.eq.ZoneConnectOpenCount(), 1) << "a zone that answered must not be re-connected";
+    EXPECT_GE(escalateAt, 10000) << "no sooner than the profile bound";
+    EXPECT_LT(escalateAt, 30000) << "well inside the connect bound (the B1079 distinction)";
+    EXPECT_FALSE(c.eq.IsQuitRequested()) << "never a process exit";
+}
+
 // ---------------------------------------------------------------------------
 // The zone_connect_timeout scenario over a fake world
 // ---------------------------------------------------------------------------
@@ -223,6 +411,7 @@ struct FakeWorld : eqt::scenario::IScenarioWorld {
     bool zonedIn = true, atSelect = false, leverOk = true;
     long long gen = 1, opens = 1;
     int leverAttempts = 0, leverPort = 0, enters = 0;
+    bool silentLever = false, silentLeverOk = true;
     std::vector<std::string> sent;
     bool IsConnected() const override { return true; }
     bool IsFullyZonedIn() const override { return zonedIn; }
@@ -237,6 +426,7 @@ struct FakeWorld : eqt::scenario::IScenarioWorld {
     bool EnterWorldAs(const std::string& n) override { ++enters; atSelect = false; return n == "Testbuddy"; }
     long long ZoneConnectOpens() const override { return opens; }
     bool SimulateUnreachableZoneConnects(int a, int p) override { leverAttempts = a; leverPort = p; return leverOk; }
+    bool SimulateZoneSilentAfterHandshake() override { silentLever = true; return silentLeverOk; }
     void SendCommand(const std::string& l) override { sent.push_back(l); }
     void Note(const std::string&) override {}
 };
@@ -245,9 +435,13 @@ using eqt::scenario::StepResult;
 
 struct ScenarioRig {
     FakeWorld w;
-    std::unique_ptr<eqt::scenario::IScenario> s =
-        eqt::scenario::MakeZoneConnectTimeoutScenario(eqt::scenario::ScenarioOptions{});
+    std::unique_ptr<eqt::scenario::IScenario> s;
     double now = 0.0;
+    ScenarioRig(bool silent = false) {
+        eqt::scenario::ScenarioOptions o;
+        o.silentZone = silent;
+        s = eqt::scenario::MakeZoneConnectTimeoutScenario(o);
+    }
     StepResult At(double t) {
         now = t;
         eqt::scenario::ScenarioTick tick;
@@ -262,8 +456,14 @@ struct ScenarioRig {
         ASSERT_EQ(At(20.0), StepResult::Running);
         w.atSelect = true; w.gen = 2;
         ASSERT_EQ(At(32.0), StepResult::Running);
-        ASSERT_EQ(w.leverAttempts, 2);
-        ASSERT_EQ(w.leverPort, 1);
+        if (s->Name() && w.silentLever) {
+            // The silent arm: one dead connect + the answered-then-silent pin.
+            ASSERT_EQ(w.leverAttempts, 1);
+            ASSERT_EQ(w.leverPort, 1);
+        } else {
+            ASSERT_EQ(w.leverAttempts, 2);
+            ASSERT_EQ(w.leverPort, 1);
+        }
         ASSERT_EQ(w.enters, 1);
     }
 };
@@ -310,6 +510,48 @@ TEST(ZoneConnectTimeoutScenario, FailsWhenTheLeverDidNotTake) {
     r.ToBound();
     r.w.zonedIn = true;
     EXPECT_EQ(r.At(40.0), StepResult::Fail);
+}
+
+// ---------------------------------------------------------------------------
+// B1079: the "zone answered then went silent" arm
+// ---------------------------------------------------------------------------
+
+TEST(ZoneConnectTimeoutScenario, SilentArmArmsOneDeadConnectAndThePin) {
+    ScenarioRig r(true);
+    EXPECT_TRUE(r.s->WantsCampToCharacterSelect());
+    r.ToBound();
+    EXPECT_TRUE(r.w.silentLever) << "the silent lever is armed";
+    EXPECT_EQ(r.w.leverAttempts, 1) << "the zone answered, so ONE connect (no retry)";
+}
+
+TEST(ZoneConnectTimeoutScenario, SilentArmPassesOnOneConnectWithinTheProfileBound) {
+    ScenarioRig r(true);
+    r.ToBound();
+    r.w.opens = 2;  // 1 at arm time + ONE connect = the silent arm's shape
+    r.w.atSelect = true; r.w.gen = 3;
+    // 13 s after Enter World: over the profile bound (10 s) and its 1 s
+    // tolerance, well inside the 30 s connect bound.
+    EXPECT_EQ(r.At(32.0 + 13.0), StepResult::Pass) << r.s->Reason();
+    EXPECT_EQ(r.w.enters, 1) << "no second Enter World: the silent arm is a verdict, not a recovery";
+}
+
+TEST(ZoneConnectTimeoutScenario, SilentArmFailsOnAConnectRetry) {
+    ScenarioRig r(true);
+    r.ToBound();
+    r.w.opens = 3;  // 1 at arm time + TWO connects = a retry happened
+    r.w.atSelect = true; r.w.gen = 3;
+    EXPECT_EQ(r.At(32.0 + 13.0), StepResult::Fail) << "a zone that answered must not be re-connected";
+}
+
+TEST(ZoneConnectTimeoutScenario, SilentArmFailsOnTheWrongBudget) {
+    ScenarioRig r(true);
+    r.ToBound();
+    r.w.opens = 2;
+    r.w.atSelect = true; r.w.gen = 3;
+    // 33 s after Enter World: past the connect bound, so the escalation ran on
+    // the 30 s connect budget, not the 10 s profile bound -- the B1072 shape,
+    // which is the wrong escalation for a zone that already answered.
+    EXPECT_EQ(r.At(32.0 + 33.0), StepResult::Fail);
 }
 
 }  // namespace

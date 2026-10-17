@@ -50,5 +50,13 @@ bool ApplicationScenarioWorld::SimulateUnreachableZoneConnects(int attempts, int
     return true;
 }
 
+// B1079 (#399): the "zone answered then went silent" lever (EverQuest::
+// SimulateZoneSilentAfterHandshake, zone_connect.cpp / everquest.cpp). The
+// silent arm of zone_connect_timeout.
+bool ApplicationScenarioWorld::SimulateZoneSilentAfterHandshake() {
+    client_.SimulateZoneSilentAfterHandshake();
+    return true;
+}
+
 }  // namespace scenario
 }  // namespace eqt

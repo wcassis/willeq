@@ -221,7 +221,18 @@ cleanup() {
     kill ${PEER_PID:-} ${CLIENT_PID:-} >/dev/null 2>&1
     sleep 2
     kill -9 ${PEER_PID:-} ${CLIENT_PID:-} >/dev/null 2>&1
-    [ -n "${XVFB_PID:-}" ] && kill "$XVFB_PID" >/dev/null 2>&1
+    # B1091 (#411): the Xvfb gets the same treatment the clients get -- TERM,
+    # a bounded wait, then KILL. A TERM alone leaves a wedged Xvfb holding
+    # its display for the next run.
+    if [ -n "${XVFB_PID:-}" ]; then
+        kill "$XVFB_PID" >/dev/null 2>&1
+        for _ in 1 2 3 4 5 6; do
+            kill -0 "$XVFB_PID" 2>/dev/null || break
+            sleep 1
+        done
+        kill -9 "$XVFB_PID" >/dev/null 2>&1
+        wait "$XVFB_PID" >/dev/null 2>&1 || true
+    fi
     # The restore runs on EVERY path now, --keep-server included: it is what
     # leaves the database as the run found it, and leaving a moved character
     # behind for the next unit is the whole point of B784. It stops the
@@ -350,6 +361,10 @@ if ! bash "$REPO/scripts/eqemu/up.sh" > "$OUT/${SCENARIO}_server.log" 2>&1; then
 fi
 
 # ---- 3. snapshot -----------------------------------------------------------
+# B1047 (#367) / B1025-H5 (#345): a roster character stored in timorous never
+# finishes zoning in on the lanes; move it out BEFORE the snapshot so the
+# restore keeps the fix (scripts/eqemu/roster_zone_seed.sql).
+say "roster zone seed: $(eqemu_roster_zone_seed | tail -1) row(s) moved out of timorous"
 snapshot "$BEFORE"
 say "snapshot taken ($(wc -l < "$BEFORE") rows)"
 # B900 (#216) / B1011: a scenario whose kit is DB-seeded into INVENTORY names
@@ -573,6 +588,13 @@ if [ "$SCENARIO" = "zone_line_walk" ]; then
     command -v Xvfb >/dev/null 2>&1 && command -v xdotool >/dev/null 2>&1 \
         || { say "zone_line_walk needs Xvfb and xdotool on this host"; exit 64; }
     export DISPLAY=":${ZONE_LINE_WALK_DISPLAY:-68}"
+    # B1091 (#411): a display someone else already holds is a hard stop, not a
+    # silent takeover -- an old Xvfb on the same number answers xdotool probes
+    # while the client's window lands on nobody's screen and the walk can hang
+    # the whole run (the same defect class as the numpad E2E's fixed :97).
+    if [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ] || [ -e "/tmp/.X${DISPLAY#:}-lock" ]; then
+        say "zone_line_walk: display $DISPLAY is already in use (a X server's socket or lock file exists) -- clear it or set ZONE_LINE_WALK_DISPLAY"; exit 64
+    fi
     Xvfb "$DISPLAY" -screen 0 1024x768x24 -nolisten tcp > "$OUT/${SCENARIO}_xvfb.log" 2>&1 &
     XVFB_PID=$!
     sleep 2
