@@ -901,6 +901,15 @@ EXEMPT_TESTS_GROUPS = {
     # outside that logic is the test that pins the refusal table, so the
     # accessor is the test's observation window on a live class.
     ("SkillManager", "isFishing"): "observer",
+    # B1092 (#412): the queue's running_ latch is written live by stop() and
+    # read by the worker's top-of-loop and drain-loop checks; the only
+    # outside reader is StopWhileItemsPending, which blocks the in-flight
+    # item on a gate and must observe the stop landed (running_ false) before
+    # opening the gate so the drain loop's running_ check is ordered ahead of
+    # the next pop. The accessor is the test's observation window on a live
+    # class; removing it would force the test back to a wall-time bound (the
+    # very assumption that flaked).
+    ("BackgroundWorkQueue", "isStopping"): "observer",
     # T504: the ledger's stack-trace instrument is armed by an environment
     # variable in a live run (WILLEQ_LEDGER_TRACE); the unit test needs the
     # programmatic form of that switch and the report it prints.
