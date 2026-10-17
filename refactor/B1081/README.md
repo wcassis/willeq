@@ -62,6 +62,17 @@ host, the GM character Testchar, zone 2). B1005's
 stage (Activations there goes 1 → 2, and that is asserted by the unit test
 and by B1005's own live scenario).
 
+The live leg names its character through `IScenarioWorld::CharacterSelectName()`
+(scenario.h) — the select screen's cursor entry
+(`LoginWorldComponent::GetCharacterSelectIndex()`) or the run's configured
+character (`Application::ConfiguredCharacter()`) when the list is still owed.
+Game-state's player name is empty before the first zone-in, so `PlayerName()`
+is the wrong source at the select screen; the first live run failed at
+t=1.4 s with an empty `Enter World as  was refused` until the scenario read
+the character this way. The gain of the production caller demotes
+`GetCharacterSelectIndex()` out of check_zero_callers.py's `EXEMPT_TESTS`
+table (tests-only → reached in production); the fix commit removes the row.
+
 ## The tests
 
 tests/test_zone_change_no_flash.cpp — the gate over the real EverQuest rig
