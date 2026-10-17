@@ -183,6 +183,15 @@ public:
     virtual bool AtCharacterSelect() const { return false; }
     /** The names on the latest character list, slot order. */
     virtual std::vector<std::string> CharacterListNames() const { return {}; }
+    /**
+     * B1081 (#401): the character this run will enter the world as, BEFORE a
+     * zone-in: the entry at the select screen's cursor on the character
+     * list, or the run's configured character when the list is still owed.
+     * "" when the world cannot know (the base). zone_change_no_flash reads
+     * it in WaitList -- game-state's player name is empty until the zone
+     * session is up, so PlayerName() is the wrong source there.
+     */
+    virtual std::string CharacterSelectName() const { return {}; }
     /** OP_SendCharInfo deliveries this session; -1 not readable. */
     virtual long long CharacterListGeneration() const { return -1; }
     /** Enter World for a listed name (the screen's button); false if refused. */
@@ -205,6 +214,17 @@ public:
     virtual long long ZoneAudioSilenceCount() const { return -1; }
     /** B1079: arm the "zone answered then went silent" lever (the next ConnectToZone's handshake is pinned past ZONE_CONNECTING); false if unsupported. */
     virtual bool SimulateZoneSilentAfterHandshake() { return false; }
+
+    // --- B1081 (#401): the zone-change flash. ---
+
+    /**
+     * B1081: CharacterSelectService::Activations() -- how many times the
+     * character-select screen went UP (channel inactive -> active) this run;
+     * -1 when the run has no service (no character-select channel). On a run
+     * that draws the screen the render thread logs "[CHARSELECT] screen up"
+     * at the same moments.
+     */
+    virtual long long CharacterSelectActivations() const { return -1; }
 
     // --- B1025-H5 (#345): hotbar controls, through the user path. Same
     //     "default = cannot do this" rule as the other actions. ---
@@ -394,6 +414,17 @@ struct ScenarioOptions {
      */
     float fallDamageHeight = 20.0f;
     /**
+     * B1081 (issue #401): zone_change_no_flash -- the zone id the GM
+     * /gmzone teleports the character to. Must be a DIFFERENT zone than the
+     * character's (a same-zone move would relocate in place, no world
+     * reconnect at all); 0 = the scenario refuses (it has nothing to zone
+     * to). A cross-zone #gmzone is the zone change that drives the client's
+     * ProcessDeferredZoneChange (the same path a zone-line crossing or a
+     * death-to-bind re-entry take), so it exercises the reconnect the fix
+     * gates.
+     */
+    long long zoneChangeTargetZone = 0;
+    /**
      * B893 (fall_damage): how long to wait for the server's HP change to
      * arrive after SimulateFall. The send is a single C->S packet; the
      * server's SendHPUpdate() round-trip is well under a second, but a
@@ -450,6 +481,16 @@ public:
     virtual StepResult Step(IScenarioWorld& world, const ScenarioTick& tick) = 0;
 
     /**
+     * B1081 (#401): opt out of the runner's pre-flight wait. zone_change_no_
+     * flash turns the character-select screen on (WantsCharacterSelectScreen)
+     * and presses its own Enter World -- the client never auto-zones-in
+     * while the screen is up (WorldProcessExpansionInfo), so waiting for
+     * IsFullyZonedIn before the first Step would wait forever. It starts at
+     * t=0 and drives its own zone-in.
+     */
+    virtual bool WantsPreFlight() const { return true; }
+
+    /**
      * B1005 (#324): one last look after the client stopped for a reason that
      * was not this runner (ScenarioRunner::Conclude). Default: no verdict,
      * so an external quit still reads as the unfinished-run code. Only a
@@ -466,6 +507,16 @@ public:
      * true and the lane turns the camp return on for its run.
      */
     virtual bool WantsCampToCharacterSelect() const { return false; }
+
+    /**
+     * B1081 (#401): the lane turns the character-select screen ON for this
+     * run (a headless --scenario run never shows it by default). zone_change_
+     * no_flash needs it up for the first login -- so a zone change can then
+     * be measured against it -- exactly as the camp scenarios opt the run in
+     * for the camp return. The screen is then up for the FRESH login and the
+     * whole first zone-in, and a zone change must not bring it back up.
+     */
+    virtual bool WantsCharacterSelectScreen() const { return false; }
 
     /** Human-readable reason for the verdict. Set before returning Pass/Fail. */
     const std::string& Reason() const { return reason_; }
