@@ -63,13 +63,25 @@ export EQEMU_LEASE_STORE
 # the store, returning the core's exit code (63 = LEASE_EXPIRED).
 _lease_client_cmd() {
     local store="$1" cmd="$2"; shift 2
+    # Lane 5's store is on the ThinkPad's LOCAL disk. When the client is
+    # already on the lane's host, run the core in this process instead of
+    # sshing to oneself (ssh to a host from itself is a needless round trip,
+    # and a keyless host would be 65). The eqemu lanes are never driven from
+    # their own host, so this only ever fires for lane 5 on the ThinkPad --
+    # but the check is the HOST, not the lane, so it stays true for any
+    # future lane whose store sits beside its driver.
+    local on_lane_host=0
+    if [ "${EQEMU_HOST:-local}" != local ] && \
+       [ "$(hostname)" = "${EQEMU_HOST#*@}" ]; then
+        on_lane_host=1
+    fi
     if [ "${store}" = "${XU4_LEASE_STORE:-}" ]; then
         # The XU4's lease lives ON the XU4; it is never local to this box.
         local LANE_LEASE_LANENAME=xu4
         _lease_client_ssh "user@${XU4_SBC_HOST:-10.0.30.127}" "${store}" "${cmd}" "$@"
         return $?
     fi
-    if [ "${EQEMU_HOST:-local}" = local ]; then
+    if [ "${EQEMU_HOST:-local}" = local ] || [ "${on_lane_host}" = 1 ]; then
         mkdir -p "${store}"
         # Mirror the ssh branch: the client passes the dead-runs list by
         # its store name (`deadruns`); place it there so the core's
