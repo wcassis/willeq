@@ -58,9 +58,21 @@ EQEMU_SSH="${EQEMU_SSH:-user@${EQEMU_HOST}}"
 # Lane 5 (B1055) keeps its stack on local disk at /opt/akk-stack: /mnt/projects is NFS there.
 if [ "${EQEMU_LANE}" = 5 ]; then AKK_DIR="${AKK_DIR:-/opt/akk-stack}"; else AKK_DIR="${AKK_DIR:-/mnt/projects/akk-stack}"; fi
 COMPOSE_FILE="${AKK_DIR}/docker-compose.yml"
-# Cross-session exclusive lock, kept ON the eqemu host so every dev machine
-# (NFS or not) sees the same file. Use eqemu_lock_take/_show/_release.
-EQEMU_LOCK="${EQEMU_LOCK:-/mnt/projects/.eqemu-lock}"
+# Cross-session exclusive use of a lane, kept ON the lane's host so every
+# dev machine (NFS or not) sees the same record. B1089 (#409): the old
+# noclobber lock (EQEMU_LOCK, no TTL, no liveness, a dead holder held
+# forever) is now a LEASE-BY-ACTIVITY: scripts/eqemu/lease_core.sh keeps
+# one key=value record per lane (card/run/host/pid/acquired_at/
+# last_touched/purpose), renewed by every lane operation, and a quiet lane
+# is free again after LANE_LEASE_TTL_S (default 900 s) -- expiry releases
+# the lane only, never kills anything. Use eqemu_lock_take/_show/_release
+# (thin wrappers, every existing caller unchanged) or the `lease` CLI.
+# SCRIPTS ARE MANDATORY: a hand-rolled ssh gets no renewal and loses the
+# lane at TTL.
+EQEMU_LOCK="${EQEMU_LOCK:-/mnt/projects/.eqemu-lock}"   # retired: the lease replaces it
+
+# The lease client (the lane table above is all it needs from this file;
+# it is defined AFTER the case blocks so EQEMU_LANE/EQEMU_SSH exist).
 
 MARIADB_CONTAINER="akk-stack-mariadb-1"
 EQEMU_CONTAINER="akk-stack-eqemu-server-1"
@@ -91,9 +103,22 @@ eqemu_is_local() {
     [ "${EQEMU_HOST}" = "local" ]
 }
 
+# eq_remote below renews the lease on use (B1089); the lease client's own
+# operations (lease_lib.sh's _lease_client_ssh) use raw ssh/scp so a renew
+# can never recurse through eq_remote.
 eq_remote() {
     # eq_remote <argv...> — run one command on the eqemu host, argv preserved.
     # ssh -n: never read this shell's stdin (callers loop over `read` input).
+    # B1089 (#409): a shell that HOLDS the lane's lease renews it before
+    # EVERY lane touch (renew-on-use), so a long wait loop keeps the lane
+    # alive without a dedicated renewer; the lease client's own operations
+    # use raw ssh (_lease_client_ssh) so a renew can never recurse through
+    # here. Shells that never took the lease (LANE_LEASE_HELD unset) never
+    # renew, so read-only scripts (status.sh, the selftests' probes) work
+    # untouched.
+    if [ "${LANE_LEASE_HELD:-0}" = 1 ] && [ "${LANE_LEASE_AUTO_RENEW:-1}" = 1 ]; then
+        eqemu_lease_renew "use: $1 $2 $3" || return "${LEASE_EXPIRED:-63}"
+    fi
     if eqemu_is_local; then
         "$@"
     else
@@ -271,20 +296,23 @@ eq_container_pkill() {
     eq_docker exec "${EQEMU_CONTAINER}" bash -c "${cmd}" 2>/dev/null
 }
 
-eqemu_lock_take() {
-    # eqemu_lock_take <owner, e.g. T###> — ATOMIC (noclobber) on the eqemu
-    # host. Exit 0 = you own it; non-zero = someone else does: STOP.
-    eq_remote bash -c "set -o noclobber; echo \"\$1 \$(date -Iseconds) from \$2\" > '${EQEMU_LOCK}'" _ "$1" "$(hostname)" 2>/dev/null
-}
+# ---------------------------------------------------------------------------
+# The lease, for eqemu_lock_take/_show/_release (defined above this file, in
+# lease_lib.sh, which is sourced at the BOTTOM of env.sh): the record lives
+# ON the lane's host, one flock critical section per take/takeover/renew/
+# release, owner-checked release, TTL from LANE_LEASE_TTL_S (default 900 s),
+# and the background renewer:
+#   eqemu_lease_start_renewer [interval]  -- after taking the lease, before a
+#       long wait (a 30-min scenario must never be stolen); interval floor
+#       LANE_LEASE_RENEW_FLOOR_S (default 60 s, an ssh round trip).
+#   eqemu_lease_stop_renewer              -- in the script's cleanup trap,
+#       BEFORE eqemu_lock_release (the final renew is the release's own job).
+# ---------------------------------------------------------------------------
 
-eqemu_lock_show() {
-    # Prints the lock line, or nothing (exit 1) when the lock is free.
-    eq_remote cat "${EQEMU_LOCK}" 2>/dev/null
-}
-
-eqemu_lock_release() {
-    eq_remote rm -f "${EQEMU_LOCK}"
-}
+# The lease client needs eq_remote / eqemu_is_local / the lane table, all
+# of which now exist. Sourced, never executed: this file's own functions
+# below are the ones callers use.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lease_lib.sh"
 
 compose() {
     eq_docker compose -f "${COMPOSE_FILE}" --project-directory "${AKK_DIR}" "$@"

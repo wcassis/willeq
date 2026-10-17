@@ -409,6 +409,14 @@ public:
     ActionResult activateHotbarCommandSlot(HotbarSlotType type, const std::string& text);
 
     /**
+     * B1025-H3 (GitLab #345): /hotbutton -- create a social hot button on the
+     * cursor (the game thread's one hot-button producer, eqstr 13278-13283).
+     * The text must be non-empty (the oracle's row requires a macro). The
+     * handler publishes HotbarAssignPending; a headless run is refused there.
+     */
+    ActionResult createHotbutton(const std::string& text);
+
+    /**
      * T141: /equip -- move/equip an item by slot numbers, by name, or
      * report state (`list`). See EqActionHandler::equip() ->
      * EverQuest::RequestEquip() for the form dispatch.

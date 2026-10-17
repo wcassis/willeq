@@ -95,6 +95,16 @@ struct UILayout {
     // oracle sizes via placePairLeft()) ---
     irr::core::rect<irr::s32> partnerPopup;
 
+    // --- B1078 (#398): the middle band as a member ---
+    // Right of the player column, left of the gem column, under the buff
+    // strip, above the chat and the casting bar (the locals in
+    // computeLayout()). The pair windows' `windowRect()`s and the
+    // centre-popup window scale their oracle size to fit this band (one
+    // uniform factor, never two) and anchor at its top, so a 480-tall
+    // merchant clears the chat at 1024x768, where the band is only 451
+    // tall.
+    irr::core::rect<irr::s32> middleBand;
+
     // --- UnderPlayerColumn: Group panel, then the Pet panel ---
     irr::core::rect<irr::s32> groupPanel;
     irr::core::rect<irr::s32> petPanel;
@@ -227,6 +237,10 @@ struct UILayout {
         irr::s32 bandB = castingBar.UpperLeftCorner.Y - MARGIN;
         if (chatPanel.UpperLeftCorner.Y - MARGIN < bandB)
             bandB = chatPanel.UpperLeftCorner.Y - MARGIN;
+        // B1078 (#398): the band as a member -- the pair windows
+        // (merchant, inventory) and the tradeskill window scale their oracle
+        // size to fit it (one uniform factor) and anchor at its top.
+        middleBand = {bandL, bandT, bandR, bandB};
         irr::s32 popY = bandT + (bandB - bandT - POPUP_H) / 2;
         if (popY < bandT) popY = bandT;
         if (popY + POPUP_H > height) popY = height - POPUP_H;

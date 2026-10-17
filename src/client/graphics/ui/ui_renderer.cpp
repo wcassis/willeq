@@ -173,6 +173,13 @@ bool UIRenderer::drawItemIcon(const irr::core::rect<irr::s32>& rect,
     irr::video::ITexture* tex = atlas_->icons().lookup(iconId, srcRect);
     if (!tex) return false;
 
+    // B1078 (GitLab #398): the destination is the centred SQUARE of the cell
+    // (squareIn), because the 40x40 dragitem decal is a square and a
+    // non-square cell must never stretch it. Every call site funnels through
+    // here, so the fix lives at this one place, not at each of the 16
+    // callers; a cell that is already square (every site today) is unchanged.
+    const irr::core::rect<irr::s32> dest = squareIn(rect);
+
     const irr::video::SColor white(255, 255, 255, 255);
 
     // Same ordering contract as drawTexture(): on the atlas path the icon is
@@ -181,11 +188,11 @@ bool UIRenderer::drawItemIcon(const irr::core::rect<irr::s32>& rect,
     // quantity string, a hover border) and in front of the slot background
     // it was drawn after.
     if (atlas_->getTexture()) {
-        atlasQuads_.push_back({rect, srcRect, white, tex});
+        atlasQuads_.push_back({dest, srcRect, white, tex});
         return true;
     }
 
-    driver_->draw2DImage(tex, rect, srcRect, nullptr, &white, true);
+    driver_->draw2DImage(tex, dest, srcRect, nullptr, &white, true);
     return true;
 }
 

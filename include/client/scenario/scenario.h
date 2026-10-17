@@ -35,6 +35,16 @@ enum class StepResult {
     Fail,
 };
 
+// B1025-H5 (#345): the content IScenarioWorld::HotbarSlotAt() reports back --
+// the model's own HotbarSlotType as an int, the slot's id, and the
+// Emote/Macro command line (empty for the other kinds). A world that cannot
+// read a slot answers all-defaults.
+struct HotbarSlotRead {
+    int type = 0;        // eqt::HotbarSlotType as an int
+    uint32_t id = 0;
+    std::string text;
+};
+
 /**
  * Everything a scenario is allowed to see or do.
  *
@@ -181,6 +191,59 @@ public:
     virtual long long ZoneConnectOpens() const { return -1; }
     /** B1072: the next `attempts` zone connects go to `port` on the zone host; false if unsupported. */
     virtual bool SimulateUnreachableZoneConnects(int attempts, int port) { (void)attempts; (void)port; return false; }
+    /**
+     * B1080 (#400): how many zone-OUT teardowns ran the audio silence
+     * (ZoneComponent::ZoneAudioSilenceCount). Every zone-OUT path funnels
+     * through CleanupZone(), so this counts a graceful zone-out, the
+     * handshake timeout, a logout and the B1072 fresh-login give-up alike.
+     * The count works even when the audio managers are null (a headless
+     * --scenario run has no audio system: InitializeAudio() runs only from
+     * the graphics init) -- it counts the teardown, not the sound; the audio
+     * EFFECT of the silence is pinned by tests/test_zone_sound_emitters.cpp.
+     * -1 not readable.
+     */
+    virtual long long ZoneAudioSilenceCount() const { return -1; }
+    /** B1079: arm the "zone answered then went silent" lever (the next ConnectToZone's handshake is pinned past ZONE_CONNECTING); false if unsupported. */
+    virtual bool SimulateZoneSilentAfterHandshake() { return false; }
+
+    // --- B1025-H5 (#345): hotbar controls, through the user path. Same
+    //     "default = cannot do this" rule as the other actions. ---
+    //
+    // `page` is the HotbarModel page (0-9), `slot` the 0-based slot within it.
+    /**
+     * The USER assignment path: a hot button placed on a slot -- the same
+     * HotbarAssignIntent the render thread's hold gesture pushes
+     * (BridgeComponent::onHotbarAssignIntent -> HotbarModel::assignSlot).
+     * `text` is the Emote/Macro command line (empty for the other kinds).
+     */
+    virtual bool AssignHotbarSlot(int page, int slot, int type, uint32_t id, const std::string& text) {
+        (void)page; (void)slot; (void)type; (void)id; (void)text;
+        return false;
+    }
+    /**
+     * The CLICK activation path: HotbarActivateIntent for the slot's current
+     * content (BridgeComponent::onHotbarActivateIntent reads the model's slot
+     * and dispatches by type).
+     */
+    virtual bool ActivateHotbarSlot(int page, int slot) {
+        (void)page; (void)slot;
+        return false;
+    }
+    /** The KEYBOARD activation path: a hotbar keypress the game thread's
+     *  InputActionBridge drains (processHotbarRequests) and dispatches by the
+     *  slot's type. */
+    virtual bool PressHotbarKey(int slot) { (void)slot; return false; }
+    /** The window's page button: HotbarPageChangedIntent -> setCurrentPage. */
+    virtual bool SetHotbarPage(int page) { (void)page; return false; }
+    /** The model's current page (HotbarModel::currentPage); -1 when the
+     *  world cannot read it. */
+    virtual int HotbarPage() const { return -1; }
+    /** The content at (page, slot): type int (eqt::HotbarSlotType) and id;
+     *  the emote/command text for Emote/Macro. All three 0/"" when unreadable. */
+    virtual HotbarSlotRead HotbarSlotAt(int page, int slot) const {
+        (void)page; (void)slot;
+        return {};
+    }
 
     // --- actions ---
     /** Dispatch one slash command line, exactly as --script would. */
@@ -337,6 +400,39 @@ struct ScenarioOptions {
      * flaky lane should not pass on the first tick's un-echoed value.
      */
     double fallWaitSeconds = 8.0;
+    /**
+     * B1025-H5 (#345): hotbar_lifecycle. The charged consumable the lane SEEDS
+     * into the caster's inventory (its id is fixed by the lane's seed.sql, not
+     * hunted in the DB) and assigns to a hotbar slot; the card's item leg is
+     * its CHARGE DECREMENT, which the lane's post-check asserts in the DB.
+     */
+    uint32_t hotbarItemId = 8443;
+    /**
+     * B1088 (#408, loading_name): the target of the scenario's GM zone
+     * request -- the SECOND zone-in whose loading screen the post-check
+     * asserts. 0 = refuse (the scenario has nowhere to go); the initial
+     * zone is whatever the character entered.
+     */
+    uint32_t expectZoneChangeId = 0;
+    /** B1088: the short name of that target zone (the scenario's Pass
+     *  check); empty = any zone counts. */
+    std::string expectZoneName;
+    /**
+     * B1079 (#399): the zone_connect_timeout "zone answered then went silent"
+     * arm (the 2026-10-15 XU4 shape). When set, after /camp -> character
+     * select the arm Enter-Worlds with the client's silent-zone lever armed
+     * alongside ONE dead-port connect (SimulateUnreachableZoneConnects(1)):
+     * the connection goes to a dead port (stable silence -- the stale
+     * connect is erased without a StatusDisconnected, so nothing
+     * re-connects), and the handshake's ZONE_CONNECTING is pinned to
+     * ZONE_RECEIVING_PROFILE, as if the zone had answered the session and
+     * OP_ZoneEntry and then gone quiet. The bound must walk that phase to
+     * its own deadline and escalate WITHOUT a connect retry (a re-connect
+     * would duplicate OP_ZoneEntry), landing on character select within the
+     * profile bound and inside the connect bound. Default false = the plain
+     * dead-port arm.
+     */
+    bool silentZone = false;
 };
 
 class IScenario {

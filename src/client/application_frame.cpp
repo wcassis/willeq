@@ -53,6 +53,7 @@
 #include "client/input/hotkey_manager.h"
 #include "client/input/graphics_input_handler.h"
 #include "client/bridge/irrlicht_bridge.h"
+#include "client/zone/zone_display_name.h"  // B1088 (#408): the loading screen's zone name
 #endif
 
 #ifdef WITH_AUDIO
@@ -182,8 +183,15 @@ void Application::render(float deltaTime) {
                 std::wstring title = m_loadingStatus.getTitle();
                 std::string textNarrow = m_loadingStatus.getText();
                 std::wstring text(textNarrow.begin(), textNarrow.end());
+                // B1088 (#408): the zone-name line, from the one value source
+                // -- the SAME line OverlaysComponent::drawLoadingScreen reads
+                // (both bodies draw through the shared loading_frame_layout
+                // helper), so the 0-50 % screen and the load-zone screen show
+                // it identically.
+                const std::string entryNarrow = eqt::ZoneDisplayNames::instance().entryText();
+                const std::wstring entryText(entryNarrow.begin(), entryNarrow.end());
                 EQT::Graphics::LoadingThread::drawLoadingFrame(
-                    m_renderer->getDriver(), m_loadingScreenFont, progress, title, text);
+                    m_renderer->getDriver(), m_loadingScreenFont, progress, title, entryText, text);
                 m_lastGraphicsUpdate = now;
                 return;
             }

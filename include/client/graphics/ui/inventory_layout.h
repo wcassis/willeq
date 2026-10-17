@@ -1,31 +1,33 @@
 /*
- * InventoryLayout — the single shared source of inventory-popup slot
+ * InventoryLayout — the single shared source of inventory-window slot
  * geometry.
  *
- * B1075 (#395): the 400x350 box every rect below is mapped into is
- * `UILayout::inventoryPopup` (the layout table's PairRight anchor, so the
- * merchant/loot/bank/trade window can sit beside it). The comments below
- * that say "centerPopup" predate the split and mean that same-size box.
+ * B1075 (#395) split the old 400x350 `centerPopup` into the pair: this
+ * window takes the RIGHT slot (`UILayout::inventoryPopup`), the window it is
+ * used with (merchant/loot/bank/trade/give) the LEFT slot (`partnerPopup`).
+ *
+ * B1078 (#398) grew the frame to the oracle's own size and made its scale a
+ * ONE uniform factor. The window is the oracle's 428x460
+ * (`<Screen item="InventoryWindow"><Size>CX=428 CY=460`) at a single scale
+ * that fits it into the middle band (see windowRect/scalePct), anchored in
+ * its pair slot. Every interior rect — the 30 slots, the paperdoll, the
+ * four coin rows, the destroy button — is expressed in the 428x460 window
+ * space and mapped by THAT SAME factor, so the frame and its contents can
+ * never drift apart and nothing is stretched anisotropically (the pre-B1078
+ * header mapped x by windowW/428 and y by windowH/460, squashing the oracle
+ * doll 85x168 into 80x161).
+ *
+ * The 30-slot BODY ARRANGEMENT is fable's T57 layout (Will's choice,
+ * 2026-08-11): two 8-slot equipment columns flank the paperdoll, a 6-slot
+ * weapon row, then the 8-slot general row. The era's own `EQUI_Inventory.xml`
+ * carries NO slot geometry (empty), so the arrangement is fable's and only
+ * the WINDOW size is the oracle's — see the header of the T57/T60 plans.
  *
  * T57: static_panels.cpp's renderInventoryPopup() and
- * static_ui_input.cpp's processInput() used to independently compute
- * these same rectangles from the same magic numbers, and drifted apart
- * identically wrong (all 8 general slots + equipment slots 20-21 fell
- * outside centerPopup — see refactor/T57_inventory_paperdoll_layout.md).
- * Both now call slotRect() below; neither file may contain slot-position
- * arithmetic of its own.
- *
- * Layout is an EQ-authentic body arrangement (Will's choice, 2026-08-11):
- * two 8-slot columns (left: ears/head/face/neck/shoulders/arms/back,
- * right: wrists/range/hands/rings/chest/legs) flank the paperdoll rect
- * (T60: character preview — the empty center T54/T57 recorded as a
- * deliberate gap is now filled), a 6-slot weapon row
- * (primary/secondary/feet/waist/ammo/charm) sits below both columns, and
- * the 8-slot general inventory row sits below that. All 30 slot rects
- * plus the paperdoll rect are proven to lie wholly inside the fixed
- * 400x350 UILayout::centerPopup and not overlap each other — see the
- * containment test in tests/test_static_ui_panels.cpp and the arithmetic
- * in the T57/T60 plans' Reviews.
+ * static_ui_input.cpp's processInput() used to independently compute these
+ * rectangles and drifted apart identically wrong. Both now call the
+ * functions below; neither file may contain slot-position arithmetic of its
+ * own.
  */
 
 #pragma once
@@ -47,20 +49,28 @@ constexpr int TOTAL_SLOTS = EQUIP_COUNT + GENERAL_COUNT;  // 30
 
 namespace detail {
 
+// --- The window (B1078): the oracle's own size. ---------------------------
+//   <Screen item="InventoryWindow">  Size CX=428 CY=460
+constexpr irr::s32 ORACLE_WINDOW_W = 428;
+constexpr irr::s32 ORACLE_WINDOW_H = 460;
+
+// --- The 30-slot T57 body, in the 428x460 window space. --------------------
+// The slot size and the margins are fable's T57 choices (32px slots), kept
+// as-is; only the window they live in grew. 428 is 28px wider than the old
+// 400, so the centred rows gain a little margin on each side.
 constexpr irr::s32 SLOT = UILayout::SLOT_SIZE;  // 32
 constexpr irr::s32 PAD = 2;
-
-// Vertical layout, relative to centerPopup's top-left corner.
 constexpr irr::s32 CONTENT_TOP = 20;      // below the title
 constexpr int COL_ROWS = 8;               // slots per side column
 constexpr irr::s32 GAP_COL_WEAPON = 2;    // columns bottom -> weapon row
 constexpr irr::s32 GAP_WEAPON_GENERAL = 6;  // weapon row -> general row
-
-// Horizontal layout, relative to centerPopup's top-left corner.
 constexpr irr::s32 LEFT_COL_X = 8;
-
 constexpr int WEAPON_COUNT = 6;
 constexpr int GEN_COUNT = 8;
+
+// The right equipment column's right edge in window space — the destroy
+// button right-aligns to it.
+constexpr irr::s32 RIGHT_COL_RIGHT = ORACLE_WINDOW_W - LEFT_COL_X;  // 420
 
 using eqt::inventory::EquipmentSlot;
 
@@ -88,34 +98,15 @@ constexpr int16_t kWeaponRow[WEAPON_COUNT] = {
 };
 
 // --- The purse (T393, board B201) -------------------------------------
-//
-// THE PLACEMENT IS THE ORACLE'S, NOT OURS. Every number below is quoted
-// verbatim from the official Titanium/P1999 default UI,
+// THE PLACEMENT IS THE ORACLE'S, NOT OURS. Every number is quoted verbatim
+// from the official Titanium/P1999 default UI,
 // /mnt/projects/EverQuestP1999/uifiles/default/EQUI_Inventory.xml:
-//
-//   <Screen item="InventoryWindow">  Size CX=428 CY=460
-//   <Button item="IW_Money0">  Location X=303 Y=121  Size CX=70 CY=24
-//                              ButtonDrawTemplate/NormalDecal A_PlatinumCoin
-//                              DecalOffset X=1 Y=3  DecalSize CX=18 CY=18
-//   <Button item="IW_Money1">  Location X=303 Y=147  Size CX=70 CY=24
-//                              NormalDecal A_GoldCoin     (same decal box)
-//   <Button item="IW_Money2">  Location X=303 Y=171  Size CX=70 CY=24
-//                              NormalDecal A_SilverCoin   (same decal box)
-//   <Button item="IW_Money3">  Location X=303 Y=197  Size CX=70 CY=24
-//                              NormalDecal A_CopperCoin   (same decal box)
-//
+//   <Button item="IW_Money0..3">  Location X=303 Y={121,147,171,197}
+//                                 Size CX=70 CY=24  DecalOffset 1,3  DecalSize 18
 // so the oracle draws the four denominations as a single column of 70x24
 // boxes, top to bottom platinum/gold/silver/copper, each with a coin decal
-// on its left and the count as its text.
-//
-// The scale rule is the popup's own: fable's centerPopup is a fixed
-// 400x350 at every resolution (T351 measured all five) and every rect in
-// this header is expressed relative to that frame, so the coin column is
-// the oracle's rect mapped proportionally from the 428x460 window onto
-// centerPopup's width and height. Integer division, so the mapping is
-// exact and reproducible; no rounding policy to drift.
-constexpr irr::s32 ORACLE_WINDOW_W = 428;
-constexpr irr::s32 ORACLE_WINDOW_H = 460;
+// on its left and the count as its text. Mapped into the window by the ONE
+// factor (B1078), exactly as the doll is.
 constexpr irr::s32 ORACLE_COIN_X = 303;
 constexpr irr::s32 ORACLE_COIN_W = 70;
 constexpr irr::s32 ORACLE_COIN_H = 24;
@@ -125,16 +116,11 @@ constexpr irr::s32 ORACLE_DECAL_Y = 3;
 constexpr irr::s32 ORACLE_DECAL_SIZE = 18;
 
 // --- The character view (T409, board B219) ----------------------------
-//
-// Same file, same window, same scale rule as the purse above:
-//
-//   <Screen item="IW_CharacterView">  Location X=166 Y=57
-//                                     Size CX=85 CY=168
-//
-// i.e. the oracle's doll is a TALL box occupying 20% of the window width,
-// which is what leaves its coin column at X=303 clear of it. fable's rect
-// used to fill the whole gap between the equipment columns (76% of the
-// popup) and the coin rows landed on it -- board B219, ruled 2026-09-06.
+// Same file, same window:  <Screen item="IW_CharacterView">
+//   Location X=166 Y=57  Size CX=85 CY=168  -- a TALL box at 20% of the
+// window width, which is what leaves its coin column at X=303 clear of it.
+// Mapped into the window by the ONE factor (B1078), so it keeps the oracle's
+// 85x168 aspect at every resolution.
 constexpr irr::s32 ORACLE_DOLL_X = 166;
 constexpr irr::s32 ORACLE_DOLL_Y = 57;
 constexpr irr::s32 ORACLE_DOLL_W = 85;
@@ -145,97 +131,136 @@ constexpr irr::s32 ORACLE_DOLL_H = 168;
 // drawn rect on each axis, so the blit only ever downscales.
 constexpr irr::s32 PAPERDOLL_RT_SUPERSAMPLE = 2;
 
+// The destroy button's oracle size (IW_Destroy, 50x20) -- its PLACE is
+// fable's, see destroyButtonRect().
+constexpr irr::s32 ORACLE_DESTROY_W = 50;
+constexpr irr::s32 ORACLE_DESTROY_H = 20;
+
 } // namespace detail
+
+// Denomination order is the oracle's element order, IW_Money0..3.
+constexpr int COIN_COUNT = 4;
+
+enum Coin { COIN_PLATINUM = 0, COIN_GOLD = 1, COIN_SILVER = 2, COIN_COPPER = 3 };
+
+/**
+ * B1078 (#398): the ONE uniform factor in per-cent (100 = unscaled) that
+ * fits the oracle's 428x460 window into the space its pair slot leaves it --
+ * the min of the available width (from its anchor to the band's right edge)
+ * and the band's height ratios, capped at 1. At 1024x768 and up it is 1 and
+ * every rect is the XML's own number to the pixel; at 800x600 the band is
+ * only 384 tall and the slot's width is only 360, so the whole window -- its
+ * 30 slots and the doll -- shrinks uniformly. One factor, never two: the
+ * pre-B1078 header mapped x by windowW/428 and y by windowH/460, squashing
+ * the 85x168 oracle doll into 80x161 and the 70x24 coin boxes into 58x23 --
+ * the anisotropy this ruling kills.
+ */
+inline irr::s32 scalePct(const UILayout& layout) {
+    const auto& b = layout.middleBand;
+    const irr::s32 availW =
+        b.LowerRightCorner.X - layout.inventoryPopup.UpperLeftCorner.X;
+    irr::s32 f = std::min(availW * 100 / detail::ORACLE_WINDOW_W,
+                          b.getHeight() * 100 / detail::ORACLE_WINDOW_H);
+    return f < 100 ? f : 100;
+}
+
+/**
+ * The window, in screen coordinates (B1078): the oracle's own 428x460 at the
+ * ONE uniform factor (`scalePct`), anchored in the pair's RIGHT slot
+ * (`inventoryPopup.UpperLeftCorner.X`) and top-anchored at the middle band's
+ * top, clamped wholly on screen. The merchant takes the pair's LEFT slot
+ * (`partnerPopup`), so the two are neighbours. Every interior rect below is
+ * expressed against THIS rect (via `at`), so the frame and its contents can
+ * never drift apart (T57's rule).
+ */
+inline irr::core::rect<irr::s32> windowRect(const UILayout& layout) {
+    const irr::s32 f = scalePct(layout);
+    const irr::s32 w = detail::ORACLE_WINDOW_W * f / 100;
+    const irr::s32 h = detail::ORACLE_WINDOW_H * f / 100;
+    const irr::s32 x = layout.inventoryPopup.UpperLeftCorner.X;
+    const irr::s32 y = layout.middleBand.UpperLeftCorner.Y;
+    return layout.clampOnScreen(x, y, w, h);
+}
+
+/**
+ * Map a 428x460 window-space rect to screen by the ONE uniform factor,
+ * offset by `windowRect()`'s origin. The single scaling body -- every interior
+ * rect below goes through it, so there is no second copy of the mapping to
+ * drift (T57's rule).
+ */
+inline irr::core::rect<irr::s32> at(const UILayout& layout, irr::s32 ox,
+                                    irr::s32 oy, irr::s32 ow, irr::s32 oh) {
+    const auto win = windowRect(layout);
+    const irr::s32 f = scalePct(layout);
+    const irr::s32 x = win.UpperLeftCorner.X + ox * f / 100;
+    const irr::s32 y = win.UpperLeftCorner.Y + oy * f / 100;
+    return irr::core::rect<irr::s32>(x, y, x + ow * f / 100, y + oh * f / 100);
+}
 
 /**
  * Returns the screen-space rect for a global inventory slot index
- * (0-21 equipment, 22-29 general), positioned within `layout.inventoryPopup`.
+ * (0-21 equipment, 22-29 general), positioned within `windowRect()`.
  * Returns a degenerate (all-zero) rect for an out-of-range index.
  *
- * This is the ONLY place inventory-popup slot geometry is computed —
+ * This is the ONLY place inventory slot geometry is computed --
  * renderInventoryPopup() and StaticUIInput::processInput() both call it.
  */
 inline irr::core::rect<irr::s32> slotRect(const UILayout& layout, int globalIndex) {
     using namespace detail;
-    const auto& popup = layout.inventoryPopup;
-    const irr::s32 popupX = popup.UpperLeftCorner.X;
-    const irr::s32 popupY = popup.UpperLeftCorner.Y;
-    const irr::s32 popupW = popup.getWidth();
-
-    const irr::s32 rightColX = popupW - LEFT_COL_X - SLOT;
-
+    const irr::s32 rightColX = ORACLE_WINDOW_W - LEFT_COL_X - SLOT;
     constexpr irr::s32 weaponRowW = WEAPON_COUNT * SLOT + (WEAPON_COUNT - 1) * PAD;
-    const irr::s32 weaponRowX = (popupW - weaponRowW) / 2;
-
+    const irr::s32 weaponRowX = (ORACLE_WINDOW_W - weaponRowW) / 2;
     constexpr irr::s32 generalRowW = GEN_COUNT * SLOT + (GEN_COUNT - 1) * PAD;
-    const irr::s32 generalRowX = (popupW - generalRowW) / 2;
-
-    const irr::s32 weaponY = popupY + CONTENT_TOP + COL_ROWS * SLOT + GAP_COL_WEAPON;
+    const irr::s32 generalRowX = (ORACLE_WINDOW_W - generalRowW) / 2;
+    const irr::s32 weaponY = CONTENT_TOP + COL_ROWS * SLOT + GAP_COL_WEAPON;
     const irr::s32 generalY = weaponY + SLOT + GAP_WEAPON_GENERAL;
 
-    irr::s32 x = 0, y = 0;
+    irr::s32 ox = 0, oy = 0;
     bool found = false;
 
     if (globalIndex >= 0 && globalIndex < EQUIP_COUNT) {
         for (int row = 0; row < COL_ROWS && !found; ++row) {
             if (kLeftColumn[row] == globalIndex) {
-                x = popupX + LEFT_COL_X;
-                y = popupY + CONTENT_TOP + row * SLOT;
+                ox = LEFT_COL_X;
+                oy = CONTENT_TOP + row * SLOT;
                 found = true;
             } else if (kRightColumn[row] == globalIndex) {
-                x = popupX + rightColX;
-                y = popupY + CONTENT_TOP + row * SLOT;
+                ox = rightColX;
+                oy = CONTENT_TOP + row * SLOT;
                 found = true;
             }
         }
         for (int col = 0; col < WEAPON_COUNT && !found; ++col) {
             if (kWeaponRow[col] == globalIndex) {
-                x = popupX + weaponRowX + col * (SLOT + PAD);
-                y = weaponY;
+                ox = weaponRowX + col * (SLOT + PAD);
+                oy = weaponY;
                 found = true;
             }
         }
     } else if (globalIndex >= EQUIP_COUNT && globalIndex < TOTAL_SLOTS) {
         int i = globalIndex - EQUIP_COUNT;
-        x = popupX + generalRowX + i * (SLOT + PAD);
-        y = generalY;
+        ox = generalRowX + i * (SLOT + PAD);
+        oy = generalY;
         found = true;
     }
 
     if (!found) {
         return irr::core::rect<irr::s32>(0, 0, 0, 0);
     }
-    return irr::core::rect<irr::s32>(x, y, x + SLOT, y + SLOT);
+    return at(layout, ox, oy, SLOT, SLOT);
 }
 
 /**
  * Returns the screen-space rect for the character paperdoll (T60), placed
- * where the OFFICIAL client puts its character view (T409, board B219).
- *
- * THE PLACEMENT IS THE ORACLE'S, NOT OURS, exactly as it is for coinRect():
- * the `IW_CharacterView` rect (166,57 85x168) mapped proportionally from the
- * 428x460 `InventoryWindow` onto centerPopup's fixed 400x350, integer
- * division. It used to fill the entire gap between the two equipment columns
- * — 76% of the popup width against the oracle's 20% — which is why T393's
- * oracle-placed coin column landed on its right-hand margin (B219, seen on
- * screen in T401's live pair). Narrowing it to the oracle's proportion makes
- * the doll and the purse disjoint at every resolution; both facts are pinned
- * in tests/test_static_ui_panels.cpp.
- *
- * It still lies between the two equipment columns and above the weapon row,
- * so the T60 containment/no-overlap invariants hold as before.
+ * where the OFFICIAL client puts its character view (T409, board B219) -- the
+ * `IW_CharacterView` rect (166,57 85x168) mapped into `windowRect()` by the
+ * ONE factor, so it keeps the oracle's 85x168 aspect at every resolution. It
+ * lies between the two equipment columns and above the weapon row, so the
+ * T60 containment/no-overlap invariants hold as before.
  */
 inline irr::core::rect<irr::s32> paperdollRect(const UILayout& layout) {
     using namespace detail;
-    const auto& popup = layout.inventoryPopup;
-    const irr::s32 popupW = popup.getWidth();
-    const irr::s32 popupH = popup.getHeight();
-
-    const irr::s32 x = popup.UpperLeftCorner.X + ORACLE_DOLL_X * popupW / ORACLE_WINDOW_W;
-    const irr::s32 y = popup.UpperLeftCorner.Y + ORACLE_DOLL_Y * popupH / ORACLE_WINDOW_H;
-    const irr::s32 w = ORACLE_DOLL_W * popupW / ORACLE_WINDOW_W;
-    const irr::s32 h = ORACLE_DOLL_H * popupH / ORACLE_WINDOW_H;
-    return irr::core::rect<irr::s32>(x, y, x + w, y + h);
+    return at(layout, ORACLE_DOLL_X, ORACLE_DOLL_Y, ORACLE_DOLL_W, ORACLE_DOLL_H);
 }
 
 /**
@@ -244,9 +269,11 @@ inline irr::core::rect<irr::s32> paperdollRect(const UILayout& layout) {
  *
  * It lives here, beside the rect it feeds, because the two must share a
  * proportion: a target whose aspect differs from the rect's squashes the
- * model in the blit. centerPopup is a fixed 400x350 at every resolution
- * (T351 measured five), so this is a constant, and the layout is computed
- * at an arbitrary resolution to read it.
+ * model in the blit. B1078 keeps the doll's aspect exact at every resolution
+ * (windowRect() scales 428x460 by ONE uniform factor, so the doll rect keeps
+ * the oracle's 85x168 aspect), so this may read the rect at a single fixed
+ * probe resolution (1024x768, the factor there is 1) and the aspect is
+ * correct at every other resolution for free.
  */
 inline irr::core::dimension2d<irr::u32> paperdollRenderTargetSize() {
     UILayout probe;
@@ -257,36 +284,24 @@ inline irr::core::dimension2d<irr::u32> paperdollRenderTargetSize() {
         static_cast<irr::u32>(r.getHeight() * detail::PAPERDOLL_RT_SUPERSAMPLE));
 }
 
-// Denomination order is the oracle's element order, IW_Money0..3.
-constexpr int COIN_COUNT = 4;
-enum Coin { COIN_PLATINUM = 0, COIN_GOLD = 1, COIN_SILVER = 2, COIN_COPPER = 3 };
-
 /**
  * Returns the screen-space rect for one coin row (0=platinum .. 3=copper),
- * positioned within `layout.inventoryPopup`. Degenerate (all-zero) rect for an
- * out-of-range denomination.
- *
- * As with slotRect(), this is the ONLY place purse geometry is computed —
- * renderInventoryPopup() contains no coin-position arithmetic of its own.
+ * positioned within `windowRect()`. Degenerate (all-zero) rect for an
+ * out-of-range denomination. As with slotRect(), this is the ONLY place
+ * purse geometry is computed -- renderInventoryPopup() contains no
+ * coin-position arithmetic of its own.
  */
 inline irr::core::rect<irr::s32> coinRect(const UILayout& layout, int denom) {
     using namespace detail;
     if (denom < 0 || denom >= COIN_COUNT) {
         return irr::core::rect<irr::s32>(0, 0, 0, 0);
     }
-    const auto& popup = layout.inventoryPopup;
-    const irr::s32 popupW = popup.getWidth();
-    const irr::s32 popupH = popup.getHeight();
-
-    const irr::s32 x = popup.UpperLeftCorner.X + ORACLE_COIN_X * popupW / ORACLE_WINDOW_W;
-    const irr::s32 y = popup.UpperLeftCorner.Y + ORACLE_COIN_Y[denom] * popupH / ORACLE_WINDOW_H;
-    const irr::s32 w = ORACLE_COIN_W * popupW / ORACLE_WINDOW_W;
-    const irr::s32 h = ORACLE_COIN_H * popupH / ORACLE_WINDOW_H;
-    return irr::core::rect<irr::s32>(x, y, x + w, y + h);
+    return at(layout, ORACLE_COIN_X, ORACLE_COIN_Y[denom],
+              ORACLE_COIN_W, ORACLE_COIN_H);
 }
 
 /**
- * The coin decal box inside one coin row — where the oracle blits
+ * The coin decal box inside one coin row -- where the oracle blits
  * A_PlatinumCoin / A_GoldCoin / A_SilverCoin / A_CopperCoin. fable's UI
  * atlas has no coin sprite yet, so renderInventoryPopup() puts the
  * denomination letter here; the rect is the oracle's either way.
@@ -296,47 +311,34 @@ inline irr::core::rect<irr::s32> coinDecalRect(const UILayout& layout, int denom
     if (denom < 0 || denom >= COIN_COUNT) {
         return irr::core::rect<irr::s32>(0, 0, 0, 0);
     }
-    const auto& popup = layout.inventoryPopup;
-    const irr::s32 popupW = popup.getWidth();
-    const irr::s32 popupH = popup.getHeight();
-    const auto row = coinRect(layout, denom);
-
-    const irr::s32 x = row.UpperLeftCorner.X + ORACLE_DECAL_X * popupW / ORACLE_WINDOW_W;
-    const irr::s32 y = row.UpperLeftCorner.Y + ORACLE_DECAL_Y * popupH / ORACLE_WINDOW_H;
-    const irr::s32 w = ORACLE_DECAL_SIZE * popupW / ORACLE_WINDOW_W;
-    const irr::s32 h = ORACLE_DECAL_SIZE * popupH / ORACLE_WINDOW_H;
-    return irr::core::rect<irr::s32>(x, y, x + w, y + h);
+    return at(layout, ORACLE_COIN_X + ORACLE_DECAL_X,
+              ORACLE_COIN_Y[denom] + ORACLE_DECAL_Y,
+              ORACLE_DECAL_SIZE, ORACLE_DECAL_SIZE);
 }
 
 /**
  * B442b (#151 rows 34-35): `IW_Destroy`, the button that destroys the item on
  * the cursor after a confirmation.
  *
- *   <Button item="IW_Destroy">  Location X=202 Y=382  Size CX=50 CY=20
+ *   <Button item="IW_Destroy">  Location X=202 Y=384  Size CX=50 CY=20
  *                               <Text>Destroy</Text>
  *
- * THE SIZE IS THE ORACLE'S, THE PLACE IS NOT. The size is the oracle's 50x20
- * mapped onto centerPopup like coinRect() (46x15). Its oracle position,
- * mapped the same way, lands on fable's own WEAPON row (the slot grid is
- * fable's T57 layout, not the oracle's, which is why only the purse and the
- * doll carry oracle positions). So it sits in the free space to the right of
- * that row, right-aligned with the right equipment column and centred on the
- * row: a flagged anchor deviation, the kind T434/T436 made for their windows.
- * Pinned disjoint from every slot rect by tests/test_cursor_gesture_completion.cpp.
+ * THE SIZE IS THE ORACLE'S, THE PLACE IS NOT. Its oracle size is 50x20,
+ * mapped into `windowRect()` by the ONE factor like coinRect(). Its oracle
+ * position, mapped the same way, lands on fable's own WEAPON row (the slot
+ * grid is fable's T57 layout, not the oracle's, which is why only the purse
+ * and the doll carry oracle positions). So it sits in the free space to the
+ * right of that row, right-aligned with the right equipment column and
+ * centred on the row: a flagged anchor deviation, the kind T434/T436 made
+ * for their windows. Pinned disjoint from every slot rect by
+ * tests/test_cursor_gesture_completion.cpp.
  */
 inline irr::core::rect<irr::s32> destroyButtonRect(const UILayout& layout) {
     using namespace detail;
-    constexpr irr::s32 ORACLE_DESTROY_W = 50;
-    constexpr irr::s32 ORACLE_DESTROY_H = 20;
-    const auto& popup = layout.inventoryPopup;
-    const irr::s32 popupW = popup.getWidth();
-    const irr::s32 popupH = popup.getHeight();
-    const irr::s32 w = ORACLE_DESTROY_W * popupW / ORACLE_WINDOW_W;
-    const irr::s32 h = ORACLE_DESTROY_H * popupH / ORACLE_WINDOW_H;
-    const irr::s32 weaponY = popup.UpperLeftCorner.Y + CONTENT_TOP + COL_ROWS * SLOT + GAP_COL_WEAPON;
-    const irr::s32 x = popup.UpperLeftCorner.X + popupW - LEFT_COL_X - w;
-    const irr::s32 y = weaponY + (SLOT - h) / 2;
-    return irr::core::rect<irr::s32>(x, y, x + w, y + h);
+    const irr::s32 weaponY = CONTENT_TOP + COL_ROWS * SLOT + GAP_COL_WEAPON;
+    const irr::s32 oy = weaponY + (SLOT - ORACLE_DESTROY_H) / 2;
+    const irr::s32 ox = RIGHT_COL_RIGHT - ORACLE_DESTROY_W;
+    return at(layout, ox, oy, ORACLE_DESTROY_W, ORACLE_DESTROY_H);
 }
 
 } // namespace InventoryLayout

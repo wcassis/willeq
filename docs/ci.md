@@ -32,6 +32,53 @@ connects, Enter World -- back at character select after the attempt plus ONE ret
 (`EQEMU_LANE=2 bash scripts/scenario.sh zone_connect_timeout --unit B1072`; offline net
 `test_zone_connect_timeout`).
 
+### Lane leases (B1089, #409)
+
+Cross-session use of an eqemu lane (and the XU4) is a **lease, not a lock**: a record with a TTL
+that is renewed by activity. The old file-`touch` lock (`/mnt/projects/.eqemu-lock`, noclobber over
+ssh) held forever when its holder died, and lane 5's copy lived on the NFS export shared with
+dev-u24's local lane -- two hosts, one file. The lease fixes both:
+
+- **The record lives ON the lane's own host** -- one key=value file per lane (`card`, `run`,
+  `host`, `pid`, `acquired_at`, `last_touched`, `purpose`), every `take` / `renew` / `release` /
+  `reap` one `flock` critical section, written by atomic rename. Lanes 1-4: the eqemu VM
+  (`/mnt/projects/.eqemu-lease/laneN`, local disk there); **lane 5: the ThinkPad's LOCAL disk**
+  (`/opt/akk-stack/.eqemu-lease/lane5` -- `/mnt/projects` is the NFS export on that box); the XU4:
+  on the box (`/home/user/.willeq-lease/xu4`).
+- **TTL from one env var**: `LANE_LEASE_TTL_S` (default 900 s). Expiry **releases the lane only;
+  nothing is ever killed by expiry**. A record whose `last_touched` is >= TTL old is free,
+  whatever pid it names (the holder's pid lives on the dev box, so liveness cannot be tested on
+  the lane host; a live holder renews before its TTL).
+- **Renew-on-use + the renewer**: `eq_remote` renews the lease before every lane touch when this
+  shell holds it (`LANE_LEASE_HELD`, set by `eqemu_lock_take`), so a long wait loop keeps the
+  lane without extra plumbing; long scripts ALSO start one background renewer
+  (`eqemu_lease_start_renewer`, interval TTL/3, floor `LANE_LEASE_RENEW_FLOOR_S` = 60 s, dies
+  with the script, `eqemu_lease_stop_renewer` in the cleanup trap). **A 30-min scenario is never
+  stolen.**
+- **A stolen lease fails loudly, with the lease's own code: 63** (`LEASE_EXPIRED`, beside
+  scenario.sh's 64-69 operator codes). `renew`/`release` by a holder whose lease expired or was
+  taken over prints the holder and a re-acquire one-liner:
+  `lease <card>: EXPIRED (held by <card>/<run> on <host>)` +
+  `re-lease: bash scripts/eqemu/lease take --lane <N> --card '<card>' --purpose '<why>'`.
+  `take` on a free lane after expiry **takes over and names the former holder**.
+- **The helper is the only door**: `scripts/eqemu/lease <take|renew|release|show|reap|track>
+  --lane <1-5|xu4> [--card <c> --run <r> --pid <p>] [--purpose <why>]`;
+  `scripts/eqemu/leases` is the status view (one line per lane, lanes 1-5 + XU4, parallel ssh,
+  `UNREACHABLE` instead of a hang). **SCRIPTS ARE MANDATORY: a hand-rolled ssh gets no renewal
+  and loses the lane at TTL.** The old `eqemu_lock_take/_show/_release`
+  (`scripts/eqemu/env.sh`, sourced from `lease_lib.sh`) are thin wrappers over the lease, so every
+  caller keeps working; `release` is now owner-checked (a release of someone else's lease is
+  refused with 63 -- the eqemu half of B922 #241).
+- **`reap`**: `scripts/eqemu/lease reap --lane N --dead-runs <file> [--dry]` kills exactly the
+  pids a run recorded on the lane host (`lease track --run <r> --pid <p>`, the file
+  `runs/<run>.pids` beside the record) and releases that run's lease when it holds it; a live
+  run's record names the live run, so it is never touched. The dry flag reports what it would do
+  and does nothing.
+- **The net**: `scripts/eqemu/lease_selftest.sh` (ctest `LeaseCoreSelfTest`, label `hygiene`),
+  hermetic -- the core against a temp dir, no ssh, no network: TTL expiry, renew extends,
+  takeover after expiry, 63 + the re-lease one-liner, re-acquire, reap dead-vs-live, dry-run,
+  five-way take race (exactly one winner), corrupt record refused. Red-before is N/A (new helper).
+
 | | |
 | --- | --- |
 | GitLab | `https://gitlab.goldfarm.local`, project `willeq/willeq` (id 1) |

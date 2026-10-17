@@ -89,6 +89,15 @@ const Waiver kWaivers[] = {
     {"tests/test_display_text_from_db.cpp", "dir = tmp ? tmp :",
      "the DIRECTORY fallback when TMPDIR is unset; the file name joined onto "
      "it one statement later carries this address (TempEqStrDb)"},
+    {"tests/test_x11_numpad_e2e.cpp", "X11-unix",
+     "a READ-ONLY existence probe of the X server's own per-display socket "
+     "name (B1091: refuse a squatted B654_XVFB_DISPLAY). The number is the "
+     "per-process unique component -- in the default path Xvfb assigned it to "
+     "this run over -displayfd; the test never creates or removes the file"},
+    {"tests/test_x11_numpad_e2e.cpp", "-lock",
+     "a READ-ONLY existence probe of the X server's own per-display lock file "
+     "name (B1091, same check as the socket probe above); the display number "
+     "is per-run and the file is never created or removed by the test"},
 };
 
 const Waiver* FindWaiver(const std::string& file, const std::string& statement) {

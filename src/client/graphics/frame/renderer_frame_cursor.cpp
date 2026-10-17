@@ -119,6 +119,14 @@ void FrameComponent::processCursorGestureFrame(bool uiTook) {
                       cursorState_.itemName);
         }
     }
+    // B1025-H3 (GitLab #345): a WORLD click (not a click on a window --
+    // uiTook) DISMISSES a carried hot button. H-O "hotbar-worlddrop": the
+    // button is gone, nothing is assigned and nothing is sent. A held hot
+    // button is never an item, so the drop prompt above (hasItem) can never
+    // arm with one; the two paths are disjoint.
+    if (pendingUIClick_ && !uiTook && cursorState_.hasHotbutton) {
+        cursorState_.clearHotbutton();
+    }
     pendingUIRelease_ = false;
 }
 
