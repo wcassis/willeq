@@ -917,11 +917,17 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             xdotool mousedown 1
             xdotool mousemove $((sx+1)) $((sy+1))
             read -r _ _ tail <<<"$target"
-            # glide over every waypoint with a small delay per step
+            # glide over every waypoint with a small delay per step. Each
+            # waypoint is "x,y" and xdotool mousemove takes TWO separate
+            # arguments -- passing the comma-joined string verbatim is a
+            # usage error ("expected 2 coordinates"), so split it here.
             IFS=' ' read -r -a pts <<<"$tail"
             for p in "${pts[@]}"; do
-                xdotool mousemove "$p"; sleep 0.15
+                IFS=, read -r px py <<<"$p"
+                xdotool mousemove "$px" "$py"; sleep 0.15
             done
+            IFS=, read -r px py <<<"${pts[${#pts[@]}-1]}"
+            xdotool mousemove "$px" "$py"  # the release lands on the last waypoint
             sleep "$(awk -v ms="$hold_ms" 'BEGIN {printf "%.3f",ms/1000}')"
             xdotool mouseup 1 ;;
         # B1076 (#396): the button-3 version. The official client's item
@@ -939,8 +945,11 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             read -r _ _ tail <<<"$target"
             IFS=' ' read -r -a pts <<<"$tail"
             for p in "${pts[@]}"; do
-                xdotool mousemove "$p"; sleep 0.15
+                IFS=, read -r px py <<<"$p"
+                xdotool mousemove "$px" "$py"; sleep 0.15
             done
+            IFS=, read -r px py <<<"${pts[${#pts[@]}-1]}"
+            xdotool mousemove "$px" "$py"  # the release lands on the last waypoint
             sleep "$(awk -v ms="$hold_ms" 'BEGIN {printf "%.3f",ms/1000}')"
             xdotool mouseup 3 ;;
         click-template) click_template "$target" "$hold_ms" "$name" || exit 65 ;;
