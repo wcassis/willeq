@@ -841,6 +841,20 @@ EXEMPT_TESTS_GROUPS = {
     # render body and hit test call; the reader is the co-open census
     # (test_ui_layout_coopen), which asserts the required sets over it.
     ("(free)", "windowRectFor"): "observer",
+    # B1076 (#396): the spellbook layout table's first step. Its rect
+    # accessors are the test's (test_spellbook_layout) window onto the
+    # XML-quoted geometry; the production render body (renderSpellbookPopup)
+    # and hit test draw from the same table in the render/input step.
+    ("(free)", "doneRect"): "observer",
+    ("(free)", "leftBackdropRect"): "observer",
+    ("(free)", "leftPageNumRect"): "observer",
+    ("(free)", "memorizeGaugeRect"): "observer",
+    ("(free)", "pageDownRect"): "observer",
+    ("(free)", "pageUpRect"): "observer",
+    ("(free)", "rightBackdropRect"): "observer",
+    ("(free)", "rightPageNumRect"): "observer",
+    ("(free)", "slotIconRect"): "observer",
+    ("(free)", "slotNameRect"): "observer",
     # B1069 (#389): the playback DEVICE rate. The production path is
     # main.cpp -> setConfiguredDeviceSampleRate -> AudioManager ->
     # MiniaudioBackend::setDeviceSampleRate -> init/start (whose INFO line
