@@ -293,3 +293,50 @@ keys EQE1 (compressed) entries.
   `detectAlpha()` measurement), so an S3D member that differs while its
   pack copy does not would be missed. Low risk: the fix keys on the pack
   stem, and the packs are what the cache resolves against.
+
+## Step 7 — the 197px gate regression (finding, ruling request; block)
+
+The keying commit `08ce2282` broke the x86 visual gate: qeynos2 renders
+197 px black vs the golden (self-consistent across runs, commit-isolated),
+and the other four gate zones diff too (135/274/678/192 px). Card
+`t_85bfde31` asked the dev leg to find the texture the (archive,name) keying
+"loses" and fix it. The full measured finding is in
+`refactor/B1083/gate_ledger_diff.md`; the two instrumented ledgers (base
+`37fb0df6`, head `7fa8dff3`) are committed beside it.
+
+**What Step 1 measured (the card's escape clause, verbatim trigger):** the
+base and head ledgers are **byte-identical** — 126 entries / 81 evictions /
+20 restores / 21,932,691 B, 3,662/3,662 getOrLoad requests, 0 nulls, 0
+budget failures. **No texture is lost, split or re-keyed.** The card says:
+*"If step 1 shows NO texture difference (identical ledgers, still 197 px),
+STOP: commit the dumps, push, and block — that is a new question for Will."*
+That clause is satisfied exactly, so this leg stops here and blocks.
+
+**Where the residual actually lives (the "remaining diff location"):** the
+GL texture **NAME**, not the cache. Pre-B1083 the decoded-S3D path handed
+`COpenGLES2Driver::addTexture()` the plain `name`; B1083's stem axis made the
+same line hand it the mangled `internalKey` (`name\x01@<stem>\x01`). That name
+is the driver's dedup key AND the draw-order key: `textureGroupId()` is an
+FNV-1a hash of `texture->getName()` (H02b/Q02), which sorts the merged/batched
+draw list. 126/126 qeynos2 group IDs changed and their ranks moved, so the
+draw order reshuffled per pose → z-fighting pixel flips (the diff is sparse
+and per-pose — befallen f1 = 0 px; four of five zones have 0 evictions, which
+kills every eviction/lost-texture mechanism). Not a missing texture: one
+diff pixel is head-**brighter**-than-base, which a lost texture cannot do.
+
+**The fix is a ruling request, not this leg's decision.** The card's Step 3
+says "fix the cause *in the cache/loader*"; the cache is byte-identical, so
+the cause is the *driver-facing name policy* — a different class, and a
+keying-adjacent design change (it changes what the willow's two same-name
+copies are *named* in the driver). A willow-safe candidate (first entry of a
+(name,mask) family takes the pre-B1083 name, a later cross-archive twin takes
+the full `internalKey`) is specified in `gate_ledger_diff.md` with its
+prediction (all five zones → 0 px, willow unchanged), but it is **NOT
+implemented**: it is not verified against the 5-zone gate + the willow + the
+unit nets, and it touches the 16:00Z (archive,name,mask) ruling's letter.
+That is exactly the "new question" the card routes to Will.
+
+**Left open (runs only after the ruling):** the candidate implementation;
+the 5-zone gate at the fix head; the qeytoqrg `--objects` willow re-run
+(expectation unchanged: +87,408 B, 0 deduped); the red-before/green-after
+unit test (acceptance C); MR !205 `gate` stage back to green.
