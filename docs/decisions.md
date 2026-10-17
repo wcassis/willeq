@@ -2150,3 +2150,23 @@ the focused gate, and `setChatInputFocused()` resets all three in both
 directions, so a press that changed the focus (a submitted Enter, a
 cancelling Escape) can never replay on the first frame in the new state
 (`tests/test_b1085_chat_latches.cpp`).
+
+## 2026-10-16 — B1084: the robe material range is 10..16, and it is ONE predicate (#404)
+
+A worn robe of material 10 (item 11641, Crimson Robe of Alendine) drew the
+naked body: `isRobeTexture()` said the robe range was 11..16 while the mesh
+builder's own comment and the robe-index arithmetic said 10..16. The range is
+**MEASURED, not assumed** — `global_chr.s3d` carries exactly seven robe
+texture groups `clk04`..`clk10` (six pages each), which partition cleanly
+across only 10..16; `globaldaf_chr.s3d` carries `dafch10xx`..`dafch16xx`
+body textures and nothing for 05..09; and the peq items table's robe-named
+chest items exist for exactly materials 10–16 (lane 1, 2026-10-16;
+`refactor/B1084/README.md`). RULED: **the robe range is 10..16, and
+everything that classifies a texture as robe goes through the ONE
+`isRobeTexture()` in `include/client/graphics/eq/equipment_textures.h`** —
+`isNPCOnlyTexture()` is 5..9 (10 is a robe), and `getRobeClkTextureNumber()`
+is the single 10→clk04 … 16→clk10 spelling. A second, hard-coded range
+spelling anywhere in the tree is a regression: `test_robe_texture_range`
+(the measured table) and `test_robe_entity_prep` (chest material 10 takes the
+robe body variant through `createAnimatedNodeWithEquipment()`) are red on the
+old 11..16 header and green at the fix.

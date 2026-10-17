@@ -21,8 +21,8 @@ enum class EquipSlot : uint8_t {
 };
 
 // Texture type IDs for player races and NPCs
-// Player races use IDs 0-4, 11-23, 240
-// NPC races use IDs 5-10
+// Player races use IDs 0-4, 10-23, 240
+// NPC-only textures are 5-9
 enum class TextureType : uint8_t {
     // Player Race Textures (0-4)
     Naked = 0,           // Default skin texture
@@ -31,21 +31,21 @@ enum class TextureType : uint8_t {
     Plate = 3,           // Plate armor
     Leather = 4,         // Leather armor
 
-    // NPC Race Only Textures (5-10)
+    // NPC Race Only Textures (5-9)
     NPCOnly5 = 5,
     NPCOnly6 = 6,
     NPCOnly7 = 7,
     NPCOnly8 = 8,
     NPCOnly9 = 9,
-    NPCOnly10 = 10,
 
-    // Robe Textures (11-16) - Robe number = texture ID - 10
-    Robe1 = 11,          // Robe texture 1
-    Robe2 = 12,          // Robe texture 2
-    Robe3 = 13,          // Robe texture 3
-    Robe4 = 14,          // Robe texture 4
-    Robe5 = 15,          // Robe texture 5
-    Robe6 = 16,          // Robe texture 6
+    // Robe Textures (10-16) - seven robe materials, clk04..clk10
+    Robe1 = 10,          // Robe texture 1 (clk04)
+    Robe2 = 11,          // Robe texture 2 (clk05)
+    Robe3 = 12,          // Robe texture 3 (clk06)
+    Robe4 = 13,          // Robe texture 4 (clk07)
+    Robe5 = 14,          // Robe texture 5 (clk08)
+    Robe6 = 15,          // Robe texture 6 (clk09)
+    Robe7 = 16,          // Robe texture 7 (clk10)
 
     // Velious Armor Textures (17-23)
     VeliousLeather1 = 17,
@@ -60,33 +60,43 @@ enum class TextureType : uint8_t {
     VeliousHelmets = 240
 };
 
-// Helper functions for texture type classification
+// B1084: the robe range is ONE MEASURED fact (official-client oracle, lane 1,
+// 2026-10-16; evidence in refactor/B1084/README.md): a worn robe of material
+// 10 (item 11641 Crimson Robe of Alendine) draws the robe body mesh and the
+// clk04 texture in the official client, and the shipped archives carry robe
+// art for exactly materials 10..16 (global_chr.s3d: clk04..clk10,
+// globaldaf_chr.s3d: dafch10xx..dafch16xx -- no 05..09). Everything that
+// classifies a texture as robe goes through isRobeTexture(); a second spelling
+// of the range is a regression (test_robe_texture_range).
+constexpr uint8_t kRobeTextureMin = 10;
+constexpr uint8_t kRobeTextureMax = 16;
+
+// The ONE robe predicate. Every consumer of the robe range uses this.
+inline bool isRobeTexture(uint8_t textureId) {
+    return textureId >= kRobeTextureMin && textureId <= kRobeTextureMax;
+}
+
 inline bool isPlayerRaceTexture(uint8_t textureId) {
-    return textureId <= 4 || (textureId >= 11 && textureId <= 23) || textureId == 240;
+    return textureId <= 4 || (textureId >= 10 && textureId <= 23) || textureId == 240;
 }
 
 inline bool isNPCOnlyTexture(uint8_t textureId) {
-    return textureId >= 5 && textureId <= 10;
-}
-
-inline bool isRobeTexture(uint8_t textureId) {
-    return textureId >= 11 && textureId <= 16;
+    // 5-9 are NPC-only; 10 is a robe (isRobeTexture), not an NPC texture.
+    return textureId >= 5 && textureId < kRobeTextureMin;
 }
 
 inline uint8_t getRobeIndex(uint8_t textureId) {
-    // Robe index 1-6 for texture IDs 11-16
-    return isRobeTexture(textureId) ? (textureId - 10) : 0;
+    // Robe index 1-7 for texture IDs 10-16 (texture 10 is the plain robe).
+    return isRobeTexture(textureId) ? (textureId - kRobeTextureMin + 1) : 0;
 }
 
 inline uint8_t getRobeClkTextureNumber(uint8_t textureId) {
-    // Maps robe texture ID to clk texture number
-    // Robe 1 (ID 11) -> clk04, Robe 2 (ID 12) -> clk05, etc.
-    // Returns 0 if not a robe texture
+    // Maps a robe texture ID to its clk texture number (global_chr.s3d):
+    // 10 -> clk04, 11 -> clk05, ..., 16 -> clk10.
+    // Returns 0 if not a robe texture.
     if (!isRobeTexture(textureId)) return 0;
-    uint8_t robeIndex = textureId - 10;  // 1-6
-    // Lookup table handles any potential gaps in texture numbering
-    static const uint8_t robeToClk[] = {0, 4, 5, 6, 7, 8, 9};
-    return (robeIndex <= 6) ? robeToClk[robeIndex] : 0;
+    static const uint8_t robeToClk[] = {4, 5, 6, 7, 8, 9, 10};
+    return robeToClk[textureId - kRobeTextureMin];
 }
 
 inline bool isVeliousTexture(uint8_t textureId) {
