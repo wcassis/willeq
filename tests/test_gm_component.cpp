@@ -188,6 +188,64 @@ TEST_F(GmComponentTest, ShortGMZoneReplySendsNoConfirm) {
     std::vector<uint8_t> tooShort(100, 0);
     ReplayZone(eq, HC_OP_GMZoneRequest, tooShort);
     EXPECT_FALSE(eq.Gm().Test_GetLastGMZoneRequest2().sent);
+// 5. B1088: an APPROVED GM zone request initiates the transition
+//    (OP_ZoneChange handshake), a denied one does not
+// ===================================================================
+
+// Builds the S->C OP_GMZoneRequest reply (GMZoneRequest_Struct, 88 bytes +
+// 2-byte opcode = 90) the way eqemu's Handle_OP_GMZoneRequest sends it:
+// charname, zone_id, then the TARGET zone's safe coordinates in WIRE order
+// (server x first), heading, success.
+std::vector<uint8_t> BuildGMZoneReply(const std::string& charname, uint32_t zone_id,
+                                      float wire_x, float wire_y, float wire_z,
+                                      float wire_heading, uint32_t success) {
+    EQ::Net::DynamicPacket p;
+    p.Resize(90);
+    std::memset(p.Data(), 0, 90);
+    p.PutUInt16(0, 0x1306);  // HC_OP_GMZoneRequest (the opcode Replay re-adds)
+    std::strncpy(static_cast<char*>(p.Data()) + 2, charname.c_str(), 63);
+    p.PutUInt32(2 + 64, zone_id);
+    p.PutFloat(2 + 68, wire_x);
+    p.PutFloat(2 + 72, wire_y);
+    p.PutFloat(2 + 76, wire_z);
+    p.PutFloat(2 + 80, wire_heading);
+    p.PutUInt32(2 + 84, success);
+    std::vector<uint8_t> payload(88);
+    std::memcpy(payload.data(), static_cast<const uint8_t*>(p.Data()) + 2, payload.size());
+    return payload;
+}
+
+TEST_F(GmComponentTest, ApprovedGMZoneInitiatesTheZoneChangeHandshake) {
+    auto before = eq.Zone().Test_GetLastZoneChangeRequest();
+
+    // Target zone 2, safe point server (x=146, y=-1009, z=51), approved.
+    eq.ReplayZonePacket(HC_OP_GMZoneRequest,
+                        BuildGMZoneReply("Testchar", 2, 146.0f, -1009.0f, 51.0f, 64.0f, 1).data(), 88);
+
+    auto after = eq.Zone().Test_GetLastZoneChangeRequest();
+    EXPECT_EQ(after.attempts, before.attempts + 1)
+        << "an approved GM zone request must answer with OP_ZoneChange, the "
+           "same handshake death-to-bind performs (player_state.cpp:464)";
+    EXPECT_EQ(after.zone_id, 2u);
+
+    // The reply's WIRE-order safe coords become our internal order: our x =
+    // server y, our y = server x -- the same swap ZonePlayerToBind applies
+    // (player_state.cpp:401-405). The pending zone carries them, and B1088's
+    // loading-screen refresh reads the target id from it.
+    EXPECT_FLOAT_EQ(eq.Context().game_state.world().pendingZoneX(), -1009.0f) << "our x = server y";
+    EXPECT_FLOAT_EQ(eq.Context().game_state.world().pendingZoneY(), 146.0f) << "our y = server x";
+    EXPECT_FLOAT_EQ(eq.Context().game_state.world().pendingZoneZ(), 51.0f);
+}
+
+TEST_F(GmComponentTest, DeniedGMZoneDoesNotInitiateAZoneChange) {
+    auto before = eq.Zone().Test_GetLastZoneChangeRequest();
+
+    eq.ReplayZonePacket(HC_OP_GMZoneRequest,
+                        BuildGMZoneReply("Testchar", 2, 146.0f, -1009.0f, 51.0f, 64.0f, 0).data(), 88);
+
+    auto after = eq.Zone().Test_GetLastZoneChangeRequest();
+    EXPECT_EQ(after.attempts, before.attempts)
+        << "a denied GM zone request must not answer with OP_ZoneChange";
 }
 
 }  // namespace

@@ -288,6 +288,16 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 config.scenarioZoneChangeTargetZone = std::atoll(argv[++i]);
             }
+        } else if (arg == "--scenario-zone-id") {
+            if (i + 1 < argc) {
+                config.scenarioZoneId =
+                    static_cast<unsigned int>(std::atoi(argv[++i]));
+            }
+        } else if (arg == "--scenario-zone-name") {
+            if (i + 1 < argc) {
+                config.scenarioZoneName = argv[++i];
+            }
+            }
         } else if (arg == "--script") {
             if (i + 1 < argc) {
                 config.scriptPath = argv[++i];

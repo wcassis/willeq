@@ -80,6 +80,8 @@ const Entry kScenarios[] = {
     {"fall_damage", &MakeFallDamageScenario},
     // B900 (#216): the single ranged attack, live. The packet half's lane leg.
     {"ranged_single_shot", &MakeRangedSingleShotScenario},
+    // B1088 (#408): the loading screen's "Entering <zone long name>..." line.
+    {"loading_name", &MakeLoadingNameScenario},
 };
 
 }  // namespace

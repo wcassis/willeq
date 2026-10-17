@@ -806,6 +806,45 @@ void eqt::bridge::BridgeComponent::onHotbarPageChangedIntent(const eqt::events::
 	if (ctx_.hotbar_model) ctx_.hotbar_model->setCurrentPage(i.page);
 }
 
+// B1025-H3 (GitLab #345): a placed hot button assigns a slot. This is the
+// first PRODUCTION caller of HotbarModel::assignSlot() -- until this, the
+// function's only callers were its own tests (the test-seam comment at its
+// declaration is struck). `i` already carries the destination and the button
+// in the model's own numbering; the model republishes the slot via
+// HotbarSlotAssigned so the panel state follows on its own.
+void eqt::bridge::BridgeComponent::onHotbarAssignIntent(const eqt::events::HotbarAssignIntent& i) {
+	if (!ctx_.hotbar_model) return;
+	ctx_.hotbar_model->assignSlot(
+		eqt::HotbarAddress{i.page, i.slot}, i.type, i.id, i.text, i.iconId);
+}
+
+// B1025-H3 (GitLab #345): the pickup half. H-O "hotbar-pickup": holding an
+// occupied slot cloned its button to the cursor AND removed the slot's own
+// INI key (the source slot is cleared, not copied). The render thread
+// pushed this intent on the press frame; the cursor still carries the
+// button, which crosses back as a HotbarAssignIntent when it is placed.
+void eqt::bridge::BridgeComponent::onHotbarClearIntent(const eqt::events::HotbarClearIntent& i) {
+	if (!ctx_.hotbar_model) return;
+	ctx_.hotbar_model->clearSlot(eqt::HotbarAddress{i.page, i.slot});
+}
+
+// B1025-H3 (GitLab #345): the /hotbutton command's publisher. The event lands
+// on the cursor on the render thread (IrrlichtBridge's HotbarAssignPending
+// arm -> applyHotbarAssignPending); the model never knows the button exists
+// until it is placed (HotbarAssignIntent).
+bool eqt::bridge::BridgeComponent::PublishHotbarAssignPending(
+    eqt::HotbarSlotType type, uint32_t id, const std::string& text, uint32_t iconId) {
+	if (!ctx_.bridge) return false;
+	eqt::state::HotbarAssignPendingData data;
+	data.type = type;
+	data.id = id;
+	data.text = text;
+	data.iconId = iconId;
+	ctx_.bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::HotbarAssignPending, std::move(data)));
+	return true;
+}
+
 // Tradeskill intents (D20b1)
 void eqt::bridge::BridgeComponent::onTradeskillCombineIntent(const eqt::events::TradeskillCombineIntent& i) {
 	// B899, MEASURED (UIGAP-ORACLE 215 combine.tsv row 7): a stack in the
@@ -1131,6 +1170,8 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::EffectsVolumeChangeIntent& i) { onEffectsVolumeChangeIntent(i); },
 			[this](const eqt::events::HotbarActivateIntent& i) { onHotbarActivateIntent(i); },
 			[this](const eqt::events::HotbarPageChangedIntent& i) { onHotbarPageChangedIntent(i); },
+			[this](const eqt::events::HotbarAssignIntent& i) { onHotbarAssignIntent(i); },
+			[this](const eqt::events::HotbarClearIntent& i) { onHotbarClearIntent(i); },
 			[this](const eqt::events::TradeskillCombineIntent& i) { onTradeskillCombineIntent(i); },
 			[this](const eqt::events::TradeskillCloseIntent& i) { onTradeskillCloseIntent(i); },
 			[this](const eqt::events::RecipeDetailsRequestIntent& i) { onRecipeDetailsRequestIntent(i); },

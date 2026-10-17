@@ -151,6 +151,9 @@ struct ApplicationConfig {
     unsigned int scenarioBuffNotakeSpellId = 293; // --scenario-buff-notake-spell <id> (D3: the caster's own beneficial buff; the "does not take hold" variant is recorded, not forced, in this rig)
     unsigned int scenarioFizzleSpellId = 0;     // --scenario-fizzle-spell <id> (B leg, non-GM caster)
     long long scenarioZoneChangeTargetZone = 0;  // --scenario-zone <id> (B1081: zone_change_no_flash's /gmzone target)
+    // B1088 (#408): the loading_name lane -- the GM zone request's target.
+    unsigned int scenarioZoneId = 0;            // --scenario-zone-id <id> (0 = refuse)
+    std::string scenarioZoneName;               // --scenario-zone-name <short name> (the Pass check)
 
     // B888 (#204): the world-stage character script (world_script.h). At most
     // one of the three; the spec is parsed against data/char_create.tsv in

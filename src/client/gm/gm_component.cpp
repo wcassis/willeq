@@ -285,6 +285,35 @@ void eqt::gm::GmComponent::ZoneProcessGMZoneRequest(const EQ::Net::Packet &p)
 			ctx_.net.SafeQueueZone(packet);
 		}
 		LOG_INFO(MOD_MAIN, "GM zone request2 sent for zone {}", gm->zone_id);
+
+		// B1088 (#408): an APPROVED GM zone request is the official client's
+		// cue to initiate the transition itself -- eqemu's
+		// Handle_OP_GMZoneRequest (akk-stack code/zone/client_packet.cpp:7066)
+		// only replies success plus the destination zone's safe coordinates
+		// and never moves the character; the reply IS the approval the
+		// client acts on. The client answers with OP_ZoneChange (the same
+		// handshake death-to-bind performs, player_state.cpp:464); the
+		// server's OP_ZoneChange approval (ZoneProcessZoneChange) then
+		// stores the pending zone, refreshes the loading screen's
+		// "Entering <long name>..." line, and tears the old zone down.
+		//
+		// The reply's x/y/z are the TARGET zone's safe coords in WIRE order
+		// (server x first) -- swap x/y into our internal order, exactly as
+		// ZonePlayerToBind does (player_state.cpp:401-405). The server
+		// decides the GM zone's landing itself, so these carry wire
+		// fidelity only (T52's lesson); the swap is the consistent choice
+		// anyway.
+		{
+			float dest_x = gm->y;   // our x = server y
+			float dest_y = gm->x;   // our y = server x
+			float dest_z = gm->z;
+			float dest_heading = gm->heading;
+			ctx_.game_state.world().setPendingZone(
+				static_cast<uint32_t>(gm->zone_id), dest_x, dest_y, dest_z, dest_heading);
+			ctx_.Zone().RequestZoneChange(
+				static_cast<uint16_t>(gm->zone_id), dest_x, dest_y, dest_z, dest_heading);
+			ctx_.out.System("Zoning to zone " + std::to_string(gm->zone_id) + "...");
+		}
 	} else {
 		LOG_WARN(MOD_MAIN, "GM zone request denied");
 		ctx_.out.System("Zone request denied.");
