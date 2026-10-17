@@ -294,7 +294,7 @@ keys EQE1 (compressed) entries.
   pack copy does not would be missed. Low risk: the fix keys on the pack
   stem, and the packs are what the cache resolves against.
 
-## Step 7 — the 197px gate regression (finding, ruling request; block)
+## Step 7 — the 197px gate regression (finding, ruling request; then the fix)
 
 The keying commit `08ce2282` broke the x86 visual gate: qeynos2 renders
 197 px black vs the golden (self-consistent across runs, commit-isolated),
@@ -307,36 +307,78 @@ and the other four gate zones diff too (135/274/678/192 px). Card
 **What Step 1 measured (the card's escape clause, verbatim trigger):** the
 base and head ledgers are **byte-identical** — 126 entries / 81 evictions /
 20 restores / 21,932,691 B, 3,662/3,662 getOrLoad requests, 0 nulls, 0
-budget failures. **No texture is lost, split or re-keyed.** The card says:
-*"If step 1 shows NO texture difference (identical ledgers, still 197 px),
-STOP: commit the dumps, push, and block — that is a new question for Will."*
-That clause is satisfied exactly, so this leg stops here and blocks.
+budget failures. **No texture is lost, split or re-keyed.** The card's
+STOP clause was satisfied exactly; the residual was located at file:line
+(the driver-facing GL texture NAME the S3D path handed `addTexture()`:
+mangled `internalKey` `name\x01@<stem>\x01` where base handed the plain
+name → `textureGroupId()` → `materialKey` → per-pose draw-order reshuffle,
+not a lost texture) and the fix was routed to Will as a ruling request
+(#403 note 5878, options A/B/C; candidate A specified in
+`gate_ledger_diff.md` "Candidate fix").
 
-**Where the residual actually lives (the "remaining diff location"):** the
-GL texture **NAME**, not the cache. Pre-B1083 the decoded-S3D path handed
-`COpenGLES2Driver::addTexture()` the plain `name`; B1083's stem axis made the
-same line hand it the mangled `internalKey` (`name\x01@<stem>\x01`). That name
-is the driver's dedup key AND the draw-order key: `textureGroupId()` is an
-FNV-1a hash of `texture->getName()` (H02b/Q02), which sorts the merged/batched
-draw list. 126/126 qeynos2 group IDs changed and their ranks moved, so the
-draw order reshuffled per pose → z-fighting pixel flips (the diff is sparse
-and per-pose — befallen f1 = 0 px; four of five zones have 0 evictions, which
-kills every eviction/lost-texture mechanism). Not a missing texture: one
-diff pixel is head-**brighter**-than-base, which a lost texture cannot do.
+**Ruling (Will, 2026-10-17, #403 note 5964): Option A** — family-first
+driver name, plus "decide the driver name ONCE per entry and store it; an
+evict->restore re-creates under the SAME name (unit test covers it)."
+B and C not approved.
 
-**The fix is a ruling request, not this leg's decision.** The card's Step 3
-says "fix the cause *in the cache/loader*"; the cache is byte-identical, so
-the cause is the *driver-facing name policy* — a different class, and a
-keying-adjacent design change (it changes what the willow's two same-name
-copies are *named* in the driver). A willow-safe candidate (first entry of a
-(name,mask) family takes the pre-B1083 name, a later cross-archive twin takes
-the full `internalKey`) is specified in `gate_ledger_diff.md` with its
-prediction (all five zones → 0 px, willow unchanged), but it is **NOT
-implemented**: it is not verified against the 5-zone gate + the willow + the
-unit nets, and it touches the 16:00Z (archive,name,mask) ruling's letter.
-That is exactly the "new question" the card routes to Will.
+### Step 7a — the fix (Option A, committed)
 
-**Left open (runs only after the ruling):** the candidate implementation;
-the 5-zone gate at the fix head; the qeytoqrg `--objects` willow re-run
-(expectation unchanged: +87,408 B, 0 deduped); the red-before/green-after
-unit test (acceptance C); MR !205 `gate` stage back to green.
+- `8db85f7b` — `decideDriverName()` in
+  `ConstrainedTextureCache::getOrLoad()`: decided ONCE at store time
+  (under the cache mutex), stored on `DecodedEntry::driverName` /
+  `CompressedEntry::driverName`, carried to
+  `CachedTexture.driverName` at promote (`uploadTexture`,
+  `uploadCompressedETC1`, `uploadCompressedV2`; the alpha companion is
+  `driverName + "_alpha"`). First stored member of a (name, mask) family
+  → the pre-B1083 P46d name (`name` or `name\x01masked`); a later
+  cross-archive twin → the full stem-bearing `internalKey`, so the
+  driver's `findTexture(name)` dedup can never fold two distinct images.
+  The cache's own keying and the content dedupe are untouched.
+- `63a86b1f` — the evict/restore test's filler gets a restore source
+  (a B947 pin with none was blocking the evicted entry's restore).
+
+Unit tests (`tests/test_texture_driver_name.cpp`, 5, registered in
+`tests/cmake/renderer_guards.cmake`): family-first (unmasked + masked),
+cross-archive twin keeps both images under distinct names (the willow),
+evict→restore re-creates under the SAME name on a real `EDT_OGLES2`
+surfaceless device, and the family-membership check. Red-before proven at
+pre-fix head `7fa8dff3`: the same file, without the
+`B1083_STEP7_DRIVER_NAME_STORED` define (private-field asserts compile
+out; the public-API driver name alone is the red), fails **4/5**.
+
+### Step 7b — the result (all acceptance met)
+
+- **All five gate zones 0 px** vs the committed goldens, fix head
+  `63a86b1f`: MR !205 **pipeline 1608** — hygiene, build-headless,
+  build-test (6106 tests) and **`gate` PASS on attempt 1/3**
+  (`=== VISUAL GATE: PASS ===`), zone-budget-census green.
+- **Local re-run** (exact x86 gate invocation, `tests/data/b1024/
+  x86_gate_plan.txt`, hermes-ext llvmpipe — the gate's own env): all
+  15 frames 0 px; qeynos2 ledger identical to base and golden
+  (126 entries / 81 evictions / 20 restores / 21,932,691 B).
+  `step5_fix_5zone.sh` + `step5_fix_run.log` in the evidence dir.
+- **Willow (acceptance E) unchanged:** qeytoqrg `--objects`, same
+  invocation as the Step-3 willow still: 103 textures, 0 evictions,
+  4,588,992 B, **0 deduped**, frame byte-identical to the Step-3
+  "after" capture (`step1_diff2.py` → 0 px vs `willow_after_f0.png`).
+  Both cross-archive twins live under distinct driver names — the fold
+  the willow fix exists to prevent never fires.
+- **F (no blessed files touched):** the branch's diff is 6 files —
+  `constrained_texture_cache.h/.cpp`,
+  `constrained_texture_cache_compressed.cpp`,
+  `tests/test_texture_driver_name.cpp` (new),
+  `tests/cmake/renderer_guards.cmake`. No budget, golden, manifest,
+  ratchet or `config/constrained_presets.json` line changed.
+- `docs/decisions.md` gained the 2026-10-17 entry (the store-time,
+  family-first driver-name rule + the evict→restore same-name
+  requirement).
+
+**Incidental, not a branch defect:** pipeline 1604 (the pre-retrigger
+run) failed `build-test` on `PackReproducible` — the installed shared
+NFS pack `/mnt/projects/EverQuest_ETC1/willeq.eqe1` had been rewritten
+by another actor at 16:37Z and no longer matched the committed pin
+(`02a3d6e4…` vs `6549a368…`); the same test was red on `fable`
+(pipeline 1593) independently of this branch. Re-installing the pinned
+pack (the script's own recipe, `scripts/build_willeq_pack.sh`, which
+reproduced the pin byte-for-byte: 9,726,596 B) restored it; pipeline
+1608 then ran clean.
