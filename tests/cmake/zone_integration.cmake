@@ -336,6 +336,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_zone_connect_timeout DISCOVERY_TIMEOUT 120)
 
+# B1081 (GitLab #401): no character-select flash on a zone change.
+# IsZoningReconnect() over the real client (fresh login / zone-change
+# reconnect / camp return / B1072 give-up), the Activations() count over the
+# real CharacterSelectService, and the zone_change_no_flash scenario over a
+# fake world.
+ADD_EXECUTABLE(test_zone_change_no_flash
+    test_zone_change_no_flash.cpp
+)
+TARGET_LINK_LIBRARIES(test_zone_change_no_flash GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_zone_change_no_flash PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_zone_change_no_flash DISCOVERY_TIMEOUT 120)
+
 # T344 (BOARD B001): the split of MovementComponent::SetPositionState into a
 # user-initiated setter (state + OP_SpawnAppearance) and a server-forced one
 # (ApplyPositionState, state only), plus the deletion of the AT_DIE echo that

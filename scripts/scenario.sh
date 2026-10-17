@@ -73,6 +73,11 @@ SPELL=288
 # caught: with the 288 default the chain's A leg could never pass its own
 # "declared spell (ID 378)" cell.
 CHAIN_A_SPELL=378
+# B1081 (#401): the zone_change_no_flash /gmzone target. Testchar's stored
+# zone is 2 (qeynos, character_data); 303 is a different zone the lane's GM
+# character can teleport to (Testcaster's home, Gloomingdeep). An operator
+# who points the config at another character passes --zone.
+SCENARIO_ZONE=303
 CONFIG=""
 PEER_CONFIG=""
 KEEP_SERVER=0
@@ -129,6 +134,8 @@ while [ $# -gt 0 ]; do
         # scenario, passed to the MAIN client only (create_character.post.sh
         # runs the --delete-character half against the same config).
         --create-character) CREATE_CHARACTER="$2"; shift 2 ;;
+        # B1081 (#401): zone_change_no_flash's /gmzone target zone.
+        --zone) SCENARIO_ZONE="$2"; shift 2 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
@@ -644,6 +651,7 @@ else
     --scenario-hold "$HOLD" \
     $MAIN_SPELL_FLAGS \
     --scenario-cast-target "${PEER_CHAR:-}" \
+    --scenario-zone "$SCENARIO_ZONE" \
     --log-level="$LOG_LEVEL" \
     ${CREATE_CHARACTER:+--create-character "$CREATE_CHARACTER"} \
     ${MAIN_LOG_MODULE:+--log-module="$MAIN_LOG_MODULE"} ${SCENARIO_CLIENT_ARGS:-} > "$LOG" 2>&1 &
