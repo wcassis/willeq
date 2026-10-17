@@ -345,7 +345,7 @@ ADD_EXECUTABLE(test_spell_icon_atlas
     test_spell_icon_atlas.cpp
 )
 TARGET_COMPILE_DEFINITIONS(test_spell_icon_atlas PRIVATE
-    WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
 TARGET_INCLUDE_DIRECTORIES(test_spell_icon_atlas PRIVATE
     ${CMAKE_SOURCE_DIR}/tools
     ${CMAKE_SOURCE_DIR}/include)
