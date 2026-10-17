@@ -30,7 +30,7 @@ std::string getEquipmentTextureName(const std::string& raceCode, EquipSlot slot,
     // 3 = Plate
     // 4 = Leather
     // 5-9 = NPC Race Only
-    // 10-16 = Robe 1-7 (10->clk04, 11->clk05, ..., 16->clk10)
+    // 10-16 = Robe 1-7 (isRobeTexture; 10->clk04, 11->clk05, ..., 16->clk10)
     // 17 = Velious Leather 1
     // 18 = Velious Chain 1
     // 19 = Velious Plate 1
@@ -104,10 +104,10 @@ std::string getEquipmentTextureName(const std::string& raceCode, EquipSlot slot,
             break;
 
         case 10: case 11: case 12: case 13: case 14: case 15: case 16:  // Robe 1-7
-            // Robes: texture ID 10 = Robe 1, 11 = Robe 2, etc.
-            // Material 10 -> clk04, Material 11 -> clk05, ..., Material 16 -> clk10
+            // Robes (isRobeTexture, materials 10..16): one shared clk number
+            // per material -- getRobeClkTextureNumber() is the ONE spelling.
             {
-                int clkNumber = textureType - 10 + 4;  // 10->4, 11->5, ..., 16->10
+                int clkNumber = getRobeClkTextureNumber(textureType);
                 int variant = ((materialId >> 8) & 0xFF) % 6 + 1;  // Variant 1-6
                 char buf[32];
                 snprintf(buf, sizeof(buf), "clk%02d%02d.bmp", clkNumber, variant);

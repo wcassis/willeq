@@ -55,6 +55,34 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_inventory_model_view DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1084 (#404): the ONE robe predicate, table-tested over the measured range
+# 10..16 (official-client oracle + the shipped S3D archives; evidence in
+# refactor/B1084/README.md). Pure header test -- no device, no db, no client
+# tree -- so it gates on graphics only.
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(test_robe_texture_range
+        test_robe_texture_range.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_robe_texture_range GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_robe_texture_range DISCOVERY_TIMEOUT 60)
+ENDIF()
+
+# B1084 (#404) entity-prep leg: chest material 10 (the naked-body bug) must
+# select the robe body variant (bodyVariant=1, the {RACE}01 mesh) through the
+# production per-entity entry createAnimatedNodeWithEquipment(). Same
+# EDT_NULL + willeq_core gate as test_inventory_model_view; opens the shipped
+# db and the real client tree and skips without either.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_robe_entity_prep
+        test_robe_entity_prep.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_robe_entity_prep PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_robe_entity_prep GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_robe_entity_prep PRIVATE
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
+    GTEST_DISCOVER_TESTS(test_robe_entity_prep DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T309: the measured first-person draw rule (predicate + the withhold seam).
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_first_person_body_draw_rule
