@@ -342,6 +342,10 @@ if ! bash "$REPO/scripts/eqemu/up.sh" > "$OUT/${SCENARIO}_server.log" 2>&1; then
 fi
 
 # ---- 3. snapshot -----------------------------------------------------------
+# B1047 (#367) / B1025-H5 (#345): a roster character stored in timorous never
+# finishes zoning in on the lanes; move it out BEFORE the snapshot so the
+# restore keeps the fix (scripts/eqemu/roster_zone_seed.sql).
+say "roster zone seed: $(eqemu_roster_zone_seed | tail -1) row(s) moved out of timorous"
 snapshot "$BEFORE"
 say "snapshot taken ($(wc -l < "$BEFORE") rows)"
 # B900 (#216) / B1011: a scenario whose kit is DB-seeded into INVENTORY names

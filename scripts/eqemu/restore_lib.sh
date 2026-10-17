@@ -32,6 +32,18 @@ eqemu_sql() {
         mysql -uroot -p"$(mariadb_root_password)" peq -B -N -e "$1"
 }
 
+# ---- the roster zone seed (B1047 #367, B1025-H5 #345) ----------------------
+# eqemu_roster_zone_seed -- move any test-roster character still STORED in
+# timorous (never finishes loading on the lanes) to befallen's safe point.
+# Callers run it BEFORE their snapshot, so the per-run restore keeps it: it is
+# a persistent lane fix, idempotent, and a no-op once applied. The SQL and its
+# reasoning: scripts/eqemu/roster_zone_seed.sql. Prints how many rows moved.
+eqemu_roster_zone_seed() {
+    local sql_file
+    sql_file="$(dirname "${BASH_SOURCE[0]}")/roster_zone_seed.sql"
+    eqemu_sql "$(cat "$sql_file") SELECT ROW_COUNT();"
+}
+
 # ---- the snapshot ---------------------------------------------------------
 eqemu_snapshot() {
     # eqemu_snapshot <file> -- the rows a scenario can plausibly move, ordered

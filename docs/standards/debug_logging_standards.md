@@ -125,6 +125,14 @@ All log output follows this format:
 
 # Per-module overrides take precedence over whitelist/blacklist
 ./willeq -c willeq.json --log-level=DEBUG --log-only=NET --log-module=ENTITY:TRACE
+
+# Play-box log (B1079): also write the log to a file, line-flushed. The same
+# lines the drain thread writes to stdout/stderr go to the file too, flushed
+# every drain cycle, so the file holds what the player saw even when the
+# process dies mid-zone-in. An unwritable path is a one-line stderr notice and
+# stdout keeps everything (the file is additive, never a silencer).
+./willeq -c willeq.json --log-file=logs/run.log
+./willeq -c willeq.json --log-file logs/run.log   # space form is accepted too
 ```
 
 ### Configuration File (willeq.json)
@@ -162,7 +170,13 @@ Environment variables override config file but are overridden by command-line:
 ```bash
 EQT_LOG_LEVEL=DEBUG ./willeq -c willeq.json
 EQT_LOG_MODULES="NET:TRACE,ENTITY:DEBUG" ./willeq -c willeq.json
+# B1079: the play-box log file (equivalent to --log-file).
+WILLEQ_LOG_FILE=logs/run.log ./willeq -c willeq.json
 ```
+
+Note on `--log-level`: both the `=` form (`--log-level=DEBUG`) and the space
+form (`--log-level DEBUG`) are accepted (B1079). An unparseable level is a
+loud ERROR on startup, never a silent no-op.
 
 ## Implementation API
 
