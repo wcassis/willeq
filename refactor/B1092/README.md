@@ -30,8 +30,8 @@ signature (the decisive one, pipeline 1441 job 7743, build-headless):
 `count == 20` — every item was processed — and the duration of 406 ms is
 exactly 20 x 20 ms plus overhead: the worker drained the whole batch
 through `stop()`, which is precisely what the drain-loop deviation does.
-Pipelines 1451 (job 7797) and 1457 (job 7832, retry succeeded) carried the
-same failure; `scan_bwq_1016.txt` lists the affected jobs across ~50
+Pipelines 1451 (job 7797) and 1457 (job 7816, retried as green job 7832)
+carried the same failure; `scan_bwq_1016.txt` lists the affected jobs across ~50
 pipelines.
 
 **Production exposure.** The only caller,
@@ -105,7 +105,10 @@ queue it never fails.
 `BackgroundWorkQueue.*` under load** — with a binary built from the
 CURRENT worktree header + test (not a reconstructed variant), full suite
 (`--gtest_filter='BackgroundWorkQueue.*' --gtest_repeat=200`), 6-CPU
-compile load (`acceptance200.log`, in `evidence/`):
+compile load (the raw per-run log — `acceptance200.log`, 4000 per-run OK
+lines — lives in `/home/user/kb-b1092-evidence/` on the dev host, not in
+this repo; its summary is the line below, mirrored in
+`evidence/stress_runs.txt`):
 
     result: PASS (45804ms, 4000 individual test OKs)   # 20 tests x 200 runs
 
