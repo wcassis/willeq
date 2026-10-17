@@ -2190,7 +2190,8 @@ login→zone-in→`/gmzone`→zone-change run, measured in
 safe coords and a success flag, and the CHANGE is the client's second
 one-word packet, `OP_GMZoneRequest2` (0x244c), which eqemu's
 `Handle_OP_GMZoneRequest2` answers with `GoToSafeCoords` (akk-stack
-zone/client_packet.cpp 7132-7143, zoning.cpp 1074). fable's handler only
+`/mnt/projects/akk-stack/code/zone/client_packet.cpp:7142`,
+`/mnt/projects/akk-stack/code/zone/zoning.cpp:1074`). fable's handler only
 logged the approval, so a live `/gmzone <char> <other_zone>` was a silent
 no-op on every lane and the scenario's transition arm could never be
 reached. It now queues the confirm on an approved reply; a denied reply
