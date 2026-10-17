@@ -543,10 +543,13 @@ EXEMPT_GROUPS = {
     # reused VBO (a zero in production, which keeps the handle itself tests-
     # only in the sense the check looks for, not dead: the draw reads it).
     ("UnifiedParticleRenderer", "vertexBuffer"): "B972",
-    ("(free)", "getRobeClkTextureNumber"): "B491",
-    ("(free)", "getRobeIndex"): "B491",
-    ("(free)", "isNPCOnlyTexture"): "B491",
-    ("(free)", "isPlayerRaceTexture"): "B491",
+    # B1084 (#404) removed the zero-caller exemptions for isNPCOnlyTexture /
+    # isPlayerRaceTexture / getRobeIndex / getRobeClkTextureNumber:
+    # test_robe_texture_range now calls them (the measured-range table) and
+    # production calls getRobeClkTextureNumber() (mesh_building,
+    # entity_prep_worker, renderer_zone_load_entities, equipment_textures);
+    # every consumer routes through isRobeTexture(). The three tests-only
+    # predicates are classified in EXEMPT_TESTS_GROUPS below.
     ("(free)", "isVeliousTexture"): "B491",
     ("EQAnimatedMeshSceneNode", "getBoneIndexByName"): "B491",
     ("EQAnimatedMeshSceneNode", "getInstanceMeshIndexCount"): "B491",
@@ -866,6 +869,15 @@ EXEMPT_TESTS_GROUPS = {
     # CENSUS, not a runtime input -- its reader is the test that fails on an
     # unclassified control row (OptionsClassification.*), which is the point.
     ("(free)", "controlClassifications"): "observer",
+    # B1084 (#404): the robe-range predicates are now tests-only in production
+    # -- every real consumer routes through isRobeTexture(). The three
+    # non-robe predicates (NPC-only, player-race, robe-index) are the test's
+    # observation window on the MEASURED range: test_robe_texture_range's
+    # 0..24/240 table is the net that a second hard-coded range spelling is a
+    # regression against, so the test IS the point (observer, not dead).
+    ("(free)", "isNPCOnlyTexture"): "observer",
+    ("(free)", "isPlayerRaceTexture"): "observer",
+    ("(free)", "getRobeIndex"): "observer",
     ("(free)", "controlClassificationCount"): "observer",
     ("(free)", "findControlClass"): "observer",
     ("(free)", "dispositionText"): "observer",

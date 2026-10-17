@@ -229,10 +229,11 @@ irr::scene::IMesh* EntityRenderer::getMeshForRace(uint16_t raceId, uint8_t gende
 
         // Use appearance-based variant selection if helm or texture is non-default
         // - helm: head mesh variant (HE01, HE02, etc.)
-        // - texture: body armor (10+ = robes with different body mesh)
-        if (appearance.helm != 0 || appearance.texture >= 10) {
+        // - texture: body armor; robe materials (isRobeTexture) select the
+        //   single robe body mesh per race, variant 1 (XX01_DMSPRITEDEF)
+        if (appearance.helm != 0 || isRobeTexture(appearance.texture)) {
             uint8_t headVariant = appearance.helm;
-            uint8_t bodyVariant = (appearance.texture >= 10) ? appearance.texture : 0;
+            uint8_t bodyVariant = isRobeTexture(appearance.texture) ? 1 : 0;
             mesh = raceModelLoader_->getMeshForRaceWithAppearance(raceId, gender,
                                                                    headVariant, bodyVariant);
         } else {
