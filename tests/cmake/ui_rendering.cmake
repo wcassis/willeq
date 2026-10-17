@@ -189,7 +189,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_hotbar_key_routing PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_hotbar_key_routing GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_hotbar_key_routing PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_hotbar_key_routing DISCOVERY_TIMEOUT 120)
 ENDIF()
 
