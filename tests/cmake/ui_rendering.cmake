@@ -51,7 +51,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     # T270: the fixture opens the shipped db as the race source (race codes
     # are db-only now).
     TARGET_COMPILE_DEFINITIONS(test_inventory_model_view PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_inventory_model_view DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -63,7 +63,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_first_person_body_draw_rule PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_first_person_body_draw_rule GTest::gtest willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_first_person_body_draw_rule PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_first_person_body_draw_rule DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -75,7 +75,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_first_person_weapon_attachment PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_first_person_weapon_attachment GTest::gtest willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_first_person_weapon_attachment PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_first_person_weapon_attachment DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -86,8 +86,8 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_held_item_attachment PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_held_item_attachment GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_held_item_attachment PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db"
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")"
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_held_item_attachment DISCOVERY_TIMEOUT 120)
 
     # B824 (issue #86): the item -> IT-model lookup is willeq.db-only.
@@ -119,7 +119,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_ui_hide_command PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_ui_hide_command GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_ui_hide_command PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_ui_hide_command DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -134,7 +134,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_debug_hotkey_arms PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_debug_hotkey_arms GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_debug_hotkey_arms PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_debug_hotkey_arms DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -147,7 +147,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_hotkey_dispatch_census PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_hotkey_dispatch_census GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_hotkey_dispatch_census PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_hotkey_dispatch_census DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -162,7 +162,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_autorun_arm PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_autorun_arm GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_autorun_arm PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_autorun_arm DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -177,7 +177,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_race_330_loader PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_race_330_loader GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_race_330_loader PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_race_330_loader DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -199,8 +199,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_b733_skeleton_mesh_refs PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_b733_skeleton_mesh_refs GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_b733_skeleton_mesh_refs PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db"
-        EQ_CLIENT_DATA_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_b733_skeleton_mesh_refs DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -216,7 +215,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_chr_cache_lru PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_chr_cache_lru GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_chr_cache_lru PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_chr_cache_lru DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -232,7 +231,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_chr_path_derivation PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_chr_path_derivation GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_chr_path_derivation PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_chr_path_derivation DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -253,7 +252,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_entity_source_unload PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_entity_source_unload GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_entity_source_unload PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_entity_source_unload DISCOVERY_TIMEOUT 120)
 
     ADD_EXECUTABLE(test_variant_loader_candidates
@@ -262,7 +261,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_variant_loader_candidates PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_variant_loader_candidates GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_variant_loader_candidates PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_variant_loader_candidates DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -293,7 +292,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_palette_mask_plumbing PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_palette_mask_plumbing GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_palette_mask_plumbing PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_palette_mask_plumbing DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -311,7 +310,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_race_names PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_race_names GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_race_names PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_race_names DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -382,7 +381,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_char_create_screen PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_char_create_screen GTest::gtest_main willeq_core)
-    TARGET_COMPILE_DEFINITIONS(test_char_create_screen PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    TARGET_COMPILE_DEFINITIONS(test_char_create_screen PRIVATE "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_char_create_screen DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -403,7 +402,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_ui_layout_coopen test_ui_layout_coopen.cpp)
     TARGET_INCLUDE_DIRECTORIES(test_ui_layout_coopen PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_ui_layout_coopen GTest::gtest_main)
-    TARGET_COMPILE_DEFINITIONS(test_ui_layout_coopen PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    TARGET_COMPILE_DEFINITIONS(test_ui_layout_coopen PRIVATE "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_ui_layout_coopen DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -417,7 +416,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_character_select PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_character_select GTest::gtest_main willeq_core)
-    TARGET_COMPILE_DEFINITIONS(test_character_select PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    TARGET_COMPILE_DEFINITIONS(test_character_select PRIVATE "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_character_select DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -433,9 +432,8 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_char_preview PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_char_preview GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_char_preview PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db"
-        EQ_CLIENT_DATA_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")"
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_char_preview DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -544,7 +542,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_item_display GTest::gtest_main willeq_core)
     # T429 (board B390): the composer reads its formats out of the shipped db.
     TARGET_COMPILE_DEFINITIONS(test_item_display PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_item_display DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -559,7 +557,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_spell_display GTest::gtest_main willeq_core)
     # T429 (board B390): the composer reads its formats out of the shipped db.
     TARGET_COMPILE_DEFINITIONS(test_spell_display PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_spell_display DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -573,7 +571,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_display_text_from_db PRIVATE ${IRRLICHT_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/third_party)
     TARGET_LINK_LIBRARIES(test_display_text_from_db GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_display_text_from_db PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_display_text_from_db DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -604,7 +602,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_trainer_panel GTest::gtest_main willeq_core)
     # UIGAP-residue: the measured trainer lines are eqstr 12056 / 12930.
     TARGET_COMPILE_DEFINITIONS(test_trainer_panel PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_trainer_panel DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -636,7 +634,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_trade_window GTest::gtest_main willeq_core)
     # UIGAP-residue: the no-drop / banker refusals print eqstr 12921 / 8505.
     TARGET_COMPILE_DEFINITIONS(test_trade_window PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_trade_window DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -689,7 +687,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_bank_change PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_bank_change GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_bank_change PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_bank_change DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -758,7 +756,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_software_cursor_pack_name PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_software_cursor_pack_name GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_software_cursor_pack_name PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_software_cursor_pack_name DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -871,7 +869,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_static_ui_scroll PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_static_ui_scroll GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_static_ui_scroll PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_static_ui_scroll DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -1022,7 +1020,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_spellbook_memorize
         test_spellbook_memorize.cpp
     )
-    TARGET_COMPILE_DEFINITIONS(test_spellbook_memorize PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    TARGET_COMPILE_DEFINITIONS(test_spellbook_memorize PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_INCLUDE_DIRECTORIES(test_spellbook_memorize PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_spellbook_memorize GTest::gtest willeq_core)
     GTEST_DISCOVER_TESTS(test_spellbook_memorize DISCOVERY_TIMEOUT 120)
@@ -1037,7 +1035,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_buff_click_off
         test_buff_click_off.cpp
     )
-    TARGET_COMPILE_DEFINITIONS(test_buff_click_off PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    TARGET_COMPILE_DEFINITIONS(test_buff_click_off PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_INCLUDE_DIRECTORIES(test_buff_click_off PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_buff_click_off GTest::gtest willeq_core)
     GTEST_DISCOVER_TESTS(test_buff_click_off DISCOVERY_TIMEOUT 120)
@@ -1068,7 +1066,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         test_ui_sprite_roster.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_ui_sprite_roster PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     TARGET_LINK_LIBRARIES(test_ui_sprite_roster GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_ui_sprite_roster DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -1085,7 +1083,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_entity_model_sharing PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_entity_model_sharing GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_entity_model_sharing PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_entity_model_sharing DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -1114,7 +1112,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_cursor_gesture_completion PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_cursor_gesture_completion GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_cursor_gesture_completion PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_cursor_gesture_completion DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -1130,7 +1128,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_tracking_window PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_tracking_window GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_tracking_window PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_tracking_window DISCOVERY_TIMEOUT 120)
 ENDIF()
 

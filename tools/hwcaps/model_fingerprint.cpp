@@ -35,6 +35,7 @@
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/willeq_database.h"
 #include "common/logging.h"
+#include "common/willeq_paths.h"  // EQ_CLIENT_DATA_PATH + WILLEQ_DB_REAL_PATH at run time (B1090)
 
 namespace {
 

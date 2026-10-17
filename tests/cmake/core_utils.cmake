@@ -332,6 +332,15 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_data_paths DISCOVERY_TIMEOUT 120)
 
+# B1090: run-time resolution of the source-tree paths tests and tools read
+# (include/common/willeq_paths.h, header-only), plus the net that no compile
+# definition carries an absolute path again (cross-worktree ccache hits).
+ADD_EXECUTABLE(test_willeq_paths
+    test_willeq_paths.cpp
+)
+TARGET_LINK_LIBRARIES(test_willeq_paths GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_willeq_paths DISCOVERY_TIMEOUT 120)
+
 # T399 (board B235): the census as a test. A source reader -- it opens the
 # client sources at WILLEQ_REPO_ROOT and fails on any shipped-data literal that
 # does not go through eqt::ResolveDataPath(). No link deps on purpose: most of
@@ -389,7 +398,7 @@ IF(NOT APPLE)
     # a build-order dependency on it.
     IF(TARGET willeq)
         TARGET_COMPILE_DEFINITIONS(test_memory_ledger PRIVATE
-            WILLEQ_BIN_PATH="$<TARGET_FILE:willeq>")
+            "WILLEQ_BIN_PATH=WILLEQ_BIN_PATH_OF(\"$<TARGET_FILE_NAME:willeq>\")")
         ADD_DEPENDENCIES(test_memory_ledger willeq)
     ENDIF()
     GTEST_DISCOVER_TESTS(test_memory_ledger DISCOVERY_TIMEOUT 120)
@@ -412,8 +421,8 @@ ADD_EXECUTABLE(test_gl_driver_census
 TARGET_LINK_LIBRARIES(test_gl_driver_census GTest::gtest_main Threads::Threads)
 IF(TARGET willeq)
     TARGET_COMPILE_DEFINITIONS(test_gl_driver_census PRIVATE
-        WILLEQ_BIN_PATH="$<TARGET_FILE:willeq>"
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_BIN_PATH=WILLEQ_BIN_PATH_OF(\"$<TARGET_FILE_NAME:willeq>\")"
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     ADD_DEPENDENCIES(test_gl_driver_census willeq)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_gl_driver_census DISCOVERY_TIMEOUT 120)
@@ -457,7 +466,7 @@ ADD_EXECUTABLE(test_gpu_buffer_census
 )
 TARGET_LINK_LIBRARIES(test_gpu_buffer_census GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} Threads::Threads)
 TARGET_COMPILE_DEFINITIONS(test_gpu_buffer_census PRIVATE
-    B955_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/data/b955")
+    "B955_FIXTURE_DIR=WILLEQ_REPO_PATH(\"tests/data/b955\")")
 GTEST_DISCOVER_TESTS(test_gpu_buffer_census DISCOVERY_TIMEOUT 120)
 
 # B962 (GitLab #280): the GEM owner census shim's own bookkeeping
@@ -499,5 +508,5 @@ GTEST_DISCOVER_TESTS(test_draw_census_window DISCOVERY_TIMEOUT 120)
 # B986: the DRM client's Lima BO retention policy, before device creation.
 ADD_EXECUTABLE(test_lima_buffer_policy test_lima_buffer_policy.cpp)
 TARGET_LINK_LIBRARIES(test_lima_buffer_policy GTest::gtest_main)
-TARGET_COMPILE_DEFINITIONS(test_lima_buffer_policy PRIVATE B986_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+TARGET_COMPILE_DEFINITIONS(test_lima_buffer_policy PRIVATE "B986_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
 GTEST_DISCOVER_TESTS(test_lima_buffer_policy DISCOVERY_TIMEOUT 120)

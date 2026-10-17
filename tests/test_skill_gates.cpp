@@ -44,7 +44,7 @@ using namespace zonetest;
 
 namespace {
 
-constexpr const char* kShippedCaps = WILLEQ_REPO_ROOT "/config/skill_caps.json";
+const char* const kShippedCaps = WILLEQ_REPO_PATH("config/skill_caps.json");  // B1090: run-time root
 
 constexpr uint8_t kRogue = 9;
 constexpr uint8_t kWarrior = 1;
