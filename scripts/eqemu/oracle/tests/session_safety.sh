@@ -8,7 +8,21 @@ mkdir -p "$FIXTURE/scripts/eqemu/oracle"
 cp "${ORACLE_SESSION_SOURCE:-$REPO/scripts/eqemu/oracle/oracle_session.sh}" "$FIXTURE/scripts/eqemu/oracle/oracle_session.sh"
 cat >"$FIXTURE/scripts/eqemu/env.sh" <<'EOF'
 eqemu_lock_take() { [[ $PROBE_CASE != held ]]; }
-eqemu_lock_show() { if [[ $PROBE_CASE == held ]]; then echo 'other-owner held'; elif [[ ! -e $OUT/released ]]; then echo "$OWNER held"; else return 1; fi; }
+# B1089 review: emit the lease's REAL key=value record. The old free-text
+# "$OWNER held" stand-in never matched what eqemu_lock_show really returns
+# (a multi-line card=/run=/purpose=/state= record, owner newline-terminated),
+# which is exactly how finding 1 slipped past this net. The shape here is what
+# the real eqemu_lock_show / eqemu_lease_show produces, so a format-dependent
+# gate would have been asserted against the gate's real input.
+eqemu_lock_show() {
+    if [[ $PROBE_CASE == held ]]; then
+        printf 'card=other-owner\nrun=other-owner\npurpose=other\nstate=HELD\n'
+    elif [[ ! -e $OUT/released ]]; then
+        printf 'card=%s\nrun=%s\npurpose=oracle_safety_probe\nstate=HELD\n' "$OWNER" "$OWNER"
+    else
+        return 1
+    fi
+}
 eqemu_lock_release() { touch "$OUT/released"; }
 # B1089: the driver now starts/stops the lease renewer around the capture;
 # the offline fixture has no lease, so these are no-ops.

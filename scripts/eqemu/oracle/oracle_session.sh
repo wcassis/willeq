@@ -31,7 +31,7 @@ stop_broker() {
     fi
 }
 cleanup() {
-    local prior=$STATUS current
+    local prior=$STATUS
     stop_broker
     if (( REMOTE_STARTED )); then
         remote "bash ~/eq-oracle/uigap-scripts/oracle_remote.sh stop '$REMOTE_DIR'" >>"$OUT/driver.log" 2>&1 || :
@@ -71,13 +71,13 @@ cleanup() {
         fi
         bash "$REPO/scripts/eqemu/down.sh" >>"$OUT/driver.log" 2>&1 || STATUS=66
         eqemu_lease_stop_renewer
-        current=$(eqemu_lock_show || :)
-        if [[ $current == "$OWNER "* || $current == *"$OWNER "* ]]; then
-            eqemu_lock_release || STATUS=66
-        else
-            say "lease owner changed; refusing release: $current"
-            STATUS=66
-        fi
+        # B1089 review (finding 1): eqemu_lock_release is already owner-checked
+        # by the lease's identity (card/run/pid; a takeover is refused with
+        # 63 -> STATUS=66), so the free-text gate that compared $OWNER to a
+        # space-terminated prefix of eqemu_lock_show was both broken (the
+        # lease's key=value record never matched) and redundant. A genuine
+        # takeover still surfaces through the release's own refusal.
+        eqemu_lock_release || STATUS=66
         if eqemu_lock_show >/dev/null 2>&1 || eqemu_stack_ready; then STATUS=66; fi
     fi
     if (( prior == 67 && STATUS != 66 )); then STATUS=67; fi
