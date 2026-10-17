@@ -134,6 +134,17 @@ SOLID. The x86 lane-2 after-stills (ETC1 == RGBA, distinct parts,
 `/home/user/kb-evidence/b1051-followup/`) land with the XU4 after-still leg
 of the same MR.
 
+**2026-10-17 saved-pose recheck:** `play.sh` and the published MR !173 armhf
+binary were captured separately from the same stationary Testchar position,
+`qeynos2` `(272.4, 197.6, 3.6)`, heading `471.50` in the zone-in log.
+`/target` and `/face` could not find either Lieutenant Arathur or Guard Dunix
+in either run, so the after-still acceptance for those NPCs remains OPEN.
+The fixed pose showed a close wood-textured figure in both runs, not a
+classifiable affected guard. The image-only dark/noise TSV totals are proxies,
+not NPC defect counts. `refactor/B1051/README.md` "Take-2 resumption" names
+the stills, commands, log lines and cleanup checks. No new Mesa mechanism or
+`xu4` preset follows from this non-reproduction.
+
 ## Kernel and module state on the box
 
 Armbian 26.05 (6.6.129) shipped Panfrost but had this defect; its headers are not packaged. Armbian 26.8.3
