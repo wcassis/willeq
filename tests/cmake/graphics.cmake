@@ -267,7 +267,6 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
             TARGET_LINK_LIBRARIES(test_x11_numpad_e2e X11)
         ENDIF()
     ENDIF()
-    GTEST_DISCOVER_TESTS(test_x11_numpad_e2e DISCOVERY_TIMEOUT 120)
     # B1091 (#411): the test owns a per-run Xvfb (Xvfb -displayfd) and reaps it
     # on every exit path; every test-side wait carries a deadline, so a healthy
     # run finishes in well under a minute. The ctest TIMEOUT is the backstop for
