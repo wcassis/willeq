@@ -55,8 +55,22 @@ public:
     size_t getActiveEmitterCount() const;
     size_t getMusicEmitterCount() const;
 
-    // Stop all sounds (for zone transitions)
-    void stopAllSounds();
+    // Stop all sounds (for zone transitions). `musicFadeSeconds` is how long
+    // the current music takes to fade out; 0 = immediate. B1080 (#400) calls
+    // this from the zone-OUT teardown so the leaving zone's music and every
+    // emitter go quiet while the loading screen is up, instead of carrying
+    // over until the next zone's ZoneEntry reloads the audio.
+    void stopAllSounds(float musicFadeSeconds = 0.5f);
+
+    // B1080 (#400): the zone-out teardown, in one call. Stops each emitter
+    // (freeing the looped SFX channels, B1074) and fades the current music.
+    // Idempotent and safe when nothing is loaded: the emitters are already
+    // empty and AudioManager::stopMusic() no-ops on a player that is not
+    // playing. Called from the zone session teardown (ZoneComponent), which
+    // is the single point every zone-OUT path runs through -- a graceful
+    // zone-out, the zone-out handshake timeout, a logout, and the B1072
+    // fresh-login give-up all reach it via DisconnectFromZone().
+    void silenceForZoneOut(float musicFadeSeconds);
 
     // Pause/resume all sounds (for menus, etc.)
     void pause();

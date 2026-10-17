@@ -77,6 +77,7 @@ public:
         case Stage::Select:
             if (w.AtCharacterSelect() && w.CharacterListGeneration() > gen_) {
                 opens0_ = w.ZoneConnectOpens();
+                silences0_ = w.ZoneAudioSilenceCount();  // B1080
                 if (opens0_ < 0) {
                     SetReason("the zone-connect observable is not available on this world");
                     return StepResult::Fail;
@@ -157,6 +158,23 @@ public:
                     SetReason(os.str() + " -- sooner than " + std::to_string(kAttempts) + " bounds");
                     return StepResult::Fail;
                 }
+                // B1080 (#400): the give-up's teardown (AbandonZoneConnect ->
+                // DisconnectFromZone -> CleanupZone) ran the zone audio
+                // silence. Baseline was captured at arm time (the /camp
+                // teardown is NOT this run's), so exactly ONE silence must
+                // have landed since -- while the loading screen is up, the
+                // leaving zone is quiet instead of audible. A world that
+                // cannot read the count cannot verify the fix: fail.
+                const long long silences = w.ZoneAudioSilenceCount();
+                if (silences < 0) {
+                    SetReason("the world cannot read the zone audio silence count (unreadable)");
+                    return StepResult::Fail;
+                }
+                if (silences - silences0_ != 1) {
+                    SetReason("the zone connect give-up did not run exactly one zone audio silence (saw " +
+                              std::to_string(silences - silences0_) + ") -- the leaving zone's music and emitters kept playing");
+                    return StepResult::Fail;
+                }
                 recoveredAt_ = t;
                 if (!w.EnterWorldAs(me_)) {
                     SetReason("the second Enter World as " + me_ + " was refused");
@@ -199,7 +217,7 @@ private:
     Stage stage_ = Stage::Camp;
     std::string me_;
     const bool silent_;
-    long long gen_ = 0, opens0_ = 0;
+    long long gen_ = 0, opens0_ = 0, silences0_ = 0;
     double mark_ = 0.0, recoveredAt_ = 0.0;
 };
 
