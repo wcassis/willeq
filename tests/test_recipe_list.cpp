@@ -226,26 +226,27 @@ TEST(RecipeListT419, ScrollBoundsFollowTheVisibleRowCount) {
 
 // The geometry. COMBW_LeftSideArea's children, quoted in tradeskill_layout.h
 // and mapped onto centerPopup the way T415 mapped the right side: at 800x600
-// the popup is {264,65,664,415} (B1075: CentreSlot), x scale 400/400, y scale 350/525.
+// the popup is {256,65,656,415} (B1075: CentreSlot; B1077's wider 48px gem
+// column shifts it left 8px from 264), x scale 400/400, y scale 350/525.
 TEST(RecipeListLayoutT419, LeftSideRectsAreTheOraclesScaled) {
     const UILayout l = layout800();
 
     // COMBW_MinTrivialEdit  absolute (108,4)  50x24
-    EXPECT_EQ(rectStr(TradeskillLayout::minTrivialEditRect(l)), "{372,67,422,83}");
+    EXPECT_EQ(rectStr(TradeskillLayout::minTrivialEditRect(l)), "{364,67,414,83}");
     // COMBW_MaxTrivialEdit  absolute (108,30) 50x24
-    EXPECT_EQ(rectStr(TradeskillLayout::maxTrivialEditRect(l)), "{372,85,422,101}");
+    EXPECT_EQ(rectStr(TradeskillLayout::maxTrivialEditRect(l)), "{364,85,414,101}");
     // COMBW_SearchTextEdit  absolute (108,56) 80x24
-    EXPECT_EQ(rectStr(TradeskillLayout::searchEditRect(l)), "{372,102,452,118}");
+    EXPECT_EQ(rectStr(TradeskillLayout::searchEditRect(l)), "{364,102,444,118}");
     // COMBW_SearchButton    absolute (52,84)  100x20
-    EXPECT_EQ(rectStr(TradeskillLayout::searchButtonRect(l)), "{316,121,416,134}");
+    EXPECT_EQ(rectStr(TradeskillLayout::searchButtonRect(l)), "{308,121,408,134}");
     // COMBW_KnownRecipeText absolute (4,126)  234x20
-    EXPECT_EQ(rectStr(TradeskillLayout::recipeListLabelRect(l)), "{268,149,502,162}");
+    EXPECT_EQ(rectStr(TradeskillLayout::recipeListLabelRect(l)), "{260,149,494,162}");
     // COMBW_RecipeList      absolute (4,148)  234x325
-    EXPECT_EQ(rectStr(TradeskillLayout::recipeListRect(l)), "{268,163,502,379}");
+    EXPECT_EQ(rectStr(TradeskillLayout::recipeListRect(l)), "{260,163,494,379}");
     // COMBW_AddFavoriteButton / RemoveFavoriteButton / ShowFavoritesButton
-    EXPECT_EQ(rectStr(TradeskillLayout::addFavoriteRect(l)), "{268,397,328,413}");
-    EXPECT_EQ(rectStr(TradeskillLayout::removeFavoriteRect(l)), "{330,397,390,413}");
-    EXPECT_EQ(rectStr(TradeskillLayout::showFavoritesRect(l)), "{390,397,450,413}");
+    EXPECT_EQ(rectStr(TradeskillLayout::addFavoriteRect(l)), "{260,397,320,413}");
+    EXPECT_EQ(rectStr(TradeskillLayout::removeFavoriteRect(l)), "{322,397,382,413}");
+    EXPECT_EQ(rectStr(TradeskillLayout::showFavoritesRect(l)), "{382,397,442,413}");
 }
 
 // The rows tile the listbox, in order, and the two columns are the XML's

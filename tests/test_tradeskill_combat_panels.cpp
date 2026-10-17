@@ -179,14 +179,16 @@ TEST(TradeskillWindowT415, WorldSlotsFeedTheGridAndOthersDoNot) {
 //   COMBW_RequiredIcon<i>: Location ((i%2)*42, (i/2)*42), Size 42x42
 TEST(TradeskillLayoutT415, SlotRectsAreTheOraclesScaled) {
     const UILayout l = layout800();
-    // popup is {264,65,664,415} (B1075: the CentreSlot anchor at 800x600); x scale 400/400, y scale 350/525
+    // popup is {256,65,656,415} (B1075: the CentreSlot anchor at 800x600; B1077
+    // widened the right-edge gem column to the oracle's 48px CastSpellWnd, so the
+    // band -- and thus the centred popup -- shifted left 8px from 264); x scale 400/400, y scale 350/525
     struct Case { int i; int x0, y0, x1, y1; };
     const Case cases[] = {
-        {0, 543, 145, 585, 173},
-        {1, 585, 145, 627, 173},
-        {2, 543, 173, 585, 201},
-        {8, 543, 257, 585, 285},
-        {9, 585, 257, 627, 285},
+        {0, 535, 145, 577, 173},
+        {1, 577, 145, 619, 173},
+        {2, 535, 173, 577, 201},
+        {8, 535, 257, 577, 285},
+        {9, 577, 257, 619, 285},
     };
     for (const auto& c : cases) {
         const auto r = TradeskillLayout::slotRect(l, c.i);
@@ -205,13 +207,13 @@ TEST(TradeskillLayoutT415, TitleCombineAndCloseAreTheOraclesScaled) {
     const UILayout l = layout800();
 
     const auto title = TradeskillLayout::titleRect(l);
-    EXPECT_EQ(rectStr(title), "{506,111,662,124}");
+    EXPECT_EQ(rectStr(title), "{498,111,654,124}");
 
     const auto combine = TradeskillLayout::combineRect(l);
-    EXPECT_EQ(rectStr(combine), "{524,287,644,307}");
+    EXPECT_EQ(rectStr(combine), "{516,287,636,307}");
 
     const auto close = TradeskillLayout::closeRect(l);
-    EXPECT_EQ(rectStr(close), "{524,399,644,413}");
+    EXPECT_EQ(rectStr(close), "{516,399,636,413}");
 }
 
 // Every rect lies inside the popup and the two buttons do not collide with
@@ -394,20 +396,23 @@ TEST(CombatAbilityWindowT415, AbilityRowsAreCappedAtTheOraclesEightButtons) {
 TEST(CombatAbilityLayoutT415, RectsAreTheOraclesVerbatim) {
     const UILayout l = layout800();
 
+    // B1077: the window anchors left of the gem column, which widened to the
+    // oracle's 48px CastSpellWnd, so the whole window (and every interior rect)
+    // shifts left 16px from the pre-B1077 {586,112,760,262}.
     const auto win = CombatAbilityLayout::windowRect(l);
     EXPECT_EQ(win.getWidth(), CombatAbilityLayout::ORACLE_WINDOW_W);
     EXPECT_EQ(win.getHeight(), CombatAbilityLayout::ORACLE_WINDOW_H);
-    EXPECT_EQ(rectStr(win), "{586,112,760,262}");
+    EXPECT_EQ(rectStr(win), "{570,112,744,262}");
 
-    EXPECT_EQ(rectStr(CombatAbilityLayout::effectIconRect(l)), "{591,136,611,156}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::effectLabelRect(l)), "{614,137,743,157}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::gaugeRect(l)), "{597,162,713,172}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::skillSelectRect(l)), "{710,160,747,174}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::effectIconRect(l)), "{575,136,595,156}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::effectLabelRect(l)), "{598,137,727,157}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::gaugeRect(l)), "{581,162,697,172}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::skillSelectRect(l)), "{694,160,731,174}");
 
-    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 0)), "{588,177,628,217}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 3)), "{708,177,748,217}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 4)), "{588,217,628,257}");
-    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 7)), "{708,217,748,257}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 0)), "{572,177,612,217}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 3)), "{692,177,732,217}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 4)), "{572,217,612,257}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 7)), "{692,217,732,257}");
 
     EXPECT_EQ(CombatAbilityLayout::buttonRect(l, -1).getWidth(), 0);
     EXPECT_EQ(CombatAbilityLayout::buttonRect(l, 8).getWidth(), 0);
