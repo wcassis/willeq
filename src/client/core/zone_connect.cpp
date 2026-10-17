@@ -1,19 +1,27 @@
-// B1072 (GitLab #392): the bounded zone-IN connect.
+// B1072 (GitLab #392) + B1079 (GitLab #399): the bounded zone-in, EVERY phase.
 //
 // EverQuest::ConnectToZone() (everquest.cpp) arms m_zone_connect_watchdog on
 // every ZoneServerInfo and opens the session here. TickZoneConnect() runs
 // every game tick (MovementComponent::UpdateMovement, through
-// ctx_.lifecycle.TickZoneConnect) and, while the loading phase is still
-// ZONE_CONNECTING:
-//   * at ZoneComponent::kZoneConnectTimeoutMs re-opens the session to the SAME
-//     ZoneServerInfo host:port (kZoneConnectRetries = one retry);
-//   * at the second timeout tears the zone side down and goes back to world
-//     as a FRESH login (zoning = 0): character select on a run that has the
-//     screen (or the scenario lane's stand-in for it), the configured
-//     character's automatic Enter World on a headless one -- the same two
-//     landings a /camp has (B1005, player_camp.cpp).
-// Never a hang, never a process exit. The mechanism and the timeout's
-// measurement: refactor/B1072/README.md.
+// ctx_.lifecycle.TickZoneConnect) and walks the whole loading span, from
+// ZONE_CONNECTING through GRAPHICS_FINALIZING, against the per-phase table in
+// zone_connect_watchdog.h:
+//   * while still in ZONE_CONNECTING, at the connect bound, re-opens the
+//     session to the SAME ZoneServerInfo host:port (kZoneConnectRetries = one
+//     retry) -- the B1072 shape, a session that never came up;
+//   * past ZONE_CONNECTING (the zone answered -- even if it then went silent
+//     after processing OP_ZoneEntry, the 2026-10-15 XU4 hang) the deadline is
+//     that phase's own, and at the end of the budget the escalation runs
+//     WITHOUT a retry: the zone has already seen our ZoneEntry, so re-opening
+//     the session would duplicate the entry; instead the zone side is torn
+//     down and the client goes back to world as a FRESH login (zoning = 0):
+//     character select on a run that has the screen (or the scenario lane's
+//     stand-in for it), the configured character's automatic Enter World on a
+//     headless one -- the same two landings a /camp has (B1005,
+//     player_camp.cpp).
+// Never a hang, never a process exit. B1072's mechanism and the connect
+// bound's measurement: refactor/B1072/README.md. B1079's per-phase table and
+// the escalation's shape: zone_connect_watchdog.h and refactor/B1079/README.md.
 
 #include "client/eq.h"
 
@@ -23,19 +31,68 @@
 #include "common/logging.h"
 #include "common/net/posix_udp_transport.h"
 
+#include <cstdio>
 #include <functional>
 #include <memory>
 #include <string>
 
 namespace {
 
-const char* ZoneConnectStage(bool session_established) {
-	// The two shapes the bound covers (zone_connect_watchdog.h).
-	return session_established ? "zone entry (session up, OP_ZoneEntry sent, no PlayerProfile)"
-	                           : "UDP session (no session response)";
+// B1079 (#399): the loading phase -> watchdog phase_index map. The phases
+// ZONE_CONNECTING..GRAPHICS_FINALIZING are exactly LoadingPhase 5..14, in the
+// same order the loading screen walks them, so the map is an offset; a phase
+// before the zone-in (login, world, character select) or a finished load is
+// untracked / done, and the watchdog leaves its running deadline alone
+// (kUntracked) or disarms (kDone).
+int ZonePhaseIndex(LoadingPhase phase) {
+    switch (phase) {
+    case LoadingPhase::ZONE_CONNECTING:
+        return eqt::zone::phase_index::kZoneConnecting;
+    case LoadingPhase::ZONE_RECEIVING_PROFILE:
+        return eqt::zone::phase_index::kZoneReceivingProfile;
+    case LoadingPhase::ZONE_RECEIVING_SPAWNS:
+        return eqt::zone::phase_index::kZoneReceivingSpawns;
+    case LoadingPhase::ZONE_REQUEST_PHASE:
+        return eqt::zone::phase_index::kZoneRequestPhase;
+    case LoadingPhase::ZONE_PLAYER_READY:
+        return eqt::zone::phase_index::kZonePlayerReady;
+    case LoadingPhase::ZONE_AWAITING_CONFIRM:
+        return eqt::zone::phase_index::kZoneAwaitingConfirm;
+    case LoadingPhase::GRAPHICS_LOADING_ZONE:
+        return eqt::zone::phase_index::kGraphicsLoadingZone;
+    case LoadingPhase::GRAPHICS_LOADING_MODELS:
+        return eqt::zone::phase_index::kGraphicsLoadingModels;
+    case LoadingPhase::GRAPHICS_CREATING_ENTITIES:
+        return eqt::zone::phase_index::kGraphicsCreatingEntities;
+    case LoadingPhase::GRAPHICS_FINALIZING:
+        return eqt::zone::phase_index::kGraphicsFinalizing;
+    case LoadingPhase::COMPLETE:
+        return eqt::zone::phase_index::kDone;
+    default:
+        return eqt::zone::phase_index::kUntracked;
+    }
 }
 
 }  // namespace
+
+// B1079: the production table, in phase_index order, straight off the header's
+// phase_bound constants (whose comment names the source of every value). One
+// place builds it so the arm sites in everquest.cpp and the unit test read the
+// same ten rows; test_zone_connect_timeout pins the values against the header.
+const int* EverQuest::ZonePhaseBoundsMs() {
+    static const int kBounds[eqt::zone::phase_index::kCount] = {
+        eqt::zone::phase_bound::kZoneConnectingMs,
+        eqt::zone::phase_bound::kZoneReceivingProfileMs,
+        eqt::zone::phase_bound::kZoneReceivingSpawnsMs,
+        eqt::zone::phase_bound::kZoneRequestPhaseMs,
+        eqt::zone::phase_bound::kZonePlayerReadyMs,
+        eqt::zone::phase_bound::kZoneAwaitingConfirmMs,
+        eqt::zone::phase_bound::kGraphicsLoadingZoneMs,
+        eqt::zone::phase_bound::kGraphicsLoadingModelsMs,
+        eqt::zone::phase_bound::kGraphicsCreatingEntitiesMs,
+        eqt::zone::phase_bound::kGraphicsFinalizingMs };
+    return kBounds;
+}
 
 void EverQuest::OpenZoneConnection(const std::string& host, uint16_t port)
 {
@@ -75,17 +132,51 @@ void EverQuest::OpenZoneConnection(const std::string& host, uint16_t port)
 	m_zone_connection_manager->Connect(host, connect_port);
 }
 
+// B1079: the escalation's "last opcode seen" label. The handful of opcodes a
+// stalled zone-in can end on (the session and the zone-in handshake) get
+// names; everything else prints its hex value, so a NEW opcode that matters
+// is still identifiable in the line.
+const char* LastZoneOpcodeName(int opcode) {
+	if (opcode < 0) return "none";
+	switch (static_cast<unsigned>(opcode)) {
+	case TitaniumZoneOpcodes::HC_OP_ZoneEntry: return "ZoneEntry";
+	case TitaniumZoneOpcodes::HC_OP_NewZone: return "NewZone";
+	case TitaniumZoneOpcodes::HC_OP_ReqClientSpawn: return "ReqClientSpawn";
+	case TitaniumZoneOpcodes::HC_OP_ZoneSpawns: return "ZoneSpawns";
+	case TitaniumZoneOpcodes::HC_OP_PlayerProfile: return "PlayerProfile";
+	case TitaniumZoneOpcodes::HC_OP_ClientReady: return "ClientReady";
+	case TitaniumZoneOpcodes::HC_OP_ClientUpdate: return "ClientUpdate";
+	case TitaniumZoneOpcodes::HC_OP_TimeOfDay: return "TimeOfDay";
+	default: {
+		static thread_local char buf[16];
+		snprintf(buf, sizeof(buf), "0x%04x", opcode);
+		return buf;
+	}
+	}
+}
+
 void EverQuest::TickZoneConnect(std::chrono::steady_clock::time_point now)
 {
 	using Action = eqt::zone::ZoneConnectWatchdog::Action;
-	const Action act = m_zone_connect_watchdog.Tick(GetLoadingPhase() == LoadingPhase::ZONE_CONNECTING, now);
+	// B1079 (#399): walk the CURRENT loading phase, not just "still in
+	// ZONE_CONNECTING". The watchdog re-baselines on forward movement (its
+	// own table: per-phase for the network tail, one shared budget for the
+	// graphics span) and escalates when that budget runs out -- with the one
+	// retry still limited to ZONE_CONNECTING.
+	const Action act = m_zone_connect_watchdog.Tick(ZonePhaseIndex(GetLoadingPhase()), now);
 	if (act == Action::None) return;
 
 	const auto& w = m_zone_connect_watchdog;
 	if (act == Action::Retry) {
-		LOG_WARN(MOD_ZONE, "Zone server {}:{} did not complete the zone-in within {} ms, stuck at {}; "
-			"retrying the connect (attempt {}/{})",
-			w.Host(), w.Port(), w.TimeoutMs(), ZoneConnectStage(m_zone_session_established),
+		// The B1072 shape: the session never came up, so the connect itself
+		// is what is re-tried (OpenZoneConnection re-arms the same host:port
+		// and re-baselines the connect window).
+		LOG_WARN(MOD_ZONE, "Zone server {}:{} did not answer the session within {} ms "
+			"{}; retrying the connect (attempt {}/{})",
+			w.Host(), w.Port(), w.PhaseBoundMs(),
+			m_zone_session_established
+				? "(the session is up but OP_ZoneEntry got no PlayerProfile)"
+				: "(no session response)",
 			w.Attempt(), w.Attempts());
 		SetLoadingPhase(LoadingPhase::ZONE_CONNECTING);
 		OpenZoneConnection(w.Host(), w.Port());
@@ -99,11 +190,18 @@ void EverQuest::AbandonZoneConnect()
 	const auto& w = m_zone_connect_watchdog;
 	const std::string where = w.Host() + ":" + std::to_string(w.Port());
 	const bool to_select = m_player->CampReturnsToCharacterSelect();
-	LOG_WARN(MOD_ZONE, "Zone server {} did not complete the zone-in after {} attempts of {} ms, stuck at {}; {}",
-		where, w.Attempts(), w.TimeoutMs(), ZoneConnectStage(m_zone_session_established),
+	const int phase = w.PhaseIndex();
+	// B1079: the escalation names WHERE the load sat. The last opcode the
+	// zone sent is the one fact a play box without --log-file still leaves
+	// (the 2026-10-15 XU4 hang: the zone logged OP_ZoneEntry and nothing
+	// else -- now the client says so too).
+	LOG_WARN(MOD_ZONE, "Zone-in to {} stalled in {} ({} ms budget); last opcode from the zone: {} ({}){}; "
+		"{}", where, w.PhaseName(phase), w.PhaseBoundMs(),
+		LastZoneOpcodeName(LastZoneOpcode()), LastZoneOpcode(),
+		m_zone_session_established ? " the session is up -- no connect retry (it would duplicate OP_ZoneEntry)" : "",
 		to_select ? "returning to character select" : "logging in to world again");
-	m_chat_output.System("Could not connect to the zone server at " + where + " (" +
-		ZoneConnectStage(m_zone_session_established) + "). " +
+	m_chat_output.System("Could not complete the zone-in to " + where + " (" +
+		w.PhaseName(phase) + "). " +
 		(to_select ? "Returning to character select." : "Logging in to world again."));
 
 	// A fresh world login, not a zoning one: zoning = 1 would make world hand
