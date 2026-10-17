@@ -134,10 +134,11 @@ bool CharacterSelectHost::frame(IrrlichtRenderer& renderer, eqt::login_world::Ch
         }
 
         if (rx) {
-            // The keyboard: the creation name field, or ESC on the prompt.
+            // The keyboard: the creation name field, or ESC on the prompt, or
+            // (B1082) Up/Down navigation and Enter/Return.
             while (rx->hasPendingKeyEvents()) {
                 const auto e = rx->popKeyEvent();
-                applyCharSelectKey(state_, e.key, e.character);
+                handle(applyCharSelectKey(state_, e.key, e.character), channel);
             }
             // Spent here so a key typed into the name field is not replayed
             // as "open chat" on the first in-zone frame.

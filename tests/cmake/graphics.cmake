@@ -93,7 +93,7 @@ IF(EQT_GRAPHICS)
     # T270: the race-code tests read the shipped race_models rows instead of
     # restating a hardcoded numbering (they skip if the db is absent).
     TARGET_COMPILE_DEFINITIONS(test_graphics PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_LINK_LIBRARIES(test_graphics GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES} dl)
     IF(EQT_DRM OR EQT_GLES2)
         # P26: x86 GLES2 dev tree (EQT_DRM=OFF, EQT_GLES2=ON) needs these too —
@@ -201,7 +201,7 @@ IF(EQT_GRAPHICS)
     # T270: VerifyRaceCodeMappings compares against the shipped race_models
     # rows rather than a restated pre-JSON table.
     TARGET_COMPILE_DEFINITIONS(test_asset_loading PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_LINK_LIBRARIES(test_asset_loading GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES} dl)
     IF(EQT_DRM OR EQT_GLES2)
         # P26: x86 GLES2 dev tree (EQT_DRM=OFF, EQT_GLES2=ON) needs these too —
@@ -289,7 +289,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/texture_generators.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_particle_atlas_alpha PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     TARGET_INCLUDE_DIRECTORIES(test_particle_atlas_alpha PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_particle_atlas_alpha GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_particle_atlas_alpha DISCOVERY_TIMEOUT 120)
@@ -304,7 +304,7 @@ ADD_EXECUTABLE(test_spell_sprite_atlas
     test_spell_sprite_atlas.cpp
 )
 TARGET_COMPILE_DEFINITIONS(test_spell_sprite_atlas PRIVATE
-    WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
 TARGET_INCLUDE_DIRECTORIES(test_spell_sprite_atlas PRIVATE
     ${CMAKE_SOURCE_DIR}/tools
     ${CMAKE_SOURCE_DIR}/include)
@@ -319,7 +319,7 @@ ADD_EXECUTABLE(test_item_icon_atlas
     test_item_icon_atlas.cpp
 )
 TARGET_COMPILE_DEFINITIONS(test_item_icon_atlas PRIVATE
-    WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
 TARGET_INCLUDE_DIRECTORIES(test_item_icon_atlas PRIVATE
     ${CMAKE_SOURCE_DIR}/tools
     ${CMAKE_SOURCE_DIR}/include)
@@ -336,7 +336,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         test_texture_alpha_census.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_texture_alpha_census PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     TARGET_LINK_LIBRARIES(test_texture_alpha_census GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_texture_alpha_census DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -384,8 +384,8 @@ IF(EQT_GRAPHICS)
     )
     TARGET_INCLUDE_DIRECTORIES(test_zone_depth_tie_break PRIVATE ${CMAKE_SOURCE_DIR}/include)
     TARGET_COMPILE_DEFINITIONS(test_zone_depth_tie_break PRIVATE
-        B976_ZONE_SHADER_SOURCES="${CMAKE_SOURCE_DIR}/src/client/graphics/zone_shader_sources_gles2.h"
-        B976_DEPTH_TIE_HEADER="${CMAKE_SOURCE_DIR}/include/client/graphics/zone_depth_tie_break.h")
+        "B976_ZONE_SHADER_SOURCES=WILLEQ_REPO_PATH(\"src/client/graphics/zone_shader_sources_gles2.h\")"
+        "B976_DEPTH_TIE_HEADER=WILLEQ_REPO_PATH(\"include/client/graphics/zone_depth_tie_break.h\")")
     TARGET_LINK_LIBRARIES(test_zone_depth_tie_break GTest::gtest_main)
     GTEST_DISCOVER_TESTS(test_zone_depth_tie_break DISCOVERY_TIMEOUT 120)
 ENDIF()
