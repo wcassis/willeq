@@ -70,9 +70,12 @@ _lease_client_cmd() {
     # their own host, so this only ever fires for lane 5 on the ThinkPad --
     # but the check is the HOST, not the lane, so it stays true for any
     # future lane whose store sits beside its driver.
-    local on_lane_host=0
-    if [ "${EQEMU_HOST:-local}" != local ] && \
-       [ "$(hostname)" = "${EQEMU_HOST#*@}" ]; then
+    local on_lane_host=0 hostpart
+    hostpart="${EQEMU_HOST#*@}"
+    if [ "${hostpart}" = "local" ]; then
+        on_lane_host=0
+    elif [ "$(hostname)" = "${hostpart}" ] || \
+         hostname -I 2>/dev/null | tr ' ' '\n' | grep -qx "${hostpart}"; then
         on_lane_host=1
     fi
     if [ "${store}" = "${XU4_LEASE_STORE:-}" ]; then
