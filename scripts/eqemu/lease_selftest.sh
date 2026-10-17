@@ -190,6 +190,23 @@ kill "${D2}" 2>/dev/null; wait "${D2}" 2>/dev/null
 export PATH="${PATH/#"${SSHD}:"}"
 unset SSH_SHIM_LOG
 
+# 10b. reap with the RELATIVE dead-runs name, core CWD != store (the exact
+#     red-before: the client ships <store>/deadruns and passes `deadruns`;
+#     the ssh login cwd is not the store, so cwd-relative resolution 64'd
+#     on a file that WAS present -- the B1089 run-4 reclaim failure).
+S3B="${WORK}/s3b"; mkdir -p "${S3B}/runs" "${WORK}/elsewhere"
+run "${S3B}" card-r relrun 5555 take "relative reap" >/dev/null
+printf 'relrun\n' > "${S3B}/deadruns"
+# The core runs with its CWD in ${WORK}/elsewhere, NOT the store: a bare
+# `deadruns` arg must still resolve against LEASE_STORE.
+out="$( cd "${WORK}/elsewhere" && LANE_LEASE_HOST=corebox LANE_LEASE_CARD=card-r LANE_LEASE_RUN=relrun \
+       LANE_LEASE_PID=5555 LANE_LEASE_LANENAME=t LANE_LEASE_PURPOSE= \
+       LEASE_STORE="${S3B}" LEASE_TTL_S="${TTL}" bash "${CORE}" reap deadruns 0 2>&1 )"
+rc=$?
+[ ${rc} -eq 0 ] && pass "reap: relative dead-runs name resolves against the store" || fail "reap relative rc=${rc}: ${out}"
+echo "${out}" | grep -q "run=relrun: lease released" && pass "reap: the lease was released (file was found)" || fail "reap relative output: ${out}"
+[ ! -e "${S3B}/lease" ] && pass "reap: relative-run lane is free" || fail "reap relative: lease survived"
+
 # 11. concurrent takers: exactly one wins (a real race: all five take in
 #     the same instant; the core's flock critical section serializes them).
 S4="${WORK}/s4"; mkdir -p "${S4}"

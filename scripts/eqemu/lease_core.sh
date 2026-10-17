@@ -149,6 +149,14 @@ reap)
     exec 9>"${LOCK}"; flock 9
     RF="${1:?lease_core: reap needs a dead-runs file}"
     DRY="${2:-0}"
+    # A relative name (the client ships the list to <store>/deadruns and
+    # passes just that name) resolves against the STORE, never the cwd --
+    # the ssh login cwd is not the store, so cwd-relative resolution would
+    # silently miss a file that is actually present.
+    case "${RF}" in
+        /*) ;;
+        *) [ -e "${STORE}/${RF}" ] && RF="${STORE}/${RF}" ;;
+    esac
     [ -e "${RF}" ] || { echo "reap: no such dead-run file: ${RF}" >&2; exit 64; }
     while IFS= read -r run; do
         [ -n "${run}" ] || continue

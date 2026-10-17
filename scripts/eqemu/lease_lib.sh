@@ -71,6 +71,10 @@ _lease_client_cmd() {
     fi
     if [ "${EQEMU_HOST:-local}" = local ]; then
         mkdir -p "${store}"
+        # Mirror the ssh branch: the client passes the dead-runs list by
+        # its store name (`deadruns`); place it there so the core's
+        # store-relative resolution finds it in local mode too.
+        [ -n "${LANE_LEASE_DEADRUNS_FILE:-}" ] && cp -f "${LANE_LEASE_DEADRUNS_FILE}" "${store}/deadruns"
         LANE_LEASE_HOST="${LANE_LEASE_HOST:-$(hostname)}" \
         LANE_LEASE_CARD="${LANE_LEASE_CARD:-manual}" LANE_LEASE_RUN="${LANE_LEASE_RUN:-manual}" \
         LANE_LEASE_PID="${LANE_LEASE_PID:-$$}" LANE_LEASE_LANENAME="${LANE_LEASE_LANENAME:-${EQEMU_LANE:-local}}" \
