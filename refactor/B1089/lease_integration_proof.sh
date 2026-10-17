@@ -43,17 +43,29 @@ stack_down() {
     bash "$REPO/scripts/eqemu/down.sh" >>"$OUT/down.log" 2>&1 || say "down.sh rc=$? (stack was probably already down)"
 }
 
+# cleanup is safe to call from the EXIT trap AND (never) by hand: the guard
+# makes it a no-op the second time.
+CLEANED=0
 cleanup() {
+    [ "${CLEANED}" = 1 ] && return 0
+    CLEANED=1
     [ -n "${PLANT:-}" ] && ssh -n -o BatchMode=yes "user@172.16.200.${LANE}" "kill ${PLANT} 2>/dev/null" 2>/dev/null
     for i in "${IDLE}" "${ACTIVE}" "${REAPRUN}" "${LIVE}"; do
         bash "$L" release --lane "$LANE" --card "$i" --run "$i" --pid "$$" >/dev/null 2>&1
     done
     stack_down
-    echo 0 > "$OUT/exit"
     say "DONE (stack left down)"
 }
-trap 'cleanup' INT TERM
-trap 'echo 1 > "$OUT/exit"' ERR
+# The exit file is written ONCE, by this single EXIT trap, carrying the real
+# status. An ERR trap was tried first and is wrong for this script: the
+# steal-attempt line `out=$(lease take); rc=$?` returns 1 on a HELD lane (the
+# EXPECTED refusal), and `VAR=$(cmd)` failing DOES fire the ERR trap (a
+# plain `cmd && {...}` or `if cmd; then` does not -- verified empirically),
+# so it wrote a spurious exit=1 partway through every run. EXIT fires on
+# success, on the explicit `exit 1` FAIL paths, and on INT/TERM. The status
+# is captured into RC BEFORE cleanup (cleanup's own failures must not clobber
+# the verdict), the file is written once, and `exit ${RC}` preserves it.
+trap 'RC=$?; echo "${RC}" > "$OUT/exit"; cleanup; exit "${RC}"' EXIT
 
 say "PROOF START lane=$LANE out=$OUT ttl=${TTL}s (pid $$)"
 say "stack pre-state: $(stack_running) running container(s)"
