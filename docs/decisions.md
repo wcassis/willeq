@@ -2107,6 +2107,40 @@ gestures at a fixed position fable chose. RULED:
    no drag, no z-order negotiation. A card that proposes movable windows
    reopens U07c, not this entry.
 
+## 2026-10-15 — B1082: the character-select keyboard mirrors the measured official client (#402; Will's XU4 report)
+
+Will's report (2026-10-15 XU4 play sessions): "The arrow keys up/down do not
+change which character is selected but they should. The enter key should load
+the selected character." MEASURED on the official Titanium client (oracle
+lane 1; `refactor/B1082/README.md` carries the ledger, stills, video and the
+pcap as ground truth):
+
+1. **Up/Down move the selection one row and wrap at the ends — within the
+   occupied rows only** (the highlight cycles the 8-button list, but the name
+   line and the 3D model only ever reflect an occupied row, so the
+   enterable selection is bounded by the occupied rows). **Navigation sends
+   NOTHING to the server** — zero C→S packets on any Down/Up in the pcap.
+2. **Enter/Return sends `OP_EnterWorld` for the selected row** — the SAME
+   72-byte payload as the Enter World button's click. Nothing selected is
+   inert.
+3. **The delete prompt ignores everything but ESC** (ESC = No, as B998):
+   Enter/Return do not answer it, no keys navigate or type while it is up; it
+   closes on its own ~10 s timeout.
+4. **Escape with no prompt up leaves pre-zone** (server-select), as before —
+   no quit confirmation prompt.
+
+Ruled into `applyCharSelectKey()` (`char_select_screen.cpp`): it now RETURNS
+the `CharSelectAction` exactly like the click path; `KEY_DOWN`/`KEY_UP` go
+through the new `moveSelection(s, delta)` (one occupied row, wrap at the
+ends, gated on blocked/prompt/create like every other press), `KEY_RETURN`
+goes through `pressEnterWorld` (the Enter World button's own body — the
+numpad Enter maps to the same receiver code). The host
+(`char_select_host.cpp`) routes the returned action through `handle()` and
+keeps spending Enter/Escape/Slash so nothing replays in-zone (B1085). Tests:
+`CharacterSelectKeys.*` in `tests/test_character_select.cpp` (wrap without
+sending, Enter for the arrow-chosen row, prompt ignores everything but
+Escape).
+
 ## 2026-10-16 — B1085: the chat key latches (enter/escape/slash) latch only while the chat is unfocused, and reset on every focus transition (#405)
 
 One line: a key press may only ever arm the chat shortcuts (open-chat on
@@ -2116,3 +2150,56 @@ the focused gate, and `setChatInputFocused()` resets all three in both
 directions, so a press that changed the focus (a submitted Enter, a
 cancelling Escape) can never replay on the first frame in the new state
 (`tests/test_b1085_chat_latches.cpp`).
+
+## 2026-10-16 — B1084: the robe material range is 10..16, and it is ONE predicate (#404)
+
+A worn robe of material 10 (item 11641, Crimson Robe of Alendine) drew the
+naked body: `isRobeTexture()` said the robe range was 11..16 while the mesh
+builder's own comment and the robe-index arithmetic said 10..16. The range is
+**MEASURED, not assumed** — `global_chr.s3d` carries exactly seven robe
+texture groups `clk04`..`clk10` (six pages each), which partition cleanly
+across only 10..16; `globaldaf_chr.s3d` carries `dafch10xx`..`dafch16xx`
+body textures and nothing for 05..09; and the peq items table's robe-named
+chest items exist for exactly materials 10–16 (lane 1, 2026-10-16;
+`refactor/B1084/README.md`). RULED: **the robe range is 10..16, and
+everything that classifies a texture as robe goes through the ONE
+`isRobeTexture()` in `include/client/graphics/eq/equipment_textures.h`** —
+`isNPCOnlyTexture()` is 5..9 (10 is a robe), and `getRobeClkTextureNumber()`
+is the single 10→clk04 … 16→clk10 spelling. A second, hard-coded range
+spelling anywhere in the tree is a regression: `test_robe_texture_range`
+(the measured table) and `test_robe_entity_prep` (chest material 10 takes the
+robe body variant through `createAnimatedNodeWithEquipment()`) are red on the
+old 11..16 header and green at the fix.
+
+## 2026-10-16 — a stalled zone-in is bounded at every phase, and a zone that ANSWERED is never re-connected (B1079, #399)
+
+Will's 2026-10-15 XU4 hang (#399): an in-session zone change (zone load #2,
+past the session) sat on the loading screen until it was killed. B1072's
+watchdog bounded only `ZONE_CONNECTING` and disarmed the moment the phase
+moved past it. RULED:
+
+1. **Every zone-in loading phase carries a deadline** (`zone_connect_watchdog.h`,
+   the `phase_bound` table, sources in `refactor/B1079/README.md`): the connect
+   phase is measured (B1072 census, 2x the max); the five network-tail phases
+   are assumed (no per-phase census exists in-tree, stated as such); the four
+   `GRAPHICS_*` phases share one budget (2x the slowest blessed Pi cold load).
+   A stalled load costs ONE phase's own budget, and the escalation names the
+   stuck phase and the last opcode the zone sent, then lands on a fresh world
+   login (character select / auto Enter World) -- never a hang, never a
+   process exit. The bound covers a zone load #N, not only a cold login,
+   because the deadline walks the CURRENT loading phase, not "still connecting".
+2. **A zone that ANSWERED is never re-connected.** The ONE retry of the zone
+   connect applies to `ZONE_CONNECTING` only. Once the session is up (the phase
+   has advanced past it -- the zone has seen our `OP_ZoneEntry`), the
+   escalation is a no-retry give-up: re-opening the session would duplicate the
+   zone entry. This is the standing distinction from B1072's shape (session
+   never came up -> one connect retry). A unit that wants a re-connect after the
+   session is up reopens this entry.
+3. **The play box keeps its log** (`--log-file PATH` / `WILLEQ_LOG_FILE`): the
+   logger writes the SAME lines to a file, line-flushed every drain cycle, so a
+   kill mid-zone-in keeps the log. The file is ADDITIVE (stdout/stderr keep
+   everything; an unwritable path is one stderr line, never a silencer). Both
+   `--log-level=LEVEL` and the space form `--log-level LEVEL` are accepted; an
+   unparseable level is a loud startup `ERROR`, never a silent no-op.
+   `refactor/B1079/README.md` and `docs/standards/debug_logging_standards.md`.
+

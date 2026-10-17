@@ -390,6 +390,10 @@ build-arm:
     # incremental cache/), i.e. two cold cross-builds per fable pipeline.
     # Keep this line identical in build-arm and build-arm64 (B1030 review).
     GIT_CLEAN_FLAGS: -ffdx -e build-arm-noble -e build-arm64-noble
+    # B1087: the runner has one checkout per slot, so the in-tree cache above is cold in a
+    # slot that never built ARM; this host ccache (scripts/ci/arm_ccache.sh) is shared by all
+    # slots. Absent on a host = ccache off, never a failure.
+    ARM_CCACHE_DIR: /var/cache/ccache-ci-arm
   rules:
     - if: $CI_COMMIT_BRANCH == "fable"
     - when: manual
@@ -428,6 +432,7 @@ build-arm64:
     # Same line as build-arm: the two jobs share one checkout (see there).
     GIT_CLEAN_FLAGS: -ffdx -e build-arm-noble -e build-arm64-noble
     BUILD_JOBS: "8"
+    ARM_CCACHE_DIR: /var/cache/ccache-ci-arm
   rules:
     - if: $CI_COMMIT_BRANCH == "fable"
     - when: manual

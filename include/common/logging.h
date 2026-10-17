@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <cstring>
 #include <iostream>
+#include <fstream>
+#include <string>
 #include <cstdint>
 #include <ctime>
 #include <chrono>
@@ -241,12 +243,33 @@ public:
         ensureDrainThread();
     }
 
+    // B1079 (GitLab #399): the play-box log. The SAME lines the drain thread
+    // writes to stdout/stderr also go to `path`, flushed on every drain
+    // cycle (~50 ms cadence) so the file holds what the player saw even when
+    // the process dies mid-zone-in -- the 2026-10-15 defect: the XU4's
+    // play.sh teed stdout today, and a killed process lost its log.
+    //
+    // stdout/stderr still carry everything (an unwritable path is not a
+    // stdout silencer); the file is ADDITIVE. An unwritable path logs one
+    // stderr line and continues, never a crash at startup.
+    bool SetLogFile(const std::string& path) {
+        std::lock_guard<std::mutex> lock(m_file_mutex);
+        m_log_file.open(path, std::ios::out | std::ios::app);
+        if (!m_log_file.is_open()) {
+            std::cerr << "[logging] Failed to open --log-file path " << path
+                      << " -- continuing without the file\n";
+            return false;
+        }
+        return true;
+    }
+
     void unregisterBuffer(std::string* buffers) {
         std::lock_guard<std::mutex> lock(m_registry_mutex);
         // Drain any remaining content before removing — this runs under
         // m_registry_mutex, the same lock the drain thread holds when
         // writing to stdout/stderr, so no lock ordering issue.
         bool wroteOut = false, wroteErr = false;
+        std::string cycleOut, cycleErr;  // B1079: same lines to the file sink
         // Find the entry to get errBuffers pointer
         std::string* errBufs = nullptr;
         for (const auto& e : m_buffers) {
@@ -255,17 +278,20 @@ public:
         for (int i = 0; i < 2; ++i) {
             if (!buffers[i].empty()) {
                 std::cout << buffers[i];
+                cycleOut += buffers[i];
                 buffers[i].clear();
                 wroteOut = true;
             }
             if (errBufs && !errBufs[i].empty()) {
                 std::cerr << errBufs[i];
+                cycleErr += errBufs[i];
                 errBufs[i].clear();
                 wroteErr = true;
             }
         }
         if (wroteOut) std::cout.flush();
         if (wroteErr) std::cerr.flush();
+        writeLogFile(cycleOut, cycleErr);
         m_buffers.erase(
             std::remove_if(m_buffers.begin(), m_buffers.end(),
                 [buffers](const BufferEntry& e) { return e.buffers == buffers; }),
@@ -289,6 +315,12 @@ private:
         if (m_drain_thread.joinable()) m_drain_thread.join();
         // Final drain
         drainAllBuffers();
+        // Close the file AFTER the join: the drain thread is the only other
+        // writer, so once it is gone no flush can race the close.
+        {
+            std::lock_guard<std::mutex> lock(m_file_mutex);
+            if (m_log_file.is_open()) m_log_file.close();
+        }
     }
 
     void drainLoop() {
@@ -306,6 +338,12 @@ private:
 
     void drainAllBuffers() {
         bool wroteOut = false, wroteErr = false;
+        // B1079: accumulates the exact text written to stdout/stderr this
+        // cycle so the --log-file gets the same lines (the buffers are
+        // thread-local std::strings that get cleared after the console
+        // write, so the copy happens before the clear).
+        std::string cycleOut, cycleErr;
+        {
         std::lock_guard<std::mutex> lock(m_registry_mutex);
         for (auto& entry : m_buffers) {
             // T114: entry.sideMutex serializes this read-index +
@@ -335,18 +373,36 @@ private:
             std::string& drainBuf = entry.buffers[drainSide];
             if (!drainBuf.empty()) {
                 std::cout << drainBuf;
+                cycleOut += drainBuf;
                 drainBuf.clear();
                 wroteOut = true;
             }
             std::string& drainErrBuf = entry.errBuffers[drainSide];
             if (!drainErrBuf.empty()) {
                 std::cerr << drainErrBuf;
+                cycleErr += drainErrBuf;
                 drainErrBuf.clear();
                 wroteErr = true;
             }
         }
+        }
         if (wroteOut) std::cout.flush();
         if (wroteErr) std::cerr.flush();
+        // B1079: the same lines to the --log-file sink, flushed too (a killed
+        // process must not lose the tail). Written only here and in
+        // unregisterBuffer; m_file_mutex guards against SetLogFile/stopDrain.
+        writeLogFile(cycleOut, cycleErr);
+    }
+
+    // B1079: one flush of the two drained buffers to the --log-file. Empty
+    // buffers are a no-op. `out`/`err` are the exact strings written to
+    // stdout/stderr (possibly empty).
+    void writeLogFile(const std::string& out, const std::string& err) {
+        std::lock_guard<std::mutex> lock(m_file_mutex);
+        if (!m_log_file.is_open()) return;
+        if (!out.empty()) m_log_file << out;
+        if (!err.empty()) m_log_file << err;
+        if (!out.empty() || !err.empty()) m_log_file.flush();
     }
 
     int m_global_level;
@@ -355,6 +411,12 @@ private:
     // Buffer registry
     std::mutex m_registry_mutex;
     std::vector<BufferEntry> m_buffers;
+
+    // B1079: the --log-file sink (see SetLogFile). Written only by the drain
+    // thread; m_file_mutex serializes open/close (main thread, at startup)
+    // against the drain writes.
+    std::mutex m_file_mutex;
+    std::ofstream m_log_file;
 
     // Drain thread
     std::thread m_drain_thread;
