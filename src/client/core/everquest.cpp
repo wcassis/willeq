@@ -848,13 +848,27 @@ void EverQuest::ConnectToZone()
 	// S04: inventory_manager, spell DB and buff_manager are all
 	// pre-allocated in EverQuest constructor / Application::initialize()
 
-	// B1072 (#392): a fresh ZoneServerInfo arms the zone-IN bound; the
-	// session itself is OpenZoneConnection()'s (zone_connect.cpp), which the
-	// one retry reuses.
+	// B1072 (#392) + B1079 (#399): a fresh ZoneServerInfo arms the zone-IN
+	// bound over the WHOLE loading span (the per-phase table, zone_connect.cpp),
+	// the session itself is OpenZoneConnection()'s (zone_connect.cpp), which
+	// the one retry reuses.
 	m_zone_connect_watchdog.Arm(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort(),
-		std::chrono::steady_clock::now(), eqt::zone::ZoneComponent::kZoneConnectTimeoutMs,
+		std::chrono::steady_clock::now(), ZonePhaseBoundsMs(),
 		eqt::zone::ZoneComponent::kZoneConnectRetries);
 	OpenZoneConnection(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort());
+	// B1079 (#399): the scenario lane's "zone answered then went silent" lever
+	// (SimulateZoneSilentAfterHandshake). The connection above goes to a dead
+	// port (SimulateUnreachableZoneConnects), which -- as the B1072 arm
+	// proves live -- is stable silence: the stale connect is erased without a
+	// StatusDisconnected, so nothing re-connects and nothing moves the phase.
+	// Override the handshake's ZONE_CONNECTING with the "the zone answered"
+	// phase so the load SITS there and the bound has to walk it to its own
+	// deadline and escalate WITHOUT a connect retry (the zone already saw our
+	// OP_ZoneEntry -- a re-connect would duplicate it). A pure phase move: the
+	// forwarder sets the phase, not the PlayerProfile side effects.
+	if (m_sim_zone_silent) {
+		SetLoadingPhase(LoadingPhase::ZONE_RECEIVING_PROFILE);
+	}
 }
 
 void EverQuest::ZoneOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection)
@@ -891,10 +905,11 @@ void EverQuest::ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Dayb
 		m_zone_connection.reset();
 		SetLoadingPhase(LoadingPhase::ZONE_CONNECTING);
 		// B1072: this reconnect was unbounded too; bound it the same way
-		// unless a zone-in attempt already holds the deadline.
+		// unless a zone-in attempt already holds the deadline (the per-phase
+		// table, B1079).
 		if (!m_zone_connect_watchdog.Armed()) {
 			m_zone_connect_watchdog.Arm(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort(),
-				std::chrono::steady_clock::now(), eqt::zone::ZoneComponent::kZoneConnectTimeoutMs,
+				std::chrono::steady_clock::now(), ZonePhaseBoundsMs(),
 				eqt::zone::ZoneComponent::kZoneConnectRetries);
 		}
 		m_zone_connection_manager->Connect(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort());
@@ -924,6 +939,11 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 	}
 
 	LOG_TRACE(MOD_ZONE, "[ZONE RECV] opcode=0x{:04x} len={}", opcode, p.Length());
+
+	// B1079 (#399): the escalation's "last opcode seen". A play box without
+	// --log-file leaves only this in the client's own chat log, and it is
+	// the one fact that says whether the zone ever answered ZoneEntry.
+	m_last_zone_opcode = static_cast<int>(opcode);
 
 	eqt::strings::DumpPacket("S->C", opcode, p);
 

@@ -1028,6 +1028,15 @@ ADD_LIBRARY(willeq_core STATIC ${ALL_CORE_SOURCES})
 # one and stays.
 # Pinned by test_zone_geometry_atlas_layout.
 TARGET_COMPILE_DEFINITIONS(willeq_core PUBLIC EQT_HAS_TEXTURE_ATLAS)
+# B1079 (#399): eqe1_loader.cpp compiles inside willeq_core WITHOUT
+# EQT_HAS_LOGGING, so its lines were raw fprintf -- stderr ERROR immediately,
+# stdout INFO only when stdout flushed (the 2026-10-15 "last line is an
+# ERROR" misread was that buffering, #399 note 3). With the define, every
+# message goes through the logger: one ordered stream, and the --log-file
+# sink sees them. The standalone test tools (test_eqe1_loader,
+# test_eqe1_stale_pack) do not link willeq_core and compile eqe1_loader.cpp
+# themselves -- they keep the fprintf path by definition.
+TARGET_COMPILE_DEFINITIONS(willeq_core PRIVATE EQT_HAS_LOGGING)
 # SQLite for WilleqDatabase
 TARGET_INCLUDE_DIRECTORIES(willeq_core PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
 TARGET_COMPILE_DEFINITIONS(willeq_core PRIVATE SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
