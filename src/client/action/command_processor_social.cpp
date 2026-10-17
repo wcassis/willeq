@@ -564,6 +564,51 @@ ActionResult CommandProcessor::cmdUseSkill(const std::string& args) {
     return m_dispatcher.useSkill(skillId);
 }
 
+// B1025-H3 (GitLab #345): /hotbutton [Name] <Color> [Text]. The oracle's
+// session form is `/hotbutton H0 1 /say hi` -- a name, a colour number and a
+// macro. The macro is the button's TEXT (the Emote's emoteText, exactly what
+// ActivateHotbarCommandSlot runs when the slot is pressed). The name is the
+// button's label (its INI key's display name) and the colour a text colour
+// fable's hotbar model carries no field for; both parse, the name rides the
+// button, the colour is accepted-and-ignored (the model has no colour, so it
+// is a no-op by construction -- not a refusal, which would invent behaviour
+// the oracle does not show).
+ActionResult CommandProcessor::cmdHotbutton(const std::string& args) {
+    auto tokens = splitArgs(args);
+    if (tokens.empty()) {
+        // eqstr 13278: the usage line.
+        return ActionResult::Failure("/Hotbutton [Name] <Color> [Text]");
+    }
+    if (tokens.size() >= 2) {
+        // <Color>: a number. Reject anything else -- the oracle's field is a
+        // colour number, and a letter in it is a mistyped macro.
+        if (tokens[1].empty() ||
+            !std::all_of(tokens[1].begin(), tokens[1].end(),
+                         [](unsigned char c) { return std::isdigit(c) != 0; })) {
+            return ActionResult::Failure(
+                "Error.  Could not create hotbutton.  Type /hotbutton for help.");
+        }
+    }
+    std::string text;
+    if (tokens.size() >= 3) {
+        // [Text]: rejoin tokens 2..end (the macro carries its own spaces,
+        // "/say hi"). eqstr 13281: up to 60 characters.
+        for (size_t i = 2; i < tokens.size(); ++i) {
+            if (i > 2) text += " ";
+            text += tokens[i];
+        }
+        if (text.empty()) {
+            return ActionResult::Failure(
+                "Error.  Could not create hotbutton.  Type /hotbutton for help.");
+        }
+        if (text.size() > 60) {
+            return ActionResult::Failure(
+                "Error.  Could not create hotbutton.  Type /hotbutton for help.");
+        }
+    }
+    return m_dispatcher.createHotbutton(text);
+}
+
 ActionResult CommandProcessor::cmdAutofire(const std::string& args) {
     // Ported from game's autofire.handler: same enable/disable-toggle shape
     // as /aa, over CombatManager's auto-fire flag instead of auto-attack's.

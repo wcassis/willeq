@@ -67,6 +67,25 @@ void FrameComponent::processFrameInput(float deltaTime) {
 
     processInputDeltas(deltaTime);
 
+    // B1025-H3 (GitLab #345): one frame of the hotbar assignment gesture,
+    // BEFORE the render phase's input pass (the pass below overwrites the
+    // hovers the gesture reads). The tick recomputes what the pointer was on
+    // from the previous frame's hover, advances the hold timer (a press on a
+    // memorised gem / combat-ability row / inventory item / occupied hotbar
+    // slot that stays down crosses the threshold and clones a hot button onto
+    // the cursor) and steps the deferred source action (a clone cancels the
+    // press's pending action; a release over its source fires it). No-op
+    // unless the gesture is active (cursor bound, i.e. the production render
+    // thread; a test's nullptr cursor bypasses it). It reads the receiver's
+    // plain button state only -- the one-shot click/release latches stay
+    // untouched (test_read_and_reset_ownership counts their callers).
+    if (newUIEnabled_ && staticUIInput_ && ctx_.eventReceiver) {
+        staticUIInput_->processFrameGesture(
+            deltaTime, ctx_.eventReceiver->isLeftButtonDown(),
+            hotbarState_, spellGemState_, inventoryState_,
+            combatAbilityState_);
+    }
+
     // UIGAP-residue (#151, measured): an unanswered drop / destroy prompt
     // closes itself (20 s / 10 s) as a No -- nothing sent, item kept.
     if (staticUIInput_ &&

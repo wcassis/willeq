@@ -1039,6 +1039,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_skill_reachability DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1025-H3 (GitLab #345): the hotbar assignment gesture's state machine --
+# the hold timer (tickHotbarHold), the deferred-action holder
+# (HotButtonHolder), the pickup clear (stepHotbarGesture), the /hotbutton
+# command's button (applyHotbarAssignPending), the placement displacement,
+# and the end-to-end press loops through the REAL StaticUIInput. Same
+# graphics gate as test_skill_reachability (it drives StaticUIInput); no
+# device, no layout assets -- the slot geometry is hotbar_layout.h's own
+# functions. See refactor/B1025-H3/README.md.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_hotbar_assignment
+        test_hotbar_assignment.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_hotbar_assignment PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_hotbar_assignment GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_hotbar_assignment DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T272: the spellbook popup's click -> MemorizeSpellIntent -> SpellManager
 # route (destination-gem policy, the real StaticUIInput producer, and the
 # eq_bridge.cpp consumer arm whose arguments were swapped). Needs Irrlicht
