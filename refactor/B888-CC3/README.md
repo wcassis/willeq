@@ -144,22 +144,46 @@ format work, not a free reuse of `S3DLoader::loadZone` (run 1042, below).
   `clz.zon`, **no `.wld`**) and `S3DLoader::loadZone` refuses exactly that
   WLD-less archive (skips where the file is absent; `WILLEQ_CLZ` overrides
   the path).
-- **The 3D backdrop scene (the `clz` zone content in the host's own scene
-  manager + the account's character nodes + the free camera + the click
-  raycast) is NOT landed yet.** Per the measured format fact above, standing
-  the geometry is the 3D slice's own format work: parse `ter_clz.ter`
-  (the P1999-era terrain fragment) and/or the 29 `.mod` + 157 `.lit` static
-  models straight out of the `.eqg` (or extend the loader with a WLD-less
-  leg), WITHOUT touching the production zone path. The seam is sized: the
-  geometry-to-mesh idiom is `equipment_model_loader.cpp:500-599`
-  (per-textureIndex buffers over `ZoneGeometry` vertices/triangles), and the
-  own-scene-manager + render-to-texture idiom is the CC-2 paperdoll
-  (`char_preview_scene.cpp`). The host's `backdropRowForClick()` currently
-  returns -1 (every click a miss, the machine's own rule, oracle-consistent
-  with A4/A5) until the model nodes stand up. `exploreCameraVerb()` is rowed
-  in `EXEMPT_TESTS_GROUPS` (`check_zero_callers.py`, B888-CC3) until that
-  slice wires it -- the other four Explore functions are live in
-  `char_select_host.cpp`. See `FOLLOW-UP` in the run's completion comment.
+- **The 3D backdrop scene LANDED** (this run, commit 4d569cce): the offset-
+  base bug in the device-free layer is fixed (EQG name/property offsets are
+  relative to the string table's base -- clz.zon 28, .ter 24, .mod 28 --
+  never the member's front; a mat[0] nameOff=0 reads `stonebase` from the
+  base but `EQGM\x02` from the front), the archive member for a model is its
+  own lowercased name (TER_clz.TER / OBJ_*.MOD carry their own extensions),
+  and `loadZone`/`loadModel` parse the whole zone: 30 models (terrain + 29
+  statics, 16,655-vertex terrain) and 157 placements. `char_backdrop_scene`
+  stands it up in its OWN scene manager (createNewSceneManager, the CC-2
+  idiom) with a borrowed driver: one mesh per distinct model shared by every
+  placement of it, the per-node placement (rotation composed with the
+  Z-up->Y-up swap), the free camera (the held-`d` forward verb), the
+  per-row character stands, and the click-to-row projection (the
+  name_tag_batch one-projection x view product; a backdrop hit is NOT a
+  selection). Two teardown/projection fixes found by the headless leg:
+  clear() no longer drops textures owned by the borrowed driver's cache
+  (double-free in CNullDriver::deleteAllTextures at device teardown), and
+  renderScene() syncs the camera's aspect to the driver's viewport -- the
+  camera's matrices are built by its render() during the first drawAll, so
+  a click projection is valid only after one frame, exactly as in the host
+  where a click is a post-frame event. The host (char_select_host.cpp)
+  retries init() every frame and, in Explore, updates the camera on
+  KEY_KEY_D (this fork's letter-key spelling), stands each account row's
+  character (clearing the rest), renders the scene before the UI draw (the
+  oracle's 3D-then-UI layering, A3/A9) and routes the frame's left click
+  through backdropRowForClick -> exploreSelectRow.
+- `backdropRowForClick` is no longer the -1 stub (it now calls
+  `backdrop->rowForClick()`); `exploreCameraVerb()` is no longer rowed in
+  `EXEMPT_TESTS_GROUPS` (the host wires it); `hasScene`/`characterCount`
+  are rowed as test observers on the live class instead (B888-CC3).
+- `test_explore_backdrop.cpp` pins the headless leg (EDT_NULL device, no
+  zone, no renderer object): the format layer parses every member (30
+  models / 157 placements, terrain 16,655 vertices), the showroom stands
+  up (157 nodes), the `d` verb moves the camera, a click projects to the
+  account's row (a far miss is -1), the per-row stands round-trip, and the
+  stand-up's RssAnon delta is bounded (one shared mesh per model, not a
+  copy per placement -- the 16 MiB bound catches the per-placement
+  blow-up). The pre-zone memory delta is the "backdrop-memory" line in
+  `StandingUpTheShowroomIsBounded` (measured on the ThinkPad's EDT_NULL
+  driver; the GLES2 gate is the visual gate's own territory).
 
 ## Driver fixes made this run (committed on this branch)
 
