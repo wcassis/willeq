@@ -18,10 +18,24 @@ the per-step ledger is `explore.tsv` beside this file.
   character-select** -- the opcode stream is login -> world -> `OP_SendCharInfo`
   only (no `OP_EnterWorld` to a zone, no zone-stream). The backdrop is a
   client-internal scene, not a server zone.
-- era: the char-select showroom has shipped since the original 1999 client,
-  so it is **base-game-era, in-era** (pre-Kunark) -- not a post-Velious asset.
-  See "Left open" for the one thing I could not pin down: the exact `.s3d`
-  filename.
+- [measured] the client's OWN load log (`oracle-c1/client_dbg.txt`, captured
+  this run by letting the official client run and pulling `Logs/dbg.txt`): the
+  sequence at character-select is
+  `World initialized: clz` (line 276) -> `load done.` (277) ->
+  `Starting char select.` (279) -> `Clearing display buffers.` (281) ->
+  `Initializing character select UI.` (285). The backdrop is the **`clz`**
+  zone geometry, initialized as the client-internal world *before* the
+  char-select UI opens. `clz` ships in the asset set as **`clz.eqg`**
+  (`data/eq_client/clz.eqg`, 3,665,802 B) -- a **PFS archive**, the same
+  format the zone loader opens for a `.s3d` (`PfsArchive::open()` validates the
+  `PFS ` magic, not the extension; `clz.eqg`'s header is `..z343 7 \0 PFS ...`).
+  There is no `clz.s3d`; the oracle client reads the `.eqg`.
+- era: `clz` is the char-select showroom, which has shipped since the original
+  1999 client, so it is **base-game-era, in-era** (pre-Kunark) -- not a
+  post-Velious asset. It is NOT in `data/era_zones.tsv` because that file is the
+  eqemu *server* zone table and the server never serves `clz` (the char-select
+  backdrop is client-internal -- the pcap's empty zone connection, A2 above).
+  No post-Velious ruling is needed; the implementation proceeds (step 2).
 
 ## Explore mode
 
@@ -58,15 +72,17 @@ the per-step ledger is `explore.tsv` beside this file.
 
 ## Not verified / left open
 
-- **The exact `.s3d` filename** of the backdrop scene. The pcap proves it is
-  client-internal (no zone-server load), and the client ships 1006 zone `.s3d`
-  files, but these runs did not capture the client's own load log, so I have
-  not confirmed which file it opens. The implementation leg needs that name to
-  pull the geometry from the asset set.
 - **Orbit / zoom on this rig.** The notes say "mouse drag = orbit, wheel =
-  zoom" (wine-oracle.md:272-275), but my driver's 40-step left-button drag and
-  3x wheel did not move the camera in the A6 run. The gesture shape likely does
-  not match how this rig's DirectInput samples motion.
+  zoom" (wine-oracle.md:272-275), but the A6 run's 40-step left-button drag and
+  3x wheel did not move the camera, and this run's probe
+  (`oracle-c1/`, c-plan: strace attached at launch, Explore click at Xvfb-root
+  (40,263)) shows the same rig's Xvfb-root Explore coordinate (40,263) did NOT
+  open Explore either (`oracle-c1/99_explore_postcondition_failed.png` still
+  shows the select screen). The Explore-mode access delta for this run is
+  therefore 0 (`oracle-c1/access_explore_delta.txt`) and says nothing about
+  Explore file loads. The B1048 driver's window-relative click (oracle-a6 A3)
+  remains the only proven Explore entry; orbit/zoom gestures stay unmeasured on
+  this rig.
 - **Character-click selection.** A4/A5 show the info line unchanged after
   clicking both scene positions, but I could not confirm the click landed on a
   model mesh (the fixed root coordinates may have been just off the figure).
