@@ -129,7 +129,7 @@ host. The design is `scripts/eqemu/lease_core.sh` + `lease_lib.sh`
 - **The Pi lanes were NOT moved onto the helper** (scope: "PI_LANE
   devices only if you move pi_lock_* onto the helper"). `pi_lock_*`
   stays as-is; `scripts/eqemu/leases` reports only the eqemu lanes + XU4.
-- **Lane 1's stack was left as found** (down, per the card); every proof
+- **Lane 4's stack was left as found** (down, per the card); every proof
   release verified FREE by re-show (the verified release, not just rc=0).
 
 ## Proposed solo-prompt sentence
