@@ -42,13 +42,13 @@ MUSIC_SETTLED 299.5      CAST_ISSUED 304.1          LOADING_TAIL 666.3
 
 | t    | RMS  | state |
 |------|------|-------|
-| 209-308 | 1200-3200 | old-zone audio (causeway music + ambient) sustained |
+| 209-308 | 0-4502 | old-zone audio (causeway music + ambient) sustained — dead second at 209, ~1 s ramp-up, peak 4502 at 244 |
 | 308 | 654 | fade begins (7 s cast ends ~311) |
 | 311 | 149 | |
 | 313 | 62 | |
 | 315 | 17 | |
 | 316 | 3  | **noise floor reached** |
-| 317 | 3  | flat — no SFX tail (0.25 s check: floor 16.5→3→2→1 by 317.5) |
+| 317 | 3  | flat — no SFX tail (0.25 s bins from 315.0: 26.9/15.1/10.4/7.6/5.0/3.2/1.6/0.8/0.5/0.6/0.5 — floor by 316.25, nothing above 3 after) |
 | 318 | 1329 | new screen's audio starts |
 | 322 | 3215 | sustained (login/char-select music) |
 

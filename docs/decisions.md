@@ -46,7 +46,7 @@ wiring (CleanupZone calls it) by `test_zone_component.cpp`'s
 client's zone-OUT audio was measured on lane 1 (Pulse monitor of the Wine
 client — the rig has no working ALSA userspace, so a session PulseAudio
 daemon is the capture path). causeway's music + ambient emitters, sustained
-at ~1.2–3.2 k RMS, fade to the noise floor (RMS ≤ 3) ~8 s after
+at 0–4.5 k RMS (dead second at t=209, ~1 s ramp-up, peak 4502 at t=244), fade to the noise floor (RMS ≤ 3) ~8 s after
 `/cast Ring of Karana` (of which 7 s is the rank-0 spell's own cast time,
 `spells_new.cast_time` 7000 ms), the floor holds flat for ~1.5 s (no SFX
 tail at 0.25 s resolution), and the destination screen's audio starts only
