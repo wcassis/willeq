@@ -268,6 +268,12 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         ENDIF()
     ENDIF()
     GTEST_DISCOVER_TESTS(test_x11_numpad_e2e DISCOVERY_TIMEOUT 120)
+    # B1091 (#411): the test owns a per-run Xvfb (Xvfb -displayfd) and reaps it
+    # on every exit path; every test-side wait carries a deadline, so a healthy
+    # run finishes in well under a minute. The ctest TIMEOUT is the backstop for
+    # a failure mode the test itself cannot unwind -- without it ctest's default
+    # bound applied, and pipeline 1453's build-test sat >1 h on a stale Xvfb.
+    SET_TESTS_PROPERTIES(X11NumpadE2E.NumpadDigitFiresCameraAction PROPERTIES TIMEOUT 120)
 ENDIF()
 
 # T400 (board B225): the particle atlas must carry its alpha.
