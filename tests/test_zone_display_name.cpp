@@ -86,13 +86,13 @@ TEST(ZoneDisplayName, NoteNewZoneReDerivesOnlyForTheShownZone) {
     ZoneDisplayNames& names = ZoneDisplayNames::instance();
     names.clearEntry();
     names.setEntryForTest("");
-    // Shown zone is 42 (unknown id, no era row). The era table has no name,
-    // so the line is empty until the server's own name arrives.
-    const uint32_t id = 42;
+    // Shown zone is an id NO source knows (not in the era table, no override):
+    // the line is empty until the server's own name arrives.
+    const uint32_t id = 999999;
     names.refresh(id);
     EXPECT_EQ(names.entryText(), "");  // no era row, no override yet
     // A DIFFERENT zone's OP_NewZone must not touch the shown line.
-    names.noteNewZone(999, "Some Other Zone");
+    names.noteNewZone(888888, "Some Other Zone");
     EXPECT_EQ(names.entryText(), "");
     // The SHOWN zone's OP_NewZone re-derives the line from its own name.
     names.noteNewZone(id, "Omn Gora");
@@ -133,13 +133,11 @@ struct FramePixels {
 FramePixels drawFrame(irr::video::IVideoDriver* driver, irr::gui::IGUIFont* font,
                       const std::wstring& entry) {
     FramePixels out;
-    driver->beginScene(true, true, irr::video::SColor(255, 20, 20, 40));
+    // The shared body owns its own beginScene/endScene (a clear to the dark
+    // background + the draw + endScene), so no outer scene is needed; the
+    // screenshot then reads the just-presented frame (the same cadence
+    // test_target_ring's ringPixels uses).
     EQT::Graphics::drawLoadingFrame(driver, font, 0.5f, L"EverQuest", entry, L"Loading...");
-    driver->endScene();
-    // The driver needs a present before the backbuffer is a stable read
-    // surface (the same cadence test_target_ring's ringPixels uses).
-    driver->beginScene(true, true, irr::video::SColor(255, 0, 0, 0));
-    driver->endScene();
     irr::video::IImage* img = driver->createScreenShot();
     if (!img) return out;
     out.ok = true;
