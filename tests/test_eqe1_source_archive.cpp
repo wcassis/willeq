@@ -35,6 +35,7 @@
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/eqe1_loader.h"
 #include "client/graphics/eqe1_format.h"
+#include "client/graphics/eq/zone_geometry.h"
 
 #include <gtest/gtest.h>
 
@@ -169,6 +170,17 @@ protected:
         }
     }
 };
+
+TEST_F(Eqe1SourceArchiveTest, NameOnlyS3dTextureLoadsFromItsEqe1Pack) {
+    ZoneMeshBuilder builder(device_->getSceneManager(), driver_, device_->getFileSystem());
+    builder.setConstrainedTextureCache(cache_.get());
+    const std::vector<char> releasedS3dBytes;
+    auto* texture = builder.loadTextureFromBMP("tree70", releasedS3dBytes,
+                                               /*applyPaletteMask=*/false,
+                                               nullptr, "zone_eqe1");
+    ASSERT_NE(texture, nullptr);
+    EXPECT_EQ(cache_->eqe1ServedByStem("tree70"), "zone_eqe1");
+}
 
 // The defect itself, in miniature. The zone's request (its own pack first)
 // and the object's request (its own pack first) resolve to DISTINCT

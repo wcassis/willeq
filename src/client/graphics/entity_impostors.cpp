@@ -14,6 +14,8 @@
 #include <cmath>
 #include <cstdlib>
 
+#include <fmt/core.h>
+
 #include "client/core/baseline_mode.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
@@ -54,6 +56,12 @@ bool eligible(const EntityVisual& v) {
 void EntityRenderer::setImpostorFrameInputs(const FrameBudgetGovernor* governor, uint16_t targetId,
                                             std::vector<std::string> groupMemberNames, bool loading) {
     impostorGovernor_ = governor;
+    if (impostorTargetId_ != targetId) {
+        // B1071: the pin's input edge, at the frame where it moves. Silent
+        // whenever the target is unchanged; loud exactly when it is not.
+        LOG_INFO(MOD_GRAPHICS, "[impostor] target-id frame={} {} -> {} (loading={})",
+                 impostorFrame_, impostorTargetId_, targetId, loading ? "true" : "false");
+    }
     impostorTargetId_ = targetId;
     impostorGroupNames_ = std::move(groupMemberNames);
     impostorLoading_ = loading;
@@ -189,6 +197,68 @@ void EntityRenderer::updateImpostors() {
     impostorPolicy_.plan(impostorCands_, gstate, avgMs, targetMs, impostorTiers_);
     if (impostorForceMode_ != 0)
         for (auto& t : impostorTiers_) t = impostorForceMode_ == 1 ? Tier::Impostor : Tier::Full;
+    {
+        // B1071 (GitLab #391): the pin's decision context, and the current
+        // target's DECISION PATH, after the tier decision (fresh tiers, post
+        // force-mode override), logged only when something changes (silent
+        // whenever the target is a pinned full-model candidate -- the healthy
+        // case; loud exactly when the target's path changes, with WHY: not
+        // spawned yet, or ineligible, with the failing flag).
+        //   cand=true  tier=full     -- healthy: tiered candidate kept full
+        //   cand=false inScene=0      -- worker culled it (inScene=false); the
+        //                                pin draws it full anyway -- healthy
+        //                                post-fix, was INVISIBLE pre-fix
+        //                                (B1064's solid-hull still)
+        //   cand=true  tier=IMPOSTOR -- a policy violation (plan() checks
+        //                                pinned before the tier)
+        //   cand=false shown=0        -- a pin violation (nothing drawn)
+        if (impostorTargetId_ != 0) {
+            bool inCands = false, pinnedInCands = false, full = true;
+            float d = -1.0f;
+            for (size_t i = 0; i < impostorCands_.size(); ++i)
+                if (impostorCands_[i].spawnId == impostorTargetId_) {
+                    inCands = true; pinnedInCands = impostorCands_[i].pinned;
+                    d = std::sqrt(impostorCands_[i].distSq);
+                    full = impostorTiers_[i] == Tier::Full;
+                }
+            auto ev = entities_.find(impostorTargetId_);
+            bool shown = (ev != entities_.end() && ev->second.sceneNode &&
+                          ev->second.sceneNode->isVisible());
+            bool inScene = (ev != entities_.end() && ev->second.inSceneGraph);
+            std::string detail;
+            if (!inCands) {
+                detail = ev == entities_.end() ? "NOT spawned"
+                    : fmt::format("ineligible inScene={} meshBuilt={} animNode={} phase={} "
+                                  "player={} corpse={} fading={} placeholder={} collision={}",
+                                  (ev->second.inSceneGraph ? 1 : 0), ev->second.meshBuilt,
+                                  (ev->second.animatedNode != nullptr ? 1 : 0),
+                                  (int)ev->second.buildPhase, ev->second.isPlayer, ev->second.isCorpse,
+                                  ev->second.isFading, ev->second.usesPlaceholder, ev->second.hasCollision);
+            } else if (!pinnedInCands) {
+                detail = "IN_CANDS_NOT_PINNED";
+            }
+            const char* state = inCands ? (full ? "full" : "IMPOSTOR")
+                                        : (shown ? (inScene ? "shown" : "culled-full") : "NOT-DRAWN");
+            const bool viol = (inCands && !full) || (!inCands && !shown);
+            const bool changed = viol ||
+                                 lastImpostorTargetState_ != state ||
+                                 impostorTargetId_ != lastImpostorTargetId_;
+            if (changed) {
+                LOG_INFO(MOD_GRAPHICS,
+                         "[impostor] target frame={} id={} cand={} pinned={} tier={} shown={} inScene={} d={:.1f} limit={} -- {}",
+                         frame, impostorTargetId_, inCands, pinnedInCands, state, shown, inScene, d,
+                         impostorPolicy_.fullLimit(), detail);
+                lastImpostorTargetState_ = state;
+                lastImpostorTargetId_ = impostorTargetId_;
+            }
+            if (inCands && !full)
+                LOG_INFO(MOD_GRAPHICS, "[impostor] PIN-BUT-IMPOSTOR frame={} id={} dist={:.1f} limit={}",
+                         frame, impostorTargetId_, d, impostorPolicy_.fullLimit());
+        } else {
+            lastImpostorTargetState_ = nullptr;
+            lastImpostorTargetId_ = 0;
+        }
+    }
 
     ImpostorFrameStats fs;
     fs.candidates = static_cast<int>(impostorCands_.size());

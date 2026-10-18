@@ -1,5 +1,6 @@
 #include "client/action/input_action_bridge.h"
 #include "client/action/command_processor.h"
+#include "client/bridge/game_state_bridge.h"  // B1063: Screenshot -> RendererCommand
 #include "client/hotbar/hotbar_model.h"  // T174: read slot content type
 #include "common/logging.h"
 
@@ -63,7 +64,27 @@ void InputActionBridge::processDiscreteActions() {
     }
 
     if (m_input->consumeAction(input::InputAction::Screenshot)) {
-        // Screenshot is handled by renderer, not through dispatcher
+        // B1063 (#383): the drop was the defect. The receiver's live F12
+        // press did queue RendererAction::Screenshot and the render thread
+        // deferred a save -- but to a fixed "screenshot.png" in the
+        // process's cwd (FrameComponent's pendingScreenshot_ arm), while
+        // /screenshot named its own path and printed the chat
+        // confirmation, so the two routes disagreed about WHERE the file
+        // went and WHICH one confirmed. The hotkey now reaches the same
+        // renderer command the typed slash does: a RendererCommand event
+        // with the exact string /screenshot's arm consumes, so both run
+        // the one body -- default path under the cache root, chat line
+        // "Screenshot <path>: saved|FAILED". A run with no bridge
+        // (headless) has no renderer, so the action is not pushed.
+        if (m_bridge) {
+            m_bridge->pushEvent(state::GameEvent(
+                state::GameEventType::RendererCommand,
+                state::RendererCommandData{"/screenshot"}));
+        }
+        LOG_DEBUG(MOD_INPUT,
+            "[INPUT-TRACE] InputActionBridge: consumed Screenshot, "
+            "forwarded={} (bridge={})",
+            (m_bridge != nullptr), (m_bridge != nullptr));
     }
 
     // Movement toggles

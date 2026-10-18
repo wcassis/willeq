@@ -48,6 +48,37 @@ ADD_TEST(NAME PiEnvLaneResolution
     COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/pi/env_selftest.sh)
 SET_TESTS_PROPERTIES(PiEnvLaneResolution PROPERTIES LABELS "hygiene")
 
+# B1034 (#357): the x86 surfaceless-EGL config fixture
+# (tests/data/b1034/surfaceless_es2.json) stays honest: the hygiene tree
+# re-dumps the list the x86 device fork consumes (initEGLSurfaceless's own
+# query, the CI GL pin = llvmpipe, no /dev/dri) and diffs it. A driver update
+# that changes llvmpipe's config list goes RED here; re-dump with
+# `bash scripts/ci/egl_config_dump.sh dump <dir>` and commit the fixture.
+ADD_TEST(NAME EglConfigDumpB1034
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/ci/egl_config_dump.sh verify
+            ${CMAKE_SOURCE_DIR}/tests/data/b1034)
+SET_TESTS_PROPERTIES(EglConfigDumpB1034 PROPERTIES LABELS "hygiene"
+    SKIP_RETURN_CODE 235)
+
+# B1034 (#357): the chooseConfigForGbmFormat wrapper is hand-copied into BOTH
+# device forks (docker/irrlicht-drm/ and docker/irrlicht-drm-x86/CIrrDeviceFB.cpp)
+# and must stay byte-identical in its body (the include lines differ). A pure
+# source diff; the shared logic lives in
+# docker/irrlicht-drm/gbm_config_select.h (unit-tested by
+# test_egl_config_select in the build stage).
+ADD_TEST(NAME GbmConfigSelectForsB1034
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_gbm_config_select_forks.py
+            ${CMAKE_SOURCE_DIR})
+SET_TESTS_PROPERTIES(GbmConfigSelectForsB1034 PROPERTIES LABELS "hygiene")
+
+# B1034 (#357): the pi_hdmi_force_on / pi_hdmi_restore contract of
+# scripts/pi/env.sh, pinned against a fake device surface (shadowed ssh/sudo,
+# local status/record files) -- no device, no ssh, no root. Like
+# PiEnvLaneResolution above.
+ADD_TEST(NAME PiHdmiForceSelftest
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/pi/hdmi_force_selftest.sh)
+SET_TESTS_PROPERTIES(PiHdmiForceSelftest PROPERTIES LABELS "hygiene")
+
 # T371 (2026-09-05): DocCitations proves a cited PATH resolves; it says
 # nothing about the CLAIMS. This is the regression net for the deletion half
 # -- a table of retired names that must not reappear in the ORIENTATION docs
@@ -126,8 +157,12 @@ ENDIF()
 # rebuilds it from the two checked-in input sources (procedural
 # tools/ui_atlas_builder plus the 64 BMPs in data/textures/) and installs it
 # atomically. This test rebuilds into a temp path and compares the sha256
-# against both the pinned data/willeq.eqe1.sha256 and the installed pack, so
-# a drift in either input -- or a hand-edit of the shared file -- is a red.
+# against the pinned data/willeq.eqe1.sha256 ONLY: reproducibility from the
+# inputs is the property it owns. B1094 (#414) removed the installed-pack
+# leg -- one mutable shared file was the oracle for N branches, so a
+# pack-changing card installing its branch pack over the shared file made
+# every other pipeline at the fable tip red here (MR !230 pipeline 1626).
+# The installed-vs-pin property is InstalledPackMatchesPin below.
 #
 # SLOW: the ETC1 encode of 65 textures takes ~1 minute. RUN_SERIAL because
 # it saturates the encoder and because three slots share the read side of
@@ -142,6 +177,33 @@ IF(TARGET eqe1_builder AND TARGET ui_atlas_builder)
         RUN_SERIAL TRUE
         TIMEOUT 900)
 ENDIF()
+
+# B1094 (#414): the other half of the old PackReproducible verdict. The
+# installed shared pack must match this tree's pin -- the property that
+# matters on fable, where the installed pack IS the tree's. The wrapper
+# scripts/ci/installed_pack_matches_pin.sh converts the verdict: on
+# CI_COMMIT_BRANCH=fable a mismatch is a HARD FAIL (a merge changed the pin
+# and the orchestrator has not installed yet -- say so loudly), anywhere
+# else it prints and passes (a pack-changing branch legitimately carries a
+# new pin against the fable-installed pack; its pipeline stays green on its
+# own, and the orchestrator installs the shared pack at merge). No build and
+# no builder binaries -- a plain hygiene test.
+ADD_TEST(NAME InstalledPackMatchesPin
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/ci/installed_pack_matches_pin.sh)
+SET_TESTS_PROPERTIES(InstalledPackMatchesPin PROPERTIES
+    LABELS "hygiene"
+    TIMEOUT 60)
+
+# B1094 (#414): the contract that pins the split above -- --check must ignore
+# the installed pack (stub builders, temp files only, the shared pack is
+# never read or written) and --check-installed must fail on a mismatch, with
+# the wrapper failing hard on fable and printing-and-passing elsewhere.
+# Pure python + bash against a temp directory, no builder binaries.
+ADD_TEST(NAME PackCheckContract
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_pack_check_contract.py)
+SET_TESTS_PROPERTIES(PackCheckContract PROPERTIES
+    LABELS "hygiene"
+    TIMEOUT 300)
 
 # T450 (2026-09-07, board B467): the third derived asset gets its pin.
 # data/willeq.db is built by tools/willeq_db_builder from the EQ client's

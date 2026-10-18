@@ -788,6 +788,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_pvs_render_distance_trigger DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1071 (GitLab #391): the current target is never culled by the sim worker
+# (distance / PVS / frustum / cap) -- the player's exemption is the template.
+# A culled target leaves the scene graph (renderer_sim_bridge.cpp) and is
+# invisible on screen while the target outline keeps painting its hull:
+# B1064's solid-silhouette still. Drives computeEntityVisibility() through
+# SimulationWorker::computeOnce() -- no device, no thread, no assets.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_target_cull_exemption
+        test_target_cull_exemption.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_target_cull_exemption PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_target_cull_exemption GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_target_cull_exemption DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T367 (B080): zone/object lights whose influence sphere contains the camera
 # must survive PVS and frustum culling. Drives computeLightVisibility,
 # computeObjectLightVisibility and computeLightSelection through

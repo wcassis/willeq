@@ -63,6 +63,13 @@
 #     whether a world script owns character select. Same DELIBERATE EXCEPTION
 #     as 69: the body lives in src/client/application_char_select.cpp, so the
 #     golden pins the CALL. Entries 70-315 renumbered to 71-316. Count 315 -> 316.
+#   B1063 (#383): entry 279
+#     `m_inputBridge->setBridge(m_bridge);` ADDED immediately after the
+#     graphics input handler is connected (entry 278) -- the F12 hotkey's
+#     InputAction::Screenshot reaches the renderer's one screenshot body
+#     (SlashCommandsComponent::runScreenshot) through the event bridge, the
+#     same RendererCommand("/screenshot") the typed command produces.
+#     Entries 279-316 renumbered to 280-317. Count 316 -> 317.
 1 m_config = config;
 2 LOG_INFO(MOD_MAIN, "Initializing application...");
 3 for (const std::string& spec : config.fpCamOverrides) {
@@ -341,41 +348,42 @@
 276 if (eventReceiver && m_inputBridge) {
 277 m_graphicsInputHandler = std::make_unique<input::GraphicsInputHandler>(eventReceiver);
 278 m_inputBridge->setInputHandler(m_graphicsInputHandler.get());
-279 LOG_INFO(MOD_GRAPHICS, "Graphics input handler connected to bridge");
-280 m_inputBridge->setActionCallback(
-281 [eqRenderer](const std::string& name,
-282 const action::ActionResult& result) {
-283 eqRenderer->handleActionResult(name, result.success, result.message);
-284 });
-285 m_loadingStatus.setTitle(L"EverQuest");
-286 m_loadingStatus.setProgress(0, "Connecting to login server...");
-287 m_eqClient->SetLoadingStatus(&m_loadingStatus);
-288 if (config.rdpEnabled) {
-289 LOG_INFO(MOD_GRAPHICS, "Initializing RDP server on port {}...", config.rdpPort);
-290 if (eqRenderer->initRDP(config.rdpPort)) {
-291 if (eqRenderer->startRDPServer()) {
-292 LOG_INFO(MOD_GRAPHICS, "RDP server started on port {}", config.rdpPort);
-293 setupRDPAudio(eqRenderer->getRDPServer());
-294 } else {
-295 LOG_WARN(MOD_GRAPHICS, "Failed to start RDP server");
-296 } else {
-297 LOG_WARN(MOD_GRAPHICS, "Failed to initialize RDP server");
-298 } else {
-299 EQT::PerformanceMetrics::instance().stopTimer("Graphics Init");
-300 LOG_FATAL(MOD_GRAPHICS, "Failed to initialize graphics");
-301 return false;
-302 EQT::PerformanceMetrics::instance().stopTimer("Graphics Init");
-303 if (!m_graphicsInitialized && !m_bridge) {
-304 m_consoleBridge = std::make_unique<bridge::ConsoleBridge>();
-305 m_stateSyncBridge = std::make_unique<eqt::bridge::GameStateSyncBridge>(
-306 *m_consoleBridge);
-307 m_bridge = m_stateSyncBridge.get();
-308 m_eqClient->setBridge(m_bridge);
-309 LOG_INFO(MOD_MAIN, "Console bridge attached (headless mode)");
-310 if (!initScenario(config)) return false;
-311 LOG_INFO(MOD_MAIN, "Connecting to login server ({}:{})...", config.host, config.port);
-312 m_eqClient->LoginWorld().ConnectToLogin();
-313 m_running.store(true);
-314 m_lastGraphicsUpdate = std::chrono::steady_clock::now();
-315 LOG_INFO(MOD_MAIN, "Application initialized successfully");
-316 return true;
+279 m_inputBridge->setBridge(m_bridge);
+280 LOG_INFO(MOD_GRAPHICS, "Graphics input handler connected to bridge");
+281 m_inputBridge->setActionCallback(
+282 [eqRenderer](const std::string& name,
+283 const action::ActionResult& result) {
+284 eqRenderer->handleActionResult(name, result.success, result.message);
+285 });
+286 m_loadingStatus.setTitle(L"EverQuest");
+287 m_loadingStatus.setProgress(0, "Connecting to login server...");
+288 m_eqClient->SetLoadingStatus(&m_loadingStatus);
+289 if (config.rdpEnabled) {
+290 LOG_INFO(MOD_GRAPHICS, "Initializing RDP server on port {}...", config.rdpPort);
+291 if (eqRenderer->initRDP(config.rdpPort)) {
+292 if (eqRenderer->startRDPServer()) {
+293 LOG_INFO(MOD_GRAPHICS, "RDP server started on port {}", config.rdpPort);
+294 setupRDPAudio(eqRenderer->getRDPServer());
+295 } else {
+296 LOG_WARN(MOD_GRAPHICS, "Failed to start RDP server");
+297 } else {
+298 LOG_WARN(MOD_GRAPHICS, "Failed to initialize RDP server");
+299 } else {
+300 EQT::PerformanceMetrics::instance().stopTimer("Graphics Init");
+301 LOG_FATAL(MOD_GRAPHICS, "Failed to initialize graphics");
+302 return false;
+303 EQT::PerformanceMetrics::instance().stopTimer("Graphics Init");
+304 if (!m_graphicsInitialized && !m_bridge) {
+305 m_consoleBridge = std::make_unique<bridge::ConsoleBridge>();
+306 m_stateSyncBridge = std::make_unique<eqt::bridge::GameStateSyncBridge>(
+307 *m_consoleBridge);
+308 m_bridge = m_stateSyncBridge.get();
+309 m_eqClient->setBridge(m_bridge);
+310 LOG_INFO(MOD_MAIN, "Console bridge attached (headless mode)");
+311 if (!initScenario(config)) return false;
+312 LOG_INFO(MOD_MAIN, "Connecting to login server ({}:{})...", config.host, config.port);
+313 m_eqClient->LoginWorld().ConnectToLogin();
+314 m_running.store(true);
+315 m_lastGraphicsUpdate = std::chrono::steady_clock::now();
+316 LOG_INFO(MOD_MAIN, "Application initialized successfully");
+317 return true;

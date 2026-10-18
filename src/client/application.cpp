@@ -730,6 +730,12 @@ bool Application::initRendererAndGraphics(const ApplicationConfig& config) {
                 if (eventReceiver && m_inputBridge) {
                     m_graphicsInputHandler = std::make_unique<input::GraphicsInputHandler>(eventReceiver);
                     m_inputBridge->setInputHandler(m_graphicsInputHandler.get());
+                    // B1063 (#383): the F12 hotkey's InputAction::Screenshot
+                    // arrives on the game thread through this handler; the
+                    // event bridge is how it reaches the renderer command
+                    // the typed /screenshot runs (RendererCommand event,
+                    // drained by the render thread's forwardStagedEvents).
+                    m_inputBridge->setBridge(m_bridge);
                     LOG_INFO(MOD_GRAPHICS, "Graphics input handler connected to bridge");
 
                     // T319: setActionCallback() had NO production caller, so

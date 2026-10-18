@@ -74,6 +74,26 @@ public:
 	// IrrlichtRenderer forwarder stays.
 	void processSlashCommand(const std::string& command);
 
+	// B1063 (#383): the screenshot's ONE body. The F12 hotkey
+	// (RendererAction::Screenshot, deferred to after the frame's render in
+	// FrameComponent::renderFrameTail) and the /screenshot slash command both
+	// call this, so the chat confirmation and the save path cannot disagree:
+	// one body, one chat line ("Screenshot <path>: saved|FAILED").
+	// An empty filename means "the default": screenshots/<zone>_<stamp>.png
+	// under the first writable cache root (the $WILLEQ_CACHE_DIR walk of
+	// include/client/data_paths.h; the client's cwd if none is writable).
+	// An explicit filename is used as given (its parent directory is
+	// created for relative names). Runs on the render thread like
+	// processSlashCommand(). Returns false when the image could not be
+	// written.
+	bool runScreenshot(const std::string& filename);
+
+	// B1063: the default screenshot filename's zone component. Pure --
+	// unit-tested without a renderer. A zone with no filesystem-safe
+	// character (empty name, only unsafe characters) becomes "nozone"; every
+	// other character that is not [A-Za-z0-9_-] is replaced by '_'.
+	static std::string sanitizeZoneName(const std::string& zoneName);
+
 private:
 	RendererContext& ctx_;
 	IrrlichtRenderer& owner_;

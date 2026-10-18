@@ -326,6 +326,17 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     #ifdef EQT_HAS_GLES2 -- a preprocessor line the composer's normaliser
 //     drops -- so in a non-GLES2 build the composed order is the pre-B997
 //     363 and this entry is the only thing that moves.)
+//   * B1063 (GitLab #383): the F12 screenshot's one body. ONE TEXT change,
+//     no insertion, no reorder: entry 352 becomes
+//     `ctx_.Slash().runScreenshot("");` -- the deferred F12 arm (the
+//     Receiver's RA::Screenshot, held in pendingScreenshot_ until after the
+//     frame is drawn and before the swap) now runs the SAME body the typed
+//     /screenshot runs, so both take screenshots/<zone>_<stamp>.png under
+//     the cache root and both print the chat line. Previously entry 352 was
+//     `owner_.saveScreenshot("screenshot.png");` -- a fixed name in the
+//     process's cwd with no confirmation, which is why F12 and /screenshot
+//     disagreed. Entries 0-351 and 353+ are byte-identical; the count stays
+//     364.
 const size_t kGoldenSize = 364u;
 
 std::vector<std::string> readLines(const std::string& path) {

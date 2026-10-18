@@ -309,7 +309,9 @@ irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& nam
                                                           const std::string& sourceArchiveStem) {
     // Note: fileSystem_ is not actually used in this function - textures are loaded
     // from raw byte data, not from the filesystem. Only driver_ is required.
-    if (data.empty() || !driver_) {
+    // EQE1-authoritative character textures retain names but release the S3D
+    // bytes. The constrained cache resolves those names from the flat pack.
+    if (!driver_ || (data.empty() && (!constrainedCache_ || !constrainedCache_->hasEQE1Loaders()))) {
         return nullptr;
     }
 

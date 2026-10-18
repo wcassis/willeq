@@ -799,10 +799,20 @@ void FrameComponent::renderFrameTail() {
         }
     }
 
-    // Take deferred screenshot after all rendering, before swap
+    // B1063 (#383): the F12 hotkey. The Receiver decoded the live F12 press
+    // to RA::Screenshot (this press is the hotkey's ONLY live route -- the
+    // game thread never sets InputAction::Screenshot, its bridge arm exists
+    // for completeness and for injected actions). The screenshot is taken
+    // HERE, after the whole frame is drawn and before the swap, so the
+    // capture is the frame just rendered. It runs the SAME body the typed
+    // /screenshot runs -- SlashCommandsComponent::runScreenshot() -- so the
+    // hotkey and the command agree on the path (screenshots/<zone>_<stamp>.png
+    // under the cache root) and on the chat line. Previously this arm wrote
+    // a fixed "screenshot.png" into the process's cwd with no chat
+    // confirmation, which is why F12 and /screenshot disagreed.
     if (pendingScreenshot_) {
         pendingScreenshot_ = false;
-        owner_.saveScreenshot("screenshot.png");
+        ctx_.Slash().runScreenshot("");
     }
     frameTimings_.postRender = measureSection();
 }

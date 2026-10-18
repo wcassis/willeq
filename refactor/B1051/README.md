@@ -356,6 +356,72 @@ the merged texture cache that `preloadVariantModel` falls back off. The base
 zone/chr-file textures that only reach the merge once the merged cache is
 built, which never happens in ETC1 mode.
 
+### ETC1 merged cache follow-up (B1051-ETC1)
+
+The archive-index preloader has a second-call failure, now pinned without a
+device by `EntityModelSharingTest.Eqe1ArchiveIndexPreloadKeepsVariantTextures`.
+The first QCM variant request loads its JSON-named character archive and adds
+that archive's texture names to the local map. A subsequent variant request
+hits `otherChrCaches_`; the cache-hit arm does **not** add those names again.
+Previously `preloadVariantModel()` copied `globalTextures_` if the merged map
+was invalid, so the second request's model lacked its per-part QCM names. The
+pre-fix run failed with `ETC1 archive-index preload lost QCM chest variant`
+and `... face variant` (`qcmch0101.bmp`, `qcmfa0101.bmp`). It now calls the
+existing `getMergedTextures()` builder (which includes cached character
+archives, numbered globals and zone textures under its own mutex) before
+searching the variant. The test creates a small ETC1 pack at runtime and
+exercises the archive-index path with real character archives; it is green at
+the fix head.
+
+The EQE1-authoritative parse keeps texture names but releases S3D raw bytes.
+Two further gates rejected those valid names: sequential Step 8c skipped
+`TextureInfo` with empty `data`, and the mesh builder's on-demand BMP loader
+returned before asking `ConstrainedTextureCache` for the compressed entry.
+Both now let a name-only texture through when EQE1 loaders are registered;
+the plain S3D path retains its existing raw-byte requirement. The small-pack
+`Eqe1SourceArchiveTest.NameOnlyS3dTextureLoadsFromItsEqe1Pack` pins the
+on-demand route and its source-archive selection.
+
+The lane-2 x86 rendered A/B at head `838a1281` logged
+`SEQ Step8c: entity 6 (Guard_Liben000) loaded 13 variant textures via cache`
+in ETC1 mode, versus 0 at the pre-fix head. `tex_global=0` remained true:
+the fix uses the cached character archive through the merged map, not global
+textures. The run's first-person and third-person captures did **not** give a
+classifiable Guard Liben torso: movement stopped behind an estate wall.
+The older claimed Guard Liben colour comparison in this file is invalid as
+per-NPC evidence: `fixed-etc1/frames3/frame_000155.png` shows a wall and
+`fixed-rgba/frames3/frame_000164.png` shows the Ironforge Estate sign and
+fence, not Guard Liben. Do not quote their 42/292 coarse-unique values as an
+NPC before/after. Current raw x86 logs and stills are under
+`/home/user/kb-evidence/kb-b1051-etc1-variant-cache/x86/`. A further
+lane-2 run at the same pose as the XU4 A/B framed Guard Treitan (race 71,
+the same variant-armoured QCM class). `b1051_per_npc_metrics.py` on the
+visible guard crop of 3840x2160 raw stills yielded:
+
+| lane-2 still | coarse-unique | gold | red | top-5 share |
+|---|---:|---:|---:|---:|
+| ETC1, `x86/treitan/etc1/frame_000029.png` | 1193 | 0.1631 | 0.0220 | 0.301 |
+| RGBA, `x86/treitan/rgba/frame_000028.png` | 1142 | 0.1533 | 0.0304 | 0.291 |
+
+Both stills visibly show distinct gold, crest and grey armour, and ETC1 is
+in the RGBA band for this *actual NPC* crop. Their 4K coarse-unique numbers
+must not be compared to the old 720p wall/sign values. Guard Liben spawned
+in this run (`etc1.log` and `rgba.log` both show 13 variants) but was not
+visible in the measured stills, so the card's literal named-NPC requirement
+remains unverified even though its same-class pixel discriminator passes.
+
+The XU4 device A/B DID frame one classifiable race-71 guard at the same
+saved pose: `before2/frame_000018.png` shows Guard Treitan as one flat
+wood-grain body; `after/frame_000015.png` at head `838a1281` shows separate
+gold chest/crest, grey arms and gold helmet. Step 8c changed from 0 to 13
+variant textures for that same guard (`xu4/before2.log`, `xu4/after.log`).
+The count for this one visible guard is flat 1 before, 0 after. The scripted
+relocation to the nominal nearby guard cluster showed no classifiable NPC
+in frame; a same-zone `#zone qeynos2` safe-point scout at `/loc 428,-74,3`
+also showed only scenery. The card's five-NPC crowd count remains open; do
+not report a zero-flat crowd from empty scenery. Raw device stills and logs are under
+`/home/user/kb-evidence/kb-b1051-etc1-variant-cache/xu4/`.
+
 ### The step-8c promote fix (separate, smaller, real)
 A distinct defect: the sequential zone-load path staged each race model in
 `preparedModelData_` (step 8a) but `getRaceModelData()` only reads the main
@@ -370,14 +436,10 @@ variant-cache defect above; it alone does not close finding (a) (the ETC1 leg
 still loads 0 variants for all 32 in-radius variant-armored entities even
 with it).
 
-### Left open
-The ETC1-mode merged-texture-cache defect (variant `01xx` QCM armour never
-reaches the cache under `--eqe1-path`) is the remaining client-side cause of
-the flat ETC1 NPC render on x86 — and, if it reproduces on the device, of the
-same class of flat render there. It is in the client path this MR touches
-(constrained cache + zone/chr texture merge), but the fix is a
-multi-site change to the ETC1/archive-index model-load path, out of scope for
-a one-line patch. Direction for Will: either extend the ETC1 load path to build
-the merged texture cache the plain path does (the client-side close), or treat
-the x86 ETC1 flat render as this client defect and the Xu4 A/B as the driver
-leg.
+### Left open at the previous MR (superseded by B1051-ETC1)
+The ETC1-mode merged-texture-cache defect was left open by MR !173. The
+follow-up above now builds the same merged map in the archive-index variant
+path and passes name-only EQE1 textures to the cache. The XU4 one-guard
+before/after confirms the client fix is visible on that device. The separate
+five-NPC crowd count and valid x86 Guard Liben torso metrics remain open;
+the earlier x86 pixel numbers measured scenery, not a guard.

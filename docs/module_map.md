@@ -494,8 +494,11 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (41 tests: B1093's `ArmContainerGuard`, `FacePickXmlGeometry`, `FileSizeCeiling`, `DocCitations` (+ B1020's
-`DocCitationsSelfTest`, the anchored-citation probes), B1030's
+`hygiene` (46 tests: B1093's `ArmContainerGuard`, `FacePickXmlGeometry`, `FileSizeCeiling`, `DocCitations` (+ B1020's
+`DocCitationsSelfTest`, the anchored-citation probes), B1094's
+`InstalledPackMatchesPin` (the installed shared pack vs the pin, hard only
+on fable) + `PackCheckContract` (the `--check`-is-pin-only /
+`--check-installed` contract, stub builders), B1030's
 `DockerfileArm64Derived` (the arm64 Dockerfile stays arch-swapped armhf) and
 `PiEnvLaneResolution` (`scripts/pi/env_selftest.sh`: a PI_LANE that disagrees
 with a listed PI_HOST is refused, never rewritten), B1057's
@@ -589,7 +592,23 @@ resolver: the x86 gate's benchmark invocation must stay byte-identical to
 `tests/goldens/pi/<zone>/f<n>.png` + `platforms.pi` resolution, the NOT YET
 BLESSED verify, the `--bless --platform pi` refusal, the `--capture` layout
 (nothing under `tests/goldens/`) and the Mesa-prefix maps proof; pure
-python, no benchmark, no build artefact)
+python, no benchmark, no build artefact), and B1034's `EglConfigDumpB1034`
+(`scripts/ci/egl_config_dump.sh verify`: the x86 surfaceless-EGL fixture at
+`tests/data/b1034/surfaceless_es2.json` re-dumped live on the build host with
+CI's GL pin, `__EGL_VENDOR_LIBRARY_FILENAMES` -> `50_mesa.json` +
+`LIBGL_ALWAYS_SOFTWARE=1`; a driver update that changes llvmpipe's config
+list goes RED -- re-dump with `dump <dir>`), B1034's
+`GbmConfigSelectForsB1034` (`scripts/ci/test_gbm_config_select_forks.py`:
+the `chooseConfigForGbmFormat` wrapper is hand-copied into BOTH device forks
+and must stay byte-identical; the shared logic lives in
+`docker/irrlicht-drm/gbm_config_select.h`, unit-tested by
+`test_egl_config_select` in the build stage) and B1034's
+`PiHdmiForceSelftest` (`scripts/pi/hdmi_force_selftest.sh`: the
+`pi_hdmi_force_on`/`pi_hdmi_restore` contract of `scripts/pi/env.sh` against
+a fake device surface -- shadowed `ssh`/`sudo`, local status/record files --
+no device, no ssh, no root; force-on records the pre-force status, restore
+writes `detect` back (hotplug, never the literal recorded status), a foreign
+owner's record is refused, and a failed sudo is a refusal, not a forced lane)
 -- the three
 `*Reproducible` tests are the pins on the three derived assets, see
 `CLAUDE.md`'s recipe table; `WriteOnlyFields` and `ZeroCallers` are the two

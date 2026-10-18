@@ -79,6 +79,47 @@ dev-u24's local lane -- two hosts, one file. The lease fixes both:
   takeover after expiry, 63 + the re-lease one-liner, re-acquire, reap dead-vs-live, dry-run,
   five-way take race (exactly one winner), corrupt record refused. Red-before is N/A (new helper).
 
+### The process-watcher zone exemption (B940, #258)
+
+The `eqemu-server` image's `process-watcher.pl` (bind-mounted at
+`assets/scripts/`) `kill -9`s any process whose
+lifetime-average CPU exceeds 30 % after 60 s unless its ps line matches an allowlist
+regex -- and the allowlist omits `zone`, so a freshly-respawned zone busy loading a
+client was killed mid-load (iceclad ~65-75 s, overthere ~38 s on the Pi; the client's
+`ECONNREFUSED` was the kill of its own zone pid; `refactor/B925/README.md`). The lanes'
+stacks carry the exemption in the stack's own configuration, provisioned persistently by
+`scripts/eqemu/watcher_provision.sh --lane N` (under the lease). A provision run with
+the container up kills every live watcher form and starts the replacement itself,
+with `PROCESS_WATCHER_EXCLUDE` passed explicitly (docker exec's env is not the
+entrypoint's) and re-reads its `/proc/<pid>/environ` as proof.
+
+- **the file**: `AKK_DIR/assets/scripts/process-watcher.pl`, patched by
+  `scripts/eqemu/b940_patch_watcher.pl` -- the allowlist regex becomes
+  `PROCESS_WATCHER_EXCLUDE`-driven, and the **upstream regex stays the default**, so a
+  stack without the env var behaves exactly as before (the patch is a literal splice,
+  `perl -c`s the patched text before it replaces the file, and refuses when the B940
+  marker is already present).
+- **the value**: the `eqemu-server` service's `environment:` gains one line
+  (`scripts/eqemu/b940_patch_compose.pl`):
+  `PROCESS_WATCHER_EXCLUDE=(bin|/bin)/zone`. The value is a bare regex body compiled
+  with `qr//` by the watcher -- no delimiters and no backslashes, because both are
+  eaten by the compose env -> shell -> `qr//` chain. It exempts exactly the zone
+  binary's argv wherever it sits on the ps line (`./bin/zone iceclad`,
+  `bin/zone overthere`, `/bin/zone`, `/home/eqemu/server/bin/zone qeynos2`); no
+  non-zone eqemu argv carries `bin/zone`, so the exemption cannot leak.
+- **verify**: `scripts/eqemu/watcher_selftest.sh --lane N` (read-only) fails if the
+  watcher lacks the B940 env-read, if the upstream allowlist is no longer the DEFAULT,
+  or if the compose file lacks the exact `PROCESS_WATCHER_EXCLUDE` line. The provision
+  run itself re-proves the surviving value on the lane host through the provisioned
+  code path (both directions: every zone argv exempt, every non-zone argv not) and,
+  with `--busy-zone` (~3 min), proves the exemption live both ways: a CPU burner
+  carrying the REAL `./bin/zone` argv (a `yes` copy installed as `bin/zone` in a
+  scratch dir) survives past the 60 s window under the provisioned watcher, and the
+  same burner is killed by a second watcher run with the env removed (the upstream
+  default) -- the kill line quoted from the watcher's own `process-kill.log`.
+- **proof it fixed the kill**: with the lane provisioned, iceclad's `zone_link_hold`
+  (330 s hold) exits 0 on lane 2 -- the B925 R1 case that dropped ~65-75 s in before.
+
 | | |
 | --- | --- |
 | GitLab | `https://gitlab.goldfarm.local`, project `willeq/willeq` (id 1) |
@@ -981,7 +1022,20 @@ drivers can never render byte-identical frames:
   connector and a CRTC, landing on the card that actually has a display
   (B1054, #374); `WILLEQ_DRM_DEVICE=/dev/dri/cardN` is an explicit
   single-path override whose failure is an error, never a silent
-  fallback.
+  fallback. Since B1034 the same `--drm` KMS path also SUCCEEDS where it
+  previously died: the GBM surface's EGL-config choice
+  (`chooseConfigForGbmFormat`, the logic shared by both device forks in
+  `docker/irrlicht-drm/gbm_config_select.h`) used to take the first of a
+  fixed 64, and a driver whose `eglChooseConfig` lists every 10-bit config
+  ahead of every 8-bit one (a laptop eDP or 10bpc-capable panel offering
+  more than 64 configs) cut the XRGB8888 config off that fixed array, so
+  the fallback was `configs[0]` (10-bit) and the failure moved to
+  `eglCreateWindowSurface` -- the caller's no-depth retry never ran. The
+  selection now queries the count first, allocates, and prefers an 8-bit
+  ARGB/XRGB visual, so an x86 host whose `/dev/dri/card*` has a connected
+  connector and 10-bit configs takes the display through KMS instead of
+  erroring. The CI `gate` job is unaffected: it has no /dev/dri grant and
+  stays on the surfaceless path above.
 - **Pi** (by hand, never a CI job): Mali-400 under the Lima driver on the
   Orange Pi with the shipped LLVM-less Mesa prefix, goldens at
   `tests/goldens/pi/<zone>/f<n>.png`, section
@@ -1085,6 +1139,43 @@ net: `test_zone_budget_census` (pure python, every pipeline),
 `zone_budget_census_smoke` (the 3-zone smoke, label `slow`) and
 `test_zone_census_pack_selfheal` (the self-heal's exit-code contract on stub
 verify/builder binaries, pure bash+python).
+
+## The shared pack and pack-changing branches (B1094, issue #414)
+
+The shared pack `/mnt/projects/EverQuest_ETC1/willeq.eqe1` is one mutable file
+read live by every worktree, every runner and the Pi lanes. Since B1094 the
+tree draws a hard line between the two properties that used to live in one
+test verdict:
+
+- **Reproducibility from the inputs** -- `PackReproducible` (ctest, labels
+  `hygiene;slow`) runs `scripts/build_willeq_pack.sh --check`, which rebuilds
+  into a temp file and compares it to the pinned `data/willeq.eqe1.sha256`
+  ONLY. The installed pack's sha is printed as `installed (INFO only):`,
+  never as a verdict. The contract is pinned by `PackCheckContract`
+  (`scripts/ci/test_pack_check_contract.py`, stub builders, temp files only):
+  a `--check` that still reads the installed pack into its exit code is a red
+  hygiene test. This is what made B1076's card break every other pipeline at
+  the fable tip (MR !230 pipeline 1626): the old `--check` compared the
+  rebuild to the pin AND to the installed pack, so one card installing its
+  branch pack over the shared file was a red for N-1 branches.
+- **The installed pack matches the pin** -- `InstalledPackMatchesPin` (ctest,
+  label `hygiene`) runs `scripts/ci/installed_pack_matches_pin.sh`, which is
+  `build_willeq_pack.sh --check-installed` (no build, no builders) with the
+  verdict converted by `CI_COMMIT_BRANCH`: on **fable** a mismatch is a hard
+  FAIL (a merge changed the pin and the orchestrator has not installed yet --
+  the pipeline says so loudly); anywhere else it prints-and-passes, so a
+  pack-changing branch is green on its own pipeline and its MR pipeline.
+
+**What a worker does on a pack-changing card:** change the inputs
+(`data/textures/*.bmp`, `tools/ui_atlas_builder`), rebuild with
+`scripts/build_willeq_pack.sh --output <tmpfile>` -- NEVER a bare install,
+and NEVER `--output` at the shared path -- commit the inputs plus the
+rewritten `data/willeq.eqe1.sha256` in ONE commit, and write
+`PACK INSTALL OWED AT MERGE: <full 40-char sha>` in the completion summary.
+**The orchestrator installs the shared pack at merge** (the script without
+`--check`/`--check-installed`: temp file in the destination directory, `mv`
+into place, same as before B1094). Until it does, fable's
+`InstalledPackMatchesPin` is the loud red that names exactly what is owed.
 
 ## The walked zone-line crossing (B1068, issue #388)
 
