@@ -557,7 +557,7 @@
       {
         "zone": "qeynos2",
         "memory": {
-          "eqe1MappedBytes": 131057220,
+          "eqe1MappedBytes": 131306724,
           "eqe1ArchiveCount": 28,
           "placeableObjectsBytes": 145812,
           "characterModelsBytes": 1445411
@@ -566,7 +566,7 @@
       {
         "zone": "gfaydark",
         "memory": {
-          "eqe1MappedBytes": 129723312,
+          "eqe1MappedBytes": 129972816,
           "eqe1ArchiveCount": 28,
           "placeableObjectsBytes": 266388,
           "characterModelsBytes": 1445411
@@ -575,7 +575,7 @@
       {
         "zone": "befallen",
         "memory": {
-          "eqe1MappedBytes": 124207808,
+          "eqe1MappedBytes": 124457312,
           "eqe1ArchiveCount": 28,
           "placeableObjectsBytes": 130968,
           "characterModelsBytes": 1445411
@@ -584,7 +584,7 @@
       {
         "zone": "iceclad",
         "memory": {
-          "eqe1MappedBytes": 143308872,
+          "eqe1MappedBytes": 143558376,
           "eqe1ArchiveCount": 28,
           "placeableObjectsBytes": 215112,
           "characterModelsBytes": 1522962
@@ -593,7 +593,7 @@
       {
         "zone": "timorous",
         "memory": {
-          "eqe1MappedBytes": 138366696,
+          "eqe1MappedBytes": 138616200,
           "eqe1ArchiveCount": 28,
           "placeableObjectsBytes": 981756,
           "characterModelsBytes": 1465468
