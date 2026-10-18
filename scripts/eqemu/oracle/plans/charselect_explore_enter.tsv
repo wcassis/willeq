@@ -1,0 +1,20 @@
+# B888-CC3 (#204): B step -- Enter from Explore mode: which character enters.
+#
+# No zone row: Testchar's last zone (Greater Faydark, per the select-screen
+# caption CC-2 measured) is where Enter from Explore takes it -- the question
+# is WHO enters, which the world log and the pcap's OP_EnterWorld answer.
+# Testchar is ALREADY the login-selected row (the driver's login leaves the
+# select screen with Testchar selected), so a bare Enter-press in Explore
+# must enter with Testchar. Camp (Exit) is the clean in-world exit
+# (wine-oracle.md); the driver's cleanup stops the world, which writes the
+# zone-in back before the DB restore.
+
+login	Testchar	0
+wait	15000	0	select_settle
+explore-open	0	0	explore_window
+wait	6000	0	explore_settle
+enter-press	0	0	enter_from_explore
+wait	60000	0	inworld_settle
+still	inworld_after_enter	0	inworld_after_enter
+camp-quit	0	0	camp_exit
+wait	10000	0	select_after_camp

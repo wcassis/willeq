@@ -880,7 +880,7 @@ EXEMPT_TESTS_GROUPS = {
     ("(free)", "findControlClass"): "observer",
     ("(free)", "dispositionText"): "observer",
     ("(free)", "applyTradeskillContainerClosed"): "B899",
-    # B888 (#204): the era data's full lists and row sources are the tests'
+    # B888-CC3 (#204): the era data's full lists and row sources are the tests'
     # window onto the oracle rows the production lookups filter. (B998 hosted
     # the creation screen on the character-select screen, which made its
     # click resolver, Get Name round trip and refusal applier live.)
@@ -1088,6 +1088,16 @@ EXEMPT_TESTS_GROUPS = {
     # the view" assertion; the class's live callers are setCharacter/
     # hasCharacterModel, wired by the preview host and the paperdoll.
     ("CharPreviewScene", "modelRace"): "observer",
+    # B888-CC3 (#204): the clz backdrop's observation windows. CharBackdropScene
+    # is thin/render-thread-only, exercised live in the visual gate (the
+    # showroom stood up in its own scene manager under the pre-zone frame);
+    # the headless leg (test_explore_backdrop.cpp) drives the same class under
+    # an EDT_NULL device. hasScene is its "the 3D slice stood up" window and
+    # characterCount is its "the per-row stands round-trip" window onto the
+    # setCharacter/clearCharacter bookkeeping; their live callers are init/
+    # setCharacter/renderScene/rowForClick, wired by the char-select host.
+    ("CharBackdropScene", "hasScene"): "observer",
+    ("CharBackdropScene", "characterCount"): "observer",
     ("CharacterModelView", "getCurrentGender"): "observer",
     ("CharacterModelView", "getCurrentRaceId"): "observer",
     ("CharacterModelView", "isReady"): "observer",
