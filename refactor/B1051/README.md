@@ -299,3 +299,82 @@ on the host; compiling there is forbidden), so the Mesa commit/line is still
 open; a `xu4` preset or a Mesa patch is a decision for Will (direction (2)
 fallback). Box left as found: no process, work dir removed, UI ini absent,
 launcher hash unchanged.
+
+## x86 lane-2 at head, with the deeper finding (2026-10-18)
+
+QA finding (a) — "x86 ETC1 after-stills still a flat uniform body" — was
+re-run at the merged head (origin/fable + the B1051 fix) on lane 2
+(llvmpipe, the same driver as the original x86 proof) against `qeynos2`,
+Guard_Liben (the nearest present race-71 QCM guard; Guard_Treitan is absent
+from today's roster). Recipe: `wait 15; #zone qeynos2; wait 45; /hideui;
+wait 5; /target + /moveto + /face Guard_Liben; wait 40; wait 35; q`,
+`--dump-every 30`, 1280x720. Metric: `refactor/B1051/b1051_per_npc_metrics.py`
+(committed this run). Evidence: `/home/user/b1051-after/{x86-etc1,x86-rgba,
+fixed-etc1,fixed-rgba}/`.
+
+### The fix works on the plain (RGBA/BMP) path
+Fixed binary (head 3c206946, incl. the step-8c promote fix below), Guard_Liben:
+- **RGBA leg**: `SEQ Step8c: entity 6 (Guard_Liben000) modelData=true`,
+  `loaded 13 variant textures` (`qcmch0101`, `qcmfa0101`, …). Still
+  (frame_000164): coarse_unique **292**, gold **0.075**, red **0.122** —
+  distinct per-part armour.
+- **ETC1 leg** (`--eqe1-path /mnt/projects/EverQuest_ETC1`): Guard_Liben
+  deferred (`dist 465 > 400`, dynamic EntityPrepWorker path) and
+  **loaded 0 variant textures** (`variants=0`). Still (frame_000155):
+  coarse_unique **42**, gold **0.024**, red **0.004** — flat, matches QA.
+
+So the fix is **incomplete**: it does not restore per-NPC variant armour in
+the ETC1/`--eqe1-path` load path. This is a client defect, not the Panfrost
+driver: the same binary's plain path loads the armour, the ETC1 path does not.
+
+### Deeper root cause: variant QCM armour never enters the cache in ETC1 mode
+Clean A/B over the whole leg (in-radius entities with `appearance.texture>0`
+or `helm>0`), `ab_pairs.py`:
+
+| leg | variant-armored | in-radius (seq) | of those loaded >0 variants |
+|---|---:|---:|---:|
+| RGBA | 42 | 42 | **42** (guards load 13) |
+| ETC1 | 32 | 32 | **0** |
+
+The ETC1 leg logs `RaceModelLoader::preloadVariantModel: merged texture cache
+not valid, using global textures only` (variant_loading_preload.cpp:91). When
+`mergedTexturesCacheValid_` is false, `preloadVariantModel` sources the variant
+mesh's textures from `globalTextures_` only — which holds the **base** series
+(`qcm*0001`, 60 uploads in the ETC1 leg) but **not** the per-NPC variant series
+(`qcm*0101/0201`, 0 uploads). In the plain path the merged cache is built and
+valid, so the variant series is present.
+
+The variant series is **present in the ETC1 packs** (enumerated via the EQE1
+index: `qeynos2_chr.eqe1` and `commons_chr.eqe1` each carry 55 `qcm*0101/0201`
+entries incl. `qcmch0101`, `qcmfa0101` + their `_alpha` companions). So this is
+**not an asset gap** — it is the ETC1/archive-index load path failing to build
+the merged texture cache that `preloadVariantModel` falls back off. The base
+`0001` textures load because they are global; the per-NPC `01xx` variants are
+zone/chr-file textures that only reach the merge once the merged cache is
+built, which never happens in ETC1 mode.
+
+### The step-8c promote fix (separate, smaller, real)
+A distinct defect: the sequential zone-load path staged each race model in
+`preparedModelData_` (step 8a) but `getRaceModelData()` only reads the main
+cache, and promotion ran once per entity *after* step 8c (loop bottom). The
+first in-radius entity of each race/gender therefore saw `modelData=false`
+and loaded 0 variants. Fixed by promoting in step 8c before the read
+(`renderer_zone_load_entities.cpp`, commit 8ef0952d). The dynamic/deferred
+path already promoted before reading (entity_mesh_build.cpp:154,
+entity_build_step.cpp:273), which is why only the sequential first-of-race
+entity was affected. This is a genuine but **separate** bug from the ETC1
+variant-cache defect above; it alone does not close finding (a) (the ETC1 leg
+still loads 0 variants for all 32 in-radius variant-armored entities even
+with it).
+
+### Left open
+The ETC1-mode merged-texture-cache defect (variant `01xx` QCM armour never
+reaches the cache under `--eqe1-path`) is the remaining client-side cause of
+the flat ETC1 NPC render on x86 — and, if it reproduces on the device, of the
+same class of flat render there. It is in the client path this MR touches
+(constrained cache + zone/chr texture merge), but the fix is a
+multi-site change to the ETC1/archive-index model-load path, out of scope for
+a one-line patch. Direction for Will: either extend the ETC1 load path to build
+the merged texture cache the plain path does (the client-side close), or treat
+the x86 ETC1 flat render as this client defect and the Xu4 A/B as the driver
+leg.
