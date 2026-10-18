@@ -800,6 +800,11 @@ private:
     const FrameBudgetGovernor* impostorGovernor_ = nullptr;
     uint16_t impostorTargetId_ = 0;
     std::vector<std::string> impostorGroupNames_;
+    // B1071 (GitLab #391): the last logged state of the target's draw path,
+    // for the transition-only [impostor] target line. nullptr = nothing
+    // targeted (or not yet logged).
+    const char* lastImpostorTargetState_ = nullptr;
+    uint16_t lastImpostorTargetId_ = 0;
     bool impostorLoading_ = false;
     bool impostorRetainOnRemove_ = false;   // updateEntityAppearance's rebuild keeps the cell
     int impostorForceMode_ = 0;
