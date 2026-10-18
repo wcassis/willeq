@@ -405,8 +405,9 @@ visible guard crop of 3840x2160 raw stills yielded:
 
 Both stills visibly show distinct gold, crest and grey armour, and ETC1 is
 in the RGBA band for this *actual NPC* crop. Their 4K coarse-unique numbers
-must not be compared to the old 720p wall/sign values. Guard Liben was absent
-from this later server roster, so the card's literal named-NPC requirement
+must not be compared to the old 720p wall/sign values. Guard Liben spawned
+in this run (`etc1.log` and `rgba.log` both show 13 variants) but was not
+visible in the measured stills, so the card's literal named-NPC requirement
 remains unverified even though its same-class pixel discriminator passes.
 
 The XU4 device A/B DID frame one classifiable race-71 guard at the same

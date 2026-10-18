@@ -199,8 +199,8 @@ not a visible guard, and cannot establish a per-NPC pixel band. A new x86
 lane-2 A/B on class-equivalent Guard Treitan did frame the torso: ETC1 versus
 RGBA coarse-unique 1193/1142, gold 0.1631/0.1533, red 0.0220/0.0304 at
 3840x2160 (`b1051_per_npc_metrics.py`). Both modes show the armour; the
-literal Guard Liben requirement is still open because he was absent from
-that server roster. Evidence:
+literal Guard Liben requirement is still open because he was not visible in
+the measured stills (though both logs show him spawning). Evidence:
 `/home/user/kb-evidence/kb-b1051-etc1-variant-cache/`.
 
 ## Kernel and module state on the box
