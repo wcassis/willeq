@@ -254,8 +254,6 @@ never a defect).
 | Xvfb + VNC + Audio | Remote with sound | HTTP stream | VNC + VLC |
 | Native RDP | Windows users, better compression | RDP audio | mstsc.exe, xfreerdp |
 
-RDP and VNC can run simultaneously if both X11 and RDP are enabled.
-
 ### Where the client's shipped data comes from
 
 **The client does not have to be started from the repo root** (T399, board
@@ -273,8 +271,7 @@ existing file wins:
    beside the binary;
 4. the directory holding the running executable, then up to five parents.
 
-If nothing exists the input comes back unchanged, so the caller's own "could not
-open X" names the X it asked for. `willeq.json` is resolved the same way. **A new
+`willeq.json` is resolved the same way. **A new
 shipped-data load must call `ResolveDataPath()`** —
 `tests/test_data_path_routing.cpp` re-takes the census on every ctest run and
 fails on a bare `"config/…"` / `"data/…"` literal that does not.
@@ -298,8 +295,8 @@ test that fails if the checked-in bytes and their inputs drift apart:
 
 | asset | recipe | pinned by | ctest |
 |---|---|---|---|
-| `data/textures/*.bmp` (71 files) | `scripts/build_textures.sh` → `tools/generate_textures` (64, procedural), `tools/spell_sprite_atlas_builder` (1), `tools/item_icon_atlas_builder` (2), `tools/spell_icon_atlas_builder` (4) | `data/textures.sha256` | `TexturesReproducible` |
-| `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (140 entries: 71 textures, 68 ETC1 `_alpha` companions, 1 raw — `build/bin/verify_eqe1` prints the census) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
+| `data/textures/*.bmp` (72 files) | `scripts/build_textures.sh` → `tools/generate_textures` (64, procedural), `tools/spell_sprite_atlas_builder` (1), `tools/item_icon_atlas_builder` (2), `tools/spell_icon_atlas_builder` (4), `tools/spellbook_backdrop_builder` (1) | `data/textures.sha256` | `TexturesReproducible` |
+| `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (142 entries: 72 textures, 69 ETC1 `_alpha` companions, 1 raw — `build/bin/verify_eqe1` prints the census) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
 | `data/willeq.db` (28,791 rows in ten tables; `metadata.version` = 7) | `scripts/build_willeq_db.sh` → `tools/willeq_db_builder`, over the EQ client's seven `*.txt` files plus `data/item_models.json` and `config/race_models.json` | `data/willeq.db.sha256` | `DbReproducible` (T450) |
 
 The pack lives outside the repo and is read live by every worktree; only
@@ -317,7 +314,7 @@ builder's design). Audit a host's pack directory:
 (STALE on any v1/v2, exit 1). Pinned by test_eqe1_stale_pack and
 test_eqe1_verify_stale_pack.
 
-**The pack's inputs are the 71 BMPs plus `tools/ui_atlas_builder`, so a texture
+**The pack's inputs are the 72 BMPs plus `tools/ui_atlas_builder`, so a texture
 change cascades**: regenerate the BMPs, rewrite `data/textures.sha256`
 (`--write-pins`), rebuild the pack, update `data/willeq.eqe1.sha256` — all in
 **one commit**, or both tests go red.
@@ -341,13 +338,15 @@ its own deliberate check rather than being swept along.
 `data/equipment_models.json` and `tools/equipment_index_builder` still exist and
 now feed nothing — boarded, not deleted as a side effect.
 
-**`data/textures/` has FOUR recipes (B300/B376/B1077).** Sixty-four of the
-BMPs are procedural (`generate_textures`); the other seven are the official
+**`data/textures/` has FIVE recipes (B300/B376/B1077/B1076).** Sixty-four of the
+BMPs are procedural (`generate_textures`); the other eight are the official
 client's own art. `spell_sprite_atlas.bmp` comes from `SpellEffects/spel*.tga`
 via `tools/spell_sprite_atlas_builder`, and `item_icons0.bmp` + `item_icons1.bmp`
 from `uifiles/default/dragitem1..34.tga` via `tools/item_icon_atlas_builder`,
-the four `spell_icon*.bmp` via `tools/spell_icon_atlas_builder`.
-`build_textures.sh` runs all four into the same directory and the pin file
+the four `spell_icon*.bmp` via `tools/spell_icon_atlas_builder`, and
+`spellbook_backdrop.bmp` (book tiles + Done, composed from `uifiles/default`)
+via `tools/spellbook_backdrop_builder`.
+`build_textures.sh` runs all five into the same directory and the pin file
 covers the union.
 
 #### The item icon sheets
@@ -420,7 +419,7 @@ the plain style — an invented override is the guess Will's ruling forbids.**
 
 #### Texture alpha
 
-The census re-measured at T444 is **67 of the 71 shipped 32-bit with their alpha
+The census re-measured at T444 is **68 of the 72 shipped 32-bit with their alpha
 in-band**. The four 24-bit ones each carry a written reason in
 `tests/test_texture_alpha_census.cpp`, whose `EveryShippedBmpIsAccountedFor`
 makes a new generator declare which side it is on: `spell_particle_fallback.bmp`
@@ -429,7 +428,7 @@ which is what an additive blend samples), `detail_atlas.bmp` (**B410**: 24-bit o
 scope, not a measured reason; both consumers alpha-BLEND it, so converting it
 is a look change), and `rain_streaks.bmp` +
 `snow_flakes.bmp` (no consumer). Since T427 **every one of
-the 71 shipped BMPs is now byte-reproducible from its generator** and
+the 72 shipped BMPs is now byte-reproducible from its generator** and
 `NOT_REPRODUCIBLE` is empty. `generate_textures --report` prints the census.
 
 **A 32-bit entry is not free**: an ETC1 256x256 entry with mips is 43,704
@@ -686,7 +685,7 @@ compiles only the DRM/FB device. On x86 the forked device
 (llvmpipe), which is how CI runs the real GLES2 driver headlessly.
 
 **Legacy platforms**: desktop GL 2.1 on Noble is retired (P32, `docs/decisions.md`
-2026-07-28); `--no-gles2` is gone; Jessie + Mali blob + gl4es is superseded.
+2026-07-28); `--no-gles2` is gone.
 
 **DRM input handling**: the DRM device
 (`docker/irrlicht-drm/CIrrDeviceFB.cpp`) reads keyboard/mouse via Linux evdev

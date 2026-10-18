@@ -164,6 +164,11 @@ struct SlotDisplayInfo {
     // B442b (#151 rows 19-21): the bag size, 0 = not a container. A RIGHT
     // click on a general slot holding a bag toggles its window.
     uint8_t bagSlots = 0;
+    // B1076 (GitLab #396): the spell the scroll teaches (field 154, 0 for a
+    // non-scroll). The book's scribe gesture (click a scroll, then click an
+    // open slot) reads it here -- the render thread keeps no shadow of the
+    // game-thread InventoryManager.
+    uint32_t scrollSpellId = 0;
 };
 
 // Cached inventory state for rendering
@@ -524,16 +529,62 @@ struct SpellbookPopupState {
     bool isOpen = false;
     std::vector<SpellbookDisplayEntry> spells;  // All scribed spells
     int currentPage = 0;                        // 0-based page index
-    static constexpr int SPELLS_PER_PAGE = 8;
-    int hoveredSlot = -1;                       // 0-7 within current page
+    // B1076 (GitLab #396): the oracle's spread is TWO 2x4 pages open at once
+    // (SBW_Spell0..15, spellbook_layout.h), so a "page" of this popup is the
+    // whole 16-slot spread -- the old single-page-of-8 text list is gone.
+    static constexpr int SPELLS_PER_PAGE = 16;
+    int hoveredSlot = -1;                       // 0-15 within current page
+
+    // B1076 (GitLab #396): the Done "X" (SBW_DoneButton, 13x13 at (449,5)) --
+    // the oracle's own close control. Set by the input hit test, consumed
+    // ONCE per frame by FrameComponent, which runs the SAME toggle body
+    // Ctrl+B, /book and ESC use (toggleSpellbookWindow / the ESC stack), so
+    // the close path is one body, not a second. Consumed-and-reset like
+    // SpellGemPanelState::bookClicked (B1077's book button).
+    bool doneClicked = false;
+
+    // B1076 (GitLab #396): the two-click scribe, latched between its two
+    // clicks (the oracle's own Spellbook Tip: click a spell scroll in the
+    // inventory, THEN click an open slot in the book). `scribScrollSlot` is
+    // the scroll's inventory slot and `scribScrollSpell` the spell it
+    // teaches (read off the slot cache's scrollSpellId at the first click);
+    // -1/0 = the gesture is not armed. A second click on an empty slot
+    // consumes it (pushing ScribeSpellFromScrollIntent); a click on an
+    // occupied slot, the Done X, or a new scroll click re-arms / clears it.
+    // Client-local until the second click -- nothing goes to the server
+    // until then, so a change of mind costs no packets.
+    int scribScrollSlot = -1;
+    uint32_t scribScrollSpell = 0;
+
+    // B1076 (GitLab #396): the spell-swap latch. A right-click on an occupied
+    // slot latches it (`swapFirstSlot`, the slot index within the current
+    // spread); a right-click on ANOTHER occupied slot commits the exchange;
+    // a right-click on the already-latched slot, an empty slot, or the Done
+    // X cancels it. What the commit does -- and whether it reaches the
+    // server -- is measured on the oracle (fix leg 2, plan5_swap.tsv; the
+    // review's finding 3: capture 4 only ever measured the FIRST right-click,
+    // whose opcodes were empty of a swap packet, never the committing second
+    // one). -1 = no swap in flight.
+    int swapFirstSlot = -1;
 
     // T413 (board B296): memorisation progress, from SpellMemorizingData.
-    // The oracle puts this gauge in the SPELLBOOK, not on the gem — see
-    // spellbookMemorizeGaugeRect() below for the quoted XML.
+    // The oracle puts this gauge in the SPELLBOOK, not on the gem — the
+    // render draws it at SpellBookLayout::memorizeGaugeRect().
     bool isMemorizing = false;
     uint8_t memorizeGemSlot = 0;
     uint32_t memorizeProgressMs = 0;
     uint32_t memorizeTotalMs = 0;
+
+    // B1076 (GitLab #396): the scribe gauge, the oracle's SBW_Scribe_Gauge
+    // (same 100x8 piece at the same place as the memorize gauge; the window
+    // draws whichever action is in flight, tint (176,64,0) against the
+    // memorize tint (200,0,200)). There is no in-flight progress event on
+    // the wire -- the server confirms the attempt with SpellScribeCompleted
+    // -- so the gauge shows the in-flight attempt, driven by its lifecycle
+    // through scribeGaugeStart() (the scribe's second click) and
+    // scribeGaugeClear() (the completion event, and the book closing).
+    // 0..1 (1 = a scribe request is in flight).
+    float scribeProgress = 0.0f;
 
     float memorizeProgress() const {
         if (!isMemorizing || memorizeTotalMs == 0) return 0.0f;
@@ -553,22 +604,23 @@ struct SpellbookPopupState {
 void applySpellMemorizing(SpellbookPopupState& state,
                           const eqt::state::SpellMemorizingData& data);
 
-/**
- * T413: the memorisation gauge's rect, the oracle's own, scaled into the
- * centre popup exactly the way InventoryLayout::coinRect()/paperdollRect()
- * scale theirs (proportional, integer division).
- *
- * Quoted from /mnt/projects/EverQuestP1999/uifiles/default/EQUI_SpellBookWnd.xml:
- *
- *   <Gauge item="SBW_Memorize_Gauge">
- *     <Location><X>204</X><Y>312</Y></Location>
- *     <Size><CX>100</CX><CY>8</CY></Size>
- *     <EQType>9</EQType>
- *   </Gauge>
- *
- * inside  <Screen item="SpellBookWnd">  <Size><CX>510</CX><CY>360</CY></Size>.
- */
-irr::core::rect<irr::s32> spellbookMemorizeGaugeRect(const UILayout& layout);
+// B1076 (GitLab #396) fix leg 2, review t_d00ada41 finding 2: the scribe
+// gauge's ONE writer pair. The gauge is driven by the scribe lifecycle, not
+// by a set-and-forget write. scribeGaugeStart() runs on the second click
+// (the scribe request going out): full, because there is no in-flight
+// progress event on the wire -- the server confirms with SpellScribeCompleted
+// when the attempt ends. scribeGaugeClear() runs on that completion event
+// and on the book closing, so the gauge never outlives its attempt. Before
+// this unit nothing ever wrote the gauge back to 0, so it sat at 100 %
+// forever after a single scribe.
+void scribeGaugeStart(SpellbookPopupState& state);
+void scribeGaugeClear(SpellbookPopupState& state);
+
+// B1076 (#396): the old scaled spellbookMemorizeGaugeRect() is gone — the
+// window now draws at the oracle's own 510x360 (layout.bookPopup), so the
+// gauge is `SpellBookLayout::memorizeGaugeRect()` (the quoted 100x8 at
+// (204,312)) blitted 1:1 through the render body's winRect(); the placement
+// is pinned by test_spellbook_layout.
 
 /** Render spellbook popup (center screen). */
 void renderSpellbookPopup(UIRenderer& ui, const UILayout& layout,

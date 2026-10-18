@@ -49,13 +49,10 @@ using namespace EQT::Graphics;
 
 namespace {
 
-struct Res { int w, h; };
-const Res kResolutions[] = {{800, 600}, {1024, 768}, {1280, 720}, {1920, 1080}};
-
-// The oracle's own numbers, re-derived here rather than read back out of the
-// production header, so a change to that arithmetic fails this test.
-constexpr int kMemoX = 204, kMemoY = 312, kMemoW = 100, kMemoH = 8;
-constexpr int kBookW = 510, kBookH = 360;
+// B1076 (#396): the resolution list and the oracle gauge/window numbers that
+// the scaled-gauge placement tests re-derived are gone with those tests; the
+// gauge placement now lives in SpellBookLayout (pinned by
+// test_spellbook_layout).
 
 } // namespace
 
@@ -181,54 +178,12 @@ TEST(SpellbookMemorizeT413, ProgressIsClampedAndNeverDividesByZero) {
     EXPECT_FLOAT_EQ(book.memorizeProgress(), 1.0f);
 }
 
-// ── the gauge's PLACEMENT is the oracle's ──────────────────────────────────
-
-TEST(SpellbookMemorizeT413, TheGaugeRectIsTheOracleGaugeScaledIntoThePopup) {
-    UILayout layout;
-    layout.computeLayout(800, 600);
-    // centerPopup is {256,65,656,415} (400x350) at 800x600 (B1075: the
-    // layout table's CentreSlot; B1077's wider 48px gem column shifts the
-    // centred popup left 8px from 264), so:
-    //   x = 256 + 204*400/510 = 256 + 160 = 416
-    //   y =  65 + 312*350/360 =  65 + 303 = 368
-    //   w = 100*400/510 = 78     h = 8*350/360 = 7
-    EXPECT_EQ(spellbookMemorizeGaugeRect(layout),
-              irr::core::rect<irr::s32>(416, 368, 494, 375));
-}
-
-TEST(SpellbookMemorizeT413, TheGaugeKeepsTheOracleProportionAtEveryResolution) {
-    for (const auto& rc : kResolutions) {
-        UILayout layout;
-        layout.computeLayout(rc.w, rc.h);
-        const auto& popup = layout.centerPopup;
-        const auto g = spellbookMemorizeGaugeRect(layout);
-
-        EXPECT_EQ(g.UpperLeftCorner.X - popup.UpperLeftCorner.X,
-                  kMemoX * popup.getWidth() / kBookW) << rc.w << "x" << rc.h;
-        EXPECT_EQ(g.UpperLeftCorner.Y - popup.UpperLeftCorner.Y,
-                  kMemoY * popup.getHeight() / kBookH) << rc.w << "x" << rc.h;
-        EXPECT_EQ(g.getWidth(), kMemoW * popup.getWidth() / kBookW)
-            << rc.w << "x" << rc.h;
-        EXPECT_EQ(g.getHeight(), kMemoH * popup.getHeight() / kBookH)
-            << rc.w << "x" << rc.h;
-    }
-}
-
-TEST(SpellbookMemorizeT413, TheGaugeIsInsideThePopupAtEveryResolution) {
-    for (const auto& rc : kResolutions) {
-        UILayout layout;
-        layout.computeLayout(rc.w, rc.h);
-        const auto& popup = layout.centerPopup;
-        const auto g = spellbookMemorizeGaugeRect(layout);
-
-        EXPECT_GE(g.UpperLeftCorner.X, popup.UpperLeftCorner.X) << rc.w << "x" << rc.h;
-        EXPECT_GE(g.UpperLeftCorner.Y, popup.UpperLeftCorner.Y) << rc.w << "x" << rc.h;
-        EXPECT_LE(g.LowerRightCorner.X, popup.LowerRightCorner.X) << rc.w << "x" << rc.h;
-        EXPECT_LE(g.LowerRightCorner.Y, popup.LowerRightCorner.Y) << rc.w << "x" << rc.h;
-        EXPECT_GT(g.getWidth(), 0) << rc.w << "x" << rc.h;
-        EXPECT_GT(g.getHeight(), 0) << rc.w << "x" << rc.h;
-    }
-}
+// B1076 (#396): the three scaled-gauge placement tests are gone with
+// spellbookMemorizeGaugeRect() — the window now draws at the oracle's own
+// 510x360 (layout.bookPopup), so the gauge is SpellBookLayout::
+// memorizeGaugeRect() (the quoted 100x8 at (204,312)) blitted 1:1, and its
+// placement is pinned by test_spellbook_layout instead. The payload half
+// (progress/total/progress() above) still pins the gauge's DATA.
 
 // ── the two dropped fields stay dropped ────────────────────────────────────
 //

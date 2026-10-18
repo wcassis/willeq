@@ -338,6 +338,18 @@ bool FrameComponent::toggleSpellbookWindow() {
     if (spellbookState_.isOpen) {
         if (closesOnOpen(UIWindow::Spellbook, UIWindow::Inventory))
             inventoryState_.activePopup = PopupType::None;
+    } else {
+        // B1076 (#396): a closed book takes its in-flight gestures with it --
+        // an armed scroll scribe and a pending swap are both book-local, so
+        // nothing latches across a close.
+        spellbookState_.scribScrollSlot = -1;
+        spellbookState_.scribScrollSpell = 0;
+        spellbookState_.swapFirstSlot = -1;
+        // B1076 fix-2, review t_d00ada41 finding 2: the scribe gauge's
+        // lifecycle also ends here -- a closed book has no in-flight scribe,
+        // so the gauge empties with it (the other arm is the
+        // SpellScribeCompleted event, irrlicht_bridge.cpp).
+        scribeGaugeClear(spellbookState_);
     }
     LOG_INFO(MOD_GRAPHICS, "Spellbook {}", spellbookState_.isOpen ? "opened" : "closed");
     return spellbookState_.isOpen;
@@ -395,6 +407,13 @@ void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& action
     // per frame, through the SAME toggle body Ctrl+B and /newbook use.
     if (spellGemState_.bookClicked) {
         spellGemState_.bookClicked = false;
+        toggleSpellbookWindow();
+    }
+    // B1076 (GitLab #396): the book's Done "X". The hit test (static_ui_input.
+    // cpp) landed doneClicked; consume it here, once per frame, through the
+    // SAME toggle body -- there is one close path, not a second.
+    if (spellbookState_.doneClicked) {
+        spellbookState_.doneClicked = false;
         toggleSpellbookWindow();
     }
     for (const auto& event : actions) {

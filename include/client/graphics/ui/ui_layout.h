@@ -17,6 +17,7 @@
 #include "common/packets/common.h"  // T483: the gem counts
 #include "client/graphics/ui/hotbar_layout.h"  // B1025-H2: the stock window rect
 #include "client/graphics/ui/spell_gem_layout.h"  // B1077: the oracle's gem window size
+#include "client/graphics/ui/spellbook_layout.h"  // B1076 (#396): the book's own 510x360
 #include "client/graphics/ui/ui_layout_table.h"  // B1075: the anchors + co-open sets
 
 namespace EQT {
@@ -87,6 +88,14 @@ struct UILayout {
     // --- CentreSlot: the one-at-a-time centre popups (spellbook, skills,
     // tradeskill container), centred in the middle band ---
     irr::core::rect<irr::s32> centerPopup;
+
+    // --- B1076 (#396): the spellbook's own CentreSlot rect ---
+    // The oracle's SpellBookWnd is 510x360 (Style_Sizable false, the
+    // EQUI_SpellBookWnd.xml <Screen>), which does not fit the shared 400x350
+    // box, so the book is drawn at its OWN size at the same anchor: the box's
+    // top-left corner, clamped wholly on screen. The co-open test checks it
+    // against the gem column and the HUD at every resolution.
+    irr::core::rect<irr::s32> bookPopup;
 
     // --- PairRight: the inventory, right half of the side-by-side pair ---
     irr::core::rect<irr::s32> inventoryPopup;
@@ -254,6 +263,26 @@ struct UILayout {
             irr::s32 x = bandL + (bandR - bandL - POPUP_W) / 2;
             if (bandR - bandL < POPUP_W) x = (width - POPUP_W) / 2;
             centerPopup = clampOnScreen(x, popY, POPUP_W, POPUP_H);
+        }
+
+        // B1076 (#396): the spellbook at the oracle's own 510x360, anchored
+        // where the box's top-left sits (the CentreSlot anchor moves with the
+        // table, the window's size is the oracle's -- the bank/combat-ability
+        // "own size, unscaled" precedent). At the box's top-left the book's
+        // right edge can reach the gem column, so the anchor is clamped to
+        // stay wholly on screen AND clear of that column (the co-open test
+        // checks the result at every resolution).
+        bookPopup = clampOnScreen(centerPopup.UpperLeftCorner.X, popY,
+                                  SpellBookLayout::kWindowW,
+                                  SpellBookLayout::kWindowH);
+        {
+            const irr::s32 clearX = spellGems.UpperLeftCorner.X - MARGIN -
+                                    SpellBookLayout::kWindowW;
+            if (bookPopup.UpperLeftCorner.X > clearX) {
+                bookPopup = clampOnScreen(clearX, bookPopup.UpperLeftCorner.Y,
+                                          SpellBookLayout::kWindowW,
+                                          SpellBookLayout::kWindowH);
+            }
         }
 
         // PairLeft + PairRight: side by side, MARGIN apart, centred in the
