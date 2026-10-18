@@ -112,6 +112,16 @@ capture 4 had only ever done the FIRST (latching) right-click.
 
 - (A) oracle ledger + stills + video attached, gestures for all three
   inputs recorded, 0 broken refs — MET (evidence dir above).
+- (A2) findings 1-3 each FAIL at 8dde4a4b and PASS at head — MET.
+  `refactor/B1076/RED_at_8dde4a4b.txt` is the RED side: a throwaway worktree
+  checked out at 8dde4a4b (`/home/user/src/willeq-wt/kb-b1076-red`) carrying
+  `tests/test_spellbook_fix2_red.cpp`, the three assertions expressed against
+  the EXISTING API (no fix-2 symbols needed), run through rbuild — all three
+  FAIL: Finding1 "Which is: 16" (the arrows landed on spread 16), Finding2
+  "the completed attempt must empty the gauge (at 8dde4a4b it stays at 1)",
+  Finding3 "at 8dde4a4b it pushes NOTHING (a bare render-vector std::swap,
+  \"client-local\")". The SAME three legs pass at head in
+  `tests/test_spellbook_fix2.cpp` (12/12, run through rbuild at 2ac2786e).
 - (B) layout table equals the XML — MET (`test_spellbook_layout.cpp` green).
 - (C) book renders both pages with icons, names, page numbers, arrows, Done,
   gauges, book art — MET (render leg; headless flat-panel fallback).
