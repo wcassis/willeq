@@ -1,9 +1,26 @@
 #!/usr/bin/env bash
 # B1034 (#357): pins the pi_hdmi_force_on / pi_hdmi_restore contract of
 # scripts/pi/env.sh against a FAKE device surface -- no device, no ssh,
-# no root. The device surface is two files, shaped like the real ones:
-#   $PI_HDMI_CONN/status   the kernel connector status (sudo-writable sysfs)
-#   $PI_HDMI_RECORD        the pre-force record (root-owned on a device)
+# no root. The device surface is shaped like the real one AND behaves like
+# the real kernel connector, measured on lane 2's RK3328 (2026-10-18):
+#   $PI/<di_connector>.status   the kernel connector status (sudo-writable sysfs)
+#   $PI_HDMI_RECORD             the pre-force record (root-owned on a device)
+#
+#   accepted write     reads back
+#   ----------------   -----------------------------------------
+#   on                 connected        (the kernel FORCES the connector)
+#   detected
+#   off                disconnected
+#   connected          REJECTED (store fails, state unchanged)
+#   disconnected       REJECTED (store fails, state unchanged)
+#   anything else      REJECTED
+#
+# That normalization is why pi_hdmi_write_status reports the write's EXIT
+# CODE (not the read-back): "on" never reads back "on", "detect" never reads
+# back "detect". The fake enforces the same rule in its status store, so a
+# regression to a literal read-back comparison (the pre-lane-proof form of
+# the B1034 check) fails this selftest exactly as it failed lane 2.
+#
 # The fake is built by shadowing the two binaries that reach the device --
 # `ssh` (pi_remote's transport) and `sudo` (the tee boundary) -- with local
 # fakes on PATH, so env.sh runs UNMODIFIED and its own commands execute
@@ -15,9 +32,9 @@
 # Scenarios (each subshell = a fresh shell on the host, the way a crashed
 # run's recovery shell actually is; PI_HDMI_FORCED is always 0 at entry):
 #   s1 force on a disconnected lane: record written with the pre-force
-#      status, status flipped to on, PI_HDMI_FORCED set
+#      status, the kernel forced it (status reads connected), flag set
 #   s2 crash recovery: fresh shell, PI_HDMI_FORCED=0, the record survives
-#      "the crash"; restore writes detect back and clears the record
+#      "the crash"; restore writes detect back (accepted), clears the record
 #   s3 force on an already-connected lane: no record, no write, no flag
 #   s4 a failed sudo: force REFUSES (non-zero, no record, no flag)
 #   s5 a record owned by a DIFFERENT host is refused, like a foreign lock
@@ -66,17 +83,48 @@ exec "$@"
 EOF
 chmod +x "$FAKE_BIN/ssh" "$FAKE_BIN/sudo"
 
+# Fake tee: env.sh stores a connector value as
+#   printf %s 'VALUE' | sudo -n tee $PI_HDMI_CONN/status
+# so the store happens INSIDE tee, and a plain state file would accept every
+# value the kernel rejects. The fake tee enforces the kernel's write rules
+# when its target is the status file, and behaves like tee otherwise (the
+# record file goes through it too).
+cat > "$FAKE_BIN/tee" <<'EOF'
+#!/usr/bin/env bash
+val="$(cat)"
+files=()
+for a in "$@"; do case "$a" in -*) ;; *) files+=("$a");; esac; done
+ok=1
+for f in "${files[@]}"; do
+    if [ -n "${PI_HDMI_CONN:-}" ] && [ "$f" = "$PI_HDMI_CONN/status" ]; then
+        case "$val" in
+            on) printf 'connected\n' > "$PI_HDMI_CONN/status.data" ;;
+            detect|detected|off) printf 'disconnected\n' > "$PI_HDMI_CONN/status.data" ;;
+            *) echo "bash: $f: cannot write" >&2; ok=0 ;;
+        esac
+    else
+        printf '%s' "$val" > "$f"
+    fi
+done
+[ "$ok" = 1 ]
+EOF
+chmod +x "$FAKE_BIN/ssh" "$FAKE_BIN/sudo" "$FAKE_BIN/tee"
+
 # setup_scenario <name> <initial-status> <initial-record|->
 # PI_HDMI_CONN is a DIRECTORY on a real device (env.sh reads
 # $PI_HDMI_CONN/status and $PI_HDMI_CONN/modes), so the surface is shaped
-# like /sys/class/drm/<connector>.
+# like /sys/class/drm/<connector>. The status file is a symlink to
+# status.data: the fake tee writes the NORMALIZED value to status.data
+# (kernel rules, see the fake tee), every read follows the symlink.
 setup_scenario() {
     local name="$1" init_status="$2" init_record="$3"
-    local sysfs="$TMP/$name"
-    mkdir -p "$sysfs/conn"
-    printf '%s' "$init_status" > "$sysfs/conn/status"
-    printf '1024x768 800x600 640x480\n' > "$sysfs/conn/modes"
-    [ "$init_record" = "none" ] || printf '%s\n' "$init_record" > "$sysfs/record"
+    local di="$TMP/$name"
+    mkdir -p "$di"
+    case "$init_status" in on|connected) init_status=connected ;; *) init_status=disconnected ;; esac
+    printf '%s\n' "$init_status" > "$di/status.data"
+    ln -sf status.data "$di/status"
+    printf '1024x768 800x600 640x480\n' > "$di/modes"
+    [ "$init_record" = "none" ] || printf '%s\n' "$init_record" > "$di/record"
 }
 
 # The inner runner script, written once so the per-scenario `bash` needs no
@@ -97,18 +145,18 @@ EOF
 run_scenario() {
     local name="$1" init_status="$2" init_record="$3" owner="$4" body="$5"
     setup_scenario "$name" "$init_status" "$init_record"
-    local sysfs="$TMP/$name"
+    local di="$TMP/$name"
     PI_LANE=1 PI_HDMI_OWNER="$owner" \
-    PI_HDMI_CONN="$sysfs/conn" PI_HDMI_RECORD="$sysfs/record" \
+    PI_HDMI_CONN="$di" PI_HDMI_RECORD="$di/record" \
     HDMI_ST_ENV="$SCRIPT_DIR/env.sh" HDMI_ST_BODY="$body" \
-    SSH_LOG="$sysfs/ssh.log" \
+    SSH_LOG="$di/ssh.log" \
     SUDO_OK=1 PATH="$FAKE_BIN:$PATH" \
     bash "$TMP/inner.sh" </dev/null \
-        > "$sysfs/stdout" 2> "$sysfs/stderr"
+        > "$di/stdout" 2> "$di/stderr"
     local rc=$?
     [ "$rc" -eq 0 ] || {
         echo "FAIL[$name]: expected exit 0, got $rc"
-        sed 's/^/    /' "$sysfs/stderr"
+        sed 's/^/    /' "$di/stderr"
         FAILS=$((FAILS + 1))
     }
 }
@@ -118,18 +166,18 @@ run_scenario() {
 expect_reject() {
     local name="$1" init_status="$2" init_record="$3" owner="$4" body="$5"
     setup_scenario "$name" "$init_status" "$init_record"
-    local sysfs="$TMP/$name"
+    local di="$TMP/$name"
     PI_LANE=1 PI_HDMI_OWNER="$owner" \
-    PI_HDMI_CONN="$sysfs/conn" PI_HDMI_RECORD="$sysfs/record" \
+    PI_HDMI_CONN="$di" PI_HDMI_RECORD="$di/record" \
     HDMI_ST_ENV="$SCRIPT_DIR/env.sh" HDMI_ST_BODY="$body" \
-    SSH_LOG="$sysfs/ssh.log" \
+    SSH_LOG="$di/ssh.log" \
     SUDO_OK=1 PATH="$FAKE_BIN:$PATH" \
     bash "$TMP/inner.sh" </dev/null \
-        > "$sysfs/stdout" 2> "$sysfs/stderr"
+        > "$di/stdout" 2> "$di/stderr"
     local rc=$?
     [ "$rc" -ne 0 ] || {
         echo "FAIL[$name]: expected a refusal, got exit 0"
-        sed 's/^/    /' "$sysfs/stderr"
+        sed 's/^/    /' "$di/stderr"
         FAILS=$((FAILS + 1))
     }
 }
@@ -147,44 +195,48 @@ check() {
 
 # ---- s1: the normal force ---------------------------------------------------
 run_scenario s1 disconnected none self 'pi_hdmi_force_on; [ "$PI_HDMI_FORCED" = 1 ]'
-check s1 "status flipped to on" 'grep -qx on "$TMP/s1/conn/status"'
+check s1 "the kernel forced the connector (reads connected)" 'grep -qx connected "$TMP/s1/status.data"'
 check s1 "record holds the pre-force status" 'grep -qx "self disconnected" "$TMP/s1/record"'
 
 # ---- s2: crash recovery in a fresh shell ------------------------------------
+# The record survives "the crash"; the connector still reads connected
+# (forced). Restore writes detect back -- the kernel accepts it and, with no
+# monitor, reads disconnected.
 run_scenario s2 disconnected "self disconnected" self 'pi_hdmi_restore'
-check s2 "detect restored (hotplug back)" 'grep -qx detect "$TMP/s2/conn/status"'
+check s2 "detect restored (hotplug back, reads disconnected)" 'grep -qx disconnected "$TMP/s2/status.data"'
 check s2 "record cleared" '[ ! -e "$TMP/s2/record" ]'
 
 # ---- s3: an already-connected lane ------------------------------------------
 run_scenario s3 connected none self 'pi_hdmi_force_on; [ "$PI_HDMI_FORCED" = 0 ]'
 check s3 "no record written" '[ ! -e "$TMP/s3/record" ]'
-check s3 "status untouched" 'grep -qx connected "$TMP/s3/conn/status"'
+check s3 "status untouched" 'grep -qx connected "$TMP/s3/status.data"'
 
 # ---- s4: a failed sudo is a refusal, not a forced lane ----------------------
 expect_reject s4 disconnected none self 'export SUDO_OK=0; pi_hdmi_force_on'
 check s4 "no record written on a failed force" '[ ! -e "$TMP/s4/record" ]'
-check s4 "status still disconnected" 'grep -qx disconnected "$TMP/s4/conn/status"'
+check s4 "status still disconnected" 'grep -qx disconnected "$TMP/s4/status.data"'
 
 # ---- s5: a foreign owner's record is refused --------------------------------
 expect_reject s5 disconnected "other-host disconnected" self 'pi_hdmi_force_on'
-check s5 "connector left alone" 'grep -qx disconnected "$TMP/s5/conn/status"'
+check s5 "connector left alone" 'grep -qx disconnected "$TMP/s5/status.data"'
 check s5 "foreign record left in place" 'grep -qx "other-host disconnected" "$TMP/s5/record"'
 
-# ---- s6: clean force, clean restore (the no-record path) ---------------------
+# ---- s6: clean force, clean restore (the no-record path) ---------------- --------
 run_scenario s6 disconnected none self 'pi_hdmi_force_on; pi_hdmi_restore; [ "$PI_HDMI_FORCED" = 0 ]'
-check s6 "detect restored" 'grep -qx detect "$TMP/s6/conn/status"'
+check s6 "detect restored" 'grep -qx disconnected "$TMP/s6/status.data"'
 check s6 "no record left" '[ ! -e "$TMP/s6/record" ]'
 
 # ---- s7: a stale same-owner record is recovered, then the run proceeds ------
 # The record ("self disconnected") and the forced-on connector survive "the
-# crash"; the fresh shell's force_on restores, clears, and re-forces.
-run_scenario s7 on "self disconnected" self 'pi_hdmi_force_on; [ "$PI_HDMI_FORCED" = 1 ]'
-check s7 "status back to on after the restore+re-force" 'grep -qx on "$TMP/s7/conn/status"'
-check s7 "record carries this run's pre-force status" 'grep -qx "self detect" "$TMP/s7/record"'
+# crash"; the fresh shell's force_on restores (detect, accepted), clears,
+# and re-forces (on, accepted -> connected).
+run_scenario s7 connected "self disconnected" self 'pi_hdmi_force_on; [ "$PI_HDMI_FORCED" = 1 ]'
+check s7 "status back to the forced state after the restore+force" 'grep -qx connected "$TMP/s7/status.data"'
+check s7 "record carries this run's pre-force status" 'grep -qx "self disconnected" "$TMP/s7/record"'
 
 echo
 if [ "$FAILS" -eq 0 ]; then
-    echo "PASS: B1034 HDMI force/restore contract (fake ssh/sudo, 7 scenarios)"
+    echo "PASS: B1034 HDMI force/restore contract (fake ssh/sudo, kernel-faithful store, 7 scenarios)"
     exit 0
 fi
 echo "FAIL: $FAILS assertion(s) failed (state in $TMP; WILLEQ_HDMI_SELFTEST_KEEP=1 to keep it)"

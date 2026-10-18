@@ -233,12 +233,24 @@ PI_HDMI_RECORD="${PI_HDMI_RECORD:-/var/tmp/pi_hdmi_record}"
 : "${PI_HDMI_OWNER:=$(hostname)}"
 PI_HDMI_FORCED=0
 pi_hdmi_write_status() {
-    # $1 = the value to write; echoes the connector's status AFTER the write.
-    # (No set -e up the call chain: the caller checks the echoed status.)
-    # The value travels as `printf %s 'VALUE' | sudo -n tee <file>`: a
-    # machine-recognizable command shape (the selftest's fake device
-    # matches it) and no shell-metacharacter class the values can carry.
-    pi_remote "printf %s '$1' | sudo -n tee $PI_HDMI_CONN/status >/dev/null 2>/dev/null; sleep 1; cat $PI_HDMI_CONN/status" </dev/null
+    # $1 = the value to write. Echoes the connector's status AFTER the write
+    # and RETURNS 0 when the kernel accepted the store, non-zero when it
+    # rejected the value or the write could not run (no passwordless sudo).
+    # The caller decides took-or-not from the RETURN CODE, never the echo: the
+    # kernel NORMALIZES an accepted value and REJECTS a read-only one --
+    # B1034, measured on lane 2's RK3328 (2026-10-18): `on` is accepted and
+    # reads back "connected" (NOT "on"); `detect` is accepted and reads back
+    # "connected"/"disconnected" by monitor presence; `connected` and
+    # `disconnected` are REJECTED stores (the write returns an error, rc 1);
+    # `off` is accepted. So the pre-B1034 check `!= on` / `!= detect` on the
+    # read-back fails on a real connector even when the force/restore
+    # succeeded, and a bare after-read cannot tell a rejected or no-op store
+    # from a normalized one -- only the write's exit code can.
+    # (No set -e up the call chain: the caller checks the return code.) The
+    # value travels as `printf %s 'VALUE' | sudo -n tee <file>`: a
+    # machine-recognizable command shape (the selftest's fake device matches
+    # it) and no shell-metacharacter class the values can carry.
+    pi_remote "rc=0; printf %s '$1' | sudo -n tee $PI_HDMI_CONN/status >/dev/null 2>/dev/null || rc=\$?; sleep 1; echo \$(cat $PI_HDMI_CONN/status 2>/dev/null); exit \$rc" </dev/null
 }
 pi_hdmi_record_get() {
     # "<owner> <status>" or empty when there is no record.
@@ -249,7 +261,13 @@ pi_hdmi_record_write() {
     pi_remote "printf %s '$1 $2' | sudo -n tee $PI_HDMI_RECORD >/dev/null 2>/dev/null" </dev/null
 }
 pi_hdmi_record_clear() {
-    pi_remote "rm -f $PI_HDMI_RECORD" </dev/null
+    # root-owned (pi_hdmi_record_write stores it through sudo tee): a plain
+    # rm cannot remove it and /var/tmp's sticky bit makes that an
+    # "Operation not permitted" that was silently ignored -- the record then
+    # survived every restore, re-triggering the crash-recovery path on the
+    # next run. Sudo the removal, and CHECK it: a record that cannot be
+    # cleared is one that will be misread later.
+    pi_remote "sudo -n rm -f $PI_HDMI_RECORD" </dev/null
 }
 pi_hdmi_restore() {
     [ "${PI_DRM_VIRTUAL:-0}" = 1 ] && { pi_vkms_off; return; }
@@ -269,24 +287,33 @@ pi_hdmi_restore() {
             # connector was already hot (a monitor is actually attached), so
             # there is nothing to restore -- clear the bookkeeping and leave
             # the connector as it is.
-            pi_hdmi_record_clear
+            if ! pi_hdmi_record_clear; then
+                echo "lane: restore: could not clear $PI_HDMI_RECORD (no passwordless sudo?)" >&2
+                return 1
+            fi
         else
             # It was disconnected (or absent): the only valid write back is
             # "detect" -- hotplug behaviour. (sysfs will not take the word
-            # "disconnected"; writing it is an invalid-value store.)
-            if [ "$(pi_hdmi_write_status detect)" != detect ]; then
-                echo "lane: restore: writing 'detect' back did not take (record kept in $PI_HDMI_RECORD)" >&2
+            # "disconnected"; that is a read-only state the kernel rejects.)
+            # Check the write's EXIT CODE, not the read-back: "detect" is
+            # accepted and reads back "connected"/"disconnected" by monitor
+            # presence, never the literal "detect" (B1034, lane 2).
+            if ! pi_hdmi_write_status detect >/dev/null; then
+                echo "lane: restore: the 'detect' write was rejected or could not run (record kept in $PI_HDMI_RECORD)" >&2
                 return 1
             fi
-            pi_hdmi_record_clear
+            if ! pi_hdmi_record_clear; then
+                echo "lane: restore: the 'detect' write took but $PI_HDMI_RECORD could not be cleared (no passwordless sudo?)" >&2
+                return 1
+            fi
             echo "connector restored to 'detect' (record said '$st') from $PI_HDMI_RECORD (a crashed run left it forced)"
         fi
         PI_HDMI_FORCED=0
         return 0
     fi
     [ "${PI_HDMI_FORCED:-0}" -eq 1 ] || return 0
-    if [ "$(pi_hdmi_write_status detect)" != detect ]; then
-        echo "lane: restore: writing 'detect' did not take" >&2
+    if ! pi_hdmi_write_status detect >/dev/null; then
+        echo "lane: restore: the 'detect' write was rejected or could not run" >&2
         return 1
     fi
     PI_HDMI_FORCED=0
@@ -318,8 +345,9 @@ pi_hdmi_force_on() {
         echo "lane: force: could not write $PI_HDMI_RECORD (no passwordless sudo for ${PI_USER}?)" >&2
         return 1
     }
-    if [ "$(pi_hdmi_write_status on)" != on ]; then
-        echo "lane: force: the sysfs write did not take; recorded '$st' in $PI_HDMI_RECORD, restore it" >&2
+    local after
+    if ! after="$(pi_hdmi_write_status on)"; then
+        echo "lane: force: the sysfs write was rejected or the store could not run (no passwordless sudo?); recorded '$st' in $PI_HDMI_RECORD, restore it" >&2
         return 1
     fi
     pi_remote "cat $PI_HDMI_CONN/modes | head -3 | tr '\n' ' '; echo" </dev/null | sed 's/^/connector forced: /'
