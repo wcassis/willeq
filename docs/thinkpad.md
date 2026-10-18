@@ -62,29 +62,24 @@ Provisioning evidence: `review/THINKPAD/README.md`.
   :99; every motion click carries its own focus. A lane-5 capture run logs
   each Set Face open attempt in `timeline.tsv` (`face-open attempt=N`), so a
   run proves whether the FIRST click opened the modal.
-- **The Set Face half-render is NOT a GLX-vendor defect** (B1086, #406).
-  The bullet above attributes the *opening* half of the problem (the modal
-  not opening at all) to the dual-vendor GLX, which is correct; but the
-  *half-render* (the modal opens, shows the FACE row and the Random/Accept/
-  Cancel strip, and never shows the other six picker rows) is a separate
-  defect that the pure-NVIDIA fix did not cure, and it is not vendor-specific:
-  it reproduces on lane 1 (Xvfb + llvmpipe, no NVIDIA at all) exactly as on
-  lane 5 (Xorg + NVIDIA 580), on the same eqgame.exe, the same wine 9.0, and
-  the same client data. The last full 7-row capture (matrix3, 2026-10-13
-  04:10, lane 1) and the first half-open capture (lane 5, 2026-10-14 20:50;
-  lane 1, 2026-10-15 17:04) bracket a guest-side regression between 2026-10-13
-  ~09:00 and 2026-10-15 17:04. A one-knob sweep exonerates wine version,
-  GLX vendor, the X display session (a fresh Xvfb :98 half-opens too),
-  per-character client state (a zero-state account half-opens), libx11
-  (matrix4 rendered full after the 10-13 06:59 libx11 upgrade), the eqemu
-  server, and the oracle harness's open gesture (a verified close→reopen at
-  the good-era coordinate still half-opens today, while the same gesture
-  rendered full on 10-13). The regression rests on a guest-side fact outside
-  the one-knob set — the leading suspects are the wine prefix's byte state
-  and the wine GLX shim's loaded dependencies, neither of which has a
-  pre-window snapshot on this box. See `refactor/B1086/README.md`. The
-  `facepick-rows` row-count gate (>= 2) is correct and stays: it fails loudly
-  on a state that now occurs on every open, not intermittently.
+- **The Set Face half-render is the CLASSIC-MODEL picker, not a rig defect**
+  (B1086, #406, take 3). The bullet above attributes the *opening* half of the
+  problem (the modal not opening at all) to the dual-vendor GLX, which is
+  correct. The *half-render* (the modal opens, shows the FACE row and the
+  Random/Accept/Cancel strip, and never the other six picker rows) is the
+  official client's own behaviour with `UseLuclin<Race><Gender>=FALSE` in
+  `eqclient.ini`: the classic model's picker exposes FACE only; the 26
+  in-era per-race keys set TRUE select the Luclin models and their full
+  seven-row list. Measured by a one-knob A/B on lane 5 (same lane, Testchar,
+  Barbarian male pair and `facepick-rows` plan): FALSE -> 1 row, TRUE -> 7,
+  FALSE restored -> 1, each a separate client start because the INI is read
+  at startup. The good-era 10-13 captures rendered seven rows because their
+  setup scripts ran `set_facepick_luclin.py` first and restored the INI
+  afterwards; every lane's stock INI is all-FALSE. The take-2 suspects (wine
+  prefix byte state, the GLX shim's dependencies, a KVM-host regression) are
+  **withdrawn**; the harness now applies the toggle itself and restores it.
+  See `refactor/B1086/README.md`. The `facepick-rows` row-count gate (>= 2)
+  stays: it fails loudly on a stock INI instead of silently capturing one row.
 - **The default oracle lane** (B1057, #377): oracle legs run
   `scripts/eqemu/oracle/oracle_session.sh 5 <plan> <out>` (`docs/oracle_driver.md`)
   unless lane 5's lock is held; lanes 1-4 are the fallback. The driver's stop
