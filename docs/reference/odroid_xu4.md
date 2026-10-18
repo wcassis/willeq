@@ -182,6 +182,21 @@ stays Draft until the driver ruling: acceptance (guards distinct on device)
 is not met, and a `xu4` preset or Mesa patch is a decision for Will
 (direction (2) fallback per the 2026-10-15 01:00Z ruling).
 
+**2026-10-18 B1051-ETC1 correction (MR !237):** the device still at the
+previous head did not exclude a second client-side variant-cache defect.
+The fable armhf binary at `ci-arm/by-branch/fable` logged 0 variant textures
+for Guard Treitan and showed one flat wood-grain body
+(`xu4/before2/frame_000018.png`). The armhf build at
+`ci-arm/838a1281d278f6fd3c120f7906ca9c2ed26b74e5` logged 13 for
+the same guard and showed distinct gold chest/crest, grey arms and helmet
+(`xu4/after/frame_000015.png`). This is a client-side visual fix on the XU4,
+so the earlier Panfrost-only attribution is withdrawn for this guard. The
+scripted nearby-cluster relocation did not frame five classifiable NPCs; the
+crowd-wide before/after count remains unverified, not zero. The x86 Guard
+Liben colour numbers quoted in the previous analysis also came from scenery,
+not a visible guard, and cannot establish a per-NPC pixel band. Evidence:
+`/home/user/kb-evidence/kb-b1051-etc1-variant-cache/`.
+
 ## Kernel and module state on the box
 
 Armbian 26.05 (6.6.129) shipped Panfrost but had this defect; its headers are not packaged. Armbian 26.8.3
