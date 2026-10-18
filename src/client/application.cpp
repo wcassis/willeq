@@ -939,6 +939,12 @@ void Application::requestQuit() {
 void Application::gameThreadLoop() {
     // T491: the game thread owns game state; the network tick and packet
     // dispatch re-scope themselves (Network / GameState) underneath.
+    // B919 (#238): the DEFAULT category's owner is named gs.thread -- the
+    // whole thread's unlabelled bytes (the tick loop, the mode input, the
+    // intent processing, the handlers that open no row of their own) are the
+    // tables' "misc" residual, and this is the name the B919 README quotes
+    // for it. A handler that opens its own row (gs.entities, gs.doors, ...)
+    // wins per block; what does not is gs.thread.
     eqt::memory::setThreadCategory(eqt::memory::Category::GameState);
     eqt::setCurrentThreadName("eq-game");  // T504
     LOG_INFO(MOD_MAIN, "Game thread started");
