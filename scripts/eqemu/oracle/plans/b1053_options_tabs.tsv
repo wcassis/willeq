@@ -1,28 +1,28 @@
 # B1053 (#373): open the Options window and take one still per tab, in XML
-# tab order. MEASURED on lane 5 (1280x1024 Xorg, crop +0+30): the window
-# opens at its INI position -- defaults.ini [OptionsWindow] XPos1280x1024=95
-# YPos1280x1024=97 (root 95,127), NOT the XML <absolute> Location (90,47) and
-# NOT fable's centred anchor (the flagged deviation the side-by-side records).
-# The tab strip is 28px below the window top (root y 155..177, centre 166).
-# The oracle sizes each tab to its TabText (General is widest); the click x's
-# come from the General still's measured strip (refactor/B1053/README.md
-# "Tab strip"), each landing mid-tab with >= 15px of clearance.
+# tab order. MEASURED on lane 5 (1280x1024 Xorg, crop +30 y): the window
+# opens at its defaults.ini [OptionsWindow] position (XPos1280x1024=95
+# YPos1280x1024=97, root (95,127)); but in the actual still it was measured
+# at crop (410,350), root (410,380) -- the oracle's own INI position, not the
+# XML absolute (90,47). The tab strip sits ~14px below the window top
+# (crop y 364..384, root y 394..414, centre 404). The oracle sizes each tab
+# to its TabText (General is widest, ~50px; the others ~52px each); the click
+# x's below are the measured tab-face centres (crop x), converted to root.
 # action	target	hold_ms	still_name
 login	Testcaster	0	char_select
 zone	qeynos2	0	in_world
 wait	8000	0	settle
 press	alt+o	0	options_general
 wait	1500	0	opt_general
-click	511,166	0	opt_display
+click	502,404	0	opt_display
 wait	1200	0	opt_display_settle
-click	581,166	0	opt_mouse
+click	554,404	0	opt_mouse
 wait	1200	0	opt_mouse_settle
-click	631,166	0	opt_keys
+click	605,404	0	opt_keys
 wait	1200	0	opt_keys_settle
-click	681,166	0	opt_filters
+click	657,404	0	opt_filters
 wait	1200	0	opt_filters_settle
-click	731,166	0	opt_colors
+click	710,404	0	opt_colors
 wait	1200	0	opt_colors_settle
-click	776,166	0	opt_mail
+click	762,404	0	opt_mail
 wait	1200	0	opt_mail_settle
 command	/q	0	quit
