@@ -330,6 +330,20 @@ struct S3DZone {
         size_t regionGeometryBytes = 0;   // WldLoader::releaseRegionGeometry()
     };
     PostLoadRelease releaseSourceAfterLoad(bool releaseTexturePixels);
+
+    // B928 (#246): the region-geometry half of the end-of-load release, done
+    // EARLY -- as soon as every region mesh, bounding box and occluder is
+    // built (the client's Step 4; the benchmark's Step 7c). The zone's
+    // per-region source geometry is a second copy of the vertices and
+    // triangles the meshes already hold; keeping it alive until Step 13
+    // carries ~20 MiB (iceclad) into the objects/entities build, which is
+    // where the whole-process RSS high-water is set. The zone draw path,
+    // PVS, collision and the frames read only the built meshes, the BSP
+    // tree and S3DZone::lights after this, so it is safe to drop here.
+    // releaseSourceAfterLoad() (Step 13) still runs: the texture pixels and
+    // character models are not freed by this, and the geometry half is a
+    // no-op the second time.
+    size_t releaseRegionGeometryEarly();
 };
 
 // Options for selective zone loading
