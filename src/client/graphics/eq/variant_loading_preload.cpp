@@ -82,14 +82,10 @@ bool RaceModelLoader::preloadVariantModel(uint16_t raceId, uint8_t gender,
         return false;
     }
 
-    // Snapshot merged textures (thread-safe read of immutable cache)
-    std::map<std::string, std::shared_ptr<TextureInfo>> mergedTextures;
-    if (mergedTexturesCacheValid_) {
-        mergedTextures = cachedMergedTextures_;
-    } else {
-        mergedTextures = globalTextures_;
-        LOG_WARN(MOD_GRAPHICS, "RaceModelLoader::preloadVariantModel: merged texture cache not valid, using global textures only");
-    }
+    // Build or snapshot the same merged map used by the plain model path.
+    // An archive-index load can leave it invalid after filling otherChrCaches_;
+    // falling back to globalTextures_ loses per-NPC variant series on a cache hit.
+    auto mergedTextures = getMergedTextures();
 
     for (const std::string& codeToTry : codesToTry) {
         // Build expected mesh names

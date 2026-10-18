@@ -7,6 +7,9 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <cstring>
+
+#include "scoped_temp_dir.h"
 
 #include "client/core/memory_ledger.h"
 #include "client/willeq_database.h"
@@ -17,6 +20,8 @@
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/graphics_archive_index.h"
+#include "client/graphics/eqe1_loader.h"
+#include "client/graphics/eqe1_format.h"
 #endif
 
 namespace {
@@ -111,6 +116,77 @@ protected:
         return loaded;
     }
 };
+
+// B1051: EQE1-authoritative loading keeps S3D texture names but releases their
+// bytes. A tiny ETC1 pack makes that path active without a GPU upload. The
+// archive index selects commons_chr.s3d for race 71; its QCM variant names
+// must survive into the preloaded model's merged map.
+TEST_F(EntityModelSharingTest, Eqe1ArchiveIndexPreloadKeepsVariantTextures) {
+    if (!fileExists(clientPath() + "commons_chr.s3d") ||
+        !fileExists(clientPath() + "qeynos2_chr.s3d")) {
+        GTEST_SKIP() << "race-71 character archives unavailable";
+    }
+
+    const willeq_test::ScopedTempDir tmp("b1051_variant_eqe1");
+    const std::string packPath = (tmp / "commons_chr.eqe1").string();
+    {
+        std::ofstream out(packPath, std::ios::binary);
+        ASSERT_TRUE(out.is_open());
+        EQT::Graphics::EQE1Header header{};
+        header.magic = EQT::Graphics::EQE1_MAGIC;
+        header.version = EQT::Graphics::EQE1_VERSION;
+        header.numEntries = 2;
+        out.write(reinterpret_cast<const char*>(&header), sizeof(header));
+        const uint32_t payloadSize = EQT::Graphics::etc1MipChainSize(4, 4, 3);
+        const uint32_t payloadStart = EQT::Graphics::alignTo16(
+            sizeof(header) + 2 * EQT::Graphics::EQE1_INDEX_ENTRY_SIZE);
+        uint32_t entryIndex = 0;
+        for (const char* name : {"qcmch0101", "qcmfa0101"}) {
+            EQT::Graphics::EQE1IndexEntry entry{};
+            std::strncpy(entry.name, name, EQT::Graphics::EQE1_NAME_SIZE - 1);
+            entry.width = 4;
+            entry.height = 4;
+            entry.mipLevels = 3;
+            entry.entryType = EQT::Graphics::EQE1_TYPE_ETC1_RGB;
+            entry.dataOffset = payloadStart + entryIndex++ *
+                EQT::Graphics::alignTo16(payloadSize);
+            entry.dataSize = payloadSize;
+            out.write(reinterpret_cast<const char*>(&entry), sizeof(entry));
+        }
+        std::vector<char> payload(payloadStart +
+                                  EQT::Graphics::alignTo16(payloadSize) + payloadSize -
+                                  static_cast<uint32_t>(out.tellp()), 0);
+        out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
+        ASSERT_TRUE(out.good());
+    }
+    EQT::Graphics::EQE1Loader pack;
+    ASSERT_TRUE(pack.open(packPath));
+    ASSERT_NE(pack.lookup("qcmch0101"), nullptr);
+    ASSERT_NE(pack.lookup("qcmfa0101"), nullptr);
+    textureCache_->addEQE1Loader(&pack);
+    EQT::Graphics::EQE1Loader commonsPack;
+    EQT::Graphics::EQE1Loader zonePack;
+    EQT::Graphics::EQE1Loader globalPack;
+    ASSERT_TRUE(commonsPack.open(WILLEQ_REPO_PATH("data/eqe1_client/commons_chr.eqe1")));
+    ASSERT_TRUE(zonePack.open(WILLEQ_REPO_PATH("data/eqe1_client/qeynos2_chr.eqe1")));
+    ASSERT_TRUE(globalPack.open(WILLEQ_REPO_PATH("data/eqe1_client/global_chr.eqe1")));
+    textureCache_->addEQE1Loader(&commonsPack);
+    textureCache_->addEQE1Loader(&zonePack);
+    textureCache_->addEQE1Loader(&globalPack);
+
+    archiveIndex_ = std::make_unique<EQT::Graphics::GraphicsArchiveIndex>();
+    ASSERT_TRUE(archiveIndex_->buildIndex(clientPath()));
+    loader_->setGraphicsArchiveIndex(archiveIndex_.get());
+    ASSERT_TRUE(loader_->preloadModelData(71, 0));
+    ASSERT_TRUE(loader_->preloadVariantModel(71, 0, 0, 1));
+    ASSERT_TRUE(loader_->preloadVariantModel(71, 0, 1, 1));
+    const auto model = loader_->getVariantModelData(71, 0, 1, 1);
+    ASSERT_NE(model, nullptr);
+    EXPECT_NE(model->textures.find("qcmch0101.bmp"), model->textures.end())
+        << "ETC1 archive-index preload lost QCM chest variant";
+    EXPECT_NE(model->textures.find("qcmfa0101.bmp"), model->textures.end())
+        << "ETC1 archive-index preload lost QCM face variant";
+}
 
 // ---------------------------------------------------------------------------
 // Leg A — the split closes.
