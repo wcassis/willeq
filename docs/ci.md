@@ -374,10 +374,19 @@ runner kills the job shell and the docker CLI, dockerd keeps the container until
   runs `docker run --rm` **in the background and `wait`s** -- bash defers a trap while a foreground child runs
   (measured: SIGTERM to the shell left a foreground container alive), but a signal interrupts `wait`, the
   trap fires, and the container's own exit status still comes back to the script (`rc=7` round-trips).
+- **A detached watchdog** (`setsid`, stdio on `/dev/null`) started by the guard polls the script's PARENT and
+  the script itself every few seconds and `docker kill`s the container when either is gone. This is the
+  layer the runner's own cancel needs: measured on gitlab-runner-1 (job 8777, 2026-10-18 02:57Z), a cancel
+  killed only the job shell -- the build script was reparented to PID 1 with no signal, its trap never ran,
+  the container compiled on for 7 minutes until killed by hand, and the job sat in "canceling" the whole
+  time because the orphan still held the runner's pipe. A SIGKILL of the parent shell now takes the container
+  down in about 2 s (the script exits 137); a hand run's parent is the interactive shell, so a closed
+  terminal kills the build too.
 - **`bash scripts/ci/arm_container.sh --sweep`** is the first line of both CI ARM jobs: it kills every
   labelled container on the host and prints what it killed. The runners are `concurrent = 1`, so a labelled
-  container alive at job start is always an orphan (a SIGKILL skips every trap). The sweep is deliberately not
-  in the build scripts, where a dev box may legitimately run two.
+  container alive at job start is always an orphan (a SIGKILL of the script itself skips every trap and the
+  watchdog needs a few seconds). The sweep is deliberately not in the build scripts, where a dev box may
+  legitimately run two.
 
 ## The stages
 
