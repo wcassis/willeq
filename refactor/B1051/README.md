@@ -340,7 +340,7 @@ The ETC1 leg logs `RaceModelLoader::preloadVariantModel: merged texture cache
 not valid, using global textures only` (variant_loading_preload.cpp:91). When
 `mergedTexturesCacheValid_` is false, `preloadVariantModel` sources the variant
 mesh's textures from `globalTextures_` only — which holds the **base** series
-(`qcm*0001`, 13 qcm uploads + 7 qcf = 20 in the ETC1 leg,
+(`qcm*0001`, 7 qcm uploads + 7 qcf = 14 in the ETC1 leg,
 `/home/user/b1051-after/fixed-etc1/client3.log`) but **not** the per-NPC
 variant series (`qcm*0101/0201`, 0 uploads for the guard race; the only
 `0101` uploads in that leg are non-guard races `betch*`/`betft*`/`bethe*`/
