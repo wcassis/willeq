@@ -54,6 +54,12 @@ bool eligible(const EntityVisual& v) {
 void EntityRenderer::setImpostorFrameInputs(const FrameBudgetGovernor* governor, uint16_t targetId,
                                             std::vector<std::string> groupMemberNames, bool loading) {
     impostorGovernor_ = governor;
+    if (impostorTargetId_ != targetId) {
+        // B1071: the pin's input edge, at the frame where it moves. Silent
+        // whenever the target is unchanged; loud exactly when it is not.
+        LOG_INFO(MOD_GRAPHICS, "[impostor] target-id frame={} {} -> {} (loading={})",
+                 impostorFrame_, impostorTargetId_, targetId, loading ? "true" : "false");
+    }
     impostorTargetId_ = targetId;
     impostorGroupNames_ = std::move(groupMemberNames);
     impostorLoading_ = loading;
@@ -186,7 +192,46 @@ void EntityRenderer::updateImpostors() {
                        impostorGroupNames_.end();
         impostorCands_.push_back(c);
     }
+    {
+        // B1071: the pin's DECISION-side diagnostic. Silent whenever the
+        // target (if any) is a pinned candidate -- the healthy case; loud
+        // only when the target id is set but the target is absent from the
+        // candidate set (and WHY: not in entities_, or ineligible, with the
+        // ineligible flags) or was planned Impostor despite being pinned.
+        if (impostorTargetId_ != 0) {
+            bool inCands = false, pinnedInCands = false;
+            for (const auto& c : impostorCands_)
+                if (c.spawnId == impostorTargetId_) { inCands = true; pinnedInCands = c.pinned; }
+            auto ev = entities_.find(impostorTargetId_);
+            if (!inCands) {
+                if (ev == entities_.end()) {
+                    LOG_INFO(MOD_GRAPHICS, "[impostor] target-miss frame={} target={} NOT_IN_ENTITIES", frame, impostorTargetId_);
+                } else {
+                    const auto& v = ev->second;
+                    LOG_INFO(MOD_GRAPHICS,
+                             "[impostor] target-miss frame={} target={} ineligible node={} inScene={} meshBuilt={} "
+                             "animated={} animNode={} buildPhase={} isPlayer={} corpse={} fading={} placeholder={} collision={}",
+                             frame, impostorTargetId_, (int)(v.sceneNode != nullptr), v.inSceneGraph, v.meshBuilt,
+                             v.isAnimated, (int)(v.animatedNode != nullptr), (int)v.buildPhase, v.isPlayer, v.isCorpse,
+                             v.isFading, v.usesPlaceholder, v.hasCollision);
+                }
+            } else if (!pinnedInCands) {
+                LOG_INFO(MOD_GRAPHICS, "[impostor] target-miss frame={} target={} IN_CANDS_NOT_PINNED group={}",
+                         frame, impostorTargetId_, (int)impostorGroupNames_.size());
+            }
+        }
+    }
     impostorPolicy_.plan(impostorCands_, gstate, avgMs, targetMs, impostorTiers_);
+    {
+        // B1071: pinned-but-Impostor is a policy violation (plan() checks
+        // pinned before the tier); loud if it ever happens, silent otherwise.
+        for (size_t i = 0; i < impostorCands_.size(); ++i)
+            if (impostorCands_[i].pinned && impostorTiers_[i] == Tier::Impostor) {
+                LOG_INFO(MOD_GRAPHICS, "[impostor] PIN-BUT-IMPOSTOR frame={} id={} dist={:.1f} limit={}",
+                         frame, impostorCands_[i].spawnId,
+                         std::sqrt(impostorCands_[i].distSq), impostorPolicy_.fullLimit());
+            }
+    }
     if (impostorForceMode_ != 0)
         for (auto& t : impostorTiers_) t = impostorForceMode_ == 1 ? Tier::Impostor : Tier::Full;
 
