@@ -6,6 +6,8 @@ DRM_GLES2_FILES=(
     COGLES2Shaders.h COGLES2Shaders.cpp
     COGLES2MaterialRenderer.h COGLES2MaterialRenderer.cpp
     gl_call_counters.h gpu_sync_probe.h t122_texprobe.h
+    drm_flip_tracker.h
+    drm_key_translation.h
     # B961: the scanout-framebuffer tally (header-only; both device forks
     # #include it relative to the TU, exactly like drm_flip_tracker.h).
     scanout_buffer_tally.h
