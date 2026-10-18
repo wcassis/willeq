@@ -50,7 +50,9 @@ public:
 //
 //   hotbar:         {308, 486, 756, 570}   (B1075: the 1x10 bar, bottom-centre,
 //                                           pushed right of the chat at 800 wide)
-//   spellGems:      {764, 198, 796, 482}   (8 gems, ending at the hotbar's top)
+//   spellGems:      {748, 192, 796, 482}   (B1077: the oracle's 48x290
+//                                           CastSpellWnd, right-aligned,
+//                                           ending at the hotbar's top)
 //   inventoryPopup: {400, 65, 800, 415}    (B1075: 400x350, the layout table's
 //                                           PairRight anchor; at 800 wide the
 //                                           pair fills the screen edge to edge)
@@ -251,17 +253,19 @@ TEST_F(StaticUIInputTest, HotbarCloseHoverFlagsBoxOnly) {
 // --- Spell gems ---
 
 TEST_F(StaticUIInputTest, SpellGemFirstHoverSetsIndexZero) {
-    // The gem bar ends MARGIN above the hotbar window's top (486 at 800x600,
-    // B1075), so gem 0 occupies y [198, 230).
-    bool consumed = input.processInput(770, 214, false, layout, hotbar, gems,
+    // B1077: the gem window is the oracle's 48x290 (spell_gem_layout.h),
+    // right-aligned at {748, 192, 796, 482} at 800x600, so gem 0's cell
+    // (36x28 at the window's (3, 10)) occupies x [751, 787), y [202, 230).
+    bool consumed = input.processInput(770, 216, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(gems.hoveredGem, 0);
 }
 
 TEST_F(StaticUIInputTest, SpellGemLastHoverSetsIndexSeven) {
-    // Gem 7: gy = 198 + 7*36 = 450, occupies y in [450, 482).
-    bool consumed = input.processInput(770, 466, false, layout, hotbar, gems,
+    // Gem 7: the cell at the window's (3, 10+7*30) = y in [422, 450) at
+    // 800x600.
+    bool consumed = input.processInput(770, 436, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(gems.hoveredGem, 7);
@@ -271,7 +275,7 @@ TEST_F(StaticUIInputTest, SpellGemClickPushesCastSpellIntent) {
     TestBridge bridge;
     input.init(&bridge);
 
-    input.processInput(770, 214, /*leftClicked=*/true, layout, hotbar, gems,
+    input.processInput(770, 216, /*leftClicked=*/true, layout, hotbar, gems,
                         inventory, spellbook, skills, buffs, loot);
 
     auto intents = bridge.drainIntents();
@@ -292,9 +296,8 @@ TEST_F(StaticUIInputTest, SpellGemClickPushesCastSpellIntent) {
 // exhaustive over all 30 slots) as well as through processInput().
 
 TEST_F(StaticUIInputTest, InventoryEquipLeftColumnFirstSlotHoversEar1) {
-    // B1078 (GitLab #398): the window moved to {400,48,755,429} at 800x600,
-    // so the click point moved with it. SLOT_EAR1 (id 1): {406,64,432,90} —
-    // left column, row 0.
+    // On the B1077/B1078 merged 800x600 layout, the inventory window is
+    // {400,48,742,416} at 80%; SLOT_EAR1 (id 1) is {406,64,431,89}.
     inventory.activePopup = PopupType::Inventory;
     bool consumed = input.processInput(419, 77, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
@@ -303,12 +306,14 @@ TEST_F(StaticUIInputTest, InventoryEquipLeftColumnFirstSlotHoversEar1) {
 }
 
 TEST_F(StaticUIInputTest, InventoryEquipRightColumnHoversCorrectSlotId) {
-    // SLOT_RANGE (id 11): {722,117,748,143} — right column, row 2.
+    // B1077's wider gem column narrows B1078's middleBand at 800x600:
+    // inventory scale 83% -> 80%, and SLOT_RANGE (id 11) is now
+    // {710,115,735,140} — right column, row 2.
     // Slot identity now comes from a lookup table (kLeftColumn/kRightColumn/
     // kWeaponRow in inventory_layout.h), not a col-major index formula —
     // this pins that the right column's 3rd slot really is SLOT_RANGE.
     inventory.activePopup = PopupType::Inventory;
-    bool consumed = input.processInput(735, 130, false, layout, hotbar, gems,
+    bool consumed = input.processInput(722, 127, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(inventory.hoveredSlot, eqt::inventory::SLOT_RANGE);
@@ -886,9 +891,10 @@ TEST(GroupPanelShapeAtEveryResolution, TheEmptyWindowIsOneTitleStripEverywhere) 
 // the window's own scale factor (B1078, GitLab #398): the frame is the
 // oracle's 428x460 at ONE uniform factor, so each row maps by that factor
 // (the window's `at`): (win.X + X*f/100, win.Y + Y*f/100, W*f/100, H*f/100).
-// At 800x600 the factor is 83:
-//   x = 400 + 303*83/100 = 651, w = 70*83/100 = 58
-//   y = 48 + {121,147,171,197}*83/100 = {148,170,189,211}, h = 24*83/100 = 19
+// On the B1077/B1078 merged 800x600 layout, the 48px gem column narrows
+// middleBand by 16px and the width-limited factor is 80 (was 83):
+//   x = 400 + 303*80/100 = 642, w = 70*80/100 = 56
+//   y = 48 + {121,147,171,197}*80/100 = {144,165,184,205}, h = 24*80/100 = 19
 // ===========================================================================
 
 class PurseT393 : public ::testing::Test {
@@ -900,10 +906,10 @@ protected:
 
 TEST_F(PurseT393, EachCoinRowIsTheOracleRectScaledIntoTheWindow) {
     const irr::core::rect<irr::s32> expected[4] = {
-        {651, 148, 709, 167},  // IW_Money0 platinum
-        {651, 170, 709, 189},  // IW_Money1 gold
-        {651, 189, 709, 208},  // IW_Money2 silver
-        {651, 211, 709, 230},  // IW_Money3 copper
+        {642, 144, 698, 163},  // IW_Money0 platinum
+        {642, 165, 698, 184},  // IW_Money1 gold
+        {642, 184, 698, 203},  // IW_Money2 silver
+        {642, 205, 698, 224},  // IW_Money3 copper
     };
     for (int d = 0; d < InventoryLayout::COIN_COUNT; ++d) {
         EXPECT_EQ(InventoryLayout::coinRect(layout, d), expected[d])
@@ -977,15 +983,22 @@ TEST_F(PurseT393, AnOutOfRangeDenominationIsDegenerate) {
 
 // The window scales by one uniform factor per resolution (B1078, GitLab
 // #398), so the rows' offset inside it is NOT identical everywhere -- at the
-// full-size resolutions (1280x1024 and 1920x1080) the window IS the oracle's
+// full-size resolutions (1024x768 and up on the merged B1077/B1078 layout)
+// the window IS the oracle's
 // 428x460 and the offset is the oracle's own; smaller resolutions carry a
 // proportionally smaller offset. Pin every resolution.
 TEST(PurseT393Resolutions, TheRowsAreProportionalInsideTheWindowAtEveryResolution) {
     struct Res { int w, h; int origin[4][2]; };
     const Res table[5] = {
         {640, 480,  {{75, 30}, {75, 36}, {75, 42}, {75, 49}}},
-        {800, 600,  {{251, 100}, {251, 122}, {251, 141}, {251, 163}}},
-        {1024, 768, {{284, 113}, {284, 138}, {284, 160}, {284, 185}}},
+        // B1077's 48px gem column reduces B1078's 800x600 inventory factor
+        // from 83% to 80%.
+        {800, 600,  {{242, 96}, {242, 117}, {242, 136}, {242, 157}}},
+        // At 1024, the same 16px narrowing makes the band 800px wide,
+        // just below the 804px pair threshold in UILayout. The pair falls
+        // back to screen centring; inventory shifts left enough to fit its
+        // oracle 428x460 at the full 100% factor (was 94%).
+        {1024, 768, {{303, 121}, {303, 147}, {303, 171}, {303, 197}}},
         {1280, 1024, {{303, 121}, {303, 147}, {303, 171}, {303, 197}}},
         {1920, 1080, {{303, 121}, {303, 147}, {303, 171}, {303, 197}}},
     };
@@ -1127,7 +1140,8 @@ TEST(PurseT393Render, TheInventoryPopupEmitsOneTextEntryPerCoinRow) {
 // mapped by the window's own scale factor (the window is the oracle's
 // 428x460 at ONE uniform factor, so a child at oracle (X,Y,W,H) lands at
 // (win.X + X*f/100, win.Y + Y*f/100, W*f/100, H*f/100)). At 800x600 the
-// window is {400,48,755,429} (factor 83) so the doll is {537,95,607,234}.
+// merged 800x600 window is {400,48,742,416} (factor 80, narrowed by B1077's
+// 48px gem column) so the doll is {532,93,600,227}.
 // ===========================================================================
 
 namespace {
@@ -1143,7 +1157,7 @@ TEST(PaperdollT409, TheRectIsTheOracleCharacterViewScaledIntoTheWindow) {
     UILayout layout;
     layout.computeLayout(800, 600);
     EXPECT_EQ(InventoryLayout::paperdollRect(layout),
-              irr::core::rect<irr::s32>(537, 95, 607, 234));
+              irr::core::rect<irr::s32>(532, 93, 600, 227));
 }
 
 TEST(PaperdollT409, TheRectIsIdenticalRelativeToTheWindowOriginAtEveryResolution) {

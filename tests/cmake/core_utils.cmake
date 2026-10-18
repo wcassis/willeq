@@ -165,6 +165,7 @@ ADD_EXECUTABLE(test_scenario_state_machines
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ui_trade.cpp  # UIGAP-live2
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_camp.cpp  # B1005
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_zone_connect_timeout.cpp  # B1072
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_zone_change_no_flash.cpp  # B1081
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_fall_damage.cpp  # B893
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ranged_single_shot.cpp  # B900
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_hotbar_lifecycle.cpp  # B1025-H5
@@ -197,6 +198,7 @@ ADD_EXECUTABLE(test_scenario_ui_legs
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_zone_connect_timeout.cpp  # B1072
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_forage_lands.cpp  # B894
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_fall_damage.cpp  # B893
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_zone_change_no_flash.cpp  # B1081
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ranged_single_shot.cpp  # B900
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_hotbar_lifecycle.cpp  # B1025-H5
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_hotbar_isolation_assign.cpp  # B1025-H5 peer

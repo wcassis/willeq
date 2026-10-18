@@ -78,11 +78,27 @@ public:
 	};
 	const TestSentGMSummon& Test_GetLastGMSummon() const { return m_test_last_gm_summon; }
 
+	// B1081 (#401) test seam, same shape as T217/T229's: the complete
+	// OP_GMZoneRequest2 packet (opcode + uint32 zone id) the last
+	// APPROVED reply to ZoneProcessGMZoneRequest() caused to be built.
+	// Captured before the connection gate, so a headless test can tell
+	// "decided to confirm" from "decided not to" -- the send is
+	// unreachable without a live zone connection. A denied reply must
+	// leave sent == false (a confirmation with no approval would be a
+	// lie the server would reject).
+	struct TestSentGMZoneRequest2 {
+		bool sent = false;
+		uint32_t zone_id = 0;
+		std::vector<uint8_t> bytes;
+	};
+	const TestSentGMZoneRequest2& Test_GetLastGMZoneRequest2() const { return m_test_last_gm_zone_request2; }
+
 private:
 	ClientContext& ctx_;
 
 	TestSentGMHideMe m_test_last_gm_hideme;
 	TestSentGMSummon m_test_last_gm_summon;
+	TestSentGMZoneRequest2 m_test_last_gm_zone_request2;
 };
 
 }  // namespace gm

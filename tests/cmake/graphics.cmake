@@ -341,6 +341,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_item_icon_atlas DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1077 (GitLab #397): the shipped spell icon sheets versus the official
+# client's own uifiles/default/gemicons*.tga, Spells*.tga and
+# Spell_Icons.tga, cell for cell, plus the row-major zero-based id->cell
+# mapping EQUI_Animations.xml declares and the hand-read cells. Files only
+# -- no device, no GPU, no willeq_core; same shape as test_item_icon_atlas
+# above.
+ADD_EXECUTABLE(test_spell_icon_atlas
+    test_spell_icon_atlas.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_spell_icon_atlas PRIVATE
+    "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
+TARGET_INCLUDE_DIRECTORIES(test_spell_icon_atlas PRIVATE
+    ${CMAKE_SOURCE_DIR}/tools
+    ${CMAKE_SOURCE_DIR}/include)
+TARGET_LINK_LIBRARIES(test_spell_icon_atlas GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_spell_icon_atlas DISCOVERY_TIMEOUT 120)
+
 # T406 (board B266): the census of every shipped BMP's alpha, its consumer's
 # blend, and the willeq.eqe1 payload that carries it. Reads files only (the
 # BMPs, the pack, and the consumer sources) -- no device, no GPU. Links

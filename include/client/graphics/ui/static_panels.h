@@ -299,6 +299,13 @@ struct SpellGemPanelState {
     // choice" -- resolveMemorizeGem() then picks the first empty gem, which
     // is what a plain click on a spell does.
     int memorizeTargetGem = -1;
+    // B1077 (GitLab #397): the CSPW_SpellBook button (the 22x22 toggle at
+    // (10,252) inside the window). The hit test (static_ui_input.cpp) writes
+    // bookClicked when a LEFT click lands on the button and bookHovered
+    // every frame; FrameComponent reads and resets bookClicked once per
+    // frame and runs the SAME toggle body Ctrl+B and /book use.
+    bool bookClicked = false;
+    bool bookHovered = false;
 };
 
 /**

@@ -15,6 +15,7 @@
 
 #include "client/login_world/character_select.h"
 
+#include <cstdint>
 #include <functional>
 
 namespace eqt {
@@ -28,8 +29,22 @@ public:
 
     void tick(LoginWorldComponent& lw, CharacterSelectChannel& channel, const StringLookup& eqstr);
 
+    /**
+     * B1081 (GitLab #401): how many times this service took the screen UP
+     * (channel inactive -> active) this run. The render thread logs
+     * "[CHARSELECT] screen up" at the same moment on a run that draws it, so
+     * on every other run this counter IS the "screen up" the live lane can
+     * assert: a zone-change world reconnect must contribute exactly 0, a
+     * fresh login with the screen exactly 1. The service is the game thread's
+     * and the channel's active() flag is its output, so counting here is the
+     * count. (A screen that comes down and back up again would count twice;
+     * it only goes down for good when OP_EnterWorld is out.)
+     */
+    uint32_t Activations() const { return activations_; }
+
 private:
     uint32_t handled_ = 0;
+    uint32_t activations_ = 0;   // B1081: screen-up count, see Activations()
     uint32_t listGeneration_ = 0;
     std::vector<CharacterSelectRow> rows_;
     std::shared_ptr<const EqstrTable> strings_;

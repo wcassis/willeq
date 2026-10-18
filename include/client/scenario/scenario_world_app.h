@@ -95,10 +95,12 @@ public:
     int CampPhase() const override;
     bool AtCharacterSelect() const override;
     std::vector<std::string> CharacterListNames() const override;
+    std::string CharacterSelectName() const override;
     long long CharacterListGeneration() const override;
     bool EnterWorldAs(const std::string& name) override;
     long long ZoneConnectOpens() const override;                          // B1072
     bool SimulateUnreachableZoneConnects(int attempts, int port) override;  // B1072
+    long long CharacterSelectActivations() const override;                  // B1081
     long long ZoneAudioSilenceCount() const override;                     // B1080
     bool SimulateZoneSilentAfterHandshake() override;                        // B1079
 

@@ -298,8 +298,8 @@ test that fails if the checked-in bytes and their inputs drift apart:
 
 | asset | recipe | pinned by | ctest |
 |---|---|---|---|
-| `data/textures/*.bmp` (67 files) | `scripts/build_textures.sh` → `tools/generate_textures` (64, procedural), `tools/spell_sprite_atlas_builder` (1) and `tools/item_icon_atlas_builder` (2) — both lifted from the client's own art | `data/textures.sha256` | `TexturesReproducible` |
-| `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (132 entries: 67 textures, 64 ETC1 `_alpha` companions, 1 raw — `build/bin/verify_eqe1` prints the census) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
+| `data/textures/*.bmp` (71 files) | `scripts/build_textures.sh` → `tools/generate_textures` (64, procedural), `tools/spell_sprite_atlas_builder` (1), `tools/item_icon_atlas_builder` (2), `tools/spell_icon_atlas_builder` (4) | `data/textures.sha256` | `TexturesReproducible` |
+| `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (140 entries: 71 textures, 68 ETC1 `_alpha` companions, 1 raw — `build/bin/verify_eqe1` prints the census) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
 | `data/willeq.db` (28,791 rows in ten tables; `metadata.version` = 7) | `scripts/build_willeq_db.sh` → `tools/willeq_db_builder`, over the EQ client's seven `*.txt` files plus `data/item_models.json` and `config/race_models.json` | `data/willeq.db.sha256` | `DbReproducible` (T450) |
 
 The pack lives outside the repo and is read live by every worktree; only
@@ -317,7 +317,7 @@ builder's design). Audit a host's pack directory:
 (STALE on any v1/v2, exit 1). Pinned by test_eqe1_stale_pack and
 test_eqe1_verify_stale_pack.
 
-**The pack's inputs are the 67 BMPs plus `tools/ui_atlas_builder`, so a texture
+**The pack's inputs are the 71 BMPs plus `tools/ui_atlas_builder`, so a texture
 change cascades**: regenerate the BMPs, rewrite `data/textures.sha256`
 (`--write-pins`), rebuild the pack, update `data/willeq.eqe1.sha256` — all in
 **one commit**, or both tests go red.
@@ -341,12 +341,13 @@ its own deliberate check rather than being swept along.
 `data/equipment_models.json` and `tools/equipment_index_builder` still exist and
 now feed nothing — boarded, not deleted as a side effect.
 
-**`data/textures/` has THREE recipes (boards B300, B376).** Sixty-four of the
-BMPs are procedural (`generate_textures`); the other three are the official
+**`data/textures/` has FOUR recipes (B300/B376/B1077).** Sixty-four of the
+BMPs are procedural (`generate_textures`); the other seven are the official
 client's own art. `spell_sprite_atlas.bmp` comes from `SpellEffects/spel*.tga`
 via `tools/spell_sprite_atlas_builder`, and `item_icons0.bmp` + `item_icons1.bmp`
-from `uifiles/default/dragitem1..34.tga` via `tools/item_icon_atlas_builder`.
-`build_textures.sh` runs all three into the same directory and the pin file
+from `uifiles/default/dragitem1..34.tga` via `tools/item_icon_atlas_builder`,
+the four `spell_icon*.bmp` via `tools/spell_icon_atlas_builder`.
+`build_textures.sh` runs all four into the same directory and the pin file
 covers the union.
 
 #### The item icon sheets
@@ -419,16 +420,16 @@ the plain style — an invented override is the guess Will's ruling forbids.**
 
 #### Texture alpha
 
-The census re-measured at T444 is **63 of the 67 shipped 32-bit with their alpha
+The census re-measured at T444 is **67 of the 71 shipped 32-bit with their alpha
 in-band**. The four 24-bit ones each carry a written reason in
 `tests/test_texture_alpha_census.cpp`, whose `EveryShippedBmpIsAccountedFor`
 makes a new generator declare which side it is on: `spell_particle_fallback.bmp`
 (drawn additively, alpha provably unsampled — its cosine falloff lives in RGB,
-which is what an additive blend samples), `detail_atlas.bmp` (board **B410**: it
-stays 24-bit on scope, not on a measured reason, because both its consumers
-alpha-BLEND it and converting it is a look change), and `rain_streaks.bmp` +
-`snow_flakes.bmp` (no consumer at all). T427 closed B265, so **every one of
-the 67 shipped BMPs is now byte-reproducible from its generator** and
+which is what an additive blend samples), `detail_atlas.bmp` (**B410**: 24-bit on
+scope, not a measured reason; both consumers alpha-BLEND it, so converting it
+is a look change), and `rain_streaks.bmp` +
+`snow_flakes.bmp` (no consumer). Since T427 **every one of
+the 71 shipped BMPs is now byte-reproducible from its generator** and
 `NOT_REPRODUCIBLE` is empty. `generate_textures --report` prints the census.
 
 **A 32-bit entry is not free**: an ETC1 256x256 entry with mips is 43,704

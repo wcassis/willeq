@@ -1038,8 +1038,12 @@ EXEMPT_TESTS_GROUPS = {
     ("FrameComponent", "seedFrustumDebugBoxForTest"): "seam",
     ("GmComponent", "Test_GetLastGMHideMe"): "seam",
     ("GmComponent", "Test_GetLastGMSummon"): "seam",
+    # B1081 (#401): the OP_GMZoneRequest2 confirm packet, test_gm_component.
+    ("GmComponent", "Test_GetLastGMZoneRequest2"): "seam",
     ("LoginWorldComponent", "ReplayLoginPacket"): "seam",
     ("LoginWorldComponent", "ReplayWorldPacket"): "seam",
+    # B1081 (#401): the zone-change reconnect window, test_zone_change_no_flash.
+    ("LoginWorldComponent", "Test_EnterWorldSentForSeam"): "seam",
     ("OverlaysComponent", "mapOverlayTriangleCount"): "seam",
     ("OverlaysComponent", "navmeshOverlayTriangleCount"): "seam",
     ("OverlaysComponent", "seedMapOverlayTriangleForTest"): "seam",
@@ -1141,7 +1145,9 @@ EXEMPT_TESTS_GROUPS = {
     ("IrrlichtRenderer", "isNewUIEnabled"): "observer",
     ("LoginWorldComponent", "CharacterSelectReturns"): "observer",  # B1005
     ("LoginWorldComponent", "GetAccountId"): "observer",
-    ("LoginWorldComponent", "GetCharacterSelectIndex"): "observer",
+    # B1081 (#401): GetCharacterSelectIndex gained a production caller
+    # (ApplicationScenarioWorld::CharacterSelectName) -- removed from this
+    # tests-only table; it is now classified by its live caller.
     ("LoginWorldComponent", "GetChatConnectionType"): "observer",
     ("LoginWorldComponent", "GetChatServerHost"): "observer",
     ("LoginWorldComponent", "GetChatServerPort"): "observer",

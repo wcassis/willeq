@@ -494,7 +494,11 @@ TEST(DestroyButton, AsksOnlyWithAnItemHeldAndOverlapsNoSlot) {
     for (int c = 0; c < InventoryLayout::COIN_COUNT; ++c) {
         EXPECT_FALSE(InventoryLayout::coinRect(rig.l, c).isRectCollided(d));
     }
-    EXPECT_EQ(d.getWidth(), 50 * win.getWidth() / 428) << "IW_Destroy CX=50, scaled";
+    // B1077's 48px gem column reduces B1078's 800x600 inventory factor to
+    // 80%. Read the one factor directly: deriving it from the already-rounded
+    // 342px window width truncates 50*342/428 to 39 instead of the true 40.
+    EXPECT_EQ(d.getWidth(), 50 * InventoryLayout::scalePct(rig.l) / 100)
+        << "IW_Destroy CX=50, scaled";
 
     rig.clickRect(d);
     EXPECT_TRUE(rig.bridge.drainIntents().empty()) << "nothing held: nothing asked";

@@ -191,6 +191,26 @@ public:
 	void ReturnToCharacterSelect(const char* why = "camp");
 	/** True from ReturnToCharacterSelect() until the fresh OP_SendCharInfo. */
 	bool AwaitingFreshCharacterList() const { return m_awaiting_fresh_list; }
+	/**
+	 * B1081 (GitLab #401): a zone-change world reconnect, until its automatic
+	 * OP_EnterWorld is out. Derived from state that already exists -- the
+	 * zoning byte of the OP_SendLoginInfo that just went out
+	 * (ZoneComponent::ZoneToZoneInProgress, latched in ProcessDeferredZoneChange
+	 * and read at login_world_component.cpp:582) and m_enter_world_sent,
+	 * which the zoning pass raises in WorldProcessPostEnterWorld. False for a
+	 * fresh login (never latched), the B1005 camp return (the logout reply
+	 * clears it, player_camp.cpp) and the B1072 give-up (AbandonZoneConnect
+	 * clears it, zone_connect.cpp). No new packet parsing, no new storage.
+	 * CharacterSelectService::tick() reads it and keeps the screen down for
+	 * those frames (the loading screen stays up). Defined in
+	 * login_world_component.cpp -- the zone header's forward declaration of
+	 * EverQuest would shadow eq.h's definition otherwise.
+	 */
+	bool IsZoningReconnect() const;
+	/** Test seam: set m_enter_world_sent without sending (B1081's window
+	 *  tests; false also models ReconnectWorld's reset,
+	 *  login_world_char_select.cpp:60, without tearing a socket down). */
+	void Test_EnterWorldSentForSeam(bool v) { m_enter_world_sent = v; }
 	/** How many times this session went back to the character-select screen. */
 	uint32_t CharacterSelectReturns() const { return m_select_returns; }
 	/** Tear down the world session and open a new one to the stored world
