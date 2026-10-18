@@ -186,6 +186,43 @@ unsigned long g_alphaTraceTotalDraws = 0;
 const void* g_alphaTraceSeen[512] = {};
 unsigned g_alphaTraceSeenCount = 0;
 
+// B1051 (GitLab #371): WILLEQ_B1051_TRACE=1 logs, on stderr, the actual GL
+// texture bindings of EVERY 3D draw inside the frame window [N, N+M) (N =
+// WILLEQ_B1051_FROM, default 0; M = WILLEQ_B1051_FRAMES, default all the
+// rest): material type, the sampler unit GL reports active after the
+// material's bind run, the object bound to that unit (id + name), and unit
+// 1's binding. One line per CONSECUTIVE DISTINCT (unit, tex0, tex1,
+// material type) run, so a static zone collapses to a few lines while a
+// 13-buffer character whose buffers genuinely bind 13 objects shows all 13.
+// This is the sampler-level answer to "do the 13 buffers sample 13 textures
+// or one": the client is verified to setMaterial() per buffer, so if the log
+// shows one texture across all 13 the collapse is in the GL state run itself
+// (Midgard/Panfrost), and if it shows 13 the GL binds are correct and the
+// fault is post-bind (descriptor / shader sampling). A per-frame summary line
+// closes each traced frame. Off (the default) it is one predicted-false
+// branch per 3D material apply.
+bool g_b1051Trace = false;
+unsigned g_b1051FromFrame = 0;
+unsigned g_b1051Frames = 0;  // 0 = through the end of the process
+unsigned g_b1051CurFrame = 0;
+unsigned g_b1051CurDraws = 0;
+unsigned long g_b1051RunSeq = 0;
+GLuint g_b1051LastUnit = 0xFFFFFFFFu;
+GLuint g_b1051LastTex0 = 0xFFFFFFFFu;
+GLuint g_b1051LastTex1 = 0xFFFFFFFFu;
+int g_b1051LastMatType = -1;
+// The Mesa GLES2 header on the target does not declare
+// glGetTexLevelParameteriv, so resolve it at init (dlsym, like the gem-tag
+// functions) and fall back to width-unknown when it is absent — the name
+// read-back still discriminates.
+typedef void (*B1051GetTexLevelParamFn)(GLenum, GLint, GLenum, GLint*);
+B1051GetTexLevelParamFn g_b1051GetTexLevelParam = nullptr;
+// GL_TEXTURE_WIDTH is the per-level width pname (0x1000, shared with the 1D
+// width) — not in the GLES2 core header, so define it for the trace read.
+#ifndef GL_TEXTURE_WIDTH
+#define GL_TEXTURE_WIDTH 0x1000
+#endif
+
 void alphaTraceDraw(const irr::video::ITexture* tex)
 {
     ++g_alphaTraceFrameDraws;
@@ -217,6 +254,61 @@ void alphaTraceSummary()
     std::fprintf(stderr, "[B960] alpha3d summary frames=%u frames_with_draws=%u total_draws=%lu unique_textures=%u\n",
                  g_alphaTraceFrame, g_alphaTraceFramesWithDraws, g_alphaTraceTotalDraws,
                  g_alphaTraceSeenCount);
+}
+
+// B1051: is the CURRENT driver frame inside the trace window [from, from+frames)?
+// frames==0 = open-ended (from through the end of the process).
+bool b1051WindowActive()
+{
+    if (!g_b1051Trace) return false;
+    if (g_b1051Frames == 0) return g_b1051CurFrame >= g_b1051FromFrame;
+    return g_b1051CurFrame >= g_b1051FromFrame &&
+           g_b1051CurFrame < g_b1051FromFrame + g_b1051Frames;
+}
+
+// One log line per CONSECUTIVE DISTINCT (active unit, tex0, tex1, mat type)
+// run, so the static zone collapses to a handful of lines and a 13-buffer
+// character shows all 13 objects if and only if they really were bound.
+// The unit 0 name is read back with glGetString(GL_TEXTURE_BINDING_2D) on
+// the unit the driver's own state tracker says is active — the very state
+// the shader samples with — so this is what the hardware sees, not what we
+// intended. The caller passes the unit-1 binding the same way (it switches
+// to TEXTURE1, reads, switches back).
+void b1051Note3DDraw(GLenum activeUnit, GLuint tex0, GLuint tex1, int matType,
+                     const char* tex0Name, int tex0Width, const char* tex1Name, int tex1Width)
+{
+    ++g_b1051CurDraws;
+    const bool changed = activeUnit != g_b1051LastUnit ||
+                         tex0 != g_b1051LastTex0 ||
+                         tex1 != g_b1051LastTex1 ||
+                         matType != g_b1051LastMatType;
+    g_b1051LastUnit = activeUnit;
+    g_b1051LastTex0 = tex0;
+    g_b1051LastTex1 = tex1;
+    g_b1051LastMatType = matType;
+    if (!changed || !b1051WindowActive()) return;
+    ++g_b1051RunSeq;
+    std::fprintf(stderr,
+                 "[B1051] f%u r%lu unit=%u tex0=%u w=%d '%s' tex1=%u w=%d '%s' mat=%d\n",
+                 g_b1051CurFrame, g_b1051RunSeq,
+                 activeUnit - GL_TEXTURE0, tex0, tex0Width, tex0Name,
+                 tex1, tex1Width, tex1Name, matType);
+    std::fflush(stderr);
+}
+
+void b1051EndFrame()
+{
+    if (g_b1051Trace && g_b1051CurDraws > 0 && b1051WindowActive()) {
+        std::fprintf(stderr, "[B1051] f%u summary draws=%u runs=%lu\n",
+                     g_b1051CurFrame, g_b1051CurDraws, g_b1051RunSeq);
+        std::fflush(stderr);
+    }
+    g_b1051CurDraws = 0;
+    g_b1051RunSeq = 0;
+    g_b1051LastUnit = 0xFFFFFFFFu;
+    g_b1051LastTex0 = 0xFFFFFFFFu;
+    g_b1051LastTex1 = 0xFFFFFFFFu;
+    g_b1051LastMatType = -1;
 }
 
 } // anonymous namespace
@@ -515,6 +607,22 @@ bool COpenGLES2Driver::initDriver()
         std::atexit(alphaTraceSummary);  // tools exit without dropping the device
         std::fprintf(stderr, "[B960] alpha3d trace on, legacy_fwidth=%d\n", legacyFwidth ? 1 : 0);
     }
+    // B1051 (GitLab #371): the per-3D-draw sampler-binding trace, same knob
+    // style (read once at driver init; off = one predicted-false branch per
+    // 3D material apply).
+    const char* b1051Knob = std::getenv("WILLEQ_B1051_TRACE");
+    if (b1051Knob && std::strcmp(b1051Knob, "1") == 0) {
+        g_b1051Trace = true;
+        g_b1051GetTexLevelParam = reinterpret_cast<B1051GetTexLevelParamFn>(
+            dlsym(RTLD_DEFAULT, "glGetTexLevelParameteriv"));
+        const char* from = std::getenv("WILLEQ_B1051_FROM");
+        if (from) g_b1051FromFrame = static_cast<unsigned>(std::strtoul(from, nullptr, 10));
+        const char* frames = std::getenv("WILLEQ_B1051_FRAMES");
+        if (frames) g_b1051Frames = static_cast<unsigned>(std::strtoul(frames, nullptr, 10));
+        std::fprintf(stderr, "[B1051] sampler trace on, from=%u frames=%u (0=rest), width-read=%s\n",
+                     g_b1051FromFrame, g_b1051Frames,
+                     g_b1051GetTexLevelParam ? "yes" : "no");
+    }
     if (!shaderManager_.init(legacyFwidth)) {
         os::Printer::log("GLES2: Shader initialization failed", ELL_ERROR);
         return false;
@@ -571,6 +679,8 @@ bool COpenGLES2Driver::beginScene(bool backBuffer, bool zBuffer,
     // B949: this frame's number, stamped into every texture the frame binds
     // (COGLES2Texture::markDrawn). Once per rendered frame, before its binds.
     FrameCounter.fetch_add(1, std::memory_order_relaxed);
+    // B1051: the driver's own frame number, for the sampler trace's window.
+    g_b1051CurFrame = FrameCounter.load(std::memory_order_relaxed) - 1;
 
     // T61: present the PREVIOUS frame now, before this frame's draws begin.
     // See endScene() for why the swap/page-flip moved here instead of
@@ -624,6 +734,7 @@ bool COpenGLES2Driver::endScene()
 {
     CNullDriver::endScene();
     if (g_alphaTrace) alphaTraceEndFrame();
+    b1051EndFrame();  // B1051: close the current frame's sampler-trace window
     b997CensusEndFrame();  // B997: roll the per-frame 3D-draw census
 
     // Discard depth/stencil tiles before present (bandwidth saving on tile-based GPUs)
@@ -1430,6 +1541,13 @@ void COpenGLES2Driver::drawVertexPrimitiveList(const void* vertices, u32 vertexC
 
     glDrawElements(glPrimitiveType, indexCount, glIndexType, indexList);
     PrimitivesDrawn += primitiveCount;
+
+    // B1051 (GitLab #371): record this draw's actual sampler state — the
+    // unit the driver's tracker says is active right now and what GL has
+    // bound to it and to unit 1 (read back with glGetString, so this is
+    // what the hardware sees, not what we intended). Off (the default) this
+    // is one predicted-false branch per 3D draw.
+    b1051Trace3DDraw();
 }
 
 void COpenGLES2Driver::drawMeshBuffer(const scene::IMeshBuffer* mb)
@@ -1491,6 +1609,7 @@ void COpenGLES2Driver::drawMeshBuffer(const scene::IMeshBuffer* mb)
 
         glDrawElements(GL_TRIANGLES, hwb.indexCount, GL_UNSIGNED_SHORT, (const void*)0);
         PrimitivesDrawn += hwb.indexCount / 3;
+        b1051Trace3DDraw();  // B1051: same trace point as the client-array path
         return;
     }
 
@@ -1509,6 +1628,50 @@ void COpenGLES2Driver::drawMeshBuffer(const scene::IMeshBuffer* mb)
                             mb->getIndices(), mb->getIndexCount() / 3,
                             mb->getVertexType(), scene::EPT_TRIANGLES,
                             mb->getIndexType());
+}
+
+// B1051 (GitLab #371): the per-3D-draw sampler-state trace point. Reads the
+// GL state AS IT STANDS at draw time — the driver's tracked active unit, the
+// object GL has bound to unit 0 and unit 1 (glGetString read-back, so this
+// is what the hardware samples, not what we intended) — and hands it to
+// b1051Note3DDraw(). Off (WILLEQ_B1051_TRACE unset) this is one predicted-
+// false branch per 3D draw and no GL calls at all.
+void COpenGLES2Driver::b1051Trace3DDraw()
+{
+    if (!g_b1051Trace)
+        return;
+    const GLuint unit0 = state_.boundTexture[0];
+    const GLuint unit1 = state_.boundTexture[1];
+    const GLenum saved = static_cast<GLenum>(state_.activeTextureUnit);
+    const char* name0 = "(none)";
+    int w0 = -1;
+    if (unit0) {
+        glActiveTexture(GL_TEXTURE0);
+        // The width is the real discriminator (the 13 Lieutenant ETC1
+        // textures are all different sizes: 64x128, 32x16, 128x64, ...);
+        // glGetString(GL_TEXTURE_BINDING_2D) on Mesa may return a bare id.
+        if (g_b1051GetTexLevelParam) {
+            GLint w = 0;
+            g_b1051GetTexLevelParam(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w);
+            w0 = static_cast<int>(w);
+        }
+        name0 = reinterpret_cast<const char*>(glGetString(GL_TEXTURE_BINDING_2D));
+    }
+    const char* name1 = "(none)";
+    int w1 = -1;
+    if (unit1) {
+        glActiveTexture(GL_TEXTURE1);
+        if (g_b1051GetTexLevelParam) {
+            GLint w = 0;
+            g_b1051GetTexLevelParam(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w);
+            w1 = static_cast<int>(w);
+        }
+        name1 = reinterpret_cast<const char*>(glGetString(GL_TEXTURE_BINDING_2D));
+    }
+    glActiveTexture(saved);
+    state_.activeTextureUnit = saved;
+    b1051Note3DDraw(static_cast<GLenum>(state_.activeTextureUnit), unit0, unit1,
+                    LastMaterial.MaterialType, name0, w0, name1, w1);
 }
 
 // ============================================================================

@@ -39,6 +39,7 @@ UI_DEV_CREATE = 0x5501
 UI_DEV_DESTROY = 0x5502
 EV_SYN, EV_KEY, SYN_REPORT = 0, 1, 0
 KEY_W, KEY_A, KEY_S, KEY_D, KEY_SPACE = 17, 30, 31, 32, 57
+KEY_Q, KEY_SLASH, KEY_ENTER, KEY_ESC, KEY_LEFTSHIFT = 16, 53, 28, 1, 42
 EVENT = struct.Struct("<IIHHi")
 
 
@@ -71,16 +72,20 @@ def log_has(path, needle):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--client-log", required=True)
+    ap.add_argument("--ready-frame", help="start timing after the first zoned-in frame exists")
     ap.add_argument("--events", required=True)
     ap.add_argument("--after", type=float, default=10.0, help="seconds after the ready point")
     ap.add_argument("--loops", type=int, default=5)
     ap.add_argument("--cap", type=float, default=330.0)
+    ap.add_argument("--stationary-turn", action="store_true",
+                    help="stand still, turn 360 degrees at 90 deg/s, then type /q")
     a = ap.parse_args()
 
     fd = os.open("/dev/uinput", os.O_WRONLY | os.O_NONBLOCK)
     fcntl.ioctl(fd, UI_SET_EVBIT, EV_KEY)
     fcntl.ioctl(fd, UI_SET_EVBIT, EV_SYN)
-    for k in (KEY_W, KEY_A, KEY_S, KEY_D, KEY_SPACE):
+    for k in (KEY_W, KEY_A, KEY_S, KEY_D, KEY_SPACE, KEY_Q, KEY_SLASH,
+              KEY_ENTER, KEY_ESC, KEY_LEFTSHIFT):
         fcntl.ioctl(fd, UI_SET_KEYBIT, k)
     # struct uinput_user_dev: name[80], input_id (4 x u16), ff_effects_max,
     # absmax/absmin/absfuzz/absflat[64] each.
@@ -93,7 +98,8 @@ def main():
         log.flush()
         ready_at = None
         while time.time() - t0 < a.cap:
-            if log_has(a.client_log, "[memledger] point=ready "):
+            if ((a.ready_frame and os.path.exists(a.ready_frame)) or
+                    (not a.ready_frame and log_has(a.client_log, "[memledger] point=ready "))):
                 ready_at = time.time()
                 break
             time.sleep(0.5)
@@ -102,16 +108,39 @@ def main():
         else:
             log.write(f"{ready_at:.3f}\tready\tseen\n")
             log.flush()
+            if a.stationary_turn:
+                # The saved UI can have a tip over the Options window; ESC
+                # dismisses one popup at a time before the observation starts.
+                hold(fd, KEY_ESC, 0.1, log)
+                time.sleep(1.0)
+                hold(fd, KEY_ESC, 0.1, log)
+                time.sleep(1.0)
+                hold(fd, KEY_ESC, 0.1, log)
+                time.sleep(1.0)
             time.sleep(a.after)
             log.write(f"{time.time():.3f}\tsequence\tstart\n")
-            for _ in range(a.loops):
-                hold(fd, KEY_W, 3.0, log)
-                hold(fd, KEY_SPACE, 0.1, log)
-                hold(fd, KEY_W, 1.0, log)
-                hold(fd, KEY_S, 2.0, log)
-                hold(fd, KEY_D, 0.6, log)
-                hold(fd, KEY_SPACE, 0.1, log)
-                time.sleep(0.5)
+            if a.stationary_turn:
+                # renderer_types.h sets turnSpeed to 90 degrees/second.
+                hold(fd, KEY_D, 4.0, log)
+                time.sleep(1.0)
+                for code in (KEY_SLASH, KEY_Q, KEY_ENTER):
+                    hold(fd, code, 0.4, log)
+                    time.sleep(1.0)
+                time.sleep(3.0)
+                if not log_has(a.client_log, "point=shutdown"):
+                    # The UI can consume chat input; ensure clean teardown.
+                    key(fd, KEY_LEFTSHIFT, True, log)
+                    hold(fd, KEY_ESC, 0.1, log)
+                    key(fd, KEY_LEFTSHIFT, False, log)
+            else:
+                for _ in range(a.loops):
+                    hold(fd, KEY_W, 3.0, log)
+                    hold(fd, KEY_SPACE, 0.1, log)
+                    hold(fd, KEY_W, 1.0, log)
+                    hold(fd, KEY_S, 2.0, log)
+                    hold(fd, KEY_D, 0.6, log)
+                    hold(fd, KEY_SPACE, 0.1, log)
+                    time.sleep(0.5)
             log.write(f"{time.time():.3f}\tsequence\tend\n")
             log.flush()
         while time.time() - t0 < a.cap and not log_has(a.client_log, "point=shutdown"):

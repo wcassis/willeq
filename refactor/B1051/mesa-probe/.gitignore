@@ -1,0 +1,7 @@
+# B1051 mesa probes: compiled artifacts are never committed (rebuild with the
+# build lines in each source's header comment).
+etc1_probe
+etc1_probe_x86
+etc1_decode_probe
+etc1_min13_probe
+ep_probe_x86

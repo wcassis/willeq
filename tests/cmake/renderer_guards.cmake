@@ -130,6 +130,24 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_zone_geometry_atlas_layout DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1051 (GitLab #371): a multi-buffer character mesh must resolve its per-part
+# textures from the ConstrainedTextureCache when the raw S3D bytes were
+# released (EQE1 authoritative). Reds on the pre-fix code: getOrLoadTexture()
+# only knew its own textureCache_/pendingTextures_ maps, so a cache-resident
+# per-part texture resolved to nullptr and the buffer drew the textureless
+# (255,200,180,160) diffuse -- the live ETC1 "smear" on multi-buffer
+# characters (Guard_Treitan, race 71) while single-buffer zone meshes and the
+# raw-RGBA run (bytes not released) rendered correctly. EDT_NULL, same idiom
+# as test_constrained_texture_cache.cpp.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_b1051_mesh_texture_fallback
+        test_b1051_mesh_texture_fallback.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_b1051_mesh_texture_fallback PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_b1051_mesh_texture_fallback GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_b1051_mesh_texture_fallback DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B949 (GitLab #267): LRU follows DRAW order, not load order. Drives a real
 # EDT_OGLES2 surfaceless device through beginScene -> draw -> endScene ->
 # endFrame "frames" and asserts that a texture bound every frame survives
