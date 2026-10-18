@@ -8,16 +8,15 @@
 # 1024x1024 sheets, board B376), and B1077's spell_icons{gems,spells,buff}.bmp
 # + spell_icon_holder.bmp (the official client's gemicons*.tga / spells*.tga /
 # Spell_Icons.tga sheets + its CW_SpellGemHolder piece of classic_pieces01.tga,
-# GitLab #397). B1077 grew the pack 9,726,596 -> 13,923,652 bytes, +4,197,056:
-# three ETC1 family atlases with mips plus their three ETC1 _alpha companions
-# and the 40x40 holder piece, and every zone's eqe1MappedBytes rises by
-# exactly that. The B1077 fix leg re-cut the holder piece (CW_SpellGemHolder,
-# 36x28) -- same pack size, new bytes.
-# Pinned here so a drift in either input is a ctest FAIL
-# (PackReproducible, which since B1094/#414 checks the rebuild against this
-# pin ONLY -- the installed pack's sha is INFO, never a verdict; the
-# installed-vs-pin property is the InstalledPackMatchesPin ctest, hard only
-# on fable). Update this line in the SAME commit that changes an input, and
-# leave the shared-pack install to the orchestrator at merge (write
-# `PACK INSTALL OWED AT MERGE: <sha>` in the summary).
-02a3d6e4e71fa1681291972eb40bae956a14153a9309a318b1831c0a193c0084  willeq.eqe1
+# GitLab #397) and B1076's spellbook_backdrop.bmp (the official client's own
+# book art, the four page tiles + the Done X composed into one 512x363 BMP by
+# tools/spellbook_backdrop_builder, GitLab #396). B1077 grew the pack
+# 9,726,596 -> 13,923,652 bytes, +4,197,056; B1076 grows it 13,923,652 ->
+# 14,173,156 bytes, +249,504 (one ETC1 512x363 page pair with mips + its ETC1
+# _alpha companion), and every zone's eqe1MappedBytes rises by exactly that.
+# The B1077 fix leg re-cut the holder piece (CW_SpellGemHolder, 36x28) --
+# same pack size, new bytes.
+# Pinned here so a drift in
+# either input, or a hand-edit of the shared pack, is a ctest FAIL
+# (PackReproducible). Update this line in the SAME commit that changes an input.
+3844461fd50d469e712b05f1c9742adf020c7a0a41735e20ae99a9e5a2530bae  willeq.eqe1

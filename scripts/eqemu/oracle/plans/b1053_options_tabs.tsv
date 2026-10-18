@@ -1,0 +1,30 @@
+# B1053 (#373): open the Options window and take one still per tab, in XML
+# tab order. MEASURED on lane 5 (1280x1024 Xorg; the driver's still crops
+# 1280x800 at +0+30, so root y = crop y + 30, root x = crop x). In the probe
+# still the window's top border is at crop y=349 and its left edge at
+# crop x=410 -- root (410,380). The rig's character INI carries NO
+# [OptionsWindow] section (checked), so this is the client's own default
+# placement; it is NOT the XML <Location>(90,47) and NOT fable's centred
+# anchor (that deviation is exactly what the side-by-side records). The tab
+# strip sits crop y 363..384 (root 393..414, centre 401); the oracle sizes
+# each tab to its TabText, so the click x's are the measured tab-face centres
+# (crop x == root x).
+# action	target	hold_ms	still_name
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+wait	8000	0	settle
+press	alt+o	0	options_general
+wait	1500	0	opt_general
+click	502,401	0	opt_display
+wait	1200	0	opt_display_settle
+click	554,401	0	opt_mouse
+wait	1200	0	opt_mouse_settle
+click	605,401	0	opt_keys
+wait	1200	0	opt_keys_settle
+click	657,401	0	opt_filters
+wait	1200	0	opt_filters_settle
+click	710,401	0	opt_colors
+wait	1200	0	opt_colors_settle
+click	762,401	0	opt_mail
+wait	1200	0	opt_mail_settle
+command	/q	0	quit

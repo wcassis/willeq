@@ -28,6 +28,7 @@
 #include "client/events/renderer_intents.h"
 #include "client/graphics/ui/item_display_layout.h"
 #include "client/graphics/ui/item_display_panel.h"
+#include "client/graphics/ui/spellbook_layout.h"  // B1076 (#396)
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/static_ui_input.h"
 #include "client/graphics/ui/spell_gem_layout.h"  // B1077
@@ -323,8 +324,15 @@ TEST(SpellDisplayT425, ShiftClickingASpellbookRowAsksForTheDisplayAndPlainStillM
     e.name = "Word of Health";
     book.spells.push_back(e);
 
-    const int rx = l.centerPopup.UpperLeftCorner.X + 10;
-    const int ry = l.centerPopup.UpperLeftCorner.Y + 24 + 2;
+    // B1076 (#396): the book is its own 510x360 (layout.bookPopup), and every
+    // row hit lands on a SpellBookLayout slotRect -- the OLD centerPopup
+    // (400x350) row coordinates no longer cover slot 0, which is the geometry
+    // the hit-test reads now. Mirror the retargeted memorize test: click the
+    // centre of slot 0 inside bookPopup.
+    const auto& bp = l.bookPopup;
+    const auto r0 = EQT::Graphics::SpellBookLayout::slotRect(0);
+    const int rx = bp.UpperLeftCorner.X + (r0.UpperLeftCorner.X + r0.LowerRightCorner.X) / 2;
+    const int ry = bp.UpperLeftCorner.Y + (r0.UpperLeftCorner.Y + r0.LowerRightCorner.Y) / 2;
 
     input.processInput(rx, ry, /*leftClicked=*/true, l, hotbar, gems, inv, book,
                        skills, buffs, loot, /*shift=*/true);

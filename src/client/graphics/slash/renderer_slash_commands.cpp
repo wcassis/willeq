@@ -29,6 +29,7 @@
 #include "client/graphics/ui/character_model_view.h"
 #include "client/graphics/ui/inventory_layout.h"
 #include "client/graphics/ui/ui_layout_table.h"  // B1075: closesOnOpen()
+#include "client/graphics/ui/spellbook_page_turn.h"  // B1076 fix-2: the ONE spread-turn body
 #include "client/chat/chat_message_buffer.h"
 #include "client/graphics/sky_renderer.h"
 #include "client/graphics/eq/sky_loader.h"
@@ -450,9 +451,12 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
         const bool open = ctx_.Frame().toggleSpellbookWindow();
         chat(fmt::format("New UI spellbook: {}", open ? "OPEN" : "CLOSED"));
     } else if (cmd == "/newbookprev") {
-        if (ctx_.Frame().spellbookState_.currentPage > 0) ctx_.Frame().spellbookState_.currentPage--;
+        // The ONE spread-turn body (spellbook_page_turn.h), shared with the
+        // book's edge arrows -- the arrow's SPELLS_PER_PAGE off-by-16 defect
+        // could not exist here any more, because both call the same step.
+        EQT::Graphics::turnSpellbookSpreadBack(ctx_.Frame().spellbookState_);
     } else if (cmd == "/newbooknext") {
-        if (ctx_.Frame().spellbookState_.currentPage < ctx_.Frame().spellbookState_.pageCount() - 1) ctx_.Frame().spellbookState_.currentPage++;
+        EQT::Graphics::turnSpellbookSpreadForward(ctx_.Frame().spellbookState_);
     } else if (cmd == "/skills") {
         // T363 (B058, Will's ruling 2026-09-05): renamed from /newskills, no
         // alias -- the real client's name for the window now works. The body

@@ -1,0 +1,11 @@
+# B1053 probe: open the Options window (General tab, the default page) and
+# take ONE still. The host measures the window and tab-strip geometry from
+# it (the oracle sizes each tab to its caption, so the click x's must come
+# from the still, not from fable's integer partition).
+# action	target	hold_ms	still_name
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+wait	8000	0	settle
+press	alt+o	0	options_probe
+wait	1500	0	options_probe_settle
+command	/q	0	quit

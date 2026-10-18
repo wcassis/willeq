@@ -12,6 +12,7 @@
 #include "client/graphics/ui/spell_gem_layout.h"   // B1077
 #include "client/graphics/ui/buff_layout.h"       // B1077
 #include "client/graphics/ui/spell_icon_atlas.h"   // B1077
+#include "client/graphics/ui/spellbook_layout.h"    // B1076 (#396)
 #include "client/inventory/inventory_constants.h"
 #include "client/chat/chat_message_buffer.h"
 #include "client/chat/chat_text_colors.h"
@@ -703,19 +704,19 @@ void applySpellMemorizing(SpellbookPopupState& state,
     state.memorizeTotalMs = data.totalMs;
 }
 
-irr::core::rect<irr::s32> spellbookMemorizeGaugeRect(const UILayout& layout) {
-    // EQUI_SpellBookWnd.xml, quoted in the header: gauge (204,312) 100x8
-    // inside a 510x360 screen.
-    constexpr int kOracleX = 204, kOracleY = 312;
-    constexpr int kOracleW = 100, kOracleH = 8;
-    constexpr int kOracleWinW = 510, kOracleWinH = 360;
+// B1076 (GitLab #396) fix leg 2, review t_d00ada41 finding 2: the scribe
+// gauge's lifecycle. One writer pair, the header's contract:
+//   * start -- the scribe's second click (the request going out).
+//   * clear -- SpellScribeCompleted (the attempt's end; there is no
+//     in-flight progress event on the wire, so the gauge is full for the
+//     attempt's whole duration and empty the moment the attempt ends), and
+//     the book closing (toggleSpellbookWindow()'s close branch).
+void scribeGaugeStart(SpellbookPopupState& state) {
+    state.scribeProgress = 1.0f;
+}
 
-    const auto& popup = layout.centerPopup;
-    const irr::s32 x = popup.UpperLeftCorner.X + kOracleX * popup.getWidth() / kOracleWinW;
-    const irr::s32 y = popup.UpperLeftCorner.Y + kOracleY * popup.getHeight() / kOracleWinH;
-    const irr::s32 w = kOracleW * popup.getWidth() / kOracleWinW;
-    const irr::s32 h = kOracleH * popup.getHeight() / kOracleWinH;
-    return {x, y, x + w, y + h};
+void scribeGaugeClear(SpellbookPopupState& state) {
+    state.scribeProgress = 0.0f;
 }
 
 void renderCastingBar(UIRenderer& ui, const UILayout& layout,
@@ -902,89 +903,87 @@ void renderSpellbookPopup(UIRenderer& ui, const UILayout& layout,
     if (!state.isOpen) return;
 
     auto* tb = ui.getTextBatch();
-    const auto& popup = layout.centerPopup;
+    namespace SB = SpellBookLayout;
+    const auto& popup = layout.bookPopup;  // the oracle's own 510x360, B1076
+    const irr::s32 ox = popup.UpperLeftCorner.X;
+    const irr::s32 oy = popup.UpperLeftCorner.Y;
+    auto winRect = [&](const irr::core::rect<irr::s32>& r) {
+        return irr::core::rect<irr::s32>(ox + r.UpperLeftCorner.X,
+                                         oy + r.UpperLeftCorner.Y,
+                                         ox + r.LowerRightCorner.X,
+                                         oy + r.LowerRightCorner.Y);
+    };
 
-    ui.drawPanel(popup);
-
-    // Title + page indicator
-    if (tb) {
-        std::string title = fmt::format("Spellbook - Page {}/{}", state.currentPage + 1, state.pageCount());
-        tb->addText(title, popup.UpperLeftCorner.X + 8, popup.UpperLeftCorner.Y + 4,
-            irr::video::SColor(255, 255, 215, 0));
+    // THE book art: the four composed backdrop tiles fill the 512x363 canvas;
+    // the 510x360 window clips the right 2 px and bottom 3 px (the tiles are
+    // addressed by their own window-relative rects, so nothing draws past).
+    // A headless device (no atlas/backdrop) keeps the flat panel fallback so
+    // the slots and gauges still read.
+    const bool hasBackdrop =
+        ui.drawSpellBookBackdrop(winRect(SB::backdropTopPageRect()), SB::backdropTopPageRect()) &&
+        ui.drawSpellBookBackdrop(winRect(SB::backdropRightTopRect()), SB::backdropRightTopRect()) &&
+        ui.drawSpellBookBackdrop(winRect(SB::backdropBottomStripRect()), SB::backdropBottomStripRect()) &&
+        ui.drawSpellBookBackdrop(winRect(SB::backdropRightBottomRect()), SB::backdropRightBottomRect());
+    if (!hasBackdrop) {
+        ui.drawPanel(popup);
     }
 
-    constexpr irr::s32 LINE_H = 28;
-    constexpr irr::s32 PAD = UILayout::MARGIN;
-    irr::s32 startX = popup.UpperLeftCorner.X + 8;
-    irr::s32 startY = popup.UpperLeftCorner.Y + 24;
-    irr::s32 slotW = popup.getWidth() - 16;
+    if (tb) {
+        // Page numbers: the open spread's pair (the book's own two pages).
+        tb->addTextCentered(std::to_string(state.currentPage * 2 + 1),
+                            winRect(SB::leftPageNumRect()),
+                            irr::video::SColor(255, 255, 215, 0));
+        tb->addTextCentered(std::to_string(state.currentPage * 2 + 2),
+                            winRect(SB::rightPageNumRect()),
+                            irr::video::SColor(255, 255, 215, 0));
+    }
 
-    // Draw spells for current page
-    int firstIdx = state.currentPage * SpellbookPopupState::SPELLS_PER_PAGE;
-    int lastIdx = std::min(firstIdx + SpellbookPopupState::SPELLS_PER_PAGE,
-                           static_cast<int>(state.spells.size()));
-
-    for (int i = firstIdx; i < lastIdx; ++i) {
-        int row = i - firstIdx;
-        irr::s32 y = startY + row * (LINE_H + PAD);
-        irr::core::rect<irr::s32> slotRect(startX, y, startX + slotW, y + LINE_H);
-
-        // Slot background
-        bool hovered = (state.hoveredSlot == row);
-        ui.drawSprite(slotRect, static_cast<uint8_t>(UISprite::SlotBackground));
+    // The sixteen slots (the current spread). Slots beyond the last scribed
+    // spell are EMPTY: the oracle draws the 44x44 button with its decal
+    // cleared and no name. The spell icon is the B1077 drawSpellIcon() call;
+    // a pack miss leaves the slot blank, the way the gem bar does.
+    const int count = static_cast<int>(state.spells.size());
+    for (int i = 0; i < SB::kSlotCountTotal; ++i) {
+        const int idx = state.currentPage * SpellbookPopupState::SPELLS_PER_PAGE + i;
+        const auto slotRect = winRect(SB::slotRect(i));
+        const bool hovered = (state.hoveredSlot == i);
         if (hovered) {
-            ui.drawRect({startX, y, startX + slotW, y + 1}, irr::video::SColor(255, 255, 215, 0));
-            ui.drawRect({startX, y + LINE_H - 1, startX + slotW, y + LINE_H}, irr::video::SColor(255, 255, 215, 0));
+            ui.drawRect({slotRect.UpperLeftCorner.X, slotRect.UpperLeftCorner.Y,
+                         slotRect.LowerRightCorner.X, slotRect.UpperLeftCorner.Y + 1},
+                        irr::video::SColor(255, 255, 215, 0));
+            ui.drawRect({slotRect.UpperLeftCorner.X, slotRect.LowerRightCorner.Y - 1,
+                         slotRect.LowerRightCorner.X, slotRect.LowerRightCorner.Y},
+                        irr::video::SColor(255, 255, 215, 0));
         }
+        if (idx >= count) continue;  // empty slot: just the button + hover
 
-        const auto& spell = state.spells[i];
-
-        // B1077 (GitLab #397): the spell's own icon -- spell_icon (field 143)
-        // through the Spells family, the column the bridge hands this entry.
-        // The oracle's spellbook rows are 28 px tall, so the 40x40 decal is
-        // minified into a 26x26 square at the row's left; the no-pack
-        // fallback is nothing, the name already carries the identification.
-        irr::core::rect<irr::s32> iconRect(startX + 2, y + 1, startX + 28, y + 27);
-        ui.drawSpellIcon(iconRect,
+        const auto& spell = state.spells[idx];
+        ui.drawSpellIcon(winRect(SB::slotIconRect(i)),
                          EQT::Graphics::SpellIconAtlasLayout::SpellIconSheet::Spells,
                          spell.iconId);
-
         if (tb) {
-            // Level
-            std::string lvlStr = fmt::format("L{}", spell.level);
-            tb->addText(lvlStr, startX + 32, y + 6,
-                irr::video::SColor(255, 150, 150, 150));
-
-            // Spell name
-            tb->addText(spell.name, startX + 58, y + 6,
-                irr::video::SColor(255, 220, 220, 255));
+            tb->addTextCentered(spell.name, winRect(SB::slotNameRect(i)),
+                                irr::video::SColor(255, 220, 220, 255));
         }
     }
 
-    // T413 (board B296): the memorisation gauge, at the oracle's own place --
-    // EQUI_SpellBookWnd.xml's <Gauge item="SBW_Memorize_Gauge"> (EQType 9),
-    // FillTint (200,0,200). Drawn only while a memorise is in flight, which
-    // is exactly when the oracle's gauge is non-empty.
+    // The memorise gauge, at the oracle's own place -- EQUI_SpellBookWnd.xml's
+    // <Gauge item="SBW_Memorize_Gauge"> (EQType 9), FillTint (200,0,200).
+    // Drawn only while a memorise is in flight, which is exactly when the
+    // oracle's gauge is non-empty.
     if (state.isMemorizing) {
-        const auto gauge = spellbookMemorizeGaugeRect(layout);
+        const auto gauge = winRect(SB::memorizeGaugeRect());
         ui.drawBar(gauge, state.memorizeProgress(),
                    irr::video::SColor(255, 200, 0, 200),
                    irr::video::SColor(180, 20, 20, 20));
     }
-
-    // Page navigation hints
-    if (tb) {
-        irr::s32 navY = popup.LowerRightCorner.Y - 20;
-        if (state.currentPage > 0) {
-            tb->addText("< Prev", startX, navY,
-                irr::video::SColor(255, 180, 180, 255));
-        }
-        if (state.currentPage < state.pageCount() - 1) {
-            std::string next = "Next >";
-            irr::s32 nw = tb->getTextWidth(next);
-            tb->addText(next, popup.LowerRightCorner.X - 8 - nw, navY,
-                irr::video::SColor(255, 180, 180, 255));
-        }
+    // The scribe gauge, the oracle's SBW_Scribe_Gauge (same piece, same place,
+    // tint (176,64,0)): drawn while a scribe request is in flight.
+    if (state.scribeProgress > 0.0f) {
+        const auto gauge = winRect(SB::memorizeGaugeRect());
+        ui.drawBar(gauge, state.scribeProgress,
+                   irr::video::SColor(255, 176, 64, 0),
+                   irr::video::SColor(180, 20, 20, 20));
     }
 }
 

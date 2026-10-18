@@ -202,16 +202,20 @@ TEST(OptionsLayoutT434, EveryControlIsInsideItsPage) {
 }
 
 TEST(OptionsLayout, NoControlOutsideItsPage) {
+    // B1053 (#373) close-out: the two resolutions the report was taken at,
+    // for ALL tabs — the card's resolution pair.
     for (const auto wh : {std::pair<int, int>{1280, 720},
                           std::pair<int, int>{1024, 768}}) {
         const auto l = layoutAt(wh.first, wh.second);
         const auto page = OL::pageRect(l);
         const auto window = OL::windowRect(l);
+        int perTab[OL::TAB_COUNT] = {0};
         for (int i = 0; i < OL::CONTROL_COUNT; ++i) {
             const auto& control = OL::kControls[i];
             const auto r = OL::controlRect(l, i);
             EXPECT_GE(static_cast<int>(control.tab), 0) << control.xmlItem;
             EXPECT_LT(static_cast<int>(control.tab), OL::TAB_COUNT) << control.xmlItem;
+            perTab[static_cast<int>(control.tab)]++;
             EXPECT_GT(r.getWidth(), 0) << control.xmlItem;
             EXPECT_GT(r.getHeight(), 0) << control.xmlItem;
             EXPECT_GE(r.UpperLeftCorner.X, page.UpperLeftCorner.X) << control.xmlItem;
@@ -222,6 +226,49 @@ TEST(OptionsLayout, NoControlOutsideItsPage) {
             EXPECT_GE(r.UpperLeftCorner.Y, window.UpperLeftCorner.Y) << control.xmlItem;
             EXPECT_LE(r.LowerRightCorner.X, window.LowerRightCorner.X) << control.xmlItem;
             EXPECT_LE(r.LowerRightCorner.Y, window.LowerRightCorner.Y) << control.xmlItem;
+        }
+        for (int t = 0; t < OL::TAB_COUNT; ++t) {
+            EXPECT_GT(perTab[t], 0) << "tab " << OL::tabText(t)
+                                    << " has no control at " << wh.first << "x" << wh.second;
+        }
+    }
+}
+
+TEST(OptionsLayout, NoParticleSubPageControlOutsideItsNestedPage) {
+    // B995's ODP_ParticlesTabs: a control with subPage >= 0 sits on one of the
+    // nested box's three <Pages>, each 22px below the box origin. Its rect
+    // must stay inside that sub-page and therefore inside the page and the
+    // window — at both of the card's resolutions.
+    constexpr irr::s32 kSubStripH = 22;  // the nested box's own tab strip
+    for (const auto wh : {std::pair<int, int>{1280, 720},
+                          std::pair<int, int>{1024, 768}}) {
+        const auto l = layoutAt(wh.first, wh.second);
+        const int box = controlIndex("ODP_ParticlesTabs");
+        ASSERT_GE(box, 0);
+        const auto boxRect = OL::controlRect(l, box);
+        const auto page = OL::pageRect(l);
+        const auto window = OL::windowRect(l);
+        int perSub[3] = {0};
+        for (int i = 0; i < OL::CONTROL_COUNT; ++i) {
+            const auto& control = OL::kControls[i];
+            if (control.subPage < 0) continue;
+            perSub[control.subPage]++;
+            const irr::core::rect<irr::s32> subPage(
+                boxRect.UpperLeftCorner.X,
+                boxRect.UpperLeftCorner.Y + kSubStripH,
+                boxRect.LowerRightCorner.X,
+                boxRect.LowerRightCorner.Y);
+            const auto r = OL::controlRect(l, i);
+            EXPECT_GE(r.UpperLeftCorner.X, subPage.UpperLeftCorner.X) << control.xmlItem;
+            EXPECT_GE(r.UpperLeftCorner.Y, subPage.UpperLeftCorner.Y) << control.xmlItem;
+            EXPECT_LE(r.LowerRightCorner.X, subPage.LowerRightCorner.X) << control.xmlItem;
+            EXPECT_LE(r.LowerRightCorner.Y, subPage.LowerRightCorner.Y) << control.xmlItem;
+            EXPECT_LE(r.LowerRightCorner.X, page.LowerRightCorner.X) << control.xmlItem;
+            EXPECT_LE(r.LowerRightCorner.Y, page.LowerRightCorner.Y) << control.xmlItem;
+            EXPECT_LE(r.LowerRightCorner.Y, window.LowerRightCorner.Y) << control.xmlItem;
+        }
+        for (int s = 0; s < 3; ++s) {
+            EXPECT_GT(perSub[s], 0) << "particle sub-page " << s << " is empty";
         }
     }
 }
