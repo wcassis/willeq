@@ -158,17 +158,20 @@ start_burner() {  # start_burner <ps-line-marker>
 }
 
 # Wait (up to 150 s) for a NEW line in process-kill.log after <before>
-# lines. Echoes the new line(s) to stdout; returns 0 if one appeared,
-# 1 on timeout.
-wait_kill_log_line() {  # wait_kill_log_line <before-lines>
-    local before="$1" waited=0 n newlines
+# lines that carries <expect> (the kill of OUR process, so an unrelated
+# kill cannot satisfy the leg). Echoes the new line(s) to stdout; returns
+# 0 if one appeared, 1 on timeout.
+wait_kill_log_line() {  # wait_kill_log_line <before-lines> <expect-substring>
+    local before="$1" expect="$2" waited=0 n newlines
     while [ "${waited}" -lt 150 ]; do
         n="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c 'wc -l < ~/process-kill.log 2>/dev/null' 2>/dev/null | tr -d '[:space:]')"
         [ -n "${n}" ] || n=0
         if [ "${n}" -gt "${before}" ]; then
             newlines="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c "tail -n +$((before + 1)) ~/process-kill.log" 2>/dev/null)"
-            printf '%s\n' "${newlines}"
-            return 0
+            if printf '%s\n' "${newlines}" | grep -q "${expect}"; then
+                printf '%s\n' "${newlines}"
+                return 0
+            fi
         fi
         sleep 5
         waited=$((waited + 5))
@@ -201,9 +204,15 @@ busy_zone_leg() {
     local live_wpid before psline alive newlines
     # The real watcher (the perl process), not its `sh -c while true`
     # wrapper: the wrapper's environ is identical (compose started both),
-    # but ps -p on it survives the wrapper's restart loop -- the check
-    # after phase B is about the provisioned WATCHER, not its shell.
-    live_wpid="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c "ps -eo pid,args | grep 'perl.*[p]rocess-watcher' | head -1 | awk '{print \\$1}'" 2>/dev/null | tr -d '[:space:]')"
+    # but the check after phase B is about the provisioned WATCHER, not
+    # its shell. The provision step's pkill may still be settling when we
+    # arrive, so wait for the entrypoint loop to bring it back.
+    live_wpid=""
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
+        live_wpid="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c "ps -eo pid,args | grep 'perl.*[p]rocess-watcher' | head -1 | awk '{print \$1}'" 2>/dev/null | tr -d '[:space:]')"
+        [ -n "${live_wpid}" ] && break
+        sleep 2
+    done
     [ -n "${live_wpid}" ] || { echo "  busy-zone leg: no live watcher to prove against (relaunch it first)"; return 1; }
     before="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c 'wc -l < ~/process-kill.log 2>/dev/null' 2>/dev/null | tr -d '[:space:]')"
     [ -n "${before}" ] || before=0
@@ -238,7 +247,7 @@ busy_zone_leg() {
     psline="$(start_burner B940LOAD)"
     [ -n "${psline}" ] || { echo "  busy-zone B: the burner never started"; busy_zone_cleanup; return 1; }
     echo "  busy-zone B (upstream default, env removed): waiting for the kill"
-    if newlines="$(wait_kill_log_line "${before}")"; then
+    if newlines="$(wait_kill_log_line "${before}" 'Killed process')"; then
         echo "  busy-zone B: PASS -- the default watcher's kill line: ${newlines}"
     else
         echo "  busy-zone B: FAIL -- no kill line within 150 s (the exemption would have been unproven)"; busy_zone_cleanup; return 1
