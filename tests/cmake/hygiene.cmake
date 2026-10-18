@@ -48,6 +48,37 @@ ADD_TEST(NAME PiEnvLaneResolution
     COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/pi/env_selftest.sh)
 SET_TESTS_PROPERTIES(PiEnvLaneResolution PROPERTIES LABELS "hygiene")
 
+# B1034 (#357): the x86 surfaceless-EGL config fixture
+# (tests/data/b1034/surfaceless_es2.json) stays honest: the hygiene tree
+# re-dumps the list the x86 device fork consumes (initEGLSurfaceless's own
+# query, the CI GL pin = llvmpipe, no /dev/dri) and diffs it. A driver update
+# that changes llvmpipe's config list goes RED here; re-dump with
+# `bash scripts/ci/egl_config_dump.sh dump <dir>` and commit the fixture.
+ADD_TEST(NAME EglConfigDumpB1034
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/ci/egl_config_dump.sh verify
+            ${CMAKE_SOURCE_DIR}/tests/data/b1034)
+SET_TESTS_PROPERTIES(EglConfigDumpB1034 PROPERTIES LABELS "hygiene"
+    SKIP_RETURN_CODE 235)
+
+# B1034 (#357): the chooseConfigForGbmFormat wrapper is hand-copied into BOTH
+# device forks (docker/irrlicht-drm/ and docker/irrlicht-drm-x86/CIrrDeviceFB.cpp)
+# and must stay byte-identical in its body (the include lines differ). A pure
+# source diff; the shared logic lives in
+# docker/irrlicht-drm/gbm_config_select.h (unit-tested by
+# test_egl_config_select in the build stage).
+ADD_TEST(NAME GbmConfigSelectForsB1034
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_gbm_config_select_forks.py
+            ${CMAKE_SOURCE_DIR})
+SET_TESTS_PROPERTIES(GbmConfigSelectForsB1034 PROPERTIES LABELS "hygiene")
+
+# B1034 (#357): the pi_hdmi_force_on / pi_hdmi_restore contract of
+# scripts/pi/env.sh, pinned against a fake device surface (shadowed ssh/sudo,
+# local status/record files) -- no device, no ssh, no root. Like
+# PiEnvLaneResolution above.
+ADD_TEST(NAME PiHdmiForceSelftest
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/pi/hdmi_force_selftest.sh)
+SET_TESTS_PROPERTIES(PiHdmiForceSelftest PROPERTIES LABELS "hygiene")
+
 # T371 (2026-09-05): DocCitations proves a cited PATH resolves; it says
 # nothing about the CLAIMS. This is the regression net for the deletion half
 # -- a table of retired names that must not reappear in the ORIENTATION docs

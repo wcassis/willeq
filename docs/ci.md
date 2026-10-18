@@ -1015,7 +1015,20 @@ drivers can never render byte-identical frames:
   connector and a CRTC, landing on the card that actually has a display
   (B1054, #374); `WILLEQ_DRM_DEVICE=/dev/dri/cardN` is an explicit
   single-path override whose failure is an error, never a silent
-  fallback.
+  fallback. Since B1034 the same `--drm` KMS path also SUCCEEDS where it
+  previously died: the GBM surface's EGL-config choice
+  (`chooseConfigForGbmFormat`, the logic shared by both device forks in
+  `docker/irrlicht-drm/gbm_config_select.h`) used to take the first of a
+  fixed 64, and a driver whose `eglChooseConfig` lists every 10-bit config
+  ahead of every 8-bit one (a laptop eDP or 10bpc-capable panel offering
+  more than 64 configs) cut the XRGB8888 config off that fixed array, so
+  the fallback was `configs[0]` (10-bit) and the failure moved to
+  `eglCreateWindowSurface` -- the caller's no-depth retry never ran. The
+  selection now queries the count first, allocates, and prefers an 8-bit
+  ARGB/XRGB visual, so an x86 host whose `/dev/dri/card*` has a connected
+  connector and 10-bit configs takes the display through KMS instead of
+  erroring. The CI `gate` job is unaffected: it has no /dev/dri grant and
+  stays on the surfaceless path above.
 - **Pi** (by hand, never a CI job): Mali-400 under the Lima driver on the
   Orange Pi with the shipped LLVM-less Mesa prefix, goldens at
   `tests/goldens/pi/<zone>/f<n>.png`, section
