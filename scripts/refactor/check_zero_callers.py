@@ -682,7 +682,9 @@ EXEMPT_GROUPS = {
     ("FrameBudgetGovernor", "hasTimeBudget"): "B494",
     ("GLES2EGLHelper", "uploadETC1AsSharedTexture"): "B494",
     ("PlayerCameraComponent", "getFirstPersonVerticalFov"): "B494",
-    ("RendererContext", "Slash"): "B494",
+    # B1063 (#383): RendererContext::Slash left this table -- FrameComponent's
+    # deferred F12 arm now calls it (ctx_.Slash().runScreenshot("")), the one
+    # body the typed /screenshot shares.
     ("SimulationWorker", "updateObjectLightData"): "B494",
     ("SimulationWorker", "updateTreeData"): "B494",
     ("SimulationWorker", "updateZoneLightData"): "B494",

@@ -166,6 +166,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_debug_hotkey_arms DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1063 (GitLab #383): F12 and /screenshot share the ONE body
+# (SlashCommandsComponent::runScreenshot). The default-name sanitizer is
+# tested behaviourally; the three route sites (the Receiver's RA::Screenshot
+# queue, FrameComponent's deferred arm, the /screenshot chain arm) are
+# source-pinned, as this suite does for other single-site invariants.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_screenshot_one_body
+        test_screenshot_one_body.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_screenshot_one_body PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_screenshot_one_body GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_screenshot_one_body PRIVATE
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
+    GTEST_DISCOVER_TESTS(test_screenshot_one_body DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B905 (#225): every default and shipped key binding is unshadowed and reaches
 # a dispatch consumer on a real RendererEventReceiver.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)

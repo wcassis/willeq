@@ -220,14 +220,19 @@ TEST(ApplicationInitOrderTest, GoldenIsPresentAndTheRightSize) {
     // constructed -- same exception as initScenario(): its own TU, so the
     // CALL is pinned. Then +1 by B998 (#318): entry 70
     // `if (!applyCharacterSelect(config)) return false;`, the same exception.
-    EXPECT_EQ(golden.size(), 316u)
+    // Then +1 by B1063 (#383): entry 279
+    // `m_inputBridge->setBridge(m_bridge);`, right after the graphics input
+    // handler is connected -- the F12 hotkey's InputAction::Screenshot
+    // reaches the renderer's one screenshot body through the event bridge.
+    EXPECT_EQ(golden.size(), 317u)
         << "316 statement lines at G04, -2 for T347's write-only "
            "customMemorySpec, +1 for T357's completion-provider wiring, "
            "-1 for T402's S03 race_models.json check (B246), "
            "-1 for T407's write-only m_lastUpdate (B290), "
            "+1 for T410's initScenario() step (B138/B139), "
            "+1 for B888's applyWorldScript() step (#204), "
-           "+1 for B998's applyCharacterSelect() step (#318); "
+           "+1 for B998's applyCharacterSelect() step (#318), "
+           "+1 for B1063's Screenshot bridge wiring (#383); "
            "the golden has " << golden.size();
     for (const auto& e : golden) EXPECT_FALSE(e.empty());
 }
