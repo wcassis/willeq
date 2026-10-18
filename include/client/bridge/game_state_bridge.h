@@ -44,7 +44,8 @@ public:
         // traced to a call site; it has its name now. The scope opens only
         // when an owner table is requested (this is a hot path: the label
         // lookup is a per-event mutex round-trip, and a normal run has no
-        // table to fill).
+        // table to fill). A target that compiles this header must link
+        // memory_ledger.cpp for StartupScope (the narrow bridge test does).
         static const bool ownerRowsOn = eqt::memory::ownerRowsEnabled();
         std::optional<eqt::memory::StartupScope> owner;
         if (ownerRowsOn) owner.emplace("gs.event_queue");
