@@ -87,9 +87,13 @@ keeps T425's spell display.
 - (E) co-open test green at all four resolutions — MET
   (`test_ui_layout_coopen.cpp`, spellbook+gems and spellbook+HUD sets).
 - (F) hygiene + build-test green at the MR head — CI (see MR pipeline).
-- (G) no bless-only file touched; golden proposed, not committed — MET
-  (no `tests/goldens/` or `manifest.json` changes; the visual_gate golden of
-  the open book is proposed in the MR, not committed).
+- (G) no bless-only file touched; golden proposed, not committed — PARTIALLY
+  MET. No `tests/goldens/` or `manifest.json` changes, nothing committed.
+  The open-book golden was NOT captured on this leg: no fable-side open-book
+  render exists in the evidence (the evidence stills are the ORACLE client's),
+  so there is no image to propose. Capturing one needs a lane-1 eqemu session
+  (a character in-zone, book opened, `--dump-frames-dir`), which was out of
+  scope after the lane lease for capture 4 was released; see FOLLOW-UP.
 - (H) this "Not verified / left open" — as above.
 
 ## Finish leg (2026-10-17, after the fable merge)
@@ -119,16 +123,19 @@ applies them, per B1077's precedent).
 CI note: MR !223's previous head pipelines were all `skipped` because every
 push before the finish leg used `-o ci.skip` (that flag is for the FIRST push
 of a new branch, B1042). The finish-leg code push (93e73542) still carried it,
-which is why the finish leg ends with a docs-only commit (this section)
-pushed WITHOUT the flag: a `merge_request_event` pipeline whose diff is only
-`*.md` runs the hygiene stage alone (B1042's docs-only rule), and hygiene
-is the only job that is red here (build-test / gate / client-ledger-live /
-zone-budget-census carry the `.code_rules` code-change gate). So the head
-pipeline is: hygiene = the five owed DocCounts rows (the expected red),
-build-test = skipped (docs-only diff; the full build+suite ran green at the
-code commits per the local rbuild run above), gate = skipped. After the
-CLAUDE.md EDITS land on the branch, the MR pipeline re-runs hygiene and goes
-fully green.
+which is why the finish leg ends with docs-only commits pushed WITHOUT the
+flag so the MR pipeline actually runs. Two reds are OWED at merge, neither is
+a source regression:
+1. hygiene/DocCounts — the five rows on the protected CLAUDE.md files (the
+   `CLAUDE.md EDITS` block in the completion summary, orchestrator-applied).
+2. PackReproducible — the finish leg installed the B1076 pack over the
+   SHARED `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (sha 3844461f...) at
+   22:53Z; the orchestrator restored the fable-tip pack (02a3d6e4...) at
+   2026-10-18 00:40Z and is owning the install at merge.
+   `data/textures/spellbook_backdrop.bmp` + `data/textures.sha256` +
+   `data/willeq.eqe1.sha256` are committed in the MR, so the pack bytes are
+   reproducible from the tree at merge. The orchestrator must re-install it
+   on the shared path before the MR pipeline can go fully green.
 
 ## Lane record
 
