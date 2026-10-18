@@ -33,7 +33,10 @@
 #include "client/core/malloc_compat.h"  // mallinfo2 (+ shim for glibc < 2.33, B1056)
 #include <unistd.h>
 #endif
-#include "memory_ledger_darwin.h"  // B1044: phys_footprint reading + log/JSON extras
+#include "memory_ledger_darwin.h"  // B1044: phys_footprint reading + log/JSON extras; no-op off-Darwin
+#if defined(__APPLE__)
+#include <unistd.h>                // _SC_PAGESIZE (valloc/pvalloc), readlink
+#endif
 
 #include "common/logging.h"
 
