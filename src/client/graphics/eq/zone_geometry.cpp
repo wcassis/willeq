@@ -696,13 +696,65 @@ irr::video::ITexture* ZoneMeshBuilder::getOrLoadTexture(const std::string& name,
         return texture;
     }
 
+    // B1051 (GitLab #371): the per-part texture's raw S3D bytes may have been
+    // released because the EQE1 pack is present ("EQE1 authoritative" —
+    // RaceModelLoader::loadModelZone's releaseBytesIfEqe1Authoritative) while
+    // the GPU storage was queued by a Compressed-source lookup
+    // (ConstrainedTextureCache::getOrLoad() -> findCompressedEntry). The
+    // The promotion (the actual glCompressedTexImage2D, logged as
+    // "ETC1 texture ... uploaded") normally happens later on the render
+    // thread's upload loop -- lane-2 run 912c measured it 80-94 ms AFTER
+    // the guard's mesh build (first race-71 build 11:02:47.871,
+    // Guard_Drath's own 11:02:47.885, first qcf ETC1 upload 11:02:47.965)
+    // -- so getTexture() alone still misses a freshly-queued
+    // entry. buildTexturedMesh() (the single-buffer zone path) survives by
+    // being built from already-promoted entries; this on-demand path runs
+    // inside the zone-load sequence, BEFORE the upload loop for a new
+    // race's qcs, so it must promote the queued entry itself. This path
+    // already does driver GL work (loadTextureFromBMP above), so the
+    // synchronous upload here is not a new thread/context assumption.
+    if (constrainedCache_ && !name.empty()) {
+        std::string lowerName = name;
+        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        irr::video::ITexture* texture = constrainedCache_->getTexture(lowerName, applyPaletteMask);
+        if (!texture) {
+            texture = constrainedCache_->getTexture(name, applyPaletteMask);
+        }
+        if (!texture) {
+            // Queued (compressed or decoded) but not yet promoted: promote now.
+            texture = constrainedCache_->uploadTexture(lowerName, applyPaletteMask);
+            if (!texture) {
+                texture = constrainedCache_->uploadTexture(name, applyPaletteMask);
+            }
+        }
+        if (texture) {
+            // Cache it so subsequent buffers/variants for the same texture
+            // (and hasTexture()) skip the constrained-cache lookup.
+            textureCache_[name] = texture;
+            if (constrainedCache_->hasAlpha(lowerName, applyPaletteMask) ||
+                constrainedCache_->hasAlpha(name, applyPaletteMask)) {
+                texturesWithAlpha_.insert(name);
+                texturesWithAlpha_.insert(lowerName);
+            }
+            return texture;
+        }
+    }
+
     // Not found
     return nullptr;
 }
 
 bool ZoneMeshBuilder::hasTexture(const std::string& name) const {
     return textureCache_.find(name) != textureCache_.end() ||
-           pendingTextures_.find(name) != pendingTextures_.end();
+           pendingTextures_.find(name) != pendingTextures_.end() ||
+           // B1051 (GitLab #371): same hole as getOrLoadTexture() above — the
+           // texture lives in the constrained cache (Compressed source, raw
+           // bytes released) without ever having been decoded through this
+           // builder. Without this, isTextureAvailable() (mesh_building.cpp)
+           // refuses the equipment-variant name and the buffer silently falls
+           // back to the base part's texture (or nothing).
+           (constrainedCache_ != nullptr && constrainedCache_->hasTexture(name));
 }
 
 void ZoneMeshBuilder::registerUploadedTexture(const std::string& name,

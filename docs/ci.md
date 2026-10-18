@@ -1086,6 +1086,43 @@ net: `test_zone_budget_census` (pure python, every pipeline),
 `test_zone_census_pack_selfheal` (the self-heal's exit-code contract on stub
 verify/builder binaries, pure bash+python).
 
+## The shared pack and pack-changing branches (B1094, issue #414)
+
+The shared pack `/mnt/projects/EverQuest_ETC1/willeq.eqe1` is one mutable file
+read live by every worktree, every runner and the Pi lanes. Since B1094 the
+tree draws a hard line between the two properties that used to live in one
+test verdict:
+
+- **Reproducibility from the inputs** -- `PackReproducible` (ctest, labels
+  `hygiene;slow`) runs `scripts/build_willeq_pack.sh --check`, which rebuilds
+  into a temp file and compares it to the pinned `data/willeq.eqe1.sha256`
+  ONLY. The installed pack's sha is printed as `installed (INFO only):`,
+  never as a verdict. The contract is pinned by `PackCheckContract`
+  (`scripts/ci/test_pack_check_contract.py`, stub builders, temp files only):
+  a `--check` that still reads the installed pack into its exit code is a red
+  hygiene test. This is what made B1076's card break every other pipeline at
+  the fable tip (MR !230 pipeline 1626): the old `--check` compared the
+  rebuild to the pin AND to the installed pack, so one card installing its
+  branch pack over the shared file was a red for N-1 branches.
+- **The installed pack matches the pin** -- `InstalledPackMatchesPin` (ctest,
+  label `hygiene`) runs `scripts/ci/installed_pack_matches_pin.sh`, which is
+  `build_willeq_pack.sh --check-installed` (no build, no builders) with the
+  verdict converted by `CI_COMMIT_BRANCH`: on **fable** a mismatch is a hard
+  FAIL (a merge changed the pin and the orchestrator has not installed yet --
+  the pipeline says so loudly); anywhere else it prints-and-passes, so a
+  pack-changing branch is green on its own pipeline and its MR pipeline.
+
+**What a worker does on a pack-changing card:** change the inputs
+(`data/textures/*.bmp`, `tools/ui_atlas_builder`), rebuild with
+`scripts/build_willeq_pack.sh --output <tmpfile>` -- NEVER a bare install,
+and NEVER `--output` at the shared path -- commit the inputs plus the
+rewritten `data/willeq.eqe1.sha256` in ONE commit, and write
+`PACK INSTALL OWED AT MERGE: <full 40-char sha>` in the completion summary.
+**The orchestrator installs the shared pack at merge** (the script without
+`--check`/`--check-installed`: temp file in the destination directory, `mv`
+into place, same as before B1094). Until it does, fable's
+`InstalledPackMatchesPin` is the loud red that names exactly what is owed.
+
 ## The walked zone-line crossing (B1068, issue #388)
 
 A live lane scenario, not a pipeline stage: it needs an eqemu lane and a
