@@ -66,6 +66,12 @@ struct CharSelectScreenState {
     ConfirmationDialogState confirm;   // the delete prompt (its own clock, kDeleteConfirmSeconds)
     std::string confirmName;
 
+    // B888-CC3 (#204): the Explore mode (a SELECT-screen mode, not creation).
+    // The 3D backdrop becomes a free camera; the account's characters stand in
+    // the scene and are selected by click; Enter enters with the cursor; Esc
+    // closes. Its machine is explore_screen.h.
+    bool exploreOpen = false;
+
     CharCreateScreenState create;      // B888's two pages, hosted here
 
     // The request this screen is waiting on. A view whose requestsHandled has

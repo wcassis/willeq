@@ -82,8 +82,8 @@ dev-u24's local lane -- two hosts, one file. The lease fixes both:
 | | |
 | --- | --- |
 | GitLab | `https://gitlab.goldfarm.local`, project `willeq/willeq` (id 1) |
-| Primary runner | **`thinkpad`** (runner id 7, 172.16.200.205, B1087, Will 2026-10-16): runs EVERY job, x86 and ARM — tags `x86-build`, `arm-nfs`, `goldfarm`, `x86-gpu`, `x86-build-fast`, runs untagged, `concurrent = 3`, in `ci-build.slice` beside the lane-5 oracle ("The ThinkPad primary runner" below) |
-| x86 runners | **gitlab-runner-1** and **gitlab-runner-2** (10.0.30.81/.82, B1008): shell executor (bash), `concurrent = 1` each, **both tagged `x86-build`** since 2026-10-11 — one pipeline's stages may run on different hosts (B1026, "Two x86 runners" below). **Paused since B1087**, not unregistered |
+| Primary runner | **`thinkpad`** (runner id 7, 172.16.200.205, B1087, Will 2026-10-16): runs EVERY job, x86 and ARM — tags `x86-build`, `arm-nfs`, `goldfarm`, `x86-gpu`, `x86-build-fast`, runs untagged, `concurrent = 1` (3 until 2026-10-18), in `ci-build.slice` beside the lane-5 oracle ("The ThinkPad primary runner" below) |
+| x86 runners | **gitlab-runner-1** and **gitlab-runner-2** (10.0.30.81/.82, B1008): shell executor (bash), `concurrent = 1` each, **both tagged `x86-build`** since 2026-10-11 — one pipeline's stages may run on different hosts (B1026, "Two x86 runners" below). Paused by B1087; **un-paused 2026-10-18 (Will) with the ThinkPad's full tag set and run-untagged**: docker + the NAS share on `/mnt/projects` + `/var/cache/ccache-ci-arm` provisioned, so they take ARM jobs too (one job at a time on each of the three runners) |
 | ARM runner | `dev-u24-arm-nfs` on dev-u24, tag `arm-nfs` (T503, below). **Paused since B1087**, not unregistered |
 | Former host | **hermes-ext** (172.16.200.100): runner id 1, untagged; it ran every job until B1008 (2026-10-08) and no longer builds |
 | Config | `.gitlab-ci.yml` at the repo root |
@@ -110,8 +110,14 @@ starve a live worker.
 ## The ThinkPad primary runner (B1087)
 
 Will (2026-10-16): the ThinkPad (lane 5, `docs/thinkpad.md`) runs **every** CI job, x86 and ARM; runners 1
-(hermes-ext), 5, 6 (gitlab-runner-1/2) and 2 (dev-u24-arm-nfs) are **paused, not unregistered** (un-pause
-with `PUT /api/v4/runners/<id>` `paused=false`). The box also hosts the lane-5 oracle (headless Xorg :99 + the
+(hermes-ext), 5, 6 (gitlab-runner-1/2) and 2 (dev-u24-arm-nfs) were **paused, not unregistered** (un-pause
+with `PUT /api/v4/runners/<id>` `paused=false`). **2026-10-18 (Will): runners 5 and 6 are un-paused again
+with the same tag set as the ThinkPad and run untagged**, so every job has three candidate hosts and each
+runner takes ONE job at a time (`concurrent = 1` on all three). For the ARM jobs each of the two VMs got
+`docker.io`, the `willeq-arm-noble` / `willeq-arm64-noble` images (loaded from the ThinkPad), the NAS share
+on `/mnt/projects` (so `scripts/ci/vendor_fetch.sh` and `scripts/pi/publish_arm*_build.sh` see the same
+store and publish dirs) and an empty `/var/cache/ccache-ci-arm`; the job allow-lists in `.gitlab-ci.yml`
+name them. The box also hosts the lane-5 oracle (headless Xorg :99 + the
 Wine official client + the `/opt/akk-stack` eqemu containers), so the builds run under resource control:
 
 - **`ci.slice` / `ci-build.slice`** (`/etc/systemd/system/`): `CPUWeight=30`, `IOWeight=30`,
@@ -355,6 +361,32 @@ longer downloads them: SourceForge returned HTTP 522 for ~3 h on 2026-10-01 and 
 - **Refreshing a pin.** Put the new file in the store, change the name/hash in `docker/vendor.sha256` and the
   source URLs in `vendor_fetch.sh`, and commit the pin. Never commit the archive.
 - The x86 bootstrap (`scripts/build-gles2-x86.sh`) never downloaded: it copies `/mnt/projects/irrlicht-1.8.5`.
+
+### The ARM build container dies with its job (B1093, #413)
+
+A cancelled or timed-out `build-arm`/`build-arm64` used to leave its cross-build container compiling: the
+runner kills the job shell and the docker CLI, dockerd keeps the container until its command ends. On
+2026-10-18 the ThinkPad carried four such orphans at `-j8`/`-j12` (load average 46) beside its real jobs.
+`scripts/ci/arm_container.sh` is the fix, in two halves, pinned by the `ArmContainerGuard` hygiene test:
+
+- **Sourced by both build scripts.** `arm_container_guard <prefix>` names and labels the container
+  (`willeq.ci.arm=1`, `--init`) and traps EXIT/TERM/INT/HUP to `docker kill` it; `arm_container_run <args>`
+  runs `docker run --rm` **in the background and `wait`s** -- bash defers a trap while a foreground child runs
+  (measured: SIGTERM to the shell left a foreground container alive), but a signal interrupts `wait`, the
+  trap fires, and the container's own exit status still comes back to the script (`rc=7` round-trips).
+- **A detached watchdog** (`setsid`, stdio on `/dev/null`) started by the guard polls the script's PARENT and
+  the script itself every few seconds and `docker kill`s the container when either is gone. This is the
+  layer the runner's own cancel needs: measured on gitlab-runner-1 (job 8777, 2026-10-18 02:57Z), a cancel
+  killed only the job shell -- the build script was reparented to PID 1 with no signal, its trap never ran,
+  the container compiled on for 7 minutes until killed by hand, and the job sat in "canceling" the whole
+  time because the orphan still held the runner's pipe. A SIGKILL of the parent shell now takes the container
+  down in about 2 s (the script exits 137); a hand run's parent is the interactive shell, so a closed
+  terminal kills the build too.
+- **`bash scripts/ci/arm_container.sh --sweep`** is the first line of both CI ARM jobs: it kills every
+  labelled container on the host and prints what it killed. The runners are `concurrent = 1`, so a labelled
+  container alive at job start is always an orphan (a SIGKILL of the script itself skips every trap and the
+  watchdog needs a few seconds). The sweep is deliberately not in the build scripts, where a dev box may
+  legitimately run two.
 
 ## The stages
 
