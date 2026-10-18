@@ -91,38 +91,96 @@ Notes on placement:
   `MemoryScope` — the label would be dead by rule 2's mechanism, exactly
   like a label before a `MemoryScope`.
 
-## What the measurement will show (the run)
+## The measurements (step 3)
 
-The capture recipe is unchanged from B941/B839
-(`scripts/client_ledger_capture.sh`):
+### x86 (rendered client, live eqemu lane 1, `scripts/client_ledger_capture.sh
+--modes game_state`, the B941 recipe — a live zone-in is what populates
+`game_state`; the offline `gles2_zone_benchmark` loads only the geometry, so
+its `gs.entities`/`gs.event_queue`/`gs.dispatch` rows would be empty)
 
-```
-WILLEQ_LEDGER_OWNERS=game_state WILLEQ_LEDGER_REPORT_AT_SHUTDOWN=1 \
-  <run to zone-in ready, then /camp>
-```
+`ready` point, MB. The entity/door counts are the client's own snapshot line
+(`snapshot created (zone=..., entities=N, doors=N)`), taken at the same instant.
 
-prints, for the ready point:
+| zone | entities | doors | `game_state` total | `gs.navmesh` | `gs.collision_map.*` (sum) | `gs.entities` | `gs.doors` | `gs.world_objects` | `gs.event_queue` | `gs.event_stage` | `gs.dispatch` |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| emeraldjungle | 266 | 3   | 26.22 | 15.78 | 10.21 | 0    | 0.0004 | —      | —          | —          | 0.22 |
+| overthere     | 437 | 23  | 26.32 | 21.97 | 4.79  | 0.003 | 0.003 | 0.001  | —          | 0.27     | 0.33 |
+| timorous      | 303 | 47  | 25.23 | 19.07 | 7.47  | —    | 0.007 | 0.001  | —          | 0.21     | 0.24 |
+| nurga         | 2   | 0   | 2.56  | 0.61  | 2.94  | —    | —     | —      | —          | 0.02     | 0.06 |
 
-```
-[memledger-startup] ready=... category=game_state bytes=... owners:
-    gs.zone_sources <B>  gs.navmesh <B>  gs.collision_map <B>
-    gs.zone_lines <B>  gs.entities <B>  gs.doors <B>
-    gs.world_objects <B>  gs.event_queue <B>  gs.event_stage <B>
-    gs.dispatch <B>  misc <B>
-```
+(`gs.collision_map.*` is the B951 sub-row sum: `.verts` + `.tris` + `.nodes`
++ `.refs` + `.leaves` + `.flags` + the map's own 400-byte header block.
+`—` = no row at `ready` (a zero-byte block prints no line). `gs.entities`/
+`gs.doors`/`gs.world_objects` are all ≤ 7 KB; `gs.event_queue` is absent
+because the B945 halving rule frees the burst buffer before `ready` in
+emeraldjungle/nurga and it is < 1 block in the other two.)
 
-Expectations, to be checked against the actual run (the x86 tree's
-`[memledger]` line already prints the category totals:
-`game_state=2,908,984` in B941's run, of which the four loads were 510,788,
-i.e. `misc` ≈ 2.4 MB — the numbers B919's rows must now account for):
+### The finding (step 4, the mechanism)
 
-- `gs.entities` is the biggest of the new rows (every spawn in the zone's
-  spawn table, with the state-side `Entity` sync);
-- `gs.event_queue` is the B945 burst buffer at its PEAK — the ready
-  point's queue is the retained half, so the row reads the peak it drained
-  to, not the steady state;
-- `gs.dispatch` + `misc` (the `gs.thread` residual) together are the
-  remainder — the shrink target for a follow-up unit, and now named.
+**The `game_state` category is the zone GEOMETRY, not the zone INHABITANTS.**
+`gs.navmesh` + `gs.collision_map.*` are 24.7–26.0 MB of the 25–26 MB total in
+every populated zone — 94–99 % — and they are the four B941/B951 rows this
+card does not re-measure. The per-spawn state this card names
+(`gs.entities`, `gs.doors`, `gs.world_objects`, `gs.event_queue`,
+`gs.event_stage`, `gs.dispatch`, and the `misc`/`gs.thread` residual) is
+**kilobytes**: the largest is `gs.dispatch` at 0.33 MB (overthere, 437
+entities), the rest are < 300 KB.
+
+**The prediction that was checked:** "the bytes inside `game_state` scale
+with the entity count." **It is false.** The entity count ranges 2 → 437
+(218×) while the per-spawn rows range 0 → 0.33 MB (a 330 KB ceiling, and
+`gs.entities` itself is 3,328 bytes for overthere's 437 entities ≈ 7.6
+bytes/entity — one `state::Entity` sync struct's worth, not a table). What
+scales is the geometry: overthere's navmesh is 22.0 MB (emeraldjungle's
+`.nav` is 7.89 MB on disk, overthere's the largest in the set) and its
+collision map 4.8 MB; nurga's navmesh is 0.61 MB and its map 2.94 MB, and
+nurga is the one zone the B854 sweep found under the 64 MB yardstick.
+**Bytes per entity for the top owner ≈ 0; the top owner is the navmesh, at
+~1.4 MB per MB of on-disk `.nav` (B941's own inflation factor), and it does
+not look at the entity count.**
+
+So the B854 "who owns `game_state`" question resolves to: **the answer is
+already known — it is the B941/B951 geometry (navmesh + collision map), and
+the per-spawn share is too small to be the 4.6→51 MB driver.** The 4.6→51 MB
+range in the B854 table is the geometry's range (a small zone's navmesh +
+map vs a large zone's), not an entity-count range. The shrink queue below
+therefore points at the geometry owners, not the spawn owners.
+
+### What the Pi leg must check (the open number)
+
+The B854 table measured `game_state` on the Pi at `steady` at up to 51.2 MB
+(emeraldjungle) — ~2.5× the 25–26 MB this card just measured on x86 for the
+same zones at `ready`. The owner breakdown on the Pi is the number this card
+still owes (acceptance B): it must show whether the Pi's larger `game_state`
+is the same geometry (then the x86 finding holds and the 2.5× is a
+measurement-path difference — the Pi's rendered zone-in keeps more, or the
+B854 numbers pre-date the B941/B951 geometry shrink) or a different owner
+(the Pi's entity/model state is charged to `game_state` where x86's is
+charged elsewhere). The Pi run is the arbiter; until it lands, the
+`game_state` owner table is the x86 one above and the Pi's is "pending, lane
+1, `PI_LANE=1`".
+
+## The proposed shrink queue (step 5, ordered by bytes)
+
+This card PROVES; it does not shrink (PROVE-THEN-FIX,
+`docs/local_model_cards.md`). Will plans the actual queue from this —
+`docs/decisions.md` is not edited here. The owners, in the order the bytes
+say to attack them, with the mechanism and the risk of each:
+
+| # | owner | measured (x86, MB) | mechanism | proposed change (for the FIX card) | risk |
+|---|---|---|---|---|---|
+| 1 | `gs.navmesh` | 0.61–22.0 | Detour tiles are the on-disk `.nav` inflated by ~1.4× (B941's own factor); kept for the zone's life for pathfinding | shrink the DETOUR TILES (LRU-evict tiles far from the player — the navmesh is queried only on path requests, not per frame; or a quantised-vertex re-encode) | path quality/latency at an eviction boundary; a wrong eviction = "Pathfinding failed" for a live `/follow` |
+| 2 | `gs.collision_map.verts`+`.tris` | 4.6–10.2 | the placed-object collision triangle soup: B941 deduped the per-placement vertices (549,559 placeable tris → 366,338 verts in emeraldjungle) but the soup is still ~10 MB; kept for the zone's life for LOS/FindBestZ | shrink the COLLISION MAP (a quantised-vertex/normal encoding of the placeable subset, or a coarser per-leaf AABB BVH) | ray-query identity — the `GameStateIdentity` digest test is the net; a change that moves a triangle value is red |
+| 3 | `gs.collision_map.nodes`/`.refs`/`.leaves` | 1.9–3.5 | the raycast tree's internal structure (one node per spatial bucket) | a tighter tree (a BVH over the placements instead of the per-leaf flat lists) | same identity net as #2 |
+| 4 | `gs.dispatch` + `gs.event_stage` + `misc`/`gs.thread` | 0.05–0.55 | the zone-packet handlers' transient state (the B945 burst buffer's retained half is in `gs.event_stage`; the handlers' scratch in `gs.dispatch`/`misc`) | none proposed — < 1 MB in every zone; not the 4.6→51 MB driver | low payoff |
+| — | `gs.entities`/`gs.doors`/`gs.world_objects` | ≤ 0.007 | the per-spawn state (3,328 bytes for 437 entities ≈ 7.6 B/entity) | **none** — not the driver; do not burn a unit on it | — |
+
+The queue's shape is therefore a **two-item geometry queue** (navmesh, then
+collision map), NOT the "entity table, spawn structs, per-entity
+appearance/equipment" list the card's step 2 hypothesised — the measurement
+overturned the hypothesis, which is the point of a PROVE card. The per-spawn
+owners are named and pinned (the census test), so a future unit cannot
+re-attribute them by accident, but they are not where the bytes are.
 
 ## The nets
 
@@ -142,12 +200,14 @@ i.e. `misc` ≈ 2.4 MB — the numbers B919's rows must now account for):
 
 ## Scope
 
-In: the six new rows (seven sites, `gs.doors` twice), the `gs.thread`
-name, the hot-path gate, the census test, this README.
+In: the six new owner rows (seven scoping sites, `gs.doors` twice), the
+`gs.thread` name, the hot-path gate, the census test, the x86 measurement
+of the four zones, and this README.
 
-Out (boarded, not done here): labelling the render thread's buffer rows
-(`gpu_buffers` already has its `gpu_buffers`/`gpu_driver`/`gpu_buffers_*`
-rows from B839/B955); the follow-up SHRINK unit for whatever
-`gs.entities`/`gs.dispatch`/`misc` turns out to be; other categories
-(`network`, `config`) — their owner tables are one
-`WILLEQ_LEDGER_OWNERS` export away, but their sites are not surveyed here.
+Out (boarded, not done here): the Pi's owner tables for the same four zones
+(acceptance B's other half — `PI_LANE=1`, the ARM build + rendered sweep,
+in flight when this README was last committed); the follow-up SHRINK unit
+for the geometry owners (navmesh first, then collision map — the two-item
+queue above); other categories (`network`, `config`) — their owner tables
+are one `WILLEQ_LEDGER_OWNERS` export away, but their sites are not
+surveyed here.
