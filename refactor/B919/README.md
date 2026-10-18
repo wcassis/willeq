@@ -103,10 +103,10 @@ its `gs.entities`/`gs.event_queue`/`gs.dispatch` rows would be empty)
 
 | zone | entities | doors | `game_state` total | `gs.navmesh` | `gs.collision_map.*` (sum) | `gs.entities` | `gs.doors` | `gs.world_objects` | `gs.event_queue` | `gs.event_stage` | `gs.dispatch` |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| emeraldjungle | 266 | 3   | 26.22 | 15.78 | 10.21 | 0    | 0.0004 | —      | —          | —          | 0.22 |
-| overthere     | 437 | 23  | 26.32 | 21.97 | 4.79  | 0.003 | 0.003 | 0.001  | —          | 0.27     | 0.33 |
-| timorous      | 303 | 47  | 25.23 | 19.07 | 7.47  | —    | 0.007 | 0.001  | —          | 0.21     | 0.24 |
-| nurga         | 2   | 0   | 2.56  | 0.61  | 2.94  | —    | —     | —      | —          | 0.02     | 0.06 |
+| emeraldjungle | 266 | 3   | 26.22 | 15.78 | 10.14 | 0    | 0.0004 | —      | —          | —          | 0.22 |
+| overthere     | 437 | 23  | 26.32 | 21.97 | 3.67  | 0.003 | 0.003 | 0.001  | —          | 0.27     | 0.33 |
+| timorous      | 303 | 47  | 25.23 | 19.07 | 5.62  | —    | 0.007 | 0.001  | —          | 0.21     | 0.24 |
+| nurga         | 2   | 0   | 2.56  | 0.61  | 1.78  | —    | —     | —      | —          | 0.02     | 0.06 |
 
 (`gs.collision_map.*` is the B951 sub-row sum: `.verts` + `.tris` + `.nodes`
 + `.refs` + `.leaves` + `.flags` + the map's own 400-byte header block.
@@ -118,8 +118,8 @@ emeraldjungle/nurga and it is < 1 block in the other two.)
 ### The finding (step 4, the mechanism)
 
 **The `game_state` category is the zone GEOMETRY, not the zone INHABITANTS.**
-`gs.navmesh` + `gs.collision_map.*` are 24.7–26.0 MB of the 25–26 MB total in
-every populated zone — 94–99 % — and they are the four B941/B951 rows this
+`gs.navmesh` + `gs.collision_map.*` are 24.7–25.9 MB of the 25–26 MB total in
+every populated zone — 97–99 % — and they are the four B941/B951 rows this
 card does not re-measure. The per-spawn state this card names
 (`gs.entities`, `gs.doors`, `gs.world_objects`, `gs.event_queue`,
 `gs.event_stage`, `gs.dispatch`, and the `misc`/`gs.thread` residual) is
@@ -132,8 +132,8 @@ with the entity count." **It is false.** The entity count ranges 2 → 437
 `gs.entities` itself is 3,328 bytes for overthere's 437 entities ≈ 7.6
 bytes/entity — one `state::Entity` sync struct's worth, not a table). What
 scales is the geometry: overthere's navmesh is 22.0 MB (emeraldjungle's
-`.nav` is 7.89 MB on disk, overthere's the largest in the set) and its
-collision map 4.8 MB; nurga's navmesh is 0.61 MB and its map 2.94 MB, and
+`.nav` is 7.52 MiB on disk, overthere's the largest in the set) and its
+collision map 3.7 MB; nurga's navmesh is 0.61 MB and its map 1.78 MB, and
 nurga is the one zone the B854 sweep found under the 64 MB yardstick.
 **Bytes per entity for the top owner ≈ 0; the top owner is the navmesh, at
 ~1.4 MB per MB of on-disk `.nav` (B941's own inflation factor), and it does
@@ -226,8 +226,8 @@ say to attack them, with the mechanism and the risk of each:
 | # | owner | measured (x86, MB) | mechanism | proposed change (for the FIX card) | risk |
 |---|---|---|---|---|---|
 | 1 | `gs.navmesh` | 0.61–22.0 | Detour tiles are the on-disk `.nav` inflated by ~1.4× (B941's own factor); kept for the zone's life for pathfinding | shrink the DETOUR TILES (LRU-evict tiles far from the player — the navmesh is queried only on path requests, not per frame; or a quantised-vertex re-encode) | path quality/latency at an eviction boundary; a wrong eviction = "Pathfinding failed" for a live `/follow` |
-| 2 | `gs.collision_map.verts`+`.tris` | 4.6–10.2 | the placed-object collision triangle soup: B941 deduped the per-placement vertices (549,559 placeable tris → 366,338 verts in emeraldjungle) but the soup is still ~10 MB; kept for the zone's life for LOS/FindBestZ | shrink the COLLISION MAP (a quantised-vertex/normal encoding of the placeable subset, or a coarser per-leaf AABB BVH) | ray-query identity — the `GameStateIdentity` digest test is the net; a change that moves a triangle value is red |
-| 3 | `gs.collision_map.nodes`/`.refs`/`.leaves` | 1.9–3.5 | the raycast tree's internal structure (one node per spatial bucket) | a tighter tree (a BVH over the placements instead of the per-leaf flat lists) | same identity net as #2 |
+| 2 | `gs.collision_map.verts`+`.tris` | 0.2–7.8 | the placed-object collision triangle soup: B941 deduped the per-placement vertices (549,559 placeable tris → 366,338 verts in emeraldjungle) but the soup is still ~7.8 MB there; kept for the zone's life for LOS/FindBestZ | shrink the COLLISION MAP (a quantised-vertex/normal encoding of the placeable subset, or a coarser per-leaf AABB BVH) | ray-query identity — the `GameStateIdentity` digest test is the net; a change that moves a triangle value is red |
+| 3 | `gs.collision_map.nodes`/`.refs`/`.leaves` | 1.6–2.5 | the raycast tree's internal structure (one node per spatial bucket) | a tighter tree (a BVH over the placements instead of the per-leaf flat lists) | same identity net as #2 |
 | 4 | `gs.dispatch` + `gs.event_stage` + `misc`/`gs.thread` | 0.05–0.55 | the zone-packet handlers' transient state (the B945 burst buffer's retained half is in `gs.event_stage`; the handlers' scratch in `gs.dispatch`/`misc`) | none proposed — < 1 MB in every zone; not the 4.6→51 MB driver | low payoff |
 | — | `gs.entities`/`gs.doors`/`gs.world_objects` | ≤ 0.007 | the per-spawn state (3,328 bytes for 437 entities ≈ 7.6 B/entity) | **none** — not the driver; do not burn a unit on it | — |
 
