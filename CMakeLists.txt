@@ -2606,6 +2606,7 @@ IF(EQT_GRAPHICS)
         src/client/core/gpu_buffer_census.cpp
         src/client/core/gl_driver_census.cpp  # B1016: zone_bench_loader.cpp emits the [gldriver] line
         tools/hwcaps/zone_bench_loader.cpp
+        tools/hwcaps/zone_bench_loadpoint_trace.cpp  # B928: per-load-point [memledger-trace] rows
         tools/hwcaps/zone_bench_draw.cpp
         tools/hwcaps/zone_bench_entities.cpp
         tools/hwcaps/zone_bench_lod.cpp
@@ -2730,6 +2731,7 @@ IF(EQT_GRAPHICS)
         src/client/core/gpu_buffer_census.cpp
         src/client/core/gl_driver_census.cpp  # B1016: zone_bench_loader.cpp emits the [gldriver] line
         tools/hwcaps/zone_bench_loader.cpp
+        tools/hwcaps/zone_bench_loadpoint_trace.cpp  # B928: per-load-point [memledger-trace] rows
         tools/hwcaps/zone_bench_draw.cpp
         tools/hwcaps/zone_bench_entities.cpp
         tools/hwcaps/zone_bench_lod.cpp
