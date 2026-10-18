@@ -79,6 +79,40 @@ dev-u24's local lane -- two hosts, one file. The lease fixes both:
   takeover after expiry, 63 + the re-lease one-liner, re-acquire, reap dead-vs-live, dry-run,
   five-way take race (exactly one winner), corrupt record refused. Red-before is N/A (new helper).
 
+### The process-watcher zone exemption (B940, #258)
+
+The `eqemu-server` image's `process-watcher.pl` (bind-mounted at
+`assets/scripts/`, relaunched by the entrypoint's loop) `kill -9`s any process whose
+lifetime-average CPU exceeds 30 % after 60 s unless its ps line matches an allowlist
+regex -- and the allowlist omits `zone`, so a freshly-respawned zone busy loading a
+client was killed mid-load (iceclad ~65-75 s, overthere ~38 s on the Pi; the client's
+`ECONNREFUSED` was the kill of its own zone pid; `refactor/B925/README.md`). The lanes'
+stacks carry the exemption in the stack's own configuration, provisioned persistently by
+`scripts/eqemu/watcher_provision.sh --lane N` (under the lease):
+
+- **the file**: `AKK_DIR/assets/scripts/process-watcher.pl`, patched by
+  `scripts/eqemu/b940_patch_watcher.pl` -- the allowlist regex becomes
+  `PROCESS_WATCHER_EXCLUDE`-driven, and the **upstream regex stays the default**, so a
+  stack without the env var behaves exactly as before (the patch is a literal splice,
+  `perl -c`s the patched text before it replaces the file, and refuses when the B940
+  marker is already present).
+- **the value**: the `eqemu-server` service's `environment:` gains one line
+  (`scripts/eqemu/b940_patch_compose.pl`):
+  `PROCESS_WATCHER_EXCLUDE=(bin|/bin)/zone`. The value is a bare regex body compiled
+  with `qr//` by the watcher -- no delimiters and no backslashes, because both are
+  eaten by the compose env -> shell -> `qr//` chain. It exempts exactly the zone
+  binary's argv wherever it sits on the ps line (`./bin/zone iceclad`,
+  `bin/zone overthere`, `/bin/zone`, `/home/eqemu/server/bin/zone qeynos2`); no
+  non-zone eqemu argv carries `bin/zone`, so the exemption cannot leak.
+- **verify**: `scripts/eqemu/watcher_selftest.sh --lane N` (read-only) fails if the
+  watcher lacks the B940 env-read, if the upstream allowlist is no longer the DEFAULT,
+  or if the compose file lacks the exact `PROCESS_WATCHER_EXCLUDE` line. The provision
+  run itself re-proves the surviving value on the lane host through the provisioned
+  code path (both directions: every zone argv exempt, every non-zone argv not) and,
+  with `--busy-zone`, a ps line carrying `./bin/zone` survives past the 60 s window.
+- **proof it fixed the kill**: with the lane provisioned, iceclad's `zone_link_hold`
+  (330 s hold) exits 0 on lane 2 -- the B925 R1 case that dropped ~65-75 s in before.
+
 | | |
 | --- | --- |
 | GitLab | `https://gitlab.goldfarm.local`, project `willeq/willeq` (id 1) |
