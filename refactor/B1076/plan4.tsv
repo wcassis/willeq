@@ -1,0 +1,81 @@
+# action	target	hold_ms	still_name
+# B1076 (GitLab #396) capture 4 -- the coordinate model, proved on the
+# captures 1-3 stills:
+#   * Xvfb 1280x1024; the client window sits at root (0,30) and its client
+#     area is 1280x800. Stills crop the client area (import -crop
+#     1280x800+0+30), so still/frame y = root y - 30. xdotool clicks in
+#     ROOT space. Target = INI position (1280x800 column) + XML piece
+#     offset + 30 in y.
+#   * Proven anchors: [CastSpellWnd] INI (0,185) -> measured panel frame
+#     188..472 (root 218..502); [InventoryWindow] INI (420,340) -> measured
+#     border frame x426/y341; [HotButtonWnd] INI y=540 -> measured frame
+#     rim 540. Capture 3's book-button click (21,448) root = client 418,
+#     i.e. 30px HIGH: it hit gem slot 7 (window y 233), whose tooltip is
+#     exactly the 2040px frame x22-141/y402-418 change 04->05 shows.
+#   * [SpellBookWnd] is (232,154) 510x360: EVERY defaults.ini resolution
+#     column (800x600, 1024x768, 1152x864, 1280x720, 1280x1024, 1600x*)
+#     carries (232,154), and the char INI has no SpellBookWnd row, so the
+#     window opens there. Root origin (232,184).
+# Pieces (EQUI_SpellBookWnd.xml, window-relative -> root):
+#   book button (CastSpellWnd 10,252 22x22)      centre root (21,478)
+#   gem1 (CSPW_Spell1: 3,40 36x28)               centre root (21,274)
+#   SBW_Spell0 (80,24 44x44)  left page          centre root (334,230)
+#   SBW_Spell2 (80,97 44x44)  left page          centre root (334,262)
+#   SBW_Spell8 (292,24 44x44) right page         centre root (546,230)
+#   SBW_PageDown (6,145 18x32)  left arrow       centre root (247,291)
+#   SBW_PageUp (487,145 18x32)  right arrow      centre root (728,291)
+#   SBW_DoneButton (449,5 13x13)                 centre root (687,195)
+#   SBW gauges (204,312 100x8)                   centre root (486,476)
+# Inventory scroll: general slot 25 (item 15288, inventory-before.tsv),
+# window-relative (303,357) 42x42 (the inventory grid, capture-2 plan) ->
+# centre root (723,727). Scribe drag route: the book spans frame
+# x 232..742; x 760 clears it and the Tip dialog (frame x 920+).
+# NOTE: a "Tip of the Day" dialog sits at frame (920,250) 360x300 all run
+# (it is present in 04_main already); it overlaps nothing the plan touches.
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+wait	15000	0	settle
+still	main	0	main
+click	21,478	0	book_open
+wait	3000	0	book_settle
+still	book_open	0	book_open
+click	334,230	0	slot0_probe
+wait	2500	0	slot0_probe_settle
+still	slot0_probe	0	slot0_probe
+rclick	334,230	0	slot0_rclick
+wait	2500	0	slot0_rclick_settle
+still	slot0_after_rclick	0	slot0_after_rclick
+click	334,230	0	slot0_lclick
+wait	2500	0	slot0_lclick_settle
+still	slot0_after_lclick	0	slot0_after_lclick
+ldrag	334,262 140,262 140,274 21,274	1000	0
+wait	3000	0	mem_drag_settle
+still	gem_after_drag	0	gem_after_drag
+click	728,291	0	page_up_1
+wait	3000	0	page_up_settle
+still	book_page2	0	book_page2
+click	247,291	0	page_down_1
+wait	3000	0	page_down_settle
+still	book_page1	0	book_page1
+click	687,195	0	done_click
+wait	3000	0	done_settle
+still	done	0	done
+press	i	0	inv_open
+wait	3000	0	inv_settle
+still	inv_open	0	inv_open
+click	723,727	0	scroll_probe
+wait	2500	0	scroll_probe_settle
+still	scroll_probe	0	scroll_probe
+click	21,478	0	book_reopen
+wait	3000	0	book_reopen_settle
+still	book_and_inv	0	book_and_inv
+rdrag	723,727 760,727 760,230 546,230	1500	0
+wait	4000	0	scribe_r_settle
+still	scribe_right	0	scribe_right
+ldrag	723,727 760,727 760,230 546,230	1500	0
+wait	4000	0	scribe_l_settle
+still	scribe_left	0	scribe_left
+press	i	0	inv_closed
+wait	3000	0	inv_closed_settle
+still	book_end	0	book_end
+wait	4000	0	final

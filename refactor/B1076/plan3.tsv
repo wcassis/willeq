@@ -1,0 +1,94 @@
+# action	target	hold_ms	still_name
+# B1076 (GitLab #396) capture 3 -- coordinates recalibrated after captures
+# 1-2 failed (the book never opened: every target came from defaults.ini's
+# 1280x1024 column, but the client runs at 1280x800).
+#
+# COORDINATE SPACE (proved, three anchors):
+#   The char INI's 1280x800 column gives positions that EQUAL the still
+#   frame coordinates: [HotButtonWnd] y=540 == measured hotbar frame rim
+#   540; [InventoryWindow] (420,340) == measured border frame x426/y341;
+#   [CastSpellWnd] (0,185) == measured panel top frame 188. xdotool clicks
+#   in the same space (the login/zone jclicks in captures 1-2 landed
+#   correctly using the driver's own window coordinates). So: target = INI
+#   position + XML piece offset, no extra conversion.
+#
+#   * [CastSpellWnd] (0,185) 48x290. Gems 36x28 @(3,10+30i), book 22x22
+#     @(10,252) (EQUI_CastSpellWnd.xml): gem0 centre (21,214), gem1
+#     (21,244), gem2 (21,274); book button centre (21,448) [capture 2
+#     clicked (24,579) = 131 px below, in the hotbar].
+#   * [SpellBookWnd]: no 1280x800 row in the char INI after capture 2 and
+#     no 1280x800 row in defaults.ini -- EQ falls back to the XML Screen
+#     location (190,80) 510x360 (EQUI_SpellBookWnd.xml L1359-1368), the
+#     same value its 800x600 column carries. If the open-gate still shows
+#     the book elsewhere, the per-step stills + opcodes.tsv still pin the
+#     gestures; only the page/gauge stills shift.
+#     Pieces (XML, window-relative; window origin (190,80)):
+#       SBW_Spell0 44x44 @(80,24)   -> (260,134) centre (282,156)
+#       SBW_Spell2 44x44 @(80,97)   -> (260,207) centre (282,229)
+#       SBW_Spell8 44x44 @(292,24)  -> (482,134) centre (504,156)
+#       SBW_PageDown 18x32 @(6,145) -> (196,225) centre (205,241)
+#       SBW_PageUp   18x32 @(487,145)-> (677,225) centre (686,241)
+#       DoneButton   13x13 @(449,5) -> (639,85)  centre (646,91)
+#       gauges 100x8 @(204,312)     -> (394,392) centre (444,396)
+#   * [InventoryWindow] (420,340) 428x460. The scroll's general cell is
+#     probed by click + tooltip; two candidates in the general rows,
+#     frame y ~470: (500,470) and (620,470).
+#   * DRAG ROUTING: the book spans x 190..700, y 80..440; the gem panel
+#     x 0..48; the inventory x 420..848, y 340..800. The memorise drag
+#     (left-page slot -> gem) routes through x < 190; the scribe drag
+#     (scroll -> right page) drops from the inventory straight up into the
+#     open book's right page.
+# Each gesture step is preceded by a plain click on the same target (the
+# tip tooltip + settle stills show the hit) and followed by a still; the
+# per-piece opcodes.tsv carries the OPAMISCE|OP_SSCRIBE|OP_TargetMouse
+# verdicts.
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+wait	15000	0	settle
+still	main	0	main
+click	21,448	0	book_open
+wait	3000	0	book_settle
+still	book_open	0	book_open
+click	282,156	0	slot0_probe
+wait	2500	0	slot0_probe_settle
+still	slot0_probe	0	slot0_probe
+rclick	282,156	0	slot0_rclick
+wait	2500	0	slot0_rclick_settle
+still	slot0_after_rclick	0	slot0_after_rclick
+click	282,156	0	slot0_lclick
+wait	2500	0	slot0_lclick_settle
+still	slot0_after_lclick	0	slot0_after_lclick
+ldrag	282,229 140,229 140,244 21,244	1000	0
+wait	3000	0	mem_drag_settle
+still	gem_after_drag	0	gem_after_drag
+click	686,241	0	page_up_1
+wait	3000	0	page_up_settle
+still	book_page2	0	book_page2
+click	205,241	0	page_down_1
+wait	3000	0	page_down_settle
+still	book_page1	0	book_page1
+click	646,91	0	done_click
+wait	3000	0	done_settle
+still	done	0	done
+press	i	0	inv_open
+wait	3000	0	inv_settle
+still	inv_open	0	inv_open
+click	500,470	0	scroll_probe_1
+wait	2500	0	scroll_probe1_settle
+still	scroll_probe_1	0	scroll_probe_1
+click	620,470	0	scroll_probe_2
+wait	2500	0	scroll_probe2_settle
+still	scroll_probe_2	0	scroll_probe_2
+click	21,448	0	book_reopen
+wait	3000	0	book_reopen_settle
+still	book_and_inv	0	book_and_inv
+rdrag	620,470 560,470 560,180 504,180	1500	0
+wait	4000	0	scribe_r_settle
+still	scribe_right	0	scribe_right
+ldrag	620,470 560,470 560,180 504,180	1500	0
+wait	4000	0	scribe_l_settle
+still	scribe_left	0	scribe_left
+press	i	0	inv_closed
+wait	3000	0	inv_closed_settle
+still	book_end	0	book_end
+wait	4000	0	final

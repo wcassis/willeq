@@ -282,7 +282,7 @@ for this). The chat/UI-label half of the chunk is open.
 - Casting bar: progress bar + spell name text. Only visible during casting.
 - Group panel: list of 5 member names + HP bars.
 - Pet panel: pet name + HP bar + command buttons.
-- Spellbook popup: list of known spells with memorize action.
+- ~~Spellbook popup: list of known spells with memorize action.~~ **DELIVERED in B1076 (2026-10-17, #396)**: not a list but the oracle's own two-page book — 510x360 from `EQUI_SpellBookWnd.xml`, sixteen 44x44 icon+name slots per spread over the composed `default_spellbook01-05.tga` backdrop (`spellbook_layout.h` / `tools/spellbook_backdrop_builder`), left-click memorise, right-click spell swap, two-click scroll→slot scribe, Done X, edge arrows (the gestures are the lane-1 oracle capture 4, `refactor/B1076/README.md`).
 - Skills popup: list of skills with values.
 - ~~Options popup: settings toggles.~~ **DELIVERED in T434**, from `EQUI_OptionsWindow.xml` at the oracle's own 400x452 with seven tabs and Alt+O — not a toggle list. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **130 control rows** (114 at T434; B995 added the Env and Player particle sub-pages' 16); at T434 six were wired (three sliders — music volume, effects volume, clip plane — and their three value labels) and the other 108 are drawn greyed and are not hit-testable, which is the T363 rule made mechanical (boards B430, B431, B433). Struck by T444.
 

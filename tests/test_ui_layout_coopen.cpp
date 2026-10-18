@@ -224,8 +224,12 @@ TEST(UiLayoutCoOpen, SizesAreTheWindowsOwnOnlyTheAnchorMoves) {
         // The unchanged windows keep their own sizes.
         EXPECT_EQ(windowRectFor(UIWindow::Loot, l).getWidth(), UILayout::POPUP_W);
         EXPECT_EQ(windowRectFor(UIWindow::Loot, l).getHeight(), UILayout::POPUP_H);
-        EXPECT_EQ(windowRectFor(UIWindow::Spellbook, l).getWidth(), UILayout::POPUP_W);
-        EXPECT_EQ(windowRectFor(UIWindow::Spellbook, l).getHeight(), UILayout::POPUP_H);
+        // B1076 (#396): the spellbook is the oracle's own 510x360, not the
+        // shared 400x350 centre popup it used to share with the skills popup.
+        EXPECT_EQ(windowRectFor(UIWindow::Spellbook, l).getWidth(),
+                  SpellBookLayout::kWindowW);
+        EXPECT_EQ(windowRectFor(UIWindow::Spellbook, l).getHeight(),
+                  SpellBookLayout::kWindowH);
         EXPECT_EQ(windowRectFor(UIWindow::Skills, l).getWidth(), UILayout::POPUP_W);
         EXPECT_EQ(windowRectFor(UIWindow::Skills, l).getHeight(), UILayout::POPUP_H);
         EXPECT_EQ(windowRectFor(UIWindow::Bank, l).getWidth(), BankLayout::WINDOW_W);

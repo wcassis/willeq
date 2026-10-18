@@ -1,0 +1,47 @@
+# action	target	hold_ms	still_name
+# B1076 (GitLab #396) fix-2 leg -- the SPELL SWAP commit, measured per review
+# t_d00ada41 finding 3: capture 4 only ever did a SINGLE right-click (step 11,
+# its opcodes were empty of a swap packet) and never the committing second
+# right-click. This plan measures it: right-click a first occupied slot,
+# settle + still, right-click a SECOND occupied slot (the commit), settle +
+# still, then read the book (stills carry the page numbers + slot icons), then
+# the per-step opcode tables name whatever wire the commit sent (or prove none).
+#
+# Coordinate model: the plan4.tsv one (Xvfb 1280x1024 lanes; lane 5's root
+# space is the same 1280x800 client area with the +30 y origin the driver
+# handles). [SpellBookWnd] defaults.ini (232,154) 510x360 -> root origin
+# (232,184):
+#   SBW_Spell0 (80,24 44x44)  left page   centre root (334,230)
+#   SBW_Spell1 (171,24)       left page   centre root (425,230)
+#   SBW_Spell8 (292,24)       right page  centre root (546,230)
+#   SBW_Spell9 (383,24)       right page  centre root (637,230)
+#   SBW_LeftPageNum (137,9 20x16) centre root (394,199)
+#   SBW_RightPageNum (350,9)  centre root (607,199)
+#   SBW_DoneButton (449,5 13x13)  centre root (687,195)
+#   book button (CastSpellWnd 10,252 22x22) centre root (21,478)
+# Testcaster (level 69, 16 scribed spells = exactly one spread, so both slots
+# 0 and 1 are occupied and a swap between them is a pure in-page exchange --
+# the page numbers cannot move, only the two icons/names do).
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+wait	15000	0	settle
+click	21,478	0	book_open
+wait	3000	0	book_settle
+still	book_before	0	book_before
+rclick	334,230	0	slot0_rclick
+wait	3000	0	slot0_settle
+still	book_slot0_latched	0	book_slot0_latched
+rclick	425,230	0	slot1_rclick
+wait	3000	0	slot1_settle
+still	book_after_swap	0	book_after_swap
+wait	5000	0	swap_late
+still	book_swap_late	0	book_swap_late
+rclick	334,230	0	reopen_latch
+wait	2500	0	reopen_settle
+still	book_reopen_latched	0	book_reopen_latched
+rclick	425,230	0	recommit
+wait	3000	0	recommit_settle
+still	book_after_reswap	0	book_after_reswap
+click	687,195	0	done
+wait	3000	0	done_settle
+still	book_closed	0	book_closed

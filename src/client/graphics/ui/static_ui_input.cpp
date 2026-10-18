@@ -7,7 +7,9 @@
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/hotbar_panel.h"   // B1025-H2: hitTestHotbar
-#include "client/graphics/ui/spell_gem_layout.h"  // B1077: the oracle's gem/book rects
+#include "client/graphics/ui/spell_gem_layout.h"
+#include "client/graphics/ui/spellbook_layout.h"   // B1076 (#396): the book's own rects
+#include "client/graphics/ui/spellbook_page_turn.h"   // B1076 fix-2: the ONE spread-turn body
 #include "client/hotbar/hotbar_model.h"        // B1025-H2: PAGE_COUNT
 #include "client/graphics/ui/inventory_layout.h"
 #include "client/graphics/ui/tradeskill_panel.h"
@@ -102,7 +104,10 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     const bool overOpenPopup =
         (inventory.activePopup == PopupType::Inventory &&
          InventoryLayout::windowRect(layout).isPointInside(at)) ||
-        ((spellbook.isOpen || skills.isOpen) && layout.centerPopup.isPointInside(at)) ||
+        // B1076 (#396): the spellbook is its own 510x360 (bookPopup), the skills
+        // popup the shared centrePopup.
+        (spellbook.isOpen && layout.bookPopup.isPointInside(at)) ||
+        (skills.isOpen && layout.centerPopup.isPointInside(at)) ||
         (loot.isOpen && layout.partnerPopup.isPointInside(at));
 
     // --- Hotbar window (B1025-H2): the stock HotButtonWnd, one window ---
@@ -318,6 +323,26 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                     // slot id (0-21 worn, 22-29 general).
                     if (leftClicked || rightClicked_) {
                         const SlotDisplayInfo* info = slotInfo(inventory, i);
+                        // B1076 (#396): the scribe's FIRST click. With the
+                        // spellbook open, a LEFT click on a spell scroll ARMS
+                        // the two-click scribe (the oracle's own Spellbook Tip:
+                        // "click a spell scroll, then an open slot in your book")
+                        // instead of picking the scroll up -- the second click
+                        // lands in renderSpellbookPopup's input and fires
+                        // ScribeSpellFromScrollIntent. Right-click / SHIFT keep
+                        // their own arms (item display / not a scroll gesture).
+                        if (leftClicked && !rightClicked_ && !mods_.shift &&
+                            spellbook.isOpen && info && info->hasItem &&
+                            info->scrollSpellId != 0) {
+                            spellbook.scribScrollSlot = i;
+                            spellbook.scribScrollSpell = info->scrollSpellId;
+                            LOG_INFO(MOD_GRAPHICS,
+                                "Spellbook: scribe armed on scroll (spell {}) in "
+                                "inventory slot {} -- click an open slot in the "
+                                "book to scribe it",
+                                info->scrollSpellId, i);
+                            break;  // the scroll is armed, not picked up
+                        }
                         eqt::inventory::SlotSnapshot snap;
                         snap.occupied = info && info->hasItem;
                         snap.quantity = info ? info->quantity : 0;
@@ -438,71 +463,167 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     }
 
     // --- Spellbook popup hit test ---
+    // B1076 (#396): the window is the oracle's own 510x360 (layout.bookPopup,
+    // NOT the shared centrePopup the skills popup uses), and every piece is
+    // hit-tested from SpellBookLayout -- the SAME table renderSpellbookPopup()
+    // draws from, so a click lands where the art is. The gestures below are
+    // the ones capture 4 measured on the official client, not the XML's:
+    //   left click a SLOT   = memorise (server: the capture's "not high enough
+    //                         level" is the attempt firing) -- T272's gem pick
+    //   right click a SLOT  = the stock client's book-order swap (capture 4:
+    //                         the first right-click sends no packet; the
+    //                         committing second click's wire -- if any -- is
+    //                         plan5_swap.tsv's measurement)
+    //   drag slot -> gem    = memorise (fable's cursor gesture is not a
+    //                         measured hold here; the slot's left click already
+    //                         memorises, so the drag is not re-bound)
+    //   click scroll, then  = scribe (the oracle's own Spellbook Tip: click a
+    //   click an open slot   scroll in the inventory, then an open book slot)
+    //   Done X              = close (FrameComponent runs the shared toggle)
+    //   edge arrows         = page (a spread, i.e. two book pages, at a time)
+    // An EMPTY slot left-clicks only when a scroll is armed (the scribe half);
+    // otherwise it does nothing (empty = the oracle draws no decal, nothing to
+    // memorise). Shift+click keeps T425's spell-display request, unchanged.
     if (spellbook.isOpen) {
-        if (mouseX >= layout.centerPopup.UpperLeftCorner.X &&
-            mouseX < layout.centerPopup.LowerRightCorner.X &&
-            mouseY >= layout.centerPopup.UpperLeftCorner.Y &&
-            mouseY < layout.centerPopup.LowerRightCorner.Y) {
-            consumed = true;
-            // Spell rows
-            int startY = layout.centerPopup.UpperLeftCorner.Y + 24;
-            constexpr int LINE_H = 28;
-            constexpr int PAD = UILayout::MARGIN;
-            for (int i = 0; i < SpellbookPopupState::SPELLS_PER_PAGE; ++i) {
-                int ry = startY + i * (LINE_H + PAD);
-                if (mouseY >= ry && mouseY < ry + LINE_H) {
-                    spellbook.hoveredSlot = i;
-                    if (leftClicked && shift) {
-                        // T425 (board B298, spell half): shift+click a
-                        // spellbook row asks for the spell display instead of
-                        // memorising it.
-                        int idx = spellbook.currentPage * SpellbookPopupState::SPELLS_PER_PAGE + i;
-                        if (idx < static_cast<int>(spellbook.spells.size()) && bridge_) {
-                            bridge_->pushIntent(eqt::events::SpellDisplayRequestIntent{
-                                spellbook.spells[idx].spellId});
-                        }
-                    } else if (leftClicked) {
-                        // T272: this was a LOG stub naming MemorizeSpellIntent
-                        // as the missing piece (T264 kept the intent for
-                        // exactly this). Row index is relative to the current
-                        // page, exactly as renderSpellbookPopup() draws it;
-                        // the destination gem comes from the single shared
-                        // resolver so the click and the gem-panel highlight
-                        // can never disagree.
-                        int idx = spellbook.currentPage * SpellbookPopupState::SPELLS_PER_PAGE + i;
-                        if (idx < static_cast<int>(spellbook.spells.size()) && bridge_) {
+        if (mouseX >= layout.bookPopup.UpperLeftCorner.X &&
+            mouseX < layout.bookPopup.LowerRightCorner.X &&
+            mouseY >= layout.bookPopup.UpperLeftCorner.Y &&
+            mouseY < layout.bookPopup.LowerRightCorner.Y) {
+            const int ox = layout.bookPopup.UpperLeftCorner.X;
+            const int oy = layout.bookPopup.UpperLeftCorner.Y;
+            const int lx = mouseX - ox;
+            const int ly = mouseY - oy;
+            const auto inBook = [&](const irr::core::rect<irr::s32>& r) {
+                return lx >= r.UpperLeftCorner.X &&
+                       lx < r.LowerRightCorner.X &&
+                       ly >= r.UpperLeftCorner.Y &&
+                       ly < r.LowerRightCorner.Y;
+            };
+            bool onPiece = false;
+
+            // The sixteen slots (the current spread), in the table's own order.
+            for (int i = 0; i < EQT::Graphics::SpellBookLayout::kSlotCountTotal; ++i) {
+                if (!inBook(EQT::Graphics::SpellBookLayout::slotRect(i))) continue;
+                spellbook.hoveredSlot = i;
+                consumed = true;
+                onPiece = true;
+                const int idx = spellbook.currentPage *
+                                SpellbookPopupState::SPELLS_PER_PAGE + i;
+                const bool occupied = idx < static_cast<int>(spellbook.spells.size());
+                if (leftClicked && shift) {
+                    // T425 (board B298): shift+click a book row asks for the
+                    // spell display instead of memorising it.
+                    if (occupied && bridge_) {
+                        bridge_->pushIntent(eqt::events::SpellDisplayRequestIntent{
+                            spellbook.spells[idx].spellId});
+                    }
+                } else if (leftClicked) {
+                    if (occupied) {
+                        // T272: memorise into the resolved gem -- the same
+                        // single resolver the gem-panel highlight uses, so the
+                        // click and the highlight can never disagree.
+                        if (bridge_) {
                             int gem = resolveMemorizeGem(spellGems);
                             if (gem < 0) {
                                 LOG_INFO(MOD_GRAPHICS,
-                                    "Spellbook: all gems full -- click a gem to choose "
-                                    "which to overwrite, then click '{}'",
+                                    "Spellbook: all gems full -- click a gem to "
+                                    "choose which to overwrite, then click '{}'",
                                     spellbook.spells[idx].name);
                             } else {
-                                LOG_INFO(MOD_GRAPHICS, "Spellbook: memorizing '{}' into gem {}",
+                                LOG_INFO(MOD_GRAPHICS,
+                                    "Spellbook: memorizing '{}' into gem {}",
                                     spellbook.spells[idx].name, gem + 1);
                                 bridge_->pushIntent(eqt::events::MemorizeSpellIntent{
                                     static_cast<uint8_t>(gem),
                                     spellbook.spells[idx].spellId});
-                                // The explicit pick is consumed by the click
-                                // it targeted; the next one falls back to
-                                // "first empty gem".
+                                // The explicit pick is consumed by the click it
+                                // targeted; the next falls back to "first empty".
                                 spellGems.memorizeTargetGem = -1;
                             }
                         }
+                    } else if (spellbook.scribScrollSlot >= 0 && bridge_) {
+                        // The scribe's second click: the scroll is armed (the
+                        // inventory click latched its spell id) and this open
+                        // slot takes it. The consumer resolves the destination
+                        // book slot and runs /scribe's exact wire sequence.
+                        LOG_INFO(MOD_GRAPHICS,
+                            "Spellbook: scribing spell {} from scroll in slot {}",
+                            spellbook.scribScrollSpell, spellbook.scribScrollSlot);
+                        bridge_->pushIntent(eqt::events::ScribeSpellFromScrollIntent{
+                            spellbook.scribScrollSpell,
+                            static_cast<int16_t>(spellbook.scribScrollSlot)});
+                        spellbook.scribScrollSlot = -1;
+                        spellbook.scribScrollSpell = 0;
+                        scribeGaugeStart(spellbook);
                     }
-                    break;
+                } else if (rightClicked_) {
+                    // The swap. B1076 fix-2 (UIGAP-ORACLE 205, plan5_swap.tsv
+                    // step 10, MEASURED on the lane-1 official client
+                    // 2026-10-18): a right-click latches the first destination;
+                    // a right-click on ANOTHER occupied slot COMMITS by
+                    // exchanging the two scribed spells over the wire --
+                    // OP_SwapSpell (0x2126) carrying the two spellbook-slot
+                    // indices (the capture read slots 0 and 1), server-acked,
+                    // and the oracle updates its book display from that. The
+                    // FIRST right-click sends nothing (the latch is local);
+                    // only the second (commit) goes on the wire. A right-click
+                    // on the same slot (or an empty slot) cancels the latch.
+                    // The local std::swap below gives the display the instant
+                    // exchange the oracle shows; the intent makes the game
+                    // thread send the packet and move its own book model.
+                    if (spellbook.swapFirstSlot < 0) {
+                        spellbook.swapFirstSlot = occupied ? i : -1;
+                    } else if (occupied && spellbook.swapFirstSlot != i) {
+                        const int fa = spellbook.currentPage *
+                                       SpellbookPopupState::SPELLS_PER_PAGE +
+                                       spellbook.swapFirstSlot;
+                        if (fa < static_cast<int>(spellbook.spells.size())) {
+                            std::swap(spellbook.spells[fa], spellbook.spells[idx]);
+                            if (bridge_) {
+                                bridge_->pushIntent(eqt::events::SwapSpellbookSlotsIntent{
+                                    spellbook.spells[fa].slot,
+                                    spellbook.spells[idx].slot});
+                            }
+                        }
+                        spellbook.swapFirstSlot = -1;
+                    } else {
+                        spellbook.swapFirstSlot = -1;
+                    }
                 }
+                break;  // at most one slot covers a point
             }
-            // Page navigation
-            int navY = layout.centerPopup.LowerRightCorner.Y - 20;
-            if (leftClicked && mouseY >= navY && mouseY < navY + 14) {
-                int midX = (layout.centerPopup.UpperLeftCorner.X + layout.centerPopup.LowerRightCorner.X) / 2;
-                if (mouseX < midX && spellbook.currentPage > 0) {
-                    spellbook.currentPage--;
-                } else if (mouseX >= midX && spellbook.currentPage < spellbook.pageCount() - 1) {
-                    spellbook.currentPage++;
-                }
+
+            // The Done "X" -- close. Set the latch; FrameComponent consumes it
+            // once per frame and runs the SAME toggle body Ctrl+B, /book and ESC
+            // use, so there is one close path, not a second.
+            const auto done = EQT::Graphics::SpellBookLayout::doneRect();
+            if (leftClicked && inBook(done)) {
+                spellbook.doneClicked = true;
+                consumed = true;
+                onPiece = true;
             }
+
+            // The edge arrows -- page a spread (two book pages) at a time.
+            // SBW_PageDownButton (left edge) = back, SBW_PageUpButton (right) =
+            // forward. The ONE spread-turn body the slash commands use
+            // (spellbook_page_turn.h): before this unit the arrows stepped
+            // currentPage (a SPREAD index) by SPELLS_PER_PAGE spreads per
+            // click, so a forward click jumped past every intermediate spread
+            // and a back click clamped straight to 0.
+            if (leftClicked && inBook(EQT::Graphics::SpellBookLayout::pageDownRect()) &&
+                turnSpellbookSpreadBack(spellbook)) {
+                consumed = true;
+                onPiece = true;
+            }
+            if (leftClicked && inBook(EQT::Graphics::SpellBookLayout::pageUpRect()) &&
+                turnSpellbookSpreadForward(spellbook)) {
+                consumed = true;
+                onPiece = true;
+            }
+
+            // A click on the book's art (between pieces) is owned by the book,
+            // so it does not fall through to the window beneath it (B1075).
+            consumed = consumed || onPiece;
         }
     }
 

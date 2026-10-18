@@ -192,6 +192,14 @@ enum TitaniumZoneOpcodes {
 	// Spell-related opcodes
 	HC_OP_LinkedReuse = 0x6a00,
 	HC_OP_MemorizeSpell = 0x308e,
+	// B1076 fix-2 (UIGAP-ORACLE 205, plan5_swap.tsv step 10, MEASURED lane 1
+	// 2026-10-18): the spellbook's committing right-click. Payload is two
+	// uint32 spellbook-slot indices (captured 0x00000000 0x00000001); the
+	// server acks with the same opcode and the same payload, and it is the
+	// server that re-sends the book, so the ack carries no data the client
+	// must read. ShowEQ 10/27/05. The scribe's MemorizeSpell above is the
+	// scroll->book write; this one exchanges two BOOK slots.
+	HC_OP_SwapSpell = 0x2126,
 	HC_OP_Illusion = 0x448d,     // Illusion/disguise spell effect
 	// Combat ability opcodes
 	HC_OP_CombatAbility = 0x5ee8,  // Combat ability use (kick, bash, round kick, etc.)

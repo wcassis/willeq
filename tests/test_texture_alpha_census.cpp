@@ -184,6 +184,24 @@ std::vector<Entry> spellIconSet() {
              "UIRenderer::drawSpellGemHolder, draw2DImage alpha blend (UI2D_FS)"}};
 }
 
+// ── The composed spellbook backdrop ─────────────────────────────────────────
+// B1076 (GitLab #396). The official client's own book art (the four page tiles
+// + the Done X), composed by tools/spellbook_backdrop_builder into one 512x363
+// BMP. The book's page art is a hard-edged cutout on a transparent ground
+// (measured: exactly two alpha levels, 255 and 0), so the alpha is load-bearing
+// but binary. renderSpellbookPopup() blits its four tiles through
+// UIRenderer::drawSpellBookBackdrop() -> blitExternalIcon() -> draw2DImage
+// with useAlphaChannelOfTexture=true -- the same UI2D_FS alpha-blend path the
+// icon sheets take, which since T411 samples the ETC1 `_alpha` companion on
+// unit 1. Each tile is drawn 1:1 (a 256x256 or 256x107 source rect onto an
+// equal destination, the window's 510x360 clipping the right 2 / bottom 3 px),
+// so there is no minification that would select a broken companion mip, and no
+// in-band payload is needed.
+std::vector<Entry> spellbookBackdropSet() {
+    return {{"spellbook_backdrop.bmp", "spellbook_backdrop",
+             "UIRenderer::drawSpellBookBackdrop, draw2DImage alpha blend (UI2D_FS)"}};
+}
+
 // ── Entries that must stay in-band RGBA8888, and why ────────────────────────
 // Down from 60 to 1 at T411. An entry here costs ~8x its ETC1 size in the
 // shared pack AND in every zone's mapped bytes (a 256x256 with mips:
@@ -224,6 +242,7 @@ std::vector<std::string> allCensusedFiles() {
     for (const Entry& e : billboardSet()) v.push_back(e.file);
     for (const Entry& e : itemIconSet()) v.push_back(e.file);  // T430, board B376
     for (const Entry& e : spellIconSet()) v.push_back(e.file);  // B1077, GitLab #397
+    for (const Entry& e : spellbookBackdropSet()) v.push_back(e.file);  // B1076, GitLab #396
     return v;
 }
 
@@ -608,11 +627,13 @@ TEST(TextureAlphaCensus, EveryShippedBmpIsAccountedFor) {
         pinned.insert(line.substr(sp + 1));
     }
     // 64 procedural BMPs + T417's spell_sprite_atlas.bmp + T430's two
-    // item_icons sheets + B1077's four spell-icon sheets, the last five
-    // lifted from the official client's art by three further recipes
+    // item_icons sheets + B1077's four spell-icon sheets + B1076's
+    // spellbook_backdrop.bmp, the last six lifted from the official client's
+    // art by four further recipes
     // (tools/spell_sprite_atlas_builder, tools/item_icon_atlas_builder,
-    // tools/spell_icon_atlas_builder) into the same directory.
-    ASSERT_EQ(pinned.size(), 71u) << "data/textures.sha256 does not pin 71 files";
+    // tools/spell_icon_atlas_builder, tools/spellbook_backdrop_builder) into
+    // the same directory.
+    ASSERT_EQ(pinned.size(), 72u) << "data/textures.sha256 does not pin 72 files";
 
     std::set<std::string> censused;
     for (const std::string& f : allCensusedFiles()) censused.insert(f);

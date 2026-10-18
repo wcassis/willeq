@@ -58,6 +58,7 @@ void eqt::bridge::BridgeComponent::PublishInventorySlot(int16_t slot) {
 	data.iconId = data.hasItem ? item->icon : 0;
 	data.quantity = data.hasItem ? static_cast<uint32_t>(item->quantity) : 0;
 	data.bagSlots = data.hasItem ? item->bagSlots : 0;
+	data.scrollSpellId = data.hasItem ? item->getScrollSpellId() : 0;  // B1076
 	ctx_.bridge->pushEvent(eqt::state::GameEvent(
 		eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 }
