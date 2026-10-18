@@ -2375,7 +2375,7 @@ merchant blitted the 40x40 dragitem decal into the full list cell --
    (before/after rect tables, measured dump).
 
 
-### 2026-10-18 -- FacePick numeric ranges: COUNT-MEASURED is the standard (B888-CC1, #204)
+## 2026-10-18 — FacePick numeric ranges: COUNT-MEASURED is the standard (B888-CC1, #204)
 
 Will (2026-10-18, option 1 of three): `data/char_create_faces.tsv` ships
 COUNT-MEASURED ranges and that is the accepted standard. A row's WIDTH is
