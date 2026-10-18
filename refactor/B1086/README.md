@@ -12,23 +12,25 @@ suspect below is **withdrawn**. `172.16.200.3` is the guest's DHCP gateway,
 and the lane-1 oracle renders with llvmpipe inside its guest, not on an
 unreachable KVM host.
 
-The experiment used `luclin_ab.sh` with `luclin_ab_plan.tsv`. Its three final
-stills are under
-`/home/user/kb-evidence/kb-b1086-setface-halfrender/take3-ab-run1155/`,
-one `<state>/02_barbarian-male.png` per row below. The existing evidence
-`probe_rows.py` read the PNG pixels directly at the seven calibrated arrow
-strips (>48 visible); each still was also visually inspected. This direct
-pixel read matters: the current driver's ImageMagick probe falsely rejected
-the TRUE still (its PNG retains a `+0+30` page origin, but the probe crops
-before `+repage`, sampling 30 pixels too high). The driver exits 65 in all
-three captures; its FALSE failures are expected, while its TRUE failure is
-the separate harness-probe defect to fix in take 3.
+The experiment used `luclin_ab.sh` with `luclin_ab_plan.tsv`. The acceptance
+evidence is the rerun at this MR's final head, under
+`/home/user/kb-evidence/kb-b1086-setface-halfrender/take3-ab-head-daa10ca7-run1155/`
+(one `<state>/02_barbarian-male.png` per row), with `ab.log` and `rowcounts.txt`. The pre-fix A/B (taken before the probe fix landed) is under
+`take3-ab-run1155/`; it documents the probe defect itself, not the final code.
+The existing evidence `probe_rows.py` read the PNG pixels directly at the
+seven calibrated arrow strips (>48 visible); each still was also visually
+inspected. This direct pixel read mattered pre-fix: the old driver's
+ImageMagick probe falsely rejected the TRUE still (its PNG retains a `+0+30`
+page origin, but the probe cropped before `+repage`, sampling 30 pixels too
+high) — on the same `true/02_barbarian-male.png` the old order reads 1 row and
+the fixed order reads 7. Post-fix the driver exits 65 in both FALSE legs (the
+expected one-row gate) and 0 in the TRUE leg (seven rows).
 
-| State | INI keys at capture start | Visible rows | Still | Driver exit |
+| State | INI keys at capture start | Visible rows | Still (final-head run) | Driver exit |
 |---|---:|---:|---|---:|
-| FALSE before | 0 TRUE, 29 FALSE | 1 (FACE) | `false_before/02_barbarian-male.png` | 65 |
-| TRUE | 26 TRUE, 3 FALSE | 7 (FACE, HAIR, HAIR COLOR, EYES, BEARD, BEARD COLOR, WODE) | `true/02_barbarian-male.png` | 65 (false probe rejection) |
-| FALSE after | 0 TRUE, 29 FALSE | 1 (FACE) | `false_after/02_barbarian-male.png` | 65 |
+| FALSE before | 0 TRUE, 29 FALSE | 1 (FACE) | `false_before/02_barbarian-male.png` | 65 (expected) |
+| TRUE | 26 TRUE, 3 FALSE | 7 (FACE, HAIR, HAIR COLOR, EYES, BEARD, BEARD COLOR, WODE) | `true/02_barbarian-male.png` | 0 |
+| FALSE after | 0 TRUE, 29 FALSE | 1 (FACE) | `false_after/02_barbarian-male.png` | 65 (expected) |
 
 Each `oracle_session.sh` capture restored its database snapshot and stopped
 the stack before releasing its lane-5 lease (`driver.log` ends
@@ -81,6 +83,12 @@ face-picker row probe; no renderer, Wine, package or host change is needed.
 The full26 plan now enables Luclin automatically and the first pair passed
 the same driver in the one-pair confirmation; the full26 run and its
 matrix3 cross-check remain that card's work, not evidence claimed here.
+
+**Not verified (honest scope):** only one race/gender pair (Barbarian male)
+was captured on this card. The remaining 25 in-era pairs, and the matrix3
+cross-check against the 10-13 good-era stills, are device runs that belong
+to `t_d8b06d8c`; they are not claimed here. Nothing in this MR asserts a
+26-pair result.
 
 ## Superseded take-2 diagnosis (historical; claims below withdrawn)
 
