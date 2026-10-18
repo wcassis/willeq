@@ -429,6 +429,14 @@ ADD_TEST(NAME CiQueueRules
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_ci_queue_rules.py)
 SET_TESTS_PROPERTIES(CiQueueRules PROPERTIES LABELS "hygiene")
 
+# B1093 (#413): the ARM cross-build container dies with the shell that started
+# it -- both build scripts run it named + labelled under a kill trap, and both
+# CI ARM jobs sweep this host's orphans (a cancelled/timed-out job's SIGKILL
+# skips the trap) before they build.
+ADD_TEST(NAME ArmContainerGuard
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_arm_container_guard.py)
+SET_TESTS_PROPERTIES(ArmContainerGuard PROPERTIES LABELS "hygiene")
+
 # B975: zone-hop warmup must not contaminate the crowd's idle timing table.
 ADD_TEST(NAME NameTagCrowdTiming
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/b975/test_frametiming_table.py)
