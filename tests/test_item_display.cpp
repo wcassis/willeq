@@ -342,10 +342,15 @@ TEST(ItemDisplayT421, EffectsCarryTheOraclesQualifiers) {
 TEST(ItemDisplayT421, TheWindowIsTheOraclesOwnLocationAndSize) {
     const UILayout l = layout800();
     const auto w = ItemDisplayLayout::windowRect(l);
-    //   <Location><X>0</X><Y>80</Y></Location>  <Size>400x190</Size>
-    //   <RelativePosition>false</RelativePosition>  -- screen coordinates
+    // B1052 (#372): the per-resolution default the official client renders at --
+    // defaults.ini [ItemDisplayWindow] is 0,224 at EVERY resolution it lists
+    // (800x600 / 1024x768 / 1152x864 / 1280x720 / 1280x1024 / 1600x1200) and
+    // the measured #151 run1 capture (1024x768, click at window-local
+    // (341,476), window at (0,224) 400x190) pins it. NOT the XML <Location>
+    // 0,80 -- that is the window's authored default, not its rendered position.
+    // <RelativePosition>false</RelativePosition> -- screen coordinates.
     EXPECT_EQ(w.UpperLeftCorner.X, 0);
-    EXPECT_EQ(w.UpperLeftCorner.Y, 80);
+    EXPECT_EQ(w.UpperLeftCorner.Y, 224);
     EXPECT_EQ(w.getWidth(), 400);
     EXPECT_EQ(w.getHeight(), 190);
 }
