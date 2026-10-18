@@ -99,7 +99,15 @@ rm -rf "$DEST"; mv "$TMP" "$DEST"
 # (The Mesa store, $ROOT/mesa, is not a sha dir and is never pruned.)
 keepers=$(for l in "$ROOT"/by-branch/*; do [ -L "$l" ] && basename "$(readlink "$l")"; done | sort -u)
 ls -1dt "$ROOT"/[0-9a-f]*/ 2>/dev/null | tail -n +"$((KEEP + 1))" | while read -r d; do
-    b=$(basename "$d"); echo "$keepers" | grep -qx "$b" || rm -rf "$d"
+    b=$(basename "$d")
+    if echo "$keepers" | grep -qx "$b"; then continue; fi
+    if [ ! -w "$d" ]; then
+        echo "publish_arm_build: cannot prune $d (not writable by this runner)" >&2
+        continue
+    fi
+    if ! rm -rf "$d"; then
+        echo "publish_arm_build: could not prune $d; published build retained" >&2
+    fi
 done
 echo "published $DEST ($(du -sh "$DEST" | cut -f1))"
 if [ "$MESA_OK" -ne 1 ]; then
