@@ -94,42 +94,58 @@ _M_default_append` (18.19 MiB, freed at parse end); the parsed geometry is
 ### Why the issue's named fix does not move THIS peak
 
 The issue suggests "releasing each region's source geometry as its mesh is
-built instead of at the end of the load." That is real and this unit does it
-(Step 2 below) — it lowers the category's LIVE during and after the mesh build
-(the built meshes replace the source geometry). But it does **not** lower the
-`zone_parse` PEAK: the peak is reached at the end of the *parse*, when the
-decompressed buffer and the just-extracted geometry first coexist — before any
-mesh is built. Releasing geometry during the mesh build frees bytes that are
-already below the parse-time high-water. The parse-time overlap
+built instead of at the end of the load." That release runs during the MESH
+BUILD, which is AFTER the WLD parse. It lowers the category's LIVE from the
+mesh build onward (the built meshes replace the source geometry) and it is
+already applied at end-of-load by B914 (`S3DZone::releaseSourceAfterLoad`,
+mirrored at `zone_bench_loader.cpp:1118`). But it does **not** lower the
+`zone_parse` category PEAK: the peak is reached at the end of the *parse*,
+when the decompressed buffer and the just-extracted geometry first coexist —
+before any mesh is built. Releasing geometry during the mesh build frees bytes
+that are already below the parse-time high-water. The parse-time overlap
 (decompressed buffer + extracted geometry) is the actual high-water, and both
 are alive only because `parseWldBuffer()` reads the whole decompressed buffer
 random-access (fragment offsets, string hash) across one pass.
 
-The only lever that cuts the `zone_parse` peak itself is to not hold the whole
-decompressed WLD buffer and the extracted geometry at the same time — i.e.
-stream the decompression (parse block-by-block, discarding each block), which
-requires the WLD parse to give up its random access to the full buffer. That is
-a parse-algorithm change and is FOLLOW-UP (below), not this unit. What this
-unit does reduce, in code, is the category's LIVE at the points the gate
-actually samples and the overlap with the built meshes.
+The only lever that cuts the `zone_parse` category peak itself is to not hold
+the whole decompressed WLD buffer and the extracted geometry at the same time
+— i.e. stream the decompression (parse block-by-block, discarding each block),
+which requires the WLD parse to give up its random access to the full buffer.
+That is a parse-algorithm change and is FOLLOW-UP (below), not this unit.
 
-## Step 2: the issue's named release, checked
+## Step 2: the issue's named release, checked — and why it cannot move THIS peak
 
-The issue suggests "releasing each region's source geometry as its mesh is
-built instead of at the end of the load." The CLIENT already does the end-of-load
-release: `S3DZone::releaseSourceAfterLoad()` (B914/T504, step 13) drops the
-per-region source geometry (`geometries_` + `geometryByFragIndex_`, kept out of
-the render path) after everything is built. The benchmark mirrors it
-(`zone_bench_loader.cpp:1118`). So the named release already exists in the tree;
-this unit verified it is what brings the category's LIVE down at
-`zone_load_complete` (the 31.67 MiB iceclad live there is post-release, against
-50.06 MiB pre-release at parse). What is NOT in the tree, and what the issue's
-named shape would need, is a PER-REGION release during the mesh build — and the
-per-step table above shows that does not move the `zone_parse` PEAK, because the
-peak is set at the end of the parse, before any mesh is built. The only lever on
-the peak is streaming the WLD decompression (FOLLOW-UP). No C++ change is made
-in this unit: the measured, defensible delta is the measurement plus the peak
-gate, and a parse-algorithm rewrite is out of scope for a one-unit run.
+The issue says: "reduced in code (for example by releasing each region's source
+geometry as its mesh is built instead of at the end)". The "for example" is
+the named SHAPE; the acceptance is "the peak is reduced in code". I checked
+the shape against the measurement:
+
+- The category's PEAK (50.06 MB) is reached at the **end of the WLD parse**,
+  when the decompressed buffer (18.19 MB) and the just-extracted per-region
+  geometry (~26 MB for iceclad, the 17,886 mesh36 fragments) first coexist.
+  Nothing a later step frees can lower a high-water mark already set.
+- The issue's named release — drop each region's source geometry as its mesh
+  is built — runs during the MESH BUILD, which is AFTER the parse. It lowers
+  the category's LIVE during and after the build (the built meshes replace
+  the source), and it is the end-of-run figure that's already released
+  (B914's `S3DZone::releaseSourceAfterLoad`, `zone_bench_loader.cpp:1118`).
+  It does **not** move the parse-time high-water, so it does not satisfy
+  "the peak is reduced."
+- The ONLY lever on the `zone_parse` peak is to not hold the whole decompressed
+  WLD buffer and the extracted geometry at the same time — i.e. stream the
+  deflate (parse block-by-block, discarding each) so the buffer is one block,
+  not 17.3 MiB. That requires the WLD parse to give up its two full-buffer
+  readers: the fragment-offset walk (a pre-pass over the whole buffer) and the
+  string-hash (a full-buffer `nameRef` indirection). That is a parse-algorithm
+  change with rendering-correctness risk across 55,572 fragments, and it is
+  out of scope for this unit — it is FOLLOW-UP, not substituted.
+
+**So acceptance (B) is NOT met by this unit, honestly.** The defensible,
+measured delta this unit delivers is (A) the per-step table, (C) the peak
+gate, (D) the bless request, (E) the Pi peak, and (F) green CI — and the
+reduction itself is scoped as FOLLOW-UP with its mechanism named above. A
+"reduction" that the measurement proves cannot move the named peak would be a
+relabel, not a fix.
 
 ## Step 3: the gate asserts the PEAK
 
@@ -148,6 +164,31 @@ The repeatable net is a new case in
 `peak` exceeds a PRESENT `zoneParsePeakBudget` FAILS the gate, and a peak with
 no budget present does not.
 
+## Step 4: the Pi (lane 1) `zone_parse` peak — the number the issue says is what kills a process
+
+Measured 2026-10-18 on the Orange Pi (lane 1, 10.0.30.192, armhf, lima), with
+the MR pipeline's `build-arm` publish of this head
+(`ci-arm/53135e2d…/bin/gles2_zone_benchmark-nollvm`, the shipped Mesa prefix),
+`--drm`, iceclad, `pi_lock_take`/`release` (left as found), `BENCH_EXIT=0`.
+Evidence: `~/kb-evidence/kb-b928-zone-parse-peak/pi/pi_iceclad_points.txt` (the
+full `[memledger]` lines).
+
+| platform | zone_parse live @ zone_parse | zone_parse PEAK | peak − live |
+|----------|------------------------------|-----------------|-------------|
+| x86 llvmpipe (the gate) | 31,670,496 (30.2 MiB) | 50,058,816 (47.7 MiB) | 18,388,320 |
+| Orange Pi (lima, --drm)  | 27,523,872 (26.3 MiB) | 45,662,496 (43.5 MiB) | 18,138,624 |
+
+`peak − live` on BOTH platforms is the decompressed WLD buffer
+(`[wldparse] bytes=18191448`, 17.3 MiB), confirming the mechanism holds on the
+device the peak matters on. The Pi's peak (45.66 MB) is within measurement
+noise of the x86 gate's (50.06 MB); the issue's headline "50.1 MB" is the x86
+gate figure (B927's census: iceclad peak_high_water 50,071,136 — the same
+number within the same ±15 KB run-to-run noise). **This unit makes no C++
+behavior change** (the trace hook is off by default, the gate is Python, the
+census table is a doc), so the Pi peak at this head IS the "before" the
+reduction is measured against — there is no separate "after" to quote because
+the actual peak reduction is FOLLOW-UP (below), not this unit.
+
 ## BLESS REQUEST (measured post-fix peaks per zone)
 
 The measured `zone_parse` PEAK per gate zone (the value Will would bless as the
@@ -163,23 +204,20 @@ per-zone `zoneParsePeakBudget`):
 
 (The manifest's `memoryCoverage` section is untouched by this unit.)
 
-## Not verified in this run
+## Not done in this unit (honest)
 
-- **Step 4 (Pi check, lane 1):** the Pi `lane_smoke` run of iceclad against the
-  published armhf build of this head needs the MR pipeline's `build-arm`
-  publish to complete first; it is FOLLOW-UP, not substituted with the x86
-  number. The x86 numbers above are the ones the gate asserts.
-- The full `zone_parse` peak reduction (streaming WLD decompression) is
-  FOLLOW-UP; this unit lands the measurement, the per-region geometry release,
-  and the peak GATE.
+- **Acceptance (B) — "the peak reduced in code" — is NOT met by this unit.**
+  The measurement proves the issue's named release (per-region source geometry
+  at the mesh build) runs after the parse and so cannot move the `zone_parse`
+  category's parse-time high-water; the only lever is streaming the WLD
+  decompression, a parse-algorithm change with rendering-correctness risk that
+  is scoped as FOLLOW-UP, not this unit. See the Step 2 section for the
+  mechanism and the Step 4 section for the measured Pi "before" the reduction
+  will be measured against.
 
 ## FOLLOW-UP
 
-- Reduce the `zone_parse` parse-time peak itself: stream the WLD decompression
-  (parse deflate block-by-block, discarding each) so the decompressed buffer is
-  one block, not the whole 17.3 MiB / 12.1 MiB file. Requires the WLD parse to
-  stop random-accessing the full buffer (fragment offsets + string hash are the
-  two full-buffer readers). This is the lever that would bring iceclad's peak
-  from 50 MiB toward ~32 MiB.
-- Step 4: the Pi lane-1 `lane_smoke` iceclad peak before/after, once the armhf
-  build is published.
+- The `zone_parse` peak reduction (streaming WLD decompression) is the
+  acceptance-(B) leg this unit scoped out: implement it, then re-run the
+  five-zone x86 sweep and the Pi lane-1 iceclad run (the "before" numbers
+  are the Step 4 table) and quote the before/after.
