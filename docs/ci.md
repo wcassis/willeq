@@ -109,7 +109,11 @@ stacks carry the exemption in the stack's own configuration, provisioned persist
   or if the compose file lacks the exact `PROCESS_WATCHER_EXCLUDE` line. The provision
   run itself re-proves the surviving value on the lane host through the provisioned
   code path (both directions: every zone argv exempt, every non-zone argv not) and,
-  with `--busy-zone`, a ps line carrying `./bin/zone` survives past the 60 s window.
+  with `--busy-zone` (~3 min), proves the exemption live both ways: a CPU burner
+  carrying the REAL `./bin/zone` argv (a `yes` copy installed as `bin/zone` in a
+  scratch dir) survives past the 60 s window under the provisioned watcher, and the
+  same burner is killed by a second watcher run with the env removed (the upstream
+  default) -- the kill line quoted from the watcher's own `process-kill.log`.
 - **proof it fixed the kill**: with the lane provisioned, iceclad's `zone_link_hold`
   (330 s hold) exits 0 on lane 2 -- the B925 R1 case that dropped ~65-75 s in before.
 

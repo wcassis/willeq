@@ -19,9 +19,9 @@
 #      scripts/eqemu/b940_patch_watcher.pl (perl -c on the patched text
 #      BEFORE it replaces the file; refuses a drifted allowlist block).
 #   2. docker-compose.yml's eqemu-server service gains
-#            - PROCESS_WATCHER_EXCLUDE=/(bin|\/)zone( |\/|$)/i
-#      which exempts exactly the zone binaries (./bin/zone, /bin/zone,
-#      /home/eqemu/server/bin/zone -- the argv shapes
+#            - PROCESS_WATCHER_EXCLUDE=(bin|/bin)/zone
+#      which exempts exactly the zone binaries (./bin/zone, bin/zone,
+#      /bin/zone, /home/eqemu/server/bin/zone -- the argv shapes
 #      server_process_count's ps grep already matches) and nothing else:
 #      loginserver/world/ucs/eqemu-server:launcher keep the upstream
 #      threshold. The compose environment is an explicit list (no env_file),
@@ -45,11 +45,17 @@
 #   d. (container up) a running watcher's /proc/<pid>/environ carries the
 #      var; a watcher that predates the provision is named as such (the
 #      relaunch picks it up; the file checks are authoritative).
-#   Optional liveness leg (--busy-zone, ~95 s, one core): a CPU burner
-#   named ./bin/zone survives past the 60 s kill window with no
-#   process-kill.log line. Skipped by default -- the decision leg (c)
-#   already proves the exemption and a 95 s one-core burn on a shared VM
-#   lane costs more than it adds.
+#   Optional liveness leg (--busy-zone, ~3 min, one core): a CPU burner
+#   that REALLY carries the ./bin/zone argv (a copy of /usr/bin/yes
+#   installed as /tmp/b940scratch/bin/zone in the container, run as
+#   ./bin/zone B940LOAD) -- the exact argv the R1 kill came from. Two
+#   phases, both proven against the LIVE watcher's own process-kill.log:
+#   with the compose env (the provisioned exclusion) the burner survives
+#   past the 60 s kill window untouched; with the env removed (the
+#   upstream default, same binary, restored right after) the live watcher
+#   kills it and the kill line lands in the log. Skipped by default --
+#   the decision leg (c) already proves the exemption and a one-core
+#   burn on a shared VM lane costs more than it adds.
 #
 # Usage (a card names its lane, never an address):
 #   scripts/eqemu/watcher_provision.sh --lane 2             # apply + verify
@@ -83,7 +89,6 @@ MATCHTEST="${SCRIPT_DIR}/b940_watcher_match_test.pl"
 # non-zone eqemu argv carries "bin/zone" (loginserver/world/ucs/spire/
 # eqemu-server:launcher all clear), so the exemption cannot leak.
 EXCLUDE_VALUE='(bin|/bin)/zone'
-COMPOSE_LINE="      - PROCESS_WATCHER_EXCLUDE=${EXCLUDE_VALUE}  # B940: exempt the zone binaries"
 
 CHECK_ONLY=0
 BUSY_ZONE=0
@@ -136,32 +141,113 @@ match_test() {
     return ${rc}
 }
 
+# Start the CPU burner with a REAL zone argv: /usr/bin/yes copied to
+# /tmp/b940scratch/bin/zone inside the container, run from that dir as
+# `./bin/zone B940LOAD`. That is the exact argv the R1 kill came from
+# (refactor/B925/README.md: `./bin/zone <zone>`) -- no `bash -c` wrapper,
+# so the ps line IS the zone shape, not a string that happens to contain
+# it. Echoes the burner's ps line, or nothing if it never started.
+start_burner() {  # start_burner <ps-line-marker>
+    eq_docker exec "${EQEMU_CONTAINER}" bash -c \
+        "rm -rf /tmp/b940scratch && mkdir -p /tmp/b940scratch/bin && cp /usr/bin/yes /tmp/b940scratch/bin/zone" || return 1
+    eq_docker exec -d "${EQEMU_CONTAINER}" bash -c \
+        "cd /tmp/b940scratch && exec ./bin/zone '${1}' > /dev/null 2>&1" >/dev/null 2>&1
+    sleep 2
+    eq_docker exec "${EQEMU_CONTAINER}" bash -c \
+        "ps -eo pid,args | grep '[${1:0:1}]${1:1}' | head -1" 2>/dev/null
+}
+
+# Wait (up to 150 s) for a NEW line in process-kill.log after <before>
+# lines. Echoes the new line(s) to stdout; returns 0 if one appeared,
+# 1 on timeout.
+wait_kill_log_line() {  # wait_kill_log_line <before-lines>
+    local before="$1" waited=0 n newlines
+    while [ "${waited}" -lt 150 ]; do
+        n="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c 'wc -l < ~/process-kill.log 2>/dev/null' 2>/dev/null | tr -d '[:space:]')"
+        [ -n "${n}" ] || n=0
+        if [ "${n}" -gt "${before}" ]; then
+            newlines="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c "tail -n +$((before + 1)) ~/process-kill.log" 2>/dev/null)"
+            printf '%s\n' "${newlines}"
+            return 0
+        fi
+        sleep 5
+        waited=$((waited + 5))
+    done
+    return 1
+}
+
+# Kill exactly the burner and the default-watchers, and clean the scratch
+# dir. The markers B940LOAD / B940DEF appear nowhere in the fleet or the
+# provisioned watcher, so neither pkill can touch anything else.
+busy_zone_cleanup() {
+    eq_docker exec "${EQEMU_CONTAINER}" bash -c "pkill -9 -f '[B]940LOAD'" >/dev/null 2>&1 || true
+    eq_docker exec "${EQEMU_CONTAINER}" bash -c "pkill -9 -f '[b]940def'" >/dev/null 2>&1 || true
+    eq_docker exec "${EQEMU_CONTAINER}" bash -c "rm -rf /tmp/b940scratch /tmp/b940def.out" >/dev/null 2>&1 || true
+}
+
 busy_zone_leg() {
-    # A CPU burner whose ps line carries the zone argv (the R1 shape):
-    # `bash -c './bin/zone B940LOAD && exec yes B940LOAD'` shows in ps as
-    # "bash -c ./bin/zone B940LOAD && exec yes B940LOAD" -- the line
-    # contains "./bin/zone", which is exactly what the exemption matches.
-    # The burn is `yes` (deterministic, one core) behind that argv; the
-    # watcher never sees a real zone process, but it sees the line shape.
-    # ~95 s = the 60 s kill window + 3 of the 5 s scans.
-    local before pid after alive
+    # The exemption, proven both ways against the LIVE provisioned
+    # watcher's own log:
+    #   phase A (the provisioned exclusion in the watcher's environ):
+    #     a burner whose ps line is the real ./bin/zone argv survives
+    #     past the 60 s kill window with no kill line;
+    #   phase B (the same binary, env removed -- a second watcher
+    #     started in-container with PROCESS_WATCHER_EXCLUDE empty, i.e.
+    #     the upstream default regex): the live default watcher kills it
+    #     within the window and the kill line lands in process-kill.log.
+    # ~3 min, one core. The provisioned watcher's compose env is
+    # restored right after phase B (it was never changed -- phase B
+    # starts its OWN second watcher).
+    local live_wpid before psline alive newlines
+    live_wpid="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c "ps -eo pid,args | grep '[p]rocess-watcher' | head -1 | awk '{print \\$1}'" 2>/dev/null | tr -d '[:space:]')"
+    [ -n "${live_wpid}" ] || { echo "  busy-zone leg: no live watcher to prove against (relaunch it first)"; return 1; }
     before="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c 'wc -l < ~/process-kill.log 2>/dev/null' 2>/dev/null | tr -d '[:space:]')"
     [ -n "${before}" ] || before=0
+    psline="$(start_burner B940LOAD)"
+    [ -n "${psline}" ] || { echo "  busy-zone leg: the burner never started"; return 1; }
+    echo "  burner ps line: ${psline}"
+    echo "  busy-zone A (provisioned exclusion, live watcher pid ${live_wpid}): waiting 100 s past the 60 s kill window"
+    sleep 100
+    alive="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c "ps -eo pid,args | grep '[B]940LOAD' | head -1" 2>/dev/null)"
+    if [ -n "${alive}" ]; then
+        echo "  busy-zone A: PASS -- alive past the window: ${alive}"
+    else
+        echo "  busy-zone A: FAIL -- the provisioned watcher killed the zone-argv burner"; busy_zone_cleanup; return 1
+    fi
+    busy_zone_cleanup
+    sleep 5
+    before="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c 'wc -l < ~/process-kill.log 2>/dev/null' 2>/dev/null | tr -d '[:space:]')"
+    [ -n "${before}" ] || before=0
+    # The default watcher: the SAME provisioned binary, PROCESS_WATCHER
+    # _EXCLUDE EMPTY so it compiles the upstream regex (the pre-B940
+    # behavior). The provisioned watcher is never touched -- it exempts
+    # the zone argv, so only this one can kill the burner. Both append
+    # to the same ~/process-kill.log (same user, same $HOME).
     eq_docker exec -d "${EQEMU_CONTAINER}" bash -c \
-        "bash -c './bin/zone B940LOAD && exec yes B940LOAD' > /dev/null 2>&1" >/dev/null 2>&1
-    sleep 2
-    pid="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c "ps -eo pid,args | grep '[B]940LOAD' | awk '{print \\$1}' | head -1" 2>/dev/null | tr -d '[:space:]')"
-    [ -n "${pid}" ] || { echo "  busy-zone leg: the burner never started"; return 1; }
-    echo "  busy-zone leg: burner pid ${pid} (ps line carries ./bin/zone); waiting 95 s past the 60 s kill window"
-    sleep 95
-    alive="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c "ps -p ${pid} -o pid= 2>/dev/null" | tr -d '[:space:]')"
-    # Clean up exactly our burner: the marker B940LOAD appears nowhere in
-    # the fleet or the watcher, so the pkill cannot touch anything else.
-    eq_docker exec "${EQEMU_CONTAINER}" bash -c "pkill -9 -f '[B]940LOAD'" >/dev/null 2>&1 || true
-    after="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c 'wc -l < ~/process-kill.log 2>/dev/null' 2>/dev/null | tr -d '[:space:]')"
-    [ -n "${after}" ] || after=0
-    echo "  busy-zone leg: alive after 95 s: ${alive:-no}; process-kill.log ${before} -> ${after} lines"
-    [ -n "${alive}" ] && [ "${after}" -le "${before}" ]
+        "env PROCESS_WATCHER_EXCLUDE= /home/eqemu/assets/scripts/process-watcher.pl > /tmp/b940def.out 2>&1 &" >/dev/null 2>&1
+    sleep 3
+    local defline
+    defline="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c 'head -1 /tmp/b940def.out 2>/dev/null')"
+    [ "${defline}" = "[process-watcher] exclusion pattern: (upstream default)" ] \
+        || { echo "  busy-zone B: FAIL -- the default watcher does not print the upstream-default pattern (got: ${defline:-nothing})"; busy_zone_cleanup; return 1; }
+    echo "  default watcher: ${defline}"
+    psline="$(start_burner B940LOAD)"
+    [ -n "${psline}" ] || { echo "  busy-zone B: the burner never started"; busy_zone_cleanup; return 1; }
+    echo "  busy-zone B (upstream default, env removed): waiting for the kill"
+    if newlines="$(wait_kill_log_line "${before}")"; then
+        echo "  busy-zone B: PASS -- the default watcher's kill line: ${newlines}"
+    else
+        echo "  busy-zone B: FAIL -- no kill line within 150 s (the exemption would have been unproven)"; busy_zone_cleanup; return 1
+    fi
+    busy_zone_cleanup
+    # The provisioned watcher was never restarted or re-env'd -- the
+    # compose env is authoritative and untouched; re-prove it.
+    alive="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c "ps -p ${live_wpid} -o pid= 2>/dev/null" | tr -d '[:space:]')"
+    [ -n "${alive}" ] || { echo "  busy-zone leg: FAIL -- the live provisioned watcher is gone"; return 1; }
+    eq_docker exec "${EQEMU_CONTAINER}" bash -c "tr '\\0' '\\n' < /proc/${live_wpid}/environ | grep '^PROCESS_WATCHER_EXCLUDE='" >/dev/null 2>&1 \
+        || { echo "  busy-zone leg: FAIL -- the live watcher no longer carries the compose env"; return 1; }
+    echo "  busy-zone B: the provisioned watcher (pid ${live_wpid}) still carries PROCESS_WATCHER_EXCLUDE -- restored state"
+    return 0
 }
 
 lane_provision() {  # lane_provision <lane>

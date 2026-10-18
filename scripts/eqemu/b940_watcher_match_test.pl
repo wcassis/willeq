@@ -37,7 +37,7 @@ my @non_zone = (
     "25.0 4004 eqemu eqemu-server:launcher start",
     "31.0 4005 eqemu ./bin/spire http:serve --port=3000",
     "45.0 4006 eqemu /bin/sh",
-    "50.0 4007 eqemu bash -c yes B940LOAD",
+    "50.0 4007 eqemu ./bin/zone B940LOAD",
 );
 
 my $ok = 1;
