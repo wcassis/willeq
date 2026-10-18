@@ -30,9 +30,10 @@
 # Both files live on the LANE HOST under AKK_DIR (docker-compose.yml at its
 # root, the watcher at assets/scripts/), and assets is BIND-MOUNTED into the
 # container (./assets:/home/eqemu/assets), so the edit takes effect live --
-# the entrypoint's relaunch loop (entrypoint.pl:53) restarts the watcher,
-# which logs its active pattern at startup -- and persists across container
-# restarts. No image rebuild, no running-container surgery.
+# a provision run with the container up kills every live watcher form and
+# starts the replacement itself, with the compose var passed explicitly
+# (docker exec's env is not the entrypoint's) -- and persists across
+# container restarts. No image rebuild, no running-container surgery.
 #
 # VERIFICATION (every run proves these; --check runs exactly these):
 #   a. the watcher carries the B940 env-read, perl -c passes, and the
@@ -44,7 +45,7 @@
 #      (scripts/eqemu/b940_watcher_match_test.pl);
 #   d. (container up) a running watcher's /proc/<pid>/environ carries the
 #      var; a watcher that predates the provision is named as such (the
-#      relaunch picks it up; the file checks are authoritative).
+#      file checks are authoritative).
 #   Optional liveness leg (--busy-zone, ~3 min, one core): a CPU burner
 #   that REALLY carries the ./bin/zone argv (a copy of /usr/bin/yes
 #   installed as /tmp/b940scratch/bin/zone in the container, run as
@@ -52,8 +53,8 @@
 #   phases, both proven against the LIVE watcher's own process-kill.log:
 #   with the compose env (the provisioned exclusion) the burner survives
 #   past the 60 s kill window untouched; with the env removed (the
-#   upstream default, same binary, restored right after) the live watcher
-#   kills it and the kill line lands in the log. Skipped by default --
+#   upstream default, same binary, started as a second watcher) it is
+#   killed and the kill line lands in the log. Skipped by default --
 #   the decision leg (c) already proves the exemption and a one-core
 #   burn on a shared VM lane costs more than it adds.
 #
@@ -62,7 +63,7 @@
 #   scripts/eqemu/watcher_provision.sh --lane 2 --check     # verify only
 #   scripts/eqemu/watcher_provision.sh --lanes 1-5          # all, one lease
 #                                                           # at a time
-#   scripts/eqemu/watcher_provision.sh --lane 2 --busy-zone # + the ~95 s leg
+#   scripts/eqemu/watcher_provision.sh --lane 2 --busy-zone # + the ~3 min leg
 # Exit: 0 = provisioned and verified; 1 = not (FAIL lines name the checks);
 # 63 = the lane's lease is held by someone else; 64 = usage.
 
@@ -198,15 +199,16 @@ busy_zone_leg() {
     #     started in-container with PROCESS_WATCHER_EXCLUDE empty, i.e.
     #     the upstream default regex): the live default watcher kills it
     #     within the window and the kill line lands in process-kill.log.
-    # ~3 min, one core. The provisioned watcher's compose env is
-    # restored right after phase B (it was never changed -- phase B
-    # starts its OWN second watcher).
+    # ~3 min, one core. The provisioned watcher is never touched by phase
+    # B (it exempts the zone argv) and its compose var was passed at the
+    # provision step's restart, so the state after the leg is exactly the
+    # provisioned one -- re-proven below.
     local live_wpid before psline alive newlines
     # The real watcher (the perl process), not its `sh -c while true`
     # wrapper: the wrapper's environ is identical (compose started both),
     # but the check after phase B is about the provisioned WATCHER, not
-    # its shell. The provision step's pkill may still be settling when we
-    # arrive, so wait for the entrypoint loop to bring it back.
+    # its shell. The provision step just killed and restarted it, so
+    # poll until it is back.
     live_wpid=""
     for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
         live_wpid="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c "ps -eo pid,args | grep 'perl.*[p]rocess-watcher' | head -1 | awk '{print \$1}'" 2>/dev/null | tr -d '[:space:]')"
@@ -293,13 +295,26 @@ lane_provision() {  # lane_provision <lane>
             [ "${rc}" -eq 0 ] || { echo "FAIL: a B940 patch was refused (see above)"; fail=1; }
 
             if [ "${up}" -eq 1 ]; then
-                # The entrypoint's relaunch loop (entrypoint.pl:53) restarts
-                # the watcher when it dies; a targeted pkill (bracket trick;
-                # board B798's guard in eq_container_pkill) is the
-                # sanctioned shape. ONLY the watcher is touched -- never the
-                # fleet.
-                eq_container_pkill KILL '[p]rocess-watcher' >/dev/null 2>&1 || true
-                echo "  live: asked the running watcher to relaunch (entrypoint loop) -- it comes back with the compose env"
+                # Restart the watcher: one pkill anchored on the bind-mount
+                # path, which is the one string EVERY watcher form carries
+                # (the entrypoint's `sh -c while true` loop, its perl child,
+                # and this script's own previous exec-form start) and which
+                # the guard cannot match (the pattern's [a] class sits
+                # where the own command line has [). The entrypoint's loop
+                # is the respawner: killing ONLY the perl lets the loop
+                # restart it, and killing BOTH (a bare [p]rocess-watcher
+                # pattern) leaves nothing to respawn anything -- MEASURED
+                # 2026-10-18, lane 2: the provision pkill took the loop and
+                # the watcher, and the entrypoint loop never fired again.
+                # So the provision run kills every watcher form and starts
+                # the replacement itself, with the compose var passed
+                # explicitly (docker exec's env is not the entrypoint's
+                # shell env; the /proc/<pid>/environ re-read below is the
+                # proof it landed).
+                eq_container_pkill KILL '[a]ssets/scripts/process-watcher' >/dev/null 2>&1 || true
+                eq_docker exec -d "${EQEMU_CONTAINER}" bash -c \
+                    "PROCESS_WATCHER_EXCLUDE='${EXCLUDE_VALUE}' exec ~/assets/scripts/process-watcher.pl >> ~/watcher.b940.log 2>&1" >/dev/null 2>&1 || true
+                echo "  live: watcher forms killed, replacement started with the compose var"
             fi
         fi
 
@@ -323,16 +338,21 @@ lane_provision() {  # lane_provision <lane>
 
     if [ "${up}" -eq 1 ]; then
         local wpid envline
-        wpid="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c "ps -eo pid,args | grep '[p]rocess-watcher' | head -1 | awk '{print \$1}'" 2>/dev/null | tr -d '[:space:]')" || wpid=""
+        wpid=""
+        for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            wpid="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c "ps -eo pid,args | grep 'perl.*[p]rocess-watcher' | head -1 | awk '{print \$1}'" 2>/dev/null | tr -d '[:space:]')" || wpid=""
+            [ -n "${wpid}" ] && break
+            sleep 2
+        done
         if [ -n "${wpid}" ]; then
             envline="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c "tr '\0' '\n' < /proc/${wpid}/environ 2>/dev/null | grep '^PROCESS_WATCHER_EXCLUDE='" 2>/dev/null)" || envline=""
             if [ -n "${envline}" ]; then
                 echo "  live watcher pid ${wpid}: ${envline}"
             else
-                echo "  note: watcher pid ${wpid} predates the provision (no compose env in its environ); the next relaunch carries it -- the file checks are authoritative"
+                echo "  note: watcher pid ${wpid} predates the provision (no compose env in its environ); the next provision run restarts it with the compose var -- the file checks are authoritative"
             fi
         else
-            echo "  note: no watcher alive right now; the entrypoint loop starts one with the compose env"
+            echo "  note: no watcher alive right now; the next provision run starts one with the compose var"
         fi
         if [ "${BUSY_ZONE}" -eq 1 ]; then
             if busy_zone_leg; then

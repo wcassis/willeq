@@ -82,13 +82,16 @@ dev-u24's local lane -- two hosts, one file. The lease fixes both:
 ### The process-watcher zone exemption (B940, #258)
 
 The `eqemu-server` image's `process-watcher.pl` (bind-mounted at
-`assets/scripts/`, relaunched by the entrypoint's loop) `kill -9`s any process whose
+`assets/scripts/`) `kill -9`s any process whose
 lifetime-average CPU exceeds 30 % after 60 s unless its ps line matches an allowlist
 regex -- and the allowlist omits `zone`, so a freshly-respawned zone busy loading a
 client was killed mid-load (iceclad ~65-75 s, overthere ~38 s on the Pi; the client's
 `ECONNREFUSED` was the kill of its own zone pid; `refactor/B925/README.md`). The lanes'
 stacks carry the exemption in the stack's own configuration, provisioned persistently by
-`scripts/eqemu/watcher_provision.sh --lane N` (under the lease):
+`scripts/eqemu/watcher_provision.sh --lane N` (under the lease). A provision run with
+the container up kills every live watcher form and starts the replacement itself,
+with `PROCESS_WATCHER_EXCLUDE` passed explicitly (docker exec's env is not the
+entrypoint's) and re-reads its `/proc/<pid>/environ` as proof.
 
 - **the file**: `AKK_DIR/assets/scripts/process-watcher.pl`, patched by
   `scripts/eqemu/b940_patch_watcher.pl` -- the allowlist regex becomes
