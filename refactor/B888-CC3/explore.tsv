@@ -1,0 +1,14 @@
+step	t	action	what_changed	still	video	oracle
+A1	1792105507	login Testchar	select screen reached; Testcaster row highlighted (login-selected)	01_login.png	login.mp4	oracle-a6
+A2	1792105651	select backdrop	3D showroom, NOT a zone: back arch, 2 empty side pedestals, central golden platform, trees, rock, blue sky. ONE model (the login-selected row, Testcaster) on the central platform. Left list window visible (Testcaster/Testchar/Testmelee). NO zone-server connection in the pcap (login->world->SendCharInfo only).	03_select_backdrop.png	login.mp4	oracle-a6
+A3	1792105664	click Explore button (root 40,263)	ExploreModeWindow appears bottom-left; left list window HIDES; all characters stand on their pedestals in the 3D scene; the login-selected character's info line (EXW_CharInfoLabel) shows top-left.	05_explore_window.png	login.mp4	oracle-a6
+A4	1792105680	click LEFT char (300,500)	EXW_CharInfoLabel stayed on the login-selected character (Testcaster); neither scene figure visibly highlighted. The click did not change the selection read-out.	08_explore_click_left_char_settle.png	login.mp4	oracle-a6
+A5	1792105691	click RIGHT char (1005,500)	same: info line unchanged; no visible selection marker on either figure.	10_explore_click_right_char_settle.png	login.mp4	oracle-a6
+A6	1792105701	hold d (forward) 8s	camera moved (full-frame diff 45.48 vs pre-gesture frame) -- WASD/forward flies the free camera.	11_cam_forward.png	login.mp4	oracle-a6
+A7	1792105719	mouse orbit drag (200px)	no measurable change (full-frame diff 5.01) -- the driver's 40-step glide did not move the camera on this rig.	13_cam_orbit.png	login.mp4	oracle-a6
+A8	1792105733	mouse wheel x3 (zoom)	no measurable change (diff 2.94) -- wheel gesture not captured on this rig.	15_cam_zoom.png	login.mp4	oracle-a6
+A9	1792105744	Esc (X11 `Escape`)	left list window returns, single model on central platform, ExploreModeWindow gone -- back to the normal select screen.	18_back_to_select.png	login.mp4	oracle-a6
+B1	1792106302	login Testchar, click Explore	Explore opens (same as A3)	03_explore_window.png	b1.mp4	oracle-b1
+B2	1792106336	Enter (X11 Return) in Explore	client enters the world (in-zone HUD, terrain)	06_inworld_settle.png	b1.mp4	oracle-b1
+B3	1792106347	in-world zone	`Current Zone [timorous] (Timorous Deep)` in chat -- the character that entered is the LIST-SELECTED one (Testcaster, the login-selected row), NOT the login target (Testchar).	06_inworld_settle.png	b1.mp4	oracle-b1
+B4	1792106412	Camp (Exit) -> select	returns to the character-select screen	09_select_after_camp.png	b1.mp4	oracle-b1
