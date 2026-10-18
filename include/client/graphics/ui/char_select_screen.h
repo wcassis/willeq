@@ -66,6 +66,12 @@ struct CharSelectScreenState {
     ConfirmationDialogState confirm;   // the delete prompt (its own clock, kDeleteConfirmSeconds)
     std::string confirmName;
 
+    // B888-CC3 (#204): the Explore mode (a SELECT-screen mode, not creation).
+    // The 3D backdrop becomes a free camera; the account's characters stand in
+    // the scene and are selected by click; Enter enters with the cursor; Esc
+    // closes. Its machine is explore_screen.h.
+    bool exploreOpen = false;
+
     CharCreateScreenState create;      // B888's two pages, hosted here
 
     // The request this screen is waiting on. A view whose requestsHandled has
@@ -95,11 +101,17 @@ int charSelectRowForButton(const CharSelectScreenState& s, int n);
 /** True while input is ignored: a request is in flight, or the game is entering world. */
 bool charSelectBlocked(const CharSelectScreenState& s);
 
-/** CSW_Char<n+1>_Button: select a character, or open creation (`seed`: its random pick). */
+/** CSW_Char<n+1>_Button: select a character, or open creation (`seed`: its random pick;
+ *  `useOldModels`: the model era the creation screen gates its FacePick rows on). */
 CharSelectAction pressCharButton(CharSelectScreenState& s, int n,
-                                 const eqt::charcreate::CharCreateData& data, uint32_t seed);
+                                 const eqt::charcreate::CharCreateData& data, uint32_t seed,
+                                 bool useOldModels = true);
 /** CSW_Enter_World_Button. */
 CharSelectAction pressEnterWorld(CharSelectScreenState& s);
+/** B1082 (GitLab #402): Up / Down -- move the selection one row, wrapping within
+ *  the occupied rows (MEASURED, refactor/B1082/README.md). Selecting sends
+ *  nothing, exactly as the click path (pressCharButton) does. */
+void moveSelection(CharSelectScreenState& s, int delta);
 /** CSW_Delete_Button: open the prompt (nothing is sent yet). */
 void pressDelete(CharSelectScreenState& s);
 /** The prompt's Yes / No (and its timeout, and ESC, as No). */
@@ -110,8 +122,11 @@ CharSelectAction fromCharCreateAction(CharSelectScreenState& s, const CharCreate
 /** Per-frame time: the delete prompt's timeout. */
 void tickCharSelect(CharSelectScreenState& s, float dt);
 
-/** A key: the creation name field when it holds the caret, ESC closes the prompt. */
-void applyCharSelectKey(CharSelectScreenState& s, irr::EKEY_CODE key, wchar_t ch);
+/** A key: the creation name field when it holds the caret, ESC closes the prompt.
+ *  B1082 (GitLab #402): also Up/Down (move the selection) and Enter/Return
+ *  (OP_EnterWorld for the selected row) -- returned as an action exactly like
+ *  the click path. */
+CharSelectAction applyCharSelectKey(CharSelectScreenState& s, irr::EKEY_CODE key, wchar_t ch);
 
 }  // namespace Graphics
 }  // namespace EQT

@@ -84,6 +84,8 @@ struct RendererCommandData {
 
 // U00: Hotbar slot content assigned (from client-side config or user action)
 struct HotbarSlotAssignedData {
+    int page = 0;
+    int currentPage = 0;
     int index = 0;                      // Slot index (0-9)
     // T156: THE hotbar numbering (Empty=0, Spell=1, Skill=2, Item=3,
     // Emote=4, Macro=5, Combat=6) — see client/hotbar/hotbar_slot_type.h.
@@ -93,6 +95,19 @@ struct HotbarSlotAssignedData {
     std::string name;                   // Display name
     uint32_t iconId = 0;                // Icon ID for display
     std::string emoteText;              // T156: for Emote slots (was dropped here)
+};
+
+// B1025-H3 (GitLab #345): a hot button the cursor carries while a hotbar
+// assignment is in flight. Published by the game thread for /hotbutton (eqstr
+// 13278-13283, the one hot button it can create -- a social button,
+// HotbarSlotType::Emote with the macro as text). The render thread's
+// hold-to-pickup gesture writes CursorAttachmentState directly and never
+// publishes this.
+struct HotbarAssignPendingData {
+    HotbarSlotType type = HotbarSlotType::Empty;
+    uint32_t id = 0;
+    std::string text;
+    uint32_t iconId = 0;
 };
 
 struct SkillActivationFeedbackData {

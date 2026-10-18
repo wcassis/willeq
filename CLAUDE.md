@@ -11,7 +11,7 @@ kanban workers that read it as a context file silently truncate past ~62,900.
 Additional context is in subdirectory CLAUDE.md files:
 - `src/client/graphics/CLAUDE.md` - Rendering, shaders, GLES2, zone loading, performance
 - `include/client/graphics/ui/CLAUDE.md` - Static UI panels, key bindings, slash commands
-- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 107 event types
+- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 108 event types
 - `include/client/bridge/CLAUDE.md` - Event/intent bridge, thread-safe game↔renderer communication
 - `src/client/input/CLAUDE.md` - Input handlers, hotkey manager, command processor, action dispatch
 - `src/client/audio/CLAUDE.md` - Audio system, sound categories, audio tests
@@ -161,7 +161,7 @@ specifically.
 ## Build Commands
 
 **`-j$(nproc)` does not expand reliably in a Bash tool command. Pass a hardcoded
-value, e.g. `cmake --build build -j24`** (no ccache here: a cold build is not cheap). From a script
+value, e.g. `cmake --build build -j24`** (hermes-ext workers: 4 GiB cgroup, `-j3`, B1046). From a script
 (e.g. `scripts/build-arm-noble.sh`), `$(nproc)` works fine.
 
 **Desktop-GL Irrlicht support has been removed (P30,
@@ -298,8 +298,8 @@ test that fails if the checked-in bytes and their inputs drift apart:
 
 | asset | recipe | pinned by | ctest |
 |---|---|---|---|
-| `data/textures/*.bmp` (67 files) | `scripts/build_textures.sh` → `tools/generate_textures` (64, procedural), `tools/spell_sprite_atlas_builder` (1) and `tools/item_icon_atlas_builder` (2) — both lifted from the client's own art | `data/textures.sha256` | `TexturesReproducible` |
-| `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (132 entries: 67 textures, 64 ETC1 `_alpha` companions, 1 raw — `build/bin/verify_eqe1` prints the census) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
+| `data/textures/*.bmp` (71 files) | `scripts/build_textures.sh` → `tools/generate_textures` (64, procedural), `tools/spell_sprite_atlas_builder` (1), `tools/item_icon_atlas_builder` (2), `tools/spell_icon_atlas_builder` (4) | `data/textures.sha256` | `TexturesReproducible` |
+| `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (140 entries: 71 textures, 68 ETC1 `_alpha` companions, 1 raw — `build/bin/verify_eqe1` prints the census) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
 | `data/willeq.db` (28,791 rows in ten tables; `metadata.version` = 7) | `scripts/build_willeq_db.sh` → `tools/willeq_db_builder`, over the EQ client's seven `*.txt` files plus `data/item_models.json` and `config/race_models.json` | `data/willeq.db.sha256` | `DbReproducible` (T450) |
 
 The pack lives outside the repo and is read live by every worktree; only
@@ -317,7 +317,7 @@ builder's design). Audit a host's pack directory:
 (STALE on any v1/v2, exit 1). Pinned by test_eqe1_stale_pack and
 test_eqe1_verify_stale_pack.
 
-**The pack's inputs are the 67 BMPs plus `tools/ui_atlas_builder`, so a texture
+**The pack's inputs are the 71 BMPs plus `tools/ui_atlas_builder`, so a texture
 change cascades**: regenerate the BMPs, rewrite `data/textures.sha256`
 (`--write-pins`), rebuild the pack, update `data/willeq.eqe1.sha256` — all in
 **one commit**, or both tests go red.
@@ -341,12 +341,13 @@ its own deliberate check rather than being swept along.
 `data/equipment_models.json` and `tools/equipment_index_builder` still exist and
 now feed nothing — boarded, not deleted as a side effect.
 
-**`data/textures/` has THREE recipes (boards B300, B376).** Sixty-four of the
-BMPs are procedural (`generate_textures`); the other three are the official
+**`data/textures/` has FOUR recipes (B300/B376/B1077).** Sixty-four of the
+BMPs are procedural (`generate_textures`); the other seven are the official
 client's own art. `spell_sprite_atlas.bmp` comes from `SpellEffects/spel*.tga`
 via `tools/spell_sprite_atlas_builder`, and `item_icons0.bmp` + `item_icons1.bmp`
-from `uifiles/default/dragitem1..34.tga` via `tools/item_icon_atlas_builder`.
-`build_textures.sh` runs all three into the same directory and the pin file
+from `uifiles/default/dragitem1..34.tga` via `tools/item_icon_atlas_builder`,
+the four `spell_icon*.bmp` via `tools/spell_icon_atlas_builder`.
+`build_textures.sh` runs all four into the same directory and the pin file
 covers the union.
 
 #### The item icon sheets
@@ -419,16 +420,16 @@ the plain style — an invented override is the guess Will's ruling forbids.**
 
 #### Texture alpha
 
-The census re-measured at T444 is **63 of the 67 shipped 32-bit with their alpha
+The census re-measured at T444 is **67 of the 71 shipped 32-bit with their alpha
 in-band**. The four 24-bit ones each carry a written reason in
 `tests/test_texture_alpha_census.cpp`, whose `EveryShippedBmpIsAccountedFor`
 makes a new generator declare which side it is on: `spell_particle_fallback.bmp`
 (drawn additively, alpha provably unsampled — its cosine falloff lives in RGB,
-which is what an additive blend samples), `detail_atlas.bmp` (board **B410**: it
-stays 24-bit on scope, not on a measured reason, because both its consumers
-alpha-BLEND it and converting it is a look change), and `rain_streaks.bmp` +
-`snow_flakes.bmp` (no consumer at all). T427 closed B265, so **every one of
-the 67 shipped BMPs is now byte-reproducible from its generator** and
+which is what an additive blend samples), `detail_atlas.bmp` (**B410**: 24-bit on
+scope, not a measured reason; both consumers alpha-BLEND it, so converting it
+is a look change), and `rain_streaks.bmp` +
+`snow_flakes.bmp` (no consumer). Since T427 **every one of
+the 71 shipped BMPs is now byte-reproducible from its generator** and
 `NOT_REPRODUCIBLE` is empty. `generate_textures --report` prints the census.
 
 **A 32-bit entry is not free**: an ETC1 256x256 entry with mips is 43,704
@@ -453,10 +454,10 @@ generator arithmetic defined.
 
 ## The eqemu lane
 
-**eqemu runs on dedicated VMs, not on this machine: FOUR lanes** (B1008,
+**eqemu runs on dedicated hosts, not here: 5 lanes** (B1008,
 2026-10-08; `docs/decisions.md`). `scripts/eqemu/env.sh` is the one place that
-knows: `EQEMU_LANE=1..4` picks the eqemu VM and its paired official-client
-oracle VM (lane 1 = `172.16.200.99`, the default), every docker/compose/`.env`
+knows: `EQEMU_LANE=1..5` picks the eqemu host and its paired official-client
+oracle host (lane 1 = `172.16.200.99`, the default; lane 5 = ThinkPad, B1055), every docker/compose/`.env`
 access goes through `eq_remote` (ssh to `EQEMU_SSH`), and `AKK_DIR` is the
 akk-stack path ON that host. `EQEMU_HOST=local` drives a stack on this machine.
 A card names its LANE, never an address. Each lane's exclusive lock lives on its
@@ -650,8 +651,8 @@ Pi's ext4 home and `setcap` it there (`scripts/pi_rendered_zone_sweep.sh`,
 ### Orange Pi (ARM) Cross-Compilation
 
 The client cross-compiles for Orange Pi One (Allwinner H3, ARMv7-A Cortex-A7,
-Mali 400 GPU). **Current target platform**: Ubuntu Noble (24.04), mainline
-kernel, Lima open-source driver.
+Mali 400 GPU). **Target platform**: Ubuntu Noble (24.04), mainline kernel, Lima
+open-source driver.
 
 - **GPU rendering**: native OpenGL ES 2.0 via custom `COpenGLES2Driver`
   (extends Irrlicht's `CNullDriver`); 6 built-in GLSL ES 1.0 shader programs, no
@@ -659,8 +660,7 @@ kernel, Lima open-source driver.
   textures (real 6:1 savings via `GL_ETC1_RGB8_OES`), and the shared path for
   the planned Android port. See `src/client/graphics/CLAUDE.md`.
 - **Display**: DRM/KMS direct rendering without X11 (`--drm`).
-- **Three single-tenant SBC lanes** (B1030, `docs/ci.md` "The aarch64 SBC lanes"): `PI_LANE=1` Orange Pi,
-  `2` Rock64, `3` ROCK 4D (table in `scripts/pi/env.sh`; a card names its lane, never an address).
+- **Single-tenant SBC lanes** (`docs/ci.md` "The aarch64 SBC lanes"): `PI_LANE=1` Orange Pi, `2` Rock64, `3` ROCK 4D, `4` Radxa A7S, `5` Orange Pi Zero; table in `scripts/pi/env.sh`; name the lane, never an address.
   `pi_lock_take <owner>` before any run, `pi_lock_release <owner>` after (on the device; `lock_selftest.sh`).
 - **GL driver: the shipped LLVM-less Mesa prefix** (Will 2026-09-30, B935; `docs/ci.md` "The shipped Mesa
   prefix"): Pi rigs run `ci-arm/<sha>/bin/willeq-nollvm` (absolute DT_RPATH; `$ORIGIN` is dropped under setcap)
@@ -686,7 +686,7 @@ compiles only the DRM/FB device. On x86 the forked device
 (llvmpipe), which is how CI runs the real GLES2 driver headlessly.
 
 **Legacy platforms**: desktop GL 2.1 on Noble is retired (P32, `docs/decisions.md`
-2026-07-28); `--no-gles2` no longer exists; Jessie + Mali blob + gl4es is superseded.
+2026-07-28); `--no-gles2` is gone; Jessie + Mali blob + gl4es is superseded.
 
 **DRM input handling**: the DRM device
 (`docker/irrlicht-drm/CIrrDeviceFB.cpp`) reads keyboard/mouse via Linux evdev
@@ -732,13 +732,13 @@ Audio updates                       Zone load completion detection
   EntityMoved events per entity and PlayerPositionChanged intents.
 - **IrrlichtBridge** (`include/client/bridge/irrlicht_bridge.h`) — translates
   game events into IrrlichtRenderer calls
-  (switch over the 107 `GameEventType` enumerators; T264: every event has a
+  (switch over the 108 `GameEventType` enumerators; T264: every event has a
   publisher and a consumer, pinned by `test_reachability_sweep`)
 - **ConsoleBridge** (`include/client/bridge/console_bridge.h`) — logs events to
   console in headless mode
 - **Event types** (`include/client/state/event_types.h`; the `GameEvent` variant
   and its payload headers are `event_bus.h` + `event_payloads_*.h`)
-  — 107 event types covering all game state changes
+  — 108 event types covering all game state changes
 - **Intent types** (`include/client/events/renderer_intents.h`) — 49 intent
   structs in the `RendererIntent` variant, pinned by `test_reachability_sweep`
 

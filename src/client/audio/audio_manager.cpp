@@ -78,6 +78,18 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
     sfxManager_ = std::make_unique<SfxManager>();
     sfxManager_->setMixer(mixer_.get());
 
+    // B1015 (#336): wire the ONE cache of decoded SFX PCM. Its loader is the
+    // old loadSound() decode half; its pin is the SfxManager's live-channel
+    // check (the old SfxManager cache's isInUseLocked()). The source is
+    // bound with the cache's lock UNHELD, and it only decodes -- it never
+    // calls back into the cache or fetches another sound.
+    bufferCache_.setSource([this](const std::string& filename) {
+        return decodeSound(filename);
+    });
+    bufferCache_.setPin([this](const SoundBuffer& buffer) {
+        return sfxManager_ ? sfxManager_->isInUse(buffer) : false;
+    });
+
     // Pump event loop before heavy SoundFont loading
     if (tickCallback_) tickCallback_();
 
@@ -178,6 +190,8 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
         loopbackMode_ = true;
     } else {
         auto maBackend = std::make_unique<MiniaudioBackend>();
+        maBackend->setDeviceSampleRate(deviceSampleRate_);  // B1069 (#389)
+        maBackend->setDeviceFormat(deviceFormat_);          // B1069
         if (maBackend->init(mixer_.get(), AudioMixer::SAMPLE_RATE)) {
             maBackend->start();
             backend_ = std::move(maBackend);
@@ -256,13 +270,10 @@ void AudioManager::shutdown() {
     // Clear SFX
     sfxManager_.reset();
 
-    // Clear buffer cache
-    {
-        std::lock_guard<std::mutex> lock(bufferMutex_);
-        bufferCache_.clear();
-        bufferLruOrder_.clear();
-        soundBufferCacheSizeBytes_ = 0;
-    }
+    // Clear buffer cache (B1015: the one decoded-PCM cache; the mixer is
+    // stopped and the SfxManager channels freed above, so nothing is
+    // pinned)
+    bufferCache_.clear();
 
     // Clear mixer last
     mixer_.reset();
@@ -326,24 +337,56 @@ void AudioManager::playSoundInternal(const std::string& filename, const glm::vec
     MemoryScope memScope(Category::Audio);  // B977
     if (!sfxManager_) return;
 
-    // Ensure sound data is in SfxManager cache
+    // B1015 (#336): the caller already loaded the sound through the ONE
+    // cache (loadSound() = bufferCache_.getOrLoad), so its buffer is the
+    // resident one -- no second cache, no second LRU, no preload step.
     auto buffer = loadSound(filename);
     if (!buffer || !buffer->isValid()) return;
-
-    // B989: the SfxManager cache SHARES this buffer (a shared_ptr reference),
-    // it does not copy the samples. The decoded PCM is reported ONCE, under
-    // the owner that decoded it (au.sound_buffers in loadSound()); the sfx
-    // cache no longer owns a second copy of it.
-    sfxManager_->preload(filename, std::move(buffer));
 
     // Check if this is a positioned sound. K15 (B037): use3DAudio_ is the
     // configured "audio.use_3d" switch -- with it off, every sound plays
     // centred at the effects volume, no attenuation and no panning.
     if (use3DAudio_ && (position.x != 0.0f || position.y != 0.0f || position.z != 0.0f)) {
-        sfxManager_->playSpatial(filename, position);
+        sfxManager_->playSpatial(buffer.get(), position);
     } else {
-        sfxManager_->play(filename, masterVolume_ * effectsVolume_);
+        sfxManager_->play(buffer.get(), masterVolume_ * effectsVolume_);
     }
+}
+
+SfxLoopHandle AudioManager::playLoopingSound(const std::string& filename,
+                                             const glm::vec3& position,
+                                             float maxDist, float fullVolDist) {
+    MemoryScope memScope(Category::Audio);  // B977
+    if (!initialized_ || !audioEnabled_ || !sfxManager_) {
+        return {};
+    }
+
+    // B1015: through the ONE cache; the in-use pin keeps this PCM resident
+    // for as long as the looped channel reads it.
+    auto buffer = loadSound(filename);
+    if (!buffer || !buffer->isValid()) {
+        LOG_DEBUG(MOD_AUDIO, "Loop failed: file={} (not found)", filename);
+        return {};
+    }
+
+    SfxLoopHandle loop = use3DAudio_
+        ? sfxManager_->playSpatialLoop(buffer.get(), position, maxDist, fullVolDist)
+        : sfxManager_->playLoop(buffer.get(), masterVolume_ * effectsVolume_);
+    LOG_TRACE(MOD_AUDIO, "Loop play: file={} pos=({},{},{}) handle={}",
+              filename, position.x, position.y, position.z, loop.handle);
+    return loop;
+}
+
+void AudioManager::updateLoopingSound(const SfxLoopHandle& loop, float gain) {
+    if (sfxManager_) sfxManager_->updateLoop(loop, gain);
+}
+
+bool AudioManager::isLoopingSoundActive(const SfxLoopHandle& loop) const {
+    return sfxManager_ ? sfxManager_->isLoopActive(loop) : false;
+}
+
+void AudioManager::stopLoopingSound(const SfxLoopHandle& loop) {
+    if (sfxManager_) sfxManager_->stopLoop(loop);
 }
 
 void AudioManager::stopAllSounds() {
@@ -618,13 +661,23 @@ void AudioManager::setAudioOutputCallback(AudioOutputCallback callback) {
     }
 }
 
+void AudioManager::stopAll() {
+    if (!mixer_) {
+        return;
+    }
+    mixer_->stopAll();
+    // B1015 (#336): the channels are now inactive, so the one cache's in-use
+    // pin names nothing -- reclaim any entries it was holding for them.
+    bufferCache_.rebalance();
+}
+
 void AudioManager::setMemoryConstraints(size_t soundCacheBytes, bool lazyPfs) {
-    soundBufferCacheMaxBytes_ = soundCacheBytes;
     lazyPfsLoading_ = lazyPfs;
 
-    if (sfxManager_) {
-        sfxManager_->setCacheMaxBytes(soundCacheBytes);
-    }
+    // B1015 (#336): the ONE cap. Before this it was set TWICE -- here and on
+    // the SfxManager's own (deleted) LRU. The buffer cache enforces it at
+    // once, and its in-use pin is the only eviction rule now.
+    bufferCache_.setMaxBytes(soundCacheBytes);
 
     if (lazyPfs && !pfsArchives_.empty()) {
         LOG_INFO(MOD_AUDIO, "Lazy PFS mode: releasing {} cached archives", pfsArchives_.size());
@@ -632,20 +685,11 @@ void AudioManager::setMemoryConstraints(size_t soundCacheBytes, bool lazyPfs) {
     }
 }
 
-std::shared_ptr<SoundBuffer> AudioManager::loadSound(const std::string& filename) {
-    MemoryScope memScope(Category::Audio);  // B977
+// B1015 (#336): the decode half of the old loadSound(), bound as the one
+// cache's Source. It runs WITHOUT the cache's lock (a first fetch can scan
+// the snd*.pfs archives, ~0.4 s of I/O) and never calls back into the cache.
+std::shared_ptr<SoundBuffer> AudioManager::decodeSound(const std::string& filename) {
     StartupScope owner("au.sound_buffers");
-    std::lock_guard<std::mutex> lock(bufferMutex_);
-
-    // Check cache
-    auto it = bufferCache_.find(filename);
-    if (it != bufferCache_.end()) {
-        if (soundBufferCacheMaxBytes_ > 0) {
-            bufferLruOrder_.remove(filename);
-            bufferLruOrder_.push_front(filename);
-        }
-        return it->second;
-    }
 
     // Build full path for filesystem check
     std::string fullPath = filename;
@@ -667,30 +711,21 @@ std::shared_ptr<SoundBuffer> AudioManager::loadSound(const std::string& filename
     }
 
     if (loaded && buffer) {
-        bufferCache_[filename] = buffer;
-
-        // LRU tracking
-        if (soundBufferCacheMaxBytes_ > 0) {
-            bufferLruOrder_.push_front(filename);
-            soundBufferCacheSizeBytes_ += buffer->getMemorySize();
-
-            while (soundBufferCacheSizeBytes_ > soundBufferCacheMaxBytes_ &&
-                   bufferLruOrder_.size() > 1) {
-                const std::string& oldest = bufferLruOrder_.back();
-                auto evictIt = bufferCache_.find(oldest);
-                if (evictIt != bufferCache_.end()) {
-                    soundBufferCacheSizeBytes_ -= evictIt->second->getMemorySize();
-                    bufferCache_.erase(evictIt);
-                }
-                bufferLruOrder_.pop_back();
-            }
-        }
-
         return buffer;
     }
 
     LOG_DEBUG(MOD_AUDIO, "Failed to load sound: {} (not found on disk or in PFS)", filename);
     return nullptr;
+}
+
+std::shared_ptr<SoundBuffer> AudioManager::loadSound(const std::string& filename) {
+    MemoryScope memScope(Category::Audio);  // B977
+    // B1015 (#336): loadSound() IS the one cache now -- the old raw map, LRU
+    // list and inline eviction loop are the SoundBufferCache's internals.
+    // Its in-use pin (SfxManager::isInUse) is what the old buffer-cache loop
+    // lacked, and the entry a fetch just inserted sits at the front of the
+    // LRU when the cap runs, so it is never that fetch's victim.
+    return bufferCache_.getOrLoad(filename);
 }
 
 std::shared_ptr<SoundBuffer> AudioManager::getSoundById(uint32_t soundId) {
@@ -772,8 +807,7 @@ void AudioManager::preloadCommonSounds() {
 }
 
 size_t AudioManager::getLoadedSoundCount() const {
-    std::lock_guard<std::mutex> lock(bufferMutex_);
-    return bufferCache_.size();
+    return bufferCache_.getEntryCount();
 }
 
 std::shared_ptr<SoundBuffer> AudioManager::getSoundBuffer(uint32_t soundId) {

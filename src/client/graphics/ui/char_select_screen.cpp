@@ -99,7 +99,8 @@ void applyCharacterSelectView(CharSelectScreenState& s, const CharacterSelectVie
 }
 
 CharSelectAction pressCharButton(CharSelectScreenState& s, int n,
-                                 const eqt::charcreate::CharCreateData& data, uint32_t seed) {
+                                 const eqt::charcreate::CharCreateData& data, uint32_t seed,
+                                 bool useOldModels) {
     CharSelectAction none;
     if (charSelectBlocked(s) || s.confirm.isOpen || s.create.isOpen) return none;
     if (n < 0 || n >= CharSelectLayout::kCharButtons) return none;
@@ -108,7 +109,7 @@ CharSelectAction pressCharButton(CharSelectScreenState& s, int n,
         s.selected = row;
         return none;
     }
-    openCharCreate(s.create, data, seed);
+    openCharCreate(s.create, data, seed, useOldModels);
     return none;
 }
 
@@ -120,6 +121,26 @@ CharSelectAction pressEnterWorld(CharSelectScreenState& s) {
     r.kind = CharacterSelectRequest::Kind::EnterWorld;
     r.name = s.rows[static_cast<size_t>(s.selected)].name;
     return post(s, CharSelectScreenState::Awaiting::EnterWorld, r);
+}
+
+void moveSelection(CharSelectScreenState& s, int delta) {
+    // B1082 (GitLab #402), MEASURED (refactor/B1082/README.md): Up/Down move the
+    // highlight one row and WRAP at the ends of the occupied list. The official
+    // client cycles its highlight through the whole 8-button list -- occupied
+    // rows and the empty "Create a New Character" slots -- and it sends NOTHING
+    // to the server for any of it (the selection is client-side until
+    // Enter/Return). This state model tracks only the occupied rows (s.rows):
+    // an empty slot has no name to enter with, so a step that would land in the
+    // empty range wraps to the next occupied row. The observable result is the
+    // same -- the highlight returns to an occupied row, the 3D model is present
+    // again (plan C: Down from the last occupied row steps around to the first
+    // occupied row with the model still up), and EnterWorld targets an
+    // occupied character.
+    if (charSelectBlocked(s) || s.confirm.isOpen || s.create.isOpen) return;
+    if (s.rows.empty() || delta == 0) return;
+    if (s.selected < 0 || s.selected >= static_cast<int>(s.rows.size())) return;
+    const int n = static_cast<int>(s.rows.size());
+    s.selected = ((s.selected + delta) % n + n) % n;
 }
 
 void pressDelete(CharSelectScreenState& s) {
@@ -180,24 +201,48 @@ void tickCharSelect(CharSelectScreenState& s, float dt) {
     if (tickConfirmationDialog(s.confirm, dt)) answerDeletePrompt(s, false);
 }
 
-void applyCharSelectKey(CharSelectScreenState& s, irr::EKEY_CODE key, wchar_t ch) {
+CharSelectAction applyCharSelectKey(CharSelectScreenState& s, irr::EKEY_CODE key, wchar_t ch) {
     if (s.confirm.isOpen) {
+        // B998: ESC = No. MEASURED (B1082, refactor/B1082/README.md): the
+        // official prompt does NOT answer Yes/No on Enter/Return or navigate
+        // while up -- it answers No on ESC and closes on its own ~10 s timeout
+        // (and on a Yes/No click). Nothing else is consumed here.
         if (key == irr::KEY_ESCAPE) answerDeletePrompt(s, false);
-        return;
+        return {};
     }
-    if (!s.create.isOpen || s.create.page != 1 || !s.create.nameEntry.inputActive || s.create.submitting) return;
-    const std::string before = s.create.nameEntry.inputText;
-    const TextEntryAction act = applyTextEntryKey(s.create.nameEntry, key, ch);
-    if (act != TextEntryAction::Changed) return;
-    std::string& t = s.create.nameEntry.inputText;
-    if (t.size() > CharSelectScreenState::kNameMaxChars) {
-        t = before;   // the field is full: the key is refused
-        s.create.nameEntry.cursorPos = static_cast<int>(std::min(t.size(), static_cast<size_t>(
-                                           std::max(0, s.create.nameEntry.cursorPos))));
-        return;
+    if (s.create.isOpen) {
+        if (s.create.page != 1 || !s.create.nameEntry.inputActive || s.create.submitting) return {};
+        const std::string before = s.create.nameEntry.inputText;
+        const TextEntryAction act = applyTextEntryKey(s.create.nameEntry, key, ch);
+        if (act != TextEntryAction::Changed) return {};
+        std::string& t = s.create.nameEntry.inputText;
+        if (t.size() > CharSelectScreenState::kNameMaxChars) {
+            t = before;   // the field is full: the key is refused
+            s.create.nameEntry.cursorPos = static_cast<int>(std::min(t.size(), static_cast<size_t>(
+                                               std::max(0, s.create.nameEntry.cursorPos))));
+            return {};
+        }
+        // MEASURED (review/UIGAP-ORACLE/204/10): typed letters after the first are lower-cased.
+        for (size_t i = 1; i < t.size(); ++i) t[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(t[i])));
+        return {};
     }
-    // MEASURED (review/UIGAP-ORACLE/204/10): typed letters after the first are lower-cased.
-    for (size_t i = 1; i < t.size(); ++i) t[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(t[i])));
+    // B1082 (GitLab #402): the select screen's keyboard. MEASURED on the
+    // official client (refactor/B1082/README.md):
+    //   Down / Up   move the selection one occupied row, wrapping at the ends
+    //               (never into the empty "Create a New Character" slots).
+    //               Nothing is sent to the server for any of it.
+    //   Enter/Return send OP_EnterWorld for the selected row -- the SAME body
+    //               as the Enter World button (pressEnterWorld), greyed and
+    //               inert when nothing is selected.
+    //   Everything else (letters, Backspace, Delete, Escape, Tab, ...) is
+    //               inert on this screen; the host keeps spending Enter/Escape
+    //               so none of it replays in-zone.
+    if (key == irr::KEY_DOWN) { moveSelection(s, +1); return {}; }
+    if (key == irr::KEY_UP) { moveSelection(s, -1); return {}; }
+    if (key == irr::KEY_RETURN) {   // Return (the numpad Enter maps here too)
+        return pressEnterWorld(s);
+    }
+    return {};
 }
 
 }  // namespace Graphics

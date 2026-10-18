@@ -94,6 +94,9 @@ enum LinuxKey {
 
 // NOW safe to include Irrlicht headers (EKEY_CODE enum values won't be shadowed)
 #include "CIrrDeviceFB.h"
+#ifndef __APPLE__
+#include "drm_key_translation.h"
+#endif
 
 #ifdef _IRR_COMPILE_WITH_FB_DEVICE_
 
@@ -104,6 +107,7 @@ enum LinuxKey {
 #include <unistd.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <string>
 #include <signal.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
@@ -116,9 +120,29 @@ enum LinuxKey {
 #include "IEventReceiver.h"
 #include "os.h"
 #include "CTimer.h"
+#ifndef __APPLE__ // B1043: Linux-only
+#include "drm_card_select.h"
+#include "gbm_config_select.h"
+#endif // !__APPLE__
 #include "gpu_sync_probe.h"
 #include "COpenGLES2Driver.h"
 #include <chrono>
+#ifndef __APPLE__ // B1034: the chooseConfigForGbmFormat wrapper allocates
+#include <vector>
+#endif
+
+// B961 (GitLab #279): the memory ledger's scanout row, defined in the client
+// core (include/client/core/gpu_buffer_census.h) inside namespace
+// eqt::memory. The device and the core never share a header include path, so
+// the device declares the exact mangled name itself -- the same shape as the
+// client TUs declaring the driver's gles2GetHWBufferMemoryUsage. This is the
+// ONE strong device->core reference that binds across the two static archives
+// (the core side is a plain strong definition, no weak symbol).
+namespace eqt {
+namespace memory {
+void publishScanoutTally(uint32_t bufs, uint64_t bytes);
+} // namespace memory
+} // namespace eqt
 
 // P25: X11 headers for the opt-in windowed EGL backend. Included after all
 // Irrlicht headers (same ordering discipline as linux/input.h above) since
@@ -184,17 +208,36 @@ namespace video
 // Constructor / Destructor
 // ============================================================
 
+// B961 (GitLab #279): the device whose tally the static gbm callbacks below
+// drive. The gbm_bo_set_user_data callback takes only (bo, data), so the
+// destroy path and getOrCreateFb reach their device (and thus the tally)
+// through this pointer. std::atomic: written on the render thread (ctor,
+// dtor) and read from any thread (the callbacks, and the ledger's reads via
+// the published pair). One device per process in willeq. Set in the
+// constructor before any buffer lock, cleared in the destructor after the
+// surface (and thus every bo) is gone.
+static std::atomic<CIrrDeviceFB*> s_scanoutDevice{nullptr};
+
+void CIrrDeviceFB::scanoutRegisterBo(void* bo, uint32_t stride, uint32_t height) {
+    scanoutTally_.registerBo(bo, stride, height);
+    eqt::memory::publishScanoutTally(scanoutTally_.bufs(), scanoutTally_.bytes());
+}
+
+void CIrrDeviceFB::scanoutUnregisterBo(void* bo) {
+    scanoutTally_.destroyCallback(bo, nullptr);
+    eqt::memory::publishScanoutTally(scanoutTally_.bufs(), scanoutTally_.bytes());
+}
+
 CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
     : CIrrDeviceStub(param),
       drmFd_(-1), crtcId_(0), connectorId_(0), savedCrtc_(nullptr),
       gbmDevice_(nullptr), gbmSurface_(nullptr),
-      previousBo_(nullptr),
       eglDisplay_(EGL_NO_DISPLAY), eglSurface_(EGL_NO_SURFACE),
       eglContext_(EGL_NO_CONTEXT), eglConfig_(nullptr),
       ttyFd_(-1), savedKbMode_(-1),
       keyboardFd_(-1), mouseFd_(-1),
       shiftDown_(false), ctrlDown_(false), altDown_(false),
-      Close(false), firstFrame_(true), flipPending_(false), useGLES2_(false),
+      Close(false), firstFrame_(true), useGLES2_(false),
       surfaceless_(false),
       x11Display_(nullptr), x11Window_(0), x11WmDeleteMsg_(0), x11Active_(false)
 {
@@ -223,6 +266,11 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
     // docker/irrlicht-drm-patch.py / build-gles2-x86.sh --irrlicht-only for
     // how this file lands in the built tree.
     if (CreationParams.DriverType != video::EDT_NULL) {
+        // B961: the gbm callbacks reach this device through the pointer
+        // from this moment on, so it is published before the first lock.
+        // Cleared in the destructor, after the surface (and thus every bo)
+        // is gone.
+        s_scanoutDevice.store(this, std::memory_order_release);
         bool eglOk = false;
 
         // P25: explicit opt-in X11-windowed EGL backend. WILLEQ_EGL_X11 is only
@@ -249,14 +297,18 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
             eglOk = gbmOk ? initEGL() : false;
 
             if (!eglOk) {
-                // x86/Xvfb fallback: no real DRM/KMS display available (headless dev VM,
-                // no /dev/dri permission, or no connected connector). Fall back to a
-                // Mesa surfaceless EGL platform + pbuffer surface so the real
-                // COpenGLES2Driver still gets a genuine llvmpipe GLES2 context.
 #ifdef __APPLE__
                 os::Printer::log("DRM unavailable - using ANGLE/Metal pbuffer EGL", ELL_INFORMATION);
 #else
-                os::Printer::log("DRM/GBM/EGL initialization failed - falling back to surfaceless EGL (x86/Xvfb)", ELL_WARNING);
+                // x86 fallback: no real DRM/KMS display available (headless dev VM,
+                // no /dev/dri permission, or no connected connector on any card --
+                // B1054: every card was tried before reaching this line). Fall
+                // back to a Mesa surfaceless EGL platform + pbuffer surface so
+                // the real COpenGLES2Driver still gets a genuine GLES2 context
+                // (llvmpipe under Xvfb; whatever the host's EGL vendor is,
+                // otherwise -- initEGLSurfaceless() below names the vendor it
+                // actually got, because it is NOT always llvmpipe).
+                os::Printer::log("DRM/GBM/EGL initialization failed - falling back to surfaceless EGL", ELL_WARNING);
 #endif
                 eglOk = initEGLSurfaceless();
                 if (eglOk) {
@@ -309,21 +361,36 @@ CIrrDeviceFB::~CIrrDeviceFB()
     }
 
 #ifndef __APPLE__ // B1043: Linux-only
-    // Release GBM (cached DRM FBs are cleaned up by gbm_bo user_data destructors)
-    if (previousBo_) {
-        gbm_surface_release_buffer(gbmSurface_, previousBo_);
+    // Wait before retiring a displaced buffer; restore the original CRTC
+    // before releasing the final buffer still scanned out by this device.
+    waitForFlipComplete();
+
+    if (savedCrtc_) {
+        const bool restored = drmModeSetCrtc(drmFd_, savedCrtc_->crtc_id, savedCrtc_->buffer_id,
+                                             savedCrtc_->x, savedCrtc_->y, &connectorId_, 1,
+                                             &savedCrtc_->mode) == 0;
+        if (restored) {
+            const auto releases = flipTracker_.onCrtcRestored();
+            if (releases.retired)
+                gbm_surface_release_buffer(gbmSurface_, releases.retired);
+            if (releases.previous)
+                gbm_surface_release_buffer(gbmSurface_, releases.previous);
+        }
+        drmModeFreeCrtc(savedCrtc_);
     }
     if (gbmSurface_)
         gbm_surface_destroy(gbmSurface_);
     if (gbmDevice_)
         gbm_device_destroy(gbmDevice_);
-
-    // Restore original CRTC
-    if (savedCrtc_) {
-        drmModeSetCrtc(drmFd_, savedCrtc_->crtc_id, savedCrtc_->buffer_id,
-                       savedCrtc_->x, savedCrtc_->y, &connectorId_, 1, &savedCrtc_->mode);
-        drmModeFreeCrtc(savedCrtc_);
-    }
+    // B961: every bo above is gone (the surface's release ran its destroy
+    // callbacks, each of which published the shrunken tally). Drop any that
+    // did not (defensive) and publish {0, 0} so a late ledger read sees an
+    // empty tally rather than a stale one; then unpublish the device
+    // pointer.
+    scanoutTally_.clear();
+    eqt::memory::publishScanoutTally(0, 0);
+    if (s_scanoutDevice.load(std::memory_order_acquire) == this)
+        s_scanoutDevice.store(nullptr, std::memory_order_release);
 
     // Close DRM
     if (drmFd_ >= 0)
@@ -359,23 +426,126 @@ CIrrDeviceFB::~CIrrDeviceFB()
 // DRM Initialization
 // ============================================================
 
-bool CIrrDeviceFB::initDRM()
-{
-    // Try /dev/dri/card0 first, then card1
-    const char* cards[] = { "/dev/dri/card0", "/dev/dri/card1", nullptr };
-    for (int i = 0; cards[i]; i++) {
-        drmFd_ = open(cards[i], O_RDWR | O_CLOEXEC);
-        if (drmFd_ >= 0) {
-            char msg[128];
-            snprintf(msg, sizeof(msg), "DRM: Opened %s (fd=%d)", cards[i], drmFd_);
-            os::Printer::log(msg, ELL_INFORMATION);
-            break;
-        }
+// B1054 (#374): card-selection decision. The candidate list and the
+// open/check callbacks are this TU's libdrm side; the pure decision
+// (eqt_drm::selectDRMCard, drm_card_select.h) is unit tested in
+// tests/test_drm_card_select.cpp over a fake card list.
+namespace {
+int openDRMCard(const std::string& path) {
+    return open(path.c_str(), O_RDWR | O_CLOEXEC);
+}
+
+eqt_drm::DRMCardState checkDRMCard(int fd, const std::string& path) {
+    eqt_drm::DRMCardState state;
+    drmModeRes* resources = drmModeGetResources(fd);
+    if (!resources) {
+        os::Printer::log("DRM: drmModeGetResources failed", ELL_ERROR);
+        return state;
     }
 
-    if (drmFd_ < 0) {
-        os::Printer::log("DRM: Failed to open /dev/dri/card*", ELL_ERROR);
+    // Find a connected connector with at least one advertised mode.
+    int connectorId = 0;
+    for (int i = 0; i < resources->count_connectors; i++) {
+        drmModeConnector* connector = drmModeGetConnector(fd, resources->connectors[i]);
+        if (connector && connector->connection == DRM_MODE_CONNECTED &&
+            connector->count_modes > 0) {
+            connectorId = connector->connector_id;
+            state.connectorType = connector->connector_type;
+            drmModeFreeConnector(connector);
+            break;
+        }
+        if (connector)
+            drmModeFreeConnector(connector);
+    }
+    bool hasCrtc = false;
+    if (connectorId) {
+        // A connector is only usable when some CRTC can drive it: the
+        // encoder's CRTC, or any encoder whose possible_crtcs covers one.
+        drmModeEncoder* encoder = nullptr;
+        drmModeConnector* probe = drmModeGetConnector(fd, connectorId);
+        if (probe && probe->encoder_id) {
+            encoder = drmModeGetEncoder(fd, probe->encoder_id);
+        }
+        if (encoder) {
+            hasCrtc = encoder->crtc_id != 0;
+            drmModeFreeEncoder(encoder);
+        }
+        if (!hasCrtc) {
+            for (int i = 0; i < resources->count_encoders; i++) {
+                drmModeEncoder* e = drmModeGetEncoder(fd, resources->encoders[i]);
+                if (!e)
+                    continue;
+                for (int j = 0; j < resources->count_crtcs && !hasCrtc; j++)
+                    if (e->possible_crtcs & (1 << j))
+                        hasCrtc = true;
+                drmModeFreeEncoder(e);
+            }
+        }
+        if (probe)
+            drmModeFreeConnector(probe);
+    }
+    drmModeFreeResources(resources);
+
+    state.hasConnectedConnector = connectorId != 0;
+    state.hasCrtc = hasCrtc;
+    if (!state.hasConnectedConnector || !state.hasCrtc) {
+        char msg[128];
+        snprintf(msg, sizeof(msg),
+                 "DRM: %s opens but has no usable display (connector: %s, CRTC: %s) - trying next card",
+                 path.c_str(),
+                 state.hasConnectedConnector ? "connected" : "none",
+                 state.hasCrtc ? "yes" : "no");
+        os::Printer::log(msg, ELL_WARNING);
+    }
+    return state;
+}
+}  // namespace
+
+bool CIrrDeviceFB::initDRM()
+{
+    // B1054 (#374): iterate /dev/dri/card* in numeric order and take the
+    // FIRST card that both opens AND has a connected connector with a CRTC
+    // (pre-B1054: the first card that merely OPENED won, so a headless
+    // dGPU on card0 hid the iGPU panel on card1 -- measured on the
+    // ThinkPad). WILLEQ_DRM_DEVICE, when set, replaces the auto list with
+    // exactly that path; a failure there is an explicit error naming the
+    // path and the reason, never a silent fallback to auto-selection or to
+    // surfaceless EGL.
+    std::vector<std::string> candidates = eqt_drm::drmCardCandidates();
+    const char* override = std::getenv("WILLEQ_DRM_DEVICE");
+    const bool overrideInForce = override && override[0] != '\0';
+    eqt_drm::DRMCardSelection selection =
+        eqt_drm::selectDRMCard(candidates, openDRMCard, checkDRMCard, overrideInForce);
+
+    if (!selection.ok) {
+        char msg[256];
+        if (overrideInForce) {
+            snprintf(msg, sizeof(msg),
+                     "DRM: WILLEQ_DRM_DEVICE=%s: %s (explicit override, "
+                     "no fallback)",
+                     override, selection.reason.c_str());
+        } else {
+            snprintf(msg, sizeof(msg),
+                     "DRM: no usable /dev/dri/card* (%s)", selection.reason.c_str());
+        }
+        os::Printer::log(msg, ELL_ERROR);
         return false;
+    }
+
+    const std::string& cardPath = candidates[selection.index];
+    drmFd_ = openDRMCard(cardPath);
+    if (drmFd_ < 0) {
+        os::Printer::log("DRM: re-open of the selected card failed", ELL_ERROR);
+        return false;
+    }
+    {
+        drmVersion* ver = drmGetVersion(drmFd_);
+        char msg[160];
+        const char* driverName = ver ? ver->name : "unknown";
+        snprintf(msg, sizeof(msg), "DRM: Opened %s (fd=%d) driver=%s",
+                 cardPath.c_str(), drmFd_, driverName);
+        os::Printer::log(msg, ELL_INFORMATION);
+        drmFreeVersion(ver);
     }
 
     drmModeRes* resources = drmModeGetResources(drmFd_);
@@ -384,15 +554,17 @@ bool CIrrDeviceFB::initDRM()
         return false;
     }
 
-    // Find a connected connector
+    // Re-probe the winning card for the connector (the check above only
+    // recorded that one exists).
     drmModeConnector* connector = nullptr;
     for (int i = 0; i < resources->count_connectors; i++) {
-        connector = drmModeGetConnector(drmFd_, resources->connectors[i]);
-        if (connector && connector->connection == DRM_MODE_CONNECTED && connector->count_modes > 0)
+        drmModeConnector* c = drmModeGetConnector(drmFd_, resources->connectors[i]);
+        if (c && c->connection == DRM_MODE_CONNECTED && c->count_modes > 0) {
+            connector = c;
             break;
-        if (connector)
-            drmModeFreeConnector(connector);
-        connector = nullptr;
+        }
+        if (c)
+            drmModeFreeConnector(c);
     }
 
     if (!connector) {
@@ -402,6 +574,12 @@ bool CIrrDeviceFB::initDRM()
     }
 
     connectorId_ = connector->connector_id;
+    {
+        char msg[160];
+        snprintf(msg, sizeof(msg), "DRM: using %s connector=%d",
+                 cardPath.c_str(), connector->connector_type);
+        os::Printer::log(msg, ELL_INFORMATION);
+    }
 
     // Log available modes
     for (int i = 0; i < connector->count_modes; i++) {
@@ -538,34 +716,69 @@ bool CIrrDeviceFB::initGBM()
 // EGL Initialization
 // ============================================================
 
-// B1030 (#350): pick the EGL config whose native visual IS the GBM surface's
-// format. eglChooseConfig sorts deeper colour buffers first, so on a driver
-// that exposes 10-bit configs (Panfrost/Mesa 26 on the ROCK 4D lists AR30 and
-// XR30 before AR24/XR24) the first match for RED/GREEN/BLUE >= 8 is a 10-bit
-// visual, and eglCreateWindowSurface on the XRGB8888 gbm_surface then fails
-// (Mesa refuses a config/format mismatch). Lima never listed a 10-bit config,
-// which is why the single-config call worked on every lane until now. Same
-// rule kmscube applies: EGL_NATIVE_VISUAL_ID == the GBM format. Within the
-// matching visual eglChooseConfig's own order still holds (smallest depth and
-// stencil that satisfy the request first), so lanes 1-2 pick the config they
-// always picked.
+// B1030 (#350) established the choice -- the first eglChooseConfig match
+// whose EGL_NATIVE_VISUAL_ID IS the GBM surface's format, because a config
+// whose visual does not match the format fails in eglCreateWindowSurface
+// (Mesa refuses a config/format mismatch), and eglChooseConfig lists every
+// 10-bit config ahead of every 8-bit one. B1034 (#357): the fixed
+// configs[64] above cut the XRGB8888 config off when a driver returned more
+// than 64 matches (all 10-bit first), so the configs[0] fallback was 10-bit
+// and returned true, and the error moved to eglCreateWindowSurface with the
+// no-depth retry never running. The decision now lives in
+// eqt_drm::selectEglConfigForGbmFormat() (gbm_config_select.h, pure and
+// unit-tested): the count is queried with a NULL array, every config is
+// walked, an ARGB8888 visual is the fallback before configs[0] (Mesa's KMS
+// platform accepts the ARGB/XRGB mix), and within each visual eglChooseConfig
+// order still holds -- so lanes 1-2 pick the config they always picked. THIS
+// WRAPPER IS IDENTICAL IN BOTH DEVICE FORKS (the hygiene test
+// scripts/ci/test_gbm_config_select_forks.py keeps it that way).
 static bool chooseConfigForGbmFormat(EGLDisplay dpy, const EGLint* attribs,
                                      uint32_t gbmFormat, EGLConfig* out)
 {
-    EGLConfig configs[64];
     EGLint numConfigs = 0;
-    if (!eglChooseConfig(dpy, attribs, configs, 64, &numConfigs) || numConfigs < 1)
+    if (!eglChooseConfig(dpy, attribs, nullptr, 0, &numConfigs) || numConfigs < 1)
         return false;
+    std::vector<EGLConfig> configs(numConfigs);
+    if (!eglChooseConfig(dpy, attribs, configs.data(), numConfigs, &numConfigs) || numConfigs < 1)
+        return false;
+    const EGLint visualAttrib = EGL_NATIVE_VISUAL_ID;
+    const EGLint renderableAttrib = EGL_RENDERABLE_TYPE;
+    const EGLint depthAttrib = EGL_DEPTH_SIZE;
+    const EGLint stencilAttrib = EGL_STENCIL_SIZE;
+    eqt_drm::EglConfigEntry entry;
+    std::vector<eqt_drm::EglConfigEntry> entries;
+    entries.reserve(numConfigs);
+    eqt_drm::EglConfigRequest request;
     for (EGLint i = 0; i < numConfigs; ++i) {
-        EGLint visual = 0;
-        if (eglGetConfigAttrib(dpy, configs[i], EGL_NATIVE_VISUAL_ID, &visual)
-            && (uint32_t)visual == gbmFormat) {
-            *out = configs[i];
-            return true;
-        }
+        EGLint visual = 0, renderable = 0, depth = 0, stencil = 0;
+        eglGetConfigAttrib(dpy, configs[i], visualAttrib, &visual);
+        eglGetConfigAttrib(dpy, configs[i], renderableAttrib, &renderable);
+        eglGetConfigAttrib(dpy, configs[i], depthAttrib, &depth);
+        eglGetConfigAttrib(dpy, configs[i], stencilAttrib, &stencil);
+        if (i == 0)
+            request.renderableType = renderable;
+        entry.visual = (uint32_t)visual;
+        entry.renderableType = renderable;
+        entry.depth = depth;
+        entry.stencil = stencil;
+        entries.push_back(entry);
     }
-    os::Printer::log("EGL: no config matches the GBM surface format; using the first match", ELL_WARNING);
-    *out = configs[0];
+    request.depth = 0;      // the request's depth/stencil are a filter; every
+    request.stencil = 0;    // config here already satisfies the caller's attribs
+    const int pick = eqt_drm::selectEglConfigForGbmFormat(entries, request, gbmFormat);
+    if (pick < 0)
+        return false;
+    if (entries[(size_t)pick].visual != gbmFormat) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "EGL: no config matches the GBM surface format 0x%08x; "
+                 "using %s (visual 0x%08x)",
+                 (unsigned)gbmFormat,
+                 entries[(size_t)pick].visual == eqt_drm::kGbmFormatARGB8888 ? "the ARGB8888 config"
+                                                                             : "the first match",
+                 (unsigned)entries[(size_t)pick].visual);
+        os::Printer::log(buf, ELL_WARNING);
+    }
+    *out = configs[pick];
     return true;
 }
 
@@ -698,10 +911,13 @@ bool CIrrDeviceFB::initEGL()
 // Used when initDRM()/initGBM()/initEGL() (the real KMS/GBM path, unchanged
 // above) fail to find an accessible, connected DRM display — the normal case
 // for a headless x86 dev VM under Xvfb with no /dev/dri render-node grant.
-// Mesa's "surfaceless" EGL platform provides a genuine EGL display backed by
-// llvmpipe with no window, no GBM buffer, and no /dev/dri access required at
-// all; we pair it with a small pbuffer surface so eglMakeCurrent has a
-// drawable to bind. COpenGLES2Driver is unmodified — it only requires "an EGL
+// The "surfaceless" EGL platform provides a genuine EGL display with no
+// window, no GBM buffer, and no /dev/dri access required at all (Mesa's
+// llvmpipe under Xvfb, but the host's own vendor on a box with a GPU -- the
+// "EGL (surfaceless): Version" line above names the vendor actually got,
+// B1054: it said llvmpipe on a box whose surfaceless EGL was NVIDIA's); we
+// pair it with a small pbuffer surface so eglMakeCurrent has a drawable to
+// bind. COpenGLES2Driver is unmodified — it only requires "an EGL
 // context is current," which this satisfies exactly as initEGL() does on ARM.
 bool CIrrDeviceFB::initEGLSurfaceless()
 {
@@ -808,10 +1024,21 @@ bool CIrrDeviceFB::initEGLSurfaceless()
         return false;
     }
 
+    // B1064: the same config line initEGL() prints, so a headless x86 run can
+    // show which depth/stencil it got (B971: it follows the client's request).
+    {
+        EGLint depthBits = 0, stencilBits = 0;
+        eglGetConfigAttrib(eglDisplay_, eglConfig_, EGL_DEPTH_SIZE, &depthBits);
+        eglGetConfigAttrib(eglDisplay_, eglConfig_, EGL_STENCIL_SIZE, &stencilBits);
+        char buf[128];
+        snprintf(buf, sizeof(buf), "EGL (surfaceless): Config depth=%d stencil=%d", depthBits, stencilBits);
+        os::Printer::log(buf, ELL_INFORMATION);
+    }
+
 #ifdef __APPLE__
     os::Printer::log("EGL (pbuffer): Context created and made current (ANGLE/Metal)",
 #else
-    os::Printer::log("EGL (surfaceless): Context created and made current (llvmpipe, x86/Xvfb fallback)",
+    os::Printer::log("EGL (surfaceless): Context created and made current",
 #endif
                      ELL_INFORMATION);
     return true;
@@ -835,6 +1062,13 @@ struct DrmFbData {
     uint32_t fbId;
 };
 
+static void scanoutFbDestroyCallback(void* bo, void* data) {
+    (void)data;
+    if (CIrrDeviceFB* dev = s_scanoutDevice.load(std::memory_order_acquire))
+        if (bo)
+            dev->scanoutUnregisterBo(bo);
+}
+
 static void drmFbDestroyCallback(struct gbm_bo* bo, void* data) {
     auto* fbData = static_cast<DrmFbData*>(data);
     if (fbData) {
@@ -842,6 +1076,9 @@ static void drmFbDestroyCallback(struct gbm_bo* bo, void* data) {
             drmModeRmFB(fbData->drmFd, fbData->fbId);
         delete fbData;
     }
+    // B961: the bo is being freed -- drop it from the scanout tally. The
+    // DrmFbData pointer passes through unchanged.
+    scanoutFbDestroyCallback(bo, data);
 }
 
 static uint32_t getOrCreateFb(struct gbm_bo* bo, int drmFd, uint32_t width, uint32_t height) {
@@ -862,48 +1099,76 @@ static uint32_t getOrCreateFb(struct gbm_bo* bo, int drmFd, uint32_t width, uint
     }
 
     auto* fbData = new DrmFbData{drmFd, fb};
+    // B961: the bo is now locked by the surface for this frame -- count it
+    // (stride x height, its backing store's byte size). The set_user_data
+    // callback below is the single owner-removal point (see above).
+    if (CIrrDeviceFB* dev = s_scanoutDevice.load(std::memory_order_acquire))
+        dev->scanoutRegisterBo(bo, stride, height);
     gbm_bo_set_user_data(bo, fbData, drmFbDestroyCallback);
     return fb;
 }
 
 // Page flip event handler — called by drmHandleEvent when flip completes
+static thread_local std::uintptr_t expectedFlipSerial = 0;
+static thread_local bool expectedFlipReceived = false;
 static void pageFlipHandler(int fd, unsigned int frame,
                             unsigned int sec, unsigned int usec, void* data)
 {
-    bool* flipPending = static_cast<bool*>(data);
-    *flipPending = false;
+    if (reinterpret_cast<std::uintptr_t>(data) == expectedFlipSerial)
+        expectedFlipReceived = true;
 }
 
-void CIrrDeviceFB::waitForFlipComplete()
+bool CIrrDeviceFB::waitForFlipComplete()
 {
-    if (!flipPending_) return;
+    if (!flipTracker_.pending()) return true;
+    expectedFlipSerial = flipTracker_.serial();
+    expectedFlipReceived = false;
 
     drmEventContext evctx = {};
     evctx.version = 2;
     evctx.page_flip_handler = pageFlipHandler;
-
-    // Poll DRM fd until the flip event arrives
     struct pollfd pfd = {};
     pfd.fd = drmFd_;
     pfd.events = POLLIN;
 
-    while (flipPending_) {
-        int ret = poll(&pfd, 1, 100);  // 100ms timeout (safety)
+    while (!expectedFlipReceived) {
+        const int ret = poll(&pfd, 1, 100);
         if (ret > 0 && (pfd.revents & POLLIN)) {
-            drmHandleEvent(drmFd_, &evctx);
-        } else if (ret == 0) {
-            // Timeout — flip event lost, force clear
-            flipPending_ = false;
+            if (drmHandleEvent(drmFd_, &evctx) != 0)
+                return false;
+        } else if (ret > 0) {
+            return false;
+        } else if (ret == 0 || (ret < 0 && errno != EINTR)) {
+            // The tracker retains both buffers until completion or recovery.
+            return false;
         }
     }
+    return true;
 }
 
 void CIrrDeviceFB::drmPageFlip()
 {
-    // Wait for previous flip to complete before submitting a new one.
-    // This prevents drmModePageFlip from returning -EBUSY and falling
-    // back to the synchronous drmModeSetCrtc (which blocks ~35ms).
-    waitForFlipComplete();
+    const bool flipComplete = waitForFlipComplete();
+
+    if (!flipComplete) {
+        if (flipTracker_.onTimeout() != eqt_drm::FlipTracker<gbm_bo>::TimeoutAction::Recover)
+            return;
+        const uint32_t fb = getOrCreateFb(flipTracker_.previous(), drmFd_, Width, Height);
+        if (!fb || drmModeSetCrtc(drmFd_, crtcId_, fb, 0, 0,
+                                  &connectorId_, 1, &mode_) != 0) {
+            os::Printer::log("DRM: flip recovery SetCrtc failed; retaining buffers", ELL_WARNING);
+            return;
+        }
+        os::Printer::log("DRM: flip event lost; recovering with a synchronous SetCrtc", ELL_WARNING);
+        const auto releases = flipTracker_.onSetCrtcSync(flipTracker_.previous());
+        if (releases.retired)
+            gbm_surface_release_buffer(gbmSurface_, releases.retired);
+    } else {
+        if (auto* released = flipTracker_.onFlipComplete(flipTracker_.serial()))
+            gbm_surface_release_buffer(gbmSurface_, released);
+    }
+    // B1050 (#370): kmscube waits for the flip event before releasing the
+    // displaced scanout bo. Releasing at submission lets GBM render into it.
 
     eglSwapBuffers(eglDisplay_, eglSurface_);
 
@@ -912,37 +1177,38 @@ void CIrrDeviceFB::drmPageFlip()
         os::Printer::log("DRM: gbm_surface_lock_front_buffer failed", ELL_WARNING);
         return;
     }
-
-    uint32_t fb = getOrCreateFb(bo, drmFd_, Width, Height);
+    const uint32_t fb = getOrCreateFb(bo, drmFd_, Width, Height);
     if (!fb) {
         gbm_surface_release_buffer(gbmSurface_, bo);
         return;
     }
 
     if (firstFrame_) {
-        // First frame: set the CRTC
-        int ret = drmModeSetCrtc(drmFd_, crtcId_, fb, 0, 0, &connectorId_, 1, &mode_);
-        if (ret) {
+        if (drmModeSetCrtc(drmFd_, crtcId_, fb, 0, 0, &connectorId_, 1, &mode_) != 0) {
             os::Printer::log("DRM: drmModeSetCrtc failed", ELL_WARNING);
+            gbm_surface_release_buffer(gbmSurface_, bo);
+            return;
         }
         firstFrame_ = false;
-    } else {
-        // Async page flip with event notification
-        int ret = drmModePageFlip(drmFd_, crtcId_, fb,
-                                  DRM_MODE_PAGE_FLIP_EVENT, &flipPending_);
-        if (ret) {
-            // Fallback: synchronous CRTC set (should rarely happen now)
-            drmModeSetCrtc(drmFd_, crtcId_, fb, 0, 0, &connectorId_, 1, &mode_);
-        } else {
-            flipPending_ = true;
-        }
+    } else if (drmModePageFlip(drmFd_, crtcId_, fb,
+                               DRM_MODE_PAGE_FLIP_EVENT,
+                               reinterpret_cast<void*>(flipTracker_.nextSerial())) == 0) {
+        flipTracker_.onFlipSubmitted(bo);
+        return;
+    } else if (drmModeSetCrtc(drmFd_, crtcId_, fb, 0, 0,
+                              &connectorId_, 1, &mode_) != 0) {
+        os::Printer::log("DRM: drmModeSetCrtc fallback failed", ELL_WARNING);
+        gbm_surface_release_buffer(gbmSurface_, bo);
+        return;
     }
 
-    // Release previous buffer (FB stays cached via gbm_bo user_data)
-    if (previousBo_) {
-        gbm_surface_release_buffer(gbmSurface_, previousBo_);
-    }
-    previousBo_ = bo;
+    // The initial/fallback SetCrtc is synchronous: the old bo is no longer
+    // scanned out and can be released immediately.
+    const auto releases = flipTracker_.onSetCrtcSync(bo);
+    if (releases.retired)
+        gbm_surface_release_buffer(gbmSurface_, releases.retired);
+    if (releases.previous)
+        gbm_surface_release_buffer(gbmSurface_, releases.previous);
 }
 #endif // !__APPLE__
 
@@ -1096,79 +1362,11 @@ void CIrrDeviceFB::pollEvdev()
     if (keyboardFd_ >= 0) {
         while (read(keyboardFd_, &ev, sizeof(ev)) == sizeof(ev)) {
             if (ev.type == EV_KEY) {
-                bool pressed = (ev.value == 1);
-                bool released = (ev.value == 0);
-                // value == 2 is repeat
-
-                if (ev.code < EVDEV_KEY_MAX)
-                    keyIsDown_[ev.code] = pressed || (ev.value == 2);
-
-                // Track modifiers (KEY_LEFTSHIFT etc. don't conflict with Irrlicht)
-                if (ev.code == KEY_LEFTSHIFT || ev.code == KEY_RIGHTSHIFT)
-                    shiftDown_ = pressed || (ev.value == 2);
-                else if (ev.code == KEY_LEFTCTRL || ev.code == KEY_RIGHTCTRL)
-                    ctrlDown_ = pressed || (ev.value == 2);
-                else if (ev.code == KEY_LEFTALT || ev.code == KEY_RIGHTALT)
-                    altDown_ = pressed || (ev.value == 2);
-
-                if (pressed || released) {
-                    EKEY_CODE irrKey = linuxKeyToIrrlicht(ev.code);
-
-                    SEvent event;
-                    event.EventType = EET_KEY_INPUT_EVENT;
-                    event.KeyInput.Key = irrKey;
-                    event.KeyInput.PressedDown = pressed;
-                    event.KeyInput.Shift = shiftDown_;
-                    event.KeyInput.Control = ctrlDown_;
-                    event.KeyInput.Char = 0;
-
-                    // For keys where shift produces a different logical key,
-                    // clear the shift flag since it was "consumed" by the
-                    // keymap translation (e.g. Shift+"=" → "+", not Shift+"+")
-                    if (shiftDown_ && ev.code == KEY_EQUAL) {
-                        event.KeyInput.Shift = false;
-                    }
-
-                    // Generate character for printable keys
-                    // (KEY_KEY_A etc. are Irrlicht-only names, no conflict)
-                    if (pressed && irrKey >= KEY_KEY_A && irrKey <= KEY_KEY_Z) {
-                        event.KeyInput.Char = shiftDown_ ?
-                            (wchar_t)('A' + (irrKey - KEY_KEY_A)) :
-                            (wchar_t)('a' + (irrKey - KEY_KEY_A));
-                    } else if (pressed && irrKey >= KEY_KEY_0 && irrKey <= KEY_KEY_9) {
-                        if (!shiftDown_) {
-                            event.KeyInput.Char = (wchar_t)('0' + (irrKey - KEY_KEY_0));
-                        } else {
-                            // Shifted number keys
-                            const char shifted[] = ")!@#$%^&*(";
-                            int idx = irrKey - KEY_KEY_0;
-                            if (idx >= 0 && idx < 10)
-                                event.KeyInput.Char = (wchar_t)shifted[idx];
-                        }
-                    } else if (pressed) {
-                        // These are all Irrlicht EKEY_CODE values (Linux macros were #undef'd)
-                        switch (irrKey) {
-                            case KEY_SPACE: event.KeyInput.Char = L' '; break;
-                            case KEY_RETURN: event.KeyInput.Char = L'\r'; break;
-                            case KEY_TAB: event.KeyInput.Char = L'\t'; break;
-                            case KEY_BACK: event.KeyInput.Char = L'\b'; break;
-                            case KEY_MINUS: event.KeyInput.Char = shiftDown_ ? L'_' : L'-'; break;
-                            case KEY_PLUS: event.KeyInput.Char = shiftDown_ ? L'+' : L'='; break;
-                            case KEY_COMMA: event.KeyInput.Char = shiftDown_ ? L'<' : L','; break;
-                            case KEY_PERIOD: event.KeyInput.Char = shiftDown_ ? L'>' : L'.'; break;
-                            case KEY_OEM_2: event.KeyInput.Char = shiftDown_ ? L'?' : L'/'; break;
-                            case KEY_OEM_1: event.KeyInput.Char = shiftDown_ ? L':' : L';'; break;
-                            case KEY_OEM_7: event.KeyInput.Char = shiftDown_ ? L'"' : L'\''; break;
-                            case KEY_OEM_4: event.KeyInput.Char = shiftDown_ ? L'{' : L'['; break;
-                            case KEY_OEM_6: event.KeyInput.Char = shiftDown_ ? L'}' : L']'; break;
-                            case KEY_OEM_5: event.KeyInput.Char = shiftDown_ ? L'|' : L'\\'; break;
-                            case KEY_OEM_3: event.KeyInput.Char = shiftDown_ ? L'~' : L'`'; break;
-                            default: break;
-                        }
-                    }
-
+                SEvent event;
+                if (eqt_drm::translateKeyEvent(ev, linuxKeyToIrrlicht(ev.code),
+                                               keyIsDown_, EVDEV_KEY_MAX,
+                                               shiftDown_, ctrlDown_, altDown_, event))
                     postEventFromUser(event);
-                }
             }
         }
     }

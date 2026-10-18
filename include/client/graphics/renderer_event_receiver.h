@@ -42,7 +42,6 @@
 #include "client/graphics/tree_identifier.h"
 #include "client/graphics/weather_system.h"
 #include "client/graphics/zone_shader.h"
-#include "client/graphics/texture_atlas.h"
 #include "client/graphics/eqe1_loader.h"
 #include "client/graphics/eqe1_texture_index.h"
 #include "client/graphics/portal_system.h"
@@ -95,6 +94,7 @@ namespace EQT { namespace Graphics { class ConstrainedTextureCache; } }
 // T300: the first-person camera's constants and its pure placement math.
 #include "client/graphics/first_person_camera.h"
 #include "client/graphics/renderer_types.h"
+#include "client/graphics/press_ownership.h"  // B1066
 
 namespace EQT {
 namespace Graphics {
@@ -123,8 +123,23 @@ public:
     // consumer without making the accumulator per-consumer.
     int getMouseDeltaX();
     int getMouseDeltaY();
-    bool isLeftButtonDown() const { return leftButtonDown_.load(std::memory_order_relaxed); }
-    bool isRightButtonDown() const { return rightButtonDown_.load(std::memory_order_relaxed); }
+    // B1066 (#386): the LOOK view of each button -- held AND owned by the
+    // camera (press_ownership.h). A press that landed on a static-UI window is
+    // the UI's until its release and reads false here, so it can never drive
+    // mouse-look; a press on the 3D view reads true until release, even while
+    // the pointer crosses a window. A new press reads false until the frame's
+    // static-UI hit test settles it (resolvePendingPresses()).
+    bool isLeftButtonDown() const { return presses_.cameraHeld(PressButton::Left); }
+    bool isRightButtonDown() const { return presses_.cameraHeld(PressButton::Right); }
+    // B1066: the PHYSICAL held state, whoever owns the press -- the item
+    // display's held lifetime (rows 24-26) and RDP's forwarded button mask.
+    bool isLeftButtonHeld() const { return presses_.held(PressButton::Left); }
+    bool isRightButtonHeld() const { return presses_.held(PressButton::Right); }
+    // B1066: once per frame, after the static UI's hit test, from
+    // FrameComponent::processCursorGestureFrame() (or processFrameInput()
+    // when no static UI runs): every pending press goes to the UI when the
+    // pointer is over a window, else to the camera. Render thread only.
+    bool resolvePendingPresses(bool pointerOnUi) { return presses_.resolve(pointerOnUi); }
     // T315: destructive read-and-reset (atomic exchange), RENDER THREAD
     // ONLY -- the sole consumer is IrrlichtRenderer::processFrameInput(),
     // which drives pendingUIClick_, the static-UI hit test and
@@ -137,8 +152,9 @@ public:
     bool wasLeftButtonReleased(); // Returns true once when button is released
     // B442 (#151): the RIGHT click, latched the same way, for the static UI's
     // item windows (right click = item display, the oracle's inspect). ONE
-    // consumer, FrameComponent::renderStaticUI(). Mouselook is unaffected: it
-    // reads isRightButtonDown(), never this latch.
+    // consumer, FrameComponent::renderStaticUI(). Mouselook never reads this
+    // latch: it reads isRightButtonDown(), the camera-owned held state, which
+    // a press on a window never becomes (B1066).
     bool wasRightButtonClicked();
     int getClickMouseX() const { return clickMouseX_.load(std::memory_order_relaxed); }
     int getClickMouseY() const { return clickMouseY_.load(std::memory_order_relaxed); }
@@ -229,8 +245,23 @@ public:
     bool escapeKeyPressed() { bool v = escapeKeyPressed_; escapeKeyPressed_ = false; return v; }
 
     // Chat focus state (set by renderer, read by GraphicsInputHandler on the
-    // game thread -- atomic, same discipline as the flags)
-    void setChatInputFocused(bool focused) { chatInputFocused_.store(focused, std::memory_order_relaxed); }
+    // game thread -- atomic, same discipline as the flags).
+    // B1085 (#405): EVERY transition resets the three chat key latches in
+    // both directions. OnEvent() now sets the latches only while the chat is
+    // UNFOCUSED (below the focused gate), and the frame's own open/submit/
+    // cancel calls this right after the press that changed the focus -- so
+    // that press is consumed by the transition and can never replay as an
+    // "open chat" / "run the ESC handler" on the first frame in the new
+    // state. The B998 character-select host's hand-spending of the three
+    // latches (char_select_host.cpp) rides on the same call: its
+    // setChatInputFocused(true) IS the shared reset now, and behaviour is
+    // unchanged (it spends them and re-arms the gate on every frame).
+    void setChatInputFocused(bool focused) {
+        chatInputFocused_.store(focused, std::memory_order_relaxed);
+        enterKeyPressed_ = false;
+        slashKeyPressed_ = false;
+        escapeKeyPressed_ = false;
+    }
     bool isChatInputFocused() const { return chatInputFocused_.load(std::memory_order_relaxed); }
 
 private:
@@ -251,8 +282,9 @@ private:
     // Render thread only: touched solely by getMouseDelta{X,Y}(), whose one
     // consumer is the render-thread mouse-look.
     int lastMouseX_ = 0, lastMouseY_ = 0;
-    std::atomic<bool> leftButtonDown_{false};
-    std::atomic<bool> rightButtonDown_{false};
+    // B1066: replaces the two held flags (leftButtonDown_/rightButtonDown_),
+    // which were set on every press wherever it landed.
+    PressOwnership presses_;
     // SET on the render thread (OnEvent, from Irrlicht input) and consumed
     // on the render thread (IrrlichtRenderer::processFrameInput()).
     // T315 SUPERSEDES T225 HERE: T225 kept the game-thread consumer on the

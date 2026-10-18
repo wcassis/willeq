@@ -62,37 +62,45 @@ it without taking that measurement first.
   loaded the custom font. **Left for Will (per the card): the Pi re-run and
   the `memoryLedgerBudgets.audio` re-ratchet, after B989 lands too.**
 - ~~**B989** (A) → issue #308. Every played WAV is held **twice** as 32-bit
-  float PCM: `AudioManager::bufferCache_` (the `au.sound_buffers` decode,
-  ~2.0–2.4 MB after the B977 tour's combat) and `SfxManager::cache_`
-  (`au.sfx_cache`, `preload()`'s second copy of the same samples), each capped
-  separately at the preset's `soundCache` (8,192 KB on orangepi) — up to
-  16 MiB of duplicated decoded PCM the 1999 client did not carry twice.
-  Measured: b977-audio x86 befallen `au.sound_buffers` 2,322,320 +
-  `au.sfx_cache` 310,640 B at steady_60s (723,600 B at the shutdown and
-  zone_change points; Pi befallen 2,320,376 + 723,456 B at steady_60s,
-  `refactor/B977/audio_ledger_census.tsv` owner rows). **STRUCK (2026-10-11,
-  `task/kb-b989-sfx-cache-dup`, `refactor/B989/README.md`):** the decoded PCM
-  is now held ONCE — `AudioManager::loadSound` decodes into its buffer cache
-  and hands the same `std::shared_ptr<SoundBuffer>` to
-  `SfxManager::preload()`; `SfxManager::cache_` is a shared-reference LRU (it
-  evicts references, never the PCM), the `au.sfx_cache` owner row is gone, and
-  the preset's `soundCache` cap bounds the single cache (T412's LRU now
-  actually enforced). RED/GREEN: `tests/test_sfx_single_pcm_cache` (3 cases:
-  a fresh play grows the `audio` category by the decoded PCM exactly once, a
-  buffer-cached replay grows it ~0 where the pre-fix code grew it by a full
-  second copy — 22,336 B of 21,920 B PCM on the RED commit — and the cap
-  evicts LRU-oldest and bounds resident bytes); `tests/test_sfx_cache_eviction`
-  covers the eviction mechanics; the CI `test` job's audio suite is green
-  (5,757/5,757 at MR head cbdb905b, pipeline 773 — re-measured per push, not
-  quoted). Live
-  ledger leg, same tour/character/eligibility as B977's (lane 3, x86,
-  befallen, rat fight, `refactor/B989/audio_ledger_census.tsv`): steady_60s
-  `audio` **3,872,576** live vs B977's 4,252,448; `au.sound_buffers`
-  2,322,288 (B977: 2,322,320); **`au.sfx_cache` ABSENT** (B977: 310,640) —
-  the 310,640 B of duplicate PCM is gone and the category carries the PCM
-  once. The 16 MiB worst-case bound is structural (one cache, one cap) rather
-  than re-measured live, and the Pi steady-state re-run is deferred to the
-  audio re-ratchet alongside B990's.~~
+  float PCM: `AudioManager::bufferCache_` (the `au.sound_buffers` decode)
+  and `SfxManager::cache_` (`au.sfx_cache`, `preload()`'s second copy of the
+  same samples), each capped separately at the preset's `soundCache` (8,192
+  KB on orangepi) — up to 16 MiB of duplicated decoded PCM the 1999 client
+  did not carry twice. Measured: b977-audio x86 befallen (hermes-ext
+  `/home/user/kb-evidence/b977-audio/x86/befallen/audio/client.log`, outside
+  the repo; the owner rows are committed in
+  `refactor/B989/audio_ledger_census.tsv` — the B977 TSV is a per-zone
+  TOTALS table with no owner columns) `au.sound_buffers` 2,322,320 +
+  `au.sfx_cache` 310,640 B at steady_60s, which is BEFORE the tour's combat
+  (23:03:46 vs `#npctypespawn` 23:03:58); at the shutdown point 723,600 +
+  2,322,320 = 3,045,920 B (Pi befallen 2,320,376 + 723,456 B at steady_60s).
+  **STRUCK (2026-10-11, `task/kb-b989-sfx-cache-dup`,
+  `refactor/B989/README.md`):** the decoded PCM is now held ONCE —
+  `AudioManager::loadSound` decodes into its buffer cache and hands the same
+  `std::shared_ptr<SoundBuffer>` to `SfxManager::preload()`; the `au.sfx_cache`
+  owner row is gone, and the preset's `soundCache` cap bounds the buffer
+  cache. RED/GREEN: `tests/test_sfx_single_pcm_cache` (a fresh play grows the
+  `audio` category by the decoded PCM exactly once, a buffer-cached replay
+  grows it ~0 where the pre-fix code grew it by a full second copy — 22,336 B
+  of 21,920 B PCM on the RED commit — and the cap evicts LRU-oldest and
+  bounds resident bytes); `tests/test_sfx_cache_eviction` covers the eviction
+  mechanics; the CI `test` job's audio suite is green (re-measured per push,
+  not quoted). Live ledger leg: **B977 ran on eqemu lane 1 (172.16.200.99)
+  as a 13-zone sweep** (befallen the 5th zone); **B989 on lane 3
+  (172.16.200.97), befallen only** (x86, same tour/character/eligibility,
+  rat fight, `refactor/B989/audio_ledger_census.tsv`): steady_60s `audio`
+  **3,872,576** live vs B977's 4,252,448; `au.sound_buffers` 2,322,288
+  (B977: 2,322,320); **`au.sfx_cache` ABSENT** (B977: 310,640) — the 310,640 B
+  of duplicate PCM is gone and the category carries the PCM once; at
+  shutdown 3,045,920 vs 2,322,288, a drop of 723,632. **SUPERSEDED (B1015,
+  #336, 2026-10-12):** B989 left TWO filename-keyed LRUs with two caps — the
+  buffer cache could evict a sound the sfx cache still referenced (re-decoded
+  on the next play: two decoded copies resident) and the two LRUs picked
+  different victims, so under the cap case 32,992 B = 11,072 + 21,920 of PCM
+  was live under 21,919; the "one cache, one cap" wording above was false
+  until B1015 deleted `SfxManager::cache_` entirely (one `SoundBufferCache`,
+  one cap, in-use pinning, the inserted entry never evicted). The Pi
+  steady-state re-run is deferred to the audio re-ratchet alongside B990's.~~
 
 - ~~**B852** (A) **Nothing verifies that Kunark and Velious zones load.** The CI
   gate renders three classic zones and nothing else; no test, script or gate
@@ -378,6 +386,11 @@ it without taking that measurement first.
   is not claimed there; gate poses vs B967 Pi frames: 0 px in all 15 (stencil
   drop is pixel-inert on Lima's shared 32-bit word). ARM benchmark now
   published by `publish_arm_build.sh`; runner `scripts/b971/run_gate_poses.sh`.
+  **B1064 (#384):** `/portal` was NOT the only stencil user -- the target
+  outline was a stencil rim and painted the whole inflated model on this
+  surface. It is now an inverted hull that touches no stencil
+  (`target_outline_pass.h`, `refactor/B1064/README.md`); the stencil-off
+  surface stands.
 - ~~**B967** (C) → issue #285. The player light is quantized at large world
   coordinates on BOTH GPUs: the mediump `vWorldPos` varying.~~ **FIXED**
   (`refactor/B967/README.md`, MR !74 **merged into fable `2c7d5be4`
@@ -444,10 +457,30 @@ it without taking that measurement first.
 
 - **B1025** (B, feature) → issue #345. Hotbar slot assignment is a missing
   feature (found by B603, #187; `refactor/B603/README.md` "The two flagged
-  reads"): `HotbarModel::assignSlot/clearSlot` have NO production caller —
-  slots are filled only by `loadFromJson()` at startup and published by
-  `publishAllSlots()` at zone-in; no command, intent or UI control assigns a
-  slot. Oracle (what the official client does) + CI test owed.
+  reads"). Chain status: **H-1** (merged, MR !169) — the per-character paged
+  `HotbarModel`, one window x 10 pages x 10 buttons, per-character persisted;
+  **H-2** (this item's rendering, `refactor/B1025-H2/README.md`) — the stock
+  `EQUI_HotButtonWnd.xml` window drawn and hit-tested: page buttons, 2x5 slot
+  grid, per-kind art (Item = dragitem decal, the rest = name text; a spell
+  icon texture is not in the shipped atlas), close box, `HotbarPageChangedIntent`.
+  The stock client cannot show Hotbars 2-4 (the XML gives them zero size; the
+  H-O oracle measured them invisible even forced on), so there is no geometry
+  for bars 2-4. Chain: **H-3** (merged, MR !198) — the slot-ASSIGNMENT gesture
+  (hold-to-pickup, place, clear, `/hotbutton`), the first production caller of
+  `HotbarModel::assignSlot`; **H-4** (this item's keys, MR !199, in review,
+  `refactor/B1025-H4/README.md`) — the official page keys (Shift+1..0) and
+  window toggle (Alt+H) with their Options Keys rows, addressed through the
+  one `HotbarModel` page; **H-5** (merged, MR !207, `refactor/B1025-H5/README.md`)
+  — the gap-rule test the issue's acceptance requires: `hotbar_lifecycle` (+
+  the `hotbar_isolation_assign` peer) drives the hotbar's whole user path on a
+  lane and asserts only server/chat observables (the buff, the charge
+  decrement, the client's own cast/use/emote lines, the #fish catch, the
+  per-character INI bytes for persistence + isolation). Its lane run PASSED on
+  lane 1 (run 12, 2026-10-16 22:09–22:22 UTC: exit 0 + post-check PASS, logs
+  attached to the task and in `refactor/B1025-H5/README.md`). The H0 partial
+  official-client capture (`refactor/B1025-H0/README.md`) and its "Not
+  captured / not verified" cases remain open; H-4 (MR !199) is in review, so
+  this item closes when it merges.
 - **B988** (A) → issue #307. Will 2026-10-05: "make the nobocache flag opt-in
   (off by default) and fix the stale docs". A DRM client now leaves
   `LIMA_DEBUG` untouched (Lima's BO cache on); `WILLEQ_LIMA_NOBOCACHE=1`
@@ -495,9 +528,22 @@ it without taking that measurement first.
   10298, and a −Y `w1` underlayer, draw entries 158–163, whose near corners
   clip behind the near plane) at a depth near-tie; the depth buffer picks a
   different winner per platform (x86 D16 z-fights per row; x86 D24S8 → +Y;
-  Lima depth=24 → −Y, uniform), so the player light lights the plane on x86-D24S8
-  only. No production fix applied — any fix (per-region depth bias, or upstream
-  WLD data for the double floor) moves goldens and is blocked for Will's bless.
+  Lima depth=24 → −Y, uniform).
+  **FIXED in code (2026-10-14, MR open DRAFT awaiting bless of the goldens):
+  the top-facing region wins a depth tie** — a per-vertex clip-space depth
+  bias of 2 D16 cells in the zone REGION vertex programs, gated by
+  `SMaterial::MaterialTypeParam2` (stamped for region geometry only;
+  `include/client/graphics/zone_depth_tie_break.h` states the rule,
+  `tests/test_zone_depth_tie_break.cpp` pins it GPU-less). Will's ruling
+  covers the finding that the double floor is NOT timorous-specific: the
+  gate's other four zones also carry a −Y underlayer under a +Y top layer,
+  so the fix lights their floors too (qeynos2 f0 134 444 px, iceclad f1
+  124 677 px, … — delta table in `refactor/B976/README.md`); draws/state/
+  poly counts are identical before/after on all five zones, the before run
+  is 0 px vs the blessed goldens on all 15 frames, and 100% of the changed
+  pixels are clean −Y→+Y flips (debug5 mechanism check). The bless scope is
+  therefore all five zones' floor pixels on both platforms (Will's call);
+  the Pi leg of the fix is a follow-up card after the bless.
 
 - **B981** (B) → issue #300. `tests/goldens/manifest.json`'s
   `memory.textureCacheBytesLimit` is 67,108,864 (64 MiB) in all five gate zones;
@@ -1125,6 +1171,20 @@ it without taking that measurement first.
   Open: lane 2's 17.2 MiB of unnamed GEM fails the Pi rig's 10 MiB bound
   and the B962 owner-census shim is armhf-only (an aarch64 build of it is
   the next B item there).
+- **B1060** (B) → issue #380. The Orange Pi Zero (H2+, Mali-400/Lima, 484 MB,
+  Armbian trixie) joined as `PI_LANE=5`, lane 1's sibling (same armhf publish,
+  nollvm prefix, preset and ceilings). Done in the unit: NFS (pinned-port
+  NFSv3), the GL runtime packages, env.sh lane 5 (`env_selftest.sh`,
+  `lock_selftest.sh` PASS on lane 5), and the board's missing display: its DT
+  leaves the display engine disabled, so card0 is render-only Lima and the
+  client's DRM device refused; `pi_hdmi_force_on` loads the stock vkms module on
+  lane 5 (kmsro pairs it with Lima). `lane_smoke.sh` takes the armhf lane:
+  smoke PASS; ledger rows for qeynos2 + the four heavy zones
+  (`docs/reference/orangepizero.md`, `review/B1060/README.md`). Open: the
+  lane's `gpu_buffers` row is about twice lane 1's (qeynos2 fails the 10 MiB
+  unnamed-GEM bound at 10.27 MiB, timorous/iceclad at 35-39 MiB) -- unattributed
+  (vkms scanout path vs kernel 6.18 vs build); needs a same-build lane-1 row and
+  a `--bo-census` run.
 - ~~**B1033** (C) → issue #353.~~ RULED 2026-10-12 (Will, `docs/decisions.md`):
   the aarch64 lanes keep the `orangepi` preset, the same 256 MB bound and
   64 MB target, and get no goldens of their own until a lane runs the gate
@@ -1664,8 +1724,25 @@ it without taking that measurement first.
   23.5 ms of growthplane's frame). The benchmark half (#247) is branch
   `task/B936b-bench-shared-objects` (MR !55); the five memory-coverage
   `placeableObjectsBytes` baselines were BLESSED by Will in chat 2026-09-30
-  ("bless placeableObjectsBytes", `docs/decisions.md`). #247 acceptance 1 is in;
-  acceptance 2 (the census job) remains.
+  ("bless placeableObjectsBytes", `docs/decisions.md`). #247 acceptance 1 is
+  in; acceptance 2 (the census job) is **B929**, closed 2026-10-14.
+- ~~**B929** (A, memory) → issue #247. growthplane's `placeableObjectsBytes`
+  is 28,687,788 B against the 24 MiB budget, and the gate never runs the
+  zone.~~ **DONE 2026-10-14** (branch `task/kb-b929-placed-object-sharing`,
+  `refactor/B929/README.md`): the fix the issue asked for (share placed-object
+  geometry per model) is B936/B936b, already in fable and blessed — growthplane
+  re-measured at 111,348 B (0.4 % of budget), 4,333 placements of 11 distinct
+  meshes. This unit is the net: `scripts/ci/zone_budget_census.py` fails on
+  ANY of the 118 era zones over ANY estimate or ledger budget, run by the
+  blocking gate-stage CI job `zone-budget-census` (4 m 46 s measured; first
+  sweeps the self-heal's LOCAL pack tree — `zone_census_pack_selfheal.sh`
+  hard-links or rebuilds the mandatory packs, because the runner's NFS tree
+  is read-only and its B930/#248 soldunga v1 would FATAL the sweep on an
+  asset, never assert the zone) and by the ctest legs `test_zone_budget_census`,
+  `test_zone_census_pack_selfheal` + `zone_budget_census_smoke` (the
+  synthetic over-budget row must fail the checker; the three smoke zones must
+  be inside every budget). Full 118-zone census GREEN on the current tree.
+  Budgets and goldens untouched.
 - **B938** (A, memory) → issue #256. RESOLVED (MR pending): the per-placement
   `IMeshSceneNode` (~2.2 KB) and the four renderer-parallel vectors are
   replaced by a 168 B `PlacedObjectRecord` read by both draw paths; PVS zones
@@ -2256,6 +2333,12 @@ it without taking that measurement first.
 
   **WILL RULED 2026-09-06:** leave /bug on the report channel. CLOSED as ruled.
 ## P — process and documentation
+
+- **B1048** (P, oracle automation) → issue #368. One-command official-client
+  capture/decode/summary driver and two replay plans are on
+  `task/kb-b1048-oracle-driver`; closes only when both live plans, disconnect
+  code 67, byte-identical restore, released locks, and MR hygiene are proven.
+  Driver contract: `docs/oracle_driver.md`.
 
 - ~~**B024** (P)~~ **CLOSED 2026-09-04 (M00 merge): the structural programme is complete.** Batch K (K00–K16: `eq.h` 2,025 → 899, twelve components + four context services, the transition handle measured down to 83 uses = B038), Batch L (L01–L13: `irrlicht_renderer.h` 1,914 → 1,343, eleven components, residue 151 = B050 closed), Batch G (six of eight oversize methods decomposed and golden-pinned; `createDefaultConfig` ruled out; the variant loader parked as B052), M00 (no allowlist; the 1,500 ceiling enforced tree-wide by ctest). Original text: Component extraction of `class EverQuest` (2,025-line header, 685
   member functions, 178 data members, 37 flat `src/client/eq_*.cpp` TUs) and of
@@ -5289,27 +5372,15 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   +34/+71/+32% (B431) -- so a lamp-shaped term is back on the table for that spot,
   which is what B110 originally proposed and T408 measured away in grey.
 
-- **B326** (B) `src/client/graphics/eq/zone_geometry.cpp` → issue #121
-  `ZoneMeshBuilder::buildTexturedMeshFromUploaded` / `buildCompositeMesh` /
-  `zone_geometry_atlased.cpp` `buildAtlasedMesh` -- **three of the four zone
-  mesh builders have ZERO callers, and T408 wired the baked colours into only
-  the one that is reached.** Census over `src/ include/ tests/ tools/
-  benchmarks/ docker/`: `buildTexturedMesh` is called from
-  `renderer_zone_draw.cpp` (the zone), `renderer_zone_stream.cpp` and
-  `door_manager.cpp` (objects and doors) and `variant_loading.cpp` /
-  `race_model_loader.cpp` (characters, `flipV=true`); the other three are
-  called by nothing outside their own declarations. The atlased builder cannot
-  take the baked flag as things stand anyway -- `AtlasShaderCallback` already
-  uses `SMaterial::MaterialTypeParam` for the atlas page index and
-  `MaterialTypeParam2` for the alpha page, which is the field T408 uses as the
-  flag on the main callback. Closes when the three are deleted, or wired and
-  reached with a test. Found by T408 while looking for "the three mesh
-  builders" the plan named -- the plan named the ENTITY builders
-  (`entity_mesh_build.cpp`, `entity_build_step.cpp`), which must NOT get the
-  zone's baked light: they draw character models, and character WLD meshes
-  carry no colour array at all (T408 measured `colorCount == 0` for every one,
-  which is why the memory baselines moved by exactly one empty vector header
-  per geometry). Prov: T408 Review §5.
+- ~~**B326** (B)~~ **CLOSED by B494+B491** (MR closing #121, 2026-10-14): the three
+  unreached zone mesh builders are gone -- `ZoneMeshBuilder::buildTexturedMeshFromUploaded`
+  and `buildCompositeMesh` (zone_geometry.cpp) and the whole `zone_geometry_atlased.cpp`
+  (`buildAtlasedMesh` + `splitTriangleToUVCells`) -- each confirmed zero-caller by the
+  wave-9 census and re-grepped at the merge head, then deleted with their members. The
+  one reached builder (`buildTexturedMesh`) already carries T408's baked colours; the
+  entity builders it must NOT touch are untouched. The B950 `sizeof(ZoneMeshBuilder)`
+  layout net (B1019's `test_zone_geometry_atlas_layout`) stays green: the guarded atlas
+  members are gone, so both sides of the net agree.
 
 - **B281** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp` / → issue #16
   `SkyRenderer::updateTimeOfDay` -- **fable's night frame gets steadily
@@ -7278,8 +7349,10 @@ client uses every field.
   ignored by the drain) and `SimulationInput::cameraTarget`,
   `EntityVisual::corpseYOffset` (computed per corpse, never applied to the
   node), `ParticleEmitter::spawnRadius_` (seven callers set it; the spawn does
-  not use it), `SpellEffectInstance::spellID`, `RendererEvent::intData`,
-  `SpellActionInfo::level2`. Same class as B296 one layer down: a producer
+  not use it), `SpellEffectInstance::spellID`, `SpellActionInfo::level2`.
+  `RendererEvent::intData` closed by B1025-H4 (the hotbar page keys' first
+  consumer: `FrameComponent::processPlayerInput`'s `HotbarPageChange` arm).
+  Same class as B296 one layer down: a producer
   computes a value for a consumer that never reads it. Closes per field. Found
   by T414 Leg C.
 
@@ -8871,17 +8944,23 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
 
 - **B440** (B) `include/client/graphics/ui/cursor_attachment_layout.h`, → issue #150
   `/mnt/projects/EverQuestP1999/uifiles/default/EQUI_CursorAttachment.xml` --
-  **two of the CursorAttachment screen's three pieces have no fable producer.**
+  **one of the CursorAttachment screen's three pieces has no fable producer**
+  (B1025-H3 struck CA_SpellGem's half, below).
   The oracle's screen is `CA_Anim`, `CA_Anim2` and `CA_SpellGem`, all three at
   the same `<Location>(5,5)</Location>`, so at most one is ever visible; the
   official client shows `CA_Anim` for an item and `CA_SpellGem` for a spell
   being scribed off a scroll. fable's cursor holds an ITEM and nothing else --
   `InventoryManager`'s `cursorQueue_` is a queue of `ItemInstance` -- so T436
   drew `CA_Anim` and left the other two undrawn rather than inventing a state
-  to fill them. Closes when there is a cursor-held SPELL to draw (the scribe
-  path already exists: `ScribeSpellIntent` carries a `sourceSlot`), or when it
-  is established that Titanium never puts one there and the two elements are
-  recorded as deliberately unused. Found by T436.
+  to fill them. **B1025-H3 (2026-10-15, #345) struck the CA_SpellGem half**:
+  the hotbar assignment gesture's hot button (a held gem, ability row,
+  inventory item, or the `/hotbutton` command's social button) draws
+  CA_SpellGem's own box at the mouse (hotbar_assignment.cpp's
+  `renderHotbarCursorAttachment`, an item button reusing T430's dragitem
+  decal) -- its producer, and B440's closure condition ("a cursor-held
+  spell/button to draw") is met. CA_Anim2 (the second item piece) is still
+  undrawn: the item button is one decal, as the oracle's frames (H-O,
+  /home/user/kb-evidence/kb-h0-hotbar-oracle/) show. Found by T436.
 
 - ~~**B441** (C) `src/client/graphics/ui/bank_panel.cpp` (`BW_ChangeButton`), → issue #26
   `include/client/graphics/ui/bank_layout.h` -- **the bank window's Change
@@ -9944,8 +10023,9 @@ fine — the table fails on a stale entry, so it cannot rot.
   `setWeatherLights()`; `FlockController::setDestination()` / `scatter()` /
   `setCollisionDetection()`; `RainOverlay::getSettings()` /
   `SnowOverlay::getSettings()`. Note the overlap with the FIELD census: B339
-  and B346 already own `WeatherEffectsController::targetIntensity_` and
-  `ParticleEmitter::spawnRadius_`, which are the same subsystem's unread
+  and B346 already own `WeatherEffectsController::targetIntensity_` (B339
+  deleted it, 2026-10-11) and `ParticleEmitter::spawnRadius_`, which are the
+  same subsystem's unread
   members. Found by T455.
 
 - **B491** (B, unreached) **The S3D/WLD asset-loader query API: 49 zero-caller → issue #166
@@ -10090,7 +10170,9 @@ fine — the table fails on a stale entry, so it cannot rot.
   `createMode`'s `rendererType` parameter and the `GraphicalRendererType`
   enum stay: `Application::initGameMode` still logs the requested type
   (`src/client/application.cpp:431-432`). Nothing reintroduced; B345's three
-  members were not touched. See `refactor/B501/README.md`.
+  `ConsoleRenderer` members (`m_curEnd` / `m_startTime` / `m_maxEnd`) were
+  deleted with their writes by T506's B345 close (2026-10-11), after the
+  strike. See `refactor/B501/README.md`.
 
 - ~~**B501** (B, unreached) **`common/` utility API with no caller: 12 → issue #176
   zero-caller public functions across 5 headers.**~~
@@ -10625,7 +10707,7 @@ because the Pi had no keyboard or mouse attached (B510).
   B494-group rows and GREEN at 364. B494 (#169) stays open with its other
   groups.~~
 
-- **B534** (B, unreached) **The output-layer camera route is a second, stale → issue #181
+- ~~**B534** (B, unreached) **The output-layer camera route is a second, stale → issue #181
   camera vocabulary.** `output::CameraMode` (`include/client/output/output_renderer.h`)
   is still `Free, Follow, FirstPerson`; `GraphicalMode::processInput()` consumes
   `InputAction::ToggleCameraMode` into `GraphicalMode::cycleCameraMode()`, which
@@ -10633,7 +10715,17 @@ because the Pi had no keyboard or mouse attached (B510).
   `IrrlichtRenderer` does not derive from that interface, and
   `GraphicalRenderer::cycleCameraMode()` / `getCameraModeString()` rotate the
   old three. Nothing a player reaches goes through it. The same shape B043
-  recorded for wireframe/HUD/name tags. Found by T461.
+  recorded for wireframe/HUD/name tags. Found by T461. **STRUCK (2026-10-11,
+  `task/kb-b534-output-camera-route`, `refactor/B534/README.md`):** the whole
+  route deleted -- the enum and both empty virtuals from `IOutputRenderer`,
+  `GraphicalRenderer`'s member/override/getter/string-form (its two bodies were
+  the class's only non-virtual methods; the TU keeps only its namespace),
+  `GraphicalMode::{set,cycle,get}CameraMode` plus its consumeAction arm, and the
+  `InputAction::ToggleCameraMode` enumerator itself (no input handler ever
+  produced it). The live F9 route is untouched: `HotkeyAction`/
+  `RendererAction::ToggleCameraMode` -> `PlayerCameraComponent::cycleCameraMode()`.
+  Net: `tests/test_b534_output_camera_route.cpp` (RED at 4 failed / 2 negative
+  controls on the tip, GREEN at 6/6 after).~~
 
 - ~~**B535**~~ (A) **CLOSED by T464 (2026-09-13).** Contract established: a
   file that loads REPLACES the defaults, which are only the fallback for an
@@ -11110,8 +11202,8 @@ B672–B679 unused.
     `include/client/graphics/gpu_upload_thread.h` and
     `include/client/graphics/work_priority.h` and use nothing from either (pre-existing; the last use in the cache went
     with T326).
-  - `src/client/graphics/texture_atlas.cpp` includes the fmt format header for
-    the deleted async page upload alone.
+  - the texture_atlas.cpp source file (deleted wholesale by B494) includes the
+    fmt format header for the deleted async page upload alone.
   - Enumerators and includes are not in `ZeroCallers` or `WriteOnlyFields`.
     Fix: delete, or decide the enumerator is kept for `WorkPriorityKey`'s
     ordering contract (its test pins the order).
@@ -13477,6 +13569,8 @@ B874-B876 are the hermes pose-oracle ruling (docs/decisions.md 2026-09-23, issue
 T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are class B on GitLab; every gap carries an oracle recipe, a repeatable CI test and parallel legs (docs/issues.md § Feature-gap issues). Filed as records (not started):
 
 - **B888** (B, feature) native character creation: the official two-page screen and progression, home city (no tutorial), post-Velious races/classes excluded. → issue #204
+  - **B888-CC2 (2026-10-15, `task/kb-cc2-charselect-preview`)** the 3D PREVIEW: the select screen stands up the selected character (race/gender/face from the T14 wire -- the server fills them, fable dropped them), the creation screen the sample model of race + gender (+ FacePick picks), Rotate live (default on), via the paperdoll's `CharacterModelView` (own scene manager, RTT, no zone) hosted by `CharPreviewScene`; the model host borrows the entity renderer's already-wired `RaceModelLoader` (the B1029 trap, cited + tested). Oracle leg: lane-1 driver run (`oracle10`, 38 stills + video) -- select model present (Testchar 60 Warrior, Greater Faydark backdrop), creation model present (Human male, pedestal + archway backdrop), FacePick modal; the SELECT SPIN PERIOD was not resolved by the 10 fps capture (model region static 0.0-1.3% across post-toggle stills) -- stated, not blessed. `refactor/B888-CC2/README.md`, `tests/test_char_preview.cpp` (device-free appearance selection + the EDT_NULL model leg: the right race model stands up with no zone; Human vs Dwarf resolve to distinct model codes).
+  - **B888-CC3 (2026-10-17, `task/kb-cc3-charselect-explore`)** the select-screen backdrop + Explore mode. Oracle leg (lane-5, B1048 driver, `oracle-a6`/`oracle-b1`/`oracle-c1`): the backdrop is a client-internal 3D showroom -- the pcap has NO zone-server connection at char-select, and the client's own load log (`oracle-c1/client_dbg.txt`) shows `World initialized: clz` right before `Starting char select.`: the **`clz`** zone, shipped as **`clz.eqg`** (PFS, the same format the zone loader opens for a `.s3d`), base-game-era/in-era (NOT a post-Velious ruling). Explore (the select window's `CSW_Explore_Button`) opens `EXW_ExploreModeWindow`, hides the left list, stands the account's characters; **Enter enters with the LIST-SELECTED character** (oracle-b1: Testcaster, not the login target Testchar); Esc closes; forward (`d`) moves the free camera (diff 45.48). **Implementation leg: LANDED** (run 1042, this MR): the device-free layer (the state machine `explore_screen.{h,cpp}`, the EXW overlay layout from the stock XML `explore_layout.h`, the host wiring -- button live, Enter/Esc routed, list window hidden, overlay drawn -- `tests/test_explore_screen`) and the 3D clz backdrop scene: the showroom stands up in the host's own scene manager (`char_backdrop_scene.{h,cpp}`, 30 models / 157 placements), the account's character stands, the free camera (`exploreCameraVerb`, wired in `char_select_host.cpp`) and the click-to-row raycast (`backdropRowForClick()` -> `backdrop->rowForClick()`; `exploreCameraVerb`/`rowForClick` no longer rowed `EXEMPT_TESTS_GROUPS`), pinned headless by `tests/test_explore_backdrop.cpp`. `refactor/B888-CC3/README.md` (+ `explore.tsv`).
 - **B889** (B, feature) capability-level CI suite: a README-row → oracle → test → CI-lane matrix, nightly live + pi stages. → issue #205
 - **B890** (B, feature) boats/transport. → issue #206
 - **B891** (B, feature) swimming speeds are guesses, drowning and the Air Remaining window are missing. → issue #207
@@ -13589,3 +13683,83 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
   - Evidence: `~/kb-evidence/b945-event-staging/{x86-before,x86-after,pi-before-ej,pi-after-ej}`; full tables and the verdict: `refactor/B945/README.md`.
   - Open: none. Recommend closing #263 as not-a-retention (see the README verdict).
   - **Re-review findings fixed 2026-10-06** (review card t_0d1891b6, CHANGES REQUESTED, doc-only): README steady_60s `game_state` row re-cited to the `point=steady_60s` lines (28,450,392 / 28,457,392, delta +7,000 — the previously cited pair was the `zone_change_before_unload` point); "Not verified" section added; the "Repeatable test" pipeline citation now names pipeline #531 on the code head 428f0ff3 (hygiene/build/test/gate success; build-arm and client-ledger-live manual) instead of the pre-README pipeline #512. The final head's docs-only delta is re-verified by its own pipeline (id recorded on the fix card). MR !85 description now carries `Closes #263`.
+
+## Added 2026-10-13 by task/kb-b1053-options-window (issue #373)
+
+- **B1053** (A, UI) → issue #373. Will's XU4 play test reports that the
+  1280x720 Options window does not show all controls. The XML-backed table
+  audit at the branch's starting head found no control rectangle outside its
+  page/window at 1280x720 or 1024x768. A constrained DRM XU4 capture at
+  1280x720 likewise shows the General page fitting the XML-sized window;
+  the report remains open because the original failing still and affected tab
+  are unknown. See `refactor/B1053/README.md` for the exact audit and the
+  explicit unverified items.
+
+## Added 2026-10-14 by task/B1069-hdmi-audio-rate (issue #389)
+
+- **B1069** (A, audio) → issue #389. No game audio on the XU4's HDMI monitor:
+  `MiniaudioBackend::init()` opened the device at the mixer's 22050 Hz, ALSA
+  ran the Exynos HDMI PCM at 32000 and the monitor drops 32 kHz (Fable's
+  measurements are on the issue). **Fixed on the branch, MR pending:** the
+  device opens at `audio.device_sample_rate` / `--audio-rate` (default 48000,
+  0 = native); the mixer stays at 22050 and `DeviceRateAdapter` resamples once
+  (one linear `ma_resampler`), chosen over rendering the mixer at 48000 by
+  measurement (`refactor/B1069/README.md`, `bench_x86.tsv`); after start one
+  `Audio device: requested=.. configured=.. native=.. format=..` INFO line
+  names what the hardware runs at. Pinned by `tests/test_audio_device_rate.cpp`.
+  - Device acceptance 1 FAILED (XU4, publish de282232): 48000 Hz but
+    S24_LE, silent; speaker-test 48000 S16_LE heard, S24_LE not. The device
+    now asks for `audio.device_format` / `--audio-format` (default s16;
+    f32/s24/s32/native), converted once in the callback; the init line
+    carries `format=` (negotiated) `requested_format=` `client_format=`.
+  - Device acceptance 2 (publish 42ebeabc): audible but "distorted". Measured
+    with the new `WILLEQ_AUDIO_DUMP` tap: miniaudio's linear resampler folded
+    the 44100 - f image in band at f + 3900 Hz (6 kHz tone SINAD 30.8 dB);
+    replaced by `PolyphaseResampler` (windowed sinc, 83-96 dB on the same
+    tones). README section "Device acceptance 2".
+  - Open: Will's device acceptance on the XU4 from the branch's armhf publish;
+    the Orange Pi cost is scaled, not measured, and the live zone-in `audio`
+    ledger row was not taken (the README says why).
+
+## Added 2026-10-15 by task/kb-b1051-panfrost-npc-textures (issue #371)
+
+- **B1051** (A, graphics) → issue #371. Will's XU4 play test reported
+  corrupted NPC textures: multi-buffer characters rendered one flat mottled
+  body under the ETC1 pack (`--eqe1-path`) on BOTH the XU4 (Panfrost/Midgard)
+  and x86 (llvmpipe), while raw RGBA and single-buffer zone ETC1 rendered
+  correctly. Take 1/2 on the XU4 did not reproduce in a classifiable frame;
+  take 3 ruled it a client ETC1 material-path fault; the x86 capability check
+  (`refactor/B1051/STEP_A_x86_capability.md`, probe `mesa-probe/etalib.c`)
+  then cleared the driver on the cheaper side: llvmpipe accepts and decodes
+  ETC1 uploads, so per the ruling the fault is the client's multi-buffer
+  ETC1 path. **Confirmed mechanism (measured on lane 2):** in an
+  EQE1-authoritative run the character S3D's raw per-part bytes are released
+  at parse time, so `ZoneMeshBuilder::getOrLoadTexture()` — the on-demand
+  per-buffer path for multi-buffer characters — had nothing to decode and
+  each buffer fell to the textureless diffuse fallback; the per-part GPU
+  textures sat QUEUED in the `ConstrainedTextureCache`, promoted only by the
+  render thread's upload loop 80-94 ms AFTER the mesh build (run 912c:
+  first race-71 build 11:02:47.871 / Guard_Drath's own .885 vs first qcf
+  upload .965). **Fixed on the branch, MR !173:** `bf2a8968` falls back to
+  `constrainedCache_->getTexture()` (mirroring `buildTexturedMesh()`),
+  `ad7295e1` promotes a queued entry synchronously via `uploadTexture()` —
+  pinned by `tests/test_b1051_mesh_texture_fallback.cpp`. The companion-alpha
+  material gate (`7a6d47ec`) was REFUTED live and reverted at `eaf15dc0`;
+  the WILLEQ_B1051_TRACE net is retained. x86 lane-2 after-verification:
+  Guard_Treitan (race 71, qeynos2) ETC1 == RGBA distinct parts, single-buffer
+  zone ETC1 still correct, per-buffer tex0 objects distinct at draw; evidence
+  `~/kb-evidence/b1051-followup/`. **XU4 device A/B (2026-10-17, merged head
+  4dd9efe0):** the named guards are absent from the live qeynos2 roster, so
+  the leg used Guard_Treitan (spawn 45, ID 5, race 71, same class); the
+  published armhf binary's fix is active (per-part ETC1 uploads 90 ms before
+  the mesh build; 16 distinct per-buffer tex0 bound per frame), yet the ETC1
+  body STILL renders one flat wood-grain surface while the SAME binary's
+  raw RGBA config renders distinct parts — the residual fault is ETC1
+  sampling of distinct per-part buffers on Panfrost/Midgard (the ruling's
+  driver branch; the `etc1_decode_probe` cannot run on the box: no
+  cross-toolchain on the host, compiling there is forbidden, so the Mesa
+  commit/line is open). Evidence `~/kb-evidence/b1051-xu4-after/gt_pull/`.
+  `refactor/B1051/README.md` "The client fix" + "The XU4 device A/B",
+  `docs/reference/odroid_xu4.md`. Open: a `xu4` preset or a Mesa patch —
+  Will's call (direction (2) fallback per the 2026-10-15 01:00Z ruling); MR
+  !173 stays Draft until that ruling, and Will's play session.

@@ -51,8 +51,36 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     # T270: the fixture opens the shipped db as the race source (race codes
     # are db-only now).
     TARGET_COMPILE_DEFINITIONS(test_inventory_model_view PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_inventory_model_view DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1084 (#404): the ONE robe predicate, table-tested over the measured range
+# 10..16 (official-client oracle + the shipped S3D archives; evidence in
+# refactor/B1084/README.md). Pure header test -- no device, no db, no client
+# tree -- so it gates on graphics only.
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(test_robe_texture_range
+        test_robe_texture_range.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_robe_texture_range GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_robe_texture_range DISCOVERY_TIMEOUT 60)
+ENDIF()
+
+# B1084 (#404) entity-prep leg: chest material 10 (the naked-body bug) must
+# select the robe body variant (bodyVariant=1, the {RACE}01 mesh) through the
+# production per-entity entry createAnimatedNodeWithEquipment(). Same
+# EDT_NULL + willeq_core gate as test_inventory_model_view; opens the shipped
+# db and the real client tree and skips without either.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_robe_entity_prep
+        test_robe_entity_prep.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_robe_entity_prep PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_robe_entity_prep GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_robe_entity_prep PRIVATE
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
+    GTEST_DISCOVER_TESTS(test_robe_entity_prep DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T309: the measured first-person draw rule (predicate + the withhold seam).
@@ -63,7 +91,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_first_person_body_draw_rule PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_first_person_body_draw_rule GTest::gtest willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_first_person_body_draw_rule PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_first_person_body_draw_rule DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -75,7 +103,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_first_person_weapon_attachment PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_first_person_weapon_attachment GTest::gtest willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_first_person_weapon_attachment PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_first_person_weapon_attachment DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -86,8 +114,8 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_held_item_attachment PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_held_item_attachment GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_held_item_attachment PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db"
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")"
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_held_item_attachment DISCOVERY_TIMEOUT 120)
 
     # B824 (issue #86): the item -> IT-model lookup is willeq.db-only.
@@ -109,7 +137,8 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 
 # T301 Leg D: the UI-hide toggle, from the paths a user or a capture script
-# reaches (/hideui and the F11 hotkey), plus source pins on the two single-site
+# reaches (/hideui and the F10 hotkey -- F11 at T301's time, moved to the
+# official F10 by B582), plus source pins on the two single-site
 # steps that need a GL device to execute.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_ui_hide_command
@@ -118,7 +147,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_ui_hide_command PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_ui_hide_command GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_ui_hide_command PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_ui_hide_command DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -133,8 +162,24 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_debug_hotkey_arms PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_debug_hotkey_arms GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_debug_hotkey_arms PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_debug_hotkey_arms DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1063 (GitLab #383): F12 and /screenshot share the ONE body
+# (SlashCommandsComponent::runScreenshot). The default-name sanitizer is
+# tested behaviourally; the three route sites (the Receiver's RA::Screenshot
+# queue, FrameComponent's deferred arm, the /screenshot chain arm) are
+# source-pinned, as this suite does for other single-site invariants.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_screenshot_one_body
+        test_screenshot_one_body.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_screenshot_one_body PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_screenshot_one_body GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_screenshot_one_body PRIVATE
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
+    GTEST_DISCOVER_TESTS(test_screenshot_one_body DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # B905 (#225): every default and shipped key binding is unshadowed and reaches
@@ -146,8 +191,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_hotkey_dispatch_census PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_hotkey_dispatch_census GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_hotkey_dispatch_census PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_hotkey_dispatch_census DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1025-H4 (#345): the hotbar window's page and toggle keys -- the shipped
+# table's Shift+1..0 / Alt+H resolve to the right receiver outputs, and
+# the production consumer pushes the page intent / flips the window flag.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_hotbar_key_routing
+        test_hotbar_key_routing.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_hotbar_key_routing PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_hotbar_key_routing GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_hotbar_key_routing PRIVATE
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
+    GTEST_DISCOVER_TESTS(test_hotbar_key_routing DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T343 (B002): the autorun arm in processCommonInput. Behavioural on a
@@ -161,7 +220,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_autorun_arm PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_autorun_arm GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_autorun_arm PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_autorun_arm DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -176,7 +235,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_race_330_loader PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_race_330_loader GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_race_330_loader PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_race_330_loader DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -198,8 +257,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_b733_skeleton_mesh_refs PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_b733_skeleton_mesh_refs GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_b733_skeleton_mesh_refs PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db"
-        EQ_CLIENT_DATA_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_b733_skeleton_mesh_refs DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -215,7 +273,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_chr_cache_lru PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_chr_cache_lru GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_chr_cache_lru PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_chr_cache_lru DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -231,7 +289,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_chr_path_derivation PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_chr_path_derivation GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_chr_path_derivation PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_chr_path_derivation DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -252,7 +310,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_entity_source_unload PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_entity_source_unload GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_entity_source_unload PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_entity_source_unload DISCOVERY_TIMEOUT 120)
 
     ADD_EXECUTABLE(test_variant_loader_candidates
@@ -261,7 +319,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_variant_loader_candidates PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_variant_loader_candidates GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_variant_loader_candidates PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_variant_loader_candidates DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -292,7 +350,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_palette_mask_plumbing PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_palette_mask_plumbing GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_palette_mask_plumbing PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_palette_mask_plumbing DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -310,7 +368,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_race_names PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_race_names GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_race_names PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_race_names DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -381,8 +439,43 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_char_create_screen PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_char_create_screen GTest::gtest_main willeq_core)
-    TARGET_COMPILE_DEFINITIONS(test_char_create_screen PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    TARGET_COMPILE_DEFINITIONS(test_char_create_screen PRIVATE "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_char_create_screen DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1025-H2 (#345): stock Titanium hotbar window, controls and three holders
+# for every slot, checked against EQUI_HotButtonWnd.xml when present.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_hotbar_layout test_hotbar_layout.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_hotbar_layout PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_hotbar_layout GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_hotbar_layout DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1075 (#395): the layout table's required co-open sets -- every set, at
+# every supported resolution, no two members overlap and all are on screen,
+# plus the negative (a colliding table fails) and the 1x10 / 2x5 hotbar
+# orientation from the same table. Headless, header-only layout code.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_ui_layout_coopen test_ui_layout_coopen.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_ui_layout_coopen PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_ui_layout_coopen GTest::gtest_main)
+    TARGET_COMPILE_DEFINITIONS(test_ui_layout_coopen PRIVATE "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
+    GTEST_DISCOVER_TESTS(test_ui_layout_coopen DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1078 (#398): every item-icon decal rect is SQUARE at every supported
+# resolution -- each drawItemIcon() call site, through the same layout
+# functions the render bodies call. The other half of B1078's net:
+# test_item_icon_atlas pins squareIn() itself, this pins that every caller
+# hands it a square cell. Same shape as test_ui_layout_coopen: header-only
+# layout code behind the irrlicht rect type, so it is gated at registration
+# (B1038).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_item_icon_rects test_item_icon_rects.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_item_icon_rects PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_item_icon_rects GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_item_icon_rects DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # B998 (#318): the character-select screen -- layout vs EQUI_CharacterSelect.xml,
@@ -395,8 +488,55 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_character_select PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_character_select GTest::gtest_main willeq_core)
-    TARGET_COMPILE_DEFINITIONS(test_character_select PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    TARGET_COMPILE_DEFINITIONS(test_character_select PRIVATE "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_character_select DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B888-CC2 (#204): the pre-zone 3D preview -- the device-free appearance
+# selection per state (select row's T14 body; creation race+gender+FacePick)
+# and the headless model leg (CharacterModelView on the production
+# RaceModelLoader, EDT_NULL, no zone): the right race model stands up,
+# distinct races resolve to distinct models, the rotation round-trips.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_char_preview
+        test_char_preview.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_char_preview PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_char_preview GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_char_preview PRIVATE
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")"
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
+    GTEST_DISCOVER_TESTS(test_char_preview DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B888-CC3 (#204): the Explore mode -- the device-free state machine
+# (open/esc, click-selection, Enter enters with the list cursor, the free-
+# camera verbs) and the EXW_ExploreModeWindow overlay layout against the stock
+# EQUI_CharacterSelect.xml. Device-free.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_explore_screen
+        test_explore_screen.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_explore_screen PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_explore_screen GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_explore_screen PRIVATE "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
+    GTEST_DISCOVER_TESTS(test_explore_screen DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B888-CC3 (#204): the 3D clz backdrop scene (the "3D slice") -- headless on an
+# EDT_NULL device (the CC-2 headless idiom, no zone): the clz showroom stands
+# up from clz.eqg's members (terrain + 29 .mod, one mesh per distinct model,
+# the free camera), the held `d` camera verb moves the camera (the measured
+# forward), the click projects to the account's row (miss -> -1), the
+# per-row stands round-trip, and the pre-zone memory delta is measured.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_explore_backdrop
+        test_explore_backdrop.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_explore_backdrop PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_explore_backdrop GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_explore_backdrop PRIVATE "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
+    GTEST_DISCOVER_TESTS(test_explore_backdrop DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T434: the Options window -- geometry against EQUI_OptionsWindow.xml, the
@@ -447,6 +587,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_target_ring DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1088 (#408): the loading screen's zone-name lookup -- unknown id -> empty,
+# verbatim name (no "The" stripping), OP_NewZone override, the stored
+# "Entering <name>..." line read at draw time, and the line's pixels through
+# the shared layout (headless GLES2; self-skips without a device).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_zone_display_name
+        test_zone_display_name.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_zone_display_name PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_zone_display_name GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_zone_display_name DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B995 (#315): the Display > Particles sub-pages -- sub-tab switching, the
 # Spell/Env knobs persisted as eqclient.ini floats, and each knob reaching the
 # particle systems (the worker's spawn density, the shared draw rule).
@@ -491,7 +644,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_item_display GTest::gtest_main willeq_core)
     # T429 (board B390): the composer reads its formats out of the shipped db.
     TARGET_COMPILE_DEFINITIONS(test_item_display PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_item_display DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -506,7 +659,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_spell_display GTest::gtest_main willeq_core)
     # T429 (board B390): the composer reads its formats out of the shipped db.
     TARGET_COMPILE_DEFINITIONS(test_spell_display PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_spell_display DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -520,7 +673,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_display_text_from_db PRIVATE ${IRRLICHT_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/third_party)
     TARGET_LINK_LIBRARIES(test_display_text_from_db GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_display_text_from_db PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_display_text_from_db DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -551,7 +704,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_trainer_panel GTest::gtest_main willeq_core)
     # UIGAP-residue: the measured trainer lines are eqstr 12056 / 12930.
     TARGET_COMPILE_DEFINITIONS(test_trainer_panel PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_trainer_panel DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -583,7 +736,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_trade_window GTest::gtest_main willeq_core)
     # UIGAP-residue: the no-drop / banker refusals print eqstr 12921 / 8505.
     TARGET_COMPILE_DEFINITIONS(test_trade_window PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_trade_window DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -636,7 +789,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_bank_change PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_bank_change GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_bank_change PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_bank_change DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -705,7 +858,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_software_cursor_pack_name PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_software_cursor_pack_name GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_software_cursor_pack_name PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_software_cursor_pack_name DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -746,7 +899,10 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         test_b972_stream_buffers.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/texture_generators.cpp
     )
-    TARGET_COMPILE_DEFINITIONS(test_b972_stream_buffers PRIVATE EQT_HAS_GLES2)
+    # B1019: the PRIVATE EQT_HAS_GLES2 copy here was deleted -- the define
+    # flows in globally (ADD_DEFINITIONS at CMakeLists.txt:1027, every
+    # EQT_GLES2 configuration), exactly as the other graphics test targets
+    # already rely on.
     TARGET_INCLUDE_DIRECTORIES(test_b972_stream_buffers PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_b972_stream_buffers GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_b972_stream_buffers DISCOVERY_TIMEOUT 120)
@@ -815,7 +971,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_static_ui_scroll PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_static_ui_scroll GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_static_ui_scroll PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_static_ui_scroll DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -830,6 +986,25 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eqe1_alpha_companion_mip PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_eqe1_alpha_companion_mip GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_eqe1_alpha_companion_mip DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1017 (#338), criteria (d)+(e): the test that REACHES THE STALE-PACK FATAL
+# through the real ConstrainedTextureCache::getOrLoad() miss path (a fork
+# child runs the LOG_FATAL + std::exit(1) site; the parent greps its
+# stdout) and the mixed-case .BMP request that still gets the diagnosis.
+# The pre-B1017 B930 leg (test_eqe1_stale_pack) drives
+# diagnoseStaleEQE1Pack() and _exit(1)s unconditionally -- deleting the
+# diagnosis CALL at the FATAL site left it green (audit finding 7).
+# Links willeq_core (which carries constrained_texture_cache*.cpp +
+# eqe1_loader.cpp, the client's own TU set); no GL device is needed -- the
+# miss path never touches a driver.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_eqe1_real_miss
+        test_eqe1_real_miss.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_eqe1_real_miss PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_eqe1_real_miss GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_eqe1_real_miss DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # B948 (GitLab #266): getGpuTextureMemoryUsage() counts each ETC1 alpha chain
@@ -938,6 +1113,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_skill_reachability DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1025-H3 (GitLab #345): the hotbar assignment gesture's state machine --
+# the hold timer (tickHotbarHold), the deferred-action holder
+# (HotButtonHolder), the pickup clear (stepHotbarGesture), the /hotbutton
+# command's button (applyHotbarAssignPending), the placement displacement,
+# and the end-to-end press loops through the REAL StaticUIInput. Same
+# graphics gate as test_skill_reachability (it drives StaticUIInput); no
+# device, no layout assets -- the slot geometry is hotbar_layout.h's own
+# functions. See refactor/B1025-H3/README.md.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_hotbar_assignment
+        test_hotbar_assignment.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_hotbar_assignment PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_hotbar_assignment GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_hotbar_assignment DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T272: the spellbook popup's click -> MemorizeSpellIntent -> SpellManager
 # route (destination-gem policy, the real StaticUIInput producer, and the
 # eq_bridge.cpp consumer arm whose arguments were swapped). Needs Irrlicht
@@ -947,7 +1139,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_spellbook_memorize
         test_spellbook_memorize.cpp
     )
-    TARGET_COMPILE_DEFINITIONS(test_spellbook_memorize PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    TARGET_COMPILE_DEFINITIONS(test_spellbook_memorize PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_INCLUDE_DIRECTORIES(test_spellbook_memorize PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_spellbook_memorize GTest::gtest willeq_core)
     GTEST_DISCOVER_TESTS(test_spellbook_memorize DISCOVERY_TIMEOUT 120)
@@ -962,7 +1154,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_buff_click_off
         test_buff_click_off.cpp
     )
-    TARGET_COMPILE_DEFINITIONS(test_buff_click_off PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    TARGET_COMPILE_DEFINITIONS(test_buff_click_off PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_INCLUDE_DIRECTORIES(test_buff_click_off PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_buff_click_off GTest::gtest willeq_core)
     GTEST_DISCOVER_TESTS(test_buff_click_off DISCOVERY_TIMEOUT 120)
@@ -993,7 +1185,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         test_ui_sprite_roster.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_ui_sprite_roster PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     TARGET_LINK_LIBRARIES(test_ui_sprite_roster GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_ui_sprite_roster DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -1010,7 +1202,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_entity_model_sharing PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_entity_model_sharing GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_entity_model_sharing PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_entity_model_sharing DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -1039,7 +1231,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_cursor_gesture_completion PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_cursor_gesture_completion GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_cursor_gesture_completion PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_cursor_gesture_completion DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -1055,6 +1247,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_tracking_window PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_tracking_window GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_tracking_window PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_tracking_window DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1066 (GitLab #386): a mouse press is owned by the static UI or the camera,
+# never both -- PressOwnership, the event receiver over real Irrlicht mouse
+# events, and the wiring (mouse-look reads the camera-owned view, the item
+# display the physical hold). No device, no server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_press_ownership
+        test_press_ownership.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_press_ownership PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_press_ownership GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_press_ownership DISCOVERY_TIMEOUT 120)
 ENDIF()

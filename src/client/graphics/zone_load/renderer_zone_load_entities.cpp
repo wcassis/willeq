@@ -371,6 +371,25 @@ void ZoneLoadComponent::loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx) {
     // T06: Replaced inline DDS/BMP decoder with getOrLoad() calls.
     ctx.variantTextureCount = 0;
     {
+        // B1051 (#371): Step 8a *stages* the base race model into
+        // preparedModelData_, but getRaceModelData() below only reads the MAIN
+        // cache (loadedModels_). Promotion to main cache happens after 8c, once
+        // per entity, in the Step 8 loop (see promotePreparedModels() at the
+        // bottom of loadZoneStep8_Entities). So the FIRST in-radius entity of a
+        // race/gender never sees its own staged model and loads 0 variant
+        // textures -- it renders in the base (texture=0) armor instead of the
+        // per-NPC variant its appearance.texture/helm name. Whether a given
+        // entity misses or hits depended purely on whether an EARLIER entity of
+        // the same race/gender had already promoted it: a coin flip on the
+        // spawn-distance ordering. In a full ETC1 run where entity 6 (the first
+        // in-radius QCM guard) was the first of its race/gender, EVERY entity of
+        // that race loaded 0 variant textures (the guard's qcmch0101 etc. armor
+        // series never entered the cache) and rendered flat -- exactly Will's
+        // "the vast majority of NPCs have invalid textures." Promote the staged
+        // model now, before we read it, so the first-of-race entity gets its
+        // variant armor exactly like every later one. The later per-entity
+        // promote at the loop bottom is a no-op once the model is in main cache.
+        ctx.modelLoader->promotePreparedModels();
         auto modelData = ctx.modelLoader->getRaceModelData(ctx.vis->raceId, ctx.vis->gender);
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8c: entity {} ({}) appearance.texture={} helm={} modelData={}",
                   ctx.spawnId, ctx.vis->name, ctx.vis->appearance.texture, ctx.vis->appearance.helm, (bool)modelData);
@@ -382,7 +401,8 @@ void ZoneLoadComponent::loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx) {
 
             std::set<std::string> loadedNames;
             auto loadVariantTexture = [&](const std::string& texName, const std::shared_ptr<TextureInfo>& texInfo) {
-                if (!texInfo || texInfo->data.empty()) return;
+                if (!texInfo || (texInfo->data.empty() &&
+                    !ctx_.constrainedTextureCache->hasEQE1Loaders())) return;
                 std::string lowerName = texName;
                 std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                                [](unsigned char c) { return std::tolower(c); });
@@ -397,9 +417,10 @@ void ZoneLoadComponent::loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx) {
 
             // Build variant prefixes
             std::vector<std::string> variantPrefixes;
-            if (ctx.vis->appearance.texture >= 10) {
+            if (isRobeTexture(ctx.vis->appearance.texture)) {
+                // Robe materials 10..16 (isRobeTexture) use the "clk" prefix
                 char buf[32];
-                snprintf(buf, sizeof(buf), "clk%02d", ctx.vis->appearance.texture - 10);
+                snprintf(buf, sizeof(buf), "clk%02d", getRobeClkTextureNumber(ctx.vis->appearance.texture));
                 variantPrefixes.push_back(buf);
             } else if (ctx.vis->appearance.texture > 0) {
                 char buf[32];

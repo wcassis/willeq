@@ -194,6 +194,17 @@ void AudioMixer::freeChannel(int handle) {
     waitForRenderQuiescent();
 }
 
+void AudioMixer::stopAll() {
+    // Deactivate every active channel, THEN wait for the render thread to
+    // leave render() (the same T248 handshake freeChannel() does, once).
+    // On return nothing in the audio thread still reads any channel's
+    // samples, so the caller may free a SoundBuffer a channel pointed at.
+    for (auto& ch : channels_) {
+        ch.active.store(false);
+    }
+    waitForRenderQuiescent();
+}
+
 bool AudioMixer::waitForRenderQuiescent() {
     if (renderBarrier_.waitQuiescent()) {
         return true;

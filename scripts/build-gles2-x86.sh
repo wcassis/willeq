@@ -39,6 +39,22 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PRISTINE_IRRLICHT="/mnt/projects/irrlicht-1.8.5"
 IRRLICHT_BUILD_DIR="$PROJECT_DIR/third_party/irrlicht-gles2-x86"
 JOBS="${JOBS:-24}"
+# B1046: hermes kanban workers run in a transient systemd scope with MemoryMax=4 GiB
+# (hermes tools/process_registry.py, hard cap). 24 compilers there = cc1plus OOM-killed
+# (2026-10-13, worker run 631). Clamp to the enclosing cgroup's memory.max at 1 GiB per job.
+cg_mem_max() {
+  local rel; rel="$(sed -n 's/^0:://p' /proc/self/cgroup 2>/dev/null)"
+  [ -n "$rel" ] && cat "/sys/fs/cgroup$rel/memory.max" 2>/dev/null
+}
+CG_MAX="$(cg_mem_max)"
+if [ -n "$CG_MAX" ] && [ "$CG_MAX" != "max" ]; then
+  CG_JOBS=$(( CG_MAX / (1024 * 1024 * 1024) ))
+  [ "$CG_JOBS" -lt 1 ] && CG_JOBS=1
+  if [ "$JOBS" -gt "$CG_JOBS" ]; then
+    echo "B1046: cgroup memory.max=$CG_MAX bytes -> clamping JOBS $JOBS -> $CG_JOBS"
+    JOBS=$CG_JOBS
+  fi
+fi
 
 IRRLICHT_ONLY=0
 T122_TEXPROBE=0

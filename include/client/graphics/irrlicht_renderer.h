@@ -36,7 +36,6 @@
 #include "client/graphics/tree_identifier.h"
 #include "client/graphics/weather_system.h"
 #include "client/graphics/zone_shader.h"
-#include "client/graphics/texture_atlas.h"
 #include "client/graphics/eqe1_loader.h"
 #include "client/graphics/eqe1_texture_index.h"
 #include "client/graphics/portal_system.h"
@@ -342,7 +341,9 @@ public:
     // L05: CameraMode lives at namespace scope (renderer_types.h); this alias
     // keeps IrrlichtRenderer::CameraMode::Follow resolving. Why the enum
     // moved, why there is no cycleCameraMode() or getCameraTransform() here:
-    // player_camera_component.h (T448).
+    // player_camera_component.h (T448). (The output-layer CameraMode that a
+    // stale comment used to point at alongside this one -- eqt::output::
+    // CameraMode in output_renderer.h -- is gone: B534.)
     using CameraMode = EQT::Graphics::CameraMode;
     void setCameraMode(CameraMode mode) { playerCamera_->setCameraMode(mode); }
     // T464 (B532): application_zone_loading.cpp (both loaders, step 7).
@@ -440,6 +441,11 @@ public:
     // Get Irrlicht device/driver/GUI (for loading thread GL context transfer)
     irr::IrrlichtDevice* getDevice() { return device_; }
     irr::video::IVideoDriver* getDriver() { return driver_; }
+    // B888-CC2 (#204): the pre-zone preview host builds a CharacterModelView
+    // (which creates its OWN scene manager off this one, like the paperdoll),
+    // so it needs the scene manager the same way OverlaysComponent gets it
+    // (ctx_.smgr). Render thread only.
+    irr::scene::ISceneManager* getSceneManager() { return smgr_; }
 
     // L01 (Batch L): the shared-state bundle the extracted renderer
     // components bind by reference. See renderer_context.h.

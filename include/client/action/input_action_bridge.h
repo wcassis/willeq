@@ -11,6 +11,9 @@ namespace eqt {
 namespace state {
 class GameState;
 }
+namespace bridge {
+class GameStateBridge;
+}
 
 // T174: the standalone hotbar data model (client/hotbar/hotbar_model.h). The
 // bridge only reads it, so a forward declaration and a pointer member keep the
@@ -81,11 +84,24 @@ public:
     void setConsoleCommandSource(input::IInputHandler* source) { m_consoleCommandSource = source; }
 
     /**
+     * B1063 (#383): the event bridge to the render thread. The F12 hotkey's
+     * InputAction::Screenshot arrives here as a discrete action, and this
+     * bridge is how it reaches the renderer: a RendererCommand event with
+     * the exact string the /screenshot arm of the renderer command chain
+     * consumes. Same event, same consumer -- the hotkey and the slash
+     * command are ONE route, and a run with no renderer (headless) has no
+     * bridge, so the action is simply not pushed, like every other
+     * renderer command.
+     * @param bridge the run's bridge (may be nullptr; the action is then
+     *               not forwarded)
+     */
+    void setBridge(bridge::GameStateBridge* bridge) { m_bridge = bridge; }
+
+    /**
      * T174: give the bridge read access to the one hotbar model the rest of
      * the client uses (owned by EverQuest, see EverQuest::GetHotbarModel()).
-     * Without it, processHotbarRequests() cannot tell a keyboard hotbar press
-     * apart by content type and falls back to the legacy "every slot is a
-     * spell gem" behavior. Injected by setter to match the other collaborators
+     * Without it, processHotbarRequests() has no slot to activate.
+     * Injected by setter to match the other collaborators
      * (input handler, command processor, console source) rather than the
      * constructor, since the model is created after the bridge.
      * @param model Hotbar model (may be nullptr; the bridge only reads it)
@@ -139,6 +155,7 @@ private:
     input::IInputHandler* m_consoleCommandSource = nullptr;  // T29
     UnifiedCommandDispatcher m_unifiedDispatcher;             // T29
     const HotbarModel* m_hotbarModel = nullptr;              // T174
+    bridge::GameStateBridge* m_bridge = nullptr;             // B1063: Screenshot forwarding
 
     bool m_enabled = true;
 

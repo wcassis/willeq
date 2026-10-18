@@ -231,8 +231,13 @@ COPY docker/irrlicht-drm/COGLES2MaterialRenderer.h /tmp/irrlicht-drm/COGLES2Mate
 COPY docker/irrlicht-drm/COGLES2MaterialRenderer.cpp /tmp/irrlicht-drm/COGLES2MaterialRenderer.cpp
 COPY docker/irrlicht-drm/gl_call_counters.h /tmp/irrlicht-drm/gl_call_counters.h
 COPY docker/irrlicht-drm/gpu_sync_probe.h /tmp/irrlicht-drm/gpu_sync_probe.h
+COPY docker/irrlicht-drm/drm_key_translation.h /tmp/irrlicht-drm/drm_key_translation.h
+COPY docker/irrlicht-drm/drm_flip_tracker.h /tmp/irrlicht-drm/drm_flip_tracker.h
+COPY docker/irrlicht-drm/scanout_buffer_tally.h /tmp/irrlicht-drm/scanout_buffer_tally.h
 COPY docker/irrlicht-drm/t122_texprobe.h /tmp/irrlicht-drm/t122_texprobe.h
 COPY docker/irrlicht-drm/drm_mode_select.h /tmp/irrlicht-drm/drm_mode_select.h
+COPY docker/irrlicht-drm/drm_card_select.h /tmp/irrlicht-drm/drm_card_select.h
+COPY docker/irrlicht-drm/gbm_config_select.h /tmp/irrlicht-drm/gbm_config_select.h
 COPY docker/irrlicht-drm-patch.py /tmp/irrlicht-drm-patch.py
 RUN if [ "$ENABLE_GRAPHICS" = "ON" ]; then \
         python3 -c "import zipfile; zipfile.ZipFile('/tmp/vendor/irrlicht-1.8.5.zip').extractall()" && \
@@ -250,8 +255,13 @@ RUN if [ "$ENABLE_GRAPHICS" = "ON" ]; then \
         cp /tmp/irrlicht-drm/COGLES2MaterialRenderer.cpp irrlicht-1.8.5/source/Irrlicht/COGLES2MaterialRenderer.cpp && \
         cp /tmp/irrlicht-drm/gl_call_counters.h irrlicht-1.8.5/source/Irrlicht/gl_call_counters.h && \
         cp /tmp/irrlicht-drm/gpu_sync_probe.h irrlicht-1.8.5/source/Irrlicht/gpu_sync_probe.h && \
+        cp /tmp/irrlicht-drm/drm_key_translation.h irrlicht-1.8.5/source/Irrlicht/drm_key_translation.h && \
+        cp /tmp/irrlicht-drm/drm_flip_tracker.h irrlicht-1.8.5/source/Irrlicht/drm_flip_tracker.h && \
+        cp /tmp/irrlicht-drm/scanout_buffer_tally.h irrlicht-1.8.5/source/Irrlicht/scanout_buffer_tally.h && \
         cp /tmp/irrlicht-drm/t122_texprobe.h irrlicht-1.8.5/source/Irrlicht/t122_texprobe.h && \
         cp /tmp/irrlicht-drm/drm_mode_select.h irrlicht-1.8.5/source/Irrlicht/drm_mode_select.h && \
+        cp /tmp/irrlicht-drm/drm_card_select.h irrlicht-1.8.5/source/Irrlicht/drm_card_select.h && \
+        cp /tmp/irrlicht-drm/gbm_config_select.h irrlicht-1.8.5/source/Irrlicht/gbm_config_select.h && \
         python3 /tmp/irrlicht-drm-patch.py irrlicht-1.8.5 && \
         if [ "$ENABLE_GLES2" = "ON" ]; then \
             sed -i 's|^#define _IRR_COMPILE_WITH_OPENGL_|//#define _IRR_COMPILE_WITH_OPENGL_|' irrlicht-1.8.5/include/IrrCompileConfig.h; \
@@ -364,6 +374,12 @@ ARG ENABLE_GLES2=ON
 
 COPY --from=deps /opt/noble-sysroot /opt/noble-sysroot
 
+# B1087: ccache for the willeq compile, installed in this stage only so the sysroot/deps
+# layers keep their cache. It is used only when the host script mounts a cache and sets
+# CCACHE_DIR (scripts/build-arm-noble.sh, ARM_CCACHE_DIR); a bare `docker run` builds without.
+RUN apt-get update && apt-get install -y --no-install-recommends ccache \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV ARM_SYSROOT=/opt/noble-sysroot
 
 # No glibc .so replacement needed (same glibc on both sides)
@@ -372,8 +388,11 @@ ENV ARM_SYSROOT=/opt/noble-sysroot
 WORKDIR /build
 
 ENTRYPOINT ["/bin/bash", "-c", "\
-    cmake /src \
+    if [ -n \"${CCACHE_DIR:-}\" ]; then rm -f \"${CCACHE_STATSLOG:-/nonexistent}\"; fi \
+    && cmake /src \
         -DCMAKE_TOOLCHAIN_FILE=/src/cmake/toolchains/aarch64-linux-gnu.cmake \
+        -DCMAKE_C_COMPILER_LAUNCHER=${CCACHE_DIR:+ccache} \
+        -DCMAKE_CXX_COMPILER_LAUNCHER=${CCACHE_DIR:+ccache} \
         -DARM_SYSROOT=${ARM_SYSROOT} \
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         -DCMAKE_CXX_FLAGS_RELWITHDEBINFO='-O2 -g -DNDEBUG -static-libstdc++' \
@@ -412,4 +431,5 @@ ENTRYPOINT ["/bin/bash", "-c", "\
     && echo 'Skipping strip — debug symbols retained for GDB' \
     && mkdir -p /output && cp bin/willeq bin/model_viewer bin/gpu_texture_formats bin/gles2_etc1_benchmark bin/egl_image_sharing_test bin/test_gl_points bin/gles2_derivatives_test bin/gles2_npot_test bin/gles2_shader_perpixel_benchmark bin/gles2_program_switch_benchmark bin/gles2_fog_volume_benchmark bin/gles2_fog_visual_compare bin/gles2_icosphere_anim_benchmark bin/gles2_texture_read_benchmark bin/gles2_zone_benchmark bin/gles2_shader_diagnostic bin/gles2_composite_audit bin/ui_inventory_capture bin/gles2_alpha_test_probe bin/gles2_player_light_probe bin/impostor_pixel_compare bin/nametag_drawcost /output/ \
     && echo '=== Build complete ===' \
+    && if [ -n \"${CCACHE_DIR:-}\" ]; then echo '=== ccache (this build) ==='; ccache --show-log-stats || true; echo '=== ccache (cache totals) ==='; ccache -s || true; fi \
 "]

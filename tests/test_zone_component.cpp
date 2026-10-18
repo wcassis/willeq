@@ -59,13 +59,14 @@ TEST_F(ZoneComponentTest, GmModeStartsFalseAndItsAccessorMoved) {
 }
 
 // The zoning-enabled toggle (Ctrl+Z / the /zoning command) moved whole:
-// member, setter and getter.
+// member, setter and getter. B1068 (#388, Will 2026-10-15): zoning is ON by
+// default -- the official client zones at every line.
 TEST_F(ZoneComponentTest, ZoningEnabledRoundTripsThroughTheComponent) {
+    EXPECT_TRUE(eq.Zone().IsZoningEnabled()) << "zoning is on by default (B1068)";
+    eq.Zone().SetZoningEnabled(false);
     EXPECT_FALSE(eq.Zone().IsZoningEnabled());
     eq.Zone().SetZoningEnabled(true);
     EXPECT_TRUE(eq.Zone().IsZoningEnabled());
-    eq.Zone().SetZoningEnabled(false);
-    EXPECT_FALSE(eq.Zone().IsZoningEnabled());
 }
 
 // T322: the zone-out handshake flags and their test seams moved together.
@@ -123,6 +124,34 @@ TEST_F(ZoneComponentTest, PathSettersMovedWithTheirMembers) {
 TEST_F(ZoneComponentTest, TheReplayCounterAndLogoutSeamStayedOnEverQuest) {
     EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 0u);
     EXPECT_FALSE(eq.Test_IsPendingLogoutDisconnect());
+}
+
+// B1080 (#400): the zone-OUT teardown runs the zone audio silence.
+//
+// The WIRING half, over the real teardown path. A fresh EverQuest's CleanupZone()
+// is drivable headless through the T322 seam (test_zone_out_handshake.cpp does
+// exactly this) and, with the audio managers still null (a headless build
+// never runs InitializeAudio, which lives in the graphics init), it must still
+// increment the silence count: the silence path executed, the null managers
+// are guarded, and the scenario lane can count teardowns without an audio
+// system. The AUDIO EFFECT of the silence -- emitters cleared, looped SFX
+// channels freed, music stopped -- is pinned by
+// test_zone_sound_emitters.cpp's ZoneAudioSilenceForZoneOutTest over the real
+// qeynos2 loops and music.
+TEST_F(ZoneComponentTest, ZoneOutTeardownRunsTheAudioSilence) {
+    EXPECT_EQ(eq.Zone().ZoneAudioSilenceCount(), 0) << "a fresh client has run no teardown";
+
+    // What every zone-OUT path funnels into: AbandonZoneConnect (the B1072
+    // give-up), the zone-out handshake, a logout, the graceful zone-out --
+    // all reach DisconnectFromZone() -> CleanupZone().
+    eq.Zone().Test_DisconnectFromZoneForSeam();
+    EXPECT_EQ(eq.Zone().ZoneAudioSilenceCount(), 1)
+        << "CleanupZone() must run the zone audio silence";
+
+    // A second teardown counts as a second silence (monotonic; a /camp then a
+    // give-up in one run is two teardowns, not one).
+    eq.Zone().Test_DisconnectFromZoneForSeam();
+    EXPECT_EQ(eq.Zone().ZoneAudioSilenceCount(), 2);
 }
 
 }  // namespace

@@ -48,26 +48,32 @@ public:
 // re-derived from UILayout's own formulas (which would make the test
 // tautological against a regression in those formulas).
 //
-//   hotbar:      {222, 556, 578, 588}   (10 slots, 32px + 4px margin)
-//   spellGems:   {764, 268, 796, 552}   (8 gems, 32px + 4px margin)
-//   centerPopup: {200, 125, 600, 475}   (400x350, screen-centered)
+//   hotbar:         {308, 486, 756, 570}   (B1075: the 1x10 bar, bottom-centre,
+//                                           pushed right of the chat at 800 wide)
+//   spellGems:      {748, 192, 796, 482}   (B1077: the oracle's 48x290
+//                                           CastSpellWnd, right-aligned,
+//                                           ending at the hotbar's top)
+//   inventoryPopup: {400, 65, 800, 415}    (B1075: 400x350, the layout table's
+//                                           PairRight anchor; at 800 wide the
+//                                           pair fills the screen edge to edge)
 //
 // Inventory popup (T57 — EQ-authentic body layout, single shared source
 // InventoryLayout::slotRect() in include/client/graphics/ui/inventory_layout.h):
 // two 8-slot columns flanking an empty center, a 6-slot weapon row below
 // both columns, and the 8-slot general row below that. Global slot index
 // 0-21 is the equipment slot id (eqt::inventory::EquipmentSlot); 22-29 is
-// EQUIP_SLOTS + general index. Full slot-to-rect table (popupX=200,
-// popupY=125) is in refactor/T57_inventory_paperdoll_layout.md's Review —
+// EQUIP_SLOTS + general index. Full slot-to-rect table (at the pre-B1075
+// popupX=200, popupY=125) is in refactor/T57_inventory_paperdoll_layout.md's
+// Review; B1075 moved the popup to (400,65), i.e. every rect +200,-60 —
 // spot values used by name below:
-//   SLOT_EAR1(1):   {208,145,240,177}   (left col, row 0 — first slot)
-//   SLOT_BACK(8):   {208,369,240,401}   (left col, row 7 — last slot)
-//   SLOT_RANGE(11): {560,209,592,241}   (right col, row 2)
-//   SLOT_PRIMARY(13): {299,403,331,435} (weapon row, col 0)
-//   SLOT_WAIST(20): {401,403,433,435}   (weapon row — unreachable before T57)
-//   SLOT_AMMO(21):  {435,403,467,435}   (weapon row — unreachable before T57)
-//   General[0](22): {265,441,297,473}   (general row — unreachable before T57)
-//   General[7](29): {503,441,535,473}
+//   SLOT_EAR1(1):   {408,85,440,117}    (left col, row 0 — first slot)
+//   SLOT_BACK(8):   {408,309,440,341}   (left col, row 7 — last slot)
+//   SLOT_RANGE(11): {760,149,792,181}   (right col, row 2)
+//   SLOT_PRIMARY(13): {499,343,531,375} (weapon row, col 0)
+//   SLOT_WAIST(20): {601,343,633,375}   (weapon row — unreachable before T57)
+//   SLOT_AMMO(21):  {635,343,667,375}   (weapon row — unreachable before T57)
+//   General[0](22): {465,381,497,413}   (general row — unreachable before T57)
+//   General[7](29): {703,381,735,413}
 class StaticUIInputTest : public ::testing::Test {
 protected:
     UILayout layout;
@@ -90,34 +96,37 @@ protected:
 // --- Hotbar ---
 
 TEST_F(StaticUIInputTest, HotbarFirstSlotHoverSetsIndexZero) {
-    bool consumed = input.processInput(222, 570, false, layout, hotbar, gems,
+    // B1075: the 1x10 bar at 800x600 is {308,486,756,570} -- bottom-centre,
+    // pushed right of the chat (300 wide + margins), its top at the stock
+    // client's screenHeight - 30 - window height; slot 0 is the leftmost
+    // 40x40 cell (310,506,350,546), center (330, 526).
+    bool consumed = input.processInput(330, 526, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(hotbar.hoveredSlot, 0);
 }
 
 TEST_F(StaticUIInputTest, HotbarLastSlotHoverSetsIndexNine) {
-    // Slot 9: sx = 222 + 9*36 = 546, occupies x in [546, 578).
-    bool consumed = input.processInput(577, 570, false, layout, hotbar, gems,
+    // Slot 9: the rightmost cell (706,506,746,546), center (726, 526).
+    bool consumed = input.processInput(726, 526, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(hotbar.hoveredSlot, 9);
 }
 
-TEST_F(StaticUIInputTest, HotbarPaddingGapClearsHoverAndDoesNotConsume) {
-    // Slot 0 ends at x=254 (222+32), slot 1 starts at x=258 (222+36).
-    // x=256 falls in the 4px padding gap between them.
-    bool consumed = input.processInput(256, 570, false, layout, hotbar, gems,
+TEST_F(StaticUIInputTest, HotbarColumnGapClearsHoverAndDoesNotConsume) {
+    // Slot 0 ends at x=350, slot 1 starts at x=354. x=352 is in the 4px gap.
+    bool consumed = input.processInput(352, 526, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_EQ(hotbar.hoveredSlot, -1);
-    // Unlike the popup panels below, the hotbar/gem row only consumes the
-    // point when a cell is actually hit — a gap-hover with nothing else
-    // under the cursor passes through to the 3D scene.
-    EXPECT_FALSE(consumed);
+    // The window consumes the point (it is over the frame), so the click does
+    // not fall through to the 3D scene, but no control is hit.
+    EXPECT_TRUE(consumed);
 }
 
-TEST_F(StaticUIInputTest, HotbarOutsideVerticalRangeClearsHover) {
-    bool consumed = input.processInput(222, 540, false, layout, hotbar, gems,
+TEST_F(StaticUIInputTest, HotbarOutsideWindowClearsHover) {
+    // The window starts at y=486; y=476 is above it.
+    bool consumed = input.processInput(330, 476, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_EQ(hotbar.hoveredSlot, -1);
     EXPECT_FALSE(consumed);
@@ -134,7 +143,7 @@ TEST_F(StaticUIInputTest, HotbarClickPushesActivateIntentWithSlotIndex) {
     hotbar.slots[0].type = eqt::HotbarSlotType::Spell;
     hotbar.slots[0].id = 278;
 
-    bool consumed = input.processInput(222, 570, /*leftClicked=*/true, layout,
+    bool consumed = input.processInput(330, 526, /*leftClicked=*/true, layout,
                                         hotbar, gems, inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
 
@@ -153,7 +162,7 @@ TEST_F(StaticUIInputTest, HotbarClickOnEmptySlotPushesNothing) {
     TestBridge bridge;
     input.init(&bridge);
 
-    bool consumed = input.processInput(222, 570, /*leftClicked=*/true, layout,
+    bool consumed = input.processInput(330, 526, /*leftClicked=*/true, layout,
                                         hotbar, gems, inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(hotbar.hoveredSlot, 0);
@@ -166,24 +175,97 @@ TEST_F(StaticUIInputTest, HotbarClickWithoutInitDoesNotCrash) {
     // both extant click sites (hotbar here, spell gem below) already guard
     // with `if (leftClicked && bridge_)` — this pins that guard holds.
     EXPECT_NO_FATAL_FAILURE({
-        input.processInput(222, 570, /*leftClicked=*/true, layout, hotbar, gems,
+        input.processInput(330, 526, /*leftClicked=*/true, layout, hotbar, gems,
                             inventory, spellbook, skills, buffs, loot);
     });
     EXPECT_EQ(hotbar.hoveredSlot, 0);
 }
 
+// --- B1025-H2: the page buttons and the close box ---
+
+TEST_F(StaticUIInputTest, HotbarPageRightPushesNextPageIntent) {
+    // The page-right button (366,489,388,501), center (377, 495).
+    TestBridge bridge;
+    input.init(&bridge);
+    hotbar.currentPage = 3;
+    bool consumed = input.processInput(377, 495, /*leftClicked=*/true, layout,
+                                        hotbar, gems, inventory, spellbook, skills, buffs, loot);
+    EXPECT_TRUE(consumed);
+    auto intents = bridge.drainIntents();
+    ASSERT_EQ(intents.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<eqt::events::HotbarPageChangedIntent>(intents[0]));
+    EXPECT_EQ(std::get<eqt::events::HotbarPageChangedIntent>(intents[0]).page, 4);
+}
+
+TEST_F(StaticUIInputTest, HotbarPageLeftClampsAtZero) {
+    // On page zero the left button pushes nothing (no page -1).
+    TestBridge bridge;
+    input.init(&bridge);
+    hotbar.currentPage = 0;
+    bool consumed = input.processInput(327, 495, /*leftClicked=*/true, layout,
+                                        hotbar, gems, inventory, spellbook, skills, buffs, loot);
+    EXPECT_TRUE(consumed);
+    EXPECT_TRUE(bridge.drainIntents().empty());
+}
+
+TEST_F(StaticUIInputTest, HotbarPageLeftPushesPreviousPageIntent) {
+    TestBridge bridge;
+    input.init(&bridge);
+    hotbar.currentPage = 5;
+    input.processInput(327, 495, /*leftClicked=*/true, layout,
+                        hotbar, gems, inventory, spellbook, skills, buffs, loot);
+    auto intents = bridge.drainIntents();
+    ASSERT_EQ(intents.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<eqt::events::HotbarPageChangedIntent>(intents[0]));
+    EXPECT_EQ(std::get<eqt::events::HotbarPageChangedIntent>(intents[0]).page, 4);
+}
+
+TEST_F(StaticUIInputTest, HotbarCloseBoxClosesWindow) {
+    // The close box (744,486,756,498), center (750, 492).
+    TestBridge bridge;
+    input.init(&bridge);
+    ASSERT_TRUE(hotbar.isOpen);
+    bool consumed = input.processInput(750, 492, /*leftClicked=*/true, layout,
+                                        hotbar, gems, inventory, spellbook, skills, buffs, loot);
+    EXPECT_TRUE(consumed);
+    EXPECT_FALSE(hotbar.isOpen);
+    EXPECT_TRUE(bridge.drainIntents().empty());
+    // A closed window hits nothing: the same point no longer consumes.
+    bool again = input.processInput(330, 526, false, layout, hotbar, gems,
+                                     inventory, spellbook, skills, buffs, loot);
+    EXPECT_FALSE(again);
+    EXPECT_EQ(hotbar.hoveredSlot, -1);
+}
+
+TEST_F(StaticUIInputTest, HotbarCloseHoverFlagsBoxOnly) {
+    TestBridge bridge;
+    input.init(&bridge);
+    // Hovering the close box flags it and consumes the point...
+    EXPECT_TRUE(input.processInput(750, 492, false, layout, hotbar, gems,
+                                   inventory, spellbook, skills, buffs, loot));
+    EXPECT_TRUE(hotbar.closeHovered);
+    // ...and moving onto a slot clears it (the slot row is checked first).
+    input.processInput(330, 526, false, layout, hotbar, gems,
+                       inventory, spellbook, skills, buffs, loot);
+    EXPECT_FALSE(hotbar.closeHovered);
+}
+
 // --- Spell gems ---
 
 TEST_F(StaticUIInputTest, SpellGemFirstHoverSetsIndexZero) {
-    bool consumed = input.processInput(770, 270, false, layout, hotbar, gems,
+    // B1077: the gem window is the oracle's 48x290 (spell_gem_layout.h),
+    // right-aligned at {748, 192, 796, 482} at 800x600, so gem 0's cell
+    // (36x28 at the window's (3, 10)) occupies x [751, 787), y [202, 230).
+    bool consumed = input.processInput(770, 216, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(gems.hoveredGem, 0);
 }
 
 TEST_F(StaticUIInputTest, SpellGemLastHoverSetsIndexSeven) {
-    // Gem 7: gy = 268 + 7*36 = 520, occupies y in [520, 552).
-    bool consumed = input.processInput(770, 530, false, layout, hotbar, gems,
+    // Gem 7: the cell at the window's (3, 10+7*30) = y in [422, 450) at
+    // 800x600.
+    bool consumed = input.processInput(770, 436, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(gems.hoveredGem, 7);
@@ -193,7 +275,7 @@ TEST_F(StaticUIInputTest, SpellGemClickPushesCastSpellIntent) {
     TestBridge bridge;
     input.init(&bridge);
 
-    input.processInput(770, 270, /*leftClicked=*/true, layout, hotbar, gems,
+    input.processInput(770, 216, /*leftClicked=*/true, layout, hotbar, gems,
                         inventory, spellbook, skills, buffs, loot);
 
     auto intents = bridge.drainIntents();
@@ -214,21 +296,24 @@ TEST_F(StaticUIInputTest, SpellGemClickPushesCastSpellIntent) {
 // exhaustive over all 30 slots) as well as through processInput().
 
 TEST_F(StaticUIInputTest, InventoryEquipLeftColumnFirstSlotHoversEar1) {
-    // SLOT_EAR1 (id 1): rect {208,145,240,177} — left column, row 0.
+    // On the B1077/B1078 merged 800x600 layout, the inventory window is
+    // {400,48,742,416} at 80%; SLOT_EAR1 (id 1) is {406,64,431,89}.
     inventory.activePopup = PopupType::Inventory;
-    bool consumed = input.processInput(210, 150, false, layout, hotbar, gems,
+    bool consumed = input.processInput(419, 77, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(inventory.hoveredSlot, eqt::inventory::SLOT_EAR1);
 }
 
 TEST_F(StaticUIInputTest, InventoryEquipRightColumnHoversCorrectSlotId) {
-    // SLOT_RANGE (id 11): rect {560,209,592,241} — right column, row 2.
+    // B1077's wider gem column narrows B1078's middleBand at 800x600:
+    // inventory scale 83% -> 80%, and SLOT_RANGE (id 11) is now
+    // {710,115,735,140} — right column, row 2.
     // Slot identity now comes from a lookup table (kLeftColumn/kRightColumn/
     // kWeaponRow in inventory_layout.h), not a col-major index formula —
     // this pins that the right column's 3rd slot really is SLOT_RANGE.
     inventory.activePopup = PopupType::Inventory;
-    bool consumed = input.processInput(570, 220, false, layout, hotbar, gems,
+    bool consumed = input.processInput(722, 127, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(inventory.hoveredSlot, eqt::inventory::SLOT_RANGE);
@@ -241,7 +326,7 @@ TEST_F(StaticUIInputTest, InventoryWeaponRowPaddingGapStillConsumesButNoHover) {
     // on entry to the popup-region branch in static_ui_input.cpp) even
     // when no slot is hit.
     inventory.activePopup = PopupType::Inventory;
-    bool consumed = input.processInput(332, 415, false, layout, hotbar, gems,
+    bool consumed = input.processInput(532, 355, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(inventory.hoveredSlot, -1);
@@ -251,7 +336,7 @@ TEST_F(StaticUIInputTest, InventoryGeneralRowPaddingGapStillConsumesButNoHover) 
     // General[0] spans x in [265,297), General[1] x in [299,331) — x=298
     // falls in the 2px gap between them.
     inventory.activePopup = PopupType::Inventory;
-    bool consumed = input.processInput(298, 455, false, layout, hotbar, gems,
+    bool consumed = input.processInput(498, 395, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(inventory.hoveredSlot, -1);
@@ -259,20 +344,21 @@ TEST_F(StaticUIInputTest, InventoryGeneralRowPaddingGapStillConsumesButNoHover) 
 
 TEST_F(StaticUIInputTest, InventoryEquipSlotsWaistAndAmmoAreNowReachable) {
     // FIXED (was InventoryEquipGridRow10IsUnreachable — inverted per plan):
-    // SLOT_WAIST (id 20, rect {401,403,433,435}) and SLOT_AMMO (id 21,
-    // rect {435,403,467,435}) were two of the slots the old layout drew
-    // and hit-tested past centerPopup's bottom edge (y=475 at this
+    // SLOT_WAIST (id 20, {578,278,604,304}) and SLOT_AMMO (id 21,
+    // {606,278,632,304}) were two of the slots the old layout drew and
+    // hit-tested past centerPopup's bottom edge (y=475 at this
     // resolution) — permanently unreachable at every resolution, since
     // centerPopup's size doesn't depend on screen size. Both now sit
-    // inside the weapon row, well within the popup.
+    // inside the weapon row, well within the window (B1078 repositioned
+    // the whole window; the click points are their centres).
     inventory.activePopup = PopupType::Inventory;
 
-    bool consumedWaist = input.processInput(415, 415, false, layout, hotbar, gems,
+    bool consumedWaist = input.processInput(591, 291, false, layout, hotbar, gems,
                                              inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumedWaist);
     EXPECT_EQ(inventory.hoveredSlot, eqt::inventory::SLOT_WAIST);
 
-    bool consumedAmmo = input.processInput(450, 415, false, layout, hotbar, gems,
+    bool consumedAmmo = input.processInput(619, 291, false, layout, hotbar, gems,
                                             inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumedAmmo);
     EXPECT_EQ(inventory.hoveredSlot, eqt::inventory::SLOT_AMMO);
@@ -283,15 +369,15 @@ TEST_F(StaticUIInputTest, InventoryGeneralSlotsAreNowReachable) {
     // plan): the old layout's general row (genY=529) sat entirely below
     // centerPopup's bottom edge (y=475), so none of the 8 general slots
     // could ever be hovered or clicked. The new general row (y in
-    // [441,473)) sits inside centerPopup. Check first and last slot.
+    // [310,336)) sits inside the window. Check first and last slot.
     inventory.activePopup = PopupType::Inventory;
 
-    bool consumedFirst = input.processInput(280, 455, false, layout, hotbar, gems,
+    bool consumedFirst = input.processInput(478, 323, false, layout, hotbar, gems,
                                              inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumedFirst);
     EXPECT_EQ(inventory.hoveredSlot, InventoryPanelState::EQUIP_SLOTS + 0);
 
-    bool consumedLast = input.processInput(518, 455, false, layout, hotbar, gems,
+    bool consumedLast = input.processInput(676, 323, false, layout, hotbar, gems,
                                             inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumedLast);
     EXPECT_EQ(inventory.hoveredSlot, InventoryPanelState::EQUIP_SLOTS + 7);
@@ -303,14 +389,17 @@ TEST_F(StaticUIInputTest, InventoryGeneralSlotsAreNowReachable) {
 // consume InventoryLayout::slotRect(), and these tests check every one of
 // its 30 outputs directly, independent of the specific EQ-body arrangement.
 
-TEST_F(StaticUIInputTest, InventoryAllThirtySlotsAreWhollyInsideCenterPopup) {
-    const auto& popup = layout.centerPopup;
+TEST_F(StaticUIInputTest, InventoryAllThirtySlotsAreWhollyInsideTheWindow) {
+    // B1078 (GitLab #398): the frame is the inventory's own window, the
+    // oracle's 428x460 at one uniform factor in the pair's right slot --
+    // not the 400x350 inventoryPopup it predates.
+    const auto& win = InventoryLayout::windowRect(layout);
     for (int i = 0; i < InventoryLayout::TOTAL_SLOTS; ++i) {
         irr::core::rect<irr::s32> r = InventoryLayout::slotRect(layout, i);
-        EXPECT_GE(r.UpperLeftCorner.X, popup.UpperLeftCorner.X) << "slot " << i;
-        EXPECT_GE(r.UpperLeftCorner.Y, popup.UpperLeftCorner.Y) << "slot " << i;
-        EXPECT_LE(r.LowerRightCorner.X, popup.LowerRightCorner.X) << "slot " << i;
-        EXPECT_LE(r.LowerRightCorner.Y, popup.LowerRightCorner.Y) << "slot " << i;
+        EXPECT_GE(r.UpperLeftCorner.X, win.UpperLeftCorner.X) << "slot " << i;
+        EXPECT_GE(r.UpperLeftCorner.Y, win.UpperLeftCorner.Y) << "slot " << i;
+        EXPECT_LE(r.LowerRightCorner.X, win.LowerRightCorner.X) << "slot " << i;
+        EXPECT_LE(r.LowerRightCorner.Y, win.LowerRightCorner.Y) << "slot " << i;
     }
 }
 
@@ -353,7 +442,7 @@ TEST_F(StaticUIInputTest, InventoryNoTwoSlotRectsOverlap) {
 // deliberately left empty for it — see InventoryLayout::paperdollRect()).
 
 TEST_F(StaticUIInputTest, PaperdollRectIsWhollyInsideCenterPopup) {
-    const auto& popup = layout.centerPopup;
+    const auto& popup = layout.inventoryPopup;
     irr::core::rect<irr::s32> doll = InventoryLayout::paperdollRect(layout);
     EXPECT_GE(doll.UpperLeftCorner.X, popup.UpperLeftCorner.X);
     EXPECT_GE(doll.UpperLeftCorner.Y, popup.UpperLeftCorner.Y);
@@ -414,12 +503,15 @@ TEST(InventoryPopupFrameT351, EverySlotIsInsideTheFrameAndHitTestableAtEveryReso
     for (const auto& rc : kResolutions) {
         UILayout layout;
         layout.computeLayout(rc.w, rc.h);
-        const auto& popup = layout.centerPopup;
+        // B1078 (GitLab #398): the frame is the inventory's own window, the
+        // oracle's 428x460 at one uniform factor in the pair's right slot --
+        // the 400x350 inventoryPopup is only the slot it anchors from.
+        const auto& popup = InventoryLayout::windowRect(layout);
 
         std::cout << "\n=== " << rc.w << "x" << rc.h;
         if (rc.note[0]) std::cout << "  (" << rc.note << ")";
         std::cout << " ===\n";
-        std::cout << "frame centerPopup = {" << popup.UpperLeftCorner.X << ","
+        std::cout << "frame inventory window = {" << popup.UpperLeftCorner.X << ","
                   << popup.UpperLeftCorner.Y << "," << popup.LowerRightCorner.X << ","
                   << popup.LowerRightCorner.Y << "}  "
                   << popup.getWidth() << "x" << popup.getHeight()
@@ -492,7 +584,7 @@ TEST_F(StaticUIInputTest, InventoryPopupInactiveNeverHoverHits) {
     // screen region must not hover or consume — the hit test is gated on
     // activePopup, not just screen position.
     inventory.activePopup = PopupType::None;
-    bool consumed = input.processInput(210, 150, false, layout, hotbar, gems,
+    bool consumed = input.processInput(410, 90, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_FALSE(consumed);
     EXPECT_EQ(inventory.hoveredSlot, -1);
@@ -796,11 +888,13 @@ TEST(GroupPanelShapeAtEveryResolution, TheEmptyWindowIsOneTitleStripEverywhere) 
 //   IW_Money3 (A_CopperCoin)    Location 303,197  Size 70x24
 //   (each DecalOffset 1,3  DecalSize 18x18)
 //
-// centerPopup is a fixed 400x350 at every resolution (T351 measured five), so
-// the scale rule is the proportional map 428x460 -> 400x350, integer
-// division. Expected rects at 800x600 (popup origin 200,125):
-//   x = 200 + 303*400/428 = 483, w = 70*400/428 = 65
-//   y = 125 + {121,147,171,197}*350/460 = {217,236,255,274}, h = 24*350/460 = 18
+// the window's own scale factor (B1078, GitLab #398): the frame is the
+// oracle's 428x460 at ONE uniform factor, so each row maps by that factor
+// (the window's `at`): (win.X + X*f/100, win.Y + Y*f/100, W*f/100, H*f/100).
+// On the B1077/B1078 merged 800x600 layout, the 48px gem column narrows
+// middleBand by 16px and the width-limited factor is 80 (was 83):
+//   x = 400 + 303*80/100 = 642, w = 70*80/100 = 56
+//   y = 48 + {121,147,171,197}*80/100 = {144,165,184,205}, h = 24*80/100 = 19
 // ===========================================================================
 
 class PurseT393 : public ::testing::Test {
@@ -810,12 +904,12 @@ protected:
     void SetUp() override { layout.computeLayout(800, 600); }
 };
 
-TEST_F(PurseT393, EachCoinRowIsTheOracleRectScaledIntoThePopup) {
+TEST_F(PurseT393, EachCoinRowIsTheOracleRectScaledIntoTheWindow) {
     const irr::core::rect<irr::s32> expected[4] = {
-        {483, 217, 548, 235},  // IW_Money0 platinum
-        {483, 236, 548, 254},  // IW_Money1 gold
-        {483, 255, 548, 273},  // IW_Money2 silver
-        {483, 274, 548, 292},  // IW_Money3 copper
+        {642, 144, 698, 163},  // IW_Money0 platinum
+        {642, 165, 698, 184},  // IW_Money1 gold
+        {642, 184, 698, 203},  // IW_Money2 silver
+        {642, 205, 698, 224},  // IW_Money3 copper
     };
     for (int d = 0; d < InventoryLayout::COIN_COUNT; ++d) {
         EXPECT_EQ(InventoryLayout::coinRect(layout, d), expected[d])
@@ -836,14 +930,15 @@ TEST_F(PurseT393, TheFourRowsRunPlatinumToCopperTopDownAndDoNotOverlap) {
     }
 }
 
-TEST_F(PurseT393, EveryCoinRowLiesWhollyInsideThePopupFrame) {
+TEST_F(PurseT393, EveryCoinRowLiesWhollyInsideTheWindowFrame) {
+    // B1078 (GitLab #398): the frame is the inventory's own window.
+    const auto win = InventoryLayout::windowRect(layout);
     for (int d = 0; d < InventoryLayout::COIN_COUNT; ++d) {
         const auto r = InventoryLayout::coinRect(layout, d);
-        EXPECT_TRUE(layout.centerPopup.isRectCollided(r)) << d;
-        EXPECT_GE(r.UpperLeftCorner.X, layout.centerPopup.UpperLeftCorner.X) << d;
-        EXPECT_GE(r.UpperLeftCorner.Y, layout.centerPopup.UpperLeftCorner.Y) << d;
-        EXPECT_LE(r.LowerRightCorner.X, layout.centerPopup.LowerRightCorner.X) << d;
-        EXPECT_LE(r.LowerRightCorner.Y, layout.centerPopup.LowerRightCorner.Y) << d;
+        EXPECT_GE(r.UpperLeftCorner.X, win.UpperLeftCorner.X) << d;
+        EXPECT_GE(r.UpperLeftCorner.Y, win.UpperLeftCorner.Y) << d;
+        EXPECT_LE(r.LowerRightCorner.X, win.LowerRightCorner.X) << d;
+        EXPECT_LE(r.LowerRightCorner.Y, win.LowerRightCorner.Y) << d;
     }
 }
 
@@ -886,23 +981,37 @@ TEST_F(PurseT393, AnOutOfRangeDenominationIsDegenerate) {
     }
 }
 
-// centerPopup is a fixed 400x350 at every resolution, so the purse must be at
-// the same offset inside the frame everywhere — the same invariant T351
-// measured for the slots.
-TEST(PurseT393Resolutions, TheRowsAreIdenticalRelativeToThePopupOrigin) {
-    const int kRes[][2] = {{640, 480}, {800, 600}, {1024, 768}, {1280, 1024}, {1920, 1080}};
-    const irr::core::position2d<irr::s32> expectedOrigin[4] = {
-        {283, 92}, {283, 111}, {283, 130}, {283, 149},
+// The window scales by one uniform factor per resolution (B1078, GitLab
+// #398), so the rows' offset inside it is NOT identical everywhere -- at the
+// full-size resolutions (1024x768 and up on the merged B1077/B1078 layout)
+// the window IS the oracle's
+// 428x460 and the offset is the oracle's own; smaller resolutions carry a
+// proportionally smaller offset. Pin every resolution.
+TEST(PurseT393Resolutions, TheRowsAreProportionalInsideTheWindowAtEveryResolution) {
+    struct Res { int w, h; int origin[4][2]; };
+    const Res table[5] = {
+        {640, 480,  {{75, 30}, {75, 36}, {75, 42}, {75, 49}}},
+        // B1077's 48px gem column reduces B1078's 800x600 inventory factor
+        // from 83% to 80%.
+        {800, 600,  {{242, 96}, {242, 117}, {242, 136}, {242, 157}}},
+        // At 1024, the same 16px narrowing makes the band 800px wide,
+        // just below the 804px pair threshold in UILayout. The pair falls
+        // back to screen centring; inventory shifts left enough to fit its
+        // oracle 428x460 at the full 100% factor (was 94%).
+        {1024, 768, {{303, 121}, {303, 147}, {303, 171}, {303, 197}}},
+        {1280, 1024, {{303, 121}, {303, 147}, {303, 171}, {303, 197}}},
+        {1920, 1080, {{303, 121}, {303, 147}, {303, 171}, {303, 197}}},
     };
-    for (const auto& r : kRes) {
+    for (const auto& t : table) {
         UILayout layout;
-        layout.computeLayout(r[0], r[1]);
+        layout.computeLayout(t.w, t.h);
+        const auto win = InventoryLayout::windowRect(layout);
         for (int d = 0; d < InventoryLayout::COIN_COUNT; ++d) {
             const auto rect = InventoryLayout::coinRect(layout, d);
-            EXPECT_EQ(rect.UpperLeftCorner.X - layout.centerPopup.UpperLeftCorner.X,
-                      expectedOrigin[d].X) << r[0] << "x" << r[1] << " d=" << d;
-            EXPECT_EQ(rect.UpperLeftCorner.Y - layout.centerPopup.UpperLeftCorner.Y,
-                      expectedOrigin[d].Y) << r[0] << "x" << r[1] << " d=" << d;
+            EXPECT_EQ(rect.UpperLeftCorner.X - win.UpperLeftCorner.X, t.origin[d][0])
+                << t.w << "x" << t.h << " d=" << d;
+            EXPECT_EQ(rect.UpperLeftCorner.Y - win.UpperLeftCorner.Y, t.origin[d][1])
+                << t.w << "x" << t.h << " d=" << d;
         }
     }
 }
@@ -1028,11 +1137,11 @@ TEST(PurseT393Render, TheInventoryPopupEmitsOneTextEntryPerCoinRow) {
 //   <Screen item="IW_CharacterView">  Location X=166 Y=57  Size CX=85 CY=168
 //   inside <Screen item="InventoryWindow">  Size CX=428 CY=460
 //
-// mapped by coinRect()'s own rule (proportional, integer division, from
-// 428x460 onto centerPopup's fixed 400x350):
-//   x = 166*400/428 = 155   w = 85*400/428  = 79
-//   y =  57*350/460 =  43   h = 168*350/460 = 127
-// so, at 800x600 (popup origin 200,125), {355,168,434,295}.
+// mapped by the window's own scale factor (the window is the oracle's
+// 428x460 at ONE uniform factor, so a child at oracle (X,Y,W,H) lands at
+// (win.X + X*f/100, win.Y + Y*f/100, W*f/100, H*f/100)). At 800x600 the
+// merged 800x600 window is {400,48,742,416} (factor 80, narrowed by B1077's
+// 48px gem column) so the doll is {532,93,600,227}.
 // ===========================================================================
 
 namespace {
@@ -1041,32 +1150,37 @@ namespace {
 // the test fails if the header's arithmetic changes.
 constexpr int kOracleDollX = 166, kOracleDollY = 57;
 constexpr int kOracleDollW = 85,  kOracleDollH = 168;
-constexpr int kOracleWinW = 428,  kOracleWinH = 460;
 
 } // namespace
 
-TEST(PaperdollT409, TheRectIsTheOracleCharacterViewScaledIntoThePopup) {
+TEST(PaperdollT409, TheRectIsTheOracleCharacterViewScaledIntoTheWindow) {
     UILayout layout;
     layout.computeLayout(800, 600);
     EXPECT_EQ(InventoryLayout::paperdollRect(layout),
-              irr::core::rect<irr::s32>(355, 168, 434, 295));
+              irr::core::rect<irr::s32>(532, 93, 600, 227));
 }
 
-TEST(PaperdollT409, TheRectIsIdenticalRelativeToThePopupOriginAtEveryResolution) {
+TEST(PaperdollT409, TheRectIsIdenticalRelativeToTheWindowOriginAtEveryResolution) {
     for (const auto& rc : kResolutions) {
         UILayout layout;
         layout.computeLayout(rc.w, rc.h);
-        const auto& popup = layout.centerPopup;
+        // B1078 (GitLab #398): the frame is the inventory's own window, the
+        // oracle's 428x460 at one uniform factor, so the doll maps by that
+        // SAME factor (the window's `at`), not by the window's on-screen
+        // dimensions -- the two agree to the pixel except where the
+        // factor's own rounding leaves the window a pixel short (1024x768).
+        const auto win = InventoryLayout::windowRect(layout);
+        const auto f = InventoryLayout::scalePct(layout);
         const auto doll = InventoryLayout::paperdollRect(layout);
 
-        const int expX = kOracleDollX * popup.getWidth() / kOracleWinW;
-        const int expY = kOracleDollY * popup.getHeight() / kOracleWinH;
-        const int expW = kOracleDollW * popup.getWidth() / kOracleWinW;
-        const int expH = kOracleDollH * popup.getHeight() / kOracleWinH;
+        const int expX = kOracleDollX * f / 100;
+        const int expY = kOracleDollY * f / 100;
+        const int expW = kOracleDollW * f / 100;
+        const int expH = kOracleDollH * f / 100;
 
-        EXPECT_EQ(doll.UpperLeftCorner.X - popup.UpperLeftCorner.X, expX)
+        EXPECT_EQ(doll.UpperLeftCorner.X - win.UpperLeftCorner.X, expX)
             << rc.w << "x" << rc.h;
-        EXPECT_EQ(doll.UpperLeftCorner.Y - popup.UpperLeftCorner.Y, expY)
+        EXPECT_EQ(doll.UpperLeftCorner.Y - win.UpperLeftCorner.Y, expY)
             << rc.w << "x" << rc.h;
         EXPECT_EQ(doll.getWidth(), expW) << rc.w << "x" << rc.h;
         EXPECT_EQ(doll.getHeight(), expH) << rc.w << "x" << rc.h;

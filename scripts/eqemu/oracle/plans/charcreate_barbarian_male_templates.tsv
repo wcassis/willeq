@@ -1,0 +1,8 @@
+# action	target	race	class	gender	still_name (create only)
+# B1058: the Barbarian-male plan with the race/class/gender/Name-field clicks
+# located from templates (scripts/eqemu/oracle/templates/) instead of the table.
+# create-clicks=template
+login	Testchar	0	char_select
+wait-template	charselect_create_new	30000	charselect_ready
+create	Oraclebartpl	Barbarian	Warrior	Male	barbarian_male_templates
+still	after_create	0	after_create

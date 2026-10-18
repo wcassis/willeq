@@ -232,11 +232,9 @@ TEST_F(ItemTooltipTest, NegativeClosedInventoryAndWindowsAboveShowNothing) {
 
 TEST_F(ItemTooltipTest, HoverWorksInEveryItemWindow) {
     openBackpack();
-    openBank();
-    trade_.isOpen = true;
-    trade_.own[0].hasItem = true;
-    trade_.own[0].itemName = "Bottle";
-    // Bag cell 0.
+    // Bag cell 0. (B1075: the bank and the trade window sit beside the
+    // inventory now, over the bags' oracle (350,100) at 800x600, so each
+    // opens just before its own check.)
     auto p = centre(ContainerLayout::slotRect(layout_, 0));
     frame(p.X, p.Y, false, 0);
     ItemTooltipFrame f = frame(p.X, p.Y, false, 1000);
@@ -245,16 +243,21 @@ TEST_F(ItemTooltipTest, HoverWorksInEveryItemWindow) {
     // Bank slot 1 (fable centres the bank, under the bags' shared rect, so
     // the bag is closed for this one).
     bags_ = ContainerWindowsState{};
+    openBank();
     p = centre(BankLayout::slotRect(layout_, 1));
     frame(p.X, p.Y, false, 2000);
     f = frame(p.X, p.Y, false, 3000);
     ASSERT_TRUE(f.hoverShown);
     EXPECT_EQ(f.hover.text, "Pod of Water");
     // Our own trade slot 0 (the trade window draws above the bag and bank).
+    trade_.isOpen = true;
+    trade_.own[0].hasItem = true;
+    trade_.own[0].itemName = "Bottle";
     const TooltipTarget t = resolveTooltipTarget(scene(0, 0, false));
     EXPECT_EQ(t.window, TooltipWindow::None);
-    for (int y = 0; y < 600; y += 2) {
-        for (int x = 0; x < 300; x += 2) {
+    const auto tw = TradeLayout::windowRect(layout_);  // B1075: PairLeft
+    for (int y = tw.UpperLeftCorner.Y; y < tw.LowerRightCorner.Y; y += 2) {
+        for (int x = tw.UpperLeftCorner.X; x < tw.LowerRightCorner.X; x += 2) {
             const TradeHit h = hitTestTradeWindow(layout_, trade_, x, y);
             if (h.part == TradePart::OwnSlot && h.index == 0) {
                 frame(x, y, false, 4000);

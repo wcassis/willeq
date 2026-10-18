@@ -12,6 +12,7 @@
 #include "client/inventory/inventory_constants.h"
 #include "client/inventory/inventory_manager.h"
 #include "common/logging.h"
+#include "client/graphics/ui/ui_layout_table.h"  // B1075: closesOnOpen()
 #include <ctime>
 
 class HCMap;
@@ -410,11 +411,14 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::VendorWindowOpened:
         if (renderer_) {
             auto& d = std::get<state::WindowOpenedData>(event.data);
-            // A merchant window is one of the mutually exclusive centre
-            // popups, so opening it closes the others -- the same rule the
-            // LootWindowOpened arm below follows.
-            renderer_->Frame().inventoryState_.activePopup =
-                EQT::Graphics::PopupType::None;
+            // B1075 (#395): the co-open table, not "centre popups are
+            // mutually exclusive", decides -- inventory+merchant is a
+            // required set (sell from the bags), so the inventory stays.
+            if (EQT::Graphics::closesOnOpen(EQT::Graphics::UIWindow::Merchant,
+                                            EQT::Graphics::UIWindow::Inventory)) {
+                renderer_->Frame().inventoryState_.activePopup =
+                    EQT::Graphics::PopupType::None;
+            }
             renderer_->Frame().inventoryState_.selectedSlot = -1;  // B442b
             EQT::Graphics::applyVendorWindowOpened(
                 renderer_->Frame().merchantState_, d);
@@ -527,6 +531,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 slot.hasItem = d.hasItem;
                 slot.itemName = d.hasItem ? d.itemName : "";
                 slot.iconId = d.hasItem ? d.iconId : 0;
+                slot.itemId = d.hasItem ? d.itemId : 0;  // B1025-H3
                 slot.quantity = d.hasItem ? d.quantity : 0;
                 slot.bagSlots = d.hasItem ? d.bagSlots : 0;  // B442b
                 // T60: an equip-slot change usually means the player's
@@ -539,6 +544,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 slot.hasItem = d.hasItem;
                 slot.itemName = d.hasItem ? d.itemName : "";
                 slot.iconId = d.hasItem ? d.iconId : 0;
+                slot.itemId = d.hasItem ? d.itemId : 0;  // B1025-H3
                 slot.quantity = d.hasItem ? d.quantity : 0;
                 // B442b (#151 rows 19-21): a bag here is right-click toggleable.
                 slot.bagSlots = d.hasItem ? d.bagSlots : 0;
@@ -590,6 +596,17 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             EQT::Graphics::applyCursorCoinChanged(
                 renderer_->Frame().cursorState_,
                 std::get<state::CursorCoinChangedData>(event.data));
+        }
+        break;
+    // B1025-H3 (GitLab #345): the /hotbutton command's hot button, a social
+    // button the game thread produced (eqstr 13278-13283). It lands on the
+    // cursor and waits for a click on a hotbar slot; the render thread clears
+    // it locally on a place, so the game thread never republishes a clear.
+    case state::GameEventType::HotbarAssignPending:
+        if (renderer_) {
+            EQT::Graphics::applyHotbarAssignPending(
+                renderer_->Frame().cursorState_,
+                std::get<state::HotbarAssignPendingData>(event.data));
         }
         break;
     // B442b (#151 rows 31-35): a drop / destroy prompt the game composed.
@@ -696,12 +713,21 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             LOG_DEBUG(MOD_GRAPHICS, "Bridge: LootWindowOpened corpse={} '{}'",
                 d.corpseId, d.corpseName);
             EQT::Graphics::applyLootWindowOpened(renderer_->Frame().lootState_, d);
-            // One center popup at a time — the same mutual exclusion
-            // /newbook and /skills already apply.
-            renderer_->Frame().inventoryState_.activePopup =
-                EQT::Graphics::PopupType::None;
-            renderer_->Frame().spellbookState_.isOpen = false;
-            renderer_->Frame().skillsPopupState_.isOpen = false;
+            // B1075 (#395): the co-open table decides what the loot window
+            // closes. inventory+loot is a required set, so the inventory
+            // stays open; the spellbook and skills windows share no set with
+            // it and close, as before.
+            {
+                using EQT::Graphics::UIWindow;
+                using EQT::Graphics::closesOnOpen;
+                auto& frame = renderer_->Frame();
+                if (closesOnOpen(UIWindow::Loot, UIWindow::Inventory))
+                    frame.inventoryState_.activePopup = EQT::Graphics::PopupType::None;
+                if (closesOnOpen(UIWindow::Loot, UIWindow::Spellbook))
+                    frame.spellbookState_.isOpen = false;
+                if (closesOnOpen(UIWindow::Loot, UIWindow::Skills))
+                    frame.skillsPopupState_.isOpen = false;
+            }
         }
         break;
     case state::GameEventType::LootWindowClosed:
@@ -744,11 +770,16 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             auto& d = std::get<state::TradeStartedData>(event.data);
             auto& frame = renderer_->Frame();
             EQT::Graphics::applyTradeStarted(frame.tradeState_, d, frame.cachedPlayerStats_.name);
-            // Row 1: the Inventory opens with it (the centre popups are
-            // mutually exclusive, so the other three close).
+            // Row 1: the Inventory opens with it (inventory+trade is a
+            // required co-open set, B1075), and whatever the co-open table
+            // says the inventory cannot share the screen with closes.
             frame.inventoryState_.activePopup = EQT::Graphics::PopupType::Inventory;
-            frame.spellbookState_.isOpen = false;
-            frame.skillsPopupState_.isOpen = false;
+            if (EQT::Graphics::closesOnOpen(EQT::Graphics::UIWindow::Inventory,
+                                            EQT::Graphics::UIWindow::Spellbook))
+                frame.spellbookState_.isOpen = false;
+            if (EQT::Graphics::closesOnOpen(EQT::Graphics::UIWindow::Inventory,
+                                            EQT::Graphics::UIWindow::Skills))
+                frame.skillsPopupState_.isOpen = false;
         }
         break;
     case state::GameEventType::TradeItemUpdated:

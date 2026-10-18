@@ -147,7 +147,26 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
             keyEvent.ctrl = event.KeyInput.Control;
             pendingKeyEvents_.push_back(keyEvent);
 
-            // Chat input shortcuts - these are always tracked for text input
+            // When chat input is focused, only allow function keys through to hotkey matching.
+            // All other keys are consumed by the chat input handler.
+            if (chatInputFocused_ &&
+                !(event.KeyInput.Key >= irr::KEY_F1 && event.KeyInput.Key <= irr::KEY_F12)) {
+                return true;
+            }
+
+            // B1085 (#405): the three chat key latches are set ONLY here,
+            // below the focused gate -- i.e. only while the chat is
+            // UNFOCUSED. A press typed INTO the focused box is the box's
+            // (it is in pendingKeyEvents_ above, and the box is the only
+            // reader of that queue), so it must not leave a latch that the
+            // first unfocused frame replays: Will's `/who` + Enter re-opened
+            // the chat empty (stale ENTER), an ESC after it re-opened it
+            // with `/` (stale SLASH from the slash command), and a stale
+            // ESCAPE ran FrameComponent's ESC handler -- closing a window or
+            // clearing the target. setChatInputFocused() resets all three on
+            // every transition in both directions, so a press that changed
+            // the focus (a submitted Enter, a cancelling Escape) dies with
+            // the transition and can never replay in the new state.
             if (event.KeyInput.Key == irr::KEY_RETURN) {
                 enterKeyPressed_ = true;
             }
@@ -156,13 +175,6 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
             }
             if (event.KeyInput.Key == irr::KEY_OEM_2 || event.KeyInput.Key == irr::KEY_DIVIDE) {
                 slashKeyPressed_ = true;
-            }
-
-            // When chat input is focused, only allow function keys through to hotkey matching.
-            // All other keys are consumed by the chat input handler.
-            if (chatInputFocused_ &&
-                !(event.KeyInput.Key >= irr::KEY_F1 && event.KeyInput.Key <= irr::KEY_F12)) {
-                return true;
             }
 
             // Look up action from HotkeyManager
@@ -292,7 +304,13 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::SpellGem7: spellGemCastRequest_ = 6; break;
                     case HA::SpellGem8: spellGemCastRequest_ = 7; break;
 
-                    // Hotbar Slots
+                    // Hotbar Slots -- B1025-H4 (#345): slot N of the
+                    // window's CURRENT page (H-O: "Hot buttons 1-10 are
+                    // 1-0", pages.tsv:2, 27_keys_hb1.png). The page is not
+                    // carried here: the game thread's one HotbarModel owns
+                    // it, and the panel state's currentPage follows the
+                    // model's republish (applyHotbarSlotAssigned), so the
+                    // slot and the page can never disagree.
                     case HA::HotbarSlot1: hotbarActivationRequest_ = 0; break;
                     case HA::HotbarSlot2: hotbarActivationRequest_ = 1; break;
                     case HA::HotbarSlot3: hotbarActivationRequest_ = 2; break;
@@ -303,6 +321,34 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::HotbarSlot8: hotbarActivationRequest_ = 7; break;
                     case HA::HotbarSlot9: hotbarActivationRequest_ = 8; break;
                     case HA::HotbarSlot10: hotbarActivationRequest_ = 9; break;
+
+                    // B1025-H4 (#345): the page keys, H-O's MEASURED
+                    // defaults "pages 1-10 are Shift+1 through Shift+0"
+                    // (pages.tsv:2, 27_keys_hb1.png; eqstr 6562-6571). The
+                    // target page goes out as a RendererAction; its consumer,
+                    // FrameComponent::processPlayerInput (which owns the
+                    // panel state and the bridge), clamps it and pushes the
+                    // SAME intent the page buttons push (static_ui_input.cpp)
+                    // -- one consumer,
+                    // BridgeComponent::onHotbarPageChangedIntent, keeps the
+                    // game-thread HotbarModel and the panel in lockstep, and
+                    // the model's republish is what the panel redraws.
+                    case HA::HotbarPage1: actionQueue_.push_back({RA::HotbarPageChange, 0}); break;
+                    case HA::HotbarPage2: actionQueue_.push_back({RA::HotbarPageChange, 1}); break;
+                    case HA::HotbarPage3: actionQueue_.push_back({RA::HotbarPageChange, 2}); break;
+                    case HA::HotbarPage4: actionQueue_.push_back({RA::HotbarPageChange, 3}); break;
+                    case HA::HotbarPage5: actionQueue_.push_back({RA::HotbarPageChange, 4}); break;
+                    case HA::HotbarPage6: actionQueue_.push_back({RA::HotbarPageChange, 5}); break;
+                    case HA::HotbarPage7: actionQueue_.push_back({RA::HotbarPageChange, 6}); break;
+                    case HA::HotbarPage8: actionQueue_.push_back({RA::HotbarPageChange, 7}); break;
+                    case HA::HotbarPage9: actionQueue_.push_back({RA::HotbarPageChange, 8}); break;
+                    case HA::HotbarPage10: actionQueue_.push_back({RA::HotbarPageChange, 9}); break;
+
+                    // B1025-H4 (#345): the window toggle (Alt+H; the
+                    // RendererAction's own consumer, processPlayerInput).
+                    case HA::ToggleHotbar1Window:
+                        actionQueue_.push_back({RA::ToggleHotbar1Window});
+                        break;
 
                     // Camera Zoom
                     // T486 (item 5): the notch has ONE owner, camera_rig.h's
@@ -342,7 +388,9 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
     if (event.EventType == irr::EET_MOUSE_INPUT_EVENT) {
         switch (event.MouseInput.Event) {
             case irr::EMIE_LMOUSE_PRESSED_DOWN:
-                leftButtonDown_.store(true, std::memory_order_relaxed);
+                // B1066: a new press is PENDING until the frame's static-UI
+                // hit test gives it to the UI or the camera.
+                presses_.press(PressButton::Left);
                 // Record click position for targeting
                 clickMouseX_.store(event.MouseInput.X, std::memory_order_relaxed);
                 clickMouseY_.store(event.MouseInput.Y, std::memory_order_relaxed);
@@ -354,15 +402,22 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                 lastMouseY_ = event.MouseInput.Y;
                 break;
             case irr::EMIE_LMOUSE_LEFT_UP:
-                leftButtonDown_.store(false, std::memory_order_relaxed);
+                presses_.release(PressButton::Left);
                 leftButtonReleased_ = true;
                 break;
             case irr::EMIE_RMOUSE_PRESSED_DOWN:
-                rightButtonDown_.store(true, std::memory_order_relaxed);
+                presses_.press(PressButton::Right);  // B1066: pending
                 rightButtonClicked_.store(true, std::memory_order_relaxed);  // B442
+                // B1066: the look baseline restarts at the press, as the left
+                // press always did. Without it the first camera-owned frame
+                // turned by all the pointer travel since the last look ended.
+                mouseX_.store(event.MouseInput.X, std::memory_order_relaxed);
+                mouseY_.store(event.MouseInput.Y, std::memory_order_relaxed);
+                lastMouseX_ = event.MouseInput.X;
+                lastMouseY_ = event.MouseInput.Y;
                 break;
             case irr::EMIE_RMOUSE_LEFT_UP:
-                rightButtonDown_.store(false, std::memory_order_relaxed);
+                presses_.release(PressButton::Right);
                 break;
             case irr::EMIE_MOUSE_WHEEL:
                 // T313: this case did not exist. The switch fell through to
@@ -377,11 +432,13 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
             case irr::EMIE_MOUSE_MOVED:
                 mouseX_.store(event.MouseInput.X, std::memory_order_relaxed);
                 mouseY_.store(event.MouseInput.Y, std::memory_order_relaxed);
+                // B1066: a move that reports a button held with no press seen
+                // starts a pending press; an owned press keeps its owner.
                 if (event.MouseInput.isRightPressed()) {
-                    rightButtonDown_.store(true, std::memory_order_relaxed);
+                    presses_.heldSeen(PressButton::Right);
                 }
                 if (event.MouseInput.isLeftPressed()) {
-                    leftButtonDown_.store(true, std::memory_order_relaxed);
+                    presses_.heldSeen(PressButton::Left);
                 }
                 break;
             default:

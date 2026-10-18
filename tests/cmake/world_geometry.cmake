@@ -28,7 +28,7 @@ ADD_EXECUTABLE(test_hc_map
     ${CMAKE_SOURCE_DIR}/src/common/util/compression.cpp
 )
 TARGET_LINK_LIBRARIES(test_hc_map GTest::gtest_main ${FMT_LIB} ${ZLIB_LIBRARIES})
-TARGET_COMPILE_DEFINITIONS(test_hc_map PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")  # T504d ray-set goldens
+TARGET_COMPILE_DEFINITIONS(test_hc_map PRIVATE "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")  # T504d ray-set goldens
 GTEST_DISCOVER_TESTS(test_hc_map DISCOVERY_TIMEOUT 120)
 
 # B941 (GitLab #259): the collision map and navmesh re-representation is
@@ -67,7 +67,7 @@ ADD_EXECUTABLE(test_zone_lines
         # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
-TARGET_COMPILE_DEFINITIONS(test_zone_lines PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+TARGET_COMPILE_DEFINITIONS(test_zone_lines PRIVATE "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
 TARGET_LINK_LIBRARIES(test_zone_lines GTest::gtest_main ${FMT_LIB} ${ZLIB_LIBRARIES} ${JSONCPP_LIBRARIES})
 GTEST_DISCOVER_TESTS(test_zone_lines DISCOVERY_TIMEOUT 120)
 
@@ -108,7 +108,7 @@ ADD_EXECUTABLE(test_region_occluders
     test_region_occluders.cpp
     ${CMAKE_SOURCE_DIR}/src/client/graphics/software_occlusion_culler.cpp
 )
-TARGET_COMPILE_DEFINITIONS(test_region_occluders PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+TARGET_COMPILE_DEFINITIONS(test_region_occluders PRIVATE "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
 TARGET_LINK_LIBRARIES(test_region_occluders GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_region_occluders DISCOVERY_TIMEOUT 120)
 
@@ -119,7 +119,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_zone_source_release
         test_zone_source_release.cpp
     )
-    TARGET_COMPILE_DEFINITIONS(test_zone_source_release PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    TARGET_COMPILE_DEFINITIONS(test_zone_source_release PRIVATE "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     TARGET_INCLUDE_DIRECTORIES(test_zone_source_release PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_zone_source_release GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_zone_source_release DISCOVERY_TIMEOUT 120)
@@ -131,7 +131,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_region_world_triangles
         test_region_world_triangles.cpp
     )
-    TARGET_COMPILE_DEFINITIONS(test_region_world_triangles PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    TARGET_COMPILE_DEFINITIONS(test_region_world_triangles PRIVATE "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     TARGET_INCLUDE_DIRECTORIES(test_region_world_triangles PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_region_world_triangles GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_region_world_triangles DISCOVERY_TIMEOUT 120)
@@ -144,7 +144,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_object_collision_set
         test_object_collision_set.cpp
     )
-    TARGET_COMPILE_DEFINITIONS(test_object_collision_set PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    TARGET_COMPILE_DEFINITIONS(test_object_collision_set PRIVATE "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     TARGET_INCLUDE_DIRECTORIES(test_object_collision_set PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_object_collision_set GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_object_collision_set DISCOVERY_TIMEOUT 120)
@@ -169,7 +169,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_placed_object_meshes
         test_placed_object_meshes.cpp
     )
-    TARGET_COMPILE_DEFINITIONS(test_placed_object_meshes PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    TARGET_COMPILE_DEFINITIONS(test_placed_object_meshes PRIVATE "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     TARGET_INCLUDE_DIRECTORIES(test_placed_object_meshes PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_placed_object_meshes GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_placed_object_meshes DISCOVERY_TIMEOUT 120)
@@ -187,3 +187,28 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_placed_object_record GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_placed_object_record DISCOVERY_TIMEOUT 120)
 ENDIF()
+
+# B1068 (#388): walked zone-line crossings -- the 0x29 body-string decode,
+# the swept crossing test and BSP-over-curated precedence. The WLD loader is
+# a CLIENT_CORE source (P28), so this builds with EQT_GRAPHICS=OFF too; the
+# real-zone case skips without the EQ client files.
+ADD_EXECUTABLE(test_zone_line_crossing
+    test_zone_line_crossing.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/zone_line_crossing.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/zone_lines.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/hc_map.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/raycast_mesh.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/util/compression.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_material.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_mesh.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_actor.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_skeleton.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_light.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_bsp.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/zone_bsp.cpp
+    )
+TARGET_LINK_LIBRARIES(test_zone_line_crossing GTest::gtest_main ${FMT_LIB} ${ZLIB_LIBRARIES} ${JSONCPP_LIBRARIES})
+GTEST_DISCOVER_TESTS(test_zone_line_crossing DISCOVERY_TIMEOUT 120)

@@ -6,6 +6,58 @@ Newest entries first. Each entry: decision, rationale, implications.
 
 ---
 
+## 2026-10-16 — The zone-OUT audio teardown: silence at CleanupZone, counted for the lane (B1080, #400)
+
+**Decision:** leaving a zone silences its audio at the zone-OUT boundary, not
+at the next zone-in. `ZoneAudioManager::silenceForZoneOut(fadeSeconds)` stops
+every emitter (its looped SFX channel freed, B1074), frees the one-shot SFX
+channels (`AudioManager::stopAllSounds()`) and fades the zone music
+(`stopMusic(fade)`). It is called from `ZoneComponent::CleanupZone()` — the
+single point every zone-OUT path funnels through (graceful zone-out,
+handshake timeout, logout, the B1072 fresh-login give-up) — and is idempotent
+and a safe no-op with no zone loaded. It must NOT be called on a zone IN: the
+destination zone's `loadZone()` / `AudioManager::onZoneChange()` re-arms
+emitters and music, and the next zone's music region is a different one.
+
+**Rationale:** before this, a zone's audio outlived the zone. `unloadZone()`
+ran only in the NEXT zone's `loadZone()`, and `onZoneChange()` only on zone
+ENTRY, so while the loading screen was up — including a stalled zone-in that
+gave up (B1072) and sat back at character select — the leaving zone's music
+and every zero-cooldown emitter kept playing: nothing in a zone-OUT path
+stopped them (the emitters are stopped only by range, day/night switch,
+`unloadZone()`/`pause()`, or the manager's own lifetime; B1074's loop rule
+guarantees the zero-cooldown ones hold their channels for as long as the
+listener is in range). Fixing it at CleanupZone() catches every path at once;
+fixing each path individually would leave the next one open.
+
+**Implications:** the lane can assert the teardown without audio. A
+headless `--scenario` run has no audio system (`InitializeAudio()` runs only
+from the graphics init), so the `zone_connect_timeout` scenario asserts on
+`ZoneAudioSilenceCount()` — a teardown counter incremented in every build,
+WITH_AUDIO on or off, counting the silence PATH, not the sound. The audio
+EFFECT (emitters cleared, loops freed, one-shots freed, music faded and
+stopped) is pinned by `test_zone_sound_emitters.cpp`'s
+`ZoneAudioSilenceForZoneOutTest` over the real qeynos2 loops + music; the
+wiring (CleanupZone calls it) by `test_zone_component.cpp`'s
+`ZoneOutTeardownRunsTheAudioSilence`. A world that cannot read the count
+(-1) fails the scenario rather than passing silently.
+
+**Oracle confirmation (the card's step 1, 2026-10-16):** the official
+client's zone-OUT audio was measured on lane 1 (Pulse monitor of the Wine
+client — the rig has no working ALSA userspace, so a session PulseAudio
+daemon is the capture path). causeway's music + ambient emitters, sustained
+at 0–4.5 k RMS (dead second at t=209, ~1 s ramp-up, peak 4502 at t=244), fade to the noise floor (RMS ≤ 3) ~8 s after
+`/cast Ring of Karana` (of which 7 s is the rank-0 spell's own cast time,
+`spells_new.cast_time` 7000 ms), the floor holds flat for ~1.5 s (no SFX
+tail at 0.25 s resolution), and the destination screen's audio starts only
+then. The destination's zone-in failed on this rig (client back at the
+login screen), so the capture exercises exactly the B1072-class give-up —
+and the old zone's audio still stopped. The 2.0 s fade constant
+(`kZoneOutMusicFadeSeconds`) is therefore bounded above by the measured
+stop and equals the client's own existing zone-music stop; see
+`refactor/B1080/README.md` for the full ledger (envelope, marks, stills,
+the negative sessions).
+
 ## 2026-09-05 — The ceiling covers `tools/` and `benchmarks/` too (T385)
 
 **Decision:** `scripts/refactor/check_file_sizes.sh --all` scans `src/`,
@@ -1688,6 +1740,18 @@ Pi byte saving is "not achieved on the current rig, and not claimed."
 structurally correct and a future Mesa/Lima that exposes a 16-bit depth
 window config picks it up with no further code change.
 
+**Addendum 2026-10-14 (B1064, #384): the target outline was a stencil user
+nobody counted, and it no longer is.** B971's premise -- "/portal is the
+orangepi preset's only stencil user" -- missed `drawTargetOutline()`, a
+two-pass stencil rim (ref 128); on the stencil-less surface its second pass
+painted the whole 1.10-scaled model (Will's XU4 screenshot,
+`review/B1064/xu4_dionna_qeynos_2026-10-14.png`). The outline is now an
+inverted hull (one draw of the scaled mesh, front faces culled, depth
+LESSEQUAL, no depth write; `include/client/graphics/overlays/target_outline_pass.h`)
+and touches no stencil state on any surface, so **B971's stencil-off surface
+stands and is correct for the outline**; the preset does not get S8 back.
+Evidence: `refactor/B1064/README.md`.
+
 ## 2026-10-05 — the audio ledger is measured on the Pi; the budget is held at
 32 MiB (Will; B977, #295)
 
@@ -2027,3 +2091,430 @@ scope". Ruled:
 B1043 (PROVE) reached a running headless `gles2_zone_benchmark` on qeynos2;
 `docs/macos.md` carries the per-piece status and the recipe, the FIX card the
 rest (window + input, the remaining GLES2 targets, a ledger backend).
+
+## 2026-10-14 — B976: zone depth ties resolve to the top-facing region (Will; #294)
+
+B969/B976 measured the timorous_f2 gate pose: the floor there is TWO stacked
+real floor regions — a +Y `sand3` top over a −Y `w1` underlayer — at a
+sub-quantum depth tie, so the depth test's winner depends on the surface
+format and the driver's compare (x86 D24S8 → +Y, x86 D16 → per-row z-fight,
+Pi Lima depth=24 → −Y). Will RULED option 1, a client-side depth bias:
+
+**When two zone regions tie in depth at a pixel, the region whose face normal
+points UP (+Y in Irrlicht space) wins, on every platform.** Implemented as a
+per-vertex clip-space depth offset of 2 D16 cells in the zone REGION vertex
+programs, gated by a per-material flag so nothing outside zone-region
+geometry is ever touched (`include/client/graphics/zone_depth_tie_break.h`,
+`tests/test_zone_depth_tie_break.cpp`; `refactor/B976/README.md` "Fix").
+Draws, state changes and poly counts are identical before/after on all five
+gate zones.
+
+The fix's measurement also resolved the README's open question — the double
+floor is NOT timorous-specific: the other four gate zones carry the same
+−Y-underlayer/ +Y-top pattern on flat ground, and 100% of every changed
+pixel is a clean −Y→+Y normal flip (debug5 mechanism check). The bless
+scope is therefore the floor pixels of ALL FIVE zones, on BOTH platforms,
+not just timorous_f1/f2 (stated here; the MR stays DRAFT until Will blesses).
+The Pi leg of the fix (lane 1, same pose, debug5 + debug4 lit floor) is a
+separate card after the bless; the bias is in NDC-z and argues
+platform-independent, but Lima has not re-measured it.
+
+## 2026-10-15 — UI style: the oracle governs a window's CONTENT, a fable layout table governs its PLACEMENT (Will, "I like your idea. run with it"; B1075)
+
+Will's decision point (2026-10-15, after seeing the 2x5 hotbar land on the
+XU4): the old draggable WindowManager UI cost frames and was deleted
+(U07c); the static UI was meant to copy a World-of-Warcraft style fixed
+layout; the official EverQuest UI is faithful-but-unfriendly. The two are
+NOT in conflict, because the performance fix was about placement and
+drawing (fixed anchors, batched quads), not about whose design a window
+copies, and the tree had already converged on a hybrid: every window
+since the reset uses the oracle's own geometry, art, controls and
+gestures at a fixed position fable chose. RULED:
+
+1. **The ORACLE governs what a window contains and how it behaves**:
+   geometry of its controls, art, gestures, server round trips, pages,
+   persistence keys. Every feature-gap card keeps needing an oracle
+   capture and a repeatable test (feature-gap rules, 2026-09-23).
+   "More user-friendly than the official client" has no oracle and is
+   OUT of scope until it has a way to be verified.
+2. **A fable LAYOUT TABLE governs where a window sits, its orientation,
+   and which windows must be open at the same time.** The table is one
+   place (`include/client/graphics/ui/ui_layout.h`'s anchors, named per
+   window) plus a list of REQUIRED CO-OPEN SETS -- at least
+   inventory+trade, inventory+bank, inventory+merchant, inventory+loot,
+   spellbook+spell gems, any centre popup+chat+hotbar+target+group -- and
+   a ctest that asserts no two windows of a required set overlap at every
+   supported resolution (800x600, 1024x768, 1280x720, 1920x1080). The
+   "centre popups are mutually exclusive" rule is RETIRED where a
+   co-open set needs two of them: inventory+merchant was impossible under
+   it, which is exactly the class of gap this ruling exists to close.
+3. **The arrangement of a repeated control is layout, not content**: the
+   hotbar's ten buttons may be laid 1x10 or 2x5 by the table; its oracle
+   tests cover gestures, pages and persistence, none of which depend on
+   where button 6 sits. The WoW-style layout puts the hotbar bottom
+   centre, 1x10 (its pre-H2 place); the table says so and the B1025
+   hotbar cards are untouched. Will can override the orientation in the
+   table without reopening this ruling.
+4. Performance is unchanged by fidelity: static panels, batched quads,
+   no drag, no z-order negotiation. A card that proposes movable windows
+   reopens U07c, not this entry.
+
+## 2026-10-16 — A texture request carries its SOURCE ARCHIVE: the cache key is (archive, name, mask), resolution is source-first (B1083, #403)
+
+**Decision:** Two EQE1 packs of one zone family (`{zone}.eqe1`,
+`{zone}_obj.eqe1`, `{zone}_chr.eqe1`) may hold the same texture name with
+DIFFERENT content — measured over `data/eqe1_client`: 361 names across 172
+families with differing payload bytes
+(`scripts/refactor/eqe1_family_census.py`). A name-keyed texture cache
+collapses those into one entry and serves the wrong copy in configured
+order: in qeytoqrg the OBJECT's `tree70`/`treea` request was answered by
+the zone pack's opaque copy, so the willow's foliage drew as a solid
+rectangle (Will 2026-10-15, XU4).
+
+**Rule:** the texture request carries the S3D stem its bytes came from
+(`TextureInfo::archiveStem()`, B947's `sourceArchive`), the cache key is
+`(sourceArchiveStem, name, applyPaletteMask)` (control-character join,
+collision-proof, `splitCacheKey()` recovers all three axes), and
+`findCompressedEntry()` tries the request's OWN open pack first, then
+falls through to the unchanged configured-order scan + index late-open
+(T207/T266). An empty stem is the identity, so every call site that does
+not name a source (character models, equipment, composite sheets, UI) is
+byte-identical to before. The stem is threaded through
+`ZoneMeshBuilder::buildTexturedMesh` / `loadTextureFromBMP` /
+`getOrLoadTexture` and `mesh_building.cpp`, so `hasAlpha` /
+`getAlphaTexture` / `isETC1Texture` are properties of the `(archive, name)`
+entry, not the name. `refactor/B1083/README.md` carries the census, the
+before/after stills and the memory delta; `test_eqe1_source_archive.cpp`
+pins the two copies from two packs (red on the pre-B1083 tree).
+
+**Implications:** the ledger does not grow beyond the genuinely-duplicated
+names (qeytoqrg measured: +2 x 43,704 B = the two `_obj` copies that must
+now coexist; 103 entries both sides). The `zones[]` visual-gate manifest
+runs deliberately load no zone objects, so this fix has no manifest row to
+move; its proof is the `--objects` benchmark before/after
+(`refactor/B1083/README.md` Step 3). Do not key texture resolution on the
+name alone again, and do not let a new pack family join a zone family
+without re-running the census.
+
+## 2026-10-17 — the driver-facing texture name is decided once at STORE time (family-first), so evict->restore re-creates under the SAME name (B1083, #403, Will's ruling note 5964: Option A)
+
+**Ruling (Will, 2026-10-17, #403 note 5964):** "Option A, family-first
+driver name, as specified in `refactor/B1083/gate_ledger_diff.md`
+'Candidate fix'. Additional requirement: decide the driver name ONCE per
+entry and store it; an evict->restore re-creates under the SAME name
+(unit test covers it)." B and C (make the draw sort immune to the name;
+re-bless) are not approved.
+
+**The rule:** the GL texture name is the first thing a cache entry hands
+`COpenGLES2Driver::addTexture()`, and that name is (a) the driver's dedup
+key (`findTexture(name)` in `addTexture`/`gles2WrapTexture`) and (b) the
+draw-order key (`textureGroupId()` FNV-1a -> `materialKey` sort). It is
+therefore decided **once per entry at store time** (in `getOrLoad`, under
+the cache mutex, BEFORE the entry is first visible), not re-derived at
+promote time:
+
+- the **first stored member of a (name, mask) family** gets the pre-B1083
+  P46d name -- the plain `name` (unmasked) or `name\x01masked` (masked),
+  i.e. `cacheKey(name, "", masked)`;
+- a **later cross-archive twin** (same name+mask, second archive, the
+  qeytoqrg willow) gets the full `internalKey` (the stem-bearing
+  `(archive, name, mask)` key), so the driver's name-dedup can never fold
+  two distinct images.
+
+The stored name rides on `DecodedEntry::driverName` /
+`CompressedEntry::driverName` and is copied to
+`CachedTexture.driverName` at promote; the compressed alpha companion is
+`driverName + "_alpha"` (byte-identical to the pre-B1083 companion for a
+family-first member). An evict->restore re-adopts the storage into the
+same `ITexture` object, which keeps its name by construction; the store-
+time decision is what makes the name STABLE across a promote-order change
+(eviction/restore, async upload), which a promote-time re-reading of the
+family could not guarantee. The cache's own (archive,name,mask) keying
+and the content dedupe (the 2026-10-16 decision above) are untouched --
+this changes only what the DRIVER is told, not what the cache holds.
+
+**Implications:** in a single-archive run (the whole gate population)
+every entry is a family-first member, so the driver sees exactly the
+pre-B1083 names: `textureGroupId` -> `materialKey` -> per-pose draw-order
+sort is byte-identical to the golden. The 197/135/274/678/192 px gate
+regression from the keying commit `08ce2282` (the mangled
+`name\x01@<stem>\x01` the S3D path was handing the driver) is gone: all
+five gate zones are 0 px vs the committed goldens (MR !205 pipeline 1608,
+`gate` stage PASS attempt 1/3; local re-run, exact x86 gate invocation,
+all 15 frames 0 px, qeynos2 ledger identical to the golden's 126/81/20/
+21,932,691 B). The willow (qeytoqrg `--objects`) is unchanged: 103
+textures, 0 deduped, both cross-archive twins live under distinct names
+(`test_texture_driver_name.cpp` `CrossArchiveTwinKeepsBothImagesUnder
+DistinctNames`), frame byte-identical to the Step-3 "after" capture.
+Pinned by `tests/test_texture_driver_name.cpp` (5 tests: family-first,
+masked family-first, cross-archive twin distinct names, evict->restore
+same-name round-trip on a real `EDT_OGLES2` device, and the family
+membership check); red-before on pre-fix head `7fa8dff3` (4/5 fail).
+
+## 2026-10-16 — the duplicate (archive, name) entries are deduped by CONTENT: same bytes under two archives, one GPU entry (B1083, #403)
+
+**Decision (ruling 2026-10-16):** "dedupe by content (hash decoded payload;
+same bytes under two archives -> one entry)". The (archive, name) key above
+splits EVERY name a sibling pack also holds into two entries -- byte-
+identical or not -- and the extra bytes bust the texture budget on zones the
+name-keyed run stayed under (the x86 gate: qeynos2 at 99.6% of the 20 MiB
+ceiling, evicted textures drawing black). The content identity is an FNV-1a
+64 over what a GPU entry actually holds: the decoded RGBA image (pixels +
+dimensions + alpha) on the decode path, the compressed payload + alpha
+companion + shape fields on the EQE1 path. A scoped request about to create
+an entry asks the promote-time gate (`dedupeBeforePromote`, the ONLY dedupe
+decision point, in `uploadTexture()`) whether a (name, mask) family entry
+with the same digest exists: yes -> the request key becomes an alias of it
+(one entry, one budget charge, one LRU node); no -> it promotes and becomes
+the target for later siblings. First promoted in time wins -- the pre-B1083
+name-keyed cache's first-upload-wins answer. An evicted shell is a valid
+twin target (its driver-side bind restores the same pixels); a stale alias
+is dropped (`destroyEntry`/`clear` -> `dropAliasesTo`) and the next promote
+decides fresh. Genuinely different same-name textures (qeytoqrg tree70's
+DXT1-vs-DXT5, the willow fix itself) digest differently and keep two
+entries.
+
+**Implications:** unscoped requests never alias (they create/answer the
+plain key -- the configured-order answer); `findEntryForKey` remaps an
+aliased key before the scoped miss, so every accessor (getTexture/hasAlpha/
+getAlphaTexture/isETC1Texture/isResident) answers the alias like its
+target. The dedupe is a memory optimization, never a correctness gate: no
+alias exists for different content, and a missing target promotes normally.
+`getDedupedEntryCount()` is the bookkeeping; the texture gate reads
+`getTextureCount()` (GPU entries). Pinned by
+`ConstrainedTextureCacheTest.SameBytesUnderTwoArchivesIsOneEntry` (red on
+the pre-dedupe branch: the second upload creates a second entry) and
+`DifferentBytesUnderTwoArchivesKeepTwoEntries` (the willow pair must NOT
+fold), beside the scoping tests in `test_eqe1_source_archive.cpp`.
+
+## 2026-10-15 — B1082: the character-select keyboard mirrors the measured official client (#402; Will's XU4 report)
+
+Will's report (2026-10-15 XU4 play sessions): "The arrow keys up/down do not
+change which character is selected but they should. The enter key should load
+the selected character." MEASURED on the official Titanium client (oracle
+lane 1; `refactor/B1082/README.md` carries the ledger, stills, video and the
+pcap as ground truth):
+
+1. **Up/Down move the selection one row and wrap at the ends — within the
+   occupied rows only** (the highlight cycles the 8-button list, but the name
+   line and the 3D model only ever reflect an occupied row, so the
+   enterable selection is bounded by the occupied rows). **Navigation sends
+   NOTHING to the server** — zero C→S packets on any Down/Up in the pcap.
+2. **Enter/Return sends `OP_EnterWorld` for the selected row** — the SAME
+   72-byte payload as the Enter World button's click. Nothing selected is
+   inert.
+3. **The delete prompt ignores everything but ESC** (ESC = No, as B998):
+   Enter/Return do not answer it, no keys navigate or type while it is up; it
+   closes on its own ~10 s timeout.
+4. **Escape with no prompt up leaves pre-zone** (server-select), as before —
+   no quit confirmation prompt.
+
+Ruled into `applyCharSelectKey()` (`char_select_screen.cpp`): it now RETURNS
+the `CharSelectAction` exactly like the click path; `KEY_DOWN`/`KEY_UP` go
+through the new `moveSelection(s, delta)` (one occupied row, wrap at the
+ends, gated on blocked/prompt/create like every other press), `KEY_RETURN`
+goes through `pressEnterWorld` (the Enter World button's own body — the
+numpad Enter maps to the same receiver code). The host
+(`char_select_host.cpp`) routes the returned action through `handle()` and
+keeps spending Enter/Escape/Slash so nothing replays in-zone (B1085). Tests:
+`CharacterSelectKeys.*` in `tests/test_character_select.cpp` (wrap without
+sending, Enter for the arrow-chosen row, prompt ignores everything but
+Escape).
+
+## 2026-10-16 — B1085: the chat key latches (enter/escape/slash) latch only while the chat is unfocused, and reset on every focus transition (#405)
+
+One line: a key press may only ever arm the chat shortcuts (open-chat on
+Enter/slash, the ESC window stack) for a frame in which the chat is NOT
+focused -- `RendererEventReceiver::OnEvent()` sets the three latches below
+the focused gate, and `setChatInputFocused()` resets all three in both
+directions, so a press that changed the focus (a submitted Enter, a
+cancelling Escape) can never replay on the first frame in the new state
+(`tests/test_b1085_chat_latches.cpp`).
+
+## 2026-10-16 — B1084: the robe material range is 10..16, and it is ONE predicate (#404)
+
+A worn robe of material 10 (item 11641, Crimson Robe of Alendine) drew the
+naked body: `isRobeTexture()` said the robe range was 11..16 while the mesh
+builder's own comment and the robe-index arithmetic said 10..16. The range is
+**MEASURED, not assumed** — `global_chr.s3d` carries exactly seven robe
+texture groups `clk04`..`clk10` (six pages each), which partition cleanly
+across only 10..16; `globaldaf_chr.s3d` carries `dafch10xx`..`dafch16xx`
+body textures and nothing for 05..09; and the peq items table's robe-named
+chest items exist for exactly materials 10–16 (lane 1, 2026-10-16;
+`refactor/B1084/README.md`). RULED: **the robe range is 10..16, and
+everything that classifies a texture as robe goes through the ONE
+`isRobeTexture()` in `include/client/graphics/eq/equipment_textures.h`** —
+`isNPCOnlyTexture()` is 5..9 (10 is a robe), and `getRobeClkTextureNumber()`
+is the single 10→clk04 … 16→clk10 spelling. A second, hard-coded range
+spelling anywhere in the tree is a regression: `test_robe_texture_range`
+(the measured table) and `test_robe_entity_prep` (chest material 10 takes the
+robe body variant through `createAnimatedNodeWithEquipment()`) are red on the
+old 11..16 header and green at the fix.
+## 2026-10-16 — Spell-icon atlas: the three id spaces, row-major, proven (B1077, #397)
+
+Fable has now shipped spell-icon art. `include/client/graphics/ui/
+spell_icon_atlas.h` is the one place the three families are addressed,
+quoted from the oracle's `EQUI_Animations.xml`, and the builder
+(`tools/spell_icon_atlas_builder`) and the runtime loader both include it.
+Standing facts — do not re-derive:
+
+1. **`A_SpellGems` (gemicons01..03.tga) = 7x9 of 36x28 = 189 cells**,
+   addressed by `gem_icon` (field 144); **`A_SpellIcons` (Spells01..07.tga)
+   = 6x6 of 40x40 = 252 cells**, addressed by `spell_icon` (field 143);
+   **`BuffIcons` (Spell_Icons.tga) = 6x6 of 40x40 = 36 cells**, the
+   `BW_Buff*_Button` decal in `EQUI_BuffWindow.xml`. All three are
+   **row-major, zero-based** (`<Vertical>false</Vertical>` + the salvage
+   audit's arithmetic). `indexForId()` is the only bounds check; an id at
+   or above its family's count carries no art and the caller's
+   `drawSpellIcon()` false-return is the "no art" signal (the 4-letter
+   name fallback).
+2. **The Buff sheet is the ONE part-filled family** (23 of 36 cells carry
+   art, the empties being ids 23..35, a trailing run — id 14, the diagonal
+   cell row 2 col 2, carries art) and is therefore the only one that
+   PROVES the grid order — `test_spell_icon_atlas.cpp` pins the row-major
+   reading from that fill (`BuffFillProvesRowMajor` /
+   `ColumnMajorReadingWouldBeWrong`, from id 24: empty row-major, populated
+   column-major). A new family that is fully populated cannot prove its own
+   order.
+3. The gem bar is the oracle's own `EQUI_CastSpellWnd.xml` window (48x290;
+   gems 36x28 at (3,10+30i); the ninth parked at -5000 per T483; the book
+   button 22x22 at (10,252)) at the layout table's anchor (B1075), and the
+   book button toggles the spellbook through the SAME body Ctrl+B and
+   `/newbook` use. `gem_icon` is the ONLY icon column with art in Titanium
+   (`spell_icon` is 0 everywhere in this export), so the hotbar's Spell
+   slots draw `gem_icon`, resolved at publish by `HotbarModel`.
+
+The atlas is the fourth `scripts/build_textures.sh` recipe and grows
+`willeq.eqe1` by 4,197,056 bytes (three ETC1 family atlases with mips +
+their three `_alpha` companions + the 40x40 `CW_SpellGemHolder` piece;
+the first leg's `A_SpellGemHolder` cut was replaced by the 2026-10-17
+ruling below, same pack size, new bytes).
+
+## 2026-10-17 — B1077 fix leg: the gem bar's holder is the CW piece, not the A piece (MR !210 finding 4)
+
+The oracle answers the question. All eight `CSPW_SpellN` pieces in
+`EQUI_CastSpellWnd.xml` carry `<Holder>CW_SpellGemHolder</Holder>`, and
+the file DEFINES it locally (line 5): `classic_pieces01.tga` at (41,123),
+36x28 — a socket frame 1:1 with the 36x28 gem cell. B1077's first leg had
+shipped `A_SpellGemHolder` from `EQUI_Animations.xml` (window_pieces02.tga
+(208,216), 39x32) — 3 px wider / 4 px taller than the cell — which is the
+piece the oracle's `EQUI_CursorAttachment.xml` and HotButtonWnd use.
+Ruled per the oracle rule (copy the official client's UI/behavior; prefer
+the client files): **the gem bar ships `CW_SpellGemHolder`**. The header
+holder constants, the atlas builder, the test and the pack pins all moved
+in one leg; `docs/decisions.md`'s 2026-10-16 entry and
+`refactor/B1077/README.md` carry the measurement. The same leg restated
+two committed wrong numbers from fresh measurement: the gem census over
+`data/willeq.db` (8,066 rows) is 128 rows / 11 distinct ids (189, 190,
+191, 193, 194, 195, 202, 204, 208, 211, 215) at or above 189 — not "26
+ids / 25 spells"; and the buff sheet's empties are ids 23..35 — id 14
+carries art (alpha sum 77,520).
+
+## 2026-10-16 — B1081: the zone-change world reconnect does not bring up the character-select screen (#401)
+
+One line: the screen may come up only while the world is in a character-select
+stage, so `CharacterSelectService::tick()` keeps it down for the frames in
+which `LoginWorldComponent::IsZoningReconnect()` is true — the zone-change
+latch (`ZoneToZoneInProgress`, set in `ProcessDeferredZoneChange` and latched
+across the teardown) AND the zoning pass's `OP_EnterWorld` not yet out; a
+fresh login, the B1005 camp return and the B1072 give-up all clear the latch
+before their reconnect, so they still bring the screen up, exactly as before
+(the screen-up count is asserted in `tests/test_zone_change_no_flash.cpp` and
+the `zone_change_no_flash` scenario: one screen-up for the whole
+login→zone-in→`/gmzone`→zone-change run, measured in
+`CharacterSelectService::Activations()`).
+
+`/gmzone` needs the same wire fix to be testable at all: `OP_GMZoneRequest`
+(0x1306) is only the QUERY half — eqemu's reply carries the target zone's
+safe coords and a success flag, and the CHANGE is the client's second
+one-word packet, `OP_GMZoneRequest2` (0x244c), which eqemu's
+`Handle_OP_GMZoneRequest2` answers with `GoToSafeCoords` (akk-stack
+`/mnt/projects/akk-stack/code/zone/client_packet.cpp:7142`,
+`/mnt/projects/akk-stack/code/zone/zoning.cpp:1074`). fable's handler only
+logged the approval, so a live `/gmzone <char> <other_zone>` was a silent
+no-op on every lane and the scenario's transition arm could never be
+reached. It now queues the confirm on an approved reply; a denied reply
+sends nothing. (The live leg that found this: `refactor/B1081/README.md`.)
+
+## 2026-10-16 — a stalled zone-in is bounded at every phase, and a zone that ANSWERED is never re-connected (B1079, #399)
+
+Will's 2026-10-15 XU4 hang (#399): an in-session zone change (zone load #2,
+past the session) sat on the loading screen until it was killed. B1072's
+watchdog bounded only `ZONE_CONNECTING` and disarmed the moment the phase
+moved past it. RULED:
+
+1. **Every zone-in loading phase carries a deadline** (`zone_connect_watchdog.h`,
+   the `phase_bound` table, sources in `refactor/B1079/README.md`): the connect
+   phase is measured (B1072 census, 2x the max); the five network-tail phases
+   are assumed (no per-phase census exists in-tree, stated as such); the four
+   `GRAPHICS_*` phases share one budget (2x the slowest blessed Pi cold load).
+   A stalled load costs ONE phase's own budget, and the escalation names the
+   stuck phase and the last opcode the zone sent, then lands on a fresh world
+   login (character select / auto Enter World) -- never a hang, never a
+   process exit. The bound covers a zone load #N, not only a cold login,
+   because the deadline walks the CURRENT loading phase, not "still connecting".
+2. **A zone that ANSWERED is never re-connected.** The ONE retry of the zone
+   connect applies to `ZONE_CONNECTING` only. Once the session is up (the phase
+   has advanced past it -- the zone has seen our `OP_ZoneEntry`), the
+   escalation is a no-retry give-up: re-opening the session would duplicate the
+   zone entry. This is the standing distinction from B1072's shape (session
+   never came up -> one connect retry). A unit that wants a re-connect after the
+   session is up reopens this entry.
+3. **The play box keeps its log** (`--log-file PATH` / `WILLEQ_LOG_FILE`): the
+   logger writes the SAME lines to a file, line-flushed every drain cycle, so a
+   kill mid-zone-in keeps the log. The file is ADDITIVE (stdout/stderr keep
+   everything; an unwritable path is one stderr line, never a silencer). Both
+   `--log-level=LEVEL` and the space form `--log-level LEVEL` are accepted; an
+   unparseable level is a loud startup `ERROR`, never a silent no-op.
+   `refactor/B1079/README.md` and `docs/standards/debug_logging_standards.md`.
+
+## 2026-10-17 — B1078: a window draws at the oracle's OWN size, scaled only by ONE uniform factor, and the 40x40 dragitem decal is never stretched (#398)
+
+Will's 2026-10-15 play session: "the vendor window item icons are
+squashed and appear unnaturally square". Measured root cause: the
+merchant (374x480), inventory (428x460) and tradeskill (400x525) windows
+mapped their oracle geometry into fable's fixed 400x350 popup with TWO
+different factors (x by the width ratio, y by the height ratio), and the
+merchant blitted the 40x40 dragitem decal into the full list cell --
+25x14 at every resolution. RULED (extending the B1075 ruling, 2026-10-15):
+
+1. **A window draws at the oracle's OWN size**, anchored by the layout
+   table (the bank/options precedent). Where the screen cannot fit it
+   (the middle band is 384 tall at 800x600), the scale is ONE uniform
+   factor -- the min of the width and height ratios, capped at 1 -- applied
+   to the whole window, never an x factor and a different y factor
+   (that anisotropy is the defect). Merchant 80% at 800x600, inventory
+   83%, tradeskill 73%; at 1024x768 and up all three are 100% except the
+   inventory at 1024 (94%, width-bound) and the tradeskill at 1280x720
+   (96%, width-bound).
+2. **Every `drawItemIcon()` call site blits a square.** The decal is the
+   oracle's own 40x40 cell, so a cell that is not one must never stretch
+   it: `UIRenderer::squareIn(cell)` (the centred square of side min(w,h),
+   identity on a square cell) is the one helper, applied in the funnel and
+   asserted per call site at all four `kSupportedResolutions` by
+   `tests/test_item_icon_rects.cpp`. The merchant's measured row pitch is
+   24 (UIGAP-ORACLE/152), so its icon column is 24x24 at the window's own
+   size; `ORACLE_ROW_H` was 20 and is 24, `ROWS_VISIBLE` follows
+   (15, not 16 -- integer division).
+3. **Draw and click read the SAME rect** (T57's rule, applied to the
+   fix-leg's live defect): the tradeskill editbox-defocus hit test read
+   `layout.centerPopup` while the draw reads `TradeskillLayout::
+   windowRect()`; it now reads the drawn rect. `refactor/B1078/README.md`
+   (before/after rect tables, measured dump).
+
+
+## 2026-10-18 — FacePick numeric ranges: COUNT-MEASURED is the standard (B888-CC1, #204)
+
+Will (2026-10-18, option 1 of three): `data/char_create_faces.tsv` ships
+COUNT-MEASURED ranges and that is the accepted standard. A row's WIDTH is
+proven by image recurrence on the official client; its ENDPOINTS stay server
+candidates. The reason is measured, not assumed: the official Set Face window
+shows no numeric index, its rows wrap, and every new creation opens at a
+RANDOM face/hair/eye/beard state (`refactor/B888-CC1/facepick_wire_pilot.tsv`,
+two Barbarian-male Warriors opened red-hair/no-beard vs orange-hair/full-beard),
+so "step UP n times from the start" has no origin to count from. The server's
+create-time validation clamps anything out of range. The 52-packet wire leg is
+CLOSED, not owed; the `status` column (UNMEASURED / COUNT-MEASURED /
+COUNT-MEASURED+SAMPLED) stays as provenance, which is the truth, not a defect.
+Rejected: random-origin sampling (30-40 creations per pair) and reading the
+server source -- available if a visible mismatch ever appears in play.

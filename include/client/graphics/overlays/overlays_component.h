@@ -120,7 +120,7 @@ public:
 	void updateNavmeshOverlay(const glm::vec3& playerPos);
 	void drawNavmeshOverlay();
 #ifdef EQT_HAS_GLES2
-	void drawTargetOutline();       // Stencil-based silhouette outline (GLES2)
+	void drawTargetOutline();       // Inverted-hull silhouette outline, no stencil (GLES2, B1064)
 #else
 	void drawTargetSelectionBox();  // Wireframe bounding box (desktop GL)
 #endif
@@ -276,7 +276,7 @@ private:
 		float maxX = 0, maxY = 0, maxZ = 0;
 	};
 	std::vector<ZoneLineBoxNode> zoneLineBoxNodes_;
-	bool showZoneLineBoxes_ = false;  // Toggle with Ctrl+Z or /zone
+	bool showZoneLineBoxes_ = false;  // Toggle with Ctrl+Z (debug boxes only; B1068: zoning is independent)
 	bool zoneLineBoxesCreated_ = false;  // Whether scene nodes exist
 	void createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box);
 	void createZoneLineBoxMeshForNode(const EQT::ZoneLineBoundingBox& box, ZoneLineBoxNode& boxNode);

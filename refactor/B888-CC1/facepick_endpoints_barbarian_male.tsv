@@ -1,0 +1,7 @@
+creation	name	packet	face_wire	hair	haircolor	beard	beardcolor	eye1	eye2	face	wode	cleanup
+1	Faceendaa	/home/user/kb-evidence/kb-cc1-facepick/oracle/endpoints-final.pcap:161201	7	2	15	15	0	4	4	7	0	ui_soft_deleted
+2	Faceendab	/home/user/kb-evidence/kb-cc1-facepick/oracle/endpoints-final.pcap:434667	7	1	6	255	255	4	4	7	0	ui_soft_deleted
+3	Faceendac	/home/user/kb-evidence/kb-cc1-facepick/oracle/endpoints-final.pcap:687302	3	255	255	255	255	8	8	3	0	ui_soft_deleted
+4	Faceendad	/home/user/kb-evidence/kb-cc1-facepick/oracle/endpoints-final.pcap:943095	6	2	3	255	255	1	209	6	0	ui_soft_deleted
+5	Faceendae	/home/user/kb-evidence/kb-cc1-facepick/oracle/endpoints-final.pcap:1209336	5	2	0	255	255	8	8	5	0	ui_soft_deleted
+6	Faceendaf	/home/user/kb-evidence/kb-cc1-facepick/oracle/endpoints-run705-live.pcap:159663	7	0	17	255	255	4	4	7	0	hard_removed_world_down

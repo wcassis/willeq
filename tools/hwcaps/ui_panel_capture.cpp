@@ -19,6 +19,7 @@
 //
 // Usage:
 //   ui_panel_capture <output_dir> [--eqe1-path <dir-or-file>] [--opaque-alpha]
+//                    [--size WxH] [--panel <capture-name>]
 //
 //   --eqe1-path   directory holding willeq.eqe1, OR the pack file itself
 //                 (so a reference pack such as
@@ -31,8 +32,12 @@
 //                 where unit 0 supplies it and unbinding unit 1 changes
 //                 nothing. Pairing this flag with the pre-T411 pack is the
 //                 "before" half of T416's before/after.
+//   --size          output resolution (default 800x600).
+//   --panel         capture one named panel (or a prefix ending in *) instead
+//                   of the full set.
 
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/hotbar_panel.h"  // B1025-H2: renderHotbar's home
 #include "client/graphics/gles2_shader_cache.h"
 #include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/item_display_panel.h"
@@ -805,6 +810,19 @@ struct PanelCapture {
     std::function<void(UIRenderer&, const UILayout&, PanelStates&)> draw;
 };
 
+// B1075: the always-on HUD, in renderStaticUI()'s order.
+void drawCoOpenHud(UIRenderer& u, const UILayout& l, PanelStates& s) {
+    renderPlayerStatus(u.layer(), l, s.stats);
+    renderTargetInfo(u.layer(), l, s.target);
+    renderChatPanel(u.layer(), l, s.chat);
+    renderHotbar(u.layer(), l, s.hotbar);
+    renderSpellGemPanel(u.layer(), l, s.gems);
+    renderBuffBar(u.layer(), l, s.buffs);
+    renderGroupPanel(u.layer(), l, s.group);
+    renderPetPanel(u.layer(), l, s.pet);
+    renderXPBar(u.layer(), l, s.xp);
+}
+
 std::vector<PanelCapture> buildCaptureList() {
     return {
         {"player_status", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
@@ -980,6 +998,36 @@ std::vector<PanelCapture> buildCaptureList() {
             renderTradeWindow(u.layer(), l, s.tradeA); }},
         {"give_npc", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderTradeWindow(u.layer(), l, s.give); }},
+        // B1075 (#395): the layout table's required co-open sets, each drawn
+        // over the whole always-on HUD in the production draw order, so a
+        // reviewer sees both windows AND what they sit beside.
+        {"coopen_inventory_merchant", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            drawCoOpenHud(u, l, s);
+            renderInventoryPopup(u.layer(), l, s.inventory);
+            CursorAttachmentState empty;
+            renderMerchantPopup(u.layer(), l, s.merchant, empty); }},
+        {"coopen_inventory_bank", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            drawCoOpenHud(u, l, s);
+            renderInventoryPopup(u.layer(), l, s.inventory);
+            renderBankWindow(u.layer(), l, s.bank); }},
+        {"coopen_inventory_trade", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            drawCoOpenHud(u, l, s);
+            renderInventoryPopup(u.layer(), l, s.inventory);
+            renderTradeWindow(u.layer(), l, s.tradeA); }},
+        {"coopen_inventory_give", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            drawCoOpenHud(u, l, s);
+            renderInventoryPopup(u.layer(), l, s.inventory);
+            renderTradeWindow(u.layer(), l, s.give); }},
+        {"coopen_inventory_loot", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            drawCoOpenHud(u, l, s);
+            renderInventoryPopup(u.layer(), l, s.inventory);
+            renderLootPopup(u.layer(), l, s.loot); }},
+        {"coopen_spellbook_gems", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            drawCoOpenHud(u, l, s);
+            renderSpellbookPopup(u.layer(), l, s.spellbook); }},
+        {"coopen_skills_hud", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            drawCoOpenHud(u, l, s);
+            renderSkillsPopup(u.layer(), l, s.skills); }},
         // B1004 (#323): the item-name tooltips (review/UIGAP-ORACLE/323/).
         // `tooltip_alt_bag`: Alt held, pointer on the Backpack's label -- every
         // item named at once, the right column half a slot lower.
@@ -1018,6 +1066,10 @@ std::vector<PanelCapture> buildCaptureList() {
         // holding eqstr 1577 (Next pressed with points left).
         {"charcreate_page0", [](UIRenderer& u, const UILayout& l, PanelStates&) {
             auto s = charCreateCaptureState(0);
+            renderCharCreateScreen(u, l.screenW, l.screenH, s, charCreateEqstr()); }},
+        {"charcreate_facepick", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            auto s = charCreateCaptureState(0);
+            openFacePick(s);
             renderCharCreateScreen(u, l.screenW, l.screenH, s, charCreateEqstr()); }},
         {"charcreate_page1", [](UIRenderer& u, const UILayout& l, PanelStates&) {
             auto s = charCreateCaptureState(1);
@@ -1140,12 +1192,24 @@ int main(int argc, char** argv) {
     std::string outputDir = "ui_panel_capture";
     std::string eqe1Path = "/mnt/projects/EverQuest_ETC1";
     bool opaqueAlpha = false;
+    irr::u32 captureW = 800, captureH = 600;
+    std::string onlyPanel;
 
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--eqe1-path") && i + 1 < argc) {
             eqe1Path = argv[++i];
         } else if (!strcmp(argv[i], "--opaque-alpha")) {
             opaqueAlpha = true;
+        } else if (!strcmp(argv[i], "--size") && i + 1 < argc) {
+            unsigned w = 0, h = 0;
+            if (sscanf(argv[++i], "%ux%u", &w, &h) != 2 || w < 400 || h < 452) {
+                fprintf(stderr, "ERROR: --size expects WxH, at least 400x452\n");
+                return 1;
+            }
+            captureW = w;
+            captureH = h;
+        } else if (!strcmp(argv[i], "--panel") && i + 1 < argc) {
+            onlyPanel = argv[++i];
         } else if (argv[i][0] != '-') {
             outputDir = argv[i];
         } else {
@@ -1165,7 +1229,7 @@ int main(int argc, char** argv) {
         fclose(probe);
     }
 
-    constexpr irr::u32 kW = 800, kH = 600;
+    const irr::u32 kW = captureW, kH = captureH;
     irr::SIrrlichtCreationParameters params;
     params.DriverType = irr::video::EDT_OGLES2;
     params.WindowSize = irr::core::dimension2d<irr::u32>(kW, kH);
@@ -1223,6 +1287,13 @@ int main(int argc, char** argv) {
         driver->endScene();
 
         for (const auto& cap : captures) {
+            if (!onlyPanel.empty()) {
+                const bool prefix = onlyPanel.back() == '*';
+                const std::string name = prefix ? onlyPanel.substr(0, onlyPanel.size() - 1)
+                                                : onlyPanel;
+                if ((!prefix && cap.name != name) ||
+                    (prefix && std::string(cap.name).compare(0, name.size(), name) != 0)) continue;
+            }
             for (int pass = 0; pass < 2; ++pass) {
                 driver->beginScene(true, true, irr::video::SColor(255, 0, 0, 0));
                 drawChecker(driver, static_cast<int>(kW), static_cast<int>(kH));
@@ -1238,7 +1309,8 @@ int main(int argc, char** argv) {
                 ok = false;
                 continue;
             }
-            const std::string path = outputDir + "/" + cap.name + "_800x600.png";
+            const std::string path = outputDir + "/" + cap.name + "_" +
+                std::to_string(kW) + "x" + std::to_string(kH) + ".png";
             const bool wrote = driver->writeImageToFile(img, path.c_str());
             img->drop();
             if (!wrote) {

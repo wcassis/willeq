@@ -1,5 +1,6 @@
 #include "client/action/input_action_bridge.h"
 #include "client/action/command_processor.h"
+#include "client/bridge/game_state_bridge.h"  // B1063: Screenshot -> RendererCommand
 #include "client/hotbar/hotbar_model.h"  // T174: read slot content type
 #include "common/logging.h"
 
@@ -63,7 +64,27 @@ void InputActionBridge::processDiscreteActions() {
     }
 
     if (m_input->consumeAction(input::InputAction::Screenshot)) {
-        // Screenshot is handled by renderer, not through dispatcher
+        // B1063 (#383): the drop was the defect. The receiver's live F12
+        // press did queue RendererAction::Screenshot and the render thread
+        // deferred a save -- but to a fixed "screenshot.png" in the
+        // process's cwd (FrameComponent's pendingScreenshot_ arm), while
+        // /screenshot named its own path and printed the chat
+        // confirmation, so the two routes disagreed about WHERE the file
+        // went and WHICH one confirmed. The hotkey now reaches the same
+        // renderer command the typed slash does: a RendererCommand event
+        // with the exact string /screenshot's arm consumes, so both run
+        // the one body -- default path under the cache root, chat line
+        // "Screenshot <path>: saved|FAILED". A run with no bridge
+        // (headless) has no renderer, so the action is not pushed.
+        if (m_bridge) {
+            m_bridge->pushEvent(state::GameEvent(
+                state::GameEventType::RendererCommand,
+                state::RendererCommandData{"/screenshot"}));
+        }
+        LOG_DEBUG(MOD_INPUT,
+            "[INPUT-TRACE] InputActionBridge: consumed Screenshot, "
+            "forwarded={} (bridge={})",
+            (m_bridge != nullptr), (m_bridge != nullptr));
     }
 
     // Movement toggles
@@ -297,31 +318,21 @@ void InputActionBridge::processHotbarRequests() {
         // also the index into HotbarModel.
         const int slotIndex = hotbarReq->slot;
 
-        // T174: without a model wired we cannot know a slot's content type, so
-        // fall back to the pre-T174 behavior: treat every hotbar button as a
-        // spell gem (0-based position -> 1-based gem). This also keeps the
-        // bridge safe if it is ever constructed without a hotbar model.
-        if (!m_hotbarModel) {
-            reportAction("CastSpell",
-                m_dispatcher.castSpell(static_cast<uint8_t>(slotIndex + 1)));
-            continue;
-        }
+        if (!m_hotbarModel) continue;
 
         // T174: route by the slot's ACTUAL content type, read from the one
         // HotbarModel the rest of the client uses (the mouse path in
         // eq_bridge.cpp switches on this same enum). No default: -Wswitch then
         // catches the next enumerator that grows a keyboard route.
-        const eqt::HotbarSlot& slot = m_hotbarModel->getSlot(slotIndex);
+        const eqt::HotbarSlot& slot = m_hotbarModel->getSlot({m_hotbarModel->currentPage(), slotIndex});
         switch (slot.type) {
             case eqt::HotbarSlotType::Spell:
-                // Preserve the legacy position->gem mapping for spells: the
-                // hotbar position (0-based) selects the memorized gem
-                // (1-based), matching the dispatcher's 1-based castSpell
-                // contract. NOTE this diverges from the mouse path, which
-                // resolves the memorized gem from slot.id (a spell id); see
-                // refactor/T174_keyboard_hotbar.md.
-                reportAction("CastSpell",
-                    m_dispatcher.castSpell(static_cast<uint8_t>(slotIndex + 1)));
+                // A hotbar Spell stores a spell ID, not a gem position.
+                // HotbarModel::findSpellGem is shared with HotbarActivateIntent.
+                if (const int gem = m_hotbarModel->findSpellGem(slot.id); gem >= 0) {
+                    reportAction("CastSpell",
+                        m_dispatcher.beginCastFromGem(static_cast<uint8_t>(gem + 1)));
+                }
                 break;
             case eqt::HotbarSlotType::Skill:
                 // slot.id is a skill id; passed straight through, no offset.

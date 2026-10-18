@@ -27,6 +27,12 @@ std::atomic<uint64_t> g_logicalDepthStencil{0};
 std::atomic<bool> g_logicalPublished{false};
 std::atomic<int> g_software{-1};
 
+// B961 (GitLab #279): the device's scanout-tally pair, published by the
+// device (both forks) on every change (buffer locked / freed) and reset to
+// {0, 0} at teardown.
+std::atomic<uint32_t> g_scanoutBufs{0};
+std::atomic<uint64_t> g_scanoutBytes{0};
+
 // Parse "<number> [KiB|MiB|GiB|kB]" after a key's colon.
 uint64_t parseScaled(const char* p) {
     while (*p == ' ' || *p == '\t') ++p;
@@ -113,11 +119,56 @@ uint32_t countLines(const std::string& text) {
 
 } // namespace
 
+// B1056: the DRM fdinfo read is a kernel call into the driver's show_fdinfo.
+// The IMG PowerVR DDK module (pvrsrvkm 24.2, lane 4 / Radxa A7S) dereferences
+// NULL in pvr_show_fdinfo on that read and panics the kernel (trace in
+// review/B1056/lane4_attempts/bench60_local4.dmesg), so that driver is never
+// asked. The guard FAILS CLOSED: an fd whose driver cannot be resolved through
+// sysfs is not read either (a panic is the cost of a wrong "yes").
+// WILLEQ_GPU_CENSUS_NO_FDINFO=1 skips the read for every driver; it is read
+// per call so a rig (or a test) can set it after startup.
+bool drmFdinfoIsSafe(const char* devPath) {
+    const char* v = std::getenv("WILLEQ_GPU_CENSUS_NO_FDINFO");
+    if (v && *v && *v != '0') return false;
+    if (!devPath) return false;
+    const char* node = strrchr(devPath, '/');
+    if (!node || !*(node + 1)) return false;
+    char link[320], target[320];
+    snprintf(link, sizeof(link), "/sys/class/drm/%s/device/driver", node + 1);
+    const ssize_t n = readlink(link, target, sizeof(target) - 1);
+    if (n <= 0) return false;  // unknown driver: not worth a kernel panic
+    target[n] = '\0';
+    const char* drv = strrchr(target, '/');
+    drv = drv ? drv + 1 : target;
+    return *drv != '\0' && strcmp(drv, "pvrsrvkm") != 0;
+}
+
 void publishGpuLogicalTally(uint64_t textureBytes, uint64_t bufferBytes, uint64_t depthStencilBytes) {
     g_logicalTextures.store(textureBytes, std::memory_order_relaxed);
     g_logicalBuffers.store(bufferBytes, std::memory_order_relaxed);
     g_logicalDepthStencil.store(depthStencilBytes, std::memory_order_relaxed);
     g_logicalPublished.store(true, std::memory_order_release);
+}
+
+// B961 (GitLab #279): the publish side of the scanout tally. The device
+// (both forks) calls this STRONG core function on every tally change (a
+// buffer's first lock, its free) and with {0, 0} at teardown. A strong
+// device->core reference is the only symbol direction that binds across the
+// two static archives (libwilleq_core.a ... libIrrlicht.a): a weak DEFINITION
+// of a reader in this TU was measured to win over the device's strong one in
+// the willeq binary, and a weak REFERENCE stayed weak-undefined
+// (include/client/core/gpu_buffer_census.h, "WHY NOT A WEAK SYMBOL"). Same
+// shape as publishGpuLogicalTally / publishGpuSoftwareRasteriser.
+void publishScanoutTally(uint32_t bufs, uint64_t bytes) {
+    g_scanoutBufs.store(bufs, std::memory_order_relaxed);
+    g_scanoutBytes.store(bytes, std::memory_order_relaxed);
+}
+
+ScanoutTallyRead readScanoutTally() {
+    ScanoutTallyRead r;
+    r.bufs = g_scanoutBufs.load(std::memory_order_relaxed);
+    r.bytes = g_scanoutBytes.load(std::memory_order_relaxed);
+    return r;
 }
 
 void publishGpuSoftwareRasteriser(bool software) {
@@ -229,7 +280,7 @@ MemcgStat parseMemcgStat(const std::string& text) {
         const std::string key = line.substr(0, sp);
         const uint64_t v = strtoull(line.c_str() + sp + 1, nullptr, 10);
         if (key == "shmem") { m.shmemBytes = v; m.ok = true; }
-        else if (key == "kernel") m.kernelBytes = v;
+        else if (key == "kernel") { m.kernelBytes = v; m.kernelSeen = true; }
         else if (key == "anon") m.anonBytes = v;
     }
     return m;
@@ -316,6 +367,7 @@ GpuBufferCensus readGpuBufferCensus() {
             target[n] = '\0';
             if (strncmp(target, "/dev/dri/", 9) != 0) continue;
             ++in.drmFds;
+            if (!drmFdinfoIsSafe(target)) continue;
             char info[320];
             snprintf(info, sizeof(info), "/proc/self/fdinfo/%s", e->d_name);
             foldDrmFdinfo(parseDrmFdinfo(readSmallFile(info)), seen, in);
@@ -323,6 +375,11 @@ GpuBufferCensus readGpuBufferCensus() {
         closedir(d);
     }
     in.maps = readDrmMaps();
+    // B961: the display device's GBM scanout tally (the device's own
+    // published pair; zero where the process has no GBM device).
+    const ScanoutTallyRead scanout = readScanoutTally();
+    in.scanoutFbBufs = scanout.bufs;
+    in.scanoutFbBytes = scanout.bytes;
     const std::string cg = parseCgroupV2Path(readSmallFile("/proc/self/cgroup"));
     if (!cg.empty()) {
         const std::string base = "/sys/fs/cgroup" + cg;
@@ -353,6 +410,16 @@ std::string gpuBuffersToLogLine(const std::string& point, const std::string& zon
     appendKV(out, "fdinfo_total", c.in.fdinfoTotalBytes);
     appendKV(out, "fdinfo_resident", c.in.fdinfoResidentBytes);
     appendKV(out, "fdinfo_purgeable", c.in.fdinfoPurgeableBytes);
+    // B961: the two byte classes on no ledger row, named as their own rows
+    // (b961Rows() derives both from the census in one place). Neither is
+    // added to owned -- the counting question is Will's
+    // (refactor/B961/README.md). Inserted after fdinfo_purgeable, BEFORE the
+    // B978 owned fields, which must stay last for the pre-B961 parsers
+    // (owned_from_memgpu, rendered_zone_summarize.py).
+    const B961Rows b961 = b961Rows(c);
+    appendKV(out, "scanout_fb", b961.scanoutFbBytes);
+    appendKV(out, "scanout_fb_bufs", b961.scanoutFbBufs);
+    appendKV(out, "memcg_kernel_seen", b961.memcgKernelAvailable ? 1 : 0);
     // B978: owned = RssAnon - gpu_driver + gpu_buffers (outside RssAnon only).
     appendKV(out, "owned_rss_anon", ownedRssAnonBytes);
     appendKV(out, "owned", ownedPlusGpuBuffers(ownedRssAnonBytes, c));
@@ -379,6 +446,12 @@ std::string gpuBuffersToJson(const GpuBufferCensus& c, uint64_t ownedRssAnonByte
     out += ",\"fdinfoTotalBytes\":" + std::to_string(c.in.fdinfoTotalBytes);
     out += ",\"fdinfoResidentBytes\":" + std::to_string(c.in.fdinfoResidentBytes);
     out += ",\"fdinfoPurgeableBytes\":" + std::to_string(c.in.fdinfoPurgeableBytes);
+    // B961: the two unrowed byte classes, through the same b961Rows() the
+    // [memgpu] log line uses (one derivation site for both emitters).
+    const B961Rows b961 = b961Rows(c);
+    out += ",\"scanoutFbBytes\":" + std::to_string(b961.scanoutFbBytes);
+    out += ",\"scanoutFbBufs\":" + std::to_string(b961.scanoutFbBufs);
+    out += ",\"memcgKernelSeen\":" + std::string(b961.memcgKernelAvailable ? "true" : "false");
     out += ",\"ownedRssAnonBytes\":" + std::to_string(ownedRssAnonBytes);
     out += ",\"ownedBytes\":" + std::to_string(ownedPlusGpuBuffers(ownedRssAnonBytes, c));
     out += "}";

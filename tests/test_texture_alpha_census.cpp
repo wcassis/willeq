@@ -163,6 +163,27 @@ std::vector<Entry> itemIconSet() {
              "UIRenderer::drawItemIcon, draw2DImage alpha blend (UI2D_FS)"}};
 }
 
+// ── The spell icon sheets ───────────────────────────────────────────────────
+// B1077 (GitLab #397). The official client's own gemicons*.tga / spells*.tga /
+// Spell_Icons.tga art, packed into three 1024x1024 family atlases plus the
+// 40x40 CW_SpellGemHolder piece by tools/spell_icon_atlas_builder. The gem bar,
+// spellbook, buff bar and hotbar draw them through UIRenderer::drawSpellIcon()
+// -> draw2DImage with useAlphaChannelOfTexture=true -- the same UI2D_FS
+// alpha-blend path item icons take, which since T411 samples the ETC1
+// `_alpha` companion on unit 1. Same shape, same minification profile (a
+// 36x28 or 40x40 cell lands on a 32x32 slot or 40x40 decal), so no in-band
+// payload is needed.
+std::vector<Entry> spellIconSet() {
+    return {{"spell_icons_gems.bmp", "spell_icons_gems",
+             "UIRenderer::drawSpellIcon(Gems), draw2DImage alpha blend (UI2D_FS)"},
+            {"spell_icons_spells.bmp", "spell_icons_spells",
+             "UIRenderer::drawSpellIcon(Spells), draw2DImage alpha blend (UI2D_FS)"},
+            {"spell_icons_buff.bmp", "spell_icons_buff",
+             "UIRenderer::drawSpellIcon(Buff), draw2DImage alpha blend (UI2D_FS)"},
+            {"spell_icon_holder.bmp", "spell_icon_holder",
+             "UIRenderer::drawSpellGemHolder, draw2DImage alpha blend (UI2D_FS)"}};
+}
+
 // ── Entries that must stay in-band RGBA8888, and why ────────────────────────
 // Down from 60 to 1 at T411. An entry here costs ~8x its ETC1 size in the
 // shared pack AND in every zone's mapped bytes (a 256x256 with mips:
@@ -202,6 +223,7 @@ std::vector<std::string> allCensusedFiles() {
     for (const Entry& e : cursorSet()) v.push_back(e.file);
     for (const Entry& e : billboardSet()) v.push_back(e.file);
     for (const Entry& e : itemIconSet()) v.push_back(e.file);  // T430, board B376
+    for (const Entry& e : spellIconSet()) v.push_back(e.file);  // B1077, GitLab #397
     return v;
 }
 
@@ -586,10 +608,11 @@ TEST(TextureAlphaCensus, EveryShippedBmpIsAccountedFor) {
         pinned.insert(line.substr(sp + 1));
     }
     // 64 procedural BMPs + T417's spell_sprite_atlas.bmp + T430's two
-    // item_icons sheets, the last three lifted from the official client's art
-    // by two further recipes (tools/spell_sprite_atlas_builder,
-    // tools/item_icon_atlas_builder) into the same directory.
-    ASSERT_EQ(pinned.size(), 67u) << "data/textures.sha256 does not pin 67 files";
+    // item_icons sheets + B1077's four spell-icon sheets, the last five
+    // lifted from the official client's art by three further recipes
+    // (tools/spell_sprite_atlas_builder, tools/item_icon_atlas_builder,
+    // tools/spell_icon_atlas_builder) into the same directory.
+    ASSERT_EQ(pinned.size(), 71u) << "data/textures.sha256 does not pin 71 files";
 
     std::set<std::string> censused;
     for (const std::string& f : allCensusedFiles()) censused.insert(f);

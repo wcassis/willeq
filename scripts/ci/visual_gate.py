@@ -647,6 +647,44 @@ def extract_gl_version(stdout_text):
     return None
 
 
+def assert_gldriver_line(zone, stdout_text, failures):
+    """B1016 (#337): the gate's [gldriver] net.
+
+    The benchmark (the gate's only real GLES2 run) emits the same one-time
+    [gldriver] line the client logs at GL init (zone_bench_loader.cpp,
+    makeGlDriverLine). This asserts that line is present AND parseable by
+    the rig's summarizer (rendered_zone_summarize.mesa_driver_field -- the
+    SAME parser the Pi runs use for their maps snapshots), so a build that
+    drops the emission or breaks the line format fails THIS job, not just a
+    hand run. No threshold, no golden: presence + parse only.
+    """
+    line = next(
+        (l for l in stdout_text.splitlines() if l.lstrip().startswith("[gldriver]")),
+        None)
+    if line is None:
+        failures.append(
+            f"{zone}: benchmark stdout has no [gldriver] line -- the "
+            f"one-time GL-driver emission (B1016, #337) is missing from this build")
+        return
+    try:
+        import sys
+        _here = Path(__file__).resolve().parent
+        sys.path.insert(0, str(_here))
+        sys.path.insert(0, str(_here.parent / "pi"))
+        from rendered_zone_summarize import mesa_driver_field
+    except Exception as e:  # the parser import failing is itself the failure
+        failures.append(f"{zone}: [gldriver] parser unavailable: {e}")
+        return
+    # mesa_driver_field(lines) -> "renderer:gallium:llvm" or "" (no line).
+    fields = mesa_driver_field([line])
+    if not fields or fields == "::":
+        failures.append(
+            f"{zone}: [gldriver] line is not parseable by the rig's "
+            f"summarizer (format drift): {line!r}")
+        return
+    print(f"  [gldriver] {zone}: {fields}")
+
+
 def p95(values):
     values = sorted(values)
     idx = int(len(values) * 0.95)
@@ -1108,6 +1146,54 @@ def assert_memory_ledger(label_prefix, memory, failures, max_unattributed_pct=No
         print(f"  [ledger-budget] {label_prefix}: NO BUDGET CONFIGURED for " + ", ".join(skipped))
 
 
+def assert_zone_parse_peak(label_prefix, memory, zone_peak_budget, failures):
+    """B928 (#246): assert the `zone_parse` category's PEAK, not only its
+    end-of-run live value.
+
+    The ledger's categories[c].peak (memory_ledger.cpp snapshot(), the
+    high-water mark of live bytes since process start) is the number that
+    kills a process on the Pi; assert_memory_ledger() above compares the
+    live value, which is only measured at the END of the run -- after the
+    end-of-load source release (B914). A category that exceeds its budget
+    mid-load and falls back to inside it at the end passes that check while
+    still being a mid-load OOM.
+
+    `zone_peak_budget` is this zone's `zoneParsePeakBudget` from
+    tests/goldens/manifest.json -- WILL'S bless (bless-only file). It is
+    NOT in the memory JSON (the JSON carries the live budgets from the
+    preset, not per-zone goldens), so it is passed in. When it is None the
+    budget has not been blessed yet: the measured peak is printed under
+    its own name and nothing fails, so the pipeline stays green until the
+    owner blesses a value (refactor/B928/README.md carries the measured
+    per-zone peaks the bless is requested against). A benchmark whose
+    memory JSON predates the peak field (no categories[c].peak key) is
+    likewise printed, not failed: a missing field is an older binary, not
+    a peak violation.
+    """
+    ledger = memory.get("ledger")
+    if not isinstance(ledger, dict) or not ledger.get("ledgerEnabled", False):
+        return  # assert_memory_ledger() already failed loudly on these
+    peak = ledger.get("categories", {}).get("zone_parse", {}).get("peak")
+    if peak is None:
+        print(f"  [ledger-peak] {label_prefix}: zone_parse peak not reported "
+              f"(benchmark predates the peak field); the mid-load peak is NOT gated this run")
+        return
+    if zone_peak_budget is None or not zone_peak_budget:
+        print(f"  [ledger-peak] {label_prefix}: zone_parse peak {peak} "
+              f"({peak / 1048576:.1f} MiB) -- NO BUDGET BLESSED (zoneParsePeakBudget "
+              f"absent); printing, not failing, until the owner blesses one")
+        return
+    pct = (100.0 * peak / zone_peak_budget) if zone_peak_budget else 0.0
+    print(f"  [ledger-peak] {label_prefix}: zone_parse peak {peak} "
+          f"({pct:.0f}% of budget {zone_peak_budget})")
+    if peak > zone_peak_budget:
+        failures.append(
+            f"{label_prefix}: zone_parse PEAK {peak} exceeds the blessed "
+            f"zoneParsePeakBudget {zone_peak_budget} -- a mid-load high-water mark "
+            f"the end-of-run live check (assert_memory_ledger) never sees"
+        )
+
+
 def verify_memory_coverage(manifest, failures):
     """T80: verify the SEPARATE memory-coverage run. Appends to `failures`
     in place (same accumulation pattern verify() uses for the golden-image
@@ -1141,6 +1227,11 @@ def verify_memory_coverage(manifest, failures):
         assert_memory_budgets(f"memory-coverage {zone}", memory, failures)
         # T491: the allocator ledger, on the heavier asset mix too.
         assert_memory_ledger(f"memory-coverage {zone}", memory, failures)
+        # B928 (#246): the zone_parse PEAK, against the zone's
+        # zoneParsePeakBudget (a bless-only value in this manifest). Prints
+        # and never fails while the budget is absent.
+        assert_zone_parse_peak(f"memory-coverage {zone}", memory,
+                               zone_cfg.get("zoneParsePeakBudget"), failures)
 
         expected_mem = zone_cfg.get("memory")
         if not expected_mem:
@@ -1203,6 +1294,9 @@ def verify(manifest):
                   f"mesa upgraded, re-bless with --bless instead of treating diffs as regressions.")
             mesa_mismatch_warned = True
 
+        # B1016 (#337): the [gldriver] net, beside the ledger assertions.
+        assert_gldriver_line(zone, stdout_text, failures)
+
         # 1. Golden-frame pixel comparison.
         for f, actual_path in png_paths.items():
             golden_path = GOLDENS_DIR / f"{zone}_f{f}.png"
@@ -1254,6 +1348,12 @@ def verify(manifest):
             # (d) T491: the allocator ledger -- unattributed bound + per-category
             # budgets. See assert_memory_ledger().
             assert_memory_ledger(zone, memory, failures)
+
+            # (d') B928 (#246): the zone_parse PEAK, against the zone's
+            # zoneParsePeakBudget (a bless-only value in this manifest). Prints
+            # and never fails while the budget is absent.
+            assert_zone_parse_peak(zone, memory,
+                                   zone_cfg.get("zoneParsePeakBudget"), failures)
 
             # (a') Exact-match the two originally-budgeted categories' usage
             # against their blessed values as well -- regression detection on

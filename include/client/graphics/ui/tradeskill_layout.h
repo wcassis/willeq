@@ -204,20 +204,54 @@ constexpr irr::s32 ORACLE_FAV_REMOVE_X  = 66;
 constexpr irr::s32 ORACLE_FAV_SHOW_X    = 126;
 
 /**
- * Map an oracle-window rect into `layout.centerPopup`, proportionally.
+ * B1078 (#398): the ONE uniform factor in per-cent (100 = unscaled) that
+ * fits the oracle's 400x525 window into the middle band: the min of the
+ * band's width and height ratios, capped at 1. At 1280x720 and up the band
+ * is wide enough that the height governs (504/525 at 1280, 1 at 1920); at
+ * 800x600 the whole window -- recipe list, the 42x42 container grid, the
+ * three favourite buttons -- shrinks uniformly. One factor, never two: the
+ * pre-B1078 body mapped x by centerPopupW/400 and y by centerPopupH/525,
+ * which squashed the oracle's SQUARE 42x42 container cells into 40x40.
+ */
+inline irr::s32 scalePct(const UILayout& layout) {
+    const auto& b = layout.middleBand;
+    irr::s32 f = std::min(b.getWidth() * 100 / ORACLE_WINDOW_W,
+                          b.getHeight() * 100 / ORACLE_WINDOW_H);
+    return f < 100 ? f : 100;
+}
+
+/**
+ * The window, in screen coordinates (B1078): the oracle's own 400x525 at the
+ * ONE uniform factor (`scalePct`), anchored at the centre slot's left
+ * (`centerPopup.UpperLeftCorner.X`) and top-anchored at the middle band's
+ * top, clamped wholly on screen. Every interior rect below (`slotRect`,
+ * `recipeListRect`, the buttons, ...) is expressed in the 400x525 window
+ * space and mapped by THAT SAME factor (via `scaled`), so the frame and its
+ * contents can never drift apart (T57's rule).
+ */
+inline irr::core::rect<irr::s32> windowRect(const UILayout& layout) {
+    const irr::s32 f = scalePct(layout);
+    const irr::s32 w = ORACLE_WINDOW_W * f / 100;
+    const irr::s32 h = ORACLE_WINDOW_H * f / 100;
+    const irr::s32 x = layout.centerPopup.UpperLeftCorner.X;
+    const irr::s32 y = layout.middleBand.UpperLeftCorner.Y;
+    return layout.clampOnScreen(x, y, w, h);
+}
+
+/**
+ * Map an oracle-window rect into `windowRect()`, by the ONE uniform factor.
  * The one scaling body — every rect below goes through it, so there is no
  * second copy of the mapping to drift (T57's rule).
  */
 inline irr::core::rect<irr::s32> scaled(const UILayout& layout,
                                         irr::s32 x, irr::s32 y,
                                         irr::s32 w, irr::s32 h) {
-    const auto& popup = layout.centerPopup;
-    const irr::s32 pw = popup.getWidth();
-    const irr::s32 ph = popup.getHeight();
-    const irr::s32 sx = popup.UpperLeftCorner.X + x * pw / ORACLE_WINDOW_W;
-    const irr::s32 sy = popup.UpperLeftCorner.Y + y * ph / ORACLE_WINDOW_H;
-    const irr::s32 sw = w * pw / ORACLE_WINDOW_W;
-    const irr::s32 sh = h * ph / ORACLE_WINDOW_H;
+    const auto win = windowRect(layout);
+    const irr::s32 f = scalePct(layout);
+    const irr::s32 sx = win.UpperLeftCorner.X + x * f / 100;
+    const irr::s32 sy = win.UpperLeftCorner.Y + y * f / 100;
+    const irr::s32 sw = w * f / 100;
+    const irr::s32 sh = h * f / 100;
     return irr::core::rect<irr::s32>(sx, sy, sx + sw, sy + sh);
 }
 
@@ -294,8 +328,19 @@ inline irr::core::rect<irr::s32> recipeListLabelRect(const UILayout& layout) {
 
 /** COMBW_RecipeList — the listbox frame. */
 inline irr::core::rect<irr::s32> recipeListRect(const UILayout& layout) {
-    return scaled(layout, ORACLE_LIST_X, ORACLE_LIST_Y,
-                  ORACLE_LIST_W, ORACLE_LIST_H);
+    // Endpoints, not an independent size: the frame's right and bottom must
+    // land on the same mapping the rows tile to, or the rows spill a pixel
+    // past the frame wherever two integer divisions disagree (B1078's window
+    // is 73% of the oracle at 800x600, where a divided width disagrees with
+    // the endpoints by a pixel). The endpoint body is inlined here because
+    // scaledX/scaledY are declared below this.
+    const auto win = windowRect(layout);
+    const irr::s32 f = scalePct(layout);
+    auto x = [&](irr::s32 v) { return win.UpperLeftCorner.X + v * f / 100; };
+    auto y = [&](irr::s32 v) { return win.UpperLeftCorner.Y + v * f / 100; };
+    return irr::core::rect<irr::s32>(x(ORACLE_LIST_X), y(ORACLE_LIST_Y),
+                                     x(ORACLE_LIST_X + ORACLE_LIST_W),
+                                     y(ORACLE_LIST_Y + ORACLE_LIST_H));
 }
 
 /**
@@ -308,12 +353,12 @@ inline irr::core::rect<irr::s32> recipeListRect(const UILayout& layout) {
  * NEXT row's scaled top and the list tiles exactly.
  */
 inline irr::s32 scaledX(const UILayout& layout, irr::s32 x) {
-    return layout.centerPopup.UpperLeftCorner.X +
-           x * layout.centerPopup.getWidth() / ORACLE_WINDOW_W;
+    const auto win = windowRect(layout);
+    return win.UpperLeftCorner.X + x * scalePct(layout) / 100;
 }
 inline irr::s32 scaledY(const UILayout& layout, irr::s32 y) {
-    return layout.centerPopup.UpperLeftCorner.Y +
-           y * layout.centerPopup.getHeight() / ORACLE_WINDOW_H;
+    const auto win = windowRect(layout);
+    return win.UpperLeftCorner.Y + y * scalePct(layout) / 100;
 }
 
 /**

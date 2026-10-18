@@ -351,7 +351,17 @@ enum TitaniumZoneOpcodes {
 	HC_OP_Report = 0x7f9d,               // C->S: Report/bug
 	HC_OP_FriendsWho = 0x48fe,           // C->S: Friends list who
 	// Phase 4: GM Commands
-	HC_OP_GMZoneRequest = 0x1306,        // Bidirectional: GM zone request
+	// B1081 (#401): the two OP_GMZoneRequest packets are a QUERY + a CONFIRM,
+	// not one round trip. The oracle (patch_Titanium.conf: OP_GMZoneRequest2
+	// = 0x244c) queries the server with charname+zone (0x1306), the server
+	// replies with the target's safe coords and a success flag, and only
+	// THEN the client sends GMZoneRequest2 (a uint32 zone id) -- eqemu's
+	// Handle_OP_GMZoneRequest2 (zone/client_packet.cpp:7142) is the one that
+	// performs the change, GoToSafeCoords(zonereq, 0) (zoning.cpp:1074).
+	// Sending only the first half (what fable did) makes /gmzone a silent
+	// no-op for every cross-zone move.
+	HC_OP_GMZoneRequest = 0x1306,        // Bidirectional: GM zone query (charname+zone -> safe coords)
+	HC_OP_GMZoneRequest2 = 0x244c,       // C->S: GM zone confirm (uint32 zone id -> the change)
 	HC_OP_GMSummon = 0x1edc,             // Bidirectional: GM summon player
 	HC_OP_GMGoto = 0x1cee,               // C->S: GM goto player
 	HC_OP_GMFind = 0x5930,               // Bidirectional: GM find player

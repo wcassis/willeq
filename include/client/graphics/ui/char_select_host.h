@@ -19,10 +19,23 @@
 #include "client/login_world/char_create_data.h"
 
 #include <cstdint>
+#include <memory>
 
 namespace eqt {
 namespace login_world {
 class CharacterSelectChannel;
+}
+namespace ui {
+// B888-CC2 (#204): the pre-zone 3D preview host. Held by unique_ptr so this
+// header keeps the M00 layering (it is reached through application.h, which
+// must not pull irrlicht.h in -- char_preview_scene.h includes it). The
+// complete type is char_preview_scene.h; the host's destructor is defined in
+// the .cpp where it is included.
+class CharPreviewScene;
+// B888-CC3 (#204): the 3D clz backdrop (the showroom the Explore mode moves
+// through). Same layering: incomplete here, complete type
+// char_backdrop_scene.h in the .cpp.
+class CharBackdropScene;
 }
 }  // namespace eqt
 
@@ -34,6 +47,12 @@ class IrrlichtRenderer;
 class CharacterSelectHost {
 public:
     CharacterSelectHost();
+    ~CharacterSelectHost();   // out-of-line: its preview_ member needs char_preview_scene.h
+    // Non-copyable: preview_ is an incomplete type in this header, and the
+    // implicitly-defined copy operations would need it complete. (Application
+    // owns the host by pointer; nothing copies it.)
+    CharacterSelectHost(const CharacterSelectHost&) = delete;
+    CharacterSelectHost& operator=(const CharacterSelectHost&) = delete;
 
     /** One frame. False when the user pressed Quit or the device stopped. */
     bool frame(IrrlichtRenderer& renderer, eqt::login_world::CharacterSelectChannel& channel, float dt);
@@ -45,6 +64,8 @@ private:
 
     CharSelectScreenState state_;
     eqt::charcreate::CharCreateData data_;   // data/char_create.tsv, B888's era data
+    std::unique_ptr<eqt::ui::CharPreviewScene> preview_;  // B888-CC2: the 3D model
+    std::unique_ptr<eqt::ui::CharBackdropScene> backdrop_;  // B888-CC3: the clz showroom
     uint64_t seenView_ = 0;
     uint32_t seed_ = 0;
     bool quit_ = false;

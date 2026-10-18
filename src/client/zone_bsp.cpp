@@ -463,6 +463,46 @@ size_t BspTree::findRegionIndexForPoint(float x, float y, float z) const {
     return SIZE_MAX;
 }
 
+void BspTree::collectRegionsAlongSegment(float x0, float y0, float z0,
+                                         float x1, float y1, float z1,
+                                         std::vector<size_t>& out) const {
+    if (nodes.empty()) return;
+    const float dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
+    // (node, t0, t1): the part of the segment between parameters t0..t1 that
+    // lies inside this node's half-space cell. Near half first, so `out` is
+    // ordered from (x0,y0,z0) outward.
+    struct Item { int node; float t0, t1; };
+    std::vector<Item> stack;
+    stack.push_back({0, 0.0f, 1.0f});
+    while (!stack.empty()) {
+        const Item it = stack.back();
+        stack.pop_back();
+        if (it.node < 0 || static_cast<size_t>(it.node) >= nodes.size()) continue;
+        const BspNode& node = nodes[it.node];
+        if (node.regionId > 0 && static_cast<size_t>(node.regionId - 1) < regions.size()) {
+            const size_t r = static_cast<size_t>(node.regionId - 1);
+            if (std::find(out.begin(), out.end(), r) == out.end()) out.push_back(r);
+            continue;
+        }
+        auto dotAt = [&](float t) {
+            return (x0 + dx * t) * node.normalX + (y0 + dy * t) * node.normalY +
+                   (z0 + dz * t) * node.normalZ + node.splitDistance;
+        };
+        const float d0 = dotAt(it.t0);
+        const float d1 = dotAt(it.t1);
+        const int side0 = d0 >= 0 ? node.left : node.right;
+        const int side1 = d1 >= 0 ? node.left : node.right;
+        if ((d0 >= 0) == (d1 >= 0)) {
+            stack.push_back({side0, it.t0, it.t1});
+            continue;
+        }
+        // Crosses the plane: split where dot = 0 (d0 != d1 here, signs differ).
+        const float tm = it.t0 + (it.t1 - it.t0) * (d0 / (d0 - d1));
+        stack.push_back({side1, tm, it.t1});   // far half, popped second
+        stack.push_back({side0, it.t0, tm});   // near half, popped first
+    }
+}
+
 std::optional<ZoneLineInfo> BspTree::checkZoneLine(float x, float y, float z) const {
     static int checkCounter = 0;
     checkCounter++;

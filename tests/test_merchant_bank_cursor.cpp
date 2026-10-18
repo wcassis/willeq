@@ -135,10 +135,14 @@ TEST(B429Census, TheThreeWindowsAreActuallyDrawn) {
 // 2. Geometry, against the oracle XML
 // ===========================================================================
 
-TEST(MerchantLayoutOracle, EveryElementLandsInsideTheCentrePopup) {
+TEST(MerchantLayoutOracle, EveryElementLandsInsideTheWindow) {
     for (auto rc : {std::pair<int, int>{640, 480}, {800, 600}, {1024, 768}}) {
         const auto l = layoutAt(rc.first, rc.second);
-        const auto& popup = l.centerPopup;
+        // B1078 (GitLab #398): the merchant's frame is its own windowRect(),
+        // the oracle's 374x480 at one uniform factor in the pair's left slot
+        // -- not the 350-tall partnerPopup it filled before. Every element
+        // is expressed against that window, so every element lies inside it.
+        const auto win = MerchantLayout::windowRect(l);
         std::vector<irr::core::rect<irr::s32>> rects = {
             MerchantLayout::nameTextRect(l),
             MerchantLayout::listRect(l),
@@ -150,10 +154,10 @@ TEST(MerchantLayoutOracle, EveryElementLandsInsideTheCentrePopup) {
             MerchantLayout::doneButtonRect(l),
         };
         for (const auto& r : rects) {
-            EXPECT_GE(r.UpperLeftCorner.X, popup.UpperLeftCorner.X);
-            EXPECT_GE(r.UpperLeftCorner.Y, popup.UpperLeftCorner.Y);
-            EXPECT_LE(r.LowerRightCorner.X, popup.LowerRightCorner.X);
-            EXPECT_LE(r.LowerRightCorner.Y, popup.LowerRightCorner.Y);
+            EXPECT_GE(r.UpperLeftCorner.X, win.UpperLeftCorner.X);
+            EXPECT_GE(r.UpperLeftCorner.Y, win.UpperLeftCorner.Y);
+            EXPECT_LE(r.LowerRightCorner.X, win.LowerRightCorner.X);
+            EXPECT_LE(r.LowerRightCorner.Y, win.LowerRightCorner.Y);
             EXPECT_GT(r.getWidth(), 0);
             EXPECT_GT(r.getHeight(), 0);
         }

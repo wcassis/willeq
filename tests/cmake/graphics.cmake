@@ -36,6 +36,7 @@ IF(EQT_GRAPHICS)
         # T500: model_loading_search.cpp reads eqt::memory::stats() for the
         # [modelmem] split line, so the ledger TU comes with it.
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/mesh_building.cpp
@@ -44,7 +45,6 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading_animation.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading_preload.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
-        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry_atlased.cpp
         # T490: BspRegion/BspTree PVS methods moved into zone_bsp.cpp (RLE store).
         ${CMAKE_SOURCE_DIR}/src/client/zone_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
@@ -93,7 +93,7 @@ IF(EQT_GRAPHICS)
     # T270: the race-code tests read the shipped race_models rows instead of
     # restating a hardcoded numbering (they skip if the db is absent).
     TARGET_COMPILE_DEFINITIONS(test_graphics PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_LINK_LIBRARIES(test_graphics GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES} dl)
     IF(EQT_DRM OR EQT_GLES2)
         # P26: x86 GLES2 dev tree (EQT_DRM=OFF, EQT_GLES2=ON) needs these too —
@@ -147,7 +147,6 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_characters.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_skinning.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
-        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry_atlased.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/dds_decoder.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/race_codes.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/race_model_loader.cpp
@@ -159,6 +158,7 @@ IF(EQT_GRAPHICS)
         # T500: model_loading_search.cpp reads eqt::memory::stats() for the
         # [modelmem] split line, so the ledger TU comes with it.
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/mesh_building.cpp
@@ -201,7 +201,7 @@ IF(EQT_GRAPHICS)
     # T270: VerifyRaceCodeMappings compares against the shipped race_models
     # rows rather than a restated pre-JSON table.
     TARGET_COMPILE_DEFINITIONS(test_asset_loading PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_LINK_LIBRARIES(test_asset_loading GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB} ${IRRLICHT_LIBRARY} ${JSONCPP_LIBRARIES} dl)
     IF(EQT_DRM OR EQT_GLES2)
         # P26: x86 GLES2 dev tree (EQT_DRM=OFF, EQT_GLES2=ON) needs these too —
@@ -253,6 +253,10 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         test_x11_numpad_e2e.cpp
         ${CMAKE_SOURCE_DIR}/src/client/input/hotkey_manager.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+        # B961: createDeviceEx(EDT_OGLES2) pulls CIrrDeviceFB.o in, whose scanout
+        # publish references eqt::memory::publishScanoutTally -- compile the core
+        # census TU in, the standalone-tool pattern gles2_zone_benchmark uses.
+        ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_x11_numpad_e2e PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_x11_numpad_e2e
@@ -263,7 +267,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
             TARGET_LINK_LIBRARIES(test_x11_numpad_e2e X11)
         ENDIF()
     ENDIF()
-    GTEST_DISCOVER_TESTS(test_x11_numpad_e2e DISCOVERY_TIMEOUT 120)
+    # B1091 (#411): the test owns a per-run Xvfb (Xvfb -displayfd) and reaps it
+    # on every exit path; every test-side wait carries a deadline, so a healthy
+    # run finishes in well under a minute. The ctest TIMEOUT is the backstop for
+    # a failure mode the test itself cannot unwind -- without it ctest's default
+    # bound applied, and pipeline 1453's build-test sat >1 h on a stale Xvfb.
+    # PROPERTIES on GTEST_DISCOVER_TESTS is applied by the discovery step at
+    # BUILD time (the test does not exist at configure time), so it cannot be a
+    # plain SET_TESTS_PROPERTIES here.
+    GTEST_DISCOVER_TESTS(test_x11_numpad_e2e DISCOVERY_TIMEOUT 120
+        PROPERTIES TIMEOUT 120)
 ENDIF()
 
 # T400 (board B225): the particle atlas must carry its alpha.
@@ -285,7 +298,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/texture_generators.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_particle_atlas_alpha PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     TARGET_INCLUDE_DIRECTORIES(test_particle_atlas_alpha PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_particle_atlas_alpha GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_particle_atlas_alpha DISCOVERY_TIMEOUT 120)
@@ -300,7 +313,7 @@ ADD_EXECUTABLE(test_spell_sprite_atlas
     test_spell_sprite_atlas.cpp
 )
 TARGET_COMPILE_DEFINITIONS(test_spell_sprite_atlas PRIVATE
-    WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
 TARGET_INCLUDE_DIRECTORIES(test_spell_sprite_atlas PRIVATE
     ${CMAKE_SOURCE_DIR}/tools
     ${CMAKE_SOURCE_DIR}/include)
@@ -311,16 +324,39 @@ GTEST_DISCOVER_TESTS(test_spell_sprite_atlas DISCOVERY_TIMEOUT 120)
 # own uifiles/default/dragitem*.tga, cell for cell, plus the column-major
 # id->cell mapping EQUI_Animations.xml declares. Files only -- no device, no
 # GPU, no willeq_core; same shape as test_spell_sprite_atlas above.
-ADD_EXECUTABLE(test_item_icon_atlas
-    test_item_icon_atlas.cpp
+# Graphics builds only (B1038): the B1078 squareIn cases reach
+# UIRenderer::squareIn through ui_renderer.h, which includes irrlicht.h, so an
+# EQT_GRAPHICS=OFF configure dies on the missing header unless this target is
+# gated like its neighbours (pipeline 1519's build-headless failure).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_item_icon_atlas
+        test_item_icon_atlas.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_item_icon_atlas PRIVATE
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
+    TARGET_INCLUDE_DIRECTORIES(test_item_icon_atlas PRIVATE
+        ${CMAKE_SOURCE_DIR}/tools
+        ${CMAKE_SOURCE_DIR}/include)
+    TARGET_LINK_LIBRARIES(test_item_icon_atlas GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_item_icon_atlas DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1077 (GitLab #397): the shipped spell icon sheets versus the official
+# client's own uifiles/default/gemicons*.tga, Spells*.tga and
+# Spell_Icons.tga, cell for cell, plus the row-major zero-based id->cell
+# mapping EQUI_Animations.xml declares and the hand-read cells. Files only
+# -- no device, no GPU, no willeq_core; same shape as test_item_icon_atlas
+# above.
+ADD_EXECUTABLE(test_spell_icon_atlas
+    test_spell_icon_atlas.cpp
 )
-TARGET_COMPILE_DEFINITIONS(test_item_icon_atlas PRIVATE
-    WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-TARGET_INCLUDE_DIRECTORIES(test_item_icon_atlas PRIVATE
+TARGET_COMPILE_DEFINITIONS(test_spell_icon_atlas PRIVATE
+    "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
+TARGET_INCLUDE_DIRECTORIES(test_spell_icon_atlas PRIVATE
     ${CMAKE_SOURCE_DIR}/tools
     ${CMAKE_SOURCE_DIR}/include)
-TARGET_LINK_LIBRARIES(test_item_icon_atlas GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_item_icon_atlas DISCOVERY_TIMEOUT 120)
+TARGET_LINK_LIBRARIES(test_spell_icon_atlas GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_spell_icon_atlas DISCOVERY_TIMEOUT 120)
 
 # T406 (board B266): the census of every shipped BMP's alpha, its consumer's
 # blend, and the willeq.eqe1 payload that carries it. Reads files only (the
@@ -332,7 +368,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         test_texture_alpha_census.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_texture_alpha_census PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     TARGET_LINK_LIBRARIES(test_texture_alpha_census GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_texture_alpha_census DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -367,4 +403,40 @@ GTEST_DISCOVER_TESTS(test_player_light_lut DISCOVERY_TIMEOUT 120)
 # reaching 40,000 units (gles2_player_light_probe --assert).
 IF(TARGET gles2_player_light_probe)
     ADD_TEST(NAME PlayerLightProbeMonotonic COMMAND gles2_player_light_probe --assert)
+ENDIF()
+
+# B976 (#294): the zone region depth tie-break (the top-facing region wins a
+# depth tie). Header-only decision + a source-scan of the region vertex
+# programs (the uniform declared in exactly the two region programs, nowhere
+# else) and of the header's GLSL macro (the +z/-Y form, not the +w/+-Y first
+# draft). No GPU, no build-tree artifact.
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(test_zone_depth_tie_break
+        test_zone_depth_tie_break.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_zone_depth_tie_break PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    TARGET_COMPILE_DEFINITIONS(test_zone_depth_tie_break PRIVATE
+        "B976_ZONE_SHADER_SOURCES=WILLEQ_REPO_PATH(\"src/client/graphics/zone_shader_sources_gles2.h\")"
+        "B976_DEPTH_TIE_HEADER=WILLEQ_REPO_PATH(\"include/client/graphics/zone_depth_tie_break.h\")")
+    TARGET_LINK_LIBRARIES(test_zone_depth_tie_break GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_zone_depth_tie_break DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B888-CC4 (GitLab #204): the character select + creation visual gate. Not a
+# GTest binary -- a script (scripts/ci/charcreate_gate.py) that drives the
+# charcreate_capture tool (the willeq leg) and scores each of the 14 gate
+# states per-control (presence + edge IoU, REQUIRED_CONTROLS per state, OCR
+# label reads as findings, and reference IoU against tests/goldens/charcreate/).
+# --bless-required is THIS row's mode: the official-client reference set is a
+# BLESS (Will's sign-off; the proposed stills live in
+# /home/user/kb-evidence/kb-cc4-charcreate-oracle-gate/goldens_proposed/).
+# Until it is blessed into tests/goldens/charcreate/ the script skips with 125
+# (SKIP_RETURN_CODE below turns that into a clean ctest SKIP, so CI stays green
+# and the willeq-internal gate still runs on any tip without a reference).
+# Gated on the capture target so a non-graphics build has no row for it.
+IF(TARGET charcreate_capture)
+    ADD_TEST(NAME charcreate_gate
+        COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/charcreate_gate.py --bless-required)
+    SET_TESTS_PROPERTIES(charcreate_gate PROPERTIES
+        LABELS "charcreate_gate" SKIP_RETURN_CODE 125 RUN_SERIAL TRUE)
 ENDIF()

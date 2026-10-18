@@ -35,6 +35,42 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_constrained_texture_cache DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1083 Step 7 (GitLab #403, ruling 2026-10-17 option A): the driver-facing
+# name of a cache entry is decided ONCE at store time (family-first) and
+# stored -- a single-archive family keeps the pre-B1083 name (which restores
+# the gate zones' base draw order), a cross-archive twin takes the full
+# internalKey (the willow survives the driver's name-dedup), and an
+# evict->restore re-creates the entry under the SAME name. EDT_NULL for the
+# name decision; the evict/restore round-trip uses a real EDT_OGLES2
+# surfaceless device and self-skips without EGL.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_texture_driver_name
+        test_texture_driver_name.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_texture_driver_name PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    # Post-fix state: the stored driverName field exists, so the test's
+    # private-field assertions compile in (the red-before run at the pre-fix
+    # tree omits the define and gets the public-API red instead).
+    TARGET_COMPILE_DEFINITIONS(test_texture_driver_name PRIVATE B1083_STEP7_DRIVER_NAME_STORED)
+    TARGET_LINK_LIBRARIES(test_texture_driver_name GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_texture_driver_name DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1083 (GitLab #403): a zone family's packs (zone + _obj) hold the same name
+# with different content; the (archive, name) cache key + source-first EQE1
+# resolution keeps each copy for the material that came from it. Two
+# synthetic v1 packs mirror the measured qeytoqrg tree70 collision (opaque
+# vs alpha companion). Real EDT_OGLES2 surfaceless device (the ETC1 upload
+# needs live GL); self-skips when unavailable.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_eqe1_source_archive
+        test_eqe1_source_archive.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_eqe1_source_archive PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_eqe1_source_archive GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_eqe1_source_archive DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B944 (GitLab #262): eviction under the ceiling keeps the ITexture object and
 # the driver's first bind restores it. Live consumers (materials the cache does
 # not know) are driven past the ceiling; the objects must stay valid, the
@@ -69,31 +105,47 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     # compile definitions: PUBLIC on willeq_core now, flows in through the
     # link; the WILLEQ_DB_REAL_PATH half is unrelated and stays.)
     TARGET_COMPILE_DEFINITIONS(test_texture_eviction_character_restore PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_LINK_LIBRARIES(test_texture_eviction_character_restore GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_texture_eviction_character_restore DISCOVERY_TIMEOUT 120)
 ENDIF()
 
-# B950 (GitLab #268): a test TU and willeq_core must see the SAME
-# ZoneMeshBuilder layout. Two probe TUs compiled into this one target:
-# the CONSUMER probe carries no explicit define and sees the public
-# header in the state a bare willeq_core consumer does (WITHOUT
-# EQT_HAS_TEXTURE_ATLAS before the fix, WITH it once the define is PUBLIC
-# on willeq_core and flows in through the link); the CORE probe carries
-# the define explicitly, the state willeq_core's own sources are in. Each
-# reports sizeof(ZoneMeshBuilder) and the two must agree. Before the fix
-# the consumer probe is 8 bytes smaller and the test is RED.
+# B950 (GitLab #268) + B1019 (GitLab #340): a plain consumer and willeq_core
+# must see the SAME ZoneMeshBuilder layout. One test TU, NO explicit define
+# of its own: it sees zone_geometry.h in the state a bare willeq_core
+# consumer does (WITHOUT EQT_HAS_TEXTURE_ATLAS before the fix, WITH it once
+# the define is PUBLIC on willeq_core and flows in through the link), and it
+# compares its own sizeof against willeq_core's own
+# ZoneMeshBuilder::layoutSize() -- the sizeof of the class as willeq_core's
+# zone_geometry.cpp was built. Before the fix the consumer is 8 bytes
+# smaller and the test is RED. B1019 replaced the old shape -- a sibling
+# "core" probe TU carrying a hand-placed per-source define -- which pinned
+# the macro state of THIS test target, not of willeq_core.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_zone_geometry_atlas_layout
         test_zone_geometry_atlas_layout.cpp
-        zone_geometry_atlas_layout_probe_consumer.cpp
-        zone_geometry_atlas_layout_probe_with.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_zone_geometry_atlas_layout PRIVATE ${IRRLICHT_INCLUDE_DIR})
-    SET_SOURCE_FILES_PROPERTIES(zone_geometry_atlas_layout_probe_with.cpp PROPERTIES
-        COMPILE_DEFINITIONS "EQT_HAS_TEXTURE_ATLAS")
     TARGET_LINK_LIBRARIES(test_zone_geometry_atlas_layout GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_zone_geometry_atlas_layout DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1051 (GitLab #371): a multi-buffer character mesh must resolve its per-part
+# textures from the ConstrainedTextureCache when the raw S3D bytes were
+# released (EQE1 authoritative). Reds on the pre-fix code: getOrLoadTexture()
+# only knew its own textureCache_/pendingTextures_ maps, so a cache-resident
+# per-part texture resolved to nullptr and the buffer drew the textureless
+# (255,200,180,160) diffuse -- the live ETC1 "smear" on multi-buffer
+# characters (Guard_Treitan, race 71) while single-buffer zone meshes and the
+# raw-RGBA run (bytes not released) rendered correctly. EDT_NULL, same idiom
+# as test_constrained_texture_cache.cpp.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_b1051_mesh_texture_fallback
+        test_b1051_mesh_texture_fallback.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_b1051_mesh_texture_fallback PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_b1051_mesh_texture_fallback GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_b1051_mesh_texture_fallback DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # B949 (GitLab #267): LRU follows DRAW order, not load order. Drives a real
@@ -151,7 +203,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_software_cursor_eviction PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_software_cursor_eviction GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_software_cursor_eviction PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_software_cursor_eviction DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -166,7 +218,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_environment_texture_eviction PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_environment_texture_eviction GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_environment_texture_eviction PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_environment_texture_eviction DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -181,7 +233,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_environment_manager_construction PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_environment_manager_construction GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_environment_manager_construction PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_environment_manager_construction DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -196,7 +248,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_door_texture_eviction PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_door_texture_eviction GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_door_texture_eviction PRIVATE
-        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_door_texture_eviction DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -212,7 +264,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_spell_visual_vocabulary PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_COMPILE_DEFINITIONS(test_spell_visual_vocabulary PRIVATE
-        WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_LINK_LIBRARIES(test_spell_visual_vocabulary GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_spell_visual_vocabulary DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -326,6 +378,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_overlays_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1064 (#384): the target outline needs no stencil buffer -- the pass plan
+# (inverted hull on every surface, stencil bits 0 included), the hull's
+# transform against hand-computed matrices, and a scan of drawTargetOutline()
+# for any stencil call. GL-free: compiles its one TU, no willeq_core.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_target_outline_pass
+        test_target_outline_pass.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/overlays/target_outline_pass.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_target_outline_pass PRIVATE
+        ${CMAKE_SOURCE_DIR}/include ${IRRLICHT_INCLUDE_DIR})
+    TARGET_COMPILE_DEFINITIONS(test_target_outline_pass PRIVATE
+        "TARGET_OUTLINE_OVERLAY_SOURCE=WILLEQ_REPO_PATH(\"src/client/graphics/overlays/overlays_component.cpp\")")
+    TARGET_LINK_LIBRARIES(test_target_outline_pass GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_target_outline_pass DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # L04 (Batch L, refactor/L04_diagnostics_component.md): the DiagnosticsComponent
 # extracted from IrrlichtRenderer, and the breadth test of RendererContext --
 # both the ctx_ path and the owner_ transition-handle path are pinned by
@@ -434,6 +503,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_frame_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1085 (GitLab #405): the three chat key latches (enter/escape/slash) latch
+# ONLY while the chat is unfocused and every setChatInputFocused()
+# transition resets them. The frame-input half runs the production policy
+# bodies (processChatInput's enter/slash checks, applyTextEntryKey(),
+# handleEscapeKey()) through the same bare, never-Init()'d IrrlichtRenderer
+# idiom as test_frame_component above.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_b1085_chat_latches
+        test_b1085_chat_latches.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_b1085_chat_latches PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_b1085_chat_latches GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_b1085_chat_latches DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T329 (B041): the NavmeshChanged bridge arm forwarding to
 # OverlaysComponent::setNavmesh. Same bare, never-Init()'d IrrlichtRenderer
 # idiom as test_overlays_component above, plus a real eqt::bridge::
@@ -455,7 +539,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     # spell DB and reads src/client/core/everquest.cpp, so it owns its main()
     # (GTest::gtest, not gtest_main) and needs the DB path.
     TARGET_COMPILE_DEFINITIONS(test_vision_buff_fade_wire PRIVATE
-        WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_LINK_LIBRARIES(test_vision_buff_fade_wire GTest::gtest willeq_core)
     GTEST_DISCOVER_TESTS(test_vision_buff_fade_wire DISCOVERY_TIMEOUT 120)
 
@@ -635,7 +719,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_read_and_reset_ownership PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_read_and_reset_ownership GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_read_and_reset_ownership PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_read_and_reset_ownership DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -704,6 +788,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_pvs_render_distance_trigger DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1071 (GitLab #391): the current target is never culled by the sim worker
+# (distance / PVS / frustum / cap) -- the player's exemption is the template.
+# A culled target leaves the scene graph (renderer_sim_bridge.cpp) and is
+# invisible on screen while the target outline keeps painting its hull:
+# B1064's solid-silhouette still. Drives computeEntityVisibility() through
+# SimulationWorker::computeOnce() -- no device, no thread, no assets.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_target_cull_exemption
+        test_target_cull_exemption.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_target_cull_exemption PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_target_cull_exemption GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_target_cull_exemption DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T367 (B080): zone/object lights whose influence sphere contains the camera
 # must survive PVS and frustum culling. Drives computeLightVisibility,
 # computeObjectLightVisibility and computeLightSelection through
@@ -766,7 +865,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     # T396 (B211): the composition-order cases read the renderer TU to prove
     # updateTimeOfDay() still calls composeSceneAmbient().
     TARGET_COMPILE_DEFINITIONS(test_vision_ambient PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_vision_ambient DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -794,7 +893,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_weather_ambient_modifier PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_weather_ambient_modifier GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_weather_ambient_modifier PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_weather_ambient_modifier DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -809,7 +908,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_weather_darkening_oracle PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_weather_darkening_oracle GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_weather_darkening_oracle PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_weather_darkening_oracle DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -824,7 +923,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_scene_ambient_recompute PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_scene_ambient_recompute GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_scene_ambient_recompute PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
     GTEST_DISCOVER_TESTS(test_scene_ambient_recompute DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -840,6 +939,6 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_entity_light_node_lifetime PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_entity_light_node_lifetime GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_entity_light_node_lifetime PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_entity_light_node_lifetime DISCOVERY_TIMEOUT 120)
 ENDIF()

@@ -18,9 +18,6 @@ struct S3DZone;
 struct TextureInfo;
 struct CompositeTextureData;
 class ConstrainedTextureCache;
-#ifdef EQT_HAS_TEXTURE_ATLAS
-class TextureAtlas;
-#endif
 
 // Converts EQ zone geometry to Irrlicht mesh
 class ZoneMeshBuilder {
@@ -28,6 +25,16 @@ public:
     ZoneMeshBuilder(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
                     irr::io::IFileSystem* fileSystem);
     ~ZoneMeshBuilder() = default;
+
+    // B1019 (GitLab #340): the layout-equality net's CORE side, STATIC so a
+    // consumer can call it without constructing a builder. Defined in
+    // zone_geometry.cpp, the TU willeq_core compiles -- the sizeof there
+    // carries the core's own macro state, the very thing a consumer that
+    // links willeq_core must match. tests/test_zone_geometry_atlas_layout
+    // .cpp compares its own sizeof against this. (No target links
+    // willeq_core and compiles zone_geometry.cpp itself, so the definition
+    // cannot collide with a local copy.)
+    static size_t layoutSize();
 
     // Build an Irrlicht mesh from zone geometry
     irr::scene::IMesh* buildMesh(const ZoneGeometry& geometry);
@@ -41,28 +48,6 @@ public:
                                           const std::map<std::string, std::shared_ptr<TextureInfo>>& textures,
                                           bool flipV = false);
 
-    // Build textured mesh using pre-uploaded ITexture pointers (for multi-frame entity building).
-    // textures: one ITexture* per texture index in geometry.textureNames
-    // textureAlpha: whether each texture has alpha channel
-    irr::scene::IMesh* buildTexturedMeshFromUploaded(
-        const ZoneGeometry& geometry,
-        const std::vector<irr::video::ITexture*>& textures,
-        const std::vector<bool>& textureAlpha,
-        bool flipV = false);
-
-    // Build a single-buffer mesh using a composite texture sheet.
-    // All body-part triangles are merged into one mesh buffer with UVs remapped
-    // to the composite sheet, enabling 1 draw call per entity instead of 6-12.
-    // compositeTexture: pre-uploaded composite sheet texture
-    // compositeData: UV remap metadata from entity_composite_builder JSON
-    // hasAlpha: whether the composite texture requires alpha testing
-    irr::scene::IMesh* buildCompositeMesh(
-        const ZoneGeometry& geometry,
-        irr::video::ITexture* compositeTexture,
-        const CompositeTextureData& compositeData,
-        bool hasAlpha = false,
-        bool flipV = true);
-
     // Load a texture from raw BMP/DDS data.
     // P50: applyPaletteMask, default false, forwards to
     // ConstrainedTextureCache::getOrLoad()/uploadTexture() — pass true ONLY
@@ -72,19 +57,22 @@ public:
     // default false preserves pre-P50 behavior byte-for-byte.
     // B947: origin (the TextureInfo's, when there is one) is handed to the
     // cache so an evicted texture restores from the same bytes.
+    // B1083 (GitLab #403): sourceArchiveStem (the TextureInfo's archiveStem(),
+    // when there is one) scopes the (archive, name) cache key and the
+    // source-first EQE1 resolution so a texture that shares its name across a
+    // zone family's packs (qeytoqrg vs qeytoqrg_obj tree70) resolves to the
+    // pack it actually came from. Empty = exactly the pre-B1083 behaviour.
     irr::video::ITexture* loadTextureFromBMP(const std::string& name, const std::vector<char>& data,
                                               bool applyPaletteMask = false,
-                                              const TextureOrigin* origin = nullptr);
-
-    // Performance: Lazy texture loading
-    // Register texture data for deferred loading (doesn't create Irrlicht texture yet)
-    void registerLazyTexture(const std::string& name, std::shared_ptr<TextureInfo> texInfo);
+                                              const TextureOrigin* origin = nullptr,
+                                              const std::string& sourceArchiveStem = "");
 
     // Get texture, loading lazily if needed.
     // P50: applyPaletteMask is forwarded to loadTextureFromBMP() ONLY for the
     // lazy-load-now path (pendingTextures_); an already-loaded/-cached
     // texture (textureCache_ hit) is returned as-is regardless of this flag
     // since its mask status was already resolved when it was first loaded.
+    // B1083: the pending TextureInfo's own archiveStem() scopes the load.
     irr::video::ITexture* getOrLoadTexture(const std::string& name, bool applyPaletteMask = false);
 
     // Check if a texture is registered (either loaded or pending)
@@ -106,9 +94,6 @@ public:
     // When set, textures are loaded through the cache with downsampling and 16-bit conversion
     void setConstrainedTextureCache(ConstrainedTextureCache* cache);
 
-    // Get the constrained texture cache (may be nullptr)
-    ConstrainedTextureCache* getConstrainedTextureCache() const { return constrainedCache_; }
-
     // P13: tag this builder instance with an upload-ledger category (e.g.
     // "zone_region", "object") — a plain string, not threaded through every
     // call, since each ZoneMeshBuilder instance is already scoped to one
@@ -116,32 +101,6 @@ public:
     // renderer_zone_load.cpp). Passed through to getOrLoad() by
     // loadTextureFromBMP(). No-op when the ledger is disabled.
     void setUploadCategory(const std::string& category) { uploadCategory_ = category; }
-
-    // Info about a fallback mesh buffer whose texture was deferred (background mesh building).
-    // Used by the render thread to assign real textures or placeholders after finalization.
-    struct FallbackBufferInfo {
-        irr::u32 bufferIndex;
-        std::string textureName;  // lowercase
-    };
-
-    // Get fallback buffer map from last buildAtlasedMesh(deferTextures=true) call.
-    // Maps buffer indices to texture names that need assignment on the render thread.
-    const std::vector<FallbackBufferInfo>& getFallbackBufferMap() const { return fallbackBufferMap_; }
-
-#ifdef EQT_HAS_TEXTURE_ATLAS
-    // Build mesh batched by atlas page — groups all triangles sharing the same
-    // atlas page into a single mesh buffer using S3DVertex2TCoords.
-    // TCoords = original UVs (for fract() tiling), TCoords2 = atlas tile offset.
-    // Textures not in the atlas (animated, missing) fall through to per-texture buffers.
-    // When deferTextures=true, fallback buffers skip texture loading and use white
-    // vertex colors + solid material. Caller must assign textures via getFallbackBufferMap().
-    irr::scene::IMesh* buildAtlasedMesh(
-        const ZoneGeometry& geometry,
-        const std::map<std::string, std::shared_ptr<TextureInfo>>& textures,
-        const TextureAtlas& atlas,
-        int pageIndexOffset = 0,
-        bool deferTextures = false);
-#endif
 
     // Set GLSL shader material type IDs (negative = not available, use fixed-function).
     // alphaTestRGBAType (H02d, Option A) is the variant that reads alpha from
@@ -160,16 +119,19 @@ public:
         shaderMaterialAlphaTestRGBA_ = alphaTestRGBAType;
     }
 
-#ifdef EQT_HAS_TEXTURE_ATLAS
-    // Set atlas-specific GLSL shader material type IDs
-    void setAtlasShaderMaterialTypes(irr::s32 solidType, irr::s32 alphaTestType) {
-        shaderMaterialAtlasSolid_ = solidType;
-        shaderMaterialAtlasAlpha_ = alphaTestType;
-    }
-#endif
+    // B976 (#294): stamp SMaterial::MaterialTypeParam2 = 1.0 on every buffer
+    // this builder produces, so the zone region depth tie-break (see
+    // include/client/graphics/zone_depth_tie_break.h) applies to zone REGION
+    // geometry only. Region builders enable this; object/door builders leave
+    // it false so shared-program meshes (entities, trees) are never biased.
+    // Param2 is free on the region programs: MaterialTypeParam already carries
+    // the baked-light flag, and Param2's only other use is the tree-bbox
+    // MaxEdge.Y written on WIND-material buffers, which never use the region
+    // programs.
+    void setZoneGeometryDepthTie(bool enabled) { zoneGeometryDepthTie_ = enabled; }
 
     // Textures that were null during the last build (async GPU upload not yet complete).
-    // Caller can check after buildAtlasedMesh/buildTexturedMesh to queue rebuilds.
+    // Caller can check after buildTexturedMesh to queue rebuilds.
     const std::vector<std::string>& getMissingTextures() const { return missingTextures_; }
 
 private:
@@ -198,19 +160,12 @@ private:
     irr::s32 shaderMaterialAlphaTest_ = -1;         // ETC1 companion-texture variant
     irr::s32 shaderMaterialAlphaTestRGBA_ = -1;      // H02d: main-texture-alpha variant
 
-    // Fallback buffer map from last buildAtlasedMesh(deferTextures=true) call
-    std::vector<FallbackBufferInfo> fallbackBufferMap_;
-
-#ifdef EQT_HAS_TEXTURE_ATLAS
-    // Atlas-specific shader material type IDs (-1 = not available)
-    irr::s32 shaderMaterialAtlasSolid_ = -1;
-    irr::s32 shaderMaterialAtlasAlpha_ = -1;
-#endif
+    // B976 (#294): stamp MaterialTypeParam2 = 1 on every built buffer when true.
+    bool zoneGeometryDepthTie_ = false;
 };
 
 // Helper to generate colors for visualization
 irr::video::SColor heightToColor(float height, float minHeight, float maxHeight);
-irr::video::SColor normalToColor(float nx, float ny, float nz);
 
 // Estimate a built region mesh's GPU-adjacent memory footprint (vertex +
 // index buffer bytes) from its Irrlicht scene node. Relocated verbatim

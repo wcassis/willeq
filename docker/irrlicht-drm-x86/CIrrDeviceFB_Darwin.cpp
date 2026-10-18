@@ -31,7 +31,7 @@ bool CIrrDeviceFB::initDRM()
 bool CIrrDeviceFB::initGBM() { return false; }
 bool CIrrDeviceFB::initEGL() { return false; }
 
-void CIrrDeviceFB::waitForFlipComplete() {}
+bool CIrrDeviceFB::waitForFlipComplete() { return true; }
 
 void CIrrDeviceFB::drmPageFlip()
 {

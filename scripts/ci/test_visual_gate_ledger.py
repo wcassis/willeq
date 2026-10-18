@@ -285,7 +285,78 @@ def main():
     assert sorted(ci_zones) == sorted(manifest_zones), (lists, manifest_zones)
     assert set(coverage_zones) <= set(ci_zones), (lists, coverage_zones)
 
-    print("test_visual_gate_ledger: 19 checks OK")
+    # 12. B1016 (#337): the [gldriver] net, beside the ledger assertions --
+    #     assert_gldriver_line() on synthetic benchmark stdout (no benchmark
+    #     run): a real line is accepted, an absent line is a failure, an
+    #     unparseable line (the format drift the audit found unpinned) is a
+    #     failure.
+    assert hasattr(gate, "assert_gldriver_line"), "visual_gate.py has no assert_gldriver_line (pre-B1016)"
+    good = ("[gldriver] renderer='llvmpipe (LLVM 20.1.2, 256 bits)' "
+            "gallium=/usr/lib/x86_64-linux-gnu/libgallium-25.2.8.so "
+            "llvm=/usr/lib/x86_64-linux-gnu/libLLVM.so.20.1")
+    f, out = [], io.StringIO()
+    with redirect_stdout(out):
+        gate.assert_gldriver_line("t", "before\n" + good + "\nafter", f)
+    assert f == [], f
+    assert "[gldriver] t:" in out.getvalue(), out.getvalue()
+    f = []
+    gate.assert_gldriver_line("t", "no driver line here\n", f)
+    assert len(f) == 1 and "no [gldriver] line" in f[0], f
+    f = []
+    gate.assert_gldriver_line("t", "[gldriver] renderer='x' gallium=/g\n", f)
+    assert len(f) == 1 and "parse" in f[0], f
+    print("test_visual_gate_ledger: gldriver-line checks OK")
+
+    # 13. B928 (#246): the zone_parse PEAK gate. assert_zone_parse_peak() on
+    #     synthetic memory dicts: a peak above a PRESENT budget FAILS (the
+    #     whole point -- the live value can be inside the budget while the
+    #     mid-load high-water is not), a peak inside a budget passes, a
+    #     missing (unblessed) budget prints and never fails, and a memory
+    #     JSON with no peak field (an older benchmark) prints and never
+    #     fails. ledger_dict() sets peak == live per category; the peak is
+    #     overridden here.
+    assert hasattr(gate, "assert_zone_parse_peak"), \
+        "visual_gate.py has no assert_zone_parse_peak (pre-B928)"
+
+    def peak_mem(live, peak, rss=None, total=None):
+        m = {"ledger": ledger_dict(rss or 100 * MIB, total or live,
+                                   {"zone_parse": live})}
+        m["ledger"]["categories"]["zone_parse"]["peak"] = peak
+        return m
+
+    # (a) a mid-load peak ABOVE the blessed budget is a failure, even with the
+    #     end-of-run live value FAR below it -- the live check alone passes.
+    mem = peak_mem(2 * MIB, 20 * MIB)
+    f = []
+    gate.assert_zone_parse_peak("t", mem, 16 * MIB, f)
+    assert len(f) == 1 and "zone_parse PEAK" in f[0] and "exceeds" in f[0], f
+    # and the same numbers with no budget: prints, never fails.
+    f = []
+    with redirect_stdout(io.StringIO()) as out:
+        gate.assert_zone_parse_peak("t", mem, None, f)
+    assert f == [], f
+    assert "NO BUDGET BLESSED" in out.getvalue(), out.getvalue()
+
+    # (b) a peak inside the budget passes (and is printed with the share).
+    mem = peak_mem(2 * MIB, 8 * MIB)
+    f = []
+    with redirect_stdout(io.StringIO()) as out:
+        gate.assert_zone_parse_peak("t", mem, 16 * MIB, f)
+    assert f == [], f
+    assert "50% of budget" in out.getvalue(), out.getvalue()
+
+    # (c) no peak field (a benchmark older than the peak field): printed,
+    #     not failed, regardless of budget presence.
+    mem = {"ledger": ledger_dict(100 * MIB, 10 * MIB, {"zone_parse": 10 * MIB})}
+    del mem["ledger"]["categories"]["zone_parse"]["peak"]
+    f = []
+    with redirect_stdout(io.StringIO()) as out:
+        gate.assert_zone_parse_peak("t", mem, 16 * MIB, f)
+    assert f == [], f
+    assert "peak not reported" in out.getvalue(), out.getvalue()
+    print("test_visual_gate_ledger: zone_parse-peak checks OK")
+
+    print("test_visual_gate_ledger: 20 checks OK")
     return 0
 
 

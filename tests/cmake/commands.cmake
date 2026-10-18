@@ -60,6 +60,7 @@ ADD_EXECUTABLE(test_command_processor
     test_command_processor_world.cpp
     test_command_processor_senders.cpp
     test_command_processor_corpse_slots.cpp
+    test_command_processor_hotbutton.cpp  # B1025-H3
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher_social.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher_guild_misc.cpp
@@ -149,7 +150,7 @@ ADD_EXECUTABLE(test_merged_help
 # T223: the registry-3 drift guard parses the renderer's if/else chain source
 # text and asserts its `cmd == "/x"` literal set equals the static catalog.
 TARGET_COMPILE_DEFINITIONS(test_merged_help PRIVATE
-    RENDERER_COMMAND_SOURCE="${CMAKE_SOURCE_DIR}/src/client/graphics/slash/renderer_slash_commands.cpp")  # J11; L06 moved the directory
+    "RENDERER_COMMAND_SOURCE=WILLEQ_REPO_PATH(\"src/client/graphics/slash/renderer_slash_commands.cpp\")")  # J11; L06 moved the directory
 TARGET_LINK_LIBRARIES(test_merged_help GTest::gtest_main fmt::fmt)
 GTEST_DISCOVER_TESTS(test_merged_help DISCOVERY_TIMEOUT 120)
 
@@ -165,7 +166,7 @@ ADD_EXECUTABLE(test_headless_command_refusal
 # T363: the same test file also reads console_input_handler.cpp as text, to
 # pin that the dead `skills` -> InputAction::ToggleSkills interception is gone.
 TARGET_COMPILE_DEFINITIONS(test_headless_command_refusal PRIVATE
-    CONSOLE_INPUT_SOURCE="${CMAKE_SOURCE_DIR}/src/client/input/console_input_handler.cpp")
+    "CONSOLE_INPUT_SOURCE=WILLEQ_REPO_PATH(\"src/client/input/console_input_handler.cpp\")")
 TARGET_LINK_LIBRARIES(test_headless_command_refusal GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_headless_command_refusal PRIVATE ${IRRLICHT_INCLUDE_DIR})
@@ -179,8 +180,8 @@ ADD_EXECUTABLE(test_eqe1_archive_config
     test_eqe1_archive_config.cpp
 )
 TARGET_COMPILE_DEFINITIONS(test_eqe1_archive_config PRIVATE
-    EQE1_ARCHIVES_JSON="${CMAKE_SOURCE_DIR}/config/eqe1_archives.json"
-    RENDERER_EFFECTS_SOURCE="${CMAKE_SOURCE_DIR}/src/client/graphics/eqe1/eqe1_archive_component.cpp")
+    "EQE1_ARCHIVES_JSON=WILLEQ_REPO_PATH(\"config/eqe1_archives.json\")"
+    "RENDERER_EFFECTS_SOURCE=WILLEQ_REPO_PATH(\"src/client/graphics/eqe1/eqe1_archive_component.cpp\")")
 TARGET_LINK_LIBRARIES(test_eqe1_archive_config GTest::gtest_main ${JSONCPP_LIBRARIES})
 GTEST_DISCOVER_TESTS(test_eqe1_archive_config DISCOVERY_TIMEOUT 120)
 
@@ -232,7 +233,7 @@ ADD_EXECUTABLE(test_eqe1_texture_index
 TARGET_INCLUDE_DIRECTORIES(test_eqe1_texture_index PRIVATE
     ${CMAKE_SOURCE_DIR}/include ${JSONCPP_INCLUDE_DIRS})
 TARGET_COMPILE_DEFINITIONS(test_eqe1_texture_index PRIVATE
-    EQE1_TEXTURE_INDEX_JSON="${CMAKE_SOURCE_DIR}/data/eqe1_texture_index.json")
+    "EQE1_TEXTURE_INDEX_JSON=WILLEQ_REPO_PATH(\"data/eqe1_texture_index.json\")")
 TARGET_LINK_LIBRARIES(test_eqe1_texture_index GTest::gtest_main ${JSONCPP_LIBRARIES}
     ${FMT_LIB})
 GTEST_DISCOVER_TESTS(test_eqe1_texture_index DISCOVERY_TIMEOUT 120)
@@ -251,8 +252,8 @@ IF(EQT_GRAPHICS)
     TARGET_INCLUDE_DIRECTORIES(test_eqe1_composite_open PRIVATE
         ${CMAKE_SOURCE_DIR}/include ${JSONCPP_INCLUDE_DIRS})
     TARGET_COMPILE_DEFINITIONS(test_eqe1_composite_open PRIVATE
-        EQE1_TEXTURE_INDEX_JSON="${CMAKE_SOURCE_DIR}/data/eqe1_texture_index.json"
-        GLES2_ZONE_BENCHMARK_BIN="$<TARGET_FILE:gles2_zone_benchmark>")
+        "EQE1_TEXTURE_INDEX_JSON=WILLEQ_REPO_PATH(\"data/eqe1_texture_index.json\")"
+        "GLES2_ZONE_BENCHMARK_BIN=WILLEQ_BIN_PATH_OF(\"$<TARGET_FILE_NAME:gles2_zone_benchmark>\")")
     TARGET_LINK_LIBRARIES(test_eqe1_composite_open GTest::gtest_main ${JSONCPP_LIBRARIES}
         ${FMT_LIB})
     ADD_DEPENDENCIES(test_eqe1_composite_open gles2_zone_benchmark)
@@ -303,8 +304,37 @@ TARGET_LINK_LIBRARIES(test_input_action_bridge GTest::gtest_main ${FMT_LIB} ${JS
 # T368 (B100): the enum's own header, read as text so the "no UI toggles in
 # InputAction" rule is asserted rather than left to a reviewer's memory.
 TARGET_COMPILE_DEFINITIONS(test_input_action_bridge PRIVATE
-    INPUT_ACTION_HEADER="${CMAKE_SOURCE_DIR}/include/client/input/input_handler.h")
+    "INPUT_ACTION_HEADER=WILLEQ_REPO_PATH(\"include/client/input/input_handler.h\")")
 GTEST_DISCOVER_TESTS(test_input_action_bridge DISCOVERY_TIMEOUT 120)
+
+# B534 (#181): the output-layer camera route is deleted at the root -- the
+# eqt::output::CameraMode enum, the IOutputRenderer camera virtuals,
+# GraphicalRenderer's member/cycle/string, GraphicalMode's three methods and
+# its InputAction::ToggleCameraMode arm, and the enumerator itself (no
+# handler ever produced it). Its net is a text-scan in the same shape as
+# InputActionEnumTest.T368_NoConsumerlessUITogglesRemain: five cases that
+# fail while ANY part of the route is still in the tree, plus a negative
+# control that the LIVE F9 route (HotkeyAction -> RendererAction ->
+# PlayerCameraComponent::cycleCameraMode) is untouched. Pure source scan --
+# no graphics, no artefact, no server.
+ADD_EXECUTABLE(test_b534_output_camera_route
+    test_b534_output_camera_route.cpp
+)
+TARGET_LINK_LIBRARIES(test_b534_output_camera_route GTest::gtest_main)
+TARGET_COMPILE_DEFINITIONS(test_b534_output_camera_route PRIVATE
+    "OUTPUT_RENDERER_HEADER=WILLEQ_REPO_PATH(\"include/client/output/output_renderer.h\")"
+    "GRAPHICAL_RENDERER_HEADER=WILLEQ_REPO_PATH(\"include/client/output/graphical_renderer.h\")"
+    "GRAPHICAL_RENDERER_CPP=WILLEQ_REPO_PATH(\"src/client/output/graphical_renderer.cpp\")"
+    "GRAPHICAL_MODE_HEADER=WILLEQ_REPO_PATH(\"include/client/mode/graphical_mode.h\")"
+    "GRAPHICAL_MODE_CPP=WILLEQ_REPO_PATH(\"src/client/mode/graphical_mode.cpp\")"
+    "INPUT_HANDLER_HEADER=WILLEQ_REPO_PATH(\"include/client/input/input_handler.h\")"
+    "GRAPHICS_INPUT_HANDLER_CPP=WILLEQ_REPO_PATH(\"src/client/input/graphics_input_handler.cpp\")"
+    "CONSOLE_INPUT_HANDLER_CPP=WILLEQ_REPO_PATH(\"src/client/input/console_input_handler.cpp\")"
+    "HOTKEY_MANAGER_HEADER=WILLEQ_REPO_PATH(\"include/client/input/hotkey_manager.h\")"
+    "HOTKEY_MANAGER_CPP=WILLEQ_REPO_PATH(\"src/client/input/hotkey_manager.cpp\")"
+    "RENDERER_FRAME_INPUT_CPP=WILLEQ_REPO_PATH(\"src/client/graphics/frame/renderer_frame_input.cpp\")"
+    "PLAYER_CAMERA_COMPONENT_HEADER=WILLEQ_REPO_PATH(\"include/client/graphics/player/player_camera_component.h\")")
+GTEST_DISCOVER_TESTS(test_b534_output_camera_route DISCOVERY_TIMEOUT 120)
 
 # T40/T227: GameStateSyncBridge tests -- since T227 the decorator projects
 # nothing (one GameState, written at the source), so this covers only the
@@ -378,7 +408,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     # B900 (#216): the key-leg tests source-parse two device-bound arms and
     # load the shipped config/hotkeys.json, both by repo-root-relative path.
     TARGET_COMPILE_DEFINITIONS(test_ranged_attack_wire PRIVATE
-        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
 ENDIF()
 GTEST_DISCOVER_TESTS(test_ranged_attack_wire DISCOVERY_TIMEOUT 120)
 
@@ -477,7 +507,7 @@ ADD_EXECUTABLE(test_eq_commands_bank_train
 TARGET_LINK_LIBRARIES(test_eq_commands_bank_train GTest::gtest_main willeq_core)
 # UIGAP-residue: the banker's measured lines are eqstr 1465 / 12143.
 TARGET_COMPILE_DEFINITIONS(test_eq_commands_bank_train PRIVATE
-    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_commands_bank_train PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
@@ -520,7 +550,7 @@ GTEST_DISCOVER_TESTS(test_read_book DISCOVERY_TIMEOUT 120)
 ADD_EXECUTABLE(test_scribe_scroll
     test_scribe_scroll.cpp
 )
-TARGET_COMPILE_DEFINITIONS(test_scribe_scroll PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_COMPILE_DEFINITIONS(test_scribe_scroll PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 TARGET_LINK_LIBRARIES(test_scribe_scroll GTest::gtest willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_scribe_scroll PRIVATE ${IRRLICHT_INCLUDE_DIR})
@@ -700,7 +730,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_pose_log_e2e GTest::gtest_main willeq_core)
     TARGET_INCLUDE_DIRECTORIES(test_pose_log_e2e PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${IRRLICHT_INCLUDE_DIR})
     TARGET_COMPILE_DEFINITIONS(test_pose_log_e2e PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_pose_log_e2e DISCOVERY_TIMEOUT 120)
 
     # B911/B912 (GitLab #230/#231): a pose change the GAME thread makes
@@ -713,7 +743,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_command_movement_render GTest::gtest_main willeq_core)
     TARGET_INCLUDE_DIRECTORIES(test_command_movement_render PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${IRRLICHT_INCLUDE_DIR})
     TARGET_COMPILE_DEFINITIONS(test_command_movement_render PRIVATE
-        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     GTEST_DISCOVER_TESTS(test_command_movement_render DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -753,4 +783,38 @@ IF(EQT_LIVE_TESTS AND EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         LABELS "live"
         TIMEOUT 900
         ENVIRONMENT "WILLEQ_BIN=$<TARGET_FILE:willeq>")
+ENDIF()
+
+# B924 / #243: the REPEATABLE NET for llvmpipe's post-ready gpu_driver growth
+# (the measurement leg of the issue; acceptance 3). A rendered client holds
+# gfaydark -- the zone with the worst B909 spread -- standing still for
+# ~5 minutes past `ready`; the client's own [memledger] lines (idle points
+# every 30 s) give gpu_driver at ready and at the last idle point, and
+# scripts/b924/b924_check_bound.py asserts the growth is at most the leg's
+# bound. Two legs (refactor/B924/README.md "The net"):
+#   B924IdleHoldLive         -- uncapped; bound 2883497060 = worst measured
+#                               uncapped growth (2306797648) x 1.25. GREEN
+#                               today: the growth is the driver's bounded
+#                               scene queue (64 x 36 MiB) at its ceiling.
+#   B924IdleHoldCappedLive   -- WILLEQ_FPS_CAP=10; tight bound 67108864 (64
+#                               MiB). The leak tripwire: at 10 fps the driver
+#                               queue drains, so a healthy tree holds ~0-20
+#                               MiB and a frames-correlated client leak trips.
+# Both need the eqemu lane (legs A/B take lanes 1/2), so live-only (T164),
+# like ClientLedgerLive. Exit 1 = growth over the bound (or no ready point).
+IF(EQT_LIVE_TESTS AND EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_TEST(NAME B924IdleHoldLive
+             COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/b924/b924_net_leg.sh
+                     uncapped ${CMAKE_CURRENT_BINARY_DIR}/b924_uncapped/$(date -u +%Y%m%dT%H%M%SZ) 420)
+    SET_TESTS_PROPERTIES(B924IdleHoldLive PROPERTIES
+        LABELS "live"
+        TIMEOUT 1800
+        ENVIRONMENT "WILLEQ_BIN=$<TARGET_FILE:willeq>;EQEMU_LANE=1")
+    ADD_TEST(NAME B924IdleHoldCappedLive
+             COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/b924/b924_net_leg.sh
+                     capped ${CMAKE_CURRENT_BINARY_DIR}/b924_capped/$(date -u +%Y%m%dT%H%M%SZ) 420)
+    SET_TESTS_PROPERTIES(B924IdleHoldCappedLive PROPERTIES
+        LABELS "live"
+        TIMEOUT 1800
+        ENVIRONMENT "WILLEQ_BIN=$<TARGET_FILE:willeq>;EQEMU_LANE=2")
 ENDIF()

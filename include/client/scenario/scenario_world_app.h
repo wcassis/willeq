@@ -95,8 +95,23 @@ public:
     int CampPhase() const override;
     bool AtCharacterSelect() const override;
     std::vector<std::string> CharacterListNames() const override;
+    std::string CharacterSelectName() const override;
     long long CharacterListGeneration() const override;
     bool EnterWorldAs(const std::string& name) override;
+    long long ZoneConnectOpens() const override;                          // B1072
+    bool SimulateUnreachableZoneConnects(int attempts, int port) override;  // B1072
+    long long CharacterSelectActivations() const override;                  // B1081
+    long long ZoneAudioSilenceCount() const override;                     // B1080
+    bool SimulateZoneSilentAfterHandshake() override;                        // B1079
+
+    // B1025-H5 (#345): hotbar controls, through the user path
+    // (scenario_world_app_hotbar.cpp).
+    bool AssignHotbarSlot(int page, int slot, int type, uint32_t id, const std::string& text) override;
+    bool ActivateHotbarSlot(int page, int slot) override;
+    bool PressHotbarKey(int slot) override;
+    bool SetHotbarPage(int page) override;
+    int HotbarPage() const override;
+    HotbarSlotRead HotbarSlotAt(int page, int slot) const override;
 
     // B893 (fall_damage): the fall's live observable and its driver.
     long long PlayerHP() const override;

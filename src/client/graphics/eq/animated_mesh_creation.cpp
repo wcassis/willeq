@@ -369,10 +369,10 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
                                                                            bool compositeAllowed) {
     // Appearance fields:
     // - helm: Head mesh variant for NPCs (selects HE01, HE02, etc.)
-    // - texture: Body armor texture for NPCs (0=naked, 1-4=armor, 11-16=robes)
-    // - equipment[Chest]: Chest equipment material for PCs (11-16=robes)
+    // - texture: Body armor texture for NPCs (0=naked, 1-4=armor, 10-16=robes)
+    // - equipment[Chest]: Chest equipment material for PCs (10-16=robes, isRobeTexture)
     //
-    // For robes (texture 11-16), we need to load the robe body mesh variant (01).
+    // For robes (isRobeTexture), we need to load the robe body mesh variant (01).
     // The robe mesh is named {RACE}01_DMSPRITEDEF (e.g., HUM01_DMSPRITEDEF).
     // Races with robe meshes: DAF, DAM, ERF, ERM, GNF, GNM, HIF, HIM, HUF, HUM
 
@@ -387,12 +387,12 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
 
     if (hasRobeFromTexture || hasRobeFromEquipment) {
         // EQ only has ONE robe body mesh per race (XX01_DMSPRITEDEF)
-        // Different robe textures (11-16) apply different CLK textures to this same mesh
+        // Different robe materials (10-16, isRobeTexture) apply different CLK textures to this same mesh
         bodyVariant = 1;  // Always use XX01 mesh for robes
 
         // Get the robe texture ID to apply correct CLK textures
         uint8_t robeTexture = hasRobeFromTexture ? appearance.texture : chestMaterial;
-        textureVariant = robeTexture;  // Apply robe texture (11, 12, 13, etc.)
+        textureVariant = robeTexture;  // Apply robe texture (10, 11, 12, etc.)
 
         LOG_DEBUG(MOD_GRAPHICS, "createAnimatedNodeWithEquipment: Robe detected (texture={}, chest={}), using body variant 01, textureVariant={}",
                   (int)appearance.texture, (int)chestMaterial, (int)textureVariant);
@@ -611,7 +611,8 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
                         if (texIt != modelData->textures.end() && texIt->second && meshBuilder_) {
                             const TextureOrigin origin = texIt->second->origin();  // B947
                             irr::video::ITexture* equipTex = meshBuilder_->loadTextureFromBMP(
-                                equipTexName, texIt->second->data, isMaskedMaterial, &origin);
+                                equipTexName, texIt->second->data, isMaskedMaterial, &origin,
+                                texIt->second->archiveStem());  // B1083
                             if (equipTex) {
                                 node->getMaterial(b).setTexture(0, equipTex);
                                 LOG_DEBUG(MOD_GRAPHICS, "    -> REPLACED with {}", equipTexName);

@@ -81,10 +81,17 @@ fi
 
 echo ""
 echo "--- Cross-compiling willeq ---"
-docker run --rm \
+# B1087: the shared host ccache, when ARM_CCACHE_DIR names one (scripts/ci/arm_ccache.sh).
+source "$PROJECT_DIR/scripts/ci/arm_ccache.sh"
+arm_ccache_docker_args "$IMAGE_NAME"
+# B1093 (#413): a named, labelled container that dies with this shell (scripts/ci/arm_container.sh).
+source "$PROJECT_DIR/scripts/ci/arm_container.sh"
+arm_container_guard "willeq-arm64-build"
+arm_container_run \
     -v "$PROJECT_DIR:/src:ro" \
     -v "$OUTPUT_DIR/bin:/output" \
     -v "$BUILD_CACHE:/build" \
+    "${ARM_CCACHE_ARGS[@]}" \
     -e "ENABLE_GRAPHICS=${ENABLE_GRAPHICS}" \
     -e "ENABLE_AUDIO=${ENABLE_AUDIO}" \
     -e "ENABLE_GLES2=${ENABLE_GLES2}" \

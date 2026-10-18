@@ -595,6 +595,11 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
 
             ZoneMeshBuilder builder(ctx_.smgr, ctx_.driver, ctx_.device->getFileSystem());
             builder.setUploadCategory("zone_region");  // P13
+            // B976 (#294): region geometry takes the depth tie-break (the
+            // top-facing region wins a depth tie). Inert on fixed-function
+            // (colored) buffers, effective on the zone shader's region
+            // programs; object/door builders deliberately do NOT set it.
+            builder.setZoneGeometryDepthTie(true);
             if (ctx_.constrainedTextureCache)
                 builder.setConstrainedTextureCache(ctx_.constrainedTextureCache);
             if (ctx_.zoneShader && ctx_.zoneShader->isAvailable()) {
@@ -820,6 +825,22 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
                           (bool)ctx_.currentZone,
                           ctx_.currentZone ? (bool)ctx_.currentZone->geometry : false,
                           ctx_.currentZone ? ctx_.currentZone->textures.size() : 0);
+            }
+
+            // B928 (#246): drop the per-region SOURCE geometry now, as the
+            // issue names -- not at end of load. Step 4's occluder pass was
+            // the last build consumer; the frames, PVS, collision and the
+            // runtime rebuild (pools off only) read the meshes and the BSP
+            // tree from here on. In the legacy unpooled path the runtime
+            // rebuild still wants its source, so keep it there (Step 13
+            // releases it then, as before).
+            if (ctx_.currentZone && ctx_.ZoneLifecycle().zonePoolsEnabled()) {
+                const size_t early = ctx_.currentZone->releaseRegionGeometryEarly();
+                if (early) {
+                    LOG_INFO(MOD_GRAPHICS,
+                             "Sequential: released {} bytes of per-region source geometry at mesh build "
+                             "(kept out of the objects/entities peak, #246)", early);
+                }
             }
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: region mesh building skipped (currentZone_={}, wldLoader={}, zoneBspTree_={})",

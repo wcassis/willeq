@@ -1,6 +1,9 @@
 /*
  * UILayout — fixed screen region definitions for the static layout UI.
  *
+ * B1075 (#395): WHERE each window sits is the layout table
+ * (ui_layout_table.h); this struct resolves its anchors for one screen.
+ *
  * U03a: All UI element positions are computed from screen dimensions.
  * Regions use anchor-based positioning (top-left, bottom-center, etc.)
  * so they scale to any resolution. Call computeLayout(width, height)
@@ -12,6 +15,9 @@
 #include <irrlicht.h>
 
 #include "common/packets/common.h"  // T483: the gem counts
+#include "client/graphics/ui/hotbar_layout.h"  // B1025-H2: the stock window rect
+#include "client/graphics/ui/spell_gem_layout.h"  // B1077: the oracle's gem window size
+#include "client/graphics/ui/ui_layout_table.h"  // B1075: the anchors + co-open sets
 
 namespace EQT {
 namespace Graphics {
@@ -35,56 +41,109 @@ struct UILayout {
     static constexpr irr::s32 PET_BUTTON_H = 10;
     static constexpr irr::s32 PET_BUTTON_ROWS = 2;
 
-    // --- Top-left: Player status ---
+    // B1075 (#395): fable's centre popup box -- the 400x350 every 'C' window
+    // of the layout table is drawn into (the T415 scale). Its SIZE is the
+    // windows' content and does not change; the table moves the box.
+    static constexpr irr::s32 POPUP_W = 400;
+    static constexpr irr::s32 POPUP_H = 350;
+
+    // B1075: every anchor below is named per window in ui_layout_table.h
+    // (kUILayoutTable); the comment on each member is its UIAnchor.
+
+    // --- TopLeft: Player status ---
     irr::core::rect<irr::s32> playerStatus;     // Overall region
     irr::core::rect<irr::s32> playerHPBar;
     irr::core::rect<irr::s32> playerManaBar;
     irr::core::rect<irr::s32> playerStamBar;
     irr::core::rect<irr::s32> playerNameLabel;
 
-    // --- Top-right: Target info ---
+    // --- UnderPlayerColumn: Target info ---
     irr::core::rect<irr::s32> targetInfo;
     irr::core::rect<irr::s32> targetHPBar;
     irr::core::rect<irr::s32> targetNameLabel;
 
-    // --- Bottom-left: Chat panel ---
+    // --- BottomCentre: Hotbar (B1025-H2 window, B1075 placement) ---
+    // The stock hotbar window's content (EQUI_HotButtonWnd.xml) laid out in
+    // `hotbarColumns` columns -- the table's orientation (kHotbarOrientations),
+    // HotbarLayout::slotRect(hotbar, i, hotbarColumns) for the cells.
+    irr::core::rect<irr::s32> hotbar;
+    irr::s32 hotbarColumns = HotbarLayout::kStockColumns;
+
+    // --- BottomLeft: Chat panel ---
     irr::core::rect<irr::s32> chatPanel;
     irr::core::rect<irr::s32> chatMessages;
     irr::core::rect<irr::s32> chatInput;
     irr::core::rect<irr::s32> chatTabs;
 
-    // --- Bottom-center: Hotbar ---
-    irr::core::rect<irr::s32> hotbar;
-
-    // --- Bottom-right: Spell gems ---
+    // --- RightEdgeAboveHotbar: Spell gems ---
     irr::core::rect<irr::s32> spellGems;
 
-    // --- Above chat: Buff bar ---
+    // --- BesidePlayerTop: Buff bar ---
     irr::core::rect<irr::s32> buffBar;
 
-    // --- Center-bottom: Casting bar ---
+    // --- AboveHotbar: Casting bar ---
     irr::core::rect<irr::s32> castingBar;
 
-    // --- Center: Popup area (inventory, spellbook, vendor, etc.) ---
+    // --- CentreSlot: the one-at-a-time centre popups (spellbook, skills,
+    // tradeskill container), centred in the middle band ---
     irr::core::rect<irr::s32> centerPopup;
 
-    // --- Left side below player status: Group panel ---
-    irr::core::rect<irr::s32> groupPanel;
+    // --- PairRight: the inventory, right half of the side-by-side pair ---
+    irr::core::rect<irr::s32> inventoryPopup;
 
-    // --- Below group: Pet panel ---
+    // --- PairLeft: the window used WITH the inventory (merchant and loot
+    // fill it; bank, trade and give are right-aligned in it at their own
+    // oracle sizes via placePairLeft()) ---
+    irr::core::rect<irr::s32> partnerPopup;
+
+    // --- B1078 (#398): the middle band as a member ---
+    // Right of the player column, left of the gem column, under the buff
+    // strip, above the chat and the casting bar (the locals in
+    // computeLayout()). The pair windows' `windowRect()`s and the
+    // centre-popup window scale their oracle size to fit this band (one
+    // uniform factor, never two) and anchor at its top, so a 480-tall
+    // merchant clears the chat at 1024x768, where the band is only 451
+    // tall.
+    irr::core::rect<irr::s32> middleBand;
+
+    // --- UnderPlayerColumn: Group panel, then the Pet panel ---
+    irr::core::rect<irr::s32> groupPanel;
     irr::core::rect<irr::s32> petPanel;
 
-    // --- XP bar (very bottom, full width) ---
+    // --- FullWidthBottom: XP bar ---
     irr::core::rect<irr::s32> xpBar;
 
+    /** PairLeft at a window's own size: right-aligned to the inventory, top-aligned with it. */
+    irr::core::rect<irr::s32> placePairLeft(irr::s32 w, irr::s32 h) const {
+        irr::s32 x = partnerPopup.LowerRightCorner.X - w;
+        irr::s32 y = partnerPopup.UpperLeftCorner.Y;
+        return clampOnScreen(x, y, w, h);
+    }
+
+    /** ScreenCentre at a window's own size, clamped wholly on screen. */
+    irr::core::rect<irr::s32> placeScreenCentre(irr::s32 w, irr::s32 h) const {
+        return clampOnScreen((screenW - w) / 2, (screenH - h) / 2, w, h);
+    }
+
+    irr::core::rect<irr::s32> clampOnScreen(irr::s32 x, irr::s32 y,
+                                            irr::s32 w, irr::s32 h) const {
+        if (x + w > screenW) x = screenW - w;
+        if (y + h > screenH) y = screenH - h;
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+        return {x, y, x + w, y + h};
+    }
+
     /**
-     * Compute all regions from screen dimensions.
+     * Compute all regions from screen dimensions, from the anchors named in
+     * ui_layout_table.h. B1075 moved the HUD to the WoW-style arrangement
+     * Will confirmed on #395 (note 5180); every window keeps its size.
      */
     void computeLayout(irr::s32 width, irr::s32 height) {
         screenW = width;
         screenH = height;
 
-        // Player status: top-left
+        // TopLeft: Player status
         irr::s32 psX = MARGIN;
         irr::s32 psY = MARGIN;
         playerNameLabel = {psX, psY, psX + BAR_WIDTH, psY + BAR_HEIGHT};
@@ -93,72 +152,130 @@ struct UILayout {
         playerStamBar   = {psX, psY + BAR_HEIGHT * 3 + 6, psX + BAR_WIDTH, psY + BAR_HEIGHT * 4 + 6};
         playerStatus    = {psX, psY, psX + BAR_WIDTH, playerStamBar.LowerRightCorner.Y + MARGIN};
 
-        // Target info: top-right
-        irr::s32 tX = width - MARGIN - BAR_WIDTH;
-        irr::s32 tY = MARGIN;
+        // UnderPlayerColumn: Target info, under the player frame
+        irr::s32 tX = MARGIN;
+        irr::s32 tY = playerStatus.LowerRightCorner.Y + MARGIN;
         targetNameLabel = {tX, tY, tX + BAR_WIDTH, tY + BAR_HEIGHT};
         targetHPBar     = {tX, tY + BAR_HEIGHT + 2, tX + BAR_WIDTH, tY + BAR_HEIGHT * 2 + 2};
         targetInfo      = {tX, tY, tX + BAR_WIDTH, targetHPBar.LowerRightCorner.Y + MARGIN};
 
-        // XP bar: very bottom, full width
+        // UnderPlayerColumn: Group panel, under the target
+        irr::s32 gpX = MARGIN;
+        irr::s32 gpY = targetInfo.LowerRightCorner.Y + MARGIN;
+        irr::s32 gpW = BAR_WIDTH;
+        irr::s32 gpH = 5 * (BAR_HEIGHT + MARGIN) + MARGIN;
+        groupPanel = {gpX, gpY, gpX + gpW, gpY + gpH};
+
+        // UnderPlayerColumn: Pet panel, under the group. Name row + HP bar +
+        // the command grid (T419/B352 -- the grid used to be drawn past the
+        // bottom edge).
+        irr::s32 ppY = groupPanel.LowerRightCorner.Y + MARGIN;
+        petPanel = {gpX, ppY, gpX + gpW,
+                    ppY + BAR_HEIGHT * 2 + MARGIN + PET_BUTTON_ROWS * PET_BUTTON_H};
+
+        // BesidePlayerTop: Buff bar, the top strip right of the player frame
+        irr::s32 buffW = 300;
+        irr::s32 buffH = SLOT_SIZE + MARGIN * 2;
+        irr::s32 buffX = playerStatus.LowerRightCorner.X + MARGIN;
+        buffBar = {buffX, MARGIN, buffX + buffW, MARGIN + buffH};
+
+        // FullWidthBottom: XP bar
         xpBar = {0, height - 8, width, height};
 
-        // Hotbar: bottom-center, above XP bar
-        irr::s32 hotbarW = SLOT_SIZE * 10 + MARGIN * 9;
-        irr::s32 hotbarX = (width - hotbarW) / 2;
-        irr::s32 hotbarY = xpBar.UpperLeftCorner.Y - MARGIN - SLOT_SIZE;
-        hotbar = {hotbarX, hotbarY, hotbarX + hotbarW, hotbarY + SLOT_SIZE};
-
-        // Spell gems: bottom-right, above XP bar
-        irr::s32 gemsW = SLOT_SIZE;
-        // T483: EQT::VISIBLE_SPELL_GEM_COUNT gems, the official skin's eight.
-        const irr::s32 gemCount = static_cast<irr::s32>(EQT::VISIBLE_SPELL_GEM_COUNT);
-        irr::s32 gemsH = SLOT_SIZE * gemCount + MARGIN * (gemCount - 1);
-        irr::s32 gemsX = width - MARGIN - gemsW;
-        irr::s32 gemsY = hotbar.UpperLeftCorner.Y - MARGIN - gemsH;
-        spellGems = {gemsX, gemsY, gemsX + gemsW, gemsY + gemsH};
-
-        // Chat panel: bottom-left, above XP bar
+        // BottomLeft: Chat panel, 300x160
         irr::s32 chatW = 300;
         irr::s32 chatH = 160;
         irr::s32 chatX = MARGIN;
-        irr::s32 chatY = hotbar.UpperLeftCorner.Y - MARGIN - chatH;
+        irr::s32 chatY = height - MARGIN - chatH;
         chatTabs     = {chatX, chatY, chatX + chatW, chatY + BAR_HEIGHT + 2};
         chatMessages = {chatX, chatTabs.LowerRightCorner.Y, chatX + chatW, chatY + chatH - BAR_HEIGHT - 4};
         chatInput    = {chatX, chatMessages.LowerRightCorner.Y + 2, chatX + chatW, chatY + chatH};
         chatPanel    = {chatX, chatY, chatX + chatW, chatY + chatH};
 
-        // Buff bar: above chat
-        irr::s32 buffW = 300;
-        irr::s32 buffH = SLOT_SIZE + MARGIN * 2;
-        buffBar = {MARGIN, chatY - MARGIN - buffH, MARGIN + buffW, chatY - MARGIN};
+        // BottomCentre: Hotbar. The first orientation in the table that fits
+        // between the chat and the right edge; centred on the screen, pushed
+        // right of the chat when centring would cover it. Its top keeps the
+        // stock client's bottom-anchored rule (defaults.ini [HotButtonWnd]:
+        // top = screenHeight - 30 - window height).
+        const irr::s32 hbMinX = chatPanel.LowerRightCorner.X + MARGIN;
+        hotbarColumns = HotbarLayout::kStockColumns;
+        for (int cols : kHotbarOrientations) {
+            if (hbMinX + HotbarLayout::windowW(cols) <= width - MARGIN) {
+                hotbarColumns = cols;
+                break;
+            }
+        }
+        {
+            const irr::s32 hbW = HotbarLayout::windowW(hotbarColumns);
+            const irr::s32 hbH = HotbarLayout::windowH(hotbarColumns);
+            irr::s32 hbX = (width - hbW) / 2;
+            if (hbX < hbMinX) hbX = hbMinX;
+            hotbar = clampOnScreen(hbX, height - 30 - hbH, hbW, hbH);
+        }
 
-        // Casting bar: center-bottom, above hotbar
+        // RightEdgeAboveHotbar: Spell gems, the right edge, ending at the
+        // hotbar's top (test_ninth_spell_gem pins that end). B1077: the
+        // oracle's own CastSpellWnd size (48x290, EQUI_CastSpellWnd.xml),
+        // the content = oracle / placement = table ruling (B1075).
+        irr::s32 gemsW = SpellGemLayout::kWindowW;
+        // T483: EQT::VISIBLE_SPELL_GEM_COUNT gems, the official skin's eight.
+        irr::s32 gemsH = SpellGemLayout::kWindowH;
+        irr::s32 gemsX = width - MARGIN - gemsW;
+        irr::s32 gemsY = hotbar.UpperLeftCorner.Y - MARGIN - gemsH;
+        spellGems = {gemsX, gemsY, gemsX + gemsW, gemsY + gemsH};
+
+        // AboveHotbar: Casting bar, centred over the hotbar window.
         irr::s32 castW = 200;
         irr::s32 castH = BAR_HEIGHT + 4;
-        castingBar = {(width - castW) / 2, hotbar.UpperLeftCorner.Y - MARGIN - castH,
-                      (width + castW) / 2, hotbar.UpperLeftCorner.Y - MARGIN};
+        irr::s32 castX = (hotbar.UpperLeftCorner.X + hotbar.LowerRightCorner.X - castW) / 2;
+        castingBar = {castX, hotbar.UpperLeftCorner.Y - MARGIN - castH,
+                      castX + castW, hotbar.UpperLeftCorner.Y - MARGIN};
 
-        // Center popup: middle of screen
-        irr::s32 popW = 400;
-        irr::s32 popH = 350;
-        centerPopup = {(width - popW) / 2, (height - popH) / 2,
-                       (width + popW) / 2, (height + popH) / 2};
+        // The middle band: right of the player column, left of the gem
+        // column, under the buff strip, above the chat and the casting bar.
+        const irr::s32 bandL = groupPanel.LowerRightCorner.X + MARGIN;
+        const irr::s32 bandR = spellGems.UpperLeftCorner.X - MARGIN;
+        const irr::s32 bandT = buffBar.LowerRightCorner.Y + MARGIN;
+        irr::s32 bandB = castingBar.UpperLeftCorner.Y - MARGIN;
+        if (chatPanel.UpperLeftCorner.Y - MARGIN < bandB)
+            bandB = chatPanel.UpperLeftCorner.Y - MARGIN;
+        // B1078 (#398): the band as a member -- the pair windows
+        // (merchant, inventory) and the tradeskill window scale their oracle
+        // size to fit it (one uniform factor) and anchor at its top.
+        middleBand = {bandL, bandT, bandR, bandB};
+        irr::s32 popY = bandT + (bandB - bandT - POPUP_H) / 2;
+        if (popY < bandT) popY = bandT;
+        if (popY + POPUP_H > height) popY = height - POPUP_H;
+        if (popY < 0) popY = 0;
 
-        // Group panel: left side below player status
-        irr::s32 gpX = MARGIN;
-        irr::s32 gpY = playerStatus.LowerRightCorner.Y + MARGIN;
-        irr::s32 gpW = BAR_WIDTH;
-        irr::s32 gpH = 5 * (BAR_HEIGHT + MARGIN) + MARGIN;
-        groupPanel = {gpX, gpY, gpX + gpW, gpY + gpH};
+        // CentreSlot: centred in the band (clamped to the screen when the
+        // band is narrower than the box).
+        {
+            irr::s32 x = bandL + (bandR - bandL - POPUP_W) / 2;
+            if (bandR - bandL < POPUP_W) x = (width - POPUP_W) / 2;
+            centerPopup = clampOnScreen(x, popY, POPUP_W, POPUP_H);
+        }
 
-        // Pet panel: below group. Name row + HP bar + the command grid
-        // (T419/B352 -- the grid used to be drawn past the bottom edge).
-        // At 640x480 this bottom edge lands at y=224 with the buff bar's top
-        // at y=228, so the taller panel still clears it.
-        irr::s32 ppY = groupPanel.LowerRightCorner.Y + MARGIN;
-        petPanel = {gpX, ppY, gpX + gpW,
-                    ppY + BAR_HEIGHT * 2 + MARGIN + PET_BUTTON_ROWS * PET_BUTTON_H};
+        // PairLeft + PairRight: side by side, MARGIN apart, centred in the
+        // band. A screen too narrow for the pair inside the band (800x600:
+        // the pair is 804 wide) centres it on the screen instead, closing
+        // the gap to what the width allows (zero at 800).
+        {
+            irr::s32 gap = MARGIN;
+            irr::s32 pairW = POPUP_W * 2 + gap;
+            irr::s32 x;
+            if (bandR - bandL >= pairW) {
+                x = bandL + (bandR - bandL - pairW) / 2;
+            } else {
+                if (width < pairW) gap = width - POPUP_W * 2;
+                if (gap < 0) gap = 0;
+                pairW = POPUP_W * 2 + gap;
+                x = (width - pairW) / 2;
+                if (x < 0) x = 0;
+            }
+            partnerPopup = clampOnScreen(x, popY, POPUP_W, POPUP_H);
+            inventoryPopup = clampOnScreen(x + POPUP_W + gap, popY, POPUP_W, POPUP_H);
+        }
     }
 };
 

@@ -56,7 +56,10 @@ REPO = HERE.parent.parent
 FIXTURE = REPO / "tests" / "data" / "b1024" / "x86_gate_plan.txt"
 
 PI_MESA_PREFIX = "/home/user/mesa-nollvm-25.2.8"
-PI_BENCH = Path("/tmp/b1024_fake_pi/gles2_zone_benchmark-nollvm")
+# Per-uid (B1087): the ThinkPad runs this test as gitlab-runner (CI) AND as
+# user (scripts/hermes/rbuild); a shared /tmp dir left by one is unwritable
+# for the other.
+PI_BENCH = Path(f"/tmp/b1024_fake_pi-{os.getuid()}/gles2_zone_benchmark-nollvm")
 PI_GL = "OpenGL ES 3.0 Mesa 25.2.8 (Lima)"
 
 
@@ -505,6 +508,7 @@ def check_pi():
 
     finally:
         try:
+            PI_BENCH.unlink(missing_ok=True)
             PI_BENCH.parent.rmdir()
         except OSError:
             pass

@@ -62,6 +62,14 @@ void CharacterSelectService::tick(LoginWorldComponent& lw, CharacterSelectChanne
     if (lw.CharacterListGeneration() == 0) return;   // no list yet: the loading screen stays
     // B1005: back from /camp, the screen waits for world's FRESH list.
     if (lw.AwaitingFreshCharacterList()) return;
+    // B1081 (#401): a zone-change world reconnect is not a character-select
+    // stage:
+    // the world reconnect republishes the list and, without this gate, the
+    // screen came up for the frames between the list and the automatic
+    // OP_EnterWorld (zoning=1) -- the flash Will measured on the XU4. The
+    // loading screen stays up until the new zone session is up (the render
+    // thread reads only the channel, so the gate is here, game thread only).
+    if (lw.IsZoningReconnect()) return;
 
     if (!strings_) {
         charcreate::CharCreateData data;
@@ -90,6 +98,7 @@ void CharacterSelectService::tick(LoginWorldComponent& lw, CharacterSelectChanne
     if (view != published_ || !channel.active()) {
         published_ = view;
         channel.publish(view);
+        if (!channel.active()) ++activations_;   // B1081: the screen went up
         channel.setActive(true);
     }
 }

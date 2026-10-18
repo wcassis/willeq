@@ -17,10 +17,19 @@
 
 #include <gtest/gtest.h>
 
+// B1025-H2: the per-kind frame test inspects UIRenderer's queued draw
+// commands; same #define-private-public trick as test_ninth_spell_gem.cpp,
+// scoped to the renderer header only.
+#define private public
+#define protected public
 #include "client/graphics/ui/ui_renderer.h"
+#undef private
+#undef protected
+
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/hotbar_panel.h"  // B1025-H2: renderHotbar's home
 #include "client/graphics/ui/chat_wrap_cache.h"
 #include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/merchant_panel.h"
@@ -485,8 +494,16 @@ TEST_F(StaticUiFrameCostTest, TheOpenInventoryFlushIssuesAtMostTwoDrawsPerTextur
     // lost command.
     // B442b: +5 commands (IW_Destroy's rect + its 4-edge frame) and +1 text
     // entry (its label): 159 -> 164 and 49 -> 50.
-    EXPECT_EQ(s.commands, 164u);
-    EXPECT_EQ(s.textEntries, 50u);
+    // B1025-H2: re-taken for the stock HotButtonWnd: its page row (two 5-cmd
+    // buttons + the label), the close box and the ten per-slot frames raise
+    // the list from 164 to 210 commands (4 text entries: the two button
+    // glyphs, the page label and the close X).
+    // B1077: +7 commands on EVERY frame (the always-on spell gem bar the
+    // fixture renders via renderSpellGemPanel, same here whether or not the
+    // inventory popup is open): 210 -> 217 and 107 -> 114. Text entries are
+    // unchanged (the gem glyphs are quads, not text).
+    EXPECT_EQ(s.commands, 217u);
+    EXPECT_EQ(s.textEntries, 54u);
     ASSERT_GT(s.textureRuns, 0u);
     EXPECT_LT(s.textureRuns, s.commands / 4)
         << "the fixture's icons break the atlas run " << s.textureRuns << " times";
@@ -497,8 +514,8 @@ TEST_F(StaticUiFrameCostTest, TheOpenInventoryFlushIssuesAtMostTwoDrawsPerTextur
     inv_.activePopup = PopupType::None;
     img = renderFrames([&] { submitStaticUI(); }, &s);
     if (img) img->drop();
-    EXPECT_EQ(s.commands, 61u);
-    EXPECT_EQ(s.textEntries, 25u);
+    EXPECT_EQ(s.commands, 114u);
+    EXPECT_EQ(s.textEntries, 29u);
     EXPECT_LE(s.driverDraws, 2 * s.textureRuns);
 }
 
@@ -527,6 +544,82 @@ TEST_F(StaticUiFrameCostTest, TheFallbackPathQueuesItsDrawsAndFlushesThemInRuns)
         << s.textureRuns << " runs";
 }
 
+// ===========================================================================
+// B1025-H2 -- the stock hotbar draws different art per slot KIND.
+// An Item slot with a valid icon id blits the dragitem sheets' decal (a
+// quad with its own texture, no text entry); everything else -- Spell,
+// Skill, Emote, Macro, Combat -- draws its name instead. Empty draws the
+// key label only.
+// ===========================================================================
+TEST_F(StaticUiFrameCostTest, TheHotbarDrawsPerKindSlotArt) {
+    if (!pinsApply()) GTEST_SKIP() << "count pins are taken at 800x600";
+
+    // One closed frame of renderHotbar() alone. endFrame() CLEARS the quad
+    // queue and the text batch, so the capture reads them before endFrame();
+    // the driver's scene is balanced (beginScene ... endScene) each time.
+    struct FrameCounts {
+        size_t iconQuads = 0;
+        size_t text = 0;
+    };
+    auto renderOneHotbarFrame = [&](const EQT::Graphics::HotbarPanelState& state,
+                                    int slot) -> FrameCounts {
+        FrameCounts out;
+        const auto r = EQT::Graphics::HotbarLayout::slotRect(layout_.hotbar, slot, layout_.hotbarColumns);
+        driver_->beginScene(true, true, irr::video::SColor(255, 0, 0, 0));
+        ui_.beginFrame();
+        renderHotbar(ui_.layer(), layout_, state);
+        for (const auto& c : ui_.atlasQuads_) {
+            // The slot's own icon blit is the only textured quad inside the
+            // slot's rect: drawRect/drawFrame tint the atlas' white sprite
+            // (texture == nullptr in the command), so a non-null texture is
+            // the decal.
+            if (c.texture && c.destRect.isRectCollided(r)) ++out.iconQuads;
+        }
+        out.text = textBatch_.getQuadCount();
+        ui_.endFrame();
+        driver_->endScene();
+        return out;
+    };
+
+    EQT::Graphics::HotbarPanelState st;
+    st.isOpen = true;
+
+    // An icon id that resolves in the loaded sheets (the fixture's inventory
+    // icons use 600+i/700+i and resolve, so 700 does too).
+    irr::core::rect<irr::s32> iconSrc;
+    ASSERT_NE(atlas_->icons().lookup(700, iconSrc), nullptr);
+
+    // Baseline: ten Empty slots draw their ten key labels, plus the page row
+    // (two button glyphs, the page number) and the close box's X: 14 text
+    // entries, no quads.
+    auto base = renderOneHotbarFrame(st, 0);
+    EXPECT_EQ(base.text, 14u) << "ten key labels + 2 page glyphs + page number + close X";
+    EXPECT_EQ(base.iconQuads, 0u);
+
+    // Item slot with a real icon id: one icon quad, NO name text.
+    st.slots[0].type = eqt::HotbarSlotType::Item;
+    st.slots[0].name = "Bag";
+    st.slots[0].iconId = 700;
+    auto item = renderOneHotbarFrame(st, 0);
+    EXPECT_EQ(item.iconQuads, 1u) << "an Item slot with a resolvable icon blits one decal";
+    EXPECT_EQ(item.text, 14u) << "the icon slot draws no name text";
+
+    // Same slot as a Spell: no icon quad, and its NAME is text.
+    st.slots[0].type = eqt::HotbarSlotType::Spell;
+    st.slots[0].iconId = 0;
+    auto spell = renderOneHotbarFrame(st, 0);
+    EXPECT_EQ(spell.iconQuads, 0u);
+    EXPECT_EQ(spell.text, 15u) << "a named Spell slot draws one extra text entry";
+
+    // An Item whose icon does NOT resolve falls back to the name text.
+    st.slots[0].type = eqt::HotbarSlotType::Item;
+    st.slots[0].name = "Bag";
+    st.slots[0].iconId = 99999;  // outside 500..1723
+    auto miss = renderOneHotbarFrame(st, 0);
+    EXPECT_EQ(miss.iconQuads, 0u) << "an unresolvable icon id draws no decal";
+    EXPECT_EQ(miss.text, 15u) << "the unresolved Item falls back to its name";
+}
+
 // Every text entry was one font draw -- one draw2DImageBatch with its own
 // allocations and 2D state setup. The glyphs of every plain entry now go in
 // texture runs: a couple of draws per flush group's text, on both paths.
@@ -544,7 +637,11 @@ TEST_F(StaticUiFrameCostTest, TheTextFlushIsBatchedOnBothPaths) {
         if (img) img->drop();
         const char* path = fallback ? "fallback path" : "atlas path";
         EXPECT_GT(s.textEntries, 40u) << path;
-        EXPECT_EQ(s.layerGroups, 2u) << path;
+        // B1078 (GitLab #398): the inventory window anchors in the pair's
+        // right slot at the band's top -- clear of the chat panel at 800x600
+        // -- so its text and the chat's flush in ONE group now (the pre-B1078
+        // window's bottom edge crossed the chat, splitting the flush).
+        EXPECT_EQ(s.layerGroups, 1u) << path;
         EXPECT_LE(s.textDraws, 2u * s.layerGroups)
             << path << ": " << s.textDraws << " text draws for " << s.textEntries
             << " entries in " << s.layerGroups << " flush groups";

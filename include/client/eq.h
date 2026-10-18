@@ -17,6 +17,7 @@ namespace Json { class Value; }
 #include "client/zone_load_snapshot.h"
 #include "client/raid_update.h"
 #include "client/hotbar/hotbar_slot_type.h"  // T239: ActivateHotbarCommandSlot
+#include "client/zone/zone_connect_watchdog.h"  // B1072
 #include <openssl/des.h>
 #include <string>
 #include <map>
@@ -236,6 +237,49 @@ public:
 	// handshake seams that stood here moved with their flags into
 	// eqt::zone::ZoneComponent -- reach them through Zone().
 	bool Test_IsPendingLogoutDisconnect() const { return m_pending_logout_disconnect; }
+
+	// B1072 (#392) + B1079 (#399): the bounded zone-in (src/client/core/zone_connect.cpp).
+	// Called every game tick from MovementComponent::UpdateMovement() through
+	// ctx_.lifecycle.TickZoneConnect; public with an explicit clock so a test
+	// can step the deadline (tests/test_zone_connect_timeout.cpp).
+	void TickZoneConnect(std::chrono::steady_clock::time_point now);
+	const eqt::zone::ZoneConnectWatchdog& ZoneConnectWatchdog() const { return m_zone_connect_watchdog; }
+	// How many zone UDP sessions ConnectToZone/the retry opened this run
+	// (the zone_connect_timeout scenario and the unit test read it).
+	int ZoneConnectOpenCount() const { return m_zone_connect_opens; }
+	// B1079: the last application opcode the ZONE sent (ZoneOnPacketRecv), or
+	// -1 until one arrives -- the escalation's "last opcode seen" (rendered
+	// by the LastZoneOpcodeName() free function beside TickZoneConnect in
+	// zone_connect.cpp).
+	int LastZoneOpcode() const { return m_last_zone_opcode; }
+	// B1079 (#399): the per-phase deadline table (phase_index order), in
+	// milliseconds -- the one place that builds it, so the two arm sites in
+	// ConnectToZone and the unit test read the SAME ten rows. Defined in
+	// zone_connect.cpp straight off the phase_bound constants.
+	static const int* ZonePhaseBoundsMs();
+	// Diagnostic lever for the scenario lane (zone_connect_timeout): the next
+	// `attempts` zone connects go to port `port` on the ZoneServerInfo host
+	// instead of the port world named -- a dead port, so the bound is the only
+	// way out. 0 attempts = off (the default; nothing else sets it).
+	void SimulateUnreachableZoneConnects(int attempts, uint16_t port) {
+		m_sim_dead_zone_attempts = attempts;
+		m_sim_dead_zone_port = port;
+	}
+	// B1079 (#399): the scenario lane's "zone answered then went silent" lever
+	// (zone_connect_timeout's silent arm, the 2026-10-15 XU4 shape). Armed
+	// alongside a dead-port connect (SimulateUnreachableZoneConnects), the
+	// next ConnectToZone's handshake is overridden to ZONE_RECEIVING_PROFILE --
+	// the phase ZoneProcessPlayerProfile sets once the zone has answered the
+	// session and OP_ZoneEntry. Since the phase advances past ZONE_CONNECTING
+	// ONLY on a PlayerProfile (zone_entry.cpp), that pin is the client-side
+	// shape of "the zone answered the session, then went silent" (the dead
+	// port supplies the silence). The bound must then walk that phase to its
+	// own deadline and escalate WITHOUT a connect retry (the zone already saw
+	// our OP_ZoneEntry -- a re-connect would duplicate it), landing on
+	// character select. It is a one-shot flag for the next ConnectToZone: the
+	// silent arm does exactly one Enter World (it is a verdict, not a
+	// recovery), so the pin never needs clearing. Nothing else sets it.
+	void SimulateZoneSilentAfterHandshake() { m_sim_zone_silent = true; }
 
 	static void SetDebugLevel(int level) { s_debug_level = level; ::SetDebugLevel(level); }
 	static int GetDebugLevel() { return s_debug_level; }
@@ -636,6 +680,10 @@ private:
 
 	// Zone server connection
 	void ConnectToZone();
+	// B1072: open (or re-open, dropping the old manager) the zone UDP session.
+	void OpenZoneConnection(const std::string& host, uint16_t port);
+	// B1072: the bound ran out twice -- tear down and go back to character select.
+	void AbandonZoneConnect();
 	void ZoneOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection);
 	void ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
 	void ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet &p);
@@ -722,6 +770,23 @@ private:
 	// is still on the call stack — a use-after-free). Deferred the same way as
 	// m_game_state.world().zoneChangeApproved(): set here, processed at the top of UpdateMovement().
 	bool m_pending_logout_disconnect = false;
+
+	// B1072 (#392) + B1079 (#399): the zone-IN bound over the WHOLE loading
+	// span, per the per-phase table ZonePhaseBoundsMs() (zone_connect.cpp) --
+	// the connect phase is ZoneComponent::kZoneConnectTimeoutMs with
+	// kZoneConnectRetries retries, limited to ZONE_CONNECTING -- armed by
+	// ConnectToZone().
+	eqt::zone::ZoneConnectWatchdog m_zone_connect_watchdog;
+	int m_zone_connect_opens = 0;
+	// B1079: last zone-sent application opcode (see LastZoneOpcode()).
+	int m_last_zone_opcode = -1;
+	int m_sim_dead_zone_attempts = 0;
+	uint16_t m_sim_dead_zone_port = 0;
+	// B1079 (#399): the "zone answered then went silent" lever (see
+	// SimulateZoneSilentAfterHandshake). When set, ConnectToZone overrides the
+	// handshake's ZONE_CONNECTING with ZONE_RECEIVING_PROFILE (the zone
+	// "answered" phase). Cleared by the escalation (AbandonZoneConnect).
+	bool m_sim_zone_silent = false;
 
 	// Combat manager
 	std::unique_ptr<CombatManager> m_combat_manager;

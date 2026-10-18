@@ -45,7 +45,12 @@ variables:
   # (~gitlab-runner/.cache/ccache, 20G per runner, git clean never sees it).
   # A truly cold compile also needs CCACHE_DISABLE=1 (docs/ci.md, "ccache on
   # the x86 runners").
-  GIT_CLEAN_FLAGS: -ffdx -e build -e build-gles2 -e build-headless -e third_party/irrlicht-gles2-x86
+  # B1087 (#407): ONE runner (the ThinkPad) now runs the x86 AND the ARM jobs in
+  # the same checkouts, and the ARM jobs' docker cross-build writes
+  # build-arm*-noble/cache as ROOT, which a gitlab-runner `git clean` cannot
+  # remove (MR !211 pipeline 1427: hygiene died in the clean). The x86 jobs
+  # therefore keep the two ARM trees too, exactly as the ARM jobs always have.
+  GIT_CLEAN_FLAGS: -ffdx -e build -e build-gles2 -e build-headless -e third_party/irrlicht-gles2-x86 -e build-arm-noble -e build-arm64-noble
   # B1012 (#333): ONE WARM TREE PER REF. Two branches' pipelines interleaving
   # on the concurrent=1 runner shared one build/ -- MR !119's `test` stage
   # (pipeline 697) ran over binaries MR !118's `build` stage (698) had just
@@ -111,7 +116,11 @@ workflow:
   tags: [x86-build]
   before_script:
     - set -o pipefail
-    - 'case "$(hostname)" in hermes-ext|gitlab-runner-1|gitlab-runner-2) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac'
+    - 'case "$(hostname)" in hermes-ext|gitlab-runner-1|gitlab-runner-2|thinkpad) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac'
+    # B1087 (#407): the runner's own CI_JOBS (config.toml `environment`) wins
+    # over this file's JOBS, so a host sizes its builds to what it shares: the
+    # ThinkPad (primary runner, concurrent=3, beside the lane-5 oracle) sets 8.
+    - 'if [ -n "${CI_JOBS:-}" ]; then export JOBS="$CI_JOBS"; fi; echo "JOBS=$JOBS (runner CI_JOBS=${CI_JOBS:-unset})"'
     - hostname; nproc; free -g | head -2
     # The client asset symlinks are gitignored (tests/test_data_paths.cpp), so
     # `git clean -ffdx` removes them before every job and they must be re-made
@@ -142,7 +151,8 @@ workflow:
       echo "ccache: ${CCACHE_CMAKE_ARGS}"
 
 # B1042 (#362): DOCS-ONLY DIFFS SKIP THE C++ JOBS. A job carrying these rules
-# (build-test, gate, client-ledger-live) is added only when at least one
+# (build-test, gate, zone-budget-census, client-ledger-live) is added only when
+# at least one
 # changed path does NOT end in `.md`; `hygiene` has no rules and always runs,
 # so a docs-only pipeline is hygiene alone and still ends `success` (what the
 # merge gate reads). "Docs-only" is deliberately just `*.md`, anywhere
@@ -192,7 +202,10 @@ prune-build-trees:
     - git ls-remote --heads origin | awk '{print $2}' | sed 's#^refs/heads/##' > live-refs.txt
     - wc -l live-refs.txt
     - nice -n 10 python3 scripts/ci/prune_ref_build_trees.py --root build/ref --root build-gles2/ref --root build-headless/ref --live-refs-file live-refs.txt --max-age-days 14 --legacy-root build --legacy-root build-gles2 2>&1 | tee prune.log
-    - du -sh build build-gles2 build-headless third_party/irrlicht-gles2-x86 2>/dev/null | tee -a prune.log; df -h . | tail -1 | tee -a prune.log
+    # B1087 (#407): `du` exits 1 when a root is absent, and under pipefail that
+    # failed the job on the ThinkPad, whose concurrent=3 gives each slot its own
+    # checkout (builds/<runner>/0..2), so not every slot has every tree.
+    - '{ du -sh build build-gles2 build-headless third_party/irrlicht-gles2-x86 2>/dev/null || true; } | tee -a prune.log; df -h . | tail -1 | tee -a prune.log'
   artifacts:
     when: always
     expire_in: 30 days
@@ -377,17 +390,33 @@ build-arm:
     # incremental cache/), i.e. two cold cross-builds per fable pipeline.
     # Keep this line identical in build-arm and build-arm64 (B1030 review).
     GIT_CLEAN_FLAGS: -ffdx -e build-arm-noble -e build-arm64-noble
+    # B1087: the runner has one checkout per slot, so the in-tree cache above is cold in a
+    # slot that never built ARM; this host ccache (scripts/ci/arm_ccache.sh) is shared by all
+    # slots. Absent on a host = ccache off, never a failure.
+    ARM_CCACHE_DIR: /var/cache/ccache-ci-arm
   rules:
     - if: $CI_COMMIT_BRANCH == "fable"
     - when: manual
       allow_failure: true
   script:
     - set -o pipefail
-    - '[ "$(hostname)" = "dev-u24" ] || { echo "refusing to build on $(hostname)"; exit 1; }'
+    # B1087 (#407): the ThinkPad is the primary runner; dev-u24's runner is paused but kept.
+    # 2026-10-18 (Will): gitlab-runner-1/2 carry every tag again (docker + NAS NFS + ARM ccache provisioned), concurrent=1 each.
+    - 'case "$(hostname)" in dev-u24|thinkpad|gitlab-runner-1|gitlab-runner-2) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac'
     # B970: verify/fill the vendored Irrlicht+libpng store first; fails naming the pin.
+    # B1093 (#413): kill any ARM build container an earlier cancelled/timed-out job left on this host.
+    - bash scripts/ci/arm_container.sh --sweep
     - scripts/ci/vendor_fetch.sh --ensure
-    - nice -n 10 scripts/build-arm-noble.sh 2>&1 | tail -n 40
+    # Full log kept as an artifact; on failure print the compiler errors, not a
+    # blind tail (B1054's ARM-only compile error never reached the trace).
+    - nice -n 10 scripts/build-arm-noble.sh > build-arm-noble.log 2>&1 || { grep -nE 'error:|undefined reference|ERROR:' build-arm-noble.log | head -n 40; tail -n 40 build-arm-noble.log; exit 1; }
+    - tail -n 20 build-arm-noble.log
     - scripts/pi/publish_arm_build.sh "$CI_COMMIT_SHA" "${CI_COMMIT_BRANCH:-$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
+  artifacts:
+    when: always
+    expire_in: 14 days
+    paths:
+      - build-arm-noble.log
 
 # B1030 (#350): the aarch64 lanes' binary (Rock64 + ROCK 4D), the same runner
 # and the same shape as build-arm, published to ci-arm64/<sha>/. The runner is
@@ -406,16 +435,30 @@ build-arm64:
     # Same line as build-arm: the two jobs share one checkout (see there).
     GIT_CLEAN_FLAGS: -ffdx -e build-arm-noble -e build-arm64-noble
     BUILD_JOBS: "8"
+    ARM_CCACHE_DIR: /var/cache/ccache-ci-arm
   rules:
     - if: $CI_COMMIT_BRANCH == "fable"
     - when: manual
       allow_failure: true
   script:
     - set -o pipefail
-    - '[ "$(hostname)" = "dev-u24" ] || { echo "refusing to build on $(hostname)"; exit 1; }'
+    # B1087 (#407): the ThinkPad is the primary runner; dev-u24's runner is paused but kept.
+    # 2026-10-18 (Will): gitlab-runner-1/2 carry every tag again (docker + NAS NFS + ARM ccache provisioned), concurrent=1 each.
+    - 'case "$(hostname)" in dev-u24|thinkpad|gitlab-runner-1|gitlab-runner-2) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac'
+    # B1093 (#413): kill any ARM build container an earlier cancelled/timed-out job left on this host.
+    - bash scripts/ci/arm_container.sh --sweep
     - scripts/ci/vendor_fetch.sh --ensure
-    - nice -n 10 scripts/build-arm64-noble.sh 2>&1 | tail -n 40
+    - 'if [ -n "${CI_JOBS:-}" ]; then export BUILD_JOBS="$CI_JOBS"; fi; echo "BUILD_JOBS=$BUILD_JOBS"'
+    # Full log kept as an artifact; on failure print the compiler errors, not a
+    # blind tail (B1054's ARM-only compile error never reached the trace).
+    - nice -n 10 scripts/build-arm64-noble.sh > build-arm64-noble.log 2>&1 || { grep -nE 'error:|undefined reference|ERROR:' build-arm64-noble.log | head -n 40; tail -n 40 build-arm64-noble.log; exit 1; }
+    - tail -n 20 build-arm64-noble.log
     - scripts/pi/publish_arm64_build.sh "$CI_COMMIT_SHA" "${CI_COMMIT_BRANCH:-$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
+  artifacts:
+    when: always
+    expire_in: 14 days
+    paths:
+      - build-arm64-noble.log
 
 # Stage 4: the visual gate (T80/T291) -- golden frames + CPU-p95 + memory ledger
 # over build-gles2/bin/gles2_zone_benchmark against real client assets.
@@ -564,4 +607,74 @@ gate:
     paths:
       - gate.log
       - build-gles2/ref/*/ci_artifacts/
+
+# B929 (#247): the zone budget census -- every era zone against every budget.
+# The blocking `gate` above asserts the five manifest zones; this job sweeps
+# ALL of scripts/ci/zone_content_sweep_zones.tsv (the 118-zone T490 census,
+# B852's list) and asserts, per zone: every estimate budget pair the gate
+# checks (placeableObjectsBytes and the rest of MEMORY_BUDGET_PAIRS minus the
+# two also-baselined) AND every memoryLedgerBudgets category, all against the
+# budgets the benchmark read out of the shipped orangepi preset -- the same
+# numbers the gate compares against, so config/constrained_presets.json stays
+# the single source and a zone over ANY budget fails the pipeline (B929's
+# growthplane sat at 28,687,788 B of placeableObjectsBytes against 25,165,824
+# with nothing asserting it: refactor/B927/category_census.tsv, the issue's
+# own evidence).
+#
+# The full census is too slow for the ctest suite: 118 sequential
+# gles2_zone_benchmark zone loads measured 246 s of zone time + the
+# script's own 2 s polling ticks = 4m46s on the runner-class host's
+# llvmpipe (refactor/B929/README.md), so it runs HERE, in the gate stage.
+# It is BLOCKING (allow_failure false, no retries): the gate's 3 in-script
+# retries exist because its CPU-p95 assertion is load-sensitive; the census
+# asserts memory figures that are load-invariant by construction
+# (platform-independent vertex/index sums and allocator-ledger live bytes at
+# a fixed lifecycle point -- B927/README.md), so a retry would only mask a
+# real over-budget zone. The budgets are BLESS-ONLY (Will): the job reads
+# them and fails against them; a red row is code to fix, never a number to
+# move (the ratchet-down rule, docs/ci.md).
+#
+# Same shape as the `gate` job: .visual_gate_prepare builds the benchmark
+# into $GLES2_TREE in this job (the per-ref warm tree), so the binary it
+# sweeps is this host's build of this commit. The ctest legs of the same
+# net: test_zone_budget_census (pure python, every pipeline) and
+# zone_budget_census_smoke (the 3-zone smoke, label slow, in build-test).
+zone-budget-census:
+  extends: .goldfarm
+  stage: gate
+  allow_failure: false
+  needs: []
+  rules: !reference [.code_rules, rules]
+  script:
+    - !reference [.visual_gate_prepare, script]
+    - |
+      # B929: heal stale EQE1 packs (B930's soldunga signature) into a local
+      # pack tree the sweep reads (--eqe1-path below). The NFS pack tree is
+      # read-only for the runner, so clean packs are linked and stale ones
+      # rebuilt into $GLES2_TREE (the per-ref build tree this job owns);
+      # the tools build there on demand.
+      nice -n 10 cmake --build "$GLES2_TREE" --target verify_eqe1 eqe1_builder -j "$JOBS" 2>&1 | tail -n 10
+      nice -n 10 bash scripts/ci/zone_census_pack_selfheal.sh \
+        --verify "$GLES2_TREE/bin/verify_eqe1" \
+        --builder "$GLES2_TREE/bin/eqe1_builder" \
+        --eq-path data/eq_client --pack-dir data/eqe1_client \
+        --out-dir "$GLES2_TREE/b929_packs" 2>&1 | tee census-pack-heal.log
+    - |
+      set -o pipefail
+      nice -n 10 bash scripts/ci/zone_content_sweep.sh \
+        --out-dir "$GLES2_TREE/b929_census" \
+        --bench-bin "$GLES2_TREE/bin/gles2_zone_benchmark" \
+        --eqe1-path "$GLES2_TREE/b929_packs" 2>&1 | tee census-sweep.log
+      nice -n 10 python3 scripts/ci/zone_budget_census.py --check-budgets \
+        --sweep-dir "$GLES2_TREE/b929_census" \
+        --out census-budget-rows.tsv 2>&1 | tee census-budget.log
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - census-sweep.log
+      - census-pack-heal.log
+      - census-budget.log
+      - census-budget-rows.tsv
+      - build-gles2/ref/*/b929_census/results.tsv
 

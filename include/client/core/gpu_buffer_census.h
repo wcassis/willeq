@@ -78,6 +78,48 @@ inline uint64_t depthStencilBytesFor(uint32_t width, uint32_t height, int depthB
     return static_cast<uint64_t>(width) * height * bpp;
 }
 
+// B961 (GitLab #279): the scanout framebuffers' bytes, the client-side
+// source. The GBM colour buffers live on the DISPLAY device (CMA on the
+// Orange Pi; imported into Lima by PRIME) -- not shmem, not in RssAnon,
+// not in the process's memcg -- so the gpu_buffers row and every
+// per-process kernel source are blind to them (the rigs read them as root
+// from /sys/kernel/debug/dri/display-engine/framebuffer). The DRM device
+// knows every gbm_bo it has locked (stride x height each, see
+// docker/irrlicht-drm/scanout_buffer_tally.h) and publishes the tally;
+// these read it.
+//
+// Resolution: the B955 PUBLISH IDIOM (publishGpuLogicalTally /
+// publishGpuSoftwareRasteriser) -- a STRONG device->core reference, the only
+// direction that binds across the two static archives (libwilleq_core.a is
+// linked before libIrrlicht.a). Both device forks
+// (docker/irrlicht-drm/CIrrDeviceFB.cpp, docker/irrlicht-drm-x86/
+// CIrrDeviceFB.cpp) call publishScanoutTally() from their scanout
+// register/unregister callbacks (as the surface's buffers are locked and
+// freed) and with {0, 0} from the destructor. The core's read is a pure
+// atomic load of the pair the device last published -- never a call into
+// the device. (First draft: a weak DEFINITION of the getter -- the linker
+// resolved it to the core's own {0,0} body before it ever looked in the
+// later libIrrlicht.a; second draft: a WEAKREF, which also did not bind
+// across the archives. Both are dead ends with static archives in this
+// order; the publish direction works.)
+struct ScanoutTallyRead {
+    uint32_t bufs = 0;
+    uint64_t bytes = 0;
+};
+void publishScanoutTally(uint32_t bufs, uint64_t bytes);
+// Reads the published tally. Unpublished (no device, or after its
+// destructor): {0, 0} -- the true answer of "no GBM buffers in this
+// process" (tests and narrow tools never link the device at all).
+//
+// WHY NOT A WEAK SYMBOL (both forms were measured in the willeq binary):
+// a weak DEFINITION of a reader in this TU won -- the linker bound the
+// reference to the local {0,0} body while extracting the core archive and
+// never reconsidered it against the device's strong definition in the later
+// libIrrlicht.a; a weak REFERENCE (declaration only) stayed weak-undefined
+// (final binary: `w`, null at runtime) for the same archive-order reason.
+// Only a strong reference the DEVICE makes into the CORE resolves.
+ScanoutTallyRead readScanoutTally();
+
 // Whether the GL renderer is a software rasteriser (GL_RENDERER names
 // llvmpipe/softpipe/swrast), published once by the renderer after context
 // creation. Unpublished: inferred (no DRM fd open = software).
@@ -123,10 +165,11 @@ struct DrmMaps {
 void accumulateDrmMapsLine(const char* line, size_t len, DrmMaps& acc);
 
 struct MemcgStat {
-    bool ok = false;
-    uint64_t shmemBytes = 0;      // memory.stat shmem
-    uint64_t kernelBytes = 0;     // memory.stat kernel (slab, page tables, ...)
-    uint64_t anonBytes = 0;       // memory.stat anon
+    bool ok = false;             // a shmem line was present
+    uint64_t shmemBytes = 0;     // memory.stat shmem
+    bool kernelSeen = false;     // B961: a kernel line was present
+    uint64_t kernelBytes = 0;    // memory.stat kernel (slab, page tables, ...)
+    uint64_t anonBytes = 0;      // memory.stat anon
 };
 MemcgStat parseMemcgStat(const std::string& text);
 // "0::/user.slice/.../x.scope" -> "/user.slice/.../x.scope" (cgroup v2 line);
@@ -165,6 +208,11 @@ struct GpuBufferInputs {
     uint64_t logicalDepthStencilBytes = 0;  // B962
     bool logicalPublished = false;
     int softwareRasteriser = -1;  // -1 unpublished, 0 no, 1 yes
+    // B961: the display device's GBM scanout buffers (the device's own
+    // tally, readScanoutTally()) -- a separate byte class from gpu_buffers
+    // (CMA on the display device, not shmem) and from memcg.kernel.
+    uint32_t scanoutFbBufs = 0;
+    uint64_t scanoutFbBytes = 0;
 };
 
 // Fold one fd's parsed fdinfo into `in` the way readGpuBufferCensus() does for
@@ -200,13 +248,30 @@ GpuBufferCensus decideGpuBuffers(const GpuBufferInputs& in);
 // the logical tally alone.
 GpuBufferCensus readGpuBufferCensus();
 
+// B1056: whether /proc/<pid>/fdinfo of a DRM fd on `devPath` (/dev/dri/<node>)
+// may be read. False for the IMG PowerVR module (pvrsrvkm: pvr_show_fdinfo
+// panics the kernel, lane 4), false when the driver cannot be resolved through
+// /sys/class/drm/<node>/device/driver (fails closed), and false whenever
+// WILLEQ_GPU_CENSUS_NO_FDINFO is set (read per call).
+// scripts/pi/proc_mem_snapshot.py mirrors it for out-of-process readers.
+bool drmFdinfoIsSafe(const char* devPath);
+
 // `[memgpu] point=<p> zone=<z> gpu_buffers=<B> source=<tok> outside_rss_anon=<0|1>
 //  logical=<B> logical_textures=<B> logical_buffers=<B> residual=<B>
 //  ... (B962, appended last so every existing parse holds:)
 //  logical_depth_stencil=<B>
 //  memcg_shmem=<B> memcg_kernel=<B> cgroup_procs=<n> drm_mapped=<B>
 //  drm_maps=<n> drm_fds=<n> fdinfo_total=<B> fdinfo_resident=<B>
+//  fdinfo_purgeable=<B>
+//  ... (B961, inserted after fdinfo_purgeable= and before the B978 owned
+//  fields, which must stay last: a pre-B961 parser of the line still finds
+//  every field it knew:)
+//  scanout_fb=<B> scanout_fb_bufs=<n> memcg_kernel_seen=<0|1>
 //  owned_rss_anon=<B> owned=<B>`
+// B961: the two byte classes on no ledger row (refactor/B961/README.md): the
+// display device's GBM scanout buffers (CMA; the rigs' root read is the
+// cross-check) and the process cgroup's memory.stat kernel. Neither is added
+// to owned -- the counting question is Will's ruling.
 // B978 (Will, 2026-10-01: GPU buffers count toward the 64 MB target):
 // owned_rss_anon is RssAnon - gpu_driver and owned is the TARGET figure,
 // owned_rss_anon + gpu_buffers when the row is outside RssAnon. Before B978
@@ -222,6 +287,41 @@ std::string gpuBuffersToJson(const GpuBufferCensus& c, uint64_t ownedRssAnonByte
 // on a software rasteriser the row is already inside gpu_driver, nothing added.
 inline uint64_t ownedPlusGpuBuffers(uint64_t ownedRssAnonBytes, const GpuBufferCensus& c) {
     return ownedRssAnonBytes + (c.outsideRssAnon ? c.gpuBuffersBytes : 0);
+}
+
+// B961 (GitLab #279): the two byte classes on no ledger row. Neither counts
+// toward any figure this header defines -- they are REPORTED, and whether they
+// enter the owned target is Will's ruling (refactor/B961/README.md, "left open
+// for Will"). Both ride on the [memgpu] line and the ledger JSON as their own
+// rows beside gpu_buffers:
+//   scanout_fb_bytes  -- the device's GBM colour buffers: CMA on the DISPLAY
+//                       device (the rigs' root read
+//                       /sys/kernel/debug/dri/display-engine/framebuffer is the
+//                       cross-check; 2 x 3,686,400 B = 7.03 MiB at 1280x720).
+//                       Not shmem, not RssAnon, not in the process memcg.
+//   memcg_kernel_bytes -- the process's own cgroup memory.stat kernel (slab,
+//                       page tables, kernel stacks; 1.11-1.93 MiB at
+//                       steady_60s in the issue's runs). Charged to the
+//                       process cgroup, but it is not in RssAnon (kernel
+//                       memory is not a process's kernel) and never was in any
+//                       owned figure; this row names it.
+// Both are 0 when their source does not exist in the process (no GBM device
+// or no cgroup v2 memory controller).
+struct B961Rows {
+    uint32_t scanoutFbBufs = 0;
+    uint64_t scanoutFbBytes = 0;
+    uint64_t memcgKernelBytes = 0;
+    bool memcgKernelAvailable = false;  // memory.stat had a kernel= line
+};
+// Derive the rows from a census (its inputs carry both sources). Pure, so the
+// log line, the JSON and the tests all name one place.
+inline B961Rows b961Rows(const GpuBufferCensus& c) {
+    B961Rows r;
+    r.scanoutFbBufs = c.in.scanoutFbBufs;
+    r.scanoutFbBytes = c.in.scanoutFbBytes;
+    r.memcgKernelBytes = c.in.memcg.kernelBytes;
+    r.memcgKernelAvailable = c.in.memcg.kernelSeen;
+    return r;
 }
 
 } // namespace memory

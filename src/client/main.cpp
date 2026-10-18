@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <iostream>
@@ -175,6 +176,51 @@ static bool parseCliAndLoadConfig(int argc, char* argv[],
         return false;
     }
 
+    // B1079 (#399): the play-box log. --log-file PATH (or WILLEQ_LOG_FILE)
+    // opens the sink BEFORE InitLogging so the level-resolution lines below
+    // land in the file too; the drain thread appends the same lines it writes
+    // to stdout/stderr, flushed every cycle (logging.h).
+    {
+        const char* logFile = nullptr;
+        for (int i = 1; i < argc; i++) {
+            const char* arg = argv[i];
+            if (strncmp(arg, "--log-file=", 11) == 0) {
+                logFile = arg + 11;
+                break;
+            }
+            if (strcmp(arg, "--log-file") == 0 && i + 1 < argc) {
+                logFile = argv[++i];
+                break;
+            }
+        }
+        if (!logFile) logFile = std::getenv("WILLEQ_LOG_FILE");
+        if (logFile && *logFile) {
+            LogManager::Instance().SetLogFile(logFile);
+        }
+    }
+
+    // B1079 (#399): `--log-level DEBUG` (the space form) was SILENTLY ignored
+    // before -- only `--log-level=LEVEL` was parsed -- and the two 2026-10-15
+    // misread reproductions cost Will a night over it. Rewrite the space form
+    // onto the `=` form so the parse below sees one shape: an unparseable
+    // value after the rewrite gets the same loud ERROR as an invalid `=VALUE`
+    // today (never a silent no-op again). The rewritten argument must outlive
+    // the parse, so it is kept in a live std::string (argv is char* only).
+    std::string logLevelArgRewrite;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--log-level") == 0 && i + 1 < argc) {
+            logLevelArgRewrite = std::string("--log-level=") + argv[i + 1];
+            // data() (C++17) returns a mutable char* for a non-const string,
+            // so this is a valid char* for the (writable) argv slot; c_str()
+            // is const char* and does not convert (the Release build is
+            // stricter than the Debug one, which accepted it).
+            argv[i] = logLevelArgRewrite.data();
+            argv[i + 1] = argv[argc - 1];
+            argc--;
+            break;  // one --log-level per invocation
+        }
+    }
+
     // Initialize logging from CLI args (--log-level, --log-module)
     InitLogging(argc, argv);
 
@@ -279,6 +325,12 @@ static bool parseCliAndLoadConfig(int argc, char* argv[],
         exitCode = 1;
         return false;
     }
+
+    // B1069 (#389): publish the playback DEVICE rate (audio.device_sample_rate
+    // / --audio-rate) to the audio system before Application::initialize();
+    // client/audio/audio_device_rate.h says why this is not a Bridge setter.
+    EQT::Audio::setConfiguredDeviceSampleRate(config.audioDeviceSampleRate);
+    EQT::Audio::setConfiguredDeviceFormat(config.audioDeviceFormat);
 
     out = std::move(config);
     return true;

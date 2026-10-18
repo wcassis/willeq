@@ -9,8 +9,10 @@ SET(AUDIO_COMMON_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/src/client/audio/audio_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/audio_mixer.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/audio_backend.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/audio/polyphase_resampler.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/midi_player.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/sfx_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/audio/sound_buffer_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/sound_buffer.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/music_player.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/sound_assets.cpp
@@ -23,6 +25,7 @@ SET(AUDIO_COMMON_TEST_SOURCES
     # header-only. Every AudioManager test therefore links the ledger TU, the
     # way test_audio_startup_peak always did.
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
 )
@@ -58,7 +61,7 @@ IF(WITH_AUDIO)
         ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
         ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
     )
-    TARGET_COMPILE_DEFINITIONS(test_eff_loader PRIVATE WITH_AUDIO WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    TARGET_COMPILE_DEFINITIONS(test_eff_loader PRIVATE WITH_AUDIO "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_LINK_LIBRARIES(test_eff_loader GTest::gtest_main ${FMT_LIB} dl)
     GTEST_DISCOVER_TESTS(test_eff_loader DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -117,7 +120,7 @@ IF(WITH_AUDIO)
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_sound_assets PRIVATE WITH_AUDIO
-        WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_LINK_LIBRARIES(test_sound_assets ${AUDIO_COMMON_TEST_LIBS})
     GTEST_DISCOVER_TESTS(test_sound_assets DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -135,8 +138,11 @@ IF(WITH_AUDIO)
     GTEST_DISCOVER_TESTS(test_sound_effects DISCOVERY_TIMEOUT 120)
 ENDIF()
 
-# T412 Leg B (B292): the SFX cache must honour setCacheMaxBytes(). Drives the
-# real SfxManager and a real AudioMixer -- no device is opened.
+# B1015 (#336, supersedes the T412 B292 shape): the ONE decoded-PCM cache of
+# SFX PCM must honour its ceiling. SoundBufferCache::entries_ is that cache
+# (one cap); SfxManager holds no cache of its own and never evicts the sound
+# being inserted. Drives the real SoundBufferCache and, for the pin cases, a
+# real SfxManager + AudioMixer -- no device is opened.
 IF(WITH_AUDIO)
     ADD_EXECUTABLE(test_sfx_cache_eviction
         test_sfx_cache_eviction.cpp
@@ -146,6 +152,32 @@ IF(WITH_AUDIO)
     TARGET_COMPILE_DEFINITIONS(test_sfx_cache_eviction PRIVATE WITH_AUDIO)
     TARGET_LINK_LIBRARIES(test_sfx_cache_eviction ${AUDIO_COMMON_TEST_LIBS})
     GTEST_DISCOVER_TESTS(test_sfx_cache_eviction DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1018 (GitLab #339): the "audio.vendor_music is parsed but ignored" WARN
+# must fire only when a config actually sets the key. Drives the exact
+# production parse path, Application::loadConfigFile() (application_config
+# .cpp's `audio_config.isMember("vendor_music")` arm, where the post-B1018
+# WARN lives) with two minimal configs -- the key absent (0 warns) and
+# present (exactly 1). Steady-state stdout capture (the T31 idiom from
+# test_renderer_command_echo.cpp).
+#
+# Link shape: willeq_core ALREADY compiles application_config.cpp (it is in
+# ALL_CORE_SOURCES), so this target compiles NOTHING from it -- it links the
+# archive and pulls in only the objects it actually calls (loadConfigFile,
+# the hotkey-manager objects its EQT_HAS_GRAPHICS block references, and
+# performance_metrics / json_config / data_paths for the two timers, the
+# JsonConfigFile::Load and ResolveDataPath). No direct source of that TU, or
+# the archive's copy and a duplicate collide at link time.
+IF(WITH_AUDIO)
+    ADD_EXECUTABLE(test_vendor_music_config_warn
+        test_vendor_music_config_warn.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_vendor_music_config_warn PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_COMPILE_DEFINITIONS(test_vendor_music_config_warn PRIVATE WITH_AUDIO)
+    TARGET_LINK_LIBRARIES(test_vendor_music_config_warn
+        GTest::gtest_main willeq_core ${JSONCPP_LIBRARIES} ${FMT_LIB})
+    GTEST_DISCOVER_TESTS(test_vendor_music_config_warn DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # Test spatial audio (3D positional audio, distance attenuation, listener position)
@@ -313,7 +345,7 @@ IF(WITH_AUDIO)
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_pfs_sound_load PRIVATE WITH_AUDIO
-        WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+        "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     TARGET_LINK_LIBRARIES(test_pfs_sound_load ${AUDIO_COMMON_TEST_LIBS})
     GTEST_DISCOVER_TESTS(test_pfs_sound_load DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -354,12 +386,13 @@ IF(WITH_AUDIO)
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
         ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_music_player_soundfont_lifetime PRIVATE
         WITH_AUDIO
-        WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+        "WILLEQ_EQ_CLIENT_PATH=WILLEQ_REPO_PATH(\"data/eq_client\")")
     TARGET_LINK_LIBRARIES(test_music_player_soundfont_lifetime
         GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
     GTEST_DISCOVER_TESTS(test_music_player_soundfont_lifetime DISCOVERY_TIMEOUT 120)
@@ -385,7 +418,7 @@ IF(WITH_AUDIO)
     )
     TARGET_COMPILE_DEFINITIONS(test_soundfont_release PRIVATE
         WITH_AUDIO
-        WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+        "WILLEQ_EQ_CLIENT_PATH=WILLEQ_REPO_PATH(\"data/eq_client\")")
     TARGET_LINK_LIBRARIES(test_soundfont_release
         GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
     GTEST_DISCOVER_TESTS(test_soundfont_release DISCOVERY_TIMEOUT 120)
@@ -402,7 +435,7 @@ IF(WITH_AUDIO)
     )
     TARGET_COMPILE_DEFINITIONS(test_audio_startup_peak PRIVATE
         WITH_AUDIO
-        WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+        "WILLEQ_EQ_CLIENT_PATH=WILLEQ_REPO_PATH(\"data/eq_client\")")
     TARGET_LINK_LIBRARIES(test_audio_startup_peak
         GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
     # B845 (board B845): register the three cases by hand instead of
@@ -451,7 +484,7 @@ IF(WITH_AUDIO)
     )
     TARGET_COMPILE_DEFINITIONS(test_audio_ledger_attribution PRIVATE
         WITH_AUDIO
-        WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+        "WILLEQ_EQ_CLIENT_PATH=WILLEQ_REPO_PATH(\"data/eq_client\")")
     TARGET_LINK_LIBRARIES(test_audio_ledger_attribution
         GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
     GTEST_DISCOVER_TESTS(test_audio_ledger_attribution DISCOVERY_TIMEOUT 120)
@@ -472,8 +505,25 @@ IF(WITH_AUDIO)
     )
     TARGET_COMPILE_DEFINITIONS(test_sfx_single_pcm_cache PRIVATE
         WITH_AUDIO
-        WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+        "WILLEQ_EQ_CLIENT_PATH=WILLEQ_REPO_PATH(\"data/eq_client\")")
     TARGET_LINK_LIBRARIES(test_sfx_single_pcm_cache
         GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
     GTEST_DISCOVER_TESTS(test_sfx_single_pcm_cache DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1069 (#389): the playback DEVICE rate -- audio.device_sample_rate /
+# --audio-rate (default 48000, 0 = native), DeviceRateAdapter's frame counts
+# (22050 mixer -> 48000 device, no drift over 10 s), and MiniaudioBackend on
+# miniaudio's NULL backend (no audio hardware needed) with its init log line.
+# Links willeq_core for Application::parseArguments/loadConfigFile and the
+# audio TUs, the test_vendor_music_config_warn shape.
+IF(WITH_AUDIO)
+    ADD_EXECUTABLE(test_audio_device_rate
+        test_audio_device_rate.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_audio_device_rate PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_COMPILE_DEFINITIONS(test_audio_device_rate PRIVATE WITH_AUDIO)
+    TARGET_LINK_LIBRARIES(test_audio_device_rate
+        GTest::gtest_main willeq_core ${JSONCPP_LIBRARIES} ${FMT_LIB})
+    GTEST_DISCOVER_TESTS(test_audio_device_rate DISCOVERY_TIMEOUT 120)
 ENDIF()

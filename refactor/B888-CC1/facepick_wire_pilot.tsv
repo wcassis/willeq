@@ -1,0 +1,5 @@
+# FAILED CALIBRATION PILOT ONLY. These are real OP_CharacterCreate samples, not measured ranges or a completed 52-packet series.
+step	name	race	gender	haircolor	beardcolor	beard	hair	face_wire	eye1	eye2	pcap_record
+0	Facecalzero	2	0	4	0	4	2	0	5	5	/home/user/kb-evidence/kb-cc1-facepick/oracle/calibration-failed.pcap:156050
+1	Facecalone	2	0	255	0	0	255	11	10	10	/home/user/kb-evidence/kb-cc1-facepick/oracle/calibration-failed.pcap:335441
+2	Facecalac	2	0	7	2	7	0	21	1	1	/home/user/kb-evidence/kb-cc1-facepick/oracle/calibration-failed.pcap:514987

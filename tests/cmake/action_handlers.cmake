@@ -16,7 +16,7 @@
 ADD_EXECUTABLE(test_eq_action_handler_cast
     test_eq_action_handler_cast.cpp
 )
-TARGET_COMPILE_DEFINITIONS(test_eq_action_handler_cast PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_COMPILE_DEFINITIONS(test_eq_action_handler_cast PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 TARGET_LINK_LIBRARIES(test_eq_action_handler_cast GTest::gtest willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_cast PRIVATE ${IRRLICHT_INCLUDE_DIR})
@@ -112,7 +112,7 @@ ENDFOREACH()
 # not exist -- the handler acted only on scribing == 0 (a spellbook scribe).
 ADD_EXECUTABLE(test_memorize_into_occupied_gem test_memorize_into_occupied_gem.cpp)
 TARGET_COMPILE_DEFINITIONS(test_memorize_into_occupied_gem PRIVATE
-    WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 TARGET_LINK_LIBRARIES(test_memorize_into_occupied_gem GTest::gtest willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_memorize_into_occupied_gem PRIVATE ${IRRLICHT_INCLUDE_DIR})
@@ -184,7 +184,7 @@ ADD_EXECUTABLE(test_jump_fall_arc
     test_jump_fall_arc.cpp
 )
 TARGET_LINK_LIBRARIES(test_jump_fall_arc GTest::gtest_main)
-TARGET_COMPILE_DEFINITIONS(test_jump_fall_arc PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+TARGET_COMPILE_DEFINITIONS(test_jump_fall_arc PRIVATE "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
 GTEST_DISCOVER_TESTS(test_jump_fall_arc DISCOVERY_TIMEOUT 120)
 
 # T438 (BOARD B421/B422/B423): every door-motion constant, measured against the
@@ -212,6 +212,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_ground_sentinels DISCOVERY_TIMEOUT 120)
 
+# B1067 (#387): the keyboard-movement ground ray over every BSP leaf it
+# crosses (BspTree::collectRegionsAlongSegment) and the step rule
+# (a pinned copy of resolveIrrlichtClearPath's) over a synthetic two-level
+# floor whose floors are the polygons of a thin leaf below the player's
+# centre -- the qeynos2 curb's layout. Graphics-only: bsp_ground_query.cpp is a GRAPHICS_SOURCES TU.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_bsp_ground_step
+        test_bsp_ground_step.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_bsp_ground_step GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_bsp_ground_step PRIVATE "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
+    TARGET_INCLUDE_DIRECTORIES(test_bsp_ground_step PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    GTEST_DISCOVER_TESTS(test_bsp_ground_step DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T376 Leg A (BOARD B140): the door / world-object click senders go out
 # through eqt::PacketSender (null-guard, T268 seam, session recorder).
 ADD_EXECUTABLE(test_click_senders_packet_sender
@@ -232,7 +247,7 @@ ADD_EXECUTABLE(test_login_world_senders_packet_sender
 )
 TARGET_LINK_LIBRARIES(test_login_world_senders_packet_sender GTest::gtest_main willeq_core)
 TARGET_COMPILE_DEFINITIONS(test_login_world_senders_packet_sender
-    PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    PRIVATE "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_login_world_senders_packet_sender PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
@@ -281,7 +296,7 @@ ENDIF()
 # T271: /who renders the race name, which is served from race_models now --
 # the fixture opens the shipped db the way EverQuest::OpenDatabase() does.
 TARGET_COMPILE_DEFINITIONS(test_who_response PRIVATE
-    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 GTEST_DISCOVER_TESTS(test_who_response DISCOVERY_TIMEOUT 120)
 
 # T170: OP_InspectAnswer generation -- the field inversion between the request
@@ -336,7 +351,7 @@ GTEST_DISCOVER_TESTS(test_eq_action_handler_trade DISCOVERY_TIMEOUT 120)
 ADD_EXECUTABLE(test_eq_action_handler_spell_pet
     test_eq_action_handler_spell_pet.cpp
 )
-TARGET_COMPILE_DEFINITIONS(test_eq_action_handler_spell_pet PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_COMPILE_DEFINITIONS(test_eq_action_handler_spell_pet PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 TARGET_LINK_LIBRARIES(test_eq_action_handler_spell_pet GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_spell_pet PRIVATE ${IRRLICHT_INCLUDE_DIR})
@@ -355,7 +370,7 @@ GTEST_DISCOVER_TESTS(test_eq_action_handler_spell_pet DISCOVERY_TIMEOUT 120)
 ADD_EXECUTABLE(test_game_state_source_writes
     test_game_state_source_writes.cpp
 )
-TARGET_COMPILE_DEFINITIONS(test_game_state_source_writes PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_COMPILE_DEFINITIONS(test_game_state_source_writes PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 TARGET_LINK_LIBRARIES(test_game_state_source_writes GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_game_state_source_writes PRIVATE ${IRRLICHT_INCLUDE_DIR})
@@ -374,6 +389,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_position_store_coherence PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_position_store_coherence DISCOVERY_TIMEOUT 120)
+
+# B1088 (#408) fix leg: the OP_NewZone zone_long_name READ, through the real
+# packet handler (ZoneProcessNewZone, src/client/zone/zone_entry.cpp). The
+# lookup unit (test_zone_display_name.cpp) and the zone-identity test
+# (test_position_store_coherence.cpp) never fed the long-name field OFF THE
+# WIRE, so the one read that carries B1088's refresh guarantee was untested.
+# Same replay-seam idiom, no network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_zone_newzone_display_name
+    test_zone_newzone_display_name.cpp
+)
+TARGET_LINK_LIBRARIES(test_zone_newzone_display_name GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_zone_newzone_display_name PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_zone_newzone_display_name DISCOVERY_TIMEOUT 120)
 
 # T05: login/world replay seam smoke test (ReplayLoginPacket/ReplayWorldPacket
 # -> DispatchLoginPacket/DispatchWorldPacket). Same replay-seam idiom as
@@ -433,7 +463,7 @@ ADD_EXECUTABLE(test_char_create
     test_char_create.cpp
 )
 TARGET_LINK_LIBRARIES(test_char_create GTest::gtest_main willeq_core)
-TARGET_COMPILE_DEFINITIONS(test_char_create PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+TARGET_COMPILE_DEFINITIONS(test_char_create PRIVATE "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_char_create PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
@@ -459,5 +489,5 @@ ADD_EXECUTABLE(test_direct_sender_census
     test_direct_sender_census.cpp
 )
 TARGET_LINK_LIBRARIES(test_direct_sender_census GTest::gtest_main)
-TARGET_COMPILE_DEFINITIONS(test_direct_sender_census PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+TARGET_COMPILE_DEFINITIONS(test_direct_sender_census PRIVATE "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")")
 GTEST_DISCOVER_TESTS(test_direct_sender_census DISCOVERY_TIMEOUT 120)

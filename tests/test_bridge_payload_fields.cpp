@@ -186,12 +186,14 @@ TEST(SpellbookMemorizeT413, ProgressIsClampedAndNeverDividesByZero) {
 TEST(SpellbookMemorizeT413, TheGaugeRectIsTheOracleGaugeScaledIntoThePopup) {
     UILayout layout;
     layout.computeLayout(800, 600);
-    // centerPopup is {200,125,600,475} (400x350) at 800x600, so:
-    //   x = 200 + 204*400/510 = 200 + 160 = 360
-    //   y = 125 + 312*350/360 = 125 + 303 = 428
+    // centerPopup is {256,65,656,415} (400x350) at 800x600 (B1075: the
+    // layout table's CentreSlot; B1077's wider 48px gem column shifts the
+    // centred popup left 8px from 264), so:
+    //   x = 256 + 204*400/510 = 256 + 160 = 416
+    //   y =  65 + 312*350/360 =  65 + 303 = 368
     //   w = 100*400/510 = 78     h = 8*350/360 = 7
     EXPECT_EQ(spellbookMemorizeGaugeRect(layout),
-              irr::core::rect<irr::s32>(360, 428, 438, 435));
+              irr::core::rect<irr::s32>(416, 368, 494, 375));
 }
 
 TEST(SpellbookMemorizeT413, TheGaugeKeepsTheOracleProportionAtEveryResolution) {

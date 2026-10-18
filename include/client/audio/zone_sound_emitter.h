@@ -2,6 +2,8 @@
 
 #ifdef WITH_AUDIO
 
+#include "client/audio/sfx_manager.h"  // B1074: SfxLoopHandle
+
 #include <glm/glm.hpp>
 #include <string>
 #include <cstdint>
@@ -22,7 +24,17 @@ enum class EmitterSoundType : uint8_t {
 };
 
 // Individual sound emitter loaded from zone _sounds.eff file
-// Represents a positioned sound source in the zone
+// Represents a positioned sound source in the zone.
+//
+// B1074 (#394), the loop rule: an emitter whose cooldown for the current
+// day/night variant is 0 AND whose randomDelay is 0 (every qeynos2 emitter;
+// the sound bank lists them under LOOP/EMIT) LOOPS while the listener is in
+// range -- one looping mixer channel, its volume/pan following the listener
+// and the fade envelope. The emitter owns that channel and stops it on
+// leaving range (after the fade), on a day/night variant switch (the file for
+// the new state differs), and on stop() (ZoneAudioManager pause/unload, the
+// destructor), so a looped channel never outlives its emitter. A cooldown > 0
+// keeps the one-shot-with-cooldown behaviour.
 class ZoneSoundEmitter {
 public:
     ZoneSoundEmitter();
@@ -71,6 +83,11 @@ public:
     float getRadius() const { return radius_; }
     EmitterSoundType getType() const { return type_; }
     bool isPlaying() const { return isPlaying_; }
+    // B1074: true while this emitter holds a looping channel.
+    bool isLooping() const { return loop_.valid(); }
+    const SfxLoopHandle& getLoopHandle() const { return loop_; }
+    // B1074: does the variant for isDay loop (zero cooldown, zero random delay)?
+    bool loopsFor(bool isDay) const;
     bool isMusic() const { return type_ == EmitterSoundType::BackgroundMusic; }
 
     // XMI track index getters (for music emitters)
@@ -99,6 +116,10 @@ private:
     // Get current sound file based on day/night
     const std::string& getCurrentSoundFile(bool isDay) const;
 
+    // The file name play() hands the AudioManager (".wav" appended when the
+    // bank name has no extension); empty when the variant has no sound.
+    std::string playbackFileName(bool isDay) const;
+
 private:
     int32_t sequence_ = 0;
     glm::vec3 position_{0.0f};
@@ -119,7 +140,14 @@ private:
     int32_t xmiIndex2_ = 0;     // XMI subsong for night
 
     // Runtime state
-    int sfxHandle_ = -1;       // SfxManager channel handle (-1 = not playing)
+    // B1074: the looping channel this emitter owns (handle -1 = none), the
+    // AudioManager it was started on (stop() must reach it from the
+    // destructor; ZoneAudioManager unloads before the AudioManager shuts
+    // down) and the file it loops (a day/night switch to another file stops
+    // it).
+    SfxLoopHandle loop_;
+    AudioManager* loopAudio_ = nullptr;
+    std::string loopFile_;
     std::shared_ptr<SoundBuffer> currentBuffer_;
     float cooldownTimer_ = 0.0f;  // Remaining cooldown in ms
     bool isPlaying_ = false;

@@ -10,6 +10,13 @@ ADD_TEST(NAME FileSizeCeiling
             -C ${CMAKE_SOURCE_DIR} --all)
 SET_TESTS_PROPERTIES(FileSizeCeiling PROPERTIES LABELS "hygiene")
 
+# B888-CC1: XML geometry must be checked even by the source-only hygiene job.
+ADD_TEST(NAME FacePickXmlGeometry
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/b888/check_facepick_geometry.py
+            --source ${CMAKE_SOURCE_DIR}
+            --xml /mnt/projects/EverQuestP1999/uifiles/default/EQUI_FacePick.xml)
+SET_TESTS_PROPERTIES(FacePickXmlGeometry PROPERTIES LABELS "hygiene")
+
 ADD_TEST(NAME DocCitations
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_doc_citations.py
             --repo ${CMAKE_SOURCE_DIR})
@@ -40,6 +47,37 @@ SET_TESTS_PROPERTIES(DockerfileArm64Derived PROPERTIES LABELS "hygiene")
 ADD_TEST(NAME PiEnvLaneResolution
     COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/pi/env_selftest.sh)
 SET_TESTS_PROPERTIES(PiEnvLaneResolution PROPERTIES LABELS "hygiene")
+
+# B1034 (#357): the x86 surfaceless-EGL config fixture
+# (tests/data/b1034/surfaceless_es2.json) stays honest: the hygiene tree
+# re-dumps the list the x86 device fork consumes (initEGLSurfaceless's own
+# query, the CI GL pin = llvmpipe, no /dev/dri) and diffs it. A driver update
+# that changes llvmpipe's config list goes RED here; re-dump with
+# `bash scripts/ci/egl_config_dump.sh dump <dir>` and commit the fixture.
+ADD_TEST(NAME EglConfigDumpB1034
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/ci/egl_config_dump.sh verify
+            ${CMAKE_SOURCE_DIR}/tests/data/b1034)
+SET_TESTS_PROPERTIES(EglConfigDumpB1034 PROPERTIES LABELS "hygiene"
+    SKIP_RETURN_CODE 235)
+
+# B1034 (#357): the chooseConfigForGbmFormat wrapper is hand-copied into BOTH
+# device forks (docker/irrlicht-drm/ and docker/irrlicht-drm-x86/CIrrDeviceFB.cpp)
+# and must stay byte-identical in its body (the include lines differ). A pure
+# source diff; the shared logic lives in
+# docker/irrlicht-drm/gbm_config_select.h (unit-tested by
+# test_egl_config_select in the build stage).
+ADD_TEST(NAME GbmConfigSelectForsB1034
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_gbm_config_select_forks.py
+            ${CMAKE_SOURCE_DIR})
+SET_TESTS_PROPERTIES(GbmConfigSelectForsB1034 PROPERTIES LABELS "hygiene")
+
+# B1034 (#357): the pi_hdmi_force_on / pi_hdmi_restore contract of
+# scripts/pi/env.sh, pinned against a fake device surface (shadowed ssh/sudo,
+# local status/record files) -- no device, no ssh, no root. Like
+# PiEnvLaneResolution above.
+ADD_TEST(NAME PiHdmiForceSelftest
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/pi/hdmi_force_selftest.sh)
+SET_TESTS_PROPERTIES(PiHdmiForceSelftest PROPERTIES LABELS "hygiene")
 
 # T371 (2026-09-05): DocCitations proves a cited PATH resolves; it says
 # nothing about the CLAIMS. This is the regression net for the deletion half
@@ -79,6 +117,18 @@ ADD_TEST(NAME CommentClaims
             --repo ${CMAKE_SOURCE_DIR})
 SET_TESTS_PROPERTIES(CommentClaims PROPERTIES LABELS "hygiene")
 
+# B888-CC4 (GitLab #204): the charcreate gate's state list is ONE list, kept in
+# three places that must not drift apart: GATE_STATES in
+# scripts/ci/charcreate_gate_controls.py, the kStates[] array in
+# tools/hwcaps/charcreate_capture.cpp, and the scores table in
+# refactor/B888-CC4/README.md. A state the gate names but the capture does not
+# emit (or the README does not score) is a silent coverage hole. Pure text
+# scan -- no build artefact, no display; the "hygiene" label, runs in every
+# configuration.
+ADD_TEST(NAME CharCreateGateStateList
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_charcreate_gate_state_list.py)
+SET_TESTS_PROPERTIES(CharCreateGateStateList PROPERTIES LABELS "hygiene")
+
 # T403 (2026-09-06, board B260): the 64 BMPs under data/textures/ are 64 of
 # willeq.eqe1's 67 entries, and until now they were checked-in binaries with
 # no build recipe -- P26 retired their generator as dead while its output kept
@@ -107,8 +157,12 @@ ENDIF()
 # rebuilds it from the two checked-in input sources (procedural
 # tools/ui_atlas_builder plus the 64 BMPs in data/textures/) and installs it
 # atomically. This test rebuilds into a temp path and compares the sha256
-# against both the pinned data/willeq.eqe1.sha256 and the installed pack, so
-# a drift in either input -- or a hand-edit of the shared file -- is a red.
+# against the pinned data/willeq.eqe1.sha256 ONLY: reproducibility from the
+# inputs is the property it owns. B1094 (#414) removed the installed-pack
+# leg -- one mutable shared file was the oracle for N branches, so a
+# pack-changing card installing its branch pack over the shared file made
+# every other pipeline at the fable tip red here (MR !230 pipeline 1626).
+# The installed-vs-pin property is InstalledPackMatchesPin below.
 #
 # SLOW: the ETC1 encode of 65 textures takes ~1 minute. RUN_SERIAL because
 # it saturates the encoder and because three slots share the read side of
@@ -123,6 +177,33 @@ IF(TARGET eqe1_builder AND TARGET ui_atlas_builder)
         RUN_SERIAL TRUE
         TIMEOUT 900)
 ENDIF()
+
+# B1094 (#414): the other half of the old PackReproducible verdict. The
+# installed shared pack must match this tree's pin -- the property that
+# matters on fable, where the installed pack IS the tree's. The wrapper
+# scripts/ci/installed_pack_matches_pin.sh converts the verdict: on
+# CI_COMMIT_BRANCH=fable a mismatch is a HARD FAIL (a merge changed the pin
+# and the orchestrator has not installed yet -- say so loudly), anywhere
+# else it prints and passes (a pack-changing branch legitimately carries a
+# new pin against the fable-installed pack; its pipeline stays green on its
+# own, and the orchestrator installs the shared pack at merge). No build and
+# no builder binaries -- a plain hygiene test.
+ADD_TEST(NAME InstalledPackMatchesPin
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/ci/installed_pack_matches_pin.sh)
+SET_TESTS_PROPERTIES(InstalledPackMatchesPin PROPERTIES
+    LABELS "hygiene"
+    TIMEOUT 60)
+
+# B1094 (#414): the contract that pins the split above -- --check must ignore
+# the installed pack (stub builders, temp files only, the shared pack is
+# never read or written) and --check-installed must fail on a mismatch, with
+# the wrapper failing hard on fable and printing-and-passing elsewhere.
+# Pure python + bash against a temp directory, no builder binaries.
+ADD_TEST(NAME PackCheckContract
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_pack_check_contract.py)
+SET_TESTS_PROPERTIES(PackCheckContract PROPERTIES
+    LABELS "hygiene"
+    TIMEOUT 300)
 
 # T450 (2026-09-07, board B467): the third derived asset gets its pin.
 # data/willeq.db is built by tools/willeq_db_builder from the EQ client's
@@ -241,6 +322,22 @@ ADD_TEST(NAME ZeroCallersSelfTest
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_zero_callers.py
             --self-test)
 SET_TESTS_PROPERTIES(ZeroCallersSelfTest PROPERTIES LABELS "hygiene")
+
+# B1018 (issue #339, AUDIT-WAVE7 on MR !130): the write-only census's
+# DECL regex captured only the FIRST declarator of `T a = 0, b = 0;`, so
+# `b` was invisible to the census -- that is why `m_maxEnd` (written, never
+# read) never got an EXEMPT row. The split (split_declarators, top-level
+# commas) plus its probes now run as their own self-test beside the
+# ZeroCallers one above: the `int a = 0, b = 0;` row (AC1b's own) and the
+# negative shapes a naive comma split would break (template arguments, an
+# expression's comma, a literal's comma). Instant -- no tree is scanned.
+# The ratchet itself (WriteOnlyFields) sees the split through the same
+# script; its delta was 259 members on 153 lines, write-only 45 -> 45
+# (zero new rows), unused 86 -> 89 (three rowed in EXEMPT_UNUSED).
+ADD_TEST(NAME WriteOnlyFieldsSelfTest
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_write_only_fields.py
+            --self-test)
+SET_TESTS_PROPERTIES(WriteOnlyFieldsSelfTest PROPERTIES LABELS "hygiene")
 
 # B824 (issue #86, kanban t_20a88e62): the deleted item-to-model JSON map,
 # ratcheted. EquipmentModelLoader parsed all 3,661 rows of
@@ -394,6 +491,14 @@ ADD_TEST(NAME CiQueueRules
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_ci_queue_rules.py)
 SET_TESTS_PROPERTIES(CiQueueRules PROPERTIES LABELS "hygiene")
 
+# B1093 (#413): the ARM cross-build container dies with the shell that started
+# it -- both build scripts run it named + labelled under a kill trap, and both
+# CI ARM jobs sweep this host's orphans (a cancelled/timed-out job's SIGKILL
+# skips the trap) before they build.
+ADD_TEST(NAME ArmContainerGuard
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_arm_container_guard.py)
+SET_TESTS_PROPERTIES(ArmContainerGuard PROPERTIES LABELS "hygiene")
+
 # B975: zone-hop warmup must not contaminate the crowd's idle timing table.
 ADD_TEST(NAME NameTagCrowdTiming
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/b975/test_frametiming_table.py)
@@ -413,3 +518,50 @@ SET_TESTS_PROPERTIES(RenderedZoneFinalVisit PROPERTIES LABELS "hygiene")
 ADD_TEST(NAME RenderedZoneSummarizeGlDriver
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/pi/test_rendered_zone_gl_driver.py)
 SET_TESTS_PROPERTIES(RenderedZoneSummarizeGlDriver PROPERTIES LABELS "hygiene")
+
+# B1057 (#377): the oracle driver's lane gate (lane 5 accepted, 0/6 refused,
+# lock and create-name safety) and the remote stop path that must never kill
+# a display it did not start (lane 5's :99 is a real Xorg). Offline stubs.
+ADD_TEST(NAME OracleSessionSafety
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/session_safety.sh)
+SET_TESTS_PROPERTIES(OracleSessionSafety PROPERTIES LABELS "hygiene")
+ADD_TEST(NAME OracleRemoteStopSafety
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/remote_stop_safety.sh)
+SET_TESTS_PROPERTIES(OracleRemoteStopSafety PROPERTIES LABELS "hygiene")
+
+# B1089 (#409): the lane lease's hermetic net. The core
+# (scripts/eqemu/lease_core.sh) is host-side and self-contained, so running
+# it against a temp dir IS the unit test -- no ssh, no network, no lane
+# host. Covers: take on a free lane, second taker refused, show HELD with
+# expires_in, non-owner release refused (rc=63, the B922 owner-check half),
+# owner renew extends last_touched, TTL expiry -> EXPIRED, takeover after
+# expiry names the former holder, the former holder's renew fails with 63 +
+# the re-lease one-liner, re-acquire after release, reap releases a dead
+# run's lease and kills exactly its tracked pids (a live run's process is
+# untouched), reap --dry releases nothing and kills nothing, a five-way
+# concurrent take race (exactly one winner under flock), and a corrupt
+# record (refused, not deleted). ~5 s (three sub-second TTL sleeps), plain
+# "hygiene" label. Red-before is N/A: the helper is new.
+ADD_TEST(NAME LeaseCoreSelfTest
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/eqemu/lease_selftest.sh)
+SET_TESTS_PROPERTIES(LeaseCoreSelfTest PROPERTIES LABELS "hygiene" TIMEOUT 120)
+
+# B1058 (#378): the oracle driver's template library located over the archived
+# corpus (review/B1058/corpus): every positive within 1 px of its measured
+# centre and above min_score, every negative below it, cv2 and numpy agreeing
+# to 1e-3. SKIPs (125) on a host without the corpus or NumPy/Pillow -- the CI
+# runners have neither.
+ADD_TEST(NAME OracleLocateTemplates
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/oracle_locate_test.py)
+SET_TESTS_PROPERTIES(OracleLocateTemplates PROPERTIES LABELS "hygiene"
+    SKIP_RETURN_CODE 125 TIMEOUT 900)
+
+# B1059 (#379): the glyph-atlas text reader over pinned, labelled crops of the
+# archived oracle frames (truth from the pcap/DB/plan/XML side): every
+# expect=read crop read exactly, every expect=unknown crop UNKNOWN, never a
+# wrong text; cv2 and numpy segmenting and reading identically. SKIPs (125)
+# without the review corpus or NumPy/Pillow -- the CI runners have neither.
+ADD_TEST(NAME OracleGlyphReader
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/oracle_glyphs_test.py)
+SET_TESTS_PROPERTIES(OracleGlyphReader PROPERTIES LABELS "hygiene"
+    SKIP_RETURN_CODE 125 TIMEOUT 900)

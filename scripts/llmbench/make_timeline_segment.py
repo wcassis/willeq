@@ -22,7 +22,8 @@ SETTLE_ROWS = [
     # The willeq debug overlay is the chat window carrying every renderer
     # command reply (`Screenshot saved:`, `[CAMERA-GET]`, combat lines) -- the
     # official client never shows those.  `/hideui` is the scriptable half of
-    # F11 (T301 Leg D) and is what T478 used for exactly this reason.  p1's own
+    # F10 (T301 Leg D; the official client's F10 = Toggle UI Display, B582) and
+    # is what T478 used for exactly this reason.  p1's own
     # UI is left alone: it is the official client's real UI, not a debug
     # overlay, and hiding it would also blind the chat OCR that shows the GM
     # commands landing.

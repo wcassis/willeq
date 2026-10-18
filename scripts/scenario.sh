@@ -73,6 +73,11 @@ SPELL=288
 # caught: with the 288 default the chain's A leg could never pass its own
 # "declared spell (ID 378)" cell.
 CHAIN_A_SPELL=378
+# B1081 (#401): the zone_change_no_flash /gmzone target. Testchar's stored
+# zone is 2 (qeynos, character_data); 303 is a different zone the lane's GM
+# character can teleport to (Testcaster's home, Gloomingdeep). An operator
+# who points the config at another character passes --zone.
+SCENARIO_ZONE=303
 CONFIG=""
 PEER_CONFIG=""
 KEEP_SERVER=0
@@ -129,6 +134,8 @@ while [ $# -gt 0 ]; do
         # scenario, passed to the MAIN client only (create_character.post.sh
         # runs the --delete-character half against the same config).
         --create-character) CREATE_CHARACTER="$2"; shift 2 ;;
+        # B1081 (#401): zone_change_no_flash's /gmzone target zone.
+        --zone) SCENARIO_ZONE="$2"; shift 2 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
@@ -144,6 +151,14 @@ PEERLOG="$OUT/${SCENARIO}_peer.log"
 BEFORE="$OUT/${SCENARIO}_snapshot_before.tsv"
 AFTER="$OUT/${SCENARIO}_snapshot_after.tsv"
 INV_BEFORE="$OUT/${SCENARIO}_inventory_before.tsv"
+# B1025-H5 (#345): the clients' PER-CHARACTER generated files (the hotbar INI,
+# the UI preferences, the shader cache) go under $WILLEQ_CACHE_DIR
+# (ResolveCachePathForWrite, data_paths.h) -- never the checkout. The lane pins
+# it to OUT so the post-check can read the hotbar INI from a known place, and
+# export it once here: it rides into the MAIN client (this shell) AND the peer
+# subshell (it inherits the environment), so both characters' INIs land in the
+# same dir, named by the character (UI_<Char>_<Server>.ini).
+export WILLEQ_CACHE_DIR="$OUT/cache"
 # A task worktree has no build/ of its own; the shared build lives in main.
 BIN="${WILLEQ_BIN:-}"
 if [ -z "$BIN" ]; then
@@ -200,10 +215,13 @@ lane_check "$CONFIG" || exit 65
 
 # ---- 1. the lock, taken atomically -----------------------------------------
 if ! eqemu_lock_take "${UNIT} scenario.sh ${SCENARIO}"; then
-    say "eqemu lock is HELD by: $(eqemu_lock_show) -- refusing to run"
+    say "eqemu lease is HELD by: $(eqemu_lock_show) -- refusing to run"
     exit 64
 fi
-say "lock taken"
+say "lease taken (lane ${EQEMU_LANE}, host ${EQEMU_HOST})"
+# B1089: a 30-min scenario must never be stolen -- the renewer renews
+# every LANE_LEASE_TTL_S/3 (floor 60 s) and dies with this script.
+eqemu_lease_start_renewer
 
 CLEANED=0
 RESTORE_BAD=0
@@ -213,6 +231,18 @@ cleanup() {
     kill ${PEER_PID:-} ${CLIENT_PID:-} >/dev/null 2>&1
     sleep 2
     kill -9 ${PEER_PID:-} ${CLIENT_PID:-} >/dev/null 2>&1
+    # B1091 (#411): the Xvfb gets the same treatment the clients get -- TERM,
+    # a bounded wait, then KILL. A TERM alone leaves a wedged Xvfb holding
+    # its display for the next run.
+    if [ -n "${XVFB_PID:-}" ]; then
+        kill "$XVFB_PID" >/dev/null 2>&1
+        for _ in 1 2 3 4 5 6; do
+            kill -0 "$XVFB_PID" 2>/dev/null || break
+            sleep 1
+        done
+        kill -9 "$XVFB_PID" >/dev/null 2>&1
+        wait "$XVFB_PID" >/dev/null 2>&1 || true
+    fi
     # The restore runs on EVERY path now, --keep-server included: it is what
     # leaves the database as the run found it, and leaving a moved character
     # behind for the next unit is the whole point of B784. It stops the
@@ -224,8 +254,9 @@ cleanup() {
         eqemu_world_start
         say "eqemu-server container restarted (--keep-server)"
     fi
+    eqemu_lease_stop_renewer
     eqemu_lock_release
-    say "lock released"
+    say "lease released"
 }
 trap cleanup EXIT INT TERM
 
@@ -341,6 +372,10 @@ if ! bash "$REPO/scripts/eqemu/up.sh" > "$OUT/${SCENARIO}_server.log" 2>&1; then
 fi
 
 # ---- 3. snapshot -----------------------------------------------------------
+# B1047 (#367) / B1025-H5 (#345): a roster character stored in timorous never
+# finishes zoning in on the lanes; move it out BEFORE the snapshot so the
+# restore keeps the fix (scripts/eqemu/roster_zone_seed.sql).
+say "roster zone seed: $(eqemu_roster_zone_seed | tail -1) row(s) moved out of timorous"
 snapshot "$BEFORE"
 say "snapshot taken ($(wc -l < "$BEFORE") rows)"
 # B900 (#216) / B1011: a scenario whose kit is DB-seeded into INVENTORY names
@@ -353,6 +388,13 @@ say "snapshot taken ($(wc -l < "$BEFORE") rows)"
 # unconditional on INVENTORY_CHARS, the derivation unconditional on the seed.)
 if [ "$SCENARIO" = "ranged_single_shot" ] && [ -z "$INVENTORY_CHARS" ]; then
     INVENTORY_CHARS="$(eqemu_sql "SELECT id FROM character_data WHERE name='Testchar';" | head -1)"
+fi
+# B1025-H5 (#345): the hotbar item/skill kit is DB-seeded into Testcaster and
+# the item leg CONSUMES a charge, so Testcaster's inventory rows get the
+# snapshot/restore pair (the item slot's 10-charge stack is what the run
+# mutates; the restore takes the whole seeded kit out again).
+if [ "$SCENARIO" = "hotbar_lifecycle" ] && [ -z "$INVENTORY_CHARS" ]; then
+    INVENTORY_CHARS="$(eqemu_sql "SELECT id FROM character_data WHERE name='Testcaster';" | head -1)"
 fi
 # The inventory snapshot, whenever the run names inventory characters -- always
 # BEFORE any seed (a seed after the snapshot is invisible to the restore and
@@ -380,6 +422,19 @@ esac
 # snapshot/restore pair exactly like T494's equip lane.
 if [ "$SCENARIO" = "ranged_single_shot" ] && [ -z "$SEED_SQL" ]; then
     SEED_SQL="$REPO/scripts/scenario_configs/ranged_single_shot_seed.sql"
+fi
+# B1025-H5 (#345): the hotbar kit is DB-seeded (Testcaster's primary and
+# general slots are already full, so #summonitem + /putdown cannot seat the
+# pole without swapping the old primary onto the cursor). The restore
+# (INVENTORY_CHARS above) takes it out again.
+if [ "$SCENARIO" = "hotbar_lifecycle" ] && [ -z "$SEED_SQL" ]; then
+    SEED_SQL="$REPO/scripts/scenario_configs/hotbar_lifecycle_seed.sql"
+fi
+# B1068 (#388): the walked zone-line crossing starts a few units short of
+# qeynos -> qeynos2's BSP zone-line region, facing it; the restore moves the
+# character back.
+if [ "$SCENARIO" = "zone_line_walk" ] && [ -z "$SEED_SQL" ]; then
+    SEED_SQL="$REPO/scripts/scenario_configs/zone_line_walk_seed.sql"
 fi
 if [ -n "$SEED_SQL" ]; then
     [ -f "$SEED_SQL" ] || { say "no --seed-sql file at $SEED_SQL"; exit 64; }
@@ -421,6 +476,12 @@ CHAIN_OBSERVE_HOLD=120
 case "$SCENARIO" in
     two_client_survive) PEER_SCENARIO="zone_in" ;;
     equip_observed)     PEER_SCENARIO="equip_actor"; PEER_SCENARIO_2="equip_actor_return" ;;
+    # B1025-H5 (#345): acceptance C -- a SECOND character on the account. The
+    # peer (Testbuddy) zones in and assigns ONE skill slot through the same
+    # user path; its per-character INI must end up holding ONLY that slot and
+    # none of Testcaster's. The main character's INI must hold its three typed
+    # slots. The post-check reads both INI files (the isolation verdict).
+    hotbar_lifecycle)   PEER_SCENARIO="hotbar_isolation_assign" ;;
     # B630 (issue #48): the caster runs the whole 4-leg chain, the observer
     # targets the caster and holds it for the chain's duration. Co-location is
     # the seed SQL, not a re-login.
@@ -530,6 +591,27 @@ esac
 # <scenario>.sidecar.sh), sourced in a background subshell for the length of
 # the client run so it can use eqemu_sql -- pickup_roundtrip's 1 Hz poll of
 # the moving item's `inventory` row is the database half of its assertion.
+# B1068 (#388): zone_line_walk walks with the KEYBOARD -- the renderer's own
+# movement path -- so its client runs X11-windowed under a private Xvfb that
+# the sidecar's xdotool drives. Every other scenario stays surfaceless.
+XVFB_PID=""
+if [ "$SCENARIO" = "zone_line_walk" ]; then
+    command -v Xvfb >/dev/null 2>&1 && command -v xdotool >/dev/null 2>&1 \
+        || { say "zone_line_walk needs Xvfb and xdotool on this host"; exit 64; }
+    export DISPLAY=":${ZONE_LINE_WALK_DISPLAY:-68}"
+    # B1091 (#411): a display someone else already holds is a hard stop, not a
+    # silent takeover -- an old Xvfb on the same number answers xdotool probes
+    # while the client's window lands on nobody's screen and the walk can hang
+    # the whole run (the same defect class as the numpad E2E's fixed :97).
+    if [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ] || [ -e "/tmp/.X${DISPLAY#:}-lock" ]; then
+        say "zone_line_walk: display $DISPLAY is already in use (a X server's socket or lock file exists) -- clear it or set ZONE_LINE_WALK_DISPLAY"; exit 64
+    fi
+    Xvfb "$DISPLAY" -screen 0 1024x768x24 -nolisten tcp > "$OUT/${SCENARIO}_xvfb.log" 2>&1 &
+    XVFB_PID=$!
+    sleep 2
+    kill -0 "$XVFB_PID" 2>/dev/null || { say "Xvfb $DISPLAY did not start (see $OUT/${SCENARIO}_xvfb.log)"; exit 64; }
+    say "Xvfb $DISPLAY up (pid $XVFB_PID); client runs --egl-x11"
+fi
 SIDECAR="$REPO/scripts/scenario_configs/${SCENARIO}.sidecar.sh"
 SIDECAR_PID=""
 if [ -f "$SIDECAR" ]; then
@@ -539,11 +621,37 @@ if [ -f "$SIDECAR" ]; then
 fi
 # UIGAP-live: SCENARIO_CLIENT_ARGS (environment) is appended to the MAIN
 # client's command line -- the review video passes --dump-frames-dir here.
+if [ "$SCENARIO" = "zone_line_walk" ]; then
+    # B1068 (#388): --scenario forces a headless Automated run (no renderer,
+    # application_config.cpp), and the defect lives in the RENDERER's movement
+    # path, so this lane runs the ordinary windowed client and reads the
+    # verdict from its log with the scenario.sh exit taxonomy: 0 = fully
+    # zoned in to qeynos2 (the client's "Zone lines for 'qeynos2'" line, written
+    # on the first zone-line check there), 3 = never finished loading qeynos,
+    # 2 = loaded but never zoned within --timeout. The post-check adds the
+    # server half.
+    # shellcheck disable=SC2086
+    "$BIN" -c "$CONFIG" --egl-x11 -r 1024 768 --log-level="$LOG_LEVEL" \
+        --log-module="ZONE:DEBUG" ${SCENARIO_CLIENT_ARGS:-} > "$LOG" 2>&1 &
+    CLIENT_PID=$!
+    CODE=2
+    for _ in $(seq 1 "$TIMEOUT"); do
+        if grep -q "Zone lines for 'qeynos2'" "$LOG" 2>/dev/null; then CODE=0; break; fi
+        kill -0 "$CLIENT_PID" 2>/dev/null || break
+        sleep 1
+    done
+    grep -q "zone load #1 ('qeynos') complete" "$LOG" 2>/dev/null || CODE=3
+    echo "SCENARIO zone_line_walk exit=${CODE} ($(grep -m1 -o "Zone line crossing:.*" "$LOG" || echo 'no crossing logged'))" >> "$LOG"
+    kill "$CLIENT_PID" >/dev/null 2>&1
+    wait "$CLIENT_PID" 2>/dev/null
+    CLIENT_PID=""
+else
 # shellcheck disable=SC2086
 "$BIN" -c "$CONFIG" --scenario "$SCENARIO" --timeout "$TIMEOUT" \
     --scenario-hold "$HOLD" \
     $MAIN_SPELL_FLAGS \
     --scenario-cast-target "${PEER_CHAR:-}" \
+    --scenario-zone "$SCENARIO_ZONE" \
     --log-level="$LOG_LEVEL" \
     ${CREATE_CHARACTER:+--create-character "$CREATE_CHARACTER"} \
     ${MAIN_LOG_MODULE:+--log-module="$MAIN_LOG_MODULE"} ${SCENARIO_CLIENT_ARGS:-} > "$LOG" 2>&1 &
@@ -551,6 +659,7 @@ CLIENT_PID=$!
 wait "$CLIENT_PID"
 CODE=$?
 CLIENT_PID=""
+fi
 say "client exit ${CODE}"
 grep -E '\[SCENARIO\]|^SCENARIO ' "$LOG" | tail -20 >&2
 if [ -n "$SIDECAR_PID" ]; then

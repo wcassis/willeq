@@ -219,6 +219,17 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"HotbarSlot8", HotkeyAction::HotbarSlot8},
     {"HotbarSlot9", HotkeyAction::HotbarSlot9},
     {"HotbarSlot10", HotkeyAction::HotbarSlot10},
+    {"HotbarPage1", HotkeyAction::HotbarPage1},
+    {"HotbarPage2", HotkeyAction::HotbarPage2},
+    {"HotbarPage3", HotkeyAction::HotbarPage3},
+    {"HotbarPage4", HotkeyAction::HotbarPage4},
+    {"HotbarPage5", HotkeyAction::HotbarPage5},
+    {"HotbarPage6", HotkeyAction::HotbarPage6},
+    {"HotbarPage7", HotkeyAction::HotbarPage7},
+    {"HotbarPage8", HotkeyAction::HotbarPage8},
+    {"HotbarPage9", HotkeyAction::HotbarPage9},
+    {"HotbarPage10", HotkeyAction::HotbarPage10},
+    {"ToggleHotbar1Window", HotkeyAction::ToggleHotbar1Window},
 
     // Player - Camera
     {"CameraZoomIn", HotkeyAction::CameraZoomIn},
@@ -601,6 +612,23 @@ void HotkeyManager::setupDefaults() {
     addBinding(HotkeyAction::HotbarSlot9, HotkeyMode::Player, irr::KEY_KEY_9);
     addBinding(HotkeyAction::HotbarSlot10, HotkeyMode::Player, irr::KEY_KEY_0);
 
+    // B1025-H4 (#345): the hotbar window's page and toggle keys, H-O's
+    // MEASURED official defaults (pages.tsv:2, 27_keys_hb1.png: "pages 1-10
+    // are Shift+1 through Shift+0; Toggle Hotbar 1 is Alt+H"; eqstr 6562-
+    // 6571, 6587). Hotbars 2-4 have NO binding (pages.tsv:3-6) and the
+    // stock client shows no second window, so there is one toggle only.
+    addBinding(HotkeyAction::HotbarPage1, HotkeyMode::Player, irr::KEY_KEY_1, ModifierFlags::Shift);
+    addBinding(HotkeyAction::HotbarPage2, HotkeyMode::Player, irr::KEY_KEY_2, ModifierFlags::Shift);
+    addBinding(HotkeyAction::HotbarPage3, HotkeyMode::Player, irr::KEY_KEY_3, ModifierFlags::Shift);
+    addBinding(HotkeyAction::HotbarPage4, HotkeyMode::Player, irr::KEY_KEY_4, ModifierFlags::Shift);
+    addBinding(HotkeyAction::HotbarPage5, HotkeyMode::Player, irr::KEY_KEY_5, ModifierFlags::Shift);
+    addBinding(HotkeyAction::HotbarPage6, HotkeyMode::Player, irr::KEY_KEY_6, ModifierFlags::Shift);
+    addBinding(HotkeyAction::HotbarPage7, HotkeyMode::Player, irr::KEY_KEY_7, ModifierFlags::Shift);
+    addBinding(HotkeyAction::HotbarPage8, HotkeyMode::Player, irr::KEY_KEY_8, ModifierFlags::Shift);
+    addBinding(HotkeyAction::HotbarPage9, HotkeyMode::Player, irr::KEY_KEY_9, ModifierFlags::Shift);
+    addBinding(HotkeyAction::HotbarPage10, HotkeyMode::Player, irr::KEY_KEY_0, ModifierFlags::Shift);
+    addBinding(HotkeyAction::ToggleHotbar1Window, HotkeyMode::Player, irr::KEY_KEY_H, ModifierFlags::Alt);
+
     // === Player Mode - Camera ===
     addBinding(HotkeyAction::CameraZoomIn, HotkeyMode::Player, irr::KEY_PLUS);
     addBinding(HotkeyAction::CameraZoomOut, HotkeyMode::Player, irr::KEY_MINUS);
@@ -650,8 +678,9 @@ void HotkeyManager::setupDefaults() {
     // T466) name no volume key; the official route is the slider. The Options
     // General sliders and /musicvolume /effectsvolume remain (docs/decisions.md
     // "Volumes round-trip", CLAUDE.md). The MusicVolume*/EffectsVolume*
-    // receiver arms in renderer_event_receiver.cpp are kept: they serve the
-    // Options window's volume step intents.
+    // receiver arms in renderer_event_receiver.cpp are kept for a key the user
+    // binds on the Options Keys page (options_keys.cpp:57); the sliders push
+    // their intents directly (renderer_frame_options.cpp:67,77).
 
     rebuildIndex();
 }

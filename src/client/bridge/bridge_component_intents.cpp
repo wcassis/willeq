@@ -741,24 +741,23 @@ void eqt::bridge::BridgeComponent::onHotbarActivateIntent(const eqt::events::Hot
 	switch (i.type) {
 	case eqt::HotbarSlotType::Spell: { // Spell
 		if (ctx_.spell_manager) {
-			for (uint8_t gem = 0; gem < EQT::VISIBLE_SPELL_GEM_COUNT; gem++) {  // T483: offered gems only
-				if (ctx_.spell_manager->getMemorizedSpell(gem) == i.id) {
-					uint16_t targetId = ctx_.combat_manager ? ctx_.combat_manager->GetTargetId() : 0;
-					EQ::CastResult result = ctx_.spell_manager->beginCastFromGem(gem, targetId);
-					if (result == EQ::CastResult::Success) {
-						const EQ::SpellData* spell = ctx_.spell_manager->getSpell(i.id);
-						if (spell) ctx_.out.System(fmt::format("Casting {}", spell->name));
-					} else if (std::string refusal = EQ::castRefusalMessage(ctx_, result); !refusal.empty()) {
-						// T253: third refusal site, same table/renderer as
-						// CastSpellIntent above and EqActionHandler::
-						// beginCastFromGem(). Was three literals (mana /
-						// cooldown / already casting) and silence for
-						// every other refusal.
-						ctx_.out.System(refusal);
-					} else if (result == EQ::CastResult::SpellNotReady) {
-						ctx_.out.System("Spell not ready");
-					}
-					break;
+			const int resolved = ctx_.hotbar_model ? ctx_.hotbar_model->findSpellGem(i.id) : -1;
+			if (resolved >= 0) {
+				const auto gem = static_cast<uint8_t>(resolved);
+				uint16_t targetId = ctx_.combat_manager ? ctx_.combat_manager->GetTargetId() : 0;
+				EQ::CastResult result = ctx_.spell_manager->beginCastFromGem(gem, targetId);
+				if (result == EQ::CastResult::Success) {
+					const EQ::SpellData* spell = ctx_.spell_manager->getSpell(i.id);
+					if (spell) ctx_.out.System(fmt::format("Casting {}", spell->name));
+				} else if (std::string refusal = EQ::castRefusalMessage(ctx_, result); !refusal.empty()) {
+					// T253: third refusal site, same table/renderer as
+					// CastSpellIntent above and EqActionHandler::
+					// beginCastFromGem(). Was three literals (mana /
+					// cooldown / already casting) and silence for
+					// every other refusal.
+					ctx_.out.System(refusal);
+				} else if (result == EQ::CastResult::SpellNotReady) {
+					ctx_.out.System("Spell not ready");
 				}
 			}
 		}
@@ -797,6 +796,53 @@ void eqt::bridge::BridgeComponent::onHotbarActivateIntent(const eqt::events::Hot
 	case eqt::HotbarSlotType::Empty:
 		break;
 	}
+}
+
+// B1025-H2: the hotbar window's page buttons. The page lives in HotbarModel
+// (the one source of truth); setCurrentPage() rejects out-of-range values and
+// republishes the whole page via HotbarSlotAssigned, so the panel state
+// follows on its own.
+void eqt::bridge::BridgeComponent::onHotbarPageChangedIntent(const eqt::events::HotbarPageChangedIntent& i) {
+	if (ctx_.hotbar_model) ctx_.hotbar_model->setCurrentPage(i.page);
+}
+
+// B1025-H3 (GitLab #345): a placed hot button assigns a slot. This is the
+// first PRODUCTION caller of HotbarModel::assignSlot() -- until this, the
+// function's only callers were its own tests (the test-seam comment at its
+// declaration is struck). `i` already carries the destination and the button
+// in the model's own numbering; the model republishes the slot via
+// HotbarSlotAssigned so the panel state follows on its own.
+void eqt::bridge::BridgeComponent::onHotbarAssignIntent(const eqt::events::HotbarAssignIntent& i) {
+	if (!ctx_.hotbar_model) return;
+	ctx_.hotbar_model->assignSlot(
+		eqt::HotbarAddress{i.page, i.slot}, i.type, i.id, i.text, i.iconId);
+}
+
+// B1025-H3 (GitLab #345): the pickup half. H-O "hotbar-pickup": holding an
+// occupied slot cloned its button to the cursor AND removed the slot's own
+// INI key (the source slot is cleared, not copied). The render thread
+// pushed this intent on the press frame; the cursor still carries the
+// button, which crosses back as a HotbarAssignIntent when it is placed.
+void eqt::bridge::BridgeComponent::onHotbarClearIntent(const eqt::events::HotbarClearIntent& i) {
+	if (!ctx_.hotbar_model) return;
+	ctx_.hotbar_model->clearSlot(eqt::HotbarAddress{i.page, i.slot});
+}
+
+// B1025-H3 (GitLab #345): the /hotbutton command's publisher. The event lands
+// on the cursor on the render thread (IrrlichtBridge's HotbarAssignPending
+// arm -> applyHotbarAssignPending); the model never knows the button exists
+// until it is placed (HotbarAssignIntent).
+bool eqt::bridge::BridgeComponent::PublishHotbarAssignPending(
+    eqt::HotbarSlotType type, uint32_t id, const std::string& text, uint32_t iconId) {
+	if (!ctx_.bridge) return false;
+	eqt::state::HotbarAssignPendingData data;
+	data.type = type;
+	data.id = id;
+	data.text = text;
+	data.iconId = iconId;
+	ctx_.bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::HotbarAssignPending, std::move(data)));
+	return true;
 }
 
 // Tradeskill intents (D20b1)
@@ -1123,6 +1169,9 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::MusicVolumeChangeIntent& i) { onMusicVolumeChangeIntent(i); },
 			[this](const eqt::events::EffectsVolumeChangeIntent& i) { onEffectsVolumeChangeIntent(i); },
 			[this](const eqt::events::HotbarActivateIntent& i) { onHotbarActivateIntent(i); },
+			[this](const eqt::events::HotbarPageChangedIntent& i) { onHotbarPageChangedIntent(i); },
+			[this](const eqt::events::HotbarAssignIntent& i) { onHotbarAssignIntent(i); },
+			[this](const eqt::events::HotbarClearIntent& i) { onHotbarClearIntent(i); },
 			[this](const eqt::events::TradeskillCombineIntent& i) { onTradeskillCombineIntent(i); },
 			[this](const eqt::events::TradeskillCloseIntent& i) { onTradeskillCloseIntent(i); },
 			[this](const eqt::events::RecipeDetailsRequestIntent& i) { onRecipeDetailsRequestIntent(i); },
@@ -1157,4 +1206,3 @@ void eqt::bridge::BridgeComponent::ProcessBridgeEvents() {
 		ctx_.bridge->applyEvent(event);
 	}
 }
-

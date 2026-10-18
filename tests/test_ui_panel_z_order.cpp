@@ -34,6 +34,7 @@
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/hotbar_panel.h"  // B1025-H2: renderHotbar's home
 #include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/merchant_panel.h"
 #include "client/graphics/ui/combat_ability_panel.h"
@@ -359,14 +360,23 @@ TEST_F(UiPanelZOrderTest, ALowerBagsTextIsCoveredByTheBagOpenedOnTopOfIt) {
 TEST_F(UiPanelZOrderTest, ThePurseCountsAreCoveredByTheConfirmationDialog) {
     inv_.activePopup = PopupType::Inventory;
     confirm_.open(1, "ARE YOU SURE you wish to drop your Rusty Long Sword on the ground?");
+    // B1075 (#395): the layout table moved the inventory to the right half of
+    // the side-by-side pair, out from under the centred dialog at 800x600.
+    // B1078 (GitLab #398): the inventory's window anchors at that slot's LEFT
+    // (428x460 at one uniform factor), so it only reaches the centred dialog
+    // when the slot sits left enough: window {280,48,595,429} carries the
+    // coin column (x 519..551) under the dialog's right part (263..537).
+    // This case is about TEXT LAYERING, not placement.
+    UILayout stacked = layout_;
+    stacked.inventoryPopup = {280, 125, 680, 475};
     expectLowerTextCovered(
         "inventory under confirmation",
         [&] {
-            renderInventoryPopup(ui_.layer(), layout_, inv_);
-            renderConfirmationDialog(ui_.layer(), layout_, confirm_);
+            renderInventoryPopup(ui_.layer(), stacked, inv_);
+            renderConfirmationDialog(ui_.layer(), stacked, confirm_);
         },
-        [&] { renderConfirmationDialog(ui_.layer(), layout_, confirm_); },
-        ConfirmationLayout::windowRect(layout_));
+        [&] { renderConfirmationDialog(ui_.layer(), stacked, confirm_); },
+        ConfirmationLayout::windowRect(stacked));
 }
 
 // All three of ui_panel_capture's containers open, the Forge newest: the two
@@ -436,19 +446,31 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
         openForge(containers_);
     };
     const std::vector<Row> rows = {
-        {"hud", [] {}, {4, 4, 6, 1}, {18, 18, 6, 1}},
-        {"inventory", [&] { inv_.activePopup = PopupType::Inventory; }, {31, 35, 7, 2}, {41, 43, 7, 2}},
+        // B1025-H2: the fallback (no-atlas, Will's Pi recipe) pins re-taken
+        // for the stock HotButtonWnd -- its page row, close box and the ten
+        // per-slot frames are solid draws there, so the HUD rose from 18 to
+        // 59 draws. The atlas pins are unchanged: every one of those is one
+        // atlas quad plus the shared panel texture.
+        // B1077 adds the always-on gem bar to every fixture frame: +4 draws
+        // on the atlas path, +3 on fallback; the B1078 band-scaled inventory
+        // keeps its one-group flush and bag-covering group counts below.
+        // Re-taken on the merged 800x600 layout (chat=120).
+        {"hud", [] {}, {8, 8, 6, 1}, {62, 62, 6, 1}},
+        // B1078 (GitLab #398): the inventory window moved to the band-anchored
+        // 428x460 (one uniform factor), so its own flush is one group now
+        // (was two) and every bag-covering scenario lost 1 group.
+        {"inventory", [&] { inv_.activePopup = PopupType::Inventory; }, {35, 35, 7, 1}, {85, 85, 7, 1}},
         // What B899's workaround drew for three open bags: the topmost only.
         // The Forge (350,100) also covers inventory text, so even one bag is a
         // real split (the shipped bleed was there too).
         {"inv+forge", [&] {
              inv_.activePopup = PopupType::Inventory;
              openForge(containers_);
-         }, {34, 42, 8, 3}, {51, 55, 8, 3}},
+         }, {38, 42, 8, 2}, {95, 97, 8, 2}},
         {"inv+3 bags", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
-         }, {47, 63, 10, 5}, {68, 76, 10, 5}},
+         }, {51, 63, 10, 4}, {112, 118, 10, 4}},
         {"full", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
@@ -459,7 +481,7 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
              cursor_.iconId = 1001;
              cursor_.mouseX = 560;
              cursor_.mouseY = 420;
-         }, {48, 64, 13, 5}, {84, 95, 13, 6}},
+         }, {52, 64, 13, 4}, {128, 137, 13, 5}},
     };
 
     for (bool fallback : {false, true}) {

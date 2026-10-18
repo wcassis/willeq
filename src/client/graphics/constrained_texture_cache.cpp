@@ -59,27 +59,348 @@ namespace Graphics {
 // is a no-op for every other caller/texture class — in particular zone
 // geometry (zone_geometry.cpp's own getOrLoad call site never passes true)
 // stays byte-identical.
-std::string ConstrainedTextureCache::cacheKey(const std::string& name, bool applyPaletteMask) {
-    if (!applyPaletteMask) {
-        return name;
+//
+// B1083 (GitLab #403): the key gains one more axis, the SOURCE ARCHIVE. Two
+// packs of the same zone family ship the same name with different content
+// (qeytoqrg.eqe1 tree70 opaque ETC1, qeytoqrg_obj.eqe1 tree70 with an alpha
+// companion -- the willow's foliage drew as a solid rectangle because the
+// zone pack, opened first in configured order, won the name-keyed lookup for
+// the OBJECT's material too). A request that names its source archive gets a
+// (stem, name) key, so the two copies coexist side by side: the object
+// material keeps its alpha copy, the zone material keeps the opaque one. An
+// empty stem (every call site that does not name a source) is the identity,
+// so all of P46d and everything that never knew an archive is untouched.
+//
+// The stem is joined with \x01@ ... \x01 -- control characters never appear
+// in an EQ texture name, an archive stem or the masked suffix -- so
+// ("tree70", "qeytoqrg_obj") cannot collide with any other (name, stem,
+// mask) combination, and splitCacheKey() recovers all three axes.
+std::string ConstrainedTextureCache::cacheKey(const std::string& name,
+                                               const std::string& sourceArchiveStem,
+                                               bool applyPaletteMask) {
+    std::string key = name;
+    if (!sourceArchiveStem.empty()) {
+        key += "\x01@" + sourceArchiveStem + "\x01";
     }
-    // \x01 cannot appear in an EQ texture filename or an EQE1 flat-pack entry
-    // name (both are plain ASCII filenames), so this can never collide with a
-    // real name, masked or not.
-    return name + "\x01masked";
+    if (applyPaletteMask) {
+        // \x01 cannot appear in an EQ texture filename or an EQE1 flat-pack
+        // entry name (both are plain ASCII filenames), so this can never
+        // collide with a real name, masked or not.
+        key += "\x01masked";
+    }
+    return key;
 }
 
 void ConstrainedTextureCache::splitCacheKey(const std::string& key, std::string& realName,
+                                             std::string& sourceArchiveStem,
                                              bool& applyPaletteMask) {
     static const std::string kSuffix = "\x01masked";
-    if (key.size() > kSuffix.size() &&
-        key.compare(key.size() - kSuffix.size(), kSuffix.size(), kSuffix) == 0) {
-        realName = key.substr(0, key.size() - kSuffix.size());
+    static const std::string kStemOpen = "\x01@";
+    std::string work = key;
+    if (work.size() > kSuffix.size() &&
+        work.compare(work.size() - kSuffix.size(), kSuffix.size(), kSuffix) == 0) {
+        work = work.substr(0, work.size() - kSuffix.size());
         applyPaletteMask = true;
     } else {
-        realName = key;
         applyPaletteMask = false;
     }
+    const size_t open = work.rfind(kStemOpen);
+    if (open != std::string::npos) {
+        // The stem cannot contain \x01, so the LAST \x01 of the stem field
+        // is its terminator even for a name that itself would never match.
+        const size_t close = work.find("\x01", open + kStemOpen.size());
+        if (close != std::string::npos && close == work.size() - 1) {
+            sourceArchiveStem = work.substr(open + kStemOpen.size(),
+                                             close - (open + kStemOpen.size()));
+            work = work.substr(0, open);
+        }
+    }
+    realName = work;
+}
+
+const ConstrainedTextureCache::CachedTexture* ConstrainedTextureCache::findEntryForKey(
+    const std::string& name, const std::string& sourceArchiveStem, bool applyPaletteMask,
+    const std::string** foundKey) const {
+    const std::string internalKey = cacheKey(name, sourceArchiveStem, applyPaletteMask);
+    auto it = cache_.find(internalKey);
+    if (it != cache_.end()) {
+        if (foundKey) *foundKey = &it->first;
+        return &it->second;
+    }
+    // B1083 dedupe: this key may be an alias recorded by the promote-time
+    // gate -- its content is served by the TWIN's single GPU entry, so the
+    // alias answers like its target (texture, hasAlpha, companion,
+    // ETC1-ness; an evicted shell answers too -- its driver-side bind
+    // restores the same pixels, exactly as a direct evicted hit does; the
+    // foundKey the caller touches/reports is the target's). A stale alias
+    // (target destroyed) does NOT answer here: the request falls through
+    // exactly as if the alias never existed (its own pending promotion, or
+    // the scoped-miss null).
+    {
+        auto alias = deduped_.find(internalKey);
+        if (alias != deduped_.end()) {
+            auto twin = cache_.find(alias->second);
+            if (twin != cache_.end()) {
+                if (foundKey) *foundKey = &twin->first;
+                return &twin->second;
+            }
+        }
+    }
+    // Scoped query that missed: a SIBLING archive's entry is the wrong
+    // answer — return null (the caller treats a miss as "not this copy").
+    if (!sourceArchiveStem.empty()) {
+        return nullptr;
+    }
+    // Unscoped miss: iterate the prefix range [name, name\x00) and look for
+    // the entry whose realName IS name with this mask (any archive). A
+    // lower_bound(name) alone is not enough: the unscoped key `name` sorts
+    // BELOW any suffixed key of a LONGER name (name < "nameA" < "name\x01.."),
+    // so the range can contain unrelated longer-named entries that must be
+    // skipped, and a prefix-matching-but-different-name key must not satisfy
+    // the realName check.
+    for (auto it2 = cache_.lower_bound(name);
+         it2 != cache_.end() && it2->first.compare(0, name.size(), name) == 0;
+         ++it2) {
+        if (it2->first.size() == name.size()) break;  // the plain key itself: miss
+        std::string realName;
+        std::string stem;
+        bool masked = false;
+        splitCacheKey(it2->first, realName, stem, masked);
+        if (realName == name && masked == applyPaletteMask) {
+            if (foundKey) *foundKey = &it2->first;
+            return &it2->second;
+        }
+    }
+    return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// B1083 (GitLab #403, ruling 2026-10-16): dedupe by content
+// ---------------------------------------------------------------------------
+
+// FNV-1a 64 (the same family as rawBytesDigest in texture_origin.h) over a
+// uint32.
+namespace {
+inline uint64_t fnvU32(uint64_t h, uint32_t v) {
+    for (int i = 0; i < 4; ++i) {
+        h ^= (v >> (8 * i)) & 0xFF;
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+}  // namespace
+
+uint64_t ConstrainedTextureCache::compressedContentDigest(const CompressedEntry& e) {
+    uint64_t h = 1469598103934665603ULL;
+    h = fnvU32(h, e.width);
+    h = fnvU32(h, e.height);
+    h = fnvU32(h, e.mipLevels);
+    h = fnvU32(h, e.payloadFormat);
+    h ^= e.hasAlpha ? 1u : 0u;
+    h *= 1099511628211ULL;
+    if (e.etc1Data && e.dataSize) {
+        for (uint32_t i = 0; i < e.dataSize; ++i) {
+            h ^= e.etc1Data[i];
+            h *= 1099511628211ULL;
+        }
+    }
+    if (e.hasAlpha && e.alphaData && e.alphaDataSize) {
+        h ^= 0xA5A5u;  // boundary: companion bytes are a distinct run
+        h *= 1099511628211ULL;
+        for (uint32_t i = 0; i < e.alphaDataSize; ++i) {
+            h ^= e.alphaData[i];
+            h *= 1099511628211ULL;
+        }
+    }
+    return h;
+}
+
+uint64_t ConstrainedTextureCache::decodedContentDigest(const std::vector<uint8_t>& rgba, int width,
+                                                        int height, bool hasAlpha) {
+    uint64_t h = 1469598103934665603ULL;
+    h = fnvU32(h, static_cast<uint32_t>(width));
+    h = fnvU32(h, static_cast<uint32_t>(height));
+    h ^= hasAlpha ? 1u : 0u;
+    h *= 1099511628211ULL;
+    for (uint8_t b : rgba) {
+        h ^= b;
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+size_t ConstrainedTextureCache::getDedupedEntryCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return deduped_.size();
+}
+
+// B1083 dedupe: the content identity of a PENDING payload (0 when the key
+// holds none -- a same-key re-arrival after a promotion, or a key nothing
+// decoded yet; the gate then dedupes nothing, which is correct: nothing is
+// about to be promoted). Call while holding mutex_.
+uint64_t ConstrainedTextureCache::pendingContentDigest(const std::string& internalKey) const {
+    auto dec = decodedEntries_.find(internalKey);
+    if (dec != decodedEntries_.end()) return dec->second.contentDigest;
+    auto cmp = compressedEntries_.find(internalKey);
+    if (cmp != compressedEntries_.end()) return compressedContentDigest(cmp->second);
+    return 0;
+}
+
+// B1083 dedupe: the first entry of this (name, mask) family (in cache_ key
+// order -- the plain key first, then the \x01-suffixed archive variants, the
+// same range argument as findEntryForKey) under a DIFFERENT key whose
+// content digest matches, or not found. Scoped requests only: an unscoped
+// request must create/answer the plain (name, mask) key itself (the
+// configured-order answer), never an archive-scoped twin. An EVICTED shell
+// counts: its driver-side bind restores the same pixels, so aliasing to it
+// is safe (and consistent: findEntryForKey answers an evicted direct hit
+// with its shell too). Call while holding mutex_.
+ConstrainedTextureCache::ContentTwin ConstrainedTextureCache::findContentTwin(
+    const std::string& name, const std::string& sourceArchiveStem, bool applyPaletteMask,
+    uint64_t contentDigest) const {
+    ContentTwin out;
+    if (sourceArchiveStem.empty() || contentDigest == 0) return out;
+    const std::string requestKey = cacheKey(name, sourceArchiveStem, applyPaletteMask);
+    for (auto it = cache_.lower_bound(name);
+         it != cache_.end() && it->first.compare(0, name.size(), name) == 0;
+         ++it) {
+        const auto& key = it->first;
+        if (key == requestKey) continue;
+        if (key.size() == name.size()) {
+            // The plain (name) key: the unmasked family member.
+            if (key != cacheKey(name, "", applyPaletteMask)) continue;
+        } else {
+            std::string realName;
+            std::string stem;
+            bool masked = false;
+            splitCacheKey(key, realName, stem, masked);
+            if (realName != name || masked != applyPaletteMask) continue;
+        }
+        const auto& entry = it->second;
+        if (entry.contentDigest == contentDigest) {
+            out.entry = &entry;
+            out.key = &key;
+            return out;
+        }
+    }
+    return out;
+}
+
+// B1083 dedupe (ruling 2026-10-16): the promote-time gate -- the ONLY
+// dedupe decision point. A scoped request whose payload is about to become
+// a GPU entry asks whether an entry for this (name, mask) already exists
+// with the same content digest: Deduped -- the request key becomes an
+// alias (deduped_) of that entry, the caller answers the entry's texture
+// (a resident one, or an evicted shell whose bind restores the identical
+// pixels) and drops the request's payload; one GPU entry serves both keys.
+// None -- no content-identical entry (a different-content same-name family,
+// e.g. qeytoqrg tree70's DXT1-vs-DXT5, keeps two entries by design): the
+// caller promotes its own payload, which then becomes the target for any
+// later content-identical sibling request. First entry promoted in time
+// wins -- exactly the pre-B1083 name-keyed cache's first-upload-wins
+// answer, since the zone load promotes each texture right after decoding
+// it. Call while holding mutex_.
+ConstrainedTextureCache::DedupeGateOutcome ConstrainedTextureCache::dedupeBeforePromote(
+    const std::string& name, const std::string& sourceArchiveStem, bool applyPaletteMask,
+    const std::string& internalKey, uint64_t contentDigest) {
+    DedupeGateOutcome out;
+    if (sourceArchiveStem.empty() || contentDigest == 0) return out;  // unscoped, or nothing to promote
+    auto existing = deduped_.find(internalKey);
+    if (existing != deduped_.end()) {
+        // Already an alias: the recorded target, if still in the map
+        // (resident or an evicted shell -- both restore the same pixels on
+        // their next bind), is the answer. Gone (destroyed) -- decide fresh.
+        auto target = cache_.find(existing->second);
+        if (target != cache_.end()) {
+            out.result = DedupeGateResult::Deduped;
+            out.twinEntry = &target->second;
+            return out;
+        }
+        deduped_.erase(existing);
+    }
+    // An entry under the request's own key (an evicted shell: uploadTexture's
+    // early return answered a resident one already) restores its OWN pixels
+    // on first bind -- it is never folded into another key's entry.
+    if (cache_.find(internalKey) != cache_.end()) return out;
+    const ContentTwin twin = findContentTwin(name, sourceArchiveStem, applyPaletteMask, contentDigest);
+    if (!twin.found()) return out;
+    deduped_[internalKey] = *twin.key;
+    out.result = DedupeGateResult::Deduped;
+    out.twinEntry = twin.entry;
+    LOG_TRACE(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' deduped: archive '{}'{} reuses entry (one GPU entry serves both keys)",
+              name, sourceArchiveStem, applyPaletteMask ? " [masked]" : "");
+    return out;
+}
+
+// B1083 dedupe: every alias recording `key` as its target is dropped -- the
+// target is going (destroyEntry / clear). The aliasers re-fold, or resolve
+// on their own, when they next promote or query. Call while holding mutex_.
+void ConstrainedTextureCache::dropAliasesTo(const std::string& key) {
+    for (auto it = deduped_.begin(); it != deduped_.end();) {
+        if (it->second == key) it = deduped_.erase(it);
+        else ++it;
+    }
+}
+
+// B1083 Step 7 (#403 ruling, option A): the family-first driver name -- see
+// decideDriverName() in the header for the full rationale (the draw-order
+// regression, the willow, the eviction/restore stability). Called at STORE
+// time (getOrLoad, under mutex_) for the entry about to be stored under
+// `internalKey`; the answer is carried on the pending entry to the
+// CachedTexture at promote time.
+std::string ConstrainedTextureCache::decideDriverName(const std::string& name,
+                                                       const std::string& internalKey) const {
+    // The mask axis is the internalKey's OWN (splitCacheKey is cacheKey's
+    // exact inverse), so the family is (name, that mask) and the P46d
+    // answer for a family-first member is cacheKey(name, "", mask) --
+    // `name` itself when unmasked.
+    std::string keyName;
+    std::string keyStem;
+    const bool keyMasked = [&]() {
+        bool masked = false;
+        splitCacheKey(internalKey, keyName, keyStem, masked);
+        return masked;
+    }();
+    const std::string familyFirstName = cacheKey(name, "", keyMasked);
+
+    // A different key of this (name, mask) family already STORED means this
+    // is not the family's first member. The first member stored (load
+    // order) keeps the plain name; every later member takes the full
+    // internalKey, whatever the promote order -- the store name is
+    // load-order-stable, and no two members can ever claim the plain name.
+    // The range argument mirrors findContentTwin(): cache_ (std::map) key
+    // order puts the plain key first, then the \x01-suffixed variants.
+    auto isFamilyMember = [&](const std::string& key) -> bool {
+        if (key == internalKey) return false;
+        if (key.size() == name.size()) {
+            return key == familyFirstName;
+        }
+        if (key.compare(0, name.size(), name) != 0) return false;
+        std::string realName;
+        std::string stem;
+        bool masked = false;
+        splitCacheKey(key, realName, stem, masked);
+        return realName == name && masked == keyMasked;
+    };
+
+    // Already-promoted members.
+    for (auto it = cache_.lower_bound(name);
+         it != cache_.end() && it->first.compare(0, name.size(), name) == 0; ++it) {
+        if (isFamilyMember(it->first)) return internalKey;
+    }
+    // Stored-but-not-yet-promoted members.
+    for (const auto& [key, pending] : decodedEntries_) {
+        if (isFamilyMember(key)) return internalKey;
+    }
+    for (const auto& [key, pending] : compressedEntries_) {
+        if (isFamilyMember(key)) return internalKey;
+    }
+    // A dedupe alias recording this key points at a stored family member --
+    // treat the family as occupied.
+    for (const auto& [alias, target] : deduped_) {
+        if (isFamilyMember(alias)) return internalKey;
+    }
+    return familyFirstName;  // family-first: the pre-B1083 P46d name
 }
 
 ConstrainedTextureCache::ConstrainedTextureCache(const ConstrainedRendererConfig& config)
@@ -184,15 +505,20 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
                                                           const std::string& category,
                                                           const std::string& callsite,
                                                           bool applyPaletteMask,
-                                                          const TextureOrigin* origin) {
+                                                          const TextureOrigin* origin,
+                                                          const std::string& sourceArchiveStem) {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::TexturesDecoded);  // T491
     std::lock_guard<std::mutex> lock(mutex_);
 
     // P46d: masked and unmasked variants of the same name are distinct cache
-    // entries (see cacheKey()) — internalKey is identity when
-    // applyPaletteMask is false, so every non-masked call site (the vast
-    // majority) is completely unaffected.
-    const std::string internalKey = cacheKey(name, applyPaletteMask);
+    // entries (see cacheKey()). B1083 (GitLab #403): the entry is additionally
+    // scoped to the SOURCE ARCHIVE -- internalKey is identity only when both
+    // sourceArchiveStem and applyPaletteMask are empty/false (the vast
+    // majority), so every unscoped call site is completely unaffected. Two
+    // packs of one zone family that hold a name with different content
+    // (qeytoqrg tree70 opaque vs qeytoqrg_obj tree70 alpha) now coexist as
+    // two entries instead of collapsing into one name-keyed slot.
+    const std::string internalKey = cacheKey(name, sourceArchiveStem, applyPaletteMask);
 
     // Check if already uploaded
     auto cacheIt = cache_.find(internalKey);
@@ -242,9 +568,39 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     // the same EQE1 payload) is a bounded, expected cost — see this unit's
     // Review (only WLD-masked textures, dozens not thousands, ever request
     // the masked variant).
-    auto* compressed = findCompressedEntry(name);
+    //
+    // B1083 (GitLab #403): findCompressedEntry takes the SOURCE ARCHIVE too.
+    // When a request names the archive its bytes came from (the S3D stem a
+    // zone/object WLD was loaded from), that pack is tried FIRST, before the
+    // configured-order scan of the other open packs. qeytoqrg.s3d and
+    // qeytoqrg_obj.s3d both hold tree70 (opaque DXT1 vs alpha DXT5) and the
+    // packs mirror that; the configured order ({zone}, {zone}_obj,
+    // {zone}_chr) handed the OBJECT's material the zone pack's opaque copy,
+    // so the willow drew as a solid rectangle. With the source tried first
+    // the object keeps its own copy and the zone keeps its own — the two
+    // coexist as (archive, name) entries instead of one name-keyed slot.
+    // An empty stem (every call site that does not name a source: character
+    // models, equipment, composite sheets, UI) is exactly today's scan +
+    // resolver fallback, so T207/T266's late-open rules and the
+    // global/_chr lookups are untouched.
+    auto* compressed = findCompressedEntry(name, sourceArchiveStem);
     if (compressed) {
+        // B1083 dedupe (ruling 2026-10-16): the (archive, name) key change
+        // splits EVERY name a sibling pack also holds -- byte-identical or
+        // not -- into two entries, and those extra bytes bust the texture
+        // budget on zones the name-keyed run stayed under (the x86 gate:
+        // qeynos2 at 99.6% of the 20 MiB ceiling, evicted textures
+        // drawing black). This payload is stored with its content identity
+        // (the promote-time gate's input, see pendingContentDigest); the
+        // gate in uploadTexture() folds a content-identical sibling request
+        // into the entry this payload becomes -- one GPU entry serves both
+        // keys. Only genuinely different same-name textures (qeytoqrg
+        // tree70, DXT1-vs-DXT5) keep two entries -- the willow fix itself.
         compressedEntries_[internalKey] = *compressed;
+        // B1083 Step 7 (#403 ruling, option A): decide the driver-facing
+        // name at STORE time (load-order-stable family-first) and carry it
+        // on the entry to the promote path -- see decideDriverName().
+        compressedEntries_[internalKey].driverName = decideDriverName(name, internalKey);
         LOG_TRACE(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' EQE1 hit ({}x{}, {} mips{}){}",
                   name, compressed->width, compressed->height, compressed->mipLevels,
                   compressed->hasAlpha ? ", alpha" : "",
@@ -272,9 +628,9 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
                       "(rebuild with tools/convert_all_to_eqe1.sh). "
                       "The pack's inline name field caps at {} chars, so it "
                       "holds '{}' but not '{}'; that truncation is why the "
-                      "texture miss above is not a plain asset gap. Every "
-                      "name in a rebuilt pack either fits the field or goes "
-                      "to the v3 name table.",
+                      "name misses every open pack -- this is not a plain "
+                      "asset gap. Every name in a rebuilt pack either fits "
+                      "the field or goes to the v3 name table.",
                       diag.packPath, diag.packVersion,
                       static_cast<unsigned>(EQE1_INLINE_NAME_LIMIT),
                       diag.truncatedName, name);
@@ -322,6 +678,19 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     if (origin && origin->known()) decoded.origin = *origin;
     decoded.rawDigest = rawBytesDigest(data);
     decoded.rawSize = data.size();
+
+    // B1083 dedupe (ruling 2026-10-16): the decode path (S3D, no EQE1) has
+    // the same split -- a name held byte-identically by two of the zone's
+    // open .s3d archives becomes two (archive, name) entries. The decoded
+    // image is stored with its content digest (FNV-1a 64 over pixels +
+    // dimensions + alpha); the promote-time gate in uploadTexture() folds a
+    // content-identical scoped request into the entry this image becomes
+    // (one GPU entry serves both keys).
+    decoded.contentDigest = decodedContentDigest(decoded.rgbaPixels, width, height, hasAlpha);
+    // B1083 Step 7 (#403 ruling, option A): decide the driver-facing name at
+    // STORE time (load-order-stable family-first), BEFORE this key itself is
+    // stored -- the decision skips the request's own key.
+    decoded.driverName = decideDriverName(name, internalKey);
     decodedEntries_[internalKey] = std::move(decoded);
 
     LOG_DEBUG(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' decoded ({}x{}, alpha={}{})",
@@ -329,7 +698,8 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     return nullptr;  // Decoded but not uploaded — call uploadTexture() to promote
 }
 
-irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& name, bool applyPaletteMask) {
+irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& name, bool applyPaletteMask,
+                                                              const std::string& sourceArchiveStem) {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::TexturesDecoded);  // T491
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -342,13 +712,43 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     // ZoneMeshBuilder::registerUploadedTexture() (its own textureCache_
     // fast-path map, keyed by plain name exactly as before this fix — see
     // this unit's Review for why that map does not also need mask-awareness).
-    const std::string internalKey = cacheKey(name, applyPaletteMask);
+    // B1083: the key also carries the source archive stem, so a masked or
+    // archive-scoped variant promotes its OWN entry rather than the plain
+    // name's.
+    const std::string internalKey = cacheKey(name, sourceArchiveStem, applyPaletteMask);
 
     // Already uploaded?
     auto cacheIt = cache_.find(internalKey);
     if (cacheIt != cache_.end()) {
         touchInternal(internalKey);
         return cacheIt->second.texture;
+    }
+
+    // B1083 dedupe (ruling 2026-10-16): the promote-time gate -- the ONLY
+    // dedupe decision point. A scoped request that is about to create a GPU
+    // entry asks whether an entry for this (name, mask) already exists with
+    // the same content digest: if so it becomes an ALIAS of that entry (one
+    // GPU entry serves both keys) and the entry's texture is the answer,
+    // and the pending payload is dropped so nothing promotes a second
+    // entry. Genuinely different same-name textures (qeytoqrg tree70,
+    // DXT1-vs-DXT5) keep two entries -- the willow fix itself. First
+    // promoted in time wins (the pre-B1083 name-keyed cache's
+    // first-upload-wins answer). A re-arrival for an already-recorded
+    // alias answers the same way; a stale alias (its target was destroyed)
+    // is dropped and the normal promotion below runs, so the dedupe is a
+    // memory optimization and never makes a name unresolvable.
+    {
+        const DedupeGateOutcome gate = dedupeBeforePromote(name, sourceArchiveStem,
+                                                           applyPaletteMask, internalKey,
+                                                           pendingContentDigest(internalKey));
+        if (gate.result == DedupeGateResult::Deduped) {
+            const auto targetKey = deduped_.find(internalKey);
+            if (targetKey != deduped_.end()) touchInternal(targetKey->second);
+            compressedEntries_.erase(internalKey);
+            decodedEntries_.erase(internalKey);
+            if (ledgerEnabled_) pendingLedgerTag_.erase(internalKey);
+            return gate.twinEntry->texture;
+        }
     }
 
     // Check for compressed/v2 entry (from EQE1 flat pack)
@@ -388,8 +788,20 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     // returned the SAME (unmasked) GPU texture — caught by this unit's own
     // discard-fire re-verification, which found identical pointers for both
     // uploads until this fix.
+    //
+    // B1083 Step 7 (#403 ruling, option A): the name addTexture() sees is
+    // the entry's STORED driverName, decided ONCE at store time by
+    // decideDriverName() and carried on the pending entry -- family-first:
+    // the pre-B1083 P46d name when this is the first member of its
+    // (name, mask) family, the full internalKey for a later cross-archive
+    // twin (the willow's _obj copy). The P46d distinctness the comment
+    // above protects still holds: the mask suffix is always present, and a
+    // second member's name differs from the first by the stem. The stored
+    // name is what an evict->restore re-creates under too (the object
+    // keeps its name).
+    const std::string driverName = entry.driverName;
     irr::video::ITexture* texture =
-        createDecodedTexture(internalKey, entry.rgbaPixels, entry.width, entry.height);
+        createDecodedTexture(driverName, entry.rgbaPixels, entry.width, entry.height);
 
     bool hasAlpha = entry.hasAlpha;
     int width = entry.width;
@@ -413,6 +825,10 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     cached.sizeBytes = textureSize;
     cached.hasAlpha = hasAlpha;
     cached.lruIterator = std::prev(lruOrder_.end());
+    // B1083 Step 7 (#403 ruling, option A): the driver-side name, decided
+    // ONCE above and stored -- an evict->restore re-creates this object
+    // (storage adopted, object kept) under exactly this name.
+    cached.driverName = driverName;
     // B944: an eviction can restore this from a registered
     // TextureSourceProvider (the raw bytes are the caller's and are gone).
     // B947: or from the origin the caller named, checked against the digest.
@@ -420,6 +836,9 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     cached.origin = std::move(origin);
     cached.rawDigest = rawDigest;
     cached.rawSize = rawSize;
+    // B1083 dedupe: the content identity a later sibling-archive request
+    // compares against (recorded in getOrLoad() from the same decoded image).
+    cached.contentDigest = entry.contentDigest;
 
     // P13: consume this name's pending ledger tag (set by getOrLoad) and
     // record the upload row. No-op when disabled.
@@ -564,9 +983,10 @@ int ConstrainedTextureCache::uploadPending(int maxCount) {
         if (attempted >= maxCount) break;
         ++attempted;
         std::string realName;
+        std::string sourceArchiveStem;
         bool applyPaletteMask = false;
-        splitCacheKey(key, realName, applyPaletteMask);
-        if (uploadTexture(realName, applyPaletteMask)) {
+        splitCacheKey(key, realName, sourceArchiveStem, applyPaletteMask);
+        if (uploadTexture(realName, applyPaletteMask, sourceArchiveStem)) {
             ++uploaded;
         }
     }
@@ -638,16 +1058,23 @@ bool ConstrainedTextureCache::hasTexture(const std::string& name) const {
     return cache_.find(name) != cache_.end();
 }
 
-irr::video::ITexture* ConstrainedTextureCache::getTexture(const std::string& name, bool applyPaletteMask) {
+irr::video::ITexture* ConstrainedTextureCache::getTexture(const std::string& name, bool applyPaletteMask,
+                                                           const std::string& sourceArchiveStem) {
     std::lock_guard<std::mutex> lock(mutex_);
     // P50: internalKey mirrors getOrLoad()/uploadTexture() — identity when
     // applyPaletteMask is false, so every existing (unmasked) call site is
     // byte-identical to before this parameter existed.
-    const std::string internalKey = cacheKey(name, applyPaletteMask);
-    auto it = cache_.find(internalKey);
-    if (it != cache_.end()) {
-        touchInternal(internalKey);
-        return it->second.texture;
+    // B1083: the archive axis too — a zone and the _obj pack of one family
+    // can both cache the same name, and only the scoped query finds the
+    // entry the caller decoded (see cacheKey()). findEntryForKey() keeps the
+    // scoped-miss-returns-null rule (no sibling-archive leak) and, for an
+    // unscoped query, finds the entry stored under (name, mask) in any
+    // archive — including an S3D-stemmed one the on-demand fallback stored.
+    const std::string* foundKey = nullptr;
+    const CachedTexture* entry = findEntryForKey(name, sourceArchiveStem, applyPaletteMask, &foundKey);
+    if (entry != nullptr) {
+        touchInternal(*foundKey);
+        return entry->texture;
     }
     return nullptr;
 }
@@ -704,18 +1131,27 @@ bool ConstrainedTextureCache::registerTexture(const std::string& name,
     return true;
 }
 
-bool ConstrainedTextureCache::hasAlpha(const std::string& name, bool applyPaletteMask) const {
+bool ConstrainedTextureCache::hasAlpha(const std::string& name, bool applyPaletteMask,
+                                       const std::string& sourceArchiveStem) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    const std::string internalKey = cacheKey(name, applyPaletteMask);
-    auto it = cache_.find(internalKey);
-    return it != cache_.end() && it->second.hasAlpha;
+    // B1083: the (archive, name) entry — the zone and _obj copies of one name
+    // carry different hasAlpha, so an unscoped query would report whichever
+    // pack the configured order happened to cache first (see cacheKey()).
+    // findEntryForKey() scopes the answer: a SCOPED query misses cleanly (no
+    // sibling-archive leak), an UNSCOPED query falls back to the entry stored
+    // for that (name, mask) under any archive.
+    const CachedTexture* entry = findEntryForKey(name, sourceArchiveStem, applyPaletteMask);
+    return entry != nullptr && entry->hasAlpha;
 }
 
-irr::video::ITexture* ConstrainedTextureCache::getAlphaTexture(const std::string& name, bool applyPaletteMask) const {
+irr::video::ITexture* ConstrainedTextureCache::getAlphaTexture(const std::string& name, bool applyPaletteMask,
+                                                               const std::string& sourceArchiveStem) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    const std::string internalKey = cacheKey(name, applyPaletteMask);
-    auto it = cache_.find(internalKey);
-    if (it != cache_.end()) return it->second.alphaTexture;
+    // B1083: the companion belongs to the (archive, name) entry — the object
+    // material binds the _obj pack's companion, not the zone pack's. The
+    // scoped/unscoped semantics mirror hasAlpha() via findEntryForKey().
+    const CachedTexture* entry = findEntryForKey(name, sourceArchiveStem, applyPaletteMask);
+    if (entry != nullptr) return entry->alphaTexture;
     return nullptr;
 }
 
@@ -728,11 +1164,13 @@ irr::video::ITexture* ConstrainedTextureCache::getAlphaTexture(irr::video::IText
     return nullptr;
 }
 
-bool ConstrainedTextureCache::isETC1Texture(const std::string& name, bool applyPaletteMask) const {
+bool ConstrainedTextureCache::isETC1Texture(const std::string& name, bool applyPaletteMask,
+                                            const std::string& sourceArchiveStem) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    const std::string internalKey = cacheKey(name, applyPaletteMask);
-    auto it = cache_.find(internalKey);
-    return it != cache_.end() && it->second.isETC1;
+    // B1083: the (archive, name) entry (see cacheKey()); scoped/unscoped
+    // semantics mirror hasAlpha() via findEntryForKey().
+    const CachedTexture* entry = findEntryForKey(name, sourceArchiveStem, applyPaletteMask);
+    return entry != nullptr && entry->isETC1;
 }
 
 bool ConstrainedTextureCache::isETC1Texture(irr::video::ITexture* texture) const {
@@ -821,6 +1259,10 @@ void ConstrainedTextureCache::clear() {
     cache_.clear();
     lruOrder_.clear();
     currentUsage_ = 0;
+    // B1083 dedupe: every destroyed entry was an alias target; drop them all
+    // (a target surviving the clear re-registers itself and re-earns its
+    // aliasers on their next promotion).
+    deduped_.clear();
     // B944: every shell left in the map was destroyed above (protected ones
     // are re-registered below with their own entry, never through this map).
     evictedOwner_.clear();

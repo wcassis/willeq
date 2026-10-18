@@ -103,7 +103,7 @@ void renderTradeskillPopup(UIRenderer& ui, const UILayout& layout,
     if (!state.isOpen) return;
 
     auto* tb = ui.getTextBatch();
-    const auto& popup = layout.centerPopup;
+    const auto& popup = TradeskillLayout::windowRect(layout);
 
     ui.drawPanel(popup);
 

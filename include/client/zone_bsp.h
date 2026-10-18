@@ -215,6 +215,18 @@ struct BspTree {
     // More efficient than findRegionForPoint() when only the index is needed
     size_t findRegionIndexForPoint(float x, float y, float z) const;
 
+    // B1067 (#387): every 0-based region index the segment (x0,y0,z0) ->
+    // (x1,y1,z1) passes through, appended to `out` once each, nearest first.
+    // Same side convention as findRegionIndexForPoint() (dot >= 0 = left), so
+    // a segment of zero length yields exactly that point's region. A region's
+    // triangles are the polygons of ITS leaf, so a ray that is tested only
+    // against the leaf holding one of its points misses a surface stored in a
+    // neighbouring leaf it crosses -- the ground ray did, at every floor that
+    // forms the bottom of a thin leaf under the player's centre.
+    void collectRegionsAlongSegment(float x0, float y0, float z0,
+                                    float x1, float y1, float z1,
+                                    std::vector<size_t>& out) const;
+
     // Check if a point is in a zone line region
     // Returns the zone line info if in a zone line, nullopt otherwise
     std::optional<ZoneLineInfo> checkZoneLine(float x, float y, float z) const;

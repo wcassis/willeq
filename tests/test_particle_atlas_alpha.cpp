@@ -39,10 +39,8 @@
 
 namespace {
 
-#ifndef WILLEQ_SOURCE_DIR
-#define WILLEQ_SOURCE_DIR "."
-#endif
-const char* kAtlasPath = WILLEQ_SOURCE_DIR "/data/textures/particle_atlas.bmp";
+// B1090: resolved at run time (common/willeq_paths.h, force-included).
+const char* kAtlasPath = WILLEQ_REPO_PATH("data/textures/particle_atlas.bmp");
 const char* kWilleqEqe1 = "/mnt/projects/EverQuest_ETC1/willeq.eqe1";
 
 constexpr int kTileSize = 16;

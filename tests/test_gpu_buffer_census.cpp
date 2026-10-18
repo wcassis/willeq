@@ -11,6 +11,9 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdio>
+#include <cstdlib>
+#include <unistd.h>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -339,6 +342,80 @@ TEST(GpuBufferCensus, LogLineAndJsonCarryTheRow) {
     EXPECT_NE(json.find("\"ownedRssAnonBytes\":1000,\"ownedBytes\":1807336"), std::string::npos) << json;
 }
 
+// B961 (GitLab #279): the two byte classes on no ledger row. The captured
+// fixture has a kernel= line, so memcg_kernel_seen=1; the scanout pair is the
+// device's published tally (readScanoutTally() fills in.scanoutFb* in
+// readGpuBufferCensus). The rows sit AFTER fdinfo_purgeable and BEFORE the
+// B978 owned fields (the pre-B961 parsers read the owned pair last) and in
+// the JSON.
+TEST(GpuBufferCensus, B961RowsReportTheTwoUnrowedByteClasses) {
+    GpuBufferInputs in;
+    in.drmFds = 6;
+    in.maps = parseDrmMaps(fixture("kmscube_maps"));
+    in.memcg = parseMemcgStat(fixture("kmscube_memory.stat"));
+    in.cgroupProcs = 1;
+    in.softwareRasteriser = 0;
+    // The Pi's steady_60s numbers from the issue: two 3,686,400 B buffers.
+    in.scanoutFbBufs = 2;
+    in.scanoutFbBytes = 2u * 3686400u;
+    const GpuBufferCensus c = decideGpuBuffers(in);
+
+    const B961Rows r = b961Rows(c);
+    EXPECT_EQ(r.scanoutFbBufs, 2u);
+    EXPECT_EQ(r.scanoutFbBytes, 2u * 3686400u);
+    EXPECT_EQ(r.memcgKernelBytes, 151552u);
+    EXPECT_TRUE(r.memcgKernelAvailable);
+
+    const std::string line = gpuBuffersToLogLine("steady_60s", "qeynos2", c, 1000);
+    const size_t purgeable = line.find("fdinfo_purgeable=");
+    const size_t scanout = line.find(" scanout_fb=7372800 scanout_fb_bufs=2 memcg_kernel_seen=1 ");
+    const size_t owned = line.find("owned_rss_anon=");
+    ASSERT_NE(purgeable, std::string::npos) << line;
+    ASSERT_NE(scanout, std::string::npos) << line;
+    ASSERT_NE(owned, std::string::npos) << line;
+    EXPECT_LT(purgeable, scanout) << "the B961 rows ride after fdinfo_purgeable";
+    EXPECT_LT(scanout, owned) << "the B978 owned fields stay last";
+    // The B961 rows are REPORT, not COUNT: owned is unchanged by them.
+    EXPECT_NE(line.find(" owned_rss_anon=1000 owned=1807336 "), std::string::npos) << line;
+
+    const std::string json = gpuBuffersToJson(c, 1000);
+    EXPECT_NE(json.find("\"scanoutFbBytes\":7372800"), std::string::npos) << json;
+    EXPECT_NE(json.find("\"scanoutFbBufs\":2"), std::string::npos) << json;
+    EXPECT_NE(json.find("\"memcgKernelSeen\":true"), std::string::npos) << json;
+}
+
+// B961: a memory.stat without a kernel= line reports 0 bytes and
+// kernelSeen=false (the row still exists, named as absent, not guessed).
+TEST(GpuBufferCensus, B961KernelAbsentIsReportedAbsent) {
+    const MemcgStat s = parseMemcgStat("shmem 1000\nanon 2000\n");
+    ASSERT_TRUE(s.ok);
+    EXPECT_FALSE(s.kernelSeen);
+    EXPECT_EQ(s.kernelBytes, 0u);
+    EXPECT_FALSE(b961Rows(decideGpuBuffers(GpuBufferInputs{})).memcgKernelAvailable);
+}
+
+// B961: the publish round-trip -- the device->core seam. readScanoutTally()
+// is a pure read of the core-owned atomics: whatever publishScanoutTally()
+// last stored is what comes back, and before any publish (this test process
+// never linked the device) the tally is the {0, 0} empty default -- the true
+// answer of "this process has no GBM buffers". The device's destructor
+// publishes {0, 0} at teardown.
+TEST(GpuBufferCensus, B961PublishRoundTripAndEmptyDefault) {
+    // Order-independent: establish the empty default by publishing it first.
+    publishScanoutTally(0, 0);
+    const ScanoutTallyRead empty = readScanoutTally();
+    EXPECT_EQ(empty.bufs, 0u);
+    EXPECT_EQ(empty.bytes, 0u);
+    publishScanoutTally(3, 1234u);
+    const ScanoutTallyRead r = readScanoutTally();
+    EXPECT_EQ(r.bufs, 3u);
+    EXPECT_EQ(r.bytes, 1234u);
+    publishScanoutTally(0, 0);   // the device's teardown
+    const ScanoutTallyRead zero = readScanoutTally();
+    EXPECT_EQ(zero.bufs, 0u);
+    EXPECT_EQ(zero.bytes, 0u);
+}
+
 // The row rides on the [memledger] line BEFORE `allocs=` (every rig parses
 // the categories as the <name>=<live>/<peak> pairs after it) and in the JSON.
 TEST(GpuBufferCensus, LedgerSnapshotCarriesTheRow) {
@@ -360,4 +437,31 @@ TEST(GpuBufferCensus, LedgerSnapshotCarriesTheRow) {
     const std::string json = toJson(s);
     EXPECT_NE(json.find("\"gpuBuffersBytes\":4194304"), std::string::npos) << json;
     EXPECT_NE(json.find("\"gpuBuffers\":{"), std::string::npos) << json;
+}
+
+// B1056: the fdinfo guard fails closed -- an fd whose driver has no sysfs row
+// is NOT read (a wrong "yes" is a kernel panic on pvrsrvkm) -- and the kill
+// switch, read per call, wins over everything.
+TEST(GpuBufferCensus, FdinfoGuardFailsClosedAndHonoursKillSwitch) {
+    unsetenv("WILLEQ_GPU_CENSUS_NO_FDINFO");
+    EXPECT_FALSE(eqt::memory::drmFdinfoIsSafe("/dev/dri/no-such-node-b1056"));
+    EXPECT_FALSE(eqt::memory::drmFdinfoIsSafe("/dev/dri/"));
+    EXPECT_FALSE(eqt::memory::drmFdinfoIsSafe(nullptr));
+    // A real node on the build host (any in-tree driver) is readable...
+    bool anyReal = false;
+    for (const char* node : {"/dev/dri/card0", "/dev/dri/card1", "/dev/dri/renderD128"}) {
+        char link[128];
+        snprintf(link, sizeof(link), "/sys/class/drm/%s/device/driver", node + 9);
+        char buf[256];
+        if (readlink(link, buf, sizeof(buf) - 1) <= 0) continue;
+        anyReal = true;
+        EXPECT_TRUE(eqt::memory::drmFdinfoIsSafe(node)) << node;
+        // ...unless the kill switch is set, which is read on every call.
+        setenv("WILLEQ_GPU_CENSUS_NO_FDINFO", "1", 1);
+        EXPECT_FALSE(eqt::memory::drmFdinfoIsSafe(node)) << node;
+        unsetenv("WILLEQ_GPU_CENSUS_NO_FDINFO");
+        EXPECT_TRUE(eqt::memory::drmFdinfoIsSafe(node)) << node;
+        break;
+    }
+    if (!anyReal) GTEST_SKIP() << "no DRM node with a sysfs driver row on this host";
 }

@@ -1,0 +1,13 @@
+# B888-CC1 (#204) pilot: 3 representative pairs to validate the fixed
+# facepick-rows verb (measured Cancel close + settle-until-list-renders).
+# Barbarian male = wode expected (Will's ruling); Human male + Dark Elf
+# female = the README's known FACE-only stock pairs. This checks the verb
+# renders the list AND that the probe reads per-pair variation (not uniform).
+# Stock UseLuclin=FALSE client; page 0 only, no create packet.
+login	Testchar	0	char_select
+facepick-rows	Barbarian	0	0	Male	barbarian-male
+close-creation	0	0	close-barbarian-male
+facepick-rows	Human	0	0	Male	human-male
+close-creation	0	0	close-human-male
+facepick-rows	DarkElf	0	0	Female	darkelf-female
+close-creation	0	0	close-darkelf-female

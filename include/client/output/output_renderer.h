@@ -46,15 +46,6 @@ enum class RenderQuality {
 };
 
 /**
- * CameraMode - Camera mode for graphical renderers.
- */
-enum class CameraMode {
-    Free,         // Free-fly camera
-    Follow,       // Third-person follow
-    FirstPerson   // First-person view
-};
-
-/**
  * IOutputRenderer - Abstract interface for game output rendering.
  *
  * This interface abstracts all output/rendering for different modes:
@@ -310,16 +301,6 @@ public:
      * Set render quality. Only applicable to graphical renderers.
      */
     virtual void setRenderQuality(RenderQuality quality) { (void)quality; }
-
-    /**
-     * Set camera mode. Only applicable to graphical renderers.
-     */
-    virtual void setCameraMode(CameraMode mode) { (void)mode; }
-
-    /**
-     * Cycle to next camera mode. Only applicable to graphical renderers.
-     */
-    virtual void cycleCameraMode() {}
 
     /**
      * Toggle wireframe rendering. Only applicable to graphical renderers.

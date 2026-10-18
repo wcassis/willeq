@@ -4,6 +4,10 @@
 
 #include <glm/glm.hpp>
 
+#include "client/audio/sound_buffer_cache.h"
+#include "client/audio/sfx_manager.h"  // B1074: SfxLoopHandle
+#include "client/audio/audio_device_rate.h"  // B1069
+
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -84,6 +88,21 @@ public:
     void playSoundByName(const std::string& filename, const glm::vec3& position);
     void stopAllSounds();
 
+    // B1074 (#394): a LOOPING positioned sound (zone ambient emitters with
+    // zero cooldown). Plays through SfxManager::play(..., loop=true) and
+    // returns the owner token; an invalid token (handle -1) means nothing
+    // started (audio off, sound missing, no free channel, listener beyond
+    // maxDist). The loop never ends by itself: the owner MUST call
+    // stopLoopingSound() before it forgets the token, or the channel and the
+    // buffer's in-use pin live on. With 3D audio off the loop plays centred
+    // at the effects volume, like playSoundInternal().
+    SfxLoopHandle playLoopingSound(const std::string& filename, const glm::vec3& position,
+                                   float maxDist, float fullVolDist);
+    // Re-derive the loop's volume/pan from the listener, scaled by gain.
+    void updateLoopingSound(const SfxLoopHandle& loop, float gain);
+    bool isLoopingSoundActive(const SfxLoopHandle& loop) const;
+    void stopLoopingSound(const SfxLoopHandle& loop);
+
     // Preload sounds for faster playback
     void preloadSound(uint32_t soundId);
     void preloadCommonSounds();
@@ -137,6 +156,18 @@ public:
     // config by BridgeComponent::InitializeAudio().
     void setUse3DAudio(bool enabled) { use3DAudio_ = enabled; }
 
+    // B1069 (#389): the playback DEVICE rate the miniaudio backend opens at
+    // (the mixer renders at AudioMixer::SAMPLE_RATE and is resampled once).
+    // Defaults to the process-wide configured value (audio_device_rate.h,
+    // published by main.cpp); takes effect at initialize(); 0 = the
+    // backend's native rate. The loopback (RDP) path is unaffected: it
+    // streams at LOOPBACK_SAMPLE_RATE.
+    void setDeviceSampleRate(uint32_t hz) { deviceSampleRate_ = hz; }
+    uint32_t getDeviceSampleRate() const { return deviceSampleRate_; }
+    // B1069: the playback DEVICE format (default s16; see audio_device_rate.h).
+    void setDeviceFormat(DeviceFormat f) { deviceFormat_ = f; }
+    DeviceFormat getDeviceFormat() const { return deviceFormat_; }
+
     // RDP audio streaming callback
     void setAudioOutputCallback(AudioOutputCallback callback);
 
@@ -162,9 +193,16 @@ public:
     // Pure function: reads only its argument plus the static name set.
     SoundFontType getSoundFontTypeForFile(const std::string& path);
 
+    // B1015 (#336): deactivate every SFX channel and wait for the audio
+    // thread to quiesce (AudioMixer::stopAll). After this, no channel reads
+    // any SoundBuffer, so the one decoded-PCM cache's in-use pin names
+    // nothing and the cap can evict freely. Used by the cache-eviction tests,
+    // which need "every sound stopped" before they can observe the cap.
+    void stopAll();
+
     // Memory usage queries
-    size_t getSoundBufferCacheBytes() const { return soundBufferCacheSizeBytes_; }
-    size_t getSoundBufferCacheMaxBytes() const { return soundBufferCacheMaxBytes_; }
+    size_t getSoundBufferCacheBytes() const { return bufferCache_.getSizeBytes(); }
+    size_t getSoundBufferCacheMaxBytes() const { return bufferCache_.getMaxBytes(); }
     size_t getSoundFontMemoryEstimate() const;
     size_t getMusicDecodedBytes() const;
     size_t getPfsArchiveCacheBytes() const;
@@ -176,6 +214,12 @@ public:
 private:
     // Sound loading
     std::shared_ptr<SoundBuffer> loadSound(const std::string& filename);
+    // B1015 (#336): the decode half of the old loadSound(), bound as the
+    // SoundBufferCache's Source. Runs WITHOUT the cache's lock; never calls
+    // back into the cache. Charged to `au.sound_buffers` (the owner that
+    // decoded the PCM -- it is reported once, CLAUDE.md's memory accounting).
+    std::shared_ptr<SoundBuffer> decodeSound(const std::string& filename);
+
     std::shared_ptr<SoundBuffer> loadSoundFromPfs(const std::string& filename);
     std::shared_ptr<SoundBuffer> getSoundById(uint32_t soundId);
 
@@ -198,6 +242,8 @@ private:
     bool initialized_ = false;
     bool audioEnabled_ = true;
     bool use3DAudio_ = true;  // K15 (B037)
+    uint32_t deviceSampleRate_ = configuredDeviceSampleRate();  // B1069
+    DeviceFormat deviceFormat_ = configuredDeviceFormat();       // B1069
     std::string eqPath_;
     std::function<void()> tickCallback_;
     std::string soundFontPath_;
@@ -215,13 +261,15 @@ private:
     float effectsVolume_ = 1.0f;
 
     // Sound buffer cache
-    mutable std::mutex bufferMutex_;
-    std::unordered_map<std::string, std::shared_ptr<SoundBuffer>> bufferCache_;
-
-    // Sound buffer LRU cache eviction
-    size_t soundBufferCacheMaxBytes_ = 0;    // 0 = unlimited
-    size_t soundBufferCacheSizeBytes_ = 0;
-    std::list<std::string> bufferLruOrder_;
+    // B1015 (#336): the ONE decoded-PCM cache of SFX PCM. Before this it was
+    // the raw map/LRU members below, and `SfxManager::cache_` was a SECOND
+    // LRU with its own cap on top of it (two victims, two caps -- the audit
+    // in refactor/B1015). The cache now owns the LRU and its one cap, and
+    // pins the entries a live mixer channel reads (the pin walks the
+    // SfxManager's channels through AudioMixer). The members it replaced:
+    // bufferMutex_, bufferCache_, soundBufferCacheMaxBytes_,
+    // soundBufferCacheSizeBytes_, bufferLruOrder_.
+    SoundBufferCache bufferCache_;
 
     // Sound ID to filename mapping (from SoundAssets.txt or SQLite)
     std::unordered_map<uint32_t, std::string> soundIdMap_;

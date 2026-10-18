@@ -103,6 +103,7 @@ struct Rig {
     SkillsPopupState skills;
     BuffBarState buffs;
     LootPanelState loot;
+    CombatAbilityPanelState abilities;  // B1025-H3: processFrameGesture's source
     CursorAttachmentState cursor;
     MerchantPanelState merchant;
     BankPanelState bank;
@@ -121,13 +122,31 @@ struct Rig {
         const bool took =
             input.processInput(x, y, left, l, hotbar, gems, inv, book, skills, buffs, loot, mods.shift);
         // The rig never lets one click land on two windows (the inventory
-        // popup and the merchant share centerPopup; a test opens one at a time).
+        // popup and the merchant sit side by side since B1075, so a click on one
+        // never reaches the other).
         input.processCommerceInput(x, y, left && !took, l, merchant, bank, cursor);
         input.setFrameClickState(false, {}, &cursor);
     }
     void clickSlot(int slot, bool left, bool right, ClickModifiers mods = {}) {
         const auto r = InventoryLayout::slotRect(l, slot);
         frame(r.UpperLeftCorner.X + 3, r.UpperLeftCorner.Y + 3, left, right, mods);
+    }
+    // B1025-H3 (GitLab #345): a left press on a holdable single item DEFERS
+    // its pickup to the holder (a hold may clone the item away instead,
+    // H-O "inventory-hold"); the release frame over the source fires it.
+    // The production click is this two-frame form, so the tests that assert
+    // on the final state run the press, the gesture tick, the release, the
+    // tick that fires the deferred action.
+    void pressReleaseSlot(int slot) {
+        const auto r = InventoryLayout::slotRect(l, slot);
+        const int x = r.UpperLeftCorner.X + 3;
+        const int y = r.UpperLeftCorner.Y + 3;
+        frame(x, y, /*left=*/true, /*right=*/false);
+        input.processFrameGesture(0.001f, /*buttonDown=*/true, hotbar, gems,
+                                  inv, abilities);
+        frame(x, y, /*left=*/false, /*right=*/false);
+        input.processFrameGesture(0.001f, /*buttonDown=*/false, hotbar, gems,
+                                  inv, abilities);
     }
     void clickRect(const irr::core::rect<irr::s32>& r, ClickModifiers mods = {}) {
         frame(cx(r), cy(r), true, false, mods);
@@ -461,14 +480,25 @@ TEST(ConfirmationDialog, YesPushesTheConfirmForItsPurposeAndNoPushesNothing) {
 TEST(DestroyButton, AsksOnlyWithAnItemHeldAndOverlapsNoSlot) {
     Rig rig;
     const auto d = InventoryLayout::destroyButtonRect(rig.l);
-    EXPECT_TRUE(rig.l.centerPopup.isRectCollided(d));
+    // B1078 (GitLab #398): the frame is the inventory's own window; check
+    // containment explicitly (isRectCollided is a collision test, not a
+    // containment test).
+    const auto win = InventoryLayout::windowRect(rig.l);
+    EXPECT_GE(d.UpperLeftCorner.X, win.UpperLeftCorner.X);
+    EXPECT_GE(d.UpperLeftCorner.Y, win.UpperLeftCorner.Y);
+    EXPECT_LE(d.LowerRightCorner.X, win.LowerRightCorner.X);
+    EXPECT_LE(d.LowerRightCorner.Y, win.LowerRightCorner.Y);
     for (int i = 0; i < InventoryLayout::TOTAL_SLOTS; ++i) {
         EXPECT_FALSE(InventoryLayout::slotRect(rig.l, i).isRectCollided(d)) << "slot " << i;
     }
     for (int c = 0; c < InventoryLayout::COIN_COUNT; ++c) {
         EXPECT_FALSE(InventoryLayout::coinRect(rig.l, c).isRectCollided(d));
     }
-    EXPECT_EQ(d.getWidth(), 50 * rig.l.centerPopup.getWidth() / 428) << "IW_Destroy CX=50, scaled";
+    // B1077's 48px gem column reduces B1078's 800x600 inventory factor to
+    // 80%. Read the one factor directly: deriving it from the already-rounded
+    // 342px window width truncates 50*342/428 to 39 instead of the true 40.
+    EXPECT_EQ(d.getWidth(), 50 * InventoryLayout::scalePct(rig.l) / 100)
+        << "IW_Destroy CX=50, scaled";
 
     rig.clickRect(d);
     EXPECT_TRUE(rig.bridge.drainIntents().empty()) << "nothing held: nothing asked";

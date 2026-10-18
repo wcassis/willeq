@@ -63,6 +63,66 @@ TARGET_INCLUDE_DIRECTORIES(test_drm_mode_select PRIVATE ${CMAKE_SOURCE_DIR})
 TARGET_LINK_LIBRARIES(test_drm_mode_select GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_drm_mode_select DISCOVERY_TIMEOUT 120)
 
+# B1054 (#374): DRM card-selection decision logic
+# (docker/irrlicht-drm/drm_card_select.h) -- the first card that both
+# OPENS and has a connected connector + CRTC wins; WILLEQ_DRM_DEVICE is an
+# explicit single-path override. Like test_drm_mode_select it is pure and
+# header-only (no libdrm/gbm/EGL/Irrlicht dependency); it additionally
+# exercises the directory enumeration against a temp dir, so it is
+# Linux-only (POSIX dirent/mkdtemp/setenv), like the other DRM tests.
+IF(UNIX AND NOT APPLE)
+    ADD_EXECUTABLE(test_drm_card_select
+        test_drm_card_select.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_drm_card_select PRIVATE ${CMAKE_SOURCE_DIR})
+    TARGET_LINK_LIBRARIES(test_drm_card_select GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_drm_card_select DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1034 (#357): the EGL-config choice for the GBM surface's format
+# (docker/irrlicht-drm/gbm_config_select.h) -- the 70-config case that
+# reproduced the fixed-configs[64] defect, the ARGB8888 fallback, and the
+# unchanged picks over the real llvmpipe dump (tests/data/b1034/, kept
+# honest by EglConfigDumpB1034 in hygiene.cmake) and the measured Lima
+# single-config shape. Pure and header-only like test_drm_mode_select, so it
+# is unguarded and runs in the hygiene tree too.
+ADD_EXECUTABLE(test_egl_config_select
+    test_egl_config_select.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(test_egl_config_select PRIVATE ${CMAKE_SOURCE_DIR})
+# B1090 idiom: per-target path defines as run-time expressions (never a
+# ${CMAKE_SOURCE_DIR} literal). WILLEQ_REPO_PATH("rel") expands to a
+# function-call EXPRESSION returning const char*, so the test body reads a
+# fixture as readFixture(B1034_SURFACELESS) -- one expression, no string
+# concatenation (which was the pre-fix compile error).
+TARGET_COMPILE_DEFINITIONS(test_egl_config_select PRIVATE
+    "B1034_SURFACELESS=WILLEQ_REPO_PATH(\"tests/data/b1034/surfaceless_es2.json\")"
+    "B1034_LIMA=WILLEQ_REPO_PATH(\"tests/data/b1034/lima_single.json\")")
+TARGET_LINK_LIBRARIES(test_egl_config_select GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_egl_config_select DISCOVERY_TIMEOUT 120)
+
+# B1049 (#373): the pure evdev-key -> key-event decision (drm_key_translation.h)
+# -- needs Irrlicht's key types, so it is gated on the graphics/Irrlicht tree,
+# Linux-only like the DRM device it belongs to.
+IF(EQT_GRAPHICS AND EQT_GLES2 AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    ADD_EXECUTABLE(test_drm_key_translation test_drm_key_translation.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_drm_key_translation PRIVATE
+        ${CMAKE_SOURCE_DIR} ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_drm_key_translation GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_drm_key_translation DISCOVERY_TIMEOUT 120)
+
+    ADD_EXECUTABLE(test_drm_flip_tracker test_drm_flip_tracker.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_drm_flip_tracker PRIVATE ${CMAKE_SOURCE_DIR})
+    TARGET_LINK_LIBRARIES(test_drm_flip_tracker GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_drm_flip_tracker DISCOVERY_TIMEOUT 120)
+
+    # B961: the device's scanout-framebuffer tally (header-only, no GBM).
+    ADD_EXECUTABLE(test_scanout_buffer_tally test_scanout_buffer_tally.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_scanout_buffer_tally PRIVATE ${CMAKE_SOURCE_DIR})
+    TARGET_LINK_LIBRARIES(test_scanout_buffer_tally GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_scanout_buffer_tally DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # Test packet serialization - packet.cpp uses fmt
 ADD_EXECUTABLE(test_packet
     test_packet.cpp
@@ -126,8 +186,13 @@ ADD_EXECUTABLE(test_scenario_state_machines
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_create_character.cpp  # B888
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ui_trade.cpp  # UIGAP-live2
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_camp.cpp  # B1005
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_zone_connect_timeout.cpp  # B1072
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_zone_change_no_flash.cpp  # B1081
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_fall_damage.cpp  # B893
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ranged_single_shot.cpp  # B900
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_hotbar_lifecycle.cpp  # B1025-H5
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_hotbar_isolation_assign.cpp  # B1025-H5 peer
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_loading_name.cpp  # B1088
 )
 TARGET_INCLUDE_DIRECTORIES(test_scenario_state_machines PRIVATE ${CMAKE_SOURCE_DIR}/include)
 TARGET_LINK_LIBRARIES(test_scenario_state_machines GTest::gtest_main)
@@ -152,9 +217,14 @@ ADD_EXECUTABLE(test_scenario_ui_legs
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_create_character.cpp  # B888
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ui_trade.cpp  # UIGAP-live2
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_camp.cpp  # B1005
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_zone_connect_timeout.cpp  # B1072
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_forage_lands.cpp  # B894
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_fall_damage.cpp  # B893
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_zone_change_no_flash.cpp  # B1081
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ranged_single_shot.cpp  # B900
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_hotbar_lifecycle.cpp  # B1025-H5
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_hotbar_isolation_assign.cpp  # B1025-H5 peer
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_loading_name.cpp  # B1088
 )
 TARGET_INCLUDE_DIRECTORIES(test_scenario_ui_legs PRIVATE ${CMAKE_SOURCE_DIR}/include)
 TARGET_LINK_LIBRARIES(test_scenario_ui_legs GTest::gtest_main)
@@ -290,6 +360,15 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_data_paths DISCOVERY_TIMEOUT 120)
 
+# B1090: run-time resolution of the source-tree paths tests and tools read
+# (include/common/willeq_paths.h, header-only), plus the net that no compile
+# definition carries an absolute path again (cross-worktree ccache hits).
+ADD_EXECUTABLE(test_willeq_paths
+    test_willeq_paths.cpp
+)
+TARGET_LINK_LIBRARIES(test_willeq_paths GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_willeq_paths DISCOVERY_TIMEOUT 120)
+
 # T399 (board B235): the census as a test. A source reader -- it opens the
 # client sources at WILLEQ_REPO_ROOT and fails on any shipped-data literal that
 # does not go through eqt::ResolveDataPath(). No link deps on purpose: most of
@@ -329,17 +408,6 @@ GTEST_DISCOVER_TESTS(test_config_key_reachability DISCOVERY_TIMEOUT 120)
 # (include/client/core/memory_ledger.h). Links the ledger TU directly -- it
 # REPLACES malloc/free/operator new for this whole binary, gtest included --
 # and exercises the hooks through the public allocation entry points.
-# B946 (GitLab #264): the [gldriver] line -- which GL driver the process
-# really loaded (the mapped libgallium, the GL_RENDERER string, whether
-# libLLVM is mapped), emitted once at GL init. Links gl_driver_census.cpp
-# directly, like test_memory_ledger links its own ledger TU.
-ADD_EXECUTABLE(test_gl_driver_census
-    test_gl_driver_census.cpp
-    ${CMAKE_SOURCE_DIR}/src/client/core/gl_driver_census.cpp
-)
-TARGET_LINK_LIBRARIES(test_gl_driver_census GTest::gtest_main Threads::Threads)
-GTEST_DISCOVER_TESTS(test_gl_driver_census DISCOVERY_TIMEOUT 120)
-
 # B1039 (#359): the suite tests the allocator hooks (it asserts enabled()
 # first) and glibc's mallinfo2/malloc_info census, so it is built only where
 # the hooks exist: on macOS the ledger is its OFF shape (memory_ledger.h).
@@ -347,6 +415,7 @@ IF(NOT APPLE)
     ADD_EXECUTABLE(test_memory_ledger
         test_memory_ledger.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
     )
@@ -357,12 +426,58 @@ IF(NOT APPLE)
     # a build-order dependency on it.
     IF(TARGET willeq)
         TARGET_COMPILE_DEFINITIONS(test_memory_ledger PRIVATE
-            WILLEQ_BIN_PATH="$<TARGET_FILE:willeq>")
+            "WILLEQ_BIN_PATH=WILLEQ_BIN_PATH_OF(\"$<TARGET_FILE_NAME:willeq>\")")
         ADD_DEPENDENCIES(test_memory_ledger willeq)
     ENDIF()
     GTEST_DISCOVER_TESTS(test_memory_ledger DISCOVERY_TIMEOUT 120)
 ELSE()
     MESSAGE(STATUS "test_memory_ledger: not built on macOS (the ledger compiles to its OFF shape there)")
+ENDIF()
+
+# B946 (GitLab #264): the [gldriver] line -- which GL driver the process
+# really loaded (the mapped libgallium, the GL_RENDERER string, whether
+# libLLVM is mapped), emitted once at GL init. Links gl_driver_census.cpp
+# directly, like test_memory_ledger links its own ledger TU. B1016 (#337):
+# the last case spawns the REAL client (the same TEST-NET-1 + WILLEQ_BIN_PATH
+# device as B839) with --renderer gles2, so a run without the line is red --
+# the net the audit found missing (deleting glDriverInitLog() left every
+# unit test green).
+ADD_EXECUTABLE(test_gl_driver_census
+    test_gl_driver_census.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/gl_driver_census.cpp
+)
+TARGET_LINK_LIBRARIES(test_gl_driver_census GTest::gtest_main Threads::Threads)
+IF(TARGET willeq)
+    TARGET_COMPILE_DEFINITIONS(test_gl_driver_census PRIVATE
+        "WILLEQ_BIN_PATH=WILLEQ_BIN_PATH_OF(\"$<TARGET_FILE_NAME:willeq>\")"
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
+    ADD_DEPENDENCIES(test_gl_driver_census willeq)
+ENDIF()
+GTEST_DISCOVER_TESTS(test_gl_driver_census DISCOVERY_TIMEOUT 120)
+
+# B1016 (#337): the [gldriver] line's EMITTER, made observable. Prints
+# makeGlDriverLine(info) for a caller-supplied GlDriverInfo so
+# scripts/ci/test_gldriver_line_format.py can feed the emitter's OWN output
+# through the rig's Python parser (mesa_driver_field) -- the format
+# contract both sides share, one shared input.
+ADD_EXECUTABLE(gldriver_line_emit
+    gldriver_line_emit.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/gl_driver_census.cpp
+)
+TARGET_LINK_LIBRARIES(gldriver_line_emit Threads::Threads)
+# B1016 (#337), criterion (b): the format contract, driven end to end. The
+# python test runs the BUILT emitter (gldriver_line_emit) and feeds its OWN
+# stdout through the rig's Python parser (rendered_zone_summarize.mesa_driver_field)
+# -- the two sides share one input, so they cannot diverge silently. The
+# emitter is part of `all` in a graphics tree, so the build stage has it
+# before ctest runs (no add_test build-dependency keyword; the script
+# SKIPs 125 if the binary is somehow absent).
+IF(TARGET willeq)
+    ADD_TEST(NAME GldriverLineFormatContract
+        COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_gldriver_line_format.py)
+    SET_TESTS_PROPERTIES(GldriverLineFormatContract PROPERTIES
+        SKIP_RETURN_CODE 125
+        ENVIRONMENT "WILLEQ_BUILD_DIR=${CMAKE_BINARY_DIR}")
 ENDIF()
 
 # B955 (GitLab #273): the gpu_buffers ledger row -- GPU buffer memory outside
@@ -373,12 +488,13 @@ ENDIF()
 ADD_EXECUTABLE(test_gpu_buffer_census
     test_gpu_buffer_census.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
 )
 TARGET_LINK_LIBRARIES(test_gpu_buffer_census GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} Threads::Threads)
 TARGET_COMPILE_DEFINITIONS(test_gpu_buffer_census PRIVATE
-    B955_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/data/b955")
+    "B955_FIXTURE_DIR=WILLEQ_REPO_PATH(\"tests/data/b955\")")
 GTEST_DISCOVER_TESTS(test_gpu_buffer_census DISCOVERY_TIMEOUT 120)
 
 # B962 (GitLab #280): the GEM owner census shim's own bookkeeping
@@ -420,5 +536,5 @@ GTEST_DISCOVER_TESTS(test_draw_census_window DISCOVERY_TIMEOUT 120)
 # B986: the DRM client's Lima BO retention policy, before device creation.
 ADD_EXECUTABLE(test_lima_buffer_policy test_lima_buffer_policy.cpp)
 TARGET_LINK_LIBRARIES(test_lima_buffer_policy GTest::gtest_main)
-TARGET_COMPILE_DEFINITIONS(test_lima_buffer_policy PRIVATE B986_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+TARGET_COMPILE_DEFINITIONS(test_lima_buffer_policy PRIVATE "B986_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
 GTEST_DISCOVER_TESTS(test_lima_buffer_policy DISCOVERY_TIMEOUT 120)

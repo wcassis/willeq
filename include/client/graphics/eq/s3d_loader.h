@@ -93,7 +93,34 @@ struct TextureInfo {
         return TextureOrigin::archiveMember(sourceArchive, sourceMember ? *sourceMember : lowerCased(name));
     }
 
+    // B1083 (GitLab #403): the EQE1 archive STEM this texture came from --
+    // the source archive's basename without ".s3d" ("qeytoqrg_obj" for
+    // data/eqe1_client/qeytoqrg_obj.s3d) -- or "" when the bytes did not
+    // come from an archive. ConstrainedTextureCache::getOrLoad() takes it as
+    // sourceArchiveStem so the (archive, name) cache key and the
+    // source-first EQE1 resolution can find THIS texture's own pack instead
+    // of whichever pack the configured order opens first: qeytoqrg.s3d and
+    // qeytoqrg_obj.s3d both hold tree70 (opaque vs alpha) and the name-keyed
+    // cache used to collapse them. The stem is normalized the same way
+    // ConstrainedTextureCache::findCompressedEntry() normalizes a loader's
+    // path, so an exact match is the common case (every S3D loader passes a
+    // real path).
+    std::string archiveStem() const {
+        if (!sourceArchive) return {};
+        const std::string& p = *sourceArchive;
+        const size_t slash = p.find_last_of("/\\");
+        std::string base = (slash == std::string::npos) ? p : p.substr(slash + 1);
+        const size_t dot = base.rfind(".s3d");
+        if (dot != std::string::npos) base.resize(dot);
+        lowerCasedInPlace(base);
+        return base;
+    }
+
 private:
+    static void lowerCasedInPlace(std::string& s) {
+        for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+
     static std::string lowerCased(std::string s) {
         for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         return s;
@@ -303,6 +330,20 @@ struct S3DZone {
         size_t regionGeometryBytes = 0;   // WldLoader::releaseRegionGeometry()
     };
     PostLoadRelease releaseSourceAfterLoad(bool releaseTexturePixels);
+
+    // B928 (#246): the region-geometry half of the end-of-load release, done
+    // EARLY -- as soon as every region mesh, bounding box and occluder is
+    // built (the client's Step 4; the benchmark's Step 7c). The zone's
+    // per-region source geometry is a second copy of the vertices and
+    // triangles the meshes already hold; keeping it alive until Step 13
+    // carries ~20 MiB (iceclad) into the objects/entities build, which is
+    // where the whole-process RSS high-water is set. The zone draw path,
+    // PVS, collision and the frames read only the built meshes, the BSP
+    // tree and S3DZone::lights after this, so it is safe to drop here.
+    // releaseSourceAfterLoad() (Step 13) still runs: the texture pixels and
+    // character models are not freed by this, and the geometry half is a
+    // no-op the second time.
+    size_t releaseRegionGeometryEarly();
 };
 
 // Options for selective zone loading

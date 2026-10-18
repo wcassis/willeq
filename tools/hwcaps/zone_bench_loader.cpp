@@ -34,9 +34,13 @@
 #include "client/graphics/eqe1_texture_index.h"
 #include "client/graphics/load_mem_audit.h"
 #include "client/core/memory_ledger.h"
+#include "client/core/gl_driver_census.h"  // B1016: the gate's [gldriver] net
+#include "zone_bench_loadpoint_trace.h"   // B928: per-load-point [memledger-trace] rows
+#include "common/willeq_paths.h"  // WILLEQ_EQE1_INDEX_REAL_PATH resolves at run time (B1090)
 
 #ifdef EQT_HAS_GLES2
 extern bool gles2CreateStaticHWBuffer(void* driver, const void* meshBuffer);
+extern void gles2GetGlRenderer(void* driver, char* out, size_t outSize);  // B1016
 #endif
 
 // T284: repo-root fallback for the EQE1 name->pack index, set by CMake for
@@ -177,6 +181,32 @@ static irr::IrrlichtDevice* createDevice(const BenchConfig& config) {
         return nullptr;
     }
 
+    // B1016 (#337): the gate's [gldriver] net. The benchmark is the CI
+    // gate's only real GLES2 run (visual_gate.py), so it emits the same
+    // one-time [gldriver] line the client does at GL init -- the gate
+    // asserts the line is present AND parseable by the rig's summarizer
+    // (assert_gldriver_line), so a build that drops the emission or breaks
+    // the line format fails the gate job, not just a hand run. The
+    // renderer name comes from the driver's own GL_RENDERER (the same
+    // gles2GetGlRenderer the client uses); the nollvm prefix check fires
+    // in the same order as the client's (ERROR before the INFO line).
+#ifdef EQT_HAS_GLES2
+    {
+        char gldBuf[256];
+        gles2GetGlRenderer(device->getVideoDriver(), gldBuf, sizeof(gldBuf));
+        const eqt::memory::GlDriverInfo info =
+            eqt::memory::glDriverInfo(gldBuf);
+        const std::string prefixLib = eqt::memory::glPrefixExpected();
+        if (eqt::memory::mesaPrefixMissing(prefixLib)) {
+            fprintf(stderr,
+                    "[gldriver] nollvm Mesa prefix missing: %s does not "
+                    "exist; falling back to the system Mesa\n",
+                    prefixLib.c_str());
+        }
+        printf("%s\n", eqt::memory::makeGlDriverLine(info).c_str());
+    }
+#endif
+
     printf("  Driver: %s\n",
            device->getVideoDriver()->getName() ?
            irr::core::stringc(device->getVideoDriver()->getName()).c_str() : "unknown");
@@ -220,6 +250,9 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     // (renderer_zone_load.cpp loadZoneSequential) -- same [memledger] line,
     // same schema -- so scripts/ci/memory_cap_hunt.sh and the gate read both.
     eqt::memory::setCurrentZone(config.zoneName);
+    // B928: the per-load-point stack-trace rows (WILLEQ_LEDGER_TRACE=<category>);
+    // off by default -- the gate's invocation sets no such variable.
+    b928::loadPointTraceConfigure();
     // The owner rows (WILLEQ_LEDGER_OWNERS=<category>) are only printed on a
     // diagnostic run: recordPoint() arms them, and the gate never sets the
     // variable, so its invocation is unchanged.
@@ -228,6 +261,9 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         // B955: [memledger] + [memgpu] (the gpu_buffers row) with the driver's
         // tally published first (no driver yet at "startup").
         ZoneBench::printLedgerPoint(point, data->driver);
+        // B928: the per-point stack-trace rows for the traced category,
+        // printed right after its [memledger] line so the two stay adjacent.
+        b928::loadPointTracePrint(point);
         if (ownerRows) {
             eqt::memory::recordPoint(point);
             printf("%s\n", eqt::memory::startupToLogLines(point).c_str());
@@ -397,6 +433,9 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
 
     ZoneMeshBuilder builder(data->smgr, data->driver, data->device->getFileSystem());
     builder.setConstrainedTextureCache(data->textureCache.get());
+    // B976 (#294): match the client -- region geometry takes the depth
+    // tie-break. The object builder (objBuilder below) deliberately does not.
+    builder.setZoneGeometryDepthTie(true);
 
     if (data->zoneShader && data->zoneShader->isAvailable()) {
         builder.setShaderMaterialTypes(
@@ -479,6 +518,59 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
            std::chrono::duration<double, std::milli>(meshEnd - meshStart).count());
     sampleStep("bench_07_meshes");
     ledgerPoint("mesh_build_textures");
+
+    // ── Step 7c: Extract occluder triangles (B928 #246) ──
+    // The client extracts its region occluders in Step 4, BEFORE it builds
+    // the objects (B909's shared SelectRegionOccluders, the same selection
+    // the benchmark used to run in its step 10). The occluder pass is the
+    // last build consumer of the per-region SOURCE geometry, and the
+    // client releases that source geometry as its meshes are built, so the
+    // benchmark does the same here: extract the occluders, then drop the
+    // source copy, BEFORE the objects build. The frames, the PVS and the
+    // collision read only the meshes, the BSP tree and the lights from
+    // here on, so nothing downstream needs the geometry again.
+    {
+        eqt::memory::MemoryScope occScope(eqt::memory::Category::Spatial);
+        eqt::memory::StartupScope occOwner("sp.occ_culler");
+        OcclusionCullerConfig occConfig;
+        occConfig.width = 64;
+        occConfig.height = 32;
+        occConfig.maxOccluderRegions = (config.occluderBudget > 0)
+            ? config.occluderBudget
+            : constrainedConfig.occlusionMaxOccluderRegions;
+        occConfig.minOccluderArea = 20.0f;
+        occConfig.maxTrianglesPerRegion = 12;
+        data->occlusionCuller = std::make_unique<SoftwareOcclusionCuller>(occConfig);
+        eqt::memory::detail::t_sublabel =
+            eqt::memory::startupSublabelIndex("sp.occluder_sets");
+        int totalOccluders = 0;
+        int regionsWithOccluders = 0;
+        for (size_t i = 0; i < totalRegions; ++i) {
+            auto geom = wldLoader->getGeometryForRegion(i);
+            if (!geom || geom->vertices.empty() || geom->triangles.empty()) continue;
+            const std::vector<OccluderTriangle> occluders = SelectRegionOccluders(
+                *geom, occConfig.minOccluderArea, occConfig.maxTrianglesPerRegion);
+            if (!occluders.empty()) {
+                totalOccluders += occluders.size();
+                regionsWithOccluders++;
+                data->occlusionCuller->setRegionOccluders(i, occluders);
+            }
+        }
+        data->occlusionCuller->finishOccluders();
+        printf("  Occlusion culler: %d occluder triangles from %d regions (64x32 depth buffer)\n",
+               totalOccluders, regionsWithOccluders);
+
+        // The source geometry is dead from here: drop it, as the client
+        // does at its Step 4, so it is not carried into the objects and
+        // entities build where the whole-process RSS high-water is set.
+        eqt::memory::detail::t_sublabel =
+            eqt::memory::startupSublabelIndex("zm.early_release");
+        const size_t early = data->zone->releaseRegionGeometryEarly();
+        if (early) {
+            printf("  Released %zu bytes of per-region source geometry at mesh build (B928 #246)\n",
+                   early);
+        }
+    }
 
     // ── Step 7b: Load and build zone objects ──
     if (config.loadObjects) {
@@ -695,54 +787,10 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     data->frustumCuller = std::make_unique<FrustumCuller>();
     data->frustumCuller->setEnabled(true);
 
-    // ── Step 10: Extract occluder triangles for software occlusion culling ──
-    {
-        spatialOwnerLabel("sp.occ_culler");
-        OcclusionCullerConfig occConfig;
-        occConfig.width = 64;
-        occConfig.height = 32;
-        // P42 (P39 finding): the default used to be a hardcoded 16 that never
-        // consulted the ConstrainedRendererConfig this loader already builds
-        // (step 3, constrainedConfig — fromPreset(OrangePi), P14-blessed 256).
-        // That mismatch is why P38's "shipped orangepi preset" Pi measurements
-        // landed at ~35.3ms p95 (effectively budget-16 behavior) despite 256
-        // being the value the real client ships. Explicit --occluder-budget
-        // still wins; the default now resolves from the config the loader
-        // already has in scope instead of drifting from it silently.
-        occConfig.maxOccluderRegions = (config.occluderBudget > 0)
-            ? config.occluderBudget
-            : constrainedConfig.occlusionMaxOccluderRegions;
-        LOG_INFO(MOD_GRAPHICS, "Occluder budget: {} ({})", occConfig.maxOccluderRegions,
-                 (config.occluderBudget > 0) ? "explicit --occluder-budget"
-                                              : "resolved from ConstrainedRendererConfig");
-        occConfig.minOccluderArea = 20.0f;
-        occConfig.maxTrianglesPerRegion = 12;
-        data->occlusionCuller = std::make_unique<SoftwareOcclusionCuller>(occConfig);
-        spatialOwnerLabel("sp.occluder_sets");
-
-        int totalOccluders = 0;
-        int regionsWithOccluders = 0;
-
-        for (size_t i = 0; i < totalRegions; ++i) {
-            auto geom = wldLoader->getGeometryForRegion(i);
-            if (!geom || geom->vertices.empty() || geom->triangles.empty()) continue;
-
-            // Extract large triangles as occluders -- the client's own
-            // selection (region_occluders.h), so the gate measures what ships.
-            const std::vector<OccluderTriangle> occluders = SelectRegionOccluders(
-                *geom, occConfig.minOccluderArea, occConfig.maxTrianglesPerRegion);
-            if (!occluders.empty()) {
-                totalOccluders += occluders.size();
-                regionsWithOccluders++;
-                data->occlusionCuller->setRegionOccluders(i, occluders);
-            }
-        }
-        data->occlusionCuller->finishOccluders();
-
-        printf("  Occlusion culler: %d occluder triangles from %d regions (64x32 depth buffer)\n",
-               totalOccluders, regionsWithOccluders);
-    }
-
+    // ── Step 10: (B928 #246) the occluder triangles are extracted in
+    // Step 7c, before the objects build, mirroring the client's Step 4; the
+    // per-region SOURCE geometry is dropped there as well, so nothing is
+    // left to do here but mark the point the ledger samples.
     ledgerPoint("spatial_bsp");
     // ── Step 11: Load entity models ──
     if (config.entityCount > 0) {

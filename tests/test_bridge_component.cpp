@@ -18,6 +18,7 @@
 #include "client/bridge/bridge_component.h"
 #include "client/inspect_answer.h"
 #include "client/bridge/game_state_bridge.h"
+#include "client/hotbar/hotbar_model.h"
 #include "zone_stream_test_utils.h"
 
 using namespace zonetest;
@@ -136,6 +137,93 @@ TEST_F(BridgeComponentTest, TheBridgePumpsMovedAndAreReachedThroughTheAccessor) 
     eq.Bridge().ProcessBridgeIntents();
     eq.Bridge().ProcessBridgeEvents();
     SUCCEED();
+}
+
+// B1025-H2: the stock window's page buttons push HotbarPageChangedIntent;
+// the pump routes it to the model's setCurrentPage(), which clamps and
+// rejects out-of-range pages.
+TEST_F(BridgeComponentTest, HotbarPageChangedIntentMovesTheModelPage) {
+    ASSERT_NE(eq.GetHotbarModel(), nullptr);
+    EXPECT_EQ(eq.GetHotbarModel()->currentPage(), 0);
+
+    bridge.pushIntent(eqt::events::HotbarPageChangedIntent{4});
+    eq.Bridge().ProcessBridgeIntents();
+    EXPECT_EQ(eq.GetHotbarModel()->currentPage(), 4);
+
+    // Out-of-range pages are the model's to refuse, not the intent's.
+    bridge.pushIntent(eqt::events::HotbarPageChangedIntent{77});
+    eq.Bridge().ProcessBridgeIntents();
+    EXPECT_EQ(eq.GetHotbarModel()->currentPage(), 4);
+}
+
+// B1025-H3 (GitLab #345): a placed hot button (the hold gesture's, or
+// /hotbutton's) assigns a slot -- the first PRODUCTION caller of
+// HotbarModel::assignSlot(). The intent already carries the destination and
+// the button in the model's own numbering.
+TEST_F(BridgeComponentTest, HotbarAssignIntentAssignsTheModelSlot) {
+    auto* model = eq.GetHotbarModel();
+    ASSERT_NE(model, nullptr);
+
+    bridge.pushIntent(eqt::events::HotbarAssignIntent{
+        2, 5, eqt::HotbarSlotType::Emote, 0, "/say hi", 0});
+    eq.Bridge().ProcessBridgeIntents();
+
+    const auto slot = model->getSlot({2, 5});
+    EXPECT_EQ(slot.type, eqt::HotbarSlotType::Emote);
+    EXPECT_EQ(slot.id, 0u);
+    EXPECT_EQ(slot.emoteText, "/say hi");
+    EXPECT_EQ(slot.name, "/say hi");  // an Emote is named by its text
+}
+
+// B1025-H3 (GitLab #345): the pickup half -- a hold on an occupied slot
+// cleared its source (H-O "hotbar-pickup": "source INI key removed"). The
+// intent carries only the address; the clear is the model's.
+TEST_F(BridgeComponentTest, HotbarClearIntentClearsTheModelSlot) {
+    auto* model = eq.GetHotbarModel();
+    ASSERT_NE(model, nullptr);
+    model->assignSlot({1, 3}, eqt::HotbarSlotType::Emote, 0, "/wave", 0);
+    ASSERT_EQ(model->getSlot({1, 3}).type, eqt::HotbarSlotType::Emote);
+    bridge.drainEvents();  // the assign's publish is the test's own, not the clear's
+
+    bridge.pushIntent(eqt::events::HotbarClearIntent{1, 3});
+    eq.Bridge().ProcessBridgeIntents();
+    bridge.drainEvents();
+
+    EXPECT_EQ(model->getSlot({1, 3}).type, eqt::HotbarSlotType::Empty);
+    // The neighbour is untouched: the clear is per-address, not per-page.
+    model->assignSlot({1, 4}, eqt::HotbarSlotType::Emote, 0, "/other", 0);
+    bridge.drainEvents();
+    bridge.pushIntent(eqt::events::HotbarClearIntent{1, 3});
+    eq.Bridge().ProcessBridgeIntents();
+    bridge.drainEvents();
+    EXPECT_EQ(model->getSlot({1, 4}).type, eqt::HotbarSlotType::Emote);
+}
+
+// B1025-H3 (GitLab #345): /hotbutton's publisher -- the game thread's one
+// hot-button producer. The HotbarAssignPending event lands on the cursor on
+// the render thread (IrrlichtBridge's arm); the model never knows the button
+// exists until it is placed (HotbarAssignIntent).
+TEST_F(BridgeComponentTest, PublishHotbarAssignPendingPushesTheEvent) {
+    bridge.drainEvents();
+    EXPECT_TRUE(eq.Bridge().PublishHotbarAssignPending(
+        eqt::HotbarSlotType::Emote, 0, "/say hi", 0));
+
+    auto events = bridge.drainEvents();
+    ASSERT_EQ(events.size(), 1u);
+    ASSERT_EQ(events[0].type, eqt::state::GameEventType::HotbarAssignPending);
+    const auto& data =
+        std::get<eqt::state::HotbarAssignPendingData>(events[0].data);
+    EXPECT_EQ(data.type, eqt::HotbarSlotType::Emote);
+    EXPECT_EQ(data.text, "/say hi");
+}
+
+// The headless refusal: no bridge, no event, a false the caller reports with
+// eqstr 13283.
+TEST_F(BridgeComponentTest, PublishHotbarAssignPendingRefusesHeadless) {
+    eq.setBridge(nullptr);
+    EXPECT_FALSE(eq.Bridge().PublishHotbarAssignPending(
+        eqt::HotbarSlotType::Emote, 0, "/say hi", 0));
+    eq.setBridge(&bridge);
 }
 
 }  // namespace

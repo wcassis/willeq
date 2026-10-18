@@ -74,6 +74,18 @@ struct CharSelectLayout {
     static Rect charButtonRect(int sw, int sh, int n) {
         return child(sw, sh, 5, kCharButtonY0 + kCharButtonStep * n, 210, 32);
     }
+    /**
+     * The 3D model area -- where B888-CC2's preview stands the character up.
+     * The select window is the left 252px; the model is the screen's CENTRE,
+     * right of the window (the oracle floats "Testchar [60 Warrior]" over it
+     * at centre x ~530 at 1024x768, and the 3D figure is centre-screen). A
+     * square centred horizontally, its top at 1/4 height -- the standing
+     * character's framing. Scaled from 768.
+     */
+    static Rect modelAreaRect(int sw, int sh) {
+        const int side = sh * 3 / 4;
+        return Rect((sw - side) / 2, (sh - side) / 3, (sw + side) / 2, (sh + side) / 3);
+    }
     static Rect quitRect(int sw, int sh) { return child(sw, sh, 5, 429, 100, 32); }
     static Rect enterWorldRect(int sw, int sh) { return child(sw, sh, 117, 429, 100, 32); }
 

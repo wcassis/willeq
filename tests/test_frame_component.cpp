@@ -22,6 +22,7 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/frame/frame_component.h"
 #include "client/bridge/game_state_bridge.h"
+#include "client/bridge/irrlicht_bridge.h"
 #include "client/state/event_bus.h"
 
 using namespace EQT::Graphics;
@@ -355,6 +356,32 @@ TEST_F(FrameComponentTest, T368_TheThreeTogglesDoNotCloseTheCentrePopups) {
     renderer.Frame().processPlayerInput(One(RendererAction::TogglePet));
     renderer.Frame().processPlayerInput(One(RendererAction::ToggleBuffWindow));
     EXPECT_TRUE(renderer.Frame().skillsPopupState_.isOpen);
+}
+
+// B1075 (#395): the co-open table replaced "centre popups are mutually
+// exclusive" in the PRODUCTION openers. inventory+merchant and inventory+loot
+// are required sets, so the bridge arms leave the inventory open; the skills
+// window shares no set with it, so its toggle still closes it.
+TEST_F(FrameComponentTest, B1075_RequiredCoOpenSetsStayOpenThroughTheBridgeArms) {
+    eqt::bridge::IrrlichtBridge bridge;
+    bridge.setRenderer(&renderer);
+    auto& frame = renderer.Frame();
+
+    frame.inventoryState_.activePopup = PopupType::Inventory;
+    eqt::state::WindowOpenedData vendor{1234, "Merchant_Bob", 1.0f};
+    bridge.applyEvent(eqt::state::GameEvent(eqt::state::GameEventType::VendorWindowOpened, vendor));
+    EXPECT_TRUE(frame.merchantState_.isOpen);
+    EXPECT_TRUE(renderer.isInventoryOpen()) << "hailing a merchant closed the inventory";
+
+    eqt::state::LootWindowOpenedData corpse{77, "a_rat's_corpse"};
+    frame.spellbookState_.isOpen = true;
+    bridge.applyEvent(eqt::state::GameEvent(eqt::state::GameEventType::LootWindowOpened, corpse));
+    EXPECT_TRUE(renderer.isInventoryOpen()) << "opening a corpse closed the inventory";
+    EXPECT_FALSE(frame.spellbookState_.isOpen) << "spellbook+loot is in no set: still closes";
+
+    frame.processPlayerInput(One(RendererAction::ToggleSkills));
+    EXPECT_TRUE(frame.skillsPopupState_.isOpen);
+    EXPECT_FALSE(renderer.isInventoryOpen()) << "skills+inventory is in no set: still one at a time";
 }
 
 }  // namespace

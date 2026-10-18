@@ -730,6 +730,12 @@ bool Application::initRendererAndGraphics(const ApplicationConfig& config) {
                 if (eventReceiver && m_inputBridge) {
                     m_graphicsInputHandler = std::make_unique<input::GraphicsInputHandler>(eventReceiver);
                     m_inputBridge->setInputHandler(m_graphicsInputHandler.get());
+                    // B1063 (#383): the F12 hotkey's InputAction::Screenshot
+                    // arrives on the game thread through this handler; the
+                    // event bridge is how it reaches the renderer command
+                    // the typed /screenshot runs (RendererCommand event,
+                    // drained by the render thread's forwardStagedEvents).
+                    m_inputBridge->setBridge(m_bridge);
                     LOG_INFO(MOD_GRAPHICS, "Graphics input handler connected to bridge");
 
                     // T319: setActionCallback() had NO production caller, so
@@ -962,7 +968,10 @@ void Application::gameThreadLoop() {
                 // other T43 fixes -- gate removed, matches the unconditional
                 // eq.h declaration.
                 if (m_eqClient) {
-                    m_eqClient->Bridge().LoadHotbarConfig();
+                    if (m_eqClient->Bridge().LoadHotbarConfig() ==
+                        eqt::HotbarLoadResult::Error) {
+                        LOG_ERROR(MOD_CONFIG, "Hotbar assignments remain at defaults after load failure");
+                    }
                     // T171: same config file, same moment. It must be loaded
                     // before anyone can inspect us, and being in the zone is
                     // the first point at which that is possible.

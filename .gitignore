@@ -63,6 +63,13 @@ tests/*_tests.cmake
 # records what they were blessed under; scripts/ci/visual_gate.sh compares against them)
 !tests/goldens/*.png
 
+# B1058/B1059: the oracle driver's template library and glyph atlas are data the
+# driver reads (manifest.tsv / atlas.tsv pin each PNG's sha256). B1058's 40
+# templates were never committed under the *.png rule; B1059 restores them,
+# regenerated from manifest.tsv (source + rect), every sha256 matching.
+!scripts/eqemu/oracle/templates/*.png
+!scripts/eqemu/oracle/glyphs/*/*.png
+
 # B893 (#209): the raw oracle wirecaps behind the [MEASURED] arc apex
 # (eqemu zone log; the review rule is a [measured] claim carries its capture)
 !refactor/B893/evidence/*.log

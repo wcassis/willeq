@@ -30,7 +30,7 @@
 #include <link.h>    // T504: dl_iterate_phdr, for the gpu_driver classifier
 #include <execinfo.h> // T504: backtrace(), for the WILLEQ_LEDGER_TRACE instrument
 #include <dlfcn.h>    // T504: dladdr(), module-relative frame addresses
-#include <malloc.h>
+#include "client/core/malloc_compat.h"  // mallinfo2 (+ shim for glibc < 2.33, B1056)
 #include <unistd.h>
 #endif
 #if defined(__APPLE__)
@@ -337,6 +337,7 @@ Snapshot snapshot(const std::string& point, const std::string& zone) {
     Snapshot s;
     s.point = point;
     s.ledgerEnabled = enabled();
+    s.renderedFrames = renderedFrames();
     {
         std::lock_guard<std::mutex> lock(g_zoneMutex);
         s.zone = zone.empty() ? g_zone : zone;
@@ -473,6 +474,8 @@ std::string toLogLine(const Snapshot& s) {
     appendKV(out, "owned_phys_footprint", s.ownedPhysFootprintBytes);
 #endif
     appendKV(out, "allocs", s.allocCount);
+    // B924: frames rendered since start -- the growth-vs-frames correlation.
+    appendKV(out, "frames", s.renderedFrames);
     for (size_t i = 0; i < kCategoryCount; ++i) {
         out += ' ';
         out += kCategoryNames[i];
@@ -1119,23 +1122,30 @@ bool pollSteadyState() {
     }();
     static int idleTaken = 0;
     static double idleSeconds = 60.0;
+    // B924 (#243): the full smaps census at every idle point, off by default
+    // (idleMemmapEnabled(), memory_ledger_b924.cpp).
+    const bool idleMemmap = idleMemmapEnabled();
     if (!g_steadyDone.load(std::memory_order_relaxed)) {
         g_steadyDone.store(true, std::memory_order_relaxed);
         recordPoint("steady_60s");
         // B841: the second half of the delta. T496/T500 measured 17.4 MB of
         // ledger frees between ready and here with a 0.09 MB RssAnon fall;
         // this census says whether those frees landed in the top pad
-        // (trimmable), an interior free bin (fragmentation), or mmap
+        // (trimmable), an interior free bin (fragmentation) or mmap
         // (already returned).
         recordArena("steady_60s");
         idleTaken = 0;
         idleSeconds = 60.0;
+        // B924: the hold run needs the mapping census at ready+60 s too, not
+        // only at the later idle points.
+        if (idleMemmap) recordMappings("steady_60s", 0);
     } else {
         ++idleTaken;
         idleSeconds += idleEvery;
         const std::string name = "idle_" + std::to_string(static_cast<long>(idleSeconds));
         recordPoint(name);
         recordArena(name);
+        if (idleMemmap) recordMappings(name, 0);
     }
     if (idleEvery > 0.0 && idleTaken < idleCount) {
         std::lock_guard<std::mutex> lock(g_steadyMutex);

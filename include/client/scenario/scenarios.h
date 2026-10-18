@@ -141,6 +141,18 @@ std::unique_ptr<IScenario> MakeCampToCharselectScenario(const ScenarioOptions& o
  *  logout reply (exit 0 through IScenario::OnClientStopped). */
 std::unique_ptr<IScenario> MakeCampDesktopScenario(const ScenarioOptions& options);
 
+// B1072 (#392): the zone-in bound. src/client/scenario/scenario_zone_connect_timeout.cpp.
+
+/** /camp, a dead zone port for two connects, Enter World: back at character
+ *  select after the attempt + one retry, then Enter World again and zone in. */
+std::unique_ptr<IScenario> MakeZoneConnectTimeoutScenario(const ScenarioOptions& options);
+
+// B1081 (#401): the zone-change flash. src/client/scenario/scenario_zone_change_no_flash.cpp.
+
+/** The screen is up for the fresh login; a GM /gmzone to zoneChangeTargetZone
+ *  must not bring it back up -- Pass when Activations() stays at 1. */
+std::unique_ptr<IScenario> MakeZoneChangeNoFlashScenario(const ScenarioOptions& options);
+
 // B893: fall damage. src/client/scenario/scenario_fall_damage.cpp.
 
 /** A synthetic drop through the client's own fall-damage sender; Pass when
@@ -152,6 +164,26 @@ std::unique_ptr<IScenario> MakeFallDamageScenario(const ScenarioOptions& options
 // (a combat line naming the target); the lane's post-check asserts the DB
 // ammo count dropped by one. See scenario_ranged_single_shot.cpp.
 std::unique_ptr<IScenario> MakeRangedSingleShotScenario(const ScenarioOptions& options);
+
+// B1025-H5 (#345): the hotbar lifecycle, live. src/client/scenario/
+// scenario_hotbar_lifecycle.cpp. Four slots (spell/item/skill/social)
+// assigned and activated by BOTH the click and the keyboard route, then
+// /camp + relog: the three typed slots must be restored from the
+// per-character INI (the emote slot is the documented free-text gap).
+std::unique_ptr<IScenario> MakeHotbarLifecycleScenario(const ScenarioOptions& options);
+
+// B1025-H5 (#345): hotbar_lifecycle's PEER -- acceptance C. The second
+// character on the account (Testbuddy) zones in and assigns ONE skill slot
+// through the same user path; the lane's post-check reads both per-character
+// INIs to prove the main character's three typed slots did not leak into the
+// peer's file (and vice versa). The verdict lives in the post-check, not here.
+std::unique_ptr<IScenario> MakeHotbarIsolationAssignScenario(const ScenarioOptions& options);
+
+// B1088 (#408): the loading screen's "Entering <zone long name>..." line,
+// live. Zone in (the era table's first line), then a GM zone request to
+// expectZoneChangeId (the second refresh); the post-check asserts both INFO
+// lines. See scenario_loading_name.cpp.
+std::unique_ptr<IScenario> MakeLoadingNameScenario(const ScenarioOptions& options);
 
 }  // namespace scenario
 }  // namespace eqt

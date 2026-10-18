@@ -70,10 +70,11 @@
 //                          tests/test_zoning_graphics_integration.cpp:729
 //   getCameraModeString -- tests/test_irrlicht_camera_command.cpp:68,106
 // cycleCameraMode() is NOT among them: L05 measured zero callers on that
-// class. GraphicalMode calls it through std::unique_ptr<output::IOutputRenderer>
-// and reaches output_renderer.h's empty default body -- IrrlichtRenderer has NO
-// base class (L03 correction 13). Its one real caller is
-// renderer_slash_commands.cpp, in the renderer, which reaches the component.
+// class. Its live callers are both in the renderer, on the component: the
+// F9 arm (FrameComponent::processCommonInput, renderer_frame_input.cpp) and
+// /camera cycle (renderer_slash_commands.cpp) -- T461. (The output-layer
+// route that used to reach IOutputRenderer's empty default body through a
+// GraphicalMode arm is gone -- B534 deleted the whole route.)
 // getCameraTransform() was gone from that header for the same reason and T334
 // (B045) deleted it outright: the audio listener it was written for has had a
 // producer since D20c2, and that producer uses the PLAYER position by design
@@ -202,9 +203,9 @@ public:
 	// and two tests call them on an IrrlichtRenderer receiver and must not learn
 	// a component exists (the K11 rule). Each forwarder names its caller in
 	// irrlicht_renderer.h. cycleCameraMode() is NOT one of them: L05 measured
-	// zero callers on an IrrlichtRenderer receiver -- graphical_mode.cpp reaches
-	// IOutputRenderer's empty default body, because IrrlichtRenderer has no base
-	// class (L03 correction 13, L04 correction 2).
+	// zero callers on an IrrlichtRenderer receiver (B534 removed the output-
+	// layer route that reached IOutputRenderer's empty default body; the F9
+	// cycle and /camera cycle reach the component directly -- T461, T464).
 	void setPlayerSpawnId(uint16_t spawnId);
 	void setPlayerRace(uint16_t raceId);
 	void setVisionType(VisionType vision);

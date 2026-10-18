@@ -143,6 +143,25 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
                 int vol = std::atoi(argv[++i]);
                 config.audioEffectsVolume = std::clamp(vol, 0, 100) / 100.0f;
             }
+        } else if (arg == "--audio-rate") {
+            // B1069 (#389): playback DEVICE rate in Hz; 0 = backend native.
+            if (i + 1 < argc) {
+                long hz = std::atol(argv[++i]);
+                config.audioDeviceSampleRate = static_cast<uint32_t>(std::clamp(hz, 0L, 384000L));
+                config.audioDeviceSampleRateFromCli = true;
+            }
+        } else if (arg == "--audio-format") {
+            // B1069: playback DEVICE sample format (s16|f32|s24|s32|native).
+            if (i + 1 < argc) {
+                const std::string fmt = argv[++i];
+                if (EQT::Audio::parseDeviceFormat(fmt, config.audioDeviceFormat)) {
+                    config.audioDeviceFormatFromCli = true;
+                } else {
+                    std::cerr << "--audio-format: unknown format '" << fmt
+                              << "' (s16, f32, s24, s32, native); keeping "
+                              << EQT::Audio::deviceFormatName(config.audioDeviceFormat) << "\n";
+                }
+            }
         } else if (arg == "--soundfont") {
             if (i + 1 < argc) {
                 config.audioSoundfont = argv[++i];
@@ -240,6 +259,10 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
                 config.scenarioSpellId =
                     static_cast<unsigned int>(std::atoi(argv[++i]));
             }
+        } else if (arg == "--scenario-silent-zone") {
+            // B1079 (#399): zone_connect_timeout's "zone answered then went
+            // silent" arm (the 2026-10-15 XU4 shape). Boolean, no value.
+            config.scenarioSilentZone = true;
         } else if (arg == "--scenario-expect-material") {
             if (i + 1 < argc) {
                 config.scenarioExpectMaterial = std::atoll(argv[++i]);
@@ -267,6 +290,19 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 config.scenarioFizzleSpellId =
                     static_cast<unsigned int>(std::atoi(argv[++i]));
+            }
+        } else if (arg == "--scenario-zone") {
+            if (i + 1 < argc) {
+                config.scenarioZoneChangeTargetZone = std::atoll(argv[++i]);
+            }
+        } else if (arg == "--scenario-zone-id") {
+            if (i + 1 < argc) {
+                config.scenarioZoneId =
+                    static_cast<unsigned int>(std::atoi(argv[++i]));
+            }
+        } else if (arg == "--scenario-zone-name") {
+            if (i + 1 < argc) {
+                config.scenarioZoneName = argv[++i];
             }
         } else if (arg == "--script") {
             if (i + 1 < argc) {
@@ -318,7 +354,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  -np, --no-pathfinding    Disable navmesh pathfinding\n";
             std::cout << "  --record-session <file>  Record decoded session packets to <file> for later replay\n";
             std::cout << "  --script <file>          Run a scripted command tour ('wait N' + slash-command lines)\n";
-            std::cout << "  --create-character \"Name,Race,Gender,Class,Deity,City[,STR=n,...]\"\n"
+            std::cout << "  --create-character \"Name,Race,Gender,Class,Deity,City[,STR=n,...][,FACE=n,HAIR=n,HAIRCOLOR=n,EYES=n,BEARD=n,BEARDCOLOR=n]\"\n"
                          "                           Create the character at character select, then enter world with it (home city)\n";
             std::cout << "  --delete-character <Name>  Delete the character at character select, then exit\n";
             std::cout << "  --list-characters        Print the account's characters at character select, then exit\n";
@@ -328,12 +364,14 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --timeout <s>            --scenario: overall wall-clock budget (default 300)\n";
             std::cout << "  --scenario-hold <s>      --scenario two_client_survive: how long the pair must hold (default 300)\n";
             std::cout << "  --scenario-spell <id>    --scenario cast_lands: beneficial spell to memorise and cast (default 288, Minor Shielding)\n";
+            std::cout << "  --scenario-silent-zone   --scenario zone_connect_timeout: the 'zone answered then went silent' arm (B1079)\n";
             std::cout << "  --scenario-expect-material <n>  --scenario equip_actor_return: assert our OWN primary material is <n> (T498)\n";
             std::cout << "  --scenario-cast-target <name>   --scenario cast_interrupt*: the character to target (B630 two-client lane)\n";
             std::cout << "  --scenario-success-spell <id>   --scenario cast_interrupt_chain: D1 nuke to let finish (default 372)\n";
             std::cout << "  --scenario-recast-stop-spell <id>  D2 recast-stop spell (default 293 Haze)\n";
             std::cout << "  --scenario-buff-notake-spell <id>  D3: the caster's own beneficial buff (default 293 Haze)\n";
             std::cout << "  --scenario-fizzle-spell <id>    --scenario cast_fizzle: spell the non-GM caster rolls to fizzle (0=refuse)\n";
+            std::cout << "  --scenario-zone <id>            --scenario zone_change_no_flash: the /gmzone target zone (0=refuse)\n";
             std::cout << "  --fpcam <name=value,...>  Override first-person camera tunables at startup (repeatable; same names as /fpcam)\n";
             std::cout << "  --dump-frames-dir <dir>  Video-capture evidence tool: write numbered PNG frames to <dir> (needs --dump-every)\n";
             std::cout << "  --dump-every <N>         Video-capture: dump every Nth rendered frame\n";
@@ -368,16 +406,23 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --music-volume <0-100>   Music volume (default: 50)\n";
             std::cout << "  --effects-volume <0-100> Sound effects volume (default: 100)\n";
             std::cout << "  --soundfont <path>       Path to SoundFont for MIDI playback\n";
+            std::cout << "  --audio-rate <hz>        Audio device sample rate (default: 48000, 0 = native)\n";
+            std::cout << "  --audio-format <fmt>     Audio device format: s16 (default), f32, s24, s32, native\n";
 #endif
             std::cout << "  --headless               Run in headless interactive mode\n";
             std::cout << "  --automated              Run in automated/bot mode\n";
             std::cout << "  --log-level=LEVEL        Set log level (NONE, FATAL, ERROR, WARN, INFO, DEBUG, TRACE)\n";
+            std::cout << "                           ('--log-level LEVEL' is accepted too, B1079); an unparseable level is a loud ERROR\n";
             std::cout << "                           If both --log-level= and -d <n> are given, --log-level=\n";
             std::cout << "                           wins (a one-line notice is logged when they disagree)\n";
+            std::cout << "  --log-file=PATH          Also write the log to PATH, line-flushed (B1079; env WILLEQ_LOG_FILE)\n";
+            std::cout << "                           -- the play-box log: survives a kill mid-zone-in, makes the play.sh tee unnecessary\n";
             std::cout << "  --load-mem-audit         Log [LOAD-MEM-AUDIT] memory lines after each zone-load step and the\n";
             std::cout << "                           [memledger] lifecycle points (needs --log-level=INFO or higher)\n";
             std::cout << "                           Env: WILLEQ_BASELINE=1 (original-client feature parity), WILLEQ_LEDGER_TRACE=<category>[:<point>],\n";
             std::cout << "                           WILLEQ_LEDGER_IDLE_EVERY=<s>, WILLEQ_LEDGER_OWNERS=<category>\n";
+            std::cout << "                           WILLEQ_FPS_CAP=<fps> (B924: pace the render loop, measurement only),\n";
+            std::cout << "                           WILLEQ_IDLE_MEMMAP=1 (B924: the smaps census at every idle point)\n";
             std::cout << "  --log-module=MOD:LEVEL   Set per-module log level; comma-separated list (e.g., NET:DEBUG,GRAPHICS:TRACE)\n";
             std::cout << "                           Unparseable level names are rejected with an error (never mapped silently)\n";
             std::cout << "                           Modules: NET, NET_PACKET, LOGIN, WORLD, ZONE, ENTITY,\n";
@@ -528,13 +573,42 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
                 }
                 if (audio_config.isMember("vendor_music")) {
                     config.audioVendorMusic = audio_config["vendor_music"].asString();
-                    LOG_INFO(MOD_AUDIO, "Vendor music from config: {}", config.audioVendorMusic);
+                    // B1018 (GitLab #339): the "parsed but ignored" WARN lives
+                    // HERE -- this arm runs only when a config actually named
+                    // the key. B344 put it in SetVendorMusic()'s body, which
+                    // Application::initEverQuestClient() calls unconditionally
+                    // with the default "gl.xmi", so it fired on every
+                    // WITH_AUDIO run. No config sets the key, hence nobody
+                    // noticed. Pinned by test_vendor_music_config_warn (0
+                    // absent / exactly 1 present).
+                    LOG_WARN(MOD_AUDIO, "audio.vendor_music is parsed but ignored: {}",
+                             config.audioVendorMusic);
                 }
                 // K15 (board B037)
                 if (audio_config.isMember("use_3d")) {
                     config.audioUse3D = audio_config["use_3d"].asBool();
                     LOG_INFO(MOD_AUDIO, "3D positional audio {} from config",
                              config.audioUse3D ? "enabled" : "disabled");
+                }
+                // B1069 (#389): the playback DEVICE rate. --audio-rate wins.
+                if (audio_config.isMember("device_sample_rate") &&
+                    !config.audioDeviceSampleRateFromCli) {
+                    const Json::Int64 hz = audio_config["device_sample_rate"].asInt64();
+                    config.audioDeviceSampleRate = static_cast<uint32_t>(
+                        std::clamp<Json::Int64>(hz, 0, 384000));
+                    LOG_INFO(MOD_AUDIO, "Audio device sample rate from config: {}Hz",
+                             config.audioDeviceSampleRate);
+                }
+                // B1069: the playback DEVICE format. --audio-format wins.
+                if (audio_config.isMember("device_format") && !config.audioDeviceFormatFromCli) {
+                    const std::string fmt = audio_config["device_format"].asString();
+                    if (EQT::Audio::parseDeviceFormat(fmt, config.audioDeviceFormat)) {
+                        LOG_INFO(MOD_AUDIO, "Audio device format from config: {}", fmt);
+                    } else {
+                        LOG_WARN(MOD_AUDIO,
+                                 "audio.device_format '{}' unknown (s16, f32, s24, s32, native); keeping {}",
+                                 fmt, EQT::Audio::deviceFormatName(config.audioDeviceFormat));
+                    }
                 }
             }
 #endif

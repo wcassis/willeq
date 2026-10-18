@@ -7,6 +7,7 @@
 #include "client/graphics/renderer_zone_merge.h"  // ZoneMergeBuffers complete type (unique_ptr member destruction)
 #include "client/willeq_database.h"
 #include "client/graphics/loading_thread.h"
+#include "client/zone/zone_display_name.h"  // B1088 (#408): the loading screen's zone name
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/eqe1_loader.h"
 #include <filesystem>
@@ -210,10 +211,10 @@ static void logDriverDetails(irr::video::IVideoDriver* driver, irr::IrrlichtDevi
 // GL_RENDERER (where the context is guaranteed current) and the client
 // reads it back through the bridge function below (the
 // gles2GetDrawCensusTotals precedent). glDriverInfo() reads /proc/self/maps
-// (the same file the [memmap] census attributes, T491) for the mapped
-// libgallium/libLLVM; the decision's ERROR (a nollvm binary whose baked-in
-// prefix is missing) fires here too, before the INFO line names what
-// actually got loaded instead.
+// (a second, minimal maps parser over the libgallium/libLLVM needles --
+// the [memmap] census reads smaps, a different file, for the T491 fold)
+// for the mapped driver; the nollvm decision's ERROR fires FIRST here, and
+// only then does the INFO line name what actually got loaded instead.
 static void glDriverInitLog(irr::video::IVideoDriver* driver) {
     std::string renderer;
 #ifdef EQT_HAS_GLES2
@@ -223,20 +224,19 @@ static void glDriverInitLog(irr::video::IVideoDriver* driver) {
         renderer = buf;
     }
 #endif
-    const eqt::memory::GlDriverInfo info = eqt::memory::glDriverInfo(renderer);
-    LOG_INFO(MOD_GRAPHICS, "{}", eqt::memory::makeGlDriverLine(info));
-    // B946 (#264): the nollvm decision. The binary identifies itself in its
-    // own DT_RPATH -- the publish step (scripts/pi/mesa_nollvm_select.sh)
+    // B1016 (#337): the nollvm decision fires FIRST, before the INFO line
+    // names what actually got loaded -- a nollvm binary whose baked-in
+    // prefix lib directory is absent on THIS machine logs the ERROR naming
+    // that directory and the fallback it will take (the default search
+    // path, i.e. the system Mesa), then CONTINUES: a hand run on a fresh Pi
+    // still has to work, and the rigs already fail such a run
+    // (mesa_mismatch, exit 67). The binary identifies itself in its own
+    // DT_RPATH -- the publish step (scripts/pi/mesa_nollvm_select.sh)
     // writes `<prefix>/lib` into it, and only a nollvm build carries a
-    // `mesa-nollvm-*` entry -- so no build-time define is needed: a fresh
-    // build of the same commit behaves the same way a deployed one does,
-    // and a plain willeq binary (no such rpath) never fires this. If the
-    // baked-in prefix directory is absent on THIS machine, the client names
-    // the fallback it will take (the default search path, i.e. the system
-    // Mesa) and CONTINUES: a hand run on a fresh Pi still has to work, and
-    // the rigs already fail such a run (mesa_mismatch, exit 67).
-    const std::string prefix = eqt::memory::glPrefixExpected();
-    if (eqt::memory::mesaPrefixMissing(prefix)) {
+    // `mesa-nollvm-*` entry -- so no build-time define is needed: a plain
+    // willeq binary (no such rpath) answers "" and never fires this.
+    const std::string prefixLib = eqt::memory::glPrefixExpected();
+    if (eqt::memory::mesaPrefixMissing(prefixLib)) {
         LOG_ERROR(MOD_GRAPHICS,
                   "[gldriver] nollvm Mesa prefix missing: {} does not exist; "
                   "falling back to the default library search path (the system "
@@ -245,8 +245,10 @@ static void glDriverInitLog(irr::video::IVideoDriver* driver) {
                   "WILLEQ_MESA=system for the opt-out). The client continues: "
                   "a hand run on a fresh Pi must still work, and the Pi rigs "
                   "already fail such a run (mesa_mismatch, exit 67).",
-                  prefix);
+                  prefixLib);
     }
+    const eqt::memory::GlDriverInfo info = eqt::memory::glDriverInfo(renderer);
+    LOG_INFO(MOD_GRAPHICS, "{}", eqt::memory::makeGlDriverLine(info));
 }
 
 // --- IrrlichtRenderer Implementation ---
@@ -838,6 +840,12 @@ void IrrlichtRenderer::hideLoadingScreen() {
     if (isLoading()) return;
     loadingScreenVisible_ = false;
     LOG_DEBUG(MOD_GRAPHICS, "Loading screen hidden");
+
+    // B1088 (#408): the zone is READY -- forget the "Entering <name>..." line
+    // so a stale name never shows for the NEXT load before its zone id is
+    // known. The next refresh() (zone id known) / noteNewZone() (the new
+    // zone's own name) re-derives it; both log the line they store.
+    eqt::ZoneDisplayNames::instance().clearEntry();
 
     // T412 (board B294): the PVS force-update flag write that stood here (and the
     // half-finished comment above it about Tier2 caching camera positions) is

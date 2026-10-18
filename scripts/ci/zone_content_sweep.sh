@@ -200,7 +200,10 @@ run_one() {
     error_count=$(grep -cE '\[ERROR ?\]| ERROR ' "$log" 2>/dev/null || true)
     first_fatal=$(grep -m1 -E '\[FATAL ?\]| FATAL ' "$log" 2>/dev/null | head -c 300 | tr '\t' ' ')
     # "Texture 'X' not found in any EQE1 flat pack" (constrained_texture_cache.cpp)
-    # plus any FATAL naming a texture.
+    # plus any FATAL naming a texture. B1017 (#338): this does NOT count the
+    # B930/B1017 stale-pack FATAL ("is format v1" / "v2 ... needs v3") -- that
+    # one names the pack and its version, not a missing texture; a stale pack
+    # is caught by fatal_count (the run is not clean either way).
     missing_tex=$(grep -c "not found in any EQE1" "$log" 2>/dev/null || true)
     missing_eqe1=$(grep -cE 'EQT_EQE1|EQE1.*not found|not found.*EQE1' "$log" 2>/dev/null || true)
     # Placeholder models: the benchmark names each race whose model data did

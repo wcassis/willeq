@@ -31,8 +31,10 @@
 #   audio               -- the B977 labels (au.soundfont_gm, au.soundfont_custom,
 #                          au.sound_buffers, au.music, au.mixer_sfx,
 #                          au.backend, au.pfs_index, au.zone_emitters;
-#                          B989 removed au.sfx_cache: the sfx cache shares the
-#                          buffer's decoded PCM instead of copying it); run it
+#                          B989 removed au.sfx_cache: the sfx cache stopped
+#                          copying the decoded PCM (B1015 then deleted the
+#                          sfx LRU entirely -- the one cache is the
+#                          AudioManager's SoundBufferCache); run it
 #                          WITHOUT --no-audio, or the row is empty
 #   zone_parse          -- the shared S3D/WLD parser carries no labels, so this
 #                          mode ALSO sets WILLEQ_LEDGER_TRACE=zone_parse:startup
@@ -202,10 +204,11 @@ say "lane EQEMU_HOST=$EQEMU_HOST, client config host $CLIENT_HOST (verified)"
 
 # ---- 1. lock ------------------------------------------------------------------
 if ! eqemu_lock_take "$OWNER"; then
-    say "eqemu lock is HELD by: $(eqemu_lock_show) -- refusing to run"
+    say "eqemu lease is HELD by: $(eqemu_lock_show) -- refusing to run"
     exit 64
 fi
-say "lock taken: $(eqemu_lock_show)"
+say "lease taken: $(eqemu_lock_show)"
+eqemu_lease_start_renewer
 
 BEFORE="$OUT/snapshot_before.tsv"
 AFTER="$OUT/snapshot_after.tsv"
@@ -228,11 +231,12 @@ cleanup() {
         say "no snapshot was taken -- nothing to restore"
     fi
     timeout 170 bash "$REPO/scripts/eqemu/down.sh" >>"$OUT/stack_down.log" 2>&1
+    eqemu_lease_stop_renewer
     eqemu_lock_release
     rm -rf "$BIN_DIR"
     echo "end_utc=$(date -u +%FT%TZ) restore_bad=$RESTORE_BAD" >> "$OUT/run_meta.txt"
-    say "stack down, lock released"
-    say "lock-show (empty = free): '$(eqemu_lock_show)'"
+    say "stack down, lease released"
+    say "lease-show (FREE = free): '$(eqemu_lock_show)'"
 }
 trap 'cleanup; exit 130' INT TERM
 trap cleanup EXIT

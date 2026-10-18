@@ -41,6 +41,7 @@
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/ui/static_ui_input.h"
+#include "client/graphics/ui/hotbar_panel.h"  // B1025-H2: renderHotbar's home
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/character_model_view.h"
 #include "client/graphics/draw_census.h"  // B997: per-site 3D-draw census
@@ -710,9 +711,10 @@ void FrameComponent::renderStaticUI() {
         renderInventoryPopup(uiRenderer_->layer(), uiLayout_, inventoryState_);
         renderSpellbookPopup(uiRenderer_->layer(), uiLayout_, spellbookState_);
         renderSkillsPopup(uiRenderer_->layer(), uiLayout_, skillsPopupState_);
-        // T290: last of the center popups, so it is on top. It only draws
-        // while the game says a corpse is open, and opening one closes the
-        // other three (IrrlichtBridge's LootWindowOpened arm).
+        // T290: drawn after the inventory/spellbook/skills popups. It only
+        // draws while the game says a corpse is open; since B1075 it sits
+        // beside the inventory (PairLeft) and opening it closes only what
+        // the co-open table says (IrrlichtBridge's LootWindowOpened arm).
         renderLootPopup(uiRenderer_->layer(), uiLayout_, lootState_);
         // T415 (B321): the tradeskill container window, the last centre
         // popup, drawn after the loot popup for the same reason -- the
@@ -797,10 +799,20 @@ void FrameComponent::renderFrameTail() {
         }
     }
 
-    // Take deferred screenshot after all rendering, before swap
+    // B1063 (#383): the F12 hotkey. The Receiver decoded the live F12 press
+    // to RA::Screenshot (this press is the hotkey's ONLY live route -- the
+    // game thread never sets InputAction::Screenshot, its bridge arm exists
+    // for completeness and for injected actions). The screenshot is taken
+    // HERE, after the whole frame is drawn and before the swap, so the
+    // capture is the frame just rendered. It runs the SAME body the typed
+    // /screenshot runs -- SlashCommandsComponent::runScreenshot() -- so the
+    // hotkey and the command agree on the path (screenshots/<zone>_<stamp>.png
+    // under the cache root) and on the chat line. Previously this arm wrote
+    // a fixed "screenshot.png" into the process's cwd with no chat
+    // confirmation, which is why F12 and /screenshot disagreed.
     if (pendingScreenshot_) {
         pendingScreenshot_ = false;
-        owner_.saveScreenshot("screenshot.png");
+        ctx_.Slash().runScreenshot("");
     }
     frameTimings_.postRender = measureSection();
 }

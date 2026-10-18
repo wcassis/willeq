@@ -24,6 +24,30 @@ expect "PI_LANE=3 alone"                 "rc=0 3 172.16.200.202 rock4d" \
     "export PI_LANE=3; source \"\$ENV_SH\"; $P"
 expect "listed PI_HOST alone picks lane" "rc=0 2 172.16.200.204 rock64" \
     "export PI_HOST=172.16.200.204; source \"\$ENV_SH\"; $P"
+# B1056: lane 4 is the first lane whose ssh user, publish root and DRM connector
+# differ from the others; env.sh must carry them per lane, never from the caller.
+expect "PI_LANE=4 alone (user, publish, connector)" \
+    "rc=0 4 172.16.200.206 a7s radxa /mnt/projects/fable/ci-arm64-bullseye /sys/class/drm/card0-DP-1 /home/radxa/.pi-lock" \
+    "export PI_LANE=4; source \"\$ENV_SH\"; echo rc=\$? \$PI_LANE \$PI_HOST \$PI_LANE_NAME \$PI_USER \$PI_LANE_PUBLISH \$PI_HDMI_CONN \$PI_LOCK"
+expect "lane 3 keeps user/publish/connector" \
+    "rc=0 3 user /mnt/projects/fable/ci-arm64 /sys/class/drm/card0-HDMI-A-1 /home/user/.pi-lock" \
+    "export PI_LANE=3; source \"\$ENV_SH\"; echo rc=\$? \$PI_LANE \$PI_USER \$PI_LANE_PUBLISH \$PI_HDMI_CONN \$PI_LOCK"
+# B1060: lane 5 (the Orange Pi Zero) is armhf like lane 1; both resolutions must
+# land on it, and a lane-1 shell must not reach it (nor it a lane-1 run).
+expect "PI_LANE=5 alone"                 "rc=0 5 172.16.200.207 orangepizero armhf lima" \
+    "export PI_LANE=5; source \"\$ENV_SH\"; $P \$PI_LANE_ARCH \$PI_LANE_GPU"
+expect "lane 5 runs on a virtual KMS card" "rc=0 5 1 /dev/dri/card1 -D /dev/dri/card1" \
+    "export PI_LANE=5; source \"\$ENV_SH\"; echo rc=\$? \$PI_LANE \$PI_DRM_VIRTUAL \$PI_DRM_CARD \$PI_KMSCUBE_ARGS"
+expect "lane 1 keeps its real connector" "rc=0 1 0 /sys/class/drm/card0-HDMI-A-1" \
+    "source \"\$ENV_SH\"; echo rc=\$? \$PI_LANE \$PI_DRM_VIRTUAL \$PI_DRM_CARD\$PI_KMSCUBE_ARGS \$PI_HDMI_CONN"
+expect "lane 5 PI_HOST alone picks lane" "rc=0 5 172.16.200.207 orangepizero" \
+    "export PI_HOST=172.16.200.207; source \"\$ENV_SH\"; $P"
+expect "lane 5 vs lane-1 host refused" \
+    "scripts/pi/env.sh: PI_LANE=5 but PI_HOST=10.0.30.192 is lane 1; refusing (unset PI_HOST to switch lanes)
+rc=2" \
+    "source \"\$ENV_SH\"; PI_LANE=5 bash -c 'source \"\$ENV_SH\"; echo reached'; echo rc=\$?"
+expect "unknown lane refused"            "rc=2" \
+    "PI_LANE=9 bash \"\$ENV_SH\" 2>/dev/null; echo rc=\$?"
 expect "PI_LANE + its own PI_HOST"       "rc=0 3 172.16.200.202 rock4d" \
     "export PI_LANE=3 PI_HOST=172.16.200.202; source \"\$ENV_SH\"; $P"
 expect "unlisted PI_HOST keeps PI_LANE"  "rc=0 2 192.0.2.7 rock64" \

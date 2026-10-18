@@ -4,8 +4,21 @@
 #include "client/audio/zone_sound_emitter.h"
 #include "client/audio/zone_audio_manager.h"
 #include "client/audio/eff_loader.h"
+#include "client/audio/audio_manager.h"
+#include "client/audio/audio_mixer.h"
+#include "client/audio/sfx_manager.h"
+#include "client/audio/sound_buffer.h"
+// B1080 (#400): silenceForZoneOut's measured music fade is the ZoneComponent
+// constant kZoneOutMusicFadeSeconds.
+#include "client/zone/zone_component.h"
 
+#include <chrono>
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
+#include <functional>
+#include <thread>
+#include <unistd.h>
 #include <glm/glm.hpp>
 
 using namespace EQT::Audio;
@@ -317,6 +330,447 @@ TEST_F(ZoneSoundEmitterAudioTest, MovePreservesState) {
 
     // Original should be in empty state
     EXPECT_FALSE(emitter_.isPlaying());
+}
+
+
+// =============================================================================
+// B1074 (#394): zero-cooldown emitters LOOP while in range
+// =============================================================================
+//
+// Headless: the AudioManager runs on the forced loopback (RDP) backend, whose
+// pump thread renders the mixer in real time with no device. The sample is a
+// synthetic 100 ms WAV written to a private temp dir and played by ABSOLUTE
+// path, so these cases need no EQ client files.
+
+namespace {
+
+// 22050 Hz mono s16 WAV of `frames` frames of a non-zero square wave.
+void writeTestWav(const std::filesystem::path& path, uint32_t frames) {
+    const uint32_t rate = 22050;
+    const uint32_t dataBytes = frames * 2;
+    std::ofstream f(path, std::ios::binary);
+    auto u32 = [&f](uint32_t v) { f.write(reinterpret_cast<const char*>(&v), 4); };
+    auto u16 = [&f](uint16_t v) { f.write(reinterpret_cast<const char*>(&v), 2); };
+    f.write("RIFF", 4); u32(36 + dataBytes); f.write("WAVE", 4);
+    f.write("fmt ", 4); u32(16); u16(1); u16(1); u32(rate); u32(rate * 2); u16(2); u16(16);
+    f.write("data", 4); u32(dataBytes);
+    for (uint32_t i = 0; i < frames; ++i) {
+        u16(static_cast<uint16_t>((i / 50) % 2 ? 8000 : -8000));
+    }
+}
+
+bool waitFor(const std::function<bool()>& cond, int timeoutMs) {
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (cond()) return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return cond();
+}
+
+}  // namespace
+
+class ZoneEmitterLoopTest : public ::testing::Test {
+protected:
+    static constexpr uint32_t kFrames = 2205;  // 100 ms at 22050 Hz
+    static constexpr int kSampleMs = 100;
+
+    std::filesystem::path dir_;
+    std::string wav_;
+    // Declared BEFORE every emitter a case creates, so emitters (which stop
+    // their loop through it) are destroyed first -- the client's order too
+    // (ZoneAudioManager unloads before the AudioManager shuts down).
+    std::unique_ptr<AudioManager> audio_;
+
+    void SetUp() override {
+        dir_ = std::filesystem::temp_directory_path() /
+               ("willeq_b1074_" + std::to_string(::getpid()) + "_" +
+                ::testing::UnitTest::GetInstance()->current_test_info()->name());
+        std::filesystem::create_directories(dir_);
+        wav_ = (dir_ / "loop_test.wav").string();
+        writeTestWav(wav_, kFrames);
+
+        audio_ = std::make_unique<AudioManager>();
+        if (!audio_->initialize(dir_.string(), /*forceLoopback=*/true)) {
+            GTEST_SKIP() << "AudioManager loopback init failed";
+        }
+        audio_->setListenerPosition(glm::vec3(0.0f), glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
+    }
+
+    void TearDown() override {
+        if (audio_) audio_->shutdown();
+        audio_.reset();
+        std::error_code ec;
+        std::filesystem::remove_all(dir_, ec);
+    }
+
+    void listenAt(const glm::vec3& pos) {
+        audio_->setListenerPosition(pos, glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
+    }
+
+    // Every ACTIVE SFX channel reading the test sample.
+    int activeChannelsOnSample(bool* anyLooping = nullptr) {
+        auto buffer = audio_->getSoundBufferByName(wav_);
+        if (!buffer) return 0;
+        int n = 0;
+        bool looping = false;
+        for (int h = 0; h < AudioMixer::MAX_SFX_CHANNELS; ++h) {
+            MixChannel* ch = audio_->getMixer()->getChannel(h);
+            if (ch && ch->active.load() && ch->samples == buffer->getSamples()) {
+                ++n;
+                looping = looping || ch->looping;
+            }
+        }
+        if (anyLooping) *anyLooping = looping;
+        return n;
+    }
+
+    bool sampleInUse() {
+        auto buffer = audio_->getSoundBufferByName(wav_);
+        return buffer && audio_->getSfxManager()->isInUse(*buffer);
+    }
+
+    void initEmitter(ZoneSoundEmitter& e, EmitterSoundType type,
+                     const std::string& day, const std::string& night,
+                     int32_t cooldown, float radius = 100.0f) {
+        e.initialize(7, glm::vec3(0.0f), radius, type, day, night,
+                     cooldown, cooldown, 0, /*asDistance=*/100, /*fadeOutMs=*/1000, 2);
+    }
+};
+
+TEST_F(ZoneEmitterLoopTest, ZeroCooldownInRangeLoopsPastSampleLength) {
+    ZoneSoundEmitter e;
+    initEmitter(e, EmitterSoundType::StaticEffect, wav_, "", 0);
+    const glm::vec3 near(10.0f, 0.0f, 0.0f);
+    listenAt(near);
+
+    e.update(0.016f, near, true, audio_.get());
+    ASSERT_TRUE(e.isPlaying());
+    ASSERT_TRUE(e.isLooping()) << "zero-cooldown emitter must loop (B1074)";
+    const int handle = e.getLoopHandle().handle;
+
+    // Well past the 100 ms sample: the one channel is still live and looping.
+    std::this_thread::sleep_for(std::chrono::milliseconds(kSampleMs * 4));
+    bool looping = false;
+    EXPECT_EQ(activeChannelsOnSample(&looping), 1);
+    EXPECT_TRUE(looping);
+    EXPECT_TRUE(audio_->isLoopingSoundActive(e.getLoopHandle()));
+
+    // Further in-range frames keep the SAME channel (no restart, no second).
+    for (int i = 0; i < 5; ++i) e.update(0.1f, near, true, audio_.get());
+    EXPECT_EQ(e.getLoopHandle().handle, handle);
+    EXPECT_EQ(activeChannelsOnSample(), 1);
+}
+
+TEST_F(ZoneEmitterLoopTest, LargeRadiusLoopStartsBeyondSfxDefaultMaxDist) {
+    // qeynos2 seq 100884 is a type-0 night loop with r=700; SfxManager's
+    // default maxDist of 500 refused it anywhere past 500.
+    ZoneSoundEmitter e;
+    initEmitter(e, EmitterSoundType::DayNightConstant, "", wav_, 0, 700.0f);
+    const glm::vec3 far(600.0f, 0.0f, 0.0f);
+    listenAt(far);
+    e.update(0.016f, far, /*isDay=*/false, audio_.get());
+    EXPECT_TRUE(e.isLooping());
+    EXPECT_EQ(activeChannelsOnSample(), 1);
+}
+
+TEST_F(ZoneEmitterLoopTest, LeavingRangeStopsLoopAfterFade) {
+    ZoneSoundEmitter e;
+    initEmitter(e, EmitterSoundType::StaticEffect, wav_, "", 0);
+    const glm::vec3 near(10.0f, 0.0f, 0.0f);
+    const glm::vec3 away(400.0f, 0.0f, 0.0f);
+    listenAt(near);
+    e.update(0.016f, near, true, audio_.get());
+    ASSERT_TRUE(e.isLooping());
+
+    // First frame out of range: fading, still on its channel.
+    listenAt(away);
+    e.update(0.1f, away, true, audio_.get());
+    EXPECT_TRUE(e.isLooping());
+
+    // fadeOutMs = 1000: done within ~1 s of frames.
+    for (int i = 0; i < 15; ++i) e.update(0.1f, away, true, audio_.get());
+    EXPECT_FALSE(e.isLooping());
+    EXPECT_FALSE(e.isPlaying());
+    EXPECT_EQ(activeChannelsOnSample(), 0);
+    EXPECT_FALSE(sampleInUse()) << "B1015 in-use pin must be released";
+
+    // Re-entering starts it again.
+    listenAt(near);
+    e.update(0.016f, near, true, audio_.get());
+    EXPECT_TRUE(e.isLooping());
+}
+
+TEST_F(ZoneEmitterLoopTest, CooldownEmitterStaysNonLoopingOneShot) {
+    ZoneSoundEmitter e;
+    initEmitter(e, EmitterSoundType::StaticEffect, wav_, "", /*cooldown=*/5000);
+    const glm::vec3 near(10.0f, 0.0f, 0.0f);
+    listenAt(near);
+    e.update(0.016f, near, true, audio_.get());
+    EXPECT_TRUE(e.isPlaying());
+    EXPECT_FALSE(e.isLooping());
+
+    bool looping = true;
+    ASSERT_EQ(activeChannelsOnSample(&looping), 1);
+    EXPECT_FALSE(looping);
+    // The one-shot ends by itself after the sample length.
+    EXPECT_TRUE(waitFor([this] { return activeChannelsOnSample() == 0; }, 2000));
+    // ...and is NOT replayed inside its 5 s cooldown.
+    e.update(0.5f, near, true, audio_.get());
+    EXPECT_EQ(activeChannelsOnSample(), 0);
+}
+
+TEST_F(ZoneEmitterLoopTest, DayNightSwitchStopsNightOnlyLoop) {
+    // qeynos2 seq 100883/100884: day id 0, night id 163 -- no day sound.
+    ZoneSoundEmitter e;
+    initEmitter(e, EmitterSoundType::DayNightConstant, "", wav_, 0, 330.0f);
+    const glm::vec3 near(10.0f, 0.0f, 0.0f);
+    listenAt(near);
+    e.update(0.016f, near, /*isDay=*/false, audio_.get());
+    ASSERT_TRUE(e.isLooping());
+
+    e.transitionTo(true, 2000);  // what ZoneAudioManager::setDayNight does
+    e.update(0.016f, near, /*isDay=*/true, audio_.get());
+    EXPECT_FALSE(e.isLooping());
+    EXPECT_EQ(activeChannelsOnSample(), 0);
+
+    e.update(0.016f, near, /*isDay=*/false, audio_.get());
+    EXPECT_TRUE(e.isLooping()) << "night returns -> the loop restarts";
+}
+
+TEST_F(ZoneEmitterLoopTest, StopAndDestructorFreeLoopChannel) {
+    const glm::vec3 near(10.0f, 0.0f, 0.0f);
+    listenAt(near);
+    {
+        ZoneSoundEmitter e;
+        initEmitter(e, EmitterSoundType::StaticEffect, wav_, "", 0);
+        e.update(0.016f, near, true, audio_.get());
+        ASSERT_TRUE(e.isLooping());
+        e.stop();
+        EXPECT_EQ(activeChannelsOnSample(), 0);
+        EXPECT_FALSE(sampleInUse());
+
+        e.update(0.016f, near, true, audio_.get());
+        ASSERT_TRUE(e.isLooping());
+        ZoneSoundEmitter moved = std::move(e);
+        EXPECT_FALSE(e.isLooping());
+        EXPECT_TRUE(moved.isLooping());
+        EXPECT_EQ(activeChannelsOnSample(), 1);
+    }  // `moved` destroyed while looping
+    EXPECT_EQ(activeChannelsOnSample(), 0);
+    EXPECT_FALSE(sampleInUse());
+}
+
+TEST_F(ZoneEmitterLoopTest, LoopFreedBehindEmitterIsRestartedNotAliased) {
+    ZoneSoundEmitter e;
+    initEmitter(e, EmitterSoundType::StaticEffect, wav_, "", 0);
+    const glm::vec3 near(10.0f, 0.0f, 0.0f);
+    listenAt(near);
+    e.update(0.016f, near, true, audio_.get());
+    ASSERT_TRUE(e.isLooping());
+    const SfxLoopHandle stale = e.getLoopHandle();
+
+    audio_->stopAllSounds();  // frees every SFX channel behind the emitter
+    EXPECT_FALSE(audio_->isLoopingSoundActive(stale));
+    // A stale token never stops a channel that is not its own.
+    audio_->playSoundByName(wav_);
+    audio_->stopLoopingSound(stale);
+    EXPECT_EQ(activeChannelsOnSample(), 1);
+    EXPECT_TRUE(waitFor([this] { return activeChannelsOnSample() == 0; }, 2000));
+
+    e.update(0.016f, near, true, audio_.get());
+    EXPECT_TRUE(e.isLooping());
+    EXPECT_EQ(activeChannelsOnSample(), 1);
+}
+
+// Zone unload frees every emitter channel: qeynos2 (the B1074 report zone,
+// every emitter zero-cooldown) loaded from the EQ client files.
+class ZoneAudioLoopUnloadTest : public ::testing::Test {
+protected:
+    std::unique_ptr<AudioManager> audio_;
+    std::unique_ptr<ZoneAudioManager> zone_;
+
+    void SetUp() override {
+        if (!std::filesystem::exists(EQ_PATH + "/qeynos2_sounds.eff")) {
+            GTEST_SKIP() << "qeynos2_sounds.eff not found under " << EQ_PATH;
+        }
+        audio_ = std::make_unique<AudioManager>();
+        if (!audio_->initialize(EQ_PATH, /*forceLoopback=*/true)) {
+            GTEST_SKIP() << "AudioManager loopback init failed";
+        }
+        zone_ = std::make_unique<ZoneAudioManager>();
+        zone_->setAudioManager(audio_.get());
+    }
+
+    void TearDown() override {
+        zone_.reset();
+        if (audio_) audio_->shutdown();
+        audio_.reset();
+    }
+
+    int activeLoopingSfxChannels() {
+        int n = 0;
+        for (int h = 0; h < AudioMixer::MAX_SFX_CHANNELS; ++h) {
+            MixChannel* ch = audio_->getMixer()->getChannel(h);
+            if (ch && ch->active.load() && ch->looping) ++n;
+        }
+        return n;
+    }
+};
+
+TEST_F(ZoneAudioLoopUnloadTest, Qeynos2AmbientLoopsAndUnloadFreesEveryChannel) {
+    ASSERT_TRUE(zone_->loadZone("qeynos2", EQ_PATH));
+    // Inside both seq 100880 ((-145,-408,42) r=190) and seq 100886
+    // ((-122,-680,-11) r=100), each id 162 (the LOOP "space" sound) for day
+    // and night: ~180 and ~93 units away.
+    const glm::vec3 listener(-130.0f, -588.0f, 10.0f);
+    audio_->setListenerPosition(listener, glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
+    zone_->update(0.016f, listener, /*isDay=*/false);
+
+    const int loops = activeLoopingSfxChannels();
+    if (loops == 0) {
+        GTEST_SKIP() << "qeynos2 ambient sample did not resolve from the client files";
+    }
+    EXPECT_GE(zone_->getActiveEmitterCount(), 1u);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    zone_->update(0.3f, listener, false);
+    EXPECT_EQ(activeLoopingSfxChannels(), loops) << "the ambience keeps looping";
+
+    zone_->unloadZone();
+    EXPECT_EQ(activeLoopingSfxChannels(), 0);
+    EXPECT_EQ(zone_->getActiveEmitterCount(), 0u);
+}
+
+// =============================================================================
+// B1080 (#400): silenceForZoneOut() -- the zone-OUT audio teardown
+// =============================================================================
+//
+// The AUDIO-EFFECT half of B1080. CleanupZone() (the zone session teardown,
+// every zone-OUT path funnels through it) calls ZoneAudioManager::
+// silenceForZoneOut() so the leaving zone is quiet while the loading screen
+// is up: before this, unloadZone() ran only in the NEXT zone's loadZone() and
+// AudioManager::onZoneChange() only on zone ENTRY, so a stalled zone-in kept
+// the old zone's music and every zero-cooldown emitter playing (Will 2026-10-15,
+// "I still hear in-zone music and spell sound effects"). The WIRING (the
+// teardown calls it) is pinned by test_zone_component.cpp's
+// ZoneOutTeardownRunsTheAudioSilence and the zone_connect_timeout scenario;
+// this pins that calling it QUIETS the zone.
+
+class ZoneAudioSilenceForZoneOutTest : public ::testing::Test {
+protected:
+    std::unique_ptr<AudioManager> audio_;
+    std::unique_ptr<ZoneAudioManager> zone_;
+
+    void SetUp() override {
+        if (!std::filesystem::exists(EQ_PATH + "/qeynos2_sounds.eff")) {
+            GTEST_SKIP() << "qeynos2_sounds.eff not found under " << EQ_PATH;
+        }
+        audio_ = std::make_unique<AudioManager>();
+        if (!audio_->initialize(EQ_PATH, /*forceLoopback=*/true)) {
+            GTEST_SKIP() << "AudioManager loopback init failed";
+        }
+        zone_ = std::make_unique<ZoneAudioManager>();
+        zone_->setAudioManager(audio_.get());
+    }
+
+    void TearDown() override {
+        zone_.reset();
+        if (audio_) audio_->shutdown();
+        audio_.reset();
+    }
+
+    int activeLoopingSfxChannels() {
+        int n = 0;
+        for (int h = 0; h < AudioMixer::MAX_SFX_CHANNELS; ++h) {
+            MixChannel* ch = audio_->getMixer()->getChannel(h);
+            if (ch && ch->active.load() && ch->looping) ++n;
+        }
+        return n;
+    }
+};
+
+// The zone we are leaving goes quiet: every zero-cooldown emitter stops (its
+// loop's SFX channel frees, B1074), every one-shot SFX channel frees, the zone
+// music fades out, and the emitter list empties -- so NOTHING of the old zone
+// survives into the loading screen.
+TEST_F(ZoneAudioSilenceForZoneOutTest, SilenceForZoneOutQuietsEmittersOneShotsAndMusic) {
+    ASSERT_TRUE(zone_->loadZone("qeynos2", EQ_PATH));
+    // The same in-range listener as the B1074 unload test: inside both
+    // seq 100880 (r=190) and seq 100886 (r=100), each id 162 (LOOP "space")
+    // day and night.
+    const glm::vec3 listener(-130.0f, -588.0f, 10.0f);
+    audio_->setListenerPosition(listener, glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
+    zone_->update(0.016f, listener, /*isDay=*/false);
+
+    const int loops = activeLoopingSfxChannels();
+    if (loops == 0) {
+        GTEST_SKIP() << "qeynos2 ambient sample did not resolve from the client files";
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    zone_->update(0.3f, listener, false);
+    ASSERT_EQ(activeLoopingSfxChannels(), loops) << "the ambience loops before the silence";
+
+    // A one-shot SFX channel the zone's own mixer holds (a spell SFX is the
+    // thing Will still heard). id 139 is in the preload set; skip the half if
+    // its asset does not resolve from the client files.
+    bool oneShotPlaying = false;
+    if (auto buf = audio_->getSoundBuffer(139); buf && buf->isValid()) {
+        audio_->playSound(139);
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        for (int h = 0; h < AudioMixer::MAX_SFX_CHANNELS && !oneShotPlaying; ++h) {
+            MixChannel* ch = audio_->getMixer()->getChannel(h);
+            if (ch && ch->active.load() && !ch->looping) oneShotPlaying = true;
+        }
+    }
+
+    // The zone music, started the way zone entry starts it.
+    audio_->onZoneChange("qeynos2");
+    const bool musicPlaying = audio_->isMusicPlaying();
+
+    // THE zone-OUT teardown: everything this zone's audio owns goes quiet.
+    zone_->silenceForZoneOut(eqt::zone::ZoneComponent::kZoneOutMusicFadeSeconds);
+
+    // Emitters and their loops: immediate.
+    EXPECT_EQ(zone_->getActiveEmitterCount(), 0u) << "every emitter must stop at zone-out";
+    EXPECT_EQ(zone_->getEmitterCount(), 0u) << "the emitter list empties (the next zone's loadZone starts fresh)";
+    EXPECT_FALSE(zone_->isZoneLoaded());
+    EXPECT_EQ(activeLoopingSfxChannels(), 0) << "the looped ambience channels free at zone-out";
+
+    // One-shot SFX channels: freed immediately (stopAllSounds frees every
+    // channel; the fade applies to the music, not the one-shots).
+    if (oneShotPlaying) {
+        bool anyOneShot = false;
+        for (int h = 0; h < AudioMixer::MAX_SFX_CHANNELS; ++h) {
+            MixChannel* ch = audio_->getMixer()->getChannel(h);
+            if (ch && ch->active.load() && !ch->looping) anyOneShot = true;
+        }
+        EXPECT_FALSE(anyOneShot) << "the one-shot SFX channels free at zone-out";
+    }
+
+    // The zone music: stopMusic(fade) defers the stop to the fade; once the
+    // fade elapses the player is stopped. Wait it out (2.0 s fade + margin).
+    if (musicPlaying) {
+        bool stopped = false;
+        for (int i = 0; i < 350 && !stopped; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            stopped = !audio_->isMusicPlaying();
+        }
+        EXPECT_TRUE(stopped) << "the zone music fades out and stops at zone-out";
+    }
+}
+
+// The silence is idempotent and safe when nothing is loaded: a give-up on a
+// run that never zoned in (the B1072 give-up with no zone session, and every
+// /dev-end path) must not touch audio that was never started -- no crash, no
+// change of state.
+TEST_F(ZoneAudioSilenceForZoneOutTest, SilenceForZoneOutIsASafeNoOpWhenNothingIsLoaded) {
+    EXPECT_FALSE(zone_->isZoneLoaded());
+    zone_->silenceForZoneOut(eqt::zone::ZoneComponent::kZoneOutMusicFadeSeconds);
+    zone_->silenceForZoneOut(eqt::zone::ZoneComponent::kZoneOutMusicFadeSeconds);
+    EXPECT_FALSE(zone_->isZoneLoaded());
+    EXPECT_EQ(zone_->getEmitterCount(), 0u);
+    EXPECT_FALSE(audio_->isMusicPlaying());
+    EXPECT_EQ(activeLoopingSfxChannels(), 0);
 }
 
 #else

@@ -1,0 +1,22 @@
+# action	target	hold_ms	still_name
+# B1065: Guard_Gehnus (qeynos2 130,312,3.1, heading 0, race 71, IT200 kite shield) from 25 units in front, first person, windows closed with Escape
+# pose=130,337,3.75,256
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+command	#set time 14 0	0	noon
+wait	8000	0	settle
+press	Escape	0	esc0
+press	Escape	0	esc1
+press	Escape	0	esc2
+press	Escape	0	esc3
+press	Escape	0	esc4
+press	Escape	0	esc5
+press	Escape	0	esc6
+press	Escape	0	esc7
+still	view0	0	view0
+press	F9	0	cam1
+wait	2000	0	cam1_settle
+still	view1	0	view1
+press	F9	0	cam2
+wait	2000	0	cam2_settle
+still	view2	0	view2

@@ -207,6 +207,36 @@ public:
 	// Public: MovementComponent::UpdateMovement() names it in the timeout WARN.
 	static constexpr int kZoneOutHandshakeTimeoutMs = 2000;
 
+	// B1080 (#400): how long the leaving zone's music takes to fade out when
+	// the zone session tears down (silenceForZoneOut, below). The client's
+	// own zone music stop is a 2.0 s fade (AudioManager::onZoneChange, the
+	// ENTRY side, audio_manager.cpp) and the zone-audio unload path fades
+	// 0.5 s (ZoneAudioManager::stopAllSounds' default) -- the oracle's exact
+	// zone-OUT fade length is not isolated on the current rig (see
+	// refactor/B1080/README.md), so the value is documented as a choice
+	// within the client's own measured range: long enough to read as a fade,
+	// short enough that the loading screen is effectively silent.
+	static constexpr float kZoneOutMusicFadeSeconds = 2.0f;
+
+	// B1080 (#400): the zone-OUT audio silence, called from CleanupZone() --
+	// the single point every zone-OUT path runs through (graceful zone-out,
+	// the handshake timeout, logout, the B1072 fresh-login give-up). Stops
+	// every emitter, frees the one-shot SFX channels and fades the zone
+	// music, so a stalled zone-in is quiet while the loading screen is up.
+	void SilenceZoneAudioForZoneOut();
+
+	// B1072 (#392): the bound on the zone-IN connect, per attempt -- from
+	// ConnectToZone() (LoadingPhase::ZONE_CONNECTING) to the zone's
+	// PlayerProfile (ZONE_RECEIVING_PROFILE). MEASURED over 1,663 zone-ins in
+	// review/ client logs (review/B1072/zone_connect_interval_census.txt):
+	// median 0.6 s, p99 4.6 s, max 14.4 s (a loaded host). 30 s is twice the
+	// worst one seen. The official client's own bound is not measured (no
+	// capture of it against a dead zone exists); this is the conservative
+	// assumption. After the timeout ONE retry of the same ZoneServerInfo, then
+	// back to character select (EverQuest::TickZoneConnect, zone_connect.cpp).
+	static constexpr int kZoneConnectTimeoutMs = 30000;
+	static constexpr int kZoneConnectRetries = 1;
+
 	// T231 test seam: every RequestZoneChange() call is counted here BEFORE
 	// its live-connection gate, so a headless test can pin whether a server
 	// packet made the client decide to reply with OP_ZoneChange at all
@@ -233,6 +263,20 @@ public:
 	bool Test_IsZoneOutAcknowledged() const { return m_zone_out_acknowledged; }
 	bool Test_IsZoneToZoneInProgress() const { return m_zone_to_zone_in_progress; }
 	void Test_SetZoneToZoneInProgressForSeam(bool v) { m_zone_to_zone_in_progress = v; }
+
+	// B1080 (#400): how many zone-OUT teardowns ran the audio silence
+	// (SilenceZoneAudioForZoneOut). Every zone-OUT path runs through
+	// CleanupZone(), so this counts them all -- a graceful zone-out, the
+	// handshake timeout, a logout, the B1072 fresh-login give-up. The
+	// scenario lane (the zone_connect_timeout scenario, B1072's harness)
+	// reads it to assert the teardown ran the silence; the count works even
+	// when the audio managers are null (a headless --scenario run has no
+	// audio system: InitializeAudio() runs only from the graphics init),
+	// because it counts the teardown, not the sound. The AUDIO EFFECT of the
+	// silence -- emitters cleared, loops freed, music stopped -- is pinned
+	// by tests/test_zone_sound_emitters.cpp (silenceForZoneOut over the real
+	// qeynos2 loops + music).
+	int ZoneAudioSilenceCount() const { return m_zone_audio_silences; }
 
 	// K09 transition scaffolding: zone state whose remaining readers/writers
 	// live in the entities, movement, player and login_world components, in
@@ -385,6 +429,13 @@ private:
 	// zone-in since P17 skipped the region lookup with a spurious "stale"
 	// WARN (captured for '') -- see refactor/T260_bsp_region_size_max.md.
 	std::string m_zone_bsp_tree_zone_name;
+	// B1068: CheckZoneLine's per-zone state. The BSP zone-line region count
+	// is cached against the tree it was taken from; the sweep is primed by
+	// the first check after LoadZoneLines (the zone-in warp is never swept).
+	const EQT::Graphics::BspTree* m_zone_line_count_tree = nullptr;
+	size_t m_bsp_zone_line_regions = 0;
+	bool m_zone_line_sweep_primed = false;
+	size_t m_skipped_same_zone_region = SIZE_MAX;
 	// Zone environment data from NewZone packet
 	uint8_t m_zone_sky_type = 0;           // Sky type for rendering (0-255)
 	uint8_t m_zone_type = 0;               // Zone type (0=outdoor, 1=dungeon, etc.)
@@ -434,7 +485,10 @@ private:
 	std::unique_ptr<EQT::ZoneLines> m_zone_lines;
 
 	// Zone line detection state
-	bool m_zoning_enabled = false;                                   // Whether zone line detection triggers zoning (Ctrl+Z toggles)
+	// B1068 (#388): ON by default -- the official client zones at every line.
+	// 2c7bf6dd (2026-02-23) turned it off with the debug boxes, so no walked
+	// crossing ever sent OP_ZoneChange. `/zoning off` is the debug switch.
+	bool m_zoning_enabled = true;
 
 	// T322: graceful zone-out hand-off state. The official Titanium client
 	// does NOT close its source-zone socket on a zone change: it sends
@@ -463,6 +517,12 @@ private:
 	// OP_SendLoginInfo was always 0. Set in ProcessDeferredZoneChange(),
 	// cleared once the destination zone session is up (or on a logout).
 	bool m_zone_to_zone_in_progress = false;
+
+	// B1080 (#400): the teardown audio-silence counter (see
+	// ZoneAudioSilenceCount()). Incremented by SilenceZoneAudioForZoneOut()
+	// from CleanupZone(); monotonically increasing, never reset -- a run's
+	// total teardown count is the number a scenario observes at the end.
+	int m_zone_audio_silences = 0;
 
 	// Pending spell scribe state (for handling server confirmation). Written
 	// by MerchantComponent::RequestScribeSpell, cleared by the OP_MemorizeSpell

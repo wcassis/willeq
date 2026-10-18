@@ -349,6 +349,14 @@ struct SimulationInput {
     int maxVisibleEntities = 50;
     bool entityCullingEnabled = false;
     bool loadingActive = false;
+    // B1071 (GitLab #391): the current target is never culled (distance, PVS,
+    // frustum or the full-model cap) -- the player's own exemption
+    // (sim_entity_sync.cpp) is the template. A culled target leaves the scene
+    // graph (renderer_sim_bridge.cpp: sceneNode->remove()), which makes it
+    // invisible on screen while the target outline still paints its hull:
+    // the "solid silhouette, mesh not in the depth buffer" still from B1064.
+    // 0 = nothing targeted.
+    uint16_t targetId = 0;
 
     // Name tag visibility
     float nameTagDistance = 200.0f;

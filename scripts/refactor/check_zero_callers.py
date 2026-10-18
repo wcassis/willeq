@@ -543,14 +543,14 @@ EXEMPT_GROUPS = {
     # reused VBO (a zero in production, which keeps the handle itself tests-
     # only in the sense the check looks for, not dead: the draw reads it).
     ("UnifiedParticleRenderer", "vertexBuffer"): "B972",
-    ("(free)", "getAnimationSourceFromConfig"): "B491",
-    ("(free)", "getAnimationSourceS3DFileByCode"): "B491",
-    ("(free)", "getRobeClkTextureNumber"): "B491",
-    ("(free)", "getRobeIndex"): "B491",
-    ("(free)", "isNPCOnlyTexture"): "B491",
-    ("(free)", "isPlayerRaceTexture"): "B491",
+    # B1084 (#404) removed the zero-caller exemptions for isNPCOnlyTexture /
+    # isPlayerRaceTexture / getRobeIndex / getRobeClkTextureNumber:
+    # test_robe_texture_range now calls them (the measured-range table) and
+    # production calls getRobeClkTextureNumber() (mesh_building,
+    # entity_prep_worker, renderer_zone_load_entities, equipment_textures);
+    # every consumer routes through isRobeTexture(). The three tests-only
+    # predicates are classified in EXEMPT_TESTS_GROUPS below.
     ("(free)", "isVeliousTexture"): "B491",
-    ("(free)", "normalToColor"): "B491",
     ("EQAnimatedMeshSceneNode", "getBoneIndexByName"): "B491",
     ("EQAnimatedMeshSceneNode", "getInstanceMeshIndexCount"): "B491",
     # B824 (kanban t_20a88e62): getMappingCount and loadItemModelMappingStatic
@@ -592,12 +592,6 @@ EXEMPT_GROUPS = {
     ("SkyLoader", "getCelestialBodyCount"): "B491",
     ("SkyLoader", "getLayerCount"): "B491",
     ("WldLoader", "getTrackRef"): "B491",
-    ("ZoneMeshBuilder", "buildAtlasedMesh"): "B491",
-    ("ZoneMeshBuilder", "buildCompositeMesh"): "B491",
-    ("ZoneMeshBuilder", "buildTexturedMeshFromUploaded"): "B491",
-    ("ZoneMeshBuilder", "getConstrainedTextureCache"): "B491",
-    ("ZoneMeshBuilder", "getFallbackBufferMap"): "B491",
-    ("ZoneMeshBuilder", "registerLazyTexture"): "B491",
     ("DetailChunk", "applyWindAndDisturbance"): "B492",
     ("DetailChunk", "getBounds"): "B492",
     ("DetailChunk", "getKey"): "B492",
@@ -623,19 +617,18 @@ EXEMPT_GROUPS = {
     ("SurfaceMap", "getMinY"): "B492",
     ("WindController", "getWindMagnitude"): "B492",
     ("(free)", "createRenderer"): "B493",
-    ("CharacterModelView", "getCurrentGender"): "B493",
-    ("CharacterModelView", "getCurrentRaceId"): "B493",
     ("CharacterModelView", "getPrimaryWeaponId"): "B493",
+    # B888-CC2 (#204): getRotationY is still zero-caller -- the preview host
+    # OWNS its own spin angle and only ever SETS the model to it (never
+    # reads), so nothing in production or tests calls the getter.
     ("CharacterModelView", "getRotationY"): "B493",
     ("CharacterModelView", "getSecondaryWeaponId"): "B493",
-    ("CharacterModelView", "hasCharacterModel"): "B493",
     ("CharacterModelView", "hasPrimaryWeapon"): "B493",
     ("CharacterModelView", "hasSecondaryWeapon"): "B493",
     ("CharacterModelView", "isDragging"): "B493",
     ("CharacterModelView", "onMouseDown"): "B493",
     ("CharacterModelView", "onMouseMove"): "B493",
     ("CharacterModelView", "onMouseUp"): "B493",
-    ("CharacterModelView", "setRotationY"): "B493",
     ("GraphicalRenderer", "getRenderQuality"): "B493",
     ("AnimatedTextureManager", "getAnimatedTextureCount"): "B494",
     ("AnimatedTextureManager", "getCurrentTexture"): "B494",
@@ -688,10 +681,10 @@ EXEMPT_GROUPS = {
     ("FrameBudgetGovernor", "canStartTask"): "B494",
     ("FrameBudgetGovernor", "hasTimeBudget"): "B494",
     ("GLES2EGLHelper", "uploadETC1AsSharedTexture"): "B494",
-    ("GraphicsArchiveIndex", "getCachedArchive"): "B494",
     ("PlayerCameraComponent", "getFirstPersonVerticalFov"): "B494",
-    ("RDPServer", "isAudioReady"): "B494",
-    ("RendererContext", "Slash"): "B494",
+    # B1063 (#383): RendererContext::Slash left this table -- FrameComponent's
+    # deferred F12 arm now calls it (ctx_.Slash().runScreenshot("")), the one
+    # body the typed /screenshot shares.
     ("SimulationWorker", "updateObjectLightData"): "B494",
     ("SimulationWorker", "updateTreeData"): "B494",
     ("SimulationWorker", "updateZoneLightData"): "B494",
@@ -714,14 +707,6 @@ EXEMPT_GROUPS = {
     ("SpellVisualFX", "setParticleMultiplier"): "B494",
     ("TextBatch", "addText3D"): "B494",
     ("TextBatch", "addTextW"): "B494",
-    ("TextureAtlas", "finalizePreload"): "B494",
-    ("TextureAtlas", "getAtlasHeight"): "B494",
-    ("TextureAtlas", "getAtlasWidth"): "B494",
-    ("TextureAtlas", "getGPUMemoryUsage"): "B494",
-    ("TextureAtlas", "getPageCount"): "B494",
-    ("TextureAtlas", "getTileCount"): "B494",
-    ("TextureAtlas", "preloadFromFile"): "B494",
-    ("TextureAtlas", "uploadPreloadedPage"): "B494",
     ("TextureUploadLedger", "uploads"): "B494",
     ("TreeWindController", "getCurrentStrength"): "B494",
     ("TreeWindController", "getWeather"): "B494",
@@ -743,15 +728,6 @@ EXEMPT_GROUPS = {
     ("WeatherSystem", "removeListener"): "B494",
     ("WeatherSystem", "setSimulationEnabled"): "B494",
     ("WeatherSystem", "transitionToWeather"): "B494",
-    ("ZoneShaderManager", "appendAtlasPageTextures"): "B494",
-    ("ZoneShaderManager", "atlasTileScale"): "B494",
-    ("ZoneShaderManager", "clearPointLights"): "B494",
-    ("ZoneShaderManager", "getMaterialTypeLWWindAlphaTestRGBA"): "B494",
-    ("ZoneShaderManager", "getMaterialTypeLWWindSolid"): "B494",
-    ("ZoneShaderManager", "getMaterialTypeWindAlphaTestRGBA"): "B494",
-    ("ZoneShaderManager", "getMaterialTypeWindSolid"): "B494",
-    ("ZoneShaderManager", "setAtlasPageTextures"): "B494",
-    ("ZoneShaderManager", "setAtlasTileScale"): "B494",
     ("(free)", "calcSharedBankBagSlotId"): "B495",
     ("(free)", "getBankBagIndexAny"): "B495",
     ("(free)", "getClassAbbrev"): "B495",
@@ -822,7 +798,6 @@ EXEMPT_GROUPS = {
     ("Application", "getActionDispatcher"): "B497",
     ("Application", "getCommandProcessor"): "B497",
     ("Application", "getEverQuestClient"): "B497",
-    ("Application", "getGameMode"): "B497",
     ("CombatManager", "GetMemorizedSpells"): "B497",
     ("CombatManager", "GetNearbyAllies"): "B497",
     ("CombatManager", "LoadSpellSet"): "B497",
@@ -839,7 +814,6 @@ EXEMPT_GROUPS = {
     ("TradeManager", "setOwnMoney"): "B497",
     ("WilleqDatabase", "getAnimationSound"): "B497",
     ("ZoneLines", "addZonePoint"): "B497",
-    ("ZoneLines", "getZonePoint"): "B497",
     ("ConsoleInputHandler", "isKeyboardMode"): "B498",
     ("ConsoleInputHandler", "isStdinTty"): "B498",
     ("GraphicsInputHandler", "injectLootRequest"): "B498",
@@ -847,7 +821,6 @@ EXEMPT_GROUPS = {
     ("NullInputHandler", "injectChatMessage"): "B498",
     ("NullInputHandler", "injectFace"): "B498",
     ("NullInputHandler", "injectFaceEntity"): "B498",
-    ("NullInputHandler", "injectHotbar"): "B498",
     ("NullInputHandler", "injectLoot"): "B498",
     ("NullInputHandler", "injectMoveCommand"): "B498",
     ("NullInputHandler", "injectMoveToEntity"): "B498",
@@ -855,24 +828,67 @@ EXEMPT_GROUPS = {
     ("NullInputHandler", "injectSpellCast"): "B498",
     ("NullInputHandler", "injectStopMovement"): "B498",
     ("NullInputHandler", "injectTarget"): "B498",
+    # B1015 (#336): the tip's test_sfx_cache_eviction.cpp carried a free
+    # function named preloadSound that kept this one tests-only; the B1015
+    # rewrite dropped that helper, so the name is now called from nowhere.
+    # (The B499/B500/B501 rows that flanked this one on the MR side were
+    # deleted with their functions by 5b913256 on fable and do not survive
+    # the merge.)
+    ("AudioManager", "preloadSound"): "B600",
 }
 
 EXEMPT_TESTS_GROUPS = {
     ("(free)", "ComputeHelpCoverage"): "seam",
-    # B946: the [gldriver] line's parser. Its C++ callers are tests (the
-    # emitter is makeGlDriverLine/glDriverInfo); its production consumer is
-    # scripts/pi/rendered_zone_summarize.py, which parses the same format
-    # from zone logs -- the test pins the format both sides share.
-    ("(free)", "parseGlDriverLine"): "seam",
+    # B1083 (#403): the test's window onto which pack served an (archive, name)
+    # EQE1 request. Its production WRITER is recordEQE1Request()/dumpEQE1RequestLog()
+    # at zone load (T214); the reader is test_eqe1_source_archive, which asserts
+    # the object's tree70 was served by its own pack, not the configured-order
+    # scan. An observer on the request log.
+    ("ConstrainedTextureCache", "eqe1ServedByStem"): "observer",
+    # B1075 (#395): the layout table's row -> rect map. Every arm forwards to
+    # the UILayout member or <Window>Layout::windowRect() the window's own
+    # render body and hit test call; the reader is the co-open census
+    # (test_ui_layout_coopen), which asserts the required sets over it.
+    ("(free)", "windowRectFor"): "observer",
+    # B1069 (#389): the playback DEVICE rate. The production path is
+    # main.cpp -> setConfiguredDeviceSampleRate -> AudioManager ->
+    # MiniaudioBackend::setDeviceSampleRate -> init/start (whose INFO line
+    # reports the same values these read); the accessors are
+    # test_audio_device_rate's observation window on it, setUseNullBackend
+    # the seam that opens miniaudio's null device on a host with no audio.
+    ("AudioManager", "getDeviceSampleRate"): "observer",
+    ("DeviceRateAdapter", "mixerFramesPulled"): "observer",
+    ("MiniaudioBackend", "configuredSampleRate"): "observer",
+    ("MiniaudioBackend", "configuredFormatName"): "observer",
+    ("AudioManager", "getDeviceFormat"): "observer",
+    ("MiniaudioBackend", "isResampling"): "observer",
+    ("MiniaudioBackend", "requestedDeviceSampleRate"): "observer",
+    ("MiniaudioBackend", "setUseNullBackend"): "seam",
+    # B976 (#294): the zone depth tie-break's pure C++ decision -- the C++
+    # mirror of the GLSL line EQT_DEPTH_TIE_VS_LINES that production executes
+    # in the region vertex programs. Its only caller is the unit test
+    # (tests/test_zone_depth_tie_break.cpp), which drives it without a GPU;
+    # the production counterpart is the GLSL splice plus uDepthTieBiasForFlag
+    # (live in zone_shader_callbacks.h). A test seam, like ComputeHelpCoverage.
+    ("(free)", "biasedStoredDepth"): "seam",
     # B430/B433: the Options window's per-control classification table is a
     # CENSUS, not a runtime input -- its reader is the test that fails on an
     # unclassified control row (OptionsClassification.*), which is the point.
     ("(free)", "controlClassifications"): "observer",
+    # B1084 (#404): the robe-range predicates are now tests-only in production
+    # -- every real consumer routes through isRobeTexture(). The three
+    # non-robe predicates (NPC-only, player-race, robe-index) are the test's
+    # observation window on the MEASURED range: test_robe_texture_range's
+    # 0..24/240 table is the net that a second hard-coded range spelling is a
+    # regression against, so the test IS the point (observer, not dead).
+    ("(free)", "isNPCOnlyTexture"): "observer",
+    ("(free)", "isPlayerRaceTexture"): "observer",
+    ("(free)", "getRobeIndex"): "observer",
     ("(free)", "controlClassificationCount"): "observer",
     ("(free)", "findControlClass"): "observer",
     ("(free)", "dispositionText"): "observer",
     ("(free)", "applyTradeskillContainerClosed"): "B899",
-    # B888 (#204): the era data's full lists and row sources are the tests'
+    # B888-CC3 (#204): the era data's full lists and row sources are the tests'
     # window onto the oracle rows the production lookups filter. (B998 hosted
     # the creation screen on the character-select screen, which made its
     # click resolver, Get Name round trip and refusal applier live.)
@@ -891,14 +907,28 @@ EXEMPT_TESTS_GROUPS = {
     # outside that logic is the test that pins the refusal table, so the
     # accessor is the test's observation window on a live class.
     ("SkillManager", "isFishing"): "observer",
-    # T504: the ledger's stack-trace instrument is armed by an environment
-    # variable in a live run (WILLEQ_LEDGER_TRACE); the unit test needs the
-    # programmatic form of that switch and the report it prints.
-    # T504: the original client's LOAD order (globals first) as opposed to the
-    # loader's lookup order (resolverOrder); the era-sources test pins it.
+    # B1092 (#412): the queue's running_ latch is written live by stop() and
+    # read by the worker's top-of-loop and drain-loop checks; the only
+    # outside reader is StopWhileItemsPending, which blocks the in-flight
+    # item on a gate and must observe the stop landed (running_ false) before
+    # opening the gate so the drain loop's running_ check is ordered ahead of
+    # the next pop. The accessor is the test's observation window on a live
+    # class; removing it would force the test back to a wall-time bound (the
+    # very assumption that flaked).
+    ("BackgroundWorkQueue", "isStopping"): "observer",
+    # T504: the original client's LOAD order (globals first) as opposed to
+    # the loader's lookup order (resolverOrder); the era-sources test pins it.
     ("EraModelSources", "orderedArchives"): "observer",
-    ("(free)", "traceConfigure"): "seam",
-    ("(free)", "traceReport"): "observer",
+    # B1019 (#340): the layout-equality net's core side -- the sizeof
+    # of ZoneMeshBuilder as willeq_core's zone_geometry.cpp saw it. Its
+    # only caller is test_zone_geometry_atlas_layout, which is the test's
+    # observation window on the core's macro state (the public define's
+    # whole point is that a consumer sees the same class the core built).
+    ("ZoneMeshBuilder", "layoutSize"): "observer",
+    # B928 (#246) deleted the traceConfigure/traceReport rows: the benchmark's
+    # per-point trace instrument (tools/hwcaps/zone_bench_loadpoint_trace.cpp)
+    # now calls both, so they are no longer tests-only -- a real tools/ caller
+    # moved them bucket, and an exemption may not outlive its row.
     # T504: the entity-load callers moved to the instance form
     # (extractEquipmentModelCached, one open handle + one parsed WLD across
     # items); the static form is the held-item test's own-handle seam and
@@ -919,6 +949,17 @@ EXEMPT_TESTS_GROUPS = {
     # SoundBuffer from deterministic raw PCM (no archive, no EQ client files
     # needed) to pin the shared-buffer cache's LRU mechanics.
     ("SoundBuffer", "loadFromPCM"): "seam",
+    # B1015 (#336): the test's observation window on the one decoded-PCM
+    # cache -- a non-loading residency read that lets the eviction tests see
+    # what was evicted without triggering a re-decode (getOrLoad re-loads on
+    # a miss, so it cannot tell "evicted" from "resident").
+    ("SoundBufferCache", "peek"): "observer",
+    # B1074 (#394): the emitter loop tests' observation window on the
+    # looping channel a zero-cooldown emitter owns (does it hold one, and
+    # which token -- the tests check the mixer channel behind it). The
+    # emitter reads loop_ itself; no production caller needs the accessors.
+    ("ZoneSoundEmitter", "isLooping"): "observer",
+    ("ZoneSoundEmitter", "getLoopHandle"): "observer",
     # B972 (#290): the bounded-VBO/EBO seams on the two self-contained cut
     # sites. setVboPathEnabled is the SEAM -- the pixel-identity test flips it
     # to prove the VBO and client-array paths render the same bytes; production
@@ -1004,8 +1045,12 @@ EXEMPT_TESTS_GROUPS = {
     ("FrameComponent", "seedFrustumDebugBoxForTest"): "seam",
     ("GmComponent", "Test_GetLastGMHideMe"): "seam",
     ("GmComponent", "Test_GetLastGMSummon"): "seam",
+    # B1081 (#401): the OP_GMZoneRequest2 confirm packet, test_gm_component.
+    ("GmComponent", "Test_GetLastGMZoneRequest2"): "seam",
     ("LoginWorldComponent", "ReplayLoginPacket"): "seam",
     ("LoginWorldComponent", "ReplayWorldPacket"): "seam",
+    # B1081 (#401): the zone-change reconnect window, test_zone_change_no_flash.
+    ("LoginWorldComponent", "Test_EnterWorldSentForSeam"): "seam",
     ("OverlaysComponent", "mapOverlayTriangleCount"): "seam",
     ("OverlaysComponent", "navmeshOverlayTriangleCount"): "seam",
     ("OverlaysComponent", "seedMapOverlayTriangleForTest"): "seam",
@@ -1032,7 +1077,6 @@ EXEMPT_TESTS_GROUPS = {
     ("ZoneComponent", "Test_SetZoneToZoneInProgressForSeam"): "seam",
     ("ActionDispatcher", "isReady"): "observer",
     ("AudioManager", "getLoadedSoundCount"): "observer",
-    ("AudioManager", "getSoundBufferByName"): "observer",
     ("AudioManager", "isLoopbackMode"): "observer",
     ("BackgroundThreadPool", "getThreadCount"): "observer",
     ("BackgroundThreadPool", "isShutdown"): "observer",
@@ -1042,6 +1086,27 @@ EXEMPT_TESTS_GROUPS = {
     ("BuffManager", "getPetBuffsOwnerId"): "observer",
     ("BuffManager", "hasEntityBuff"): "observer",
     ("BuffManager", "hasPlayerBuff"): "observer",
+    # B888-CC2 (#204): the pre-zone preview's observation windows. The host
+    # class (CharPreviewScene) is thin/render-thread-only, exercised live in
+    # the visual gate, not headless; modelRace is the test's window onto its
+    # rebuild-on-change bookkeeping. CharacterModelView's race/gender getters
+    # are the headless model leg's (test_char_preview.cpp) window onto which
+    # body the paperdoll actually stood up -- the "right race model is in
+    # the view" assertion; the class's live callers are setCharacter/
+    # hasCharacterModel, wired by the preview host and the paperdoll.
+    ("CharPreviewScene", "modelRace"): "observer",
+    # B888-CC3 (#204): the clz backdrop's observation windows. CharBackdropScene
+    # is thin/render-thread-only, exercised live in the visual gate (the
+    # showroom stood up in its own scene manager under the pre-zone frame);
+    # the headless leg (test_explore_backdrop.cpp) drives the same class under
+    # an EDT_NULL device. hasScene is its "the 3D slice stood up" window and
+    # characterCount is its "the per-row stands round-trip" window onto the
+    # setCharacter/clearCharacter bookkeeping; their live callers are init/
+    # setCharacter/renderScene/rowForClick, wired by the char-select host.
+    ("CharBackdropScene", "hasScene"): "observer",
+    ("CharBackdropScene", "characterCount"): "observer",
+    ("CharacterModelView", "getCurrentGender"): "observer",
+    ("CharacterModelView", "getCurrentRaceId"): "observer",
     ("CharacterModelView", "isReady"): "observer",
     ("CombatManager", "GetLootSubState"): "observer",
     ("CombatManager", "IsAutoLootEnabled"): "observer",
@@ -1078,6 +1143,7 @@ EXEMPT_TESTS_GROUPS = {
     ("InventoryState", "freeGeneralSlots"): "observer",
     ("InventoryState", "hasBankItem"): "observer",
     ("InventoryState", "hasGeneralItem"): "observer",
+    ("IrrlichtRenderer", "getCameraMode"): "observer",  # B534: its only production caller was GraphicalMode::getCameraMode, which B534 deleted; the const accessor (PlayerCamera().cameraMode()) is the camera test suites' observation window on a live class
     ("IrrlichtRenderer", "getPlayerZ"): "observer",
     ("IrrlichtRenderer", "getUIRenderer"): "observer",
     ("IrrlichtRenderer", "getVisionType"): "observer",
@@ -1086,7 +1152,9 @@ EXEMPT_TESTS_GROUPS = {
     ("IrrlichtRenderer", "isNewUIEnabled"): "observer",
     ("LoginWorldComponent", "CharacterSelectReturns"): "observer",  # B1005
     ("LoginWorldComponent", "GetAccountId"): "observer",
-    ("LoginWorldComponent", "GetCharacterSelectIndex"): "observer",
+    # B1081 (#401): GetCharacterSelectIndex gained a production caller
+    # (ApplicationScenarioWorld::CharacterSelectName) -- removed from this
+    # tests-only table; it is now classified by its live caller.
     ("LoginWorldComponent", "GetChatConnectionType"): "observer",
     ("LoginWorldComponent", "GetChatServerHost"): "observer",
     ("LoginWorldComponent", "GetChatServerPort"): "observer",
@@ -1121,8 +1189,6 @@ EXEMPT_TESTS_GROUPS = {
     ("RainOverlay", "getIntensity"): "observer",
     ("S3DLoader", "getCharacterCount"): "observer",
     ("ScenarioRunner", "started"): "observer",
-    ("SfxManager", "getCacheMaxBytes"): "observer",
-    ("SfxManager", "getCachedSoundCount"): "observer",
     ("SkillCapTable", "classCanEverHaveSkill"): "observer",
     ("SkillCapTable", "entryCount"): "observer",
     ("SkillManager", "getSkill"): "observer",
@@ -1139,6 +1205,11 @@ EXEMPT_TESTS_GROUPS = {
     ("SoundBuffer", "getDuration"): "observer",
     ("SpellData", "getEffect"): "observer",
     ("SpellData", "getEffectCount"): "observer",
+    # B1015 (#336): the /pmem stat's production caller was the deleted
+    # SfxManager::getCacheSize (the second LRU); the same-named
+    # SpellDatabase accessor dropped to tests-only. It is the test's
+    # observation window on the spell LRU's capacity bound.
+    ("SpellDatabase", "getCacheSize"): "observer",
     ("SpellDatabase", "getCacheCapacity"): "observer",
     ("SpellDatabase", "getMaxSpellId"): "observer",
     ("SpellManager", "getCastProgress"): "observer",
@@ -1169,7 +1240,6 @@ EXEMPT_TESTS_GROUPS = {
     ("ZoneAudioManager", "isZoneLoaded"): "observer",
     ("ZoneLines", "hasExtractedZoneLines"): "observer",
     ("ZoneSoundEmitter", "getSequence"): "observer",
-    ("AudioManager", "preloadSound"): "B600",
     ("CombatMusicManager", "getCombatDelay"): "B600",
     ("CombatMusicManager", "getFadeOutTime"): "B600",
     ("CombatMusicManager", "getStingerCount"): "B600",
@@ -1219,19 +1289,22 @@ EXEMPT_TESTS_GROUPS = {
     # B603: the three rows reclassified seam (2026-10-11, issue #187) --
     # tests-only functions whose tests are the net for LIVE behaviour, so
     # the function lives with them (T458's test-seam class).
-    # assignSlot/clearSlot: no production caller (the only slot writer is
-    # loadFromJson); their tests (T156 skill-reachability, T15
-    # input-action-bridge routing, T230 hotbar item route) drive them as
-    # the REAL producer of the HotbarSlotAssigned bridge event, not a
-    # hand-built fixture. Hotbar slot assignment is a missing feature (no
-    # command or UI path reaches it) -- board it separately, do not wire
-    # it here.
+    # B1025-H3 (GitLab #345): the assignSlot/clearSlot seam rows are GONE --
+    # BridgeComponent::onHotbarAssignIntent (the placement: a held hot button
+    # or /hotbutton's, the first production caller of assignSlot) and
+    # onHotbarClearIntent (the pickup: a hold on an occupied slot cleared its
+    # source, the first production caller of clearSlot) are the production
+    # callers both comments predicted. Their tests (T156 skill-reachability,
+    # T15 input-action-bridge routing, T230 hotbar item route) still drive
+    # them as the REAL producer of the HotbarSlotAssigned bridge event.
     # calcBankBagSlotId: the wire-constant arithmetic of the bank-bag
     # sub-slots (2031+), asserted in the bag-move tests against the same
     # constants the server computes.
     ("(free)", "calcBankBagSlotId"): "seam",
-    ("HotbarModel", "assignSlot"): "seam",
-    ("HotbarModel", "clearSlot"): "seam",
+    # B1025-H1's setCurrentPage seam row is GONE (H-2, #345): the hotbar
+    # window's page buttons produce HotbarPageChangedIntent, and
+    # BridgeComponent::onHotbarPageChangedIntent calls it -- the production
+    # caller H-1's comment predicted, which removes the exemption.
     ("CommandProcessor", "setDefaultChannel"): "B605",
     ("CommandProcessor", "setEchoEnabled"): "B605",
     ("CommandProcessor", "unregisterCommand"): "B605",

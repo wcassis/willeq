@@ -19,6 +19,7 @@
 #include <sstream>
 
 #include "client/data_paths.h"
+#include "client/ui_identity_cache_name.h"
 #include "client/graphics/ui/combat_ability_panel.h"
 #include "client/graphics/ui/options_panel.h"
 #include "client/graphics/ui/friends_panel.h"
@@ -34,21 +35,6 @@ namespace {
 // packet and the server name from user config, so neither may be trusted to
 // stay inside the cache directory: anything outside [A-Za-z0-9_-] becomes
 // '_', and an empty result becomes "unknown".
-std::string SanitizePart(const std::string& in) {
-    std::string out;
-    out.reserve(in.size());
-    for (const char c : in) {
-        const unsigned char u = static_cast<unsigned char>(c);
-        if (std::isalnum(u) || c == '_' || c == '-') {
-            out.push_back(c);
-        } else {
-            out.push_back('_');
-        }
-    }
-    if (out.empty()) return "unknown";
-    return out;
-}
-
 std::string Trim(const std::string& s) {
     size_t b = 0;
     size_t e = s.size();
@@ -217,8 +203,9 @@ UiPreferences CollectUiPreferences(const UiPreferencesBinding& b, int cameraMode
 }
 
 void ApplyUiPreferences(const UiPreferences& p, const UiPreferencesBinding& b) {
-    // The three centre popups are mutually exclusive live (toggleSkillsWindow()
-    // and the /newbook handler enforce it), so a file naming two of them open
+    // These three centre popups share no required co-open set (B1075,
+    // closesOnOpen() in ui_layout_table.h; toggleSkillsWindow() and the
+    // /newbook handler ask it), so they are one-at-a-time live and a file naming two of them open
     // -- only reachable by hand-editing -- is resolved here with a fixed
     // priority rather than left to paint both. Skills is the one whose own
     // toggle closes the other two, so it wins.
@@ -264,7 +251,7 @@ void ApplyUiPreferences(const UiPreferences& p, const UiPreferencesBinding& b) {
 
 std::string UiPreferencesFileName(const std::string& character,
                                   const std::string& server) {
-    return "UI_" + SanitizePart(character) + "_" + SanitizePart(server) + ".ini";
+    return eqt::UiIdentityFileStem(character, server) + ".ini";
 }
 
 std::string UiPreferencesCacheName(const std::string& character,

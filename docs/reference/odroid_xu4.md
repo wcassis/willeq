@@ -5,6 +5,21 @@ not set up for automated work; no `PI_LANE`, no lock, no board cards). This page
 records the device, how willeq runs on it, and the GPU clock defect that made the
 first session run at 12 fps. The fix and the tools live in `scripts/sbc/xu4/`.
 
+## Play-test defects (Will, 2026-10-13)
+
+| Issue | Observation | Code change | Device status |
+|---|---|---|---|
+| #369 / B1049 | Held keys did not repeat in chat. | evdev repeat value 2 now emits another key-down with a character. | Awaiting Will's XU4 play session after merge. |
+| #370 / B1050 | Camera pans tore; UI windows sometimes appeared partially drawn or disappeared. | GBM's displaced scanout buffer is retained until the DRM flip event; the synchronous SetCrtc path releases after completion. | Awaiting Will's XU4 play session after merge. |
+
+## Power-cycle caveat (Will, 2026-10-13)
+
+A soft power cycle does not take effect unless the HDMI cable is fully removed:
+the monitor back-feeds +5 V on HDMI pin 18, so the PMIC never sees a cold start.
+This also explains why `systemctl reboot` strands the board. The hardware
+remedy is a pin-18-isolated cable/adapter or a monitor/switch that does not
+source 5 V. This is Will's report, not a measurement made for this card.
+
 ## The device
 
 | | |
@@ -74,6 +89,119 @@ if clear, logging the first arm and every re-select. Measured after the fix:
 | live `--scenario zone_in` 1280x720 | | PASS, zoned to qeynos in 3.7 s |
 
 Evidence: `review/B1045/README.md`.
+
+## Play-test defects under investigation
+
+Will reported corrupted NPC textures and all-black NPC silhouettes on this box
+(B1051, issue #371). The first headless investigation did not capture an
+affected NPC: synthetic benchmark entities used diagnostic coloring, and the
+live Testchar camera faced a nearby wall in qeynos. A later scripted qeynos2
+heading sweep captured one distant named NPC, but not the reported group or a
+classifiable defect. Take 2 ran Will's `play.sh` at his saved qeynos location:
+the baseline showed one normally textured bridge NPC, while the subsequent
+1024x768 and per-frame turn captures produced no classifiable affected NPC.
+An image-only script counted dark and high-variance *proxies* in every frame,
+but UI panels, windows, water, and wood also triggered them; they are not an
+NPC defect count. Therefore the result remains **NOT REPRODUCED**, and no
+Panfrost mechanism, one-knob result, or preset change is established. See
+`refactor/B1051/README.md` for the four run rows, raw evidence, and limitations.
+
+**Resolved 2026-10-15 as a CLIENT defect, not a Panfrost/Mesa one** (issue
+#371, MR !173). The live reproduction scripted `/moveto` + `/face` on
+Guard_Treitan (race 71, qeynos2) against eqemu lane 2 with the x86 llvmpipe
+client: with `--eqe1-path` (ETC1) the multi-buffer character rendered one
+flat mottled body ("smear") while single-buffer zone ETC1 rendered correctly;
+with `--eqe1-path` removed (raw RGBA) the same character rendered with
+distinct per-part textures. `refactor/B1051/STEP_A_x86_capability.md` proves
+llvmpipe accepts ETC1 uploads and decodes them correctly, so the driver is
+cleared on both sides of the equation. The confirmed mechanism is
+client-side: in an EQE1-authoritative run the character S3D's raw texture
+bytes are released at parse time, so `ZoneMeshBuilder::getOrLoadTexture()` —
+the on-demand per-buffer path for multi-buffer characters — found nothing in
+its own maps and fell to the textureless diffuse fallback; the per-part GPU
+textures existed in the `ConstrainedTextureCache` but only after the render
+thread's upload loop *promoted* the queued entry, which lane-2 run 912c
+measured 80-94 ms AFTER the mesh build (first race-71 guard mesh build
+11:02:47.871 / Guard_Drath's own 11:02:47.885 vs the first qcf ETC1 upload
+11:02:47.965; the continuation's run re-measured the same gap at 154 ms,
+`refactor/B1051/README.md` "The client fix"). The fix is the
+constrained-cache fallback plus the synchronous promotion of the queued
+entry (`bf2a8968`, `ad7295e1`, MR !173), pinned by
+`tests/test_b1051_mesh_texture_fallback.cpp`. The earlier companion-alpha
+material gate hypothesis (take 3) was refuted live and reverted
+(`eaf15dc0`) — it was the wrong mechanism; the smear buffers drew mat=256
+SOLID. The x86 lane-2 after-stills (ETC1 == RGBA, distinct parts,
+`/home/user/kb-evidence/b1051-followup/`) land with the XU4 after-still leg
+of the same MR.
+
+**2026-10-17 saved-pose recheck:** `play.sh` and the published MR !173 armhf
+binary were captured separately from the same stationary Testchar position,
+`qeynos2` `(272.4, 197.6, 3.6)`, heading `471.50` in the zone-in log.
+`/target` and `/face` could not find either Lieutenant Arathur or Guard Dunix
+in either run, so the after-still acceptance for those NPCs remains OPEN.
+The fixed pose showed a close wood-textured figure in both runs, not a
+classifiable affected guard. The image-only dark/noise TSV totals are proxies,
+not NPC defect counts. `refactor/B1051/README.md` "Take-2 resumption" names
+the stills, commands, log lines and cleanup checks. No new Mesa mechanism or
+`xu4` preset follows from this non-reproduction.
+
+**2026-10-17 device A/B (continuation, `Guard_Treitan`):** the named guards are
+absent from the 10.0.30.23 `qeynos2` roster in every run since 2026-10-16
+(the GT leg's `log_gt_etc1.log`: 100 `Loaded spawn` lines, 77 unique names,
+zero `Arathur`/`Dunix`; `/target` + `/moveto` + `/face` all
+"not found"), so the device leg used the roster's `Guard_Treitan` (spawn 45,
+ID 5, race 71, `QCM` skeleton, 13-buffer multi-part class per `held items`
+line 2026-10-17 04:29:22.912 — same class as the x86 proof; 5 u from the
+saved pose).
+The published MR !173 binary at `ci-arm/3345ebdac0794c30e1465445c44a91379d853836`
+now loads **25 per-part ETC1 uploads** in the on-demand path
+(`log_gt_etc1.log` 04:29:18.151-18.165: weapon/hilt, qcm body, qcf head and
+qguard parts) 90 ms BEFORE the mesh build (Step8f 04:29:18.255), and
+`WILLEQ_B1051_TRACE` shows the draw binds **16 distinct tex0 objects per
+frame** (f1481-f1485: tex0=15/23/24/158/212/223/224/228/229/230/249/250/251/278/
+279/536, `gt_etc1_trace/log`) — the same class of distinct per-buffer binding
+the x86 proof showed (whose before/after stills isolated the fix's effect:
+textureless body pre-fix, distinct parts post-fix).
+Yet the vision read of the ETC1 config still shows the body as ONE flat
+wood-grain surface at frames 40 and 60 (`etc1_f040.png`, `etc1_f060.png`),
+while the SAME binary's raw RGBA config renders the distinct gold helmet,
+emblem and grey trim (`rgba_f040.png`, `rgba_f060.png`), and the x86 llvmpipe
+run of the same head renders distinct parts. Coarse 24-level colour count of
+the central figure crop: ETC1 65-74 vs RGBA 103-122
+(`b1051_pixel_check.py`, run on the pulled stills). The residual device fault
+is therefore the ETC1 sampling of DISTINCT per-part buffers on
+Panfrost/Midgard — a driver-side defect per the ruling's (1) branch, not the
+client (the client now binds distinct per-part textures on BOTH drivers).
+The `etc1_decode_probe` cannot be run on the box (no cross-toolchain on this
+host; compiling on the box is forbidden), so the Mesa commit/line is still
+open. Box left as found: no process, work dir removed, UI ini absent,
+launcher hash unchanged. x86 pipeline at the merged head 4dd9efe0
+(pipeline 1539): hygiene/build-headless/build-test/gate/zone-budget-census
+success, build-arm success (goldens byte-identical — gate success). MR !173
+stays Draft until the driver ruling: acceptance (guards distinct on device)
+is not met, and a `xu4` preset or Mesa patch is a decision for Will
+(direction (2) fallback per the 2026-10-15 01:00Z ruling).
+
+**2026-10-18 B1051-ETC1 correction (MR !237):** the device still at the
+previous head did not exclude a second client-side variant-cache defect.
+The fable armhf binary at `ci-arm/by-branch/fable` logged 0 variant textures
+for Guard Treitan and showed one flat wood-grain body
+(`xu4/before2/frame_000018.png`). The armhf build at
+`ci-arm/838a1281d278f6fd3c120f7906ca9c2ed26b74e5` logged 13 for
+the same guard and showed distinct gold chest/crest, grey arms and helmet
+(`xu4/after/frame_000015.png`). This is a client-side visual fix on the XU4,
+so the earlier Panfrost-only attribution is withdrawn for this guard. The
+scripted nearby-cluster relocation did not frame five classifiable NPCs; the
+same-zone safe-point scout (`/loc 428,-74,3`) also framed scenery, so the
+crowd-wide before/after count remains unverified, not zero. The x86 Guard
+Liben colour numbers quoted in the previous analysis also came from scenery,
+not a visible guard, and cannot establish a per-NPC pixel band. A new x86
+lane-2 A/B on class-equivalent Guard Treitan did frame the torso: ETC1 versus
+RGBA coarse-unique 1193/1142, gold 0.1631/0.1533, red 0.0220/0.0304 at
+3840x2160 (`b1051_per_npc_metrics.py`). Both modes show the armour; the
+literal Guard Liben requirement is still open because he was not visible in
+the measured stills (though both logs show him spawning). Evidence:
+`/home/user/kb-evidence/kb-b1051-etc1-variant-cache/`.
 
 ## Kernel and module state on the box
 

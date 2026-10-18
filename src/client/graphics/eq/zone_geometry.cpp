@@ -1,13 +1,10 @@
-// Part 1 of 2: the non-atlased ZoneMeshBuilder path. The texture-atlas
-// conditional region and buildAtlasedMesh live in zone_geometry_atlased.cpp (J32).
+// The non-atlased ZoneMeshBuilder path. The texture-atlas conditional region
+// and buildAtlasedMesh lived in zone_geometry_atlased.cpp (J32), deleted with
+// the unreached texture-atlas runtime (B494, #169).
 #include "client/graphics/eq/zone_geometry.h"
-#include "client/graphics/eq/composite_texture_data.h"
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/constrained_texture_cache.h"
-#ifdef EQT_HAS_TEXTURE_ATLAS
-#include "client/graphics/texture_atlas.h"
-#endif
 #include "common/logging.h"
 #include <cmath>
 #include <algorithm>
@@ -37,6 +34,12 @@
 namespace EQT {
 namespace Graphics {
 
+// B1019 (GitLab #340): the layout-equality net's CORE side, defined in this
+// TU because this is the TU willeq_core compiles -- the sizeof here carries
+// the core's own macro state. tests/test_zone_geometry_atlas_layout.cpp
+// links willeq_core and compares its consumer-side sizeof against this.
+size_t ZoneMeshBuilder::layoutSize() { return sizeof(ZoneMeshBuilder); }
+
 ZoneMeshBuilder::ZoneMeshBuilder(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
                                  irr::io::IFileSystem* fileSystem)
     : smgr_(smgr), driver_(driver), fileSystem_(fileSystem) {
@@ -63,14 +66,6 @@ irr::video::SColor heightToColor(float height, float minHeight, float maxHeight)
         b = static_cast<irr::u8>(0);
     }
 
-    return irr::video::SColor(255, r, g, b);
-}
-
-irr::video::SColor normalToColor(float nx, float ny, float nz) {
-    // Map normal components from [-1,1] to [0,255]
-    irr::u8 r = static_cast<irr::u8>((nx * 0.5f + 0.5f) * 255);
-    irr::u8 g = static_cast<irr::u8>((ny * 0.5f + 0.5f) * 255);
-    irr::u8 b = static_cast<irr::u8>((nz * 0.5f + 0.5f) * 255);
     return irr::video::SColor(255, r, g, b);
 }
 
@@ -175,6 +170,11 @@ irr::scene::IMesh* ZoneMeshBuilder::buildMesh(const ZoneGeometry& geometry) {
 
         irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
 
+        // B976 (#294): zone region geometry gets the depth tie-break flag
+        // (see include/client/graphics/zone_depth_tie_break.h).
+        if (zoneGeometryDepthTie_)
+            buffer->Material.MaterialTypeParam2 = 1.0f;
+
         // Track which vertices we've added to this buffer
         std::unordered_map<size_t, irr::u16> globalToLocal;
 
@@ -254,6 +254,11 @@ irr::scene::IMesh* ZoneMeshBuilder::buildColoredMesh(const ZoneGeometry& geometr
 
         irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
 
+        // B976 (#294): zone region geometry gets the depth tie-break flag
+        // (see include/client/graphics/zone_depth_tie_break.h).
+        if (zoneGeometryDepthTie_)
+            buffer->Material.MaterialTypeParam2 = 1.0f;
+
         // Track which vertices we've added to this buffer
         std::unordered_map<size_t, irr::u16> globalToLocal;
 
@@ -300,10 +305,13 @@ irr::scene::IMesh* ZoneMeshBuilder::buildColoredMesh(const ZoneGeometry& geometr
 irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& name,
                                                           const std::vector<char>& data,
                                                           bool applyPaletteMask,
-                                                          const TextureOrigin* origin) {
+                                                          const TextureOrigin* origin,
+                                                          const std::string& sourceArchiveStem) {
     // Note: fileSystem_ is not actually used in this function - textures are loaded
     // from raw byte data, not from the filesystem. Only driver_ is required.
-    if (data.empty() || !driver_) {
+    // EQE1-authoritative character textures retain names but release the S3D
+    // bytes. The constrained cache resolves those names from the flat pack.
+    if (!driver_ || (data.empty() && (!constrainedCache_ || !constrainedCache_->hasEQE1Loaders()))) {
         return nullptr;
     }
 
@@ -318,11 +326,14 @@ irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& nam
         // this call site is ZoneMeshBuilder's general-purpose one, used by
         // mesh_building.cpp's composite-deferred on-demand fallback and
         // animated_mesh_creation.cpp's equipment texture-variant swap).
+        // B1083 (GitLab #403): sourceArchiveStem scopes the (archive, name)
+        // entry, and uploadTexture() MUST be given the SAME stem or it looks
+        // up the unscoped key and misses the entry getOrLoad() just stored.
         irr::video::ITexture* texture = constrainedCache_->getOrLoad(name, data, uploadCategory_, "loadTextureFromBMP",
-                                                                     applyPaletteMask, origin);
+                                                                     applyPaletteMask, origin, sourceArchiveStem);
         if (!texture) {
             // Not yet uploaded — upload now (requires GL context on this thread)
-            texture = constrainedCache_->uploadTexture(name, applyPaletteMask);
+            texture = constrainedCache_->uploadTexture(name, applyPaletteMask, sourceArchiveStem);
         }
         if (texture) {
             textureCache_[name] = texture;
@@ -333,7 +344,8 @@ irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& nam
             // WLD-derived textureMasked() flag at mesh-build time (see the
             // isMaskedMaterial OR below), so this fix is correctness/hygiene,
             // not a behavior change — see this unit's Review.
-            if (constrainedCache_->hasAlpha(name, applyPaletteMask)) {
+            // B1083: with the archive stem too, for the same reason.
+            if (constrainedCache_->hasAlpha(name, applyPaletteMask, sourceArchiveStem)) {
                 texturesWithAlpha_.insert(name);
             }
             return texture;
@@ -401,6 +413,14 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
         // Get texture name for this index
         std::string texName;
         irr::video::ITexture* texture = nullptr;
+        // B1083 (GitLab #403): the source archive stem of the texture
+        // resolved for this index ("" when it did not come from an
+        // archive, or was not found). The material setup below asks
+        // the cache for (archive, name) with it, so the zone region's
+        // opaque tree70 and the object's alpha tree70 — same name,
+        // two packs, two entries — each set up their own material
+        // instead of inheriting the configured-order winner's.
+        std::string sourceStem;
 
         if (texIdx < geometry.textureNames().size()) {
             texName = geometry.textureNames()[texIdx];
@@ -412,9 +432,18 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
 
                 // Try to load texture
                 auto texIt = textures.find(lowerTexName);
+                // B1083 (GitLab #403): this texture's source archive stem ("",
+                // when it did not come from an archive). The zone region and
+                // the zone object WLDs of one family can both use a name that
+                // two of the family's packs hold with different content
+                // (qeytoqrg.s3d tree70 opaque, qeytoqrg_obj.s3d tree70
+                // alpha); the stem is what keeps each mesh build on its OWN
+                // pack's copy.
+                sourceStem =
+                    (texIt != textures.end() && texIt->second) ? texIt->second->archiveStem() : "";
                 if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
                     const TextureOrigin origin = texIt->second->origin();  // B947
-                    texture = loadTextureFromBMP(texName, texIt->second->data, false, &origin);
+                    texture = loadTextureFromBMP(texName, texIt->second->data, false, &origin, sourceStem);
                     if (!texture) {
                         // T92: was LOG_DEBUG — the sole reason zone-geometry
                         // texture failures (the magenta/checkerboard wall and
@@ -437,14 +466,19 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
 
                 if (!texture && constrainedCache_) {
                     // Pixel data may have been released after initial load;
-                    // check the constrained cache which retains GPU textures
-                    texture = constrainedCache_->getTexture(lowerTexName);
+                    // check the constrained cache which retains GPU textures.
+                    // B1083: ask for the (archive, name) entry -- a plain
+                    // name query would find whichever pack's copy the
+                    // configured order cached first (the zone pack for an
+                    // object texture), not this texture's own.
+                    texture = constrainedCache_->getTexture(lowerTexName, false, sourceStem);
                     if (!texture) {
-                        texture = constrainedCache_->getTexture(texName);
+                        texture = constrainedCache_->getTexture(texName, false, sourceStem);
                     }
                     // Track alpha from cache (loadTextureFromBMP was skipped due to empty data)
                     if (texture) {
-                        if (constrainedCache_->hasAlpha(lowerTexName) || constrainedCache_->hasAlpha(texName)) {
+                        if (constrainedCache_->hasAlpha(lowerTexName, false, sourceStem) ||
+                            constrainedCache_->hasAlpha(texName, false, sourceStem)) {
                             texturesWithAlpha_.insert(texName);
                         }
                     }
@@ -482,6 +516,10 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
             buffer->Material.MaterialType = irr::video::EMT_SOLID;
             buffer->Material.BackfaceCulling = false;  // Disabled to show both sides of polygons
             buffer->Material.Lighting = false;  // Use vertex/texture colors
+            // B976 (#294): zone region geometry gets the depth tie-break flag
+            // (see include/client/graphics/zone_depth_tie_break.h).
+            if (zoneGeometryDepthTie_)
+                buffer->Material.MaterialTypeParam2 = 1.0f;
             // T408 (B110): the zone shader's per-material baked-light flag.
             // ShaderCallback::OnSetMaterial reads it; 0 keeps the pre-T408
             // equation exact for every mesh that is not carrying baked light.
@@ -511,7 +549,13 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                     // discards — the RGBA variant reads uTexture.a directly
                     // instead, matching desktop-GL's known-good
                     // EMT_TRANSPARENT_ALPHA_CHANNEL_REF semantics.
-                    bool isETC1 = constrainedCache_ && constrainedCache_->isETC1Texture(texName);
+                    // B1083 (GitLab #403): both queries are (archive, name) —
+                    // the companion and the ETC1-ness belong to THIS texture's
+                    // pack's entry, so the object's alpha tree70 binds the
+                    // _obj companion while the zone's opaque tree70 stays
+                    // companion-less, even though both are named tree70.
+                    bool isETC1 = constrainedCache_ &&
+                        constrainedCache_->isETC1Texture(texName, false, sourceStem);
                     if (isETC1) {
                         // Use GLSL shader alpha-test material if available, else fixed-function
                         if (shaderMaterialAlphaTest_ >= 0) {
@@ -521,7 +565,8 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                         }
                         // Bind ETC1 alpha companion texture on layer 1 (sampled by uAlphaTexture in shader)
                         if (constrainedCache_) {
-                            irr::video::ITexture* alphaTex = constrainedCache_->getAlphaTexture(texName);
+                            irr::video::ITexture* alphaTex =
+                                constrainedCache_->getAlphaTexture(texName, false, sourceStem);
                             if (alphaTex) {
                                 buffer->Material.setTexture(1, alphaTex);
                             }
@@ -623,380 +668,6 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
     return mesh;
 }
 
-// ============================================================================
-// Pre-uploaded Texture Mesh Building (for multi-frame entity pipeline)
-// ============================================================================
-
-irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMeshFromUploaded(
-    const ZoneGeometry& geometry,
-    const std::vector<irr::video::ITexture*>& textures,
-    const std::vector<bool>& textureAlpha,
-    bool flipV) {
-
-    if (geometry.vertices.empty() || geometry.triangles.empty()) {
-        return nullptr;
-    }
-
-    irr::scene::SMesh* mesh = new irr::scene::SMesh();
-    const size_t MAX_VERTICES_PER_BUFFER = 65535;
-
-    float minZ = geometry.minZ;
-    float maxZ = geometry.maxZ;
-
-    // Group triangles by texture index
-    std::map<uint32_t, std::vector<size_t>> trianglesByTexture;
-    for (size_t i = 0; i < geometry.triangles.size(); i++) {
-        trianglesByTexture[geometry.triangles[i].textureIndex].push_back(i);
-    }
-
-    for (const auto& [texIdx, triIndices] : trianglesByTexture) {
-        if (triIndices.empty()) continue;
-
-        bool isInvisible = (texIdx < geometry.textureInvisible().size()) && geometry.textureInvisible()[texIdx];
-        if (isInvisible) {
-            std::string texName = (texIdx < geometry.textureNames().size()) ? geometry.textureNames()[texIdx] : "";
-            if (texName.empty()) continue;
-        }
-
-        // Look up pre-uploaded texture
-        irr::video::ITexture* texture = (texIdx < textures.size()) ? textures[texIdx] : nullptr;
-        bool hasAlpha = (texIdx < textureAlpha.size()) ? textureAlpha[texIdx] : false;
-        // H02d: texture name needed to query the cache's alpha-source (ETC1
-        // companion vs direct RGBA) for shader variant selection below.
-        std::string texName = (texIdx < geometry.textureNames().size()) ? geometry.textureNames()[texIdx] : "";
-
-        // Split into sub-buffers for 16-bit index limit
-        std::vector<std::vector<size_t>> subBuffers;
-        for (size_t triIdx : triIndices) {
-            const auto& tri = geometry.triangles[triIdx];
-            size_t maxVertIdx = std::max({tri.v1, tri.v2, tri.v3});
-            size_t bufferIdx = maxVertIdx / MAX_VERTICES_PER_BUFFER;
-            while (subBuffers.size() <= bufferIdx) {
-                subBuffers.push_back(std::vector<size_t>());
-            }
-            subBuffers[bufferIdx].push_back(triIdx);
-        }
-
-        for (const auto& subTriIndices : subBuffers) {
-            if (subTriIndices.empty()) continue;
-
-            irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
-
-            buffer->Material.MaterialType = irr::video::EMT_SOLID;
-            buffer->Material.BackfaceCulling = false;
-            buffer->Material.Lighting = false;
-
-            if (texture) {
-                buffer->Material.setTexture(0, texture);
-                if (hasAlpha) {
-                    // H02d (Option A): see buildTexturedMesh for rationale.
-                    bool isETC1 = constrainedCache_ && !texName.empty() && constrainedCache_->isETC1Texture(texName);
-                    if (isETC1) {
-                        if (shaderMaterialAlphaTest_ >= 0) {
-                            buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
-                        } else {
-                            buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
-                        }
-                        if (constrainedCache_) {
-                            irr::video::ITexture* alphaTex = constrainedCache_->getAlphaTexture(texName);
-                            if (alphaTex) {
-                                buffer->Material.setTexture(1, alphaTex);
-                            }
-                        }
-                    } else {
-                        if (shaderMaterialAlphaTestRGBA_ >= 0) {
-                            buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTestRGBA_);
-                        } else {
-                            buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
-                        }
-                    }
-                } else {
-                    if (shaderMaterialSolid_ >= 0) {
-                        buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
-                    }
-                }
-                buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
-                buffer->Material.setFlag(irr::video::EMF_TRILINEAR_FILTER, false);
-                buffer->Material.setFlag(irr::video::EMF_ANISOTROPIC_FILTER, false);
-                buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_REPEAT;
-                buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_REPEAT;
-            }
-
-            std::unordered_map<uint64_t, irr::u16> globalToLocal;
-
-            for (size_t triIdx : subTriIndices) {
-                const auto& tri = geometry.triangles[triIdx];
-
-                const auto& tv0 = geometry.vertices[tri.v1];
-                const auto& tv1 = geometry.vertices[tri.v2];
-                const auto& tv2 = geometry.vertices[tri.v3];
-                float fv0 = flipV ? (1.0f - tv0.v) : tv0.v;
-                float fv1 = flipV ? (1.0f - tv1.v) : tv1.v;
-                float fv2 = flipV ? (1.0f - tv2.v) : tv2.v;
-                int cellU = static_cast<int>(std::floor(std::min({tv0.u, tv1.u, tv2.u})));
-                int cellV = static_cast<int>(std::floor(std::min({fv0, fv1, fv2})));
-
-                for (uint32_t vidx : {tri.v1, tri.v2, tri.v3}) {
-                    uint64_t key = (static_cast<uint64_t>(vidx) << 16)
-                                 | (static_cast<uint64_t>(static_cast<uint8_t>(cellU)) << 8)
-                                 | static_cast<uint64_t>(static_cast<uint8_t>(cellV));
-                    auto it = globalToLocal.find(key);
-                    if (it != globalToLocal.end()) {
-                        buffer->Indices.push_back(it->second);
-                    } else {
-                        const auto& v = geometry.vertices[vidx];
-                        irr::video::S3DVertex vertex;
-                        vertex.Pos.X = v.x;
-                        vertex.Pos.Y = v.z;
-                        vertex.Pos.Z = v.y;
-                        vertex.Normal.X = v.nx;
-                        vertex.Normal.Y = v.nz;
-                        vertex.Normal.Z = v.ny;
-                        vertex.TCoords.X = v.u - static_cast<float>(cellU);
-                        vertex.TCoords.Y = (flipV ? (1.0f - v.v) : v.v) - static_cast<float>(cellV);
-                        vertex.Color = texture
-                            ? irr::video::SColor(255, 255, 255, 255)
-                            : heightToColor(v.z, minZ, maxZ);
-
-                        irr::u16 localIdx = static_cast<irr::u16>(buffer->Vertices.size());
-                        globalToLocal[key] = localIdx;
-                        buffer->Vertices.push_back(vertex);
-                        buffer->Indices.push_back(localIdx);
-                    }
-                }
-            }
-
-            finishMeshBuffer(buffer);  // B904: exact-size arrays
-            mesh->addMeshBuffer(buffer);
-            buffer->drop();
-        }
-    }
-
-    finishMesh(mesh);  // B904
-    return mesh;
-}
-
-// ============================================================================
-// Composite Texture Mesh Building (single-buffer, remapped UVs)
-// ============================================================================
-
-irr::scene::IMesh* ZoneMeshBuilder::buildCompositeMesh(
-    const ZoneGeometry& geometry,
-    irr::video::ITexture* compositeTexture,
-    const CompositeTextureData& compositeData,
-    bool hasAlpha,
-    bool flipV) {
-
-    if (geometry.vertices.empty() || geometry.triangles.empty() || !compositeTexture) {
-        return nullptr;
-    }
-
-    irr::scene::SMesh* mesh = new irr::scene::SMesh();
-    irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
-
-    // Material setup: single composite texture, CLAMP_TO_EDGE (tiling is pre-baked)
-    buffer->Material.setTexture(0, compositeTexture);
-    buffer->Material.BackfaceCulling = false;
-    buffer->Material.Lighting = false;
-    if (hasAlpha) {
-        // H02d (Option A): see buildTexturedMesh for rationale. No single
-        // originating texture name exists here (compositeTexture merges many
-        // source textures), so use the pointer-based reverse lookup.
-        bool isETC1 = constrainedCache_ && constrainedCache_->isETC1Texture(compositeTexture);
-        if (isETC1) {
-            if (shaderMaterialAlphaTest_ >= 0) {
-                buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
-            } else {
-                buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
-            }
-            if (constrainedCache_) {
-                irr::video::ITexture* alphaTex = constrainedCache_->getAlphaTexture(compositeTexture);
-                if (alphaTex) {
-                    buffer->Material.setTexture(1, alphaTex);
-                }
-            }
-        } else {
-            if (shaderMaterialAlphaTestRGBA_ >= 0) {
-                buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTestRGBA_);
-            } else {
-                buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
-            }
-        }
-    } else {
-        if (shaderMaterialSolid_ >= 0) {
-            buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
-        } else {
-            buffer->Material.MaterialType = irr::video::EMT_SOLID;
-        }
-    }
-    buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
-    buffer->Material.setFlag(irr::video::EMF_TRILINEAR_FILTER, false);
-    buffer->Material.setFlag(irr::video::EMF_ANISOTROPIC_FILTER, false);
-    buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_CLAMP_TO_EDGE;
-    buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_CLAMP_TO_EDGE;
-
-    float minZ = geometry.minZ;
-    float maxZ = geometry.maxZ;
-
-    // Track unmapped textures for fallback info
-    size_t unmappedTriangles = 0;
-
-    // Build a single vertex/index buffer with all triangles, remapping UVs
-    std::unordered_map<uint64_t, irr::u16> globalToLocal;
-
-    for (size_t i = 0; i < geometry.triangles.size(); ++i) {
-        const auto& tri = geometry.triangles[i];
-
-        // Skip invisible textures
-        uint32_t texIdx = tri.textureIndex;
-        bool isInvisible = (texIdx < geometry.textureInvisible().size()) && geometry.textureInvisible()[texIdx];
-        if (isInvisible) {
-            std::string texName = (texIdx < geometry.textureNames().size()) ? geometry.textureNames()[texIdx] : "";
-            if (texName.empty()) continue;
-        }
-
-        // Look up composite entry for this triangle's texture
-        std::string texName;
-        if (texIdx < geometry.textureNames().size()) {
-            texName = geometry.textureNames()[texIdx];
-        }
-        const CompositeTextureEntry* entry = nullptr;
-        if (!texName.empty()) {
-            entry = compositeData.lookup(texName);
-        }
-
-        if (!entry) {
-            unmappedTriangles++;
-            continue;  // Skip triangles whose textures aren't in the composite
-        }
-
-        // Cell basing: same as buildTexturedMeshFromUploaded
-        const auto& tv0 = geometry.vertices[tri.v1];
-        const auto& tv1 = geometry.vertices[tri.v2];
-        const auto& tv2 = geometry.vertices[tri.v3];
-        float fv0 = flipV ? (1.0f - tv0.v) : tv0.v;
-        float fv1 = flipV ? (1.0f - tv1.v) : tv1.v;
-        float fv2 = flipV ? (1.0f - tv2.v) : tv2.v;
-        int cellU = static_cast<int>(std::floor(std::min({tv0.u, tv1.u, tv2.u})));
-        int cellV = static_cast<int>(std::floor(std::min({fv0, fv1, fv2})));
-
-        for (uint32_t vidx : {tri.v1, tri.v2, tri.v3}) {
-            // Key includes texture index + cell to handle shared vertices across textures
-            uint64_t key = (static_cast<uint64_t>(vidx) << 32)
-                         | (static_cast<uint64_t>(texIdx) << 16)
-                         | (static_cast<uint64_t>(static_cast<uint8_t>(cellU)) << 8)
-                         | static_cast<uint64_t>(static_cast<uint8_t>(cellV));
-            auto it = globalToLocal.find(key);
-            if (it != globalToLocal.end()) {
-                buffer->Indices.push_back(it->second);
-            } else {
-                const auto& v = geometry.vertices[vidx];
-                irr::video::S3DVertex vertex;
-                vertex.Pos.X = v.x;
-                vertex.Pos.Y = v.z;  // Irrlicht Y↔Z swap
-                vertex.Pos.Z = v.y;
-                vertex.Normal.X = v.nx;
-                vertex.Normal.Y = v.nz;
-                vertex.Normal.Z = v.ny;
-                vertex.Color = irr::video::SColor(255, 255, 255, 255);
-
-                // UV remap: cell-based UV → normalized [0,1) → composite sheet position
-                float baseU = v.u - static_cast<float>(cellU);
-                float baseV = (flipV ? (1.0f - v.v) : v.v) - static_cast<float>(cellV);
-                float fractU = baseU / static_cast<float>(entry->tilesU);
-                float fractV = baseV / static_cast<float>(entry->tilesV);
-                vertex.TCoords.X = entry->uvOffsetU + fractU * entry->uvScaleU;
-                vertex.TCoords.Y = entry->uvOffsetV + fractV * entry->uvScaleV;
-
-                if (buffer->Vertices.size() >= 65535) {
-                    // Hit 16-bit index limit — finalize this buffer and start a new one
-                    finishMeshBuffer(buffer);  // B904: exact-size arrays
-                    mesh->addMeshBuffer(buffer);
-                    buffer->drop();
-
-                    buffer = new irr::scene::SMeshBuffer();
-                    buffer->Material.setTexture(0, compositeTexture);
-                    buffer->Material.BackfaceCulling = false;
-                    buffer->Material.Lighting = false;
-                    if (hasAlpha) {
-                        // H02d (Option A): see buildTexturedMesh for rationale.
-                        bool isETC1 = constrainedCache_ && constrainedCache_->isETC1Texture(compositeTexture);
-                        if (isETC1) {
-                            if (shaderMaterialAlphaTest_ >= 0) {
-                                buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTest_);
-                            } else {
-                                buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
-                            }
-                            if (constrainedCache_) {
-                                irr::video::ITexture* alphaTex = constrainedCache_->getAlphaTexture(compositeTexture);
-                                if (alphaTex) {
-                                    buffer->Material.setTexture(1, alphaTex);
-                                }
-                            }
-                        } else {
-                            if (shaderMaterialAlphaTestRGBA_ >= 0) {
-                                buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialAlphaTestRGBA_);
-                            } else {
-                                buffer->Material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
-                            }
-                        }
-                    } else {
-                        if (shaderMaterialSolid_ >= 0) {
-                            buffer->Material.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(shaderMaterialSolid_);
-                        } else {
-                            buffer->Material.MaterialType = irr::video::EMT_SOLID;
-                        }
-                    }
-                    buffer->Material.setFlag(irr::video::EMF_BILINEAR_FILTER, true);
-                    buffer->Material.TextureLayer[0].TextureWrapU = irr::video::ETC_CLAMP_TO_EDGE;
-                    buffer->Material.TextureLayer[0].TextureWrapV = irr::video::ETC_CLAMP_TO_EDGE;
-                    globalToLocal.clear();
-                }
-
-                irr::u16 localIdx = static_cast<irr::u16>(buffer->Vertices.size());
-                globalToLocal[key] = localIdx;
-                buffer->Vertices.push_back(vertex);
-                buffer->Indices.push_back(localIdx);
-            }
-        }
-    }
-
-    if (buffer->Vertices.size() > 0) {
-        finishMeshBuffer(buffer);  // B904: exact-size arrays
-        mesh->addMeshBuffer(buffer);
-    }
-    buffer->drop();
-
-    if (unmappedTriangles > 0) {
-        LOG_DEBUG(MOD_GRAPHICS, "ZoneMeshBuilder::buildCompositeMesh: {} triangles not in composite (skipped)",
-                  unmappedTriangles);
-    }
-
-    finishMesh(mesh);  // B904
-    LOG_DEBUG(MOD_GRAPHICS, "ZoneMeshBuilder::buildCompositeMesh: built mesh with {} buffers, {} total vertices",
-              mesh->getMeshBufferCount(),
-              mesh->getMeshBufferCount() > 0 ? mesh->getMeshBuffer(0)->getVertexCount() : 0);
-    return mesh;
-}
-
-// ============================================================================
-// Performance: Lazy Texture Loading (Phase 3)
-// ============================================================================
-
-void ZoneMeshBuilder::registerLazyTexture(const std::string& name, std::shared_ptr<TextureInfo> texInfo) {
-    if (name.empty() || !texInfo || texInfo->data.empty()) {
-        return;
-    }
-
-    // Don't register if already loaded
-    if (textureCache_.find(name) != textureCache_.end()) {
-        return;
-    }
-
-    // Register for lazy loading
-    pendingTextures_[name] = texInfo;
-}
-
 irr::video::ITexture* ZoneMeshBuilder::getOrLoadTexture(const std::string& name, bool applyPaletteMask) {
     if (name.empty()) {
         return nullptr;
@@ -1013,13 +684,63 @@ irr::video::ITexture* ZoneMeshBuilder::getOrLoadTexture(const std::string& name,
     if (pendingIt != pendingTextures_.end() && pendingIt->second && !pendingIt->second->data.empty()) {
         // Load the texture now
         const TextureOrigin origin = pendingIt->second->origin();  // B947
+        // B1083 (GitLab #403): the pending TextureInfo's own source archive
+        // stem, so the deferred load lands on (archive, name) and this
+        // builder's textureCache_[name] (deliberately plain-name-keyed: one
+        // mesh build, one texture per name) holds the right pack's copy.
+        const std::string sourceStem = pendingIt->second->archiveStem();
         irr::video::ITexture* texture = loadTextureFromBMP(name, pendingIt->second->data, applyPaletteMask,
-                                                           &origin);
+                                                           &origin, sourceStem);
 
         // Remove from pending (data no longer needed)
         pendingTextures_.erase(pendingIt);
 
         return texture;
+    }
+
+    // B1051 (GitLab #371): the per-part texture's raw S3D bytes may have been
+    // released because the EQE1 pack is present ("EQE1 authoritative" —
+    // RaceModelLoader::loadModelZone's releaseBytesIfEqe1Authoritative) while
+    // the GPU storage was queued by a Compressed-source lookup
+    // (ConstrainedTextureCache::getOrLoad() -> findCompressedEntry). The
+    // The promotion (the actual glCompressedTexImage2D, logged as
+    // "ETC1 texture ... uploaded") normally happens later on the render
+    // thread's upload loop -- lane-2 run 912c measured it 80-94 ms AFTER
+    // the guard's mesh build (first race-71 build 11:02:47.871,
+    // Guard_Drath's own 11:02:47.885, first qcf ETC1 upload 11:02:47.965)
+    // -- so getTexture() alone still misses a freshly-queued
+    // entry. buildTexturedMesh() (the single-buffer zone path) survives by
+    // being built from already-promoted entries; this on-demand path runs
+    // inside the zone-load sequence, BEFORE the upload loop for a new
+    // race's qcs, so it must promote the queued entry itself. This path
+    // already does driver GL work (loadTextureFromBMP above), so the
+    // synchronous upload here is not a new thread/context assumption.
+    if (constrainedCache_ && !name.empty()) {
+        std::string lowerName = name;
+        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        irr::video::ITexture* texture = constrainedCache_->getTexture(lowerName, applyPaletteMask);
+        if (!texture) {
+            texture = constrainedCache_->getTexture(name, applyPaletteMask);
+        }
+        if (!texture) {
+            // Queued (compressed or decoded) but not yet promoted: promote now.
+            texture = constrainedCache_->uploadTexture(lowerName, applyPaletteMask);
+            if (!texture) {
+                texture = constrainedCache_->uploadTexture(name, applyPaletteMask);
+            }
+        }
+        if (texture) {
+            // Cache it so subsequent buffers/variants for the same texture
+            // (and hasTexture()) skip the constrained-cache lookup.
+            textureCache_[name] = texture;
+            if (constrainedCache_->hasAlpha(lowerName, applyPaletteMask) ||
+                constrainedCache_->hasAlpha(name, applyPaletteMask)) {
+                texturesWithAlpha_.insert(name);
+                texturesWithAlpha_.insert(lowerName);
+            }
+            return texture;
+        }
     }
 
     // Not found
@@ -1028,7 +749,14 @@ irr::video::ITexture* ZoneMeshBuilder::getOrLoadTexture(const std::string& name,
 
 bool ZoneMeshBuilder::hasTexture(const std::string& name) const {
     return textureCache_.find(name) != textureCache_.end() ||
-           pendingTextures_.find(name) != pendingTextures_.end();
+           pendingTextures_.find(name) != pendingTextures_.end() ||
+           // B1051 (GitLab #371): same hole as getOrLoadTexture() above — the
+           // texture lives in the constrained cache (Compressed source, raw
+           // bytes released) without ever having been decoded through this
+           // builder. Without this, isTextureAvailable() (mesh_building.cpp)
+           // refuses the equipment-variant name and the buffer silently falls
+           // back to the base part's texture (or nothing).
+           (constrainedCache_ != nullptr && constrainedCache_->hasTexture(name));
 }
 
 void ZoneMeshBuilder::registerUploadedTexture(const std::string& name,

@@ -156,6 +156,10 @@ struct SlotDisplayInfo {
     bool hasItem = false;
     std::string itemName;       // Short name for display
     uint32_t iconId = 0;        // Item icon ID (for future icon atlas)
+    // B1025-H3 (#345): the item id, fed with hasItem. The hotbar gesture's
+    // item clone carries it to the game thread (the Item activate arm
+    // resolves id -> slot via findItemSlotByItemId, T230's hop).
+    uint32_t itemId = 0;
     int32_t quantity = 1;       // Stack count
     // B442b (#151 rows 19-21): the bag size, 0 = not a container. A RIGHT
     // click on a general slot holding a bag toggles its window.
@@ -250,12 +254,15 @@ struct HotbarSlotState {
 struct HotbarPanelState {
     static constexpr int SLOT_COUNT = 10;
     HotbarSlotState slots[10];
+    int currentPage = 0;
     int hoveredSlot = -1;
+    // B1025-H2: the window's open/closed state and its close-box hover. The
+    // oracle's HotButtonWnd is shown by default (no [HotButtonWnd] Show= in
+    // the stock inis), so the default is open; the close box toggles the flag
+    // in-session (nothing user-changeable is persisted, T432).
+    bool isOpen = true;
+    bool closeHovered = false;
 };
-
-/** Render hotbar (10 slots, bottom-center). */
-void renderHotbar(UIRenderer& ui, const UILayout& layout,
-                  const HotbarPanelState& state);
 
 /**
  * T156: apply a HotbarSlotAssigned bridge event to the cached panel state.
@@ -292,6 +299,13 @@ struct SpellGemPanelState {
     // choice" -- resolveMemorizeGem() then picks the first empty gem, which
     // is what a plain click on a spell does.
     int memorizeTargetGem = -1;
+    // B1077 (GitLab #397): the CSPW_SpellBook button (the 22x22 toggle at
+    // (10,252) inside the window). The hit test (static_ui_input.cpp) writes
+    // bookClicked when a LEFT click lands on the button and bookHovered
+    // every frame; FrameComponent reads and resets bookClicked once per
+    // frame and runs the SAME toggle body Ctrl+B and /book use.
+    bool bookClicked = false;
+    bool bookHovered = false;
 };
 
 /**

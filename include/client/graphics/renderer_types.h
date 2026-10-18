@@ -50,7 +50,6 @@
 #include "client/graphics/tree_identifier.h"
 #include "client/graphics/weather_system.h"
 #include "client/graphics/zone_shader.h"
-#include "client/graphics/texture_atlas.h"
 #include "client/graphics/eqe1_loader.h"
 #include "client/graphics/eqe1_texture_index.h"
 #include "client/graphics/portal_system.h"
@@ -134,6 +133,8 @@ enum class RendererAction : uint8_t {
     ClearTarget, ToggleInventory, ToggleGroup, ToggleSkills,
     TogglePet, ToggleSpellbook, ToggleBuffWindow, ToggleOptions,
     ToggleCombatAbilities,      // T415 (B320): Alt+C
+    ToggleHotbar1Window,        // B1025-H4 (#345): Alt+H, H-O's measured default
+    HotbarPageChange,           // B1025-H4: intData = target page 0-9
     ToggleFriends,              // B897: Alt+F
     DoorInteract, WorldObjectInteract,
     ReplyToTell,                // T319: R key -> ActionDispatcher::openReplyToTell()

@@ -124,6 +124,7 @@ struct InventoryRig {
     SkillsPopupState skills;
     BuffBarState buffs;
     LootPanelState loot;
+    CombatAbilityPanelState abilities;  // B1025-H3: processFrameGesture's source
     CursorAttachmentState cursor;
 
     InventoryRig() {
@@ -138,6 +139,27 @@ struct InventoryRig {
     void clickSlot(int slot, bool left, bool right, ClickModifiers mods = {}) {
         const auto r = InventoryLayout::slotRect(l, slot);
         clickAt(r.UpperLeftCorner.X + 3, r.UpperLeftCorner.Y + 3, left, right, mods);
+    }
+    // B1025-H3 (GitLab #345): the production click is a PRESS and a RELEASE.
+    // A left press on a holdable single item defers its pickup to the holder
+    // (a hold may clone the item away instead); the release frame over the
+    // source fires it. These tests assert on the final state -- the intent
+    // the pickup pushes -- so they run the two-frame form: press, the
+    // gesture tick, release, the tick that fires the deferred action.
+    void pressReleaseSlot(int slot, ClickModifiers mods = {}) {
+        const auto r = InventoryLayout::slotRect(l, slot);
+        const int x = r.UpperLeftCorner.X + 3;
+        const int y = r.UpperLeftCorner.Y + 3;
+        input.setFrameClickState(false, mods, &cursor);
+        input.processInput(x, y, /*leftClicked=*/true, l, hotbar, gems, inv, book,
+                           skills, buffs, loot, mods.shift);
+        input.processFrameGesture(0.001f, /*buttonDown=*/true, hotbar, gems, inv,
+                                  abilities);
+        input.setFrameClickState(false, mods, &cursor);
+        input.processInput(x, y, /*leftClicked=*/false, l, hotbar, gems, inv, book,
+                           skills, buffs, loot, mods.shift);
+        input.processFrameGesture(0.001f, /*buttonDown=*/false, hotbar, gems, inv,
+                                  abilities);
     }
 };
 
@@ -260,7 +282,7 @@ TEST(CursorGestureInventory, LeftClickOnAnOccupiedSlotPushesTheCursorClick) {
     InventoryRig rig;
     rig.inv.generalSlots[0].hasItem = true;   // Titanium slot 22
     rig.inv.generalSlots[0].quantity = 1;
-    rig.clickSlot(22, /*left=*/true, /*right=*/false);
+    rig.pressReleaseSlot(22);  // B1025-H3: press defers, the release fires it
     auto intents = rig.bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
     const auto* g = std::get_if<CursorGestureIntent>(&intents[0]);
@@ -813,7 +835,7 @@ TEST(CursorGestureCommands, CursorDescribesItemAndCoin) {
 TEST(CursorGestureCommands, AClickAndPickupAreOnePathToTheSameMove) {
     InventoryRig rig;
     rig.inv.generalSlots[0].hasItem = true;
-    rig.clickSlot(22, true, false);
+    rig.pressReleaseSlot(22);  // B1025-H3: press defers, the release fires it
     auto clicked = rig.bridge.drainIntents();
     ASSERT_EQ(clicked.size(), 1u);
     const auto clickIntent = std::get<CursorGestureIntent>(clicked[0]);

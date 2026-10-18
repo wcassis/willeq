@@ -25,7 +25,6 @@ namespace mode {
  *
  * Features:
  * - Multiple renderer types (software, GPU, ASCII, top-down)
- * - Camera modes (free, follow, first-person)
  * - UI windows (inventory, skills, chat)
  * - Entity and door rendering
  * - Zone geometry loading
@@ -53,31 +52,6 @@ public:
 
     void requestQuit() override;
     bool isQuitRequested() const override { return m_quitRequested; }
-
-    // ========== Graphical-Specific API ==========
-
-    /**
-     * Get the graphical renderer (if available).
-     * Returns nullptr if the renderer is not a GraphicalRenderer subclass.
-     */
-    output::GraphicalRenderer* graphicalRenderer();
-
-    // ========== Camera Control ==========
-
-    /**
-     * Set camera mode.
-     */
-    void setCameraMode(output::CameraMode mode);
-
-    /**
-     * Cycle to next camera mode.
-     */
-    void cycleCameraMode();
-
-    /**
-     * Get current camera mode.
-     */
-    output::CameraMode getCameraMode() const;
 
     // ========== Rendering Options ==========
 

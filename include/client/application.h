@@ -1,5 +1,6 @@
 #pragma once
 
+#include "client/audio/audio_device_rate.h"  // B1069
 #include "client/state/game_state.h"
 #include "client/mode/game_mode.h"
 #include "client/mode/graphical_mode.h"
@@ -86,6 +87,18 @@ struct ApplicationConfig {
     std::string audioSoundfont;
     std::string audioVendorMusic = "gl.xmi";
     bool audioUse3D = true;  // K15 (B037): "audio.use_3d"
+    // B1069 (#389): "audio.device_sample_rate" / --audio-rate. The playback
+    // DEVICE rate (the mixer stays at 22050); 0 = the backend's native rate.
+    // main.cpp publishes it to EQT::Audio::setConfiguredDeviceSampleRate()
+    // (client/audio/audio_device_rate.h, which says why it is not a setter).
+    uint32_t audioDeviceSampleRate = EQT::Audio::kDefaultDeviceSampleRate;
+    // Set by --audio-rate: the config file (loaded AFTER the arguments) then
+    // leaves audioDeviceSampleRate alone, so the CLI mirror wins.
+    bool audioDeviceSampleRateFromCli = false;
+    // B1069: "audio.device_format" / --audio-format (s16 default; f32, s24,
+    // s32, native). Published by main.cpp like the rate; the CLI wins.
+    EQT::Audio::DeviceFormat audioDeviceFormat = EQT::Audio::kDefaultDeviceFormat;
+    bool audioDeviceFormatFromCli = false;
 
     // RDP settings (guarded by WITH_RDP at usage sites)
     bool rdpEnabled = false;
@@ -129,6 +142,7 @@ struct ApplicationConfig {
     double scenarioTimeoutSeconds = 300.0;      // --timeout <s>
     double scenarioStartDeadlineSeconds = 120.0;  // zone-in deadline -> exit 3
     double scenarioHoldSeconds = 300.0;         // --scenario-hold <s>
+    bool scenarioSilentZone = false;            // --scenario-silent-zone (B1079): zone_connect_timeout's "answered then went silent" arm
     unsigned int scenarioSpellId = 288;         // --scenario-spell <id> (B484: 288 is castable by the config's class; 46 was not)
     long long scenarioExpectMaterial = -1;      // --scenario-expect-material <n> (T498)
     // B630 (issue #48): the two-client interrupted-cast lane.
@@ -137,6 +151,10 @@ struct ApplicationConfig {
     unsigned int scenarioRecastStopSpellId = 293; // --scenario-recast-stop-spell <id> (D2)
     unsigned int scenarioBuffNotakeSpellId = 293; // --scenario-buff-notake-spell <id> (D3: the caster's own beneficial buff; the "does not take hold" variant is recorded, not forced, in this rig)
     unsigned int scenarioFizzleSpellId = 0;     // --scenario-fizzle-spell <id> (B leg, non-GM caster)
+    long long scenarioZoneChangeTargetZone = 0;  // --scenario-zone <id> (B1081: zone_change_no_flash's /gmzone target)
+    // B1088 (#408): the loading_name lane -- the GM zone request's target.
+    unsigned int scenarioZoneId = 0;            // --scenario-zone-id <id> (0 = refuse)
+    std::string scenarioZoneName;               // --scenario-zone-name <short name> (the Pass check)
 
     // B888 (#204): the world-stage character script (world_script.h). At most
     // one of the three; the spec is parsed against data/char_create.tsv in
@@ -366,6 +384,16 @@ public:
     int scenarioExitCode() const;
     std::string scenarioReason() const;
     std::string scenarioName() const;
+    // B1081 (#401): the screen-up count the zone_change_no_flash scenario
+    // reads (CharacterSelectService::Activations, the game thread's
+    // observable for the render thread's "[CHARSELECT] screen up" log).
+    long long CharacterSelectActivations() const {
+        return static_cast<long long>(m_charSelectService.Activations());
+    }
+    // B1081 (#401): the configured character, pre-zone-in -- game-state's
+    // player name is empty until the zone session is up, so a scenario that
+    // acts AT the character-select screen names its character from here.
+    std::string ConfiguredCharacter() const { return m_config.character; }
 
     /** B998 (#318): whether `config` shows the character-select screen
      *  (login_world/character_select.h, CharacterSelectScreenWanted). Public
@@ -582,7 +610,7 @@ private:
     // for no effect. The publish side exists: HotbarModel's slot writers
     // call publishSlot() (HotbarSlotAssigned on the bridge) and Application
     // calls publishAllSlots() at zone-in; the only production writer is
-    // loadFromJson() at startup -- no command, intent or UI control assigns
+    // loadFromJson() from per-character storage at zone-in -- no command, intent or UI control assigns
     // a slot (B1025, #345). There is nothing left for a callback to carry.
     void setupRDPAudio(void* rdpServer);  // D20g: Wire RDP audio streaming
     // U07b: publishHotbarSnapshot removed — HotbarModel::publishAllSlots() handles this

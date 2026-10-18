@@ -54,6 +54,7 @@
 
 #include "common/net/posix_udp_transport.h"
 #include "client/animation_constants.h"
+#include "client/zone/zone_component.h"  // B1072: kZoneConnectTimeoutMs
 #include <array>
 #include <cstdlib>
 #include <iomanip>
@@ -105,6 +106,7 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	              [this] { StopUpdateLoop(); },
 	              [this] { OnGameStateComplete(); },
 	              [this] { ConnectToZone(); },
+	              [this] { TickZoneConnect(std::chrono::steady_clock::now()); },
 	              [this](bool sneak) { SetSneak(sneak); },
 	              m_update_running,
 	              m_pending_logout_disconnect,
@@ -257,6 +259,9 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 
 	// U07b: Create standalone hotbar model
 	m_hotbar_model = std::make_unique<eqt::HotbarModel>();
+	m_hotbar_model->setSpellAtGem([this](uint8_t gem) {
+		return m_spell_manager->getMemorizedSpell(gem);
+	});
 	m_hotbar_model->setNameResolver([this](eqt::HotbarSlotType type, uint32_t id) -> std::string {
 		if (type == eqt::HotbarSlotType::Spell && m_spell_manager) {
 			const auto* spell = m_spell_manager->getSpell(id);
@@ -266,6 +271,17 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 			return EQ::getSkillName(static_cast<uint8_t>(id));
 		}
 		return "";
+	});
+	// B1077 (GitLab #397): a hotbar SPELL slot draws its spell's gem_icon,
+	// the Gems family of the spell-icon atlas -- the same column the gem
+	// bar reads (spell_icon is 0 on every Titanium row; gem_icon is the
+	// one icon column that carries art).
+	m_hotbar_model->setSpellIconFor([this](uint32_t id) -> uint32_t {
+		if (m_spell_manager) {
+			const auto* spell = m_spell_manager->getSpell(id);
+			if (spell) return spell->gem_icon;
+		}
+		return 0;
 	});
 
 	// S04: Create inventory manager at startup (was lazy-init in ConnectToZone/InitGraphics)
@@ -832,13 +848,27 @@ void EverQuest::ConnectToZone()
 	// S04: inventory_manager, spell DB and buff_manager are all
 	// pre-allocated in EverQuest constructor / Application::initialize()
 
-	EQ::Net::DaybreakConnectionManagerOptions zone_opts;
-	auto transport = std::make_unique<EQ::Net::PosixUdpTransport>();
-	m_zone_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(zone_opts, std::move(transport)));
-	m_zone_connection_manager->OnNewConnection(std::bind(&EverQuest::ZoneOnNewConnection, this, std::placeholders::_1));
-	m_zone_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::ZoneOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-	m_zone_connection_manager->OnPacketRecv(std::bind(&EverQuest::ZoneOnPacketRecv, this, std::placeholders::_1, std::placeholders::_2));
-	m_zone_connection_manager->Connect(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort());
+	// B1072 (#392) + B1079 (#399): a fresh ZoneServerInfo arms the zone-IN
+	// bound over the WHOLE loading span (the per-phase table, zone_connect.cpp),
+	// the session itself is OpenZoneConnection()'s (zone_connect.cpp), which
+	// the one retry reuses.
+	m_zone_connect_watchdog.Arm(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort(),
+		std::chrono::steady_clock::now(), ZonePhaseBoundsMs(),
+		eqt::zone::ZoneComponent::kZoneConnectRetries);
+	OpenZoneConnection(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort());
+	// B1079 (#399): the scenario lane's "zone answered then went silent" lever
+	// (SimulateZoneSilentAfterHandshake). The connection above goes to a dead
+	// port (SimulateUnreachableZoneConnects), which -- as the B1072 arm
+	// proves live -- is stable silence: the stale connect is erased without a
+	// StatusDisconnected, so nothing re-connects and nothing moves the phase.
+	// Override the handshake's ZONE_CONNECTING with the "the zone answered"
+	// phase so the load SITS there and the bound has to walk it to its own
+	// deadline and escalate WITHOUT a connect retry (the zone already saw our
+	// OP_ZoneEntry -- a re-connect would duplicate it). A pure phase move: the
+	// forwarder sets the phase, not the PlayerProfile side effects.
+	if (m_sim_zone_silent) {
+		SetLoadingPhase(LoadingPhase::ZONE_RECEIVING_PROFILE);
+	}
 }
 
 void EverQuest::ZoneOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection)
@@ -874,6 +904,14 @@ void EverQuest::ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Dayb
 		m_zone->ZoneEntrySent() = false;
 		m_zone_connection.reset();
 		SetLoadingPhase(LoadingPhase::ZONE_CONNECTING);
+		// B1072: this reconnect was unbounded too; bound it the same way
+		// unless a zone-in attempt already holds the deadline (the per-phase
+		// table, B1079).
+		if (!m_zone_connect_watchdog.Armed()) {
+			m_zone_connect_watchdog.Arm(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort(),
+				std::chrono::steady_clock::now(), ZonePhaseBoundsMs(),
+				eqt::zone::ZoneComponent::kZoneConnectRetries);
+		}
 		m_zone_connection_manager->Connect(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort());
 	}
 }
@@ -901,6 +939,11 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 	}
 
 	LOG_TRACE(MOD_ZONE, "[ZONE RECV] opcode=0x{:04x} len={}", opcode, p.Length());
+
+	// B1079 (#399): the escalation's "last opcode seen". A play box without
+	// --log-file leaves only this in the client's own chat log, and it is
+	// the one fact that says whether the zone ever answered ZoneEntry.
+	m_last_zone_opcode = static_cast<int>(opcode);
 
 	eqt::strings::DumpPacket("S->C", opcode, p);
 
