@@ -907,6 +907,66 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
         click)
             [[ $target =~ ^[0-9]+,[0-9]+$ ]] || exit 65
             IFS=, read -r x y <<<"$target"; jclick "$x" "$y" ;;
+        rclick)
+            # B1052: a 1px right-drag, jrclick's shape with the no-WM focus
+            # rule of jclick/jrclick (B1073). The oracle's display for a RIGHT
+            # press is up only WHILE HELD (B442b row 25). The probe-1 leg
+            # showed no display at t=0.4 s, so the shot now runs at FOUR
+            # times during the hold (0.4 s, 1.0 s, 2.0 s, 4.0 s -- each one
+            # that fits inside hold_ms) to pin WHEN the window comes up,
+            # not just that it does.
+            [[ $target =~ ^[0-9]+,[0-9]+$ ]] || exit 65
+            [[ ${hold_ms:-0} =~ ^[0-9]+$ ]] || exit 65
+            rc_hold_ms=$hold_ms
+            [[ $rc_hold_ms -lt 600 ]] && rc_hold_ms=600
+            IFS=, read -r x y <<<"$target"
+            client_focus
+            xdotool mousemove "$x" "$y"; xdotool mousedown 3
+            xdotool mousemove $(( x + 1 )) $(( y + 1 ))
+            rc_elapsed=0
+            for rc_off in 0.4 1.0 2.0 4.0; do
+                rc_wait=$(awk -v e="$rc_elapsed" -v o="$rc_off" 'BEGIN{printf "%.1f", o-e}')
+                [[ $rc_wait == -* ]] && break
+                sleep "$rc_wait"
+                rc_elapsed=$(awk -v e="$rc_elapsed" -v w="$rc_wait" 'BEGIN{printf "%.1f", e+w}')
+                shot "$name-held${rc_off/./}" || :
+            done
+            xdotool mouseup 3 ;;
+        rclick-still)
+            # B1052 probe: a STATIONARY right press-hold -- mousedown, NO
+            # movement at all, shots at 0.4/1.0/2.0/4.0 s, release. The
+            # 1px-drag rclick suppresses nothing per B1073, but the display
+            # has not appeared in 68 attempts, so this isolates the drag.
+            [[ $target =~ ^[0-9]+,[0-9]+$ ]] || exit 65
+            IFS=, read -r x y <<<"$target"
+            client_focus
+            xdotool mousemove "$x" "$y"; sleep 0.6
+            xdotool mousedown 3
+            rc_elapsed=0
+            for rc_off in 0.4 1.0 2.0 4.0 10.0 20.0 28.0; do
+                rc_wait=$(awk -v e="$rc_elapsed" -v o="$rc_off" 'BEGIN{printf "%.1f", o-e}')
+                [[ $rc_wait == -* ]] && break
+                sleep "$rc_wait"
+                rc_elapsed=$(awk -v e="$rc_elapsed" -v w="$rc_wait" 'BEGIN{printf "%.1f", e+w}')
+                shot "$name-held${rc_off/./}" || :
+            done
+            xdotool mouseup 3 ;;
+        altclick-still)
+            # B1052 probe: ALT+LEFT on a slot -- the client's own tip window
+            # names it as the display's second trigger, and B442b row 26 says
+            # it STAYS open until Escape (unlike the right-hold), so the
+            # window is up AFTER the click and the still is trivial.
+            [[ $target =~ ^[0-9]+,[0-9]+$ ]] || exit 65
+            IFS=, read -r x y <<<"$target"
+            client_focus
+            xdotool mousemove "$x" "$y"; sleep 0.6
+            xdotool keydown alt; xdotool mousedown 1; sleep 0.35
+            xdotool mouseup 1; xdotool keyup alt
+            sleep 0.6
+            shot "$name-held04" || :
+            sleep 1.0
+            shot "$name-held10" || :
+            ;;
         click-template) click_template "$target" "$hold_ms" "$name" || exit 65 ;;
         wait-template) wait_template "$target" "$hold_ms" "$name" || exit 65 ;;
         press) xdotool key "$target" ;;
