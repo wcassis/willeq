@@ -230,7 +230,7 @@ never a defect).
 ./build/bin/willeq -c willeq.json
 
 # With graphics, X11-windowed (P25; opt-in only, never DISPLAY-autodetected)
-./build/bin/willeq -c willeq.json --egl-window
+./build/bin/willeq -c willeq.json --egl-x11
 
 # Headless (no graphics)
 ./build/bin/willeq -c willeq.json --no-graphics
@@ -249,7 +249,7 @@ never a defect).
 | Method | Use Case | Audio | Client |
 |--------|----------|-------|--------|
 | Surfaceless EGL (default) | No display needed at all — llvmpipe GPU emulation | Local | Native |
-| Windowed EGL (`--egl-window`/`--egl-x11`, P25) | Local display, GLES2 in a window | Local | Native |
+| X11-windowed EGL (`--egl-x11`, P25) | Local display, GLES2 in a window | Local | Native |
 | Xvfb + VNC | Remote access, cross-platform | None | VNC client |
 | Xvfb + VNC + Audio | Remote with sound | HTTP stream | VNC + VLC |
 | Native RDP | Windows users, better compression | RDP audio | mstsc.exe, xfreerdp |
