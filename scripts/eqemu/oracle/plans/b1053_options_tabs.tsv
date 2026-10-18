@@ -1,0 +1,27 @@
+# B1053 (#373): open the Options window and take one still per tab, in XML
+# tab order. The rig is 1280x1024 (the oracle driver's own screen); the
+# Options window is UNSCALED and drawn at its oracle's absolute (90,47) with
+# RelativePosition false, so its size and every interior rect are identical
+# at 1280x720 -- the tab-strip click x's below are remapped from the General
+# still's measured strip by scripts/oracle_options_tabs.py on the host.
+# action	target	hold_ms	still_name
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+wait	8000	0	settle
+press	alt+o	0	options_general
+wait	1000	0	options_general_settle
+click	94,86	0	opt_general
+wait	1200	0	opt_general_settle
+click	150,86	0	opt_display
+wait	1200	0	opt_display_settle
+click	206,86	0	opt_mouse
+wait	1200	0	opt_mouse_settle
+click	262,86	0	opt_keys
+wait	1200	0	opt_keys_settle
+click	318,86	0	opt_filters
+wait	1200	0	opt_filters_settle
+click	374,86	0	opt_colors
+wait	1200	0	opt_colors_settle
+click	430,86	0	opt_mail
+wait	1200	0	opt_mail_settle
+command	/q	0	quit
