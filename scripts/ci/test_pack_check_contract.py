@@ -317,26 +317,35 @@ def pin_only_with_dir(sd):
 
 
 def check_installed_with(tmp, broken_script):
+    # A fake repo in the PRODUCTION layout: the wrapper resolves REPO_ROOT as
+    # <its dir>/../.., then execs $REPO_ROOT/scripts/build_willeq_pack.sh, so
+    # the script under test must sit at <tmp>/scripts/build_willeq_pack.sh and
+    # the wrapper copy at <tmp>/scripts/ci/. The first version of this helper
+    # put both under <tmp>/script/ (no s): the wrapper then exec'd a path that
+    # did not exist, bash returned 127, the fable leg turned that into the
+    # exit 1 the probe expected, and the self-test could never see a broken
+    # script (every fable pipeline from 1645 on printed SELF-TEST FAIL).
     d = Path(tmp)
-    (d / "script").mkdir(exist_ok=True)
-    (d / "script" / "build_willeq_pack.sh").write_text(broken_script)
-    (d / "script" / "ci").mkdir()
-    shutil.copy(WRAPPER, d / "script" / "ci" / "installed_pack_matches_pin.sh")
-    # The wrapper resolves REPO_ROOT from its own path; point it at the
-    # patched copy by running it from there.
+    sd = d / "scripts"
+    (sd / "ci").mkdir(parents=True, exist_ok=True)
+    (sd / "build_willeq_pack.sh").write_text(broken_script)
+    shutil.copy(WRAPPER, sd / "ci" / "installed_pack_matches_pin.sh")
     fails = []
 
     def expect(cond, msg):
         if not cond:
             fails.append(msg)
 
-    sd = d / "script"
-    inst = sd / "willeq.eqe1"
+    inst = d / "willeq.eqe1"
     inst.write_bytes(b"the installed pack\n")
-    pin = sd / "pin.sha256"
+    pin = d / "pin.sha256"
     write_pin(pin, "0" * 64)
+    # The probe is about the HARD leg, so it names the branch itself instead
+    # of inheriting whatever CI_COMMIT_BRANCH the pipeline happens to carry.
     r = run(["bash", str(sd / "ci" / "installed_pack_matches_pin.sh"),
-             "--check-installed", "--output", str(inst), "--sha-file", str(pin)])
+             "--check-installed", "--output", str(inst), "--sha-file", str(pin)],
+            CI_COMMIT_BRANCH="fable")
+    expect("No such file" not in r.stderr, "the wrapper did not find the script under test: " + r.stderr.strip())
     expect(r.returncode == 1, "broken --check-installed passed on a mismatch")
     return fails
 
