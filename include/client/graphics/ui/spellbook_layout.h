@@ -26,7 +26,7 @@
 // SBW_LeftPageNum (137,9), SBW_RightPageNum (350,9).
 //
 // PAGE ARROWS -- 18x32 buttons, one on each outer edge at Y=145 (mid
-// page): SBW_PageDownButton (10,145) left / back, SBW_PageUpButton
+// page): SBW_PageDownButton (6,145) left / back, SBW_PageUpButton
 // (487,145) right / forward.
 //
 // MEMORIZE GAUGE -- one 100x8 Gauge at (204,312), below the slots,
@@ -97,7 +97,7 @@ constexpr int kRightPageNumY = 9;
 constexpr int kArrowW = 18;
 constexpr int kArrowH = 32;
 constexpr int kArrowY = 145;
-constexpr int kPageDownX = 10;   // SBW_PageDownButton, left edge
+constexpr int kPageDownX = 6;    // SBW_PageDownButton, left edge
 constexpr int kPageUpX = 487;    // SBW_PageUpButton, right edge
 
 // Memorize gauge: 100x8 below the slots.

@@ -18,7 +18,6 @@
 #include "client/graphics/ui/hotbar_layout.h"  // B1025-H2: the stock window rect
 #include "client/graphics/ui/spell_gem_layout.h"  // B1077: the oracle's gem window size
 #include "client/graphics/ui/spellbook_layout.h"  // B1076 (#396): the book's own 510x360
-#include "client/graphics/ui/spellbook_layout.h"  // B1076 (#396): the book's own 510x360
 #include "client/graphics/ui/ui_layout_table.h"  // B1075: the anchors + co-open sets
 
 namespace EQT {

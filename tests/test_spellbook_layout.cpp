@@ -9,10 +9,11 @@
 // The window is 510x360 (Style_Sizable false). Two 2x4 grids of 44x44
 // spell buttons -- SBW_Spell0..7 the left page (columns X=80, 171; rows
 // Y=24, 97, 169, 242), SBW_Spell8..15 the right page (columns X=292,
-// 383, same rows). Column-major per page (the XML: SBW_Spell0..3 fill
-// the left column top-to-bottom). Each button's 84x16 name text sits at
-// (x-20, y+44). Page numbers at (137,9) and (350,9); page arrows 18x32
-// at (10,145) and (487,145); the memorize gauge 100x8 at (204,312); the
+// 383, same rows). Row-major per page (the XML: SBW_Spell0 (80,24) and
+// SBW_Spell1 (171,24) are the first row, left then right). Each
+// button's 84x16 name text sits at (x-20, y+44). Page numbers at (137,9)
+// and (350,9); page arrows 18x32 at (6,145) and (487,145); the memorize
+// gauge 100x8 at (204,312); the
 // done "X" 13x13 at (449,5).
 
 #include <gtest/gtest.h>
@@ -112,11 +113,14 @@ TEST(SpellBookLayout, NameRectsMatchTheXmlPairs) {
     }
 }
 
-// Controls: page numbers, arrows, gauge, done.
+// Controls: page numbers, arrows, gauge, done. The literals are the
+// XML's own numbers, not the header's constants: SBW_PageDown_Button is
+// X=6 in the stock EQUI_SpellBookWnd.xml (18x32 at Y=145), so a header
+// constant that drifts from the XML is a red test, not a tautology.
 TEST(SpellBookLayout, ControlRectsMatchTheXml) {
     EXPECT_TRUE(SameRect(leftPageNumRect(), Rect(137, 9, 20, 16)));
     EXPECT_TRUE(SameRect(rightPageNumRect(), Rect(350, 9, 20, 16)));
-    EXPECT_TRUE(SameRect(pageDownRect(), Rect(10, 145, 18, 32)));
+    EXPECT_TRUE(SameRect(pageDownRect(), Rect(6, 145, 18, 32)));
     EXPECT_TRUE(SameRect(pageUpRect(), Rect(487, 145, 18, 32)));
     EXPECT_TRUE(SameRect(memorizeGaugeRect(), Rect(204, 312, 100, 8)));
     EXPECT_TRUE(SameRect(doneRect(), Rect(449, 5, 13, 13)));

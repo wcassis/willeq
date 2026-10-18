@@ -53,7 +53,7 @@ Evidence dir: `/home/user/kb-evidence/kb-b1076-spellbook-window/oracle_capture4/
 | Left click a book slot | 14-16 | MEMORISE — server chat: "You are not high enough level to memorize that spell" (the attempt fired; Testcaster's 16 scribed spells are all level-69-reachable, so the gauge never ran; opcode table 14: 123 rows) |
 | Right click a book slot | 11-13 | Spell MOVE/SWAP — chat: "Right click on another Scribe Slot in your Spell Book to swap this Spell position". The step's opcodes are EMPTY of a swap packet: the move is client-local until a second slot is clicked |
 | Drag a slot onto a gem | 17-19 | MEMORISE (same level-gated refusal; the gem window settles unchanged) |
-| Scribe (scroll → open slot) | 38-43 | TWO-STEP: click the spell scroll in the inventory (32-34), then click an open slot in the book (38-41 LEFT / 41-43 LEFT, right-drag 38 also tried) — the oracle's own Spellbook Tip window says exactly this. NOT a drag |
+| Scribe (scroll → open slot) | 38-43 | TWO-STEP: click the spell scroll in the inventory (32-34), then click an open slot in the book — the ledger tried 38-40 as a RIGHT-drag (the settle + still) and 41-43 as a LEFT-drag attempt + settle, and neither one dragged the scroll into a slot. The oracle's own Spellbook Tip window says exactly this two-click sequence: click the scroll, then the open slot. NOT a drag |
 | Page arrows | 20-25 | PageUp/Down flip the spread. Testcaster has exactly 16 scribed spells = ONE spread, so the arrows did not visibly turn — the stills show the same 16 slots; the direction is the XML's (PageDown at the left edge, PageUp at the right) |
 | Done X | 26-28 | Closes the book |
 | MemPage 1x1 buttons | — | Not separately probed; they are the whole-page hit targets and are present in the table |
