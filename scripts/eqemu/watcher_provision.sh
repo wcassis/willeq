@@ -199,7 +199,11 @@ busy_zone_leg() {
     # restored right after phase B (it was never changed -- phase B
     # starts its OWN second watcher).
     local live_wpid before psline alive newlines
-    live_wpid="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c "ps -eo pid,args | grep '[p]rocess-watcher' | head -1 | awk '{print \\$1}'" 2>/dev/null | tr -d '[:space:]')"
+    # The real watcher (the perl process), not its `sh -c while true`
+    # wrapper: the wrapper's environ is identical (compose started both),
+    # but ps -p on it survives the wrapper's restart loop -- the check
+    # after phase B is about the provisioned WATCHER, not its shell.
+    live_wpid="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c "ps -eo pid,args | grep 'perl.*[p]rocess-watcher' | head -1 | awk '{print \\$1}'" 2>/dev/null | tr -d '[:space:]')"
     [ -n "${live_wpid}" ] || { echo "  busy-zone leg: no live watcher to prove against (relaunch it first)"; return 1; }
     before="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c 'wc -l < ~/process-kill.log 2>/dev/null' 2>/dev/null | tr -d '[:space:]')"
     [ -n "${before}" ] || before=0
