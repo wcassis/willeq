@@ -35,6 +35,7 @@
 #include "client/graphics/load_mem_audit.h"
 #include "client/core/memory_ledger.h"
 #include "client/core/gl_driver_census.h"  // B1016: the gate's [gldriver] net
+#include "zone_bench_loadpoint_trace.h"   // B928: per-load-point [memledger-trace] rows
 #include "common/willeq_paths.h"  // WILLEQ_EQE1_INDEX_REAL_PATH resolves at run time (B1090)
 
 #ifdef EQT_HAS_GLES2
@@ -249,6 +250,9 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     // (renderer_zone_load.cpp loadZoneSequential) -- same [memledger] line,
     // same schema -- so scripts/ci/memory_cap_hunt.sh and the gate read both.
     eqt::memory::setCurrentZone(config.zoneName);
+    // B928: the per-load-point stack-trace rows (WILLEQ_LEDGER_TRACE=<category>);
+    // off by default -- the gate's invocation sets no such variable.
+    b928::loadPointTraceConfigure();
     // The owner rows (WILLEQ_LEDGER_OWNERS=<category>) are only printed on a
     // diagnostic run: recordPoint() arms them, and the gate never sets the
     // variable, so its invocation is unchanged.
@@ -257,6 +261,9 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         // B955: [memledger] + [memgpu] (the gpu_buffers row) with the driver's
         // tally published first (no driver yet at "startup").
         ZoneBench::printLedgerPoint(point, data->driver);
+        // B928: the per-point stack-trace rows for the traced category,
+        // printed right after its [memledger] line so the two stay adjacent.
+        b928::loadPointTracePrint(point);
         if (ownerRows) {
             eqt::memory::recordPoint(point);
             printf("%s\n", eqt::memory::startupToLogLines(point).c_str());
