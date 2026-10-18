@@ -48,9 +48,11 @@ memcg shmem 39,841,792 -- within the 1 s capture window (the render node's
 neighbourhood straddles a 73 KiB resident step). The gap
 39,841,792 − 30,810,112 = 9,031,680 brackets the scanout tally 9,437,184.
 
-At startup (raw002, 22:01:41Z, before the display framebuffers bind) the gap
-is ~0.3 MB and `scanout_fb=0`; the three framebuffers bind at zone-in (the
-rendered sweep forces a 1024x768 HDMI connector), and with them the gap opens.
+At raw002 (22:01:41Z) one framebuffer is already bound (shared 3,170,304) and
+the gap is 1,724,416; the run's first `[memgpu]` line (the startup point,
+22:01:42.3Z) still reads `scanout_fb=0`. By the login_world point (22:01:43.6Z)
+all three framebuffers are bound (`scanout_fb=9,437,184`) and the gap has
+opened to ~8 MB (raw003 and later).
 
 ## What the ledger does (the fix)
 
