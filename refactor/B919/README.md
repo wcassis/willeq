@@ -156,9 +156,36 @@ is the same geometry (then the x86 finding holds and the 2.5× is a
 measurement-path difference — the Pi's rendered zone-in keeps more, or the
 B854 numbers pre-date the B941/B951 geometry shrink) or a different owner
 (the Pi's entity/model state is charged to `game_state` where x86's is
-charged elsewhere). The Pi run is the arbiter; until it lands, the
-`game_state` owner table is the x86 one above and the Pi's is "pending, lane
-1, `PI_LANE=1`".
+charged elsewhere). The Pi run is the arbiter.
+
+**Status of the Pi leg (2026-10-18):** NOT YET LANDED — it is gated on host
+access this worker does not hold, so it is the open item on this card (the
+task is BLOCKED on it, not silently deferred). What is already true:
+
+- The Pi itself (lane 1, `10.0.30.192`) IS reachable from hermes-ext
+  (`user@` publickey; `pi_remote` works). The Pi's own `game_state` would
+  come from the rendered sweep's `WILLEQ_LEDGER_OWNERS=game_state` export,
+  which `scripts/pi_rendered_zone_sweep.sh` already accepts via its existing
+  `--env VAR=VALUE` flag (line 167, fed to the client env at line 477) — so
+  no code change is needed to capture the Pi's owner table; the mechanism
+  (acceptance C) exists.
+- The rendered sweep's eqemu lane is `EQEMU_HOST=local`, i.e. the **share
+  host `10.0.30.23`** (`scripts/pi_rendered_zone_sweep.sh:21`: "local eqemu
+  lane up, clients reach 10.0.30.23"). That host has a live stack (game
+  ports 5998/9000 are OPEN from the Pi) but this worker has **no SSH key for
+  it** — the sweep must drive the eqemu there (lock, `up.sh`, snapshot,
+  restore-with-world-down) and I cannot, so the rendered sweep cannot be
+  started from here.
+- The armhf binary is published by the MR pipeline's `build-arm` job (ran
+  green on `b39a410a`, ~97 MB, `ci-arm/<sha>/`). `edd46c6e` is a **test-only**
+  cmake fix (the four ledger TUs added to two narrow test targets), so it
+  changes no armhf object — the `b39a410a` binary carries every KB-919 owner
+  row and is the correct binary for the Pi leg.
+
+The Pi owner table, with entity counts beside it, lands when the two hosts
+are reachable from one operator (eqemu host `10.0.30.23` + Pi `10.0.30.192`)
+and is appended here; until then the `game_state` owner table of record is
+the x86 one above.
 
 ## The proposed shrink queue (step 5, ordered by bytes)
 
