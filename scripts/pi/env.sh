@@ -114,14 +114,20 @@ esac
 # ARM cross-build lands in the MAIN worktree, not this task worktree --
 # scripts/build-arm-noble.sh / build-arm64-noble.sh always build there.
 # Override if needed. The default follows the lane's architecture.
+# B1034 (#357, follow-up from the review of !143): ARM_BUILD_BIN_DIR is
+# EXPORTED, so a shell that sourced this file for one lane (or ran one rig
+# for it) and then switched lanes kept the FIRST lane's bin dir for the
+# second -- the same stale-export class as the PI_HOST refusal that landed
+# in 72e8463d. It is therefore ALWAYS derived from the resolved lane (not
+# caller-settable), like PI_USER and PI_LANE_PUBLISH.
 if [ "${PI_LANE}" = 4 ]; then
     # Lane 4 has no cross build (the noble binary needs GLIBC_2.38, the board has
     # 2.31): its binaries come from the on-device build's publish (B1056).
-    : "${ARM_BUILD_BIN_DIR:=${PI_LANE_PUBLISH}/by-branch/fable/bin}"
+    ARM_BUILD_BIN_DIR="${PI_LANE_PUBLISH}/by-branch/fable/bin"
 elif [ "${PI_LANE_ARCH}" = aarch64 ]; then
-    : "${ARM_BUILD_BIN_DIR:=/mnt/projects/fable/main/build-arm64-noble/bin}"
+    ARM_BUILD_BIN_DIR=/mnt/projects/fable/main/build-arm64-noble/bin
 else
-    : "${ARM_BUILD_BIN_DIR:=/mnt/projects/fable/main/build-arm-noble/bin}"
+    ARM_BUILD_BIN_DIR=/mnt/projects/fable/main/build-arm-noble/bin
 fi
 
 # Same NFS mount visible on both the VM and the Pi.
@@ -197,22 +203,127 @@ pi_lock_release() {
 # no monitor; "detect" restores hotplug behaviour. pi_hdmi_force_on does it only
 # when the connector is NOT connected and records that in PI_HDMI_FORCED, so a
 # rig's cleanup calls pi_hdmi_restore unconditionally.
+# B1034 (#357): the review of !143 found two holes in that --
+#   1. the `sudo -n tee` result was UNCHECKED: if the write failed (no
+#      passwordless sudo on a new image, the connector gone), PI_HDMI_FORCED
+#      was still set and the rig ran against a connector that was still
+#      "disconnected";
+#   2. after a CRASHED run (kill -9 of the rig, the ssh link dying mid-run, a
+#      reboot) the connector stayed forced "on", which reads "connected":
+#      every later pi_hdmi_force_on no-oped ("already connected") and nothing
+#      ever wrote the pre-force status back, so the lane's hotplug behaviour
+#      was gone until a human found the sysfs file.
+# Both are fixed the way the pi_lock is: the state lives ON THE DEVICE.
+# pi_hdmi_force_on, before forcing, atomically reads the current status and
+# writes it to $PI_HDMI_RECORD ("<owner> <status>", root-owned, so the
+# record survives the crash by construction), and checks the write: a
+# failed write fails the run (the rig exits 66) WITHOUT setting the flag.
+# At the START of every run pi_hdmi_force_on checks the record: a stale one
+# means a crashed run left the connector forced, and the recorded status is
+# restored BEFORE this run proceeds (this is what "the lane_smoke/sweep start
+# restores from that record" means -- they begin with pi_hdmi_force_on).
+# pi_hdmi_restore restores from the record when one exists even though THIS
+# shell never forced (a fresh shell's cleanup is the crash-recovery path);
+# a record owned by a DIFFERENT live rig is refused, like a foreign lock.
 PI_HDMI_CONN="${PI_HDMI_CONN:-/sys/class/drm/card0-HDMI-A-1}"
+PI_HDMI_RECORD="${PI_HDMI_RECORD:-/var/tmp/pi_hdmi_record}"
+# The identity a record carries. The hostname is stable across re-runs from
+# the same host (crash recovery works from any new shell here) and distinct
+# per host (a foreign host's record is refused, like a foreign pi_lock).
+: "${PI_HDMI_OWNER:=$(hostname)}"
 PI_HDMI_FORCED=0
-pi_hdmi_force_on() {
-    [ "${PI_DRM_VIRTUAL:-0}" = 1 ] && { pi_vkms_on; return; }   # B1060: lane 5 has no connector to force
-    local st
-    st="$(pi_remote cat "$PI_HDMI_CONN/status" </dev/null 2>/dev/null)"
-    [ "$st" = connected ] && return 0
-    pi_remote "echo on | sudo -n tee $PI_HDMI_CONN/status >/dev/null; sleep 1; cat $PI_HDMI_CONN/status; head -3 $PI_HDMI_CONN/modes | tr '\n' ' '; echo" </dev/null \
-        | sed 's/^/connector forced: /'
-    PI_HDMI_FORCED=1
+pi_hdmi_write_status() {
+    # $1 = the value to write; echoes the connector's status AFTER the write.
+    # (No set -e up the call chain: the caller checks the echoed status.)
+    # The value travels as `printf %s 'VALUE' | sudo -n tee <file>`: a
+    # machine-recognizable command shape (the selftest's fake device
+    # matches it) and no shell-metacharacter class the values can carry.
+    pi_remote "printf %s '$1' | sudo -n tee $PI_HDMI_CONN/status >/dev/null 2>/dev/null; sleep 1; cat $PI_HDMI_CONN/status" </dev/null
+}
+pi_hdmi_record_get() {
+    # "<owner> <status>" or empty when there is no record.
+    pi_remote "cat $PI_HDMI_RECORD 2>/dev/null" </dev/null
+}
+pi_hdmi_record_write() {
+    # $1 = owner, $2 = the PRE-FORCE status; non-zero when the write failed.
+    pi_remote "printf %s '$1 $2' | sudo -n tee $PI_HDMI_RECORD >/dev/null 2>/dev/null" </dev/null
+}
+pi_hdmi_record_clear() {
+    pi_remote "rm -f $PI_HDMI_RECORD" </dev/null
 }
 pi_hdmi_restore() {
     [ "${PI_DRM_VIRTUAL:-0}" = 1 ] && { pi_vkms_off; return; }
+    local rec st
+    rec="$(pi_hdmi_record_get)"
+    if [ -n "$rec" ]; then
+        # The record is authoritative across shells: restore from it even
+        # when this shell never forced (the crash-recovery path).
+        local owner="${rec% *}"
+        if [ "$owner" != "${PI_HDMI_OWNER:-}" ]; then
+            echo "lane: restore: record '$rec' is not this shell's (owner $owner); refusing" >&2
+            return 1
+        fi
+        st="${rec#* }"
+        if [ "$st" = on ]; then
+            # It was "on" before the crashed run forced it: the kernel
+            # connector was already hot (a monitor is actually attached), so
+            # there is nothing to restore -- clear the bookkeeping and leave
+            # the connector as it is.
+            pi_hdmi_record_clear
+        else
+            # It was disconnected (or absent): the only valid write back is
+            # "detect" -- hotplug behaviour. (sysfs will not take the word
+            # "disconnected"; writing it is an invalid-value store.)
+            if [ "$(pi_hdmi_write_status detect)" != detect ]; then
+                echo "lane: restore: writing 'detect' back did not take (record kept in $PI_HDMI_RECORD)" >&2
+                return 1
+            fi
+            pi_hdmi_record_clear
+            echo "connector restored to 'detect' (record said '$st') from $PI_HDMI_RECORD (a crashed run left it forced)"
+        fi
+        PI_HDMI_FORCED=0
+        return 0
+    fi
     [ "${PI_HDMI_FORCED:-0}" -eq 1 ] || return 0
-    pi_remote "echo detect | sudo -n tee $PI_HDMI_CONN/status >/dev/null" </dev/null
+    if [ "$(pi_hdmi_write_status detect)" != detect ]; then
+        echo "lane: restore: writing 'detect' did not take" >&2
+        return 1
+    fi
     PI_HDMI_FORCED=0
+}
+pi_hdmi_force_on() {
+    [ "${PI_DRM_VIRTUAL:-0}" = 1 ] && { pi_vkms_on; return; }   # B1060: lane 5 has no connector to force
+    local st rec
+    # Crash recovery FIRST: a stale record means a previous run died with
+    # the connector still forced -- restore its pre-force status before
+    # deciding anything about THIS run.
+    rec="$(pi_hdmi_record_get)"
+    if [ -n "$rec" ]; then
+        if [ "${rec% *}" = "${PI_HDMI_OWNER:-}" ]; then
+            echo "lane: force: stale record '$rec' from this owner's own previous run; restoring before proceeding"
+        else
+            echo "lane: force: record '$rec' belongs to another owner" >&2
+            return 1
+        fi
+        if ! pi_hdmi_restore; then
+            echo "lane: force: the recorded-status restore failed (see $PI_HDMI_RECORD on the device)" >&2
+            return 1
+        fi
+    fi
+    st="$(pi_remote cat "$PI_HDMI_CONN/status" </dev/null 2>/dev/null)"
+    [ "$st" = connected ] && return 0
+    # Record the PRE-FORCE status on the device (the crash-surviving half),
+    # then force -- and CHECK the write (the unchecked half, B1034).
+    pi_hdmi_record_write "${PI_HDMI_OWNER:-unknown}" "$st" || {
+        echo "lane: force: could not write $PI_HDMI_RECORD (no passwordless sudo for ${PI_USER}?)" >&2
+        return 1
+    }
+    if [ "$(pi_hdmi_write_status on)" != on ]; then
+        echo "lane: force: the sysfs write did not take; recorded '$st' in $PI_HDMI_RECORD, restore it" >&2
+        return 1
+    fi
+    pi_remote "cat $PI_HDMI_CONN/modes | head -3 | tr '\n' ' '; echo" </dev/null | sed 's/^/connector forced: /'
+    PI_HDMI_FORCED=1
 }
 
 # B1060 (#380): a lane with NO display output (lane 5, the Orange Pi Zero: no HDMI,
@@ -250,5 +361,5 @@ pi_vkms_off() {
 }
 
 export PI_LANE PI_LANE_NAME PI_LANE_ARCH PI_LANE_GPU PI_LANE_PUBLISH PI_RUN_ENV PI_DRM_VIRTUAL PI_DRM_CARD PI_KMSCUBE_ARGS PI_HOST PI_USER PI_SSH_OPTS ARM_BUILD_BIN_DIR PI_EQ_PATH PI_EQE1_PATH \
-       PI_HDMI_CONN PI_REMOTE_TMP PI_REMOTE_BIN PI_LOCK PROJECT_DIR MANIFEST_PATH ARTIFACTS_DIR \
+       PI_HDMI_CONN PI_HDMI_RECORD PI_HDMI_OWNER PI_REMOTE_TMP PI_REMOTE_BIN PI_LOCK PROJECT_DIR MANIFEST_PATH ARTIFACTS_DIR \
        BASELINE_DIR H04_TOTAL_FRAMES H04_COOLDOWN_SEC H04_WARMUP_REPS

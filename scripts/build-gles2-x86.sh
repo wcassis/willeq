@@ -142,6 +142,8 @@ cp "$DRM_SRC/t122_texprobe.h"           "$DEST_SRC/t122_texprobe.h"
 # B1054: card-selection decision, shared by both device forks (the ARM fork
 # gets it the same way as drm_mode_select.h: a plain cp next to the TU).
 cp "$DRM_SRC/drm_card_select.h"         "$DEST_SRC/drm_card_select.h"
+# B1034: the EGL-config selection decision (pure, shared by both device forks)
+cp "$DRM_SRC/gbm_config_select.h"       "$DEST_SRC/gbm_config_select.h"
 # x86 fork (surfaceless EGL fallback) instead of the ARM DRM-only version
 cp "$DRM_X86_SRC/CIrrDeviceFB.h"        "$DEST_SRC/CIrrDeviceFB.h"
 cp "$DRM_X86_SRC/CIrrDeviceFB.cpp"      "$DEST_SRC/CIrrDeviceFB.cpp"
