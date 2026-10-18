@@ -38,7 +38,8 @@ the per-step ledger is `explore.tsv` beside this file.
   No post-Velious ruling is needed; the implementation proceeds (step 2).
 - [measured] the format is a P1999 terrain archive, not fable's zone format:
   `clz.eqg` holds 256 members -- 68 DDS textures, 29 `.mod` + 157 `.lit`
-  static objects, `ter_clz.ter`/`.lit` (the terrain fragment), `clz.zon`,
+  static objects (including `ter_clz.lit`), `ter_clz.ter` (the terrain
+  fragment), `clz.zon`,
   and **no `.wld`** (census in `ExploreScreen.BackdropZoneLoadsHeadless`,
   which pins exactly those counts). The `.eqg` extension is how the P1999-era
   client shipped its terrain archives (every zone at the P1999 root is
@@ -140,8 +141,8 @@ format work, not a free reuse of `S3DLoader::loadZone` (run 1042, below).
   list window and draws the EXW overlay in its place (MEASURED, oracle-a6
   A3/A9). `ExploreScreen.BackdropZoneLoadsHeadless` pins the backdrop's
   format facts: `clz.eqg` opens as a PFS archive, its 256-member census is
-  measured (68 DDS + 29 `.mod` + 157 `.lit` + `ter_clz.ter`/`.lit` +
-  `clz.zon`, **no `.wld`**) and `S3DLoader::loadZone` refuses exactly that
+  measured (68 DDS + 29 `.mod` + 157 `.lit`, `ter_clz.lit` among them, +
+  `ter_clz.ter` + `clz.zon`, **no `.wld`**) and `S3DLoader::loadZone` refuses exactly that
   WLD-less archive (skips where the file is absent; `WILLEQ_CLZ` overrides
   the path).
 - **The 3D backdrop scene LANDED** (this run, commit 4d569cce): the offset-

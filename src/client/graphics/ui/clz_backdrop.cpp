@@ -280,9 +280,9 @@ bool ClzZone::loadZone(PfsArchive& archive) {
     loaded = false;
     error.clear();
 
-    // The measured census: 68 DDS + 29 .mod + 157 .lit + ter_clz.ter +
-    // ter_clz.lit + clz.zon = 256 members, no .wld (README, pinned by
-    // ExploreScreen.BackdropZoneLoadsHeadless).
+    // The measured census: 68 DDS + 29 .mod + 157 .lit (ter_clz.lit among
+    // them) + ter_clz.ter + clz.zon = 256 members, no .wld (README, pinned
+    // by ExploreScreen.BackdropZoneLoadsHeadless).
     std::vector<std::string> names;
     if (!archive.getFilenames("*", names)) {
         error = "could not read the archive's filename table";

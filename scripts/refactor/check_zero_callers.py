@@ -492,8 +492,6 @@ BOARD_REASONS.update({
         "the T415/T419 recipe window (TradeskillPanelState, EQUI_TradeskillWnd) -- since B899 (#215, Will 2026-09-23: the recipe half is out of baseline) no event opens it, so its close applier is reached only from its tests; deleting the window is a follow-up, not done mid-unit",
     "B972":
         "the particle VBO path's GL-handle accessor -- the draw reads the member itself; the accessor (name_tag_batch's buffer-handle convention) exists for the stream-buffer test suite's observation window, and no production or test caller has landed yet",
-    "B888-CC3":
-        "the Explore free-camera verb (explore_screen.h) -- the held-key verbs of the select-screen backdrop's free camera; the clz backdrop scene (CC-3's 3D half, which owns that camera and would feed the held `d` set to it) is not landed, so the verb is reached only from test_explore_screen until that slice",
 })
 
 # (owner, name) -> the board entry that owns it.  Same contract as
