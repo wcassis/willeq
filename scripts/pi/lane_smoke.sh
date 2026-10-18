@@ -15,10 +15,18 @@
 # Evidence lands in <out-dir> (default /mnt/projects/fable/review/B1030/lane<N>/):
 # floor/run*.json + floor.txt, bench.csv, bench.log, device.txt. Exit 0 = both ran.
 # This is a SMOKE: it proves the binary starts and renders; it blesses nothing.
+# B1034 (#357): the floor script runs ON THE DEVICE, so its path must be one the
+# device can read. The default is $HERE (this checkout's scripts/pi/), which is
+# right when the runner and the lane share the filesystem (the ThinkPad, whose
+# runner builds and runs this on the NAS worktree the Pi also mounts). When the
+# script is driven from a host the lane cannot see (hermes-ext: the only host
+# with a key to the lanes, no NAS mount), set FLOOR_PATH to the device-visible
+# copy -- e.g. the NAS worktree /mnt/projects/fable/wt/<slug>/scripts/pi/kmscube_floor.sh.
 set -uo pipefail
 SHA="${1:?usage: PI_LANE=N lane_smoke.sh <sha> [out-dir]}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/env.sh"
+FLOOR_PATH="${FLOOR_PATH:-$HERE/kmscube_floor.sh}"
 OUT="${2:-/mnt/projects/fable/review/B1030/lane${PI_LANE}}"
 D="${PI_LANE_PUBLISH:-/mnt/projects/fable/ci-arm64}/$SHA"   # B1056: per-lane publish root (lane 4 = ci-arm64-bullseye, lane 5 = ci-arm, B1060)
 OWNER="B1030-smoke-$$"
@@ -44,7 +52,7 @@ pi_remote "set -o pipefail; { uname -a; cat /proc/device-tree/model; echo; free 
   for c in /sys/class/drm/card*; do echo \"\$(basename \$c): \$(basename \$(readlink \$c/device/driver 2>/dev/null) 2>/dev/null)\"; done; \
   for st in /sys/class/drm/card*-*/status; do echo \"\$st \$(cat \$st)\"; done; cat $PI_HDMI_CONN/status 2>/dev/null; dpkg-query -W libgl1-mesa-dri; ls /usr/local/lib/dri 2>/dev/null; cat $D/BUILD_INFO; }" > "$OUT/device.txt" 2>&1
 echo "--- lane $PI_LANE ($PI_LANE_NAME): GL floor ---"
-pi_remote "PI_KMSCUBE_ARGS='$PI_KMSCUBE_ARGS' bash $HERE/kmscube_floor.sh /usr/bin/kmscube $OUT/floor 3 12" 2>&1 | tee "$OUT/floor.txt"
+pi_remote "PI_KMSCUBE_ARGS='$PI_KMSCUBE_ARGS' bash $FLOOR_PATH /usr/bin/kmscube $OUT/floor 3 12" 2>&1 | tee "$OUT/floor.txt"
 echo "--- lane $PI_LANE ($PI_LANE_NAME): offline zone benchmark ($ZONE, $FRAMES frames, --drm) ---"
 pi_remote "mkdir -p /tmp/b1030 && cd $D && env WILLEQ_DATA_ROOT=$D WILLEQ_CACHE_DIR=/tmp/b1030/cache \
   timeout 600 $D/bin/gles2_zone_benchmark --zone $ZONE --eq-path $PI_EQ_PATH --eqe1-path $PI_EQE1_PATH \
