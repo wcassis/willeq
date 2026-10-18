@@ -144,6 +144,7 @@ remote "mkdir -p ~/eq-oracle/uigap-scripts '$REMOTE_DIR'" || { STATUS=65; exit "
 scp -q "$REPO/scripts/eqemu/oracle/oracle_remote.sh" "user@$EQEMU_ORACLE_HOST:/home/user/eq-oracle/uigap-scripts/oracle_remote.sh" || { STATUS=65; exit "$STATUS"; }
 scp -q "$REPO/scripts/eqemu/oracle/oracle_login_patch.py" "user@$EQEMU_ORACLE_HOST:/home/user/eq-oracle/uigap-scripts/oracle_login_patch.py" || { STATUS=65; exit "$STATUS"; }
 scp -q "$REPO/scripts/eqemu/oracle/oracle_ini_seed.py" "user@$EQEMU_ORACLE_HOST:/home/user/eq-oracle/uigap-scripts/oracle_ini_seed.py" || { STATUS=65; exit "$STATUS"; }
+scp -q "$REPO/scripts/eqemu/oracle/set_facepick_luclin.py" "user@$EQEMU_ORACLE_HOST:/home/user/eq-oracle/uigap-scripts/set_facepick_luclin.py" || { STATUS=65; exit "$STATUS"; }
 scp -q "$PLAN" "user@$EQEMU_ORACLE_HOST:$REMOTE_DIR/plan.tsv" || { STATUS=65; exit "$STATUS"; }
 REMOTE_STARTED=1
 # B1058: a plan with template clicks needs the locate broker on THIS host (the

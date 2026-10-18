@@ -1,0 +1,4 @@
+# B1086 take 3: exercise the repo oracle driver’s opt-in setup/teardown.
+# use-luclin-models=true
+login	Testchar	0	char_select
+facepick-rows	Barbarian	0	0	Male	barbarian-male

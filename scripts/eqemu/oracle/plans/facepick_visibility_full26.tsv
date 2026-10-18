@@ -1,7 +1,9 @@
 # B888-CC1 (#204): the full 26 in-era race/gender pairs, ONE untouched
-# creation each, FacePick (Set Face) open, stock UseLuclin=FALSE client
-# (the lane-5 eqclient.ini is all-FALSE; Will's 2026-10-14 ruling: the
-# visible_classic column is the stock client's rows, all 26 pairs).
+# creation each, FacePick (Set Face) open with the in-era Luclin models.
+# oracle_remote.sh saves the original eqclient.ini, enables the 26 in-era
+# UseLuclin keys for this plan, and restores the original bytes on stop.
+# The stock all-FALSE state renders FACE only on the current lane-5 rig.
+# use-luclin-models=true
 #
 # Flow: facepick-rows <race> 0 0 <gender> <label> selects the pair and
 # stills the open modal with its in-driver arrow probe (rows.tsv), then
