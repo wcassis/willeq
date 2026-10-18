@@ -21,6 +21,12 @@
 # A Mesa failure still publishes the rest, WITHOUT bin/willeq-nollvm, and
 # exits 1 so the job is red.
 set -euo pipefail
+# 2026-10-18 (B1093 follow-up): three runner uids publish into this one NFS tree (ThinkPad
+# gitlab-runner 996, the VM runners 999, dev-u24 user 1000). A sha dir written with the
+# default umask is only writable by its owner, so the NEXT host's prune (or a re-publish
+# of the same sha) died on 'rm: Permission denied' (fable pipeline 1781, job 9360).
+# Everything this script writes is world-writable, and a prune it cannot do is a warning.
+umask 000
 SHA="$1"; BRANCH="${2:-}"
 ROOT="${ARM_PUBLISH_ROOT:-/mnt/projects/fable/ci-arm}"
 KEEP="${ARM_PUBLISH_KEEP:-12}"
@@ -92,14 +98,20 @@ if [ "$HAVE_BENCH" -eq 1 ]; then
         echo "gles2_zone_benchmark=stripped only (bin/gles2_zone_benchmark-nollvm missing; see gles2_zone_benchmark-nollvm.dynamic.txt)" >> "$TMP/BUILD_INFO"
     fi
 fi
-rm -rf "$DEST"; mv "$TMP" "$DEST"
+if [ -e "$DEST" ] && ! rm -rf "$DEST" 2>/dev/null; then
+    echo "publish: cannot replace $DEST (owned by another publisher uid; fix its mode with chmod -R a+rwX from that host)" >&2
+    exit 1
+fi
+mv "$TMP" "$DEST"
+chmod -R a+rwX "$DEST" 2>/dev/null || true
 [ -n "$BRANCH" ] && ln -sfn "../$SHA" "$ROOT/by-branch/$(echo "$BRANCH" | tr '/' '_')"
 
 # Prune: newest KEEP sha dirs stay; anything a by-branch link points at stays.
 # (The Mesa store, $ROOT/mesa, is not a sha dir and is never pruned.)
 keepers=$(for l in "$ROOT"/by-branch/*; do [ -L "$l" ] && basename "$(readlink "$l")"; done | sort -u)
 ls -1dt "$ROOT"/[0-9a-f]*/ 2>/dev/null | tail -n +"$((KEEP + 1))" | while read -r d; do
-    b=$(basename "$d"); echo "$keepers" | grep -qx "$b" || rm -rf "$d"
+    b=$(basename "$d"); echo "$keepers" | grep -qx "$b" && continue
+    rm -rf "$d" 2>/dev/null || echo "prune: could not remove $d (another publisher uid owns it); leaving it" >&2
 done
 echo "published $DEST ($(du -sh "$DEST" | cut -f1))"
 if [ "$MESA_OK" -ne 1 ]; then
