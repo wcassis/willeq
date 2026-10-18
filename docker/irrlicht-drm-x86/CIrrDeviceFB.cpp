@@ -122,10 +122,14 @@ enum LinuxKey {
 #include "CTimer.h"
 #ifndef __APPLE__ // B1043: Linux-only
 #include "drm_card_select.h"
+#include "gbm_config_select.h"
 #endif // !__APPLE__
 #include "gpu_sync_probe.h"
 #include "COpenGLES2Driver.h"
 #include <chrono>
+#ifndef __APPLE__ // B1034: the chooseConfigForGbmFormat wrapper allocates
+#include <vector>
+#endif
 
 // B961 (GitLab #279): the memory ledger's scanout row, defined in the client
 // core (include/client/core/gpu_buffer_census.h) inside namespace
@@ -708,34 +712,69 @@ bool CIrrDeviceFB::initGBM()
 // EGL Initialization
 // ============================================================
 
-// B1030 (#350): pick the EGL config whose native visual IS the GBM surface's
-// format. eglChooseConfig sorts deeper colour buffers first, so on a driver
-// that exposes 10-bit configs (Panfrost/Mesa 26 on the ROCK 4D lists AR30 and
-// XR30 before AR24/XR24) the first match for RED/GREEN/BLUE >= 8 is a 10-bit
-// visual, and eglCreateWindowSurface on the XRGB8888 gbm_surface then fails
-// (Mesa refuses a config/format mismatch). Lima never listed a 10-bit config,
-// which is why the single-config call worked on every lane until now. Same
-// rule kmscube applies: EGL_NATIVE_VISUAL_ID == the GBM format. Within the
-// matching visual eglChooseConfig's own order still holds (smallest depth and
-// stencil that satisfy the request first), so lanes 1-2 pick the config they
-// always picked.
+// B1030 (#350) established the choice -- the first eglChooseConfig match
+// whose EGL_NATIVE_VISUAL_ID IS the GBM surface's format, because a config
+// whose visual does not match the format fails in eglCreateWindowSurface
+// (Mesa refuses a config/format mismatch), and eglChooseConfig lists every
+// 10-bit config ahead of every 8-bit one. B1034 (#357): the fixed
+// configs[64] above cut the XRGB8888 config off when a driver returned more
+// than 64 matches (all 10-bit first), so the configs[0] fallback was 10-bit
+// and returned true, and the error moved to eglCreateWindowSurface with the
+// no-depth retry never running. The decision now lives in
+// eqt_drm::selectEglConfigForGbmFormat() (gbm_config_select.h, pure and
+// unit-tested): the count is queried with a NULL array, every config is
+// walked, an ARGB8888 visual is the fallback before configs[0] (Mesa's KMS
+// platform accepts the ARGB/XRGB mix), and within each visual eglChooseConfig
+// order still holds -- so lanes 1-2 pick the config they always picked. THIS
+// WRAPPER IS IDENTICAL IN BOTH DEVICE FORKS (the hygiene test
+// scripts/ci/test_gbm_config_select_forks.py keeps it that way).
 static bool chooseConfigForGbmFormat(EGLDisplay dpy, const EGLint* attribs,
                                      uint32_t gbmFormat, EGLConfig* out)
 {
-    EGLConfig configs[64];
     EGLint numConfigs = 0;
-    if (!eglChooseConfig(dpy, attribs, configs, 64, &numConfigs) || numConfigs < 1)
+    if (!eglChooseConfig(dpy, attribs, nullptr, 0, &numConfigs) || numConfigs < 1)
         return false;
+    std::vector<EGLConfig> configs(numConfigs);
+    if (!eglChooseConfig(dpy, attribs, configs.data(), numConfigs, &numConfigs) || numConfigs < 1)
+        return false;
+    const EGLint visualAttrib = EGL_NATIVE_VISUAL_ID;
+    const EGLint renderableAttrib = EGL_RENDERABLE_TYPE;
+    const EGLint depthAttrib = EGL_DEPTH_SIZE;
+    const EGLint stencilAttrib = EGL_STENCIL_SIZE;
+    eqt_drm::EglConfigEntry entry;
+    std::vector<eqt_drm::EglConfigEntry> entries;
+    entries.reserve(numConfigs);
+    eqt_drm::EglConfigRequest request;
     for (EGLint i = 0; i < numConfigs; ++i) {
-        EGLint visual = 0;
-        if (eglGetConfigAttrib(dpy, configs[i], EGL_NATIVE_VISUAL_ID, &visual)
-            && (uint32_t)visual == gbmFormat) {
-            *out = configs[i];
-            return true;
-        }
+        EGLint visual = 0, renderable = 0, depth = 0, stencil = 0;
+        eglGetConfigAttrib(dpy, configs[i], visualAttrib, &visual);
+        eglGetConfigAttrib(dpy, configs[i], renderableAttrib, &renderable);
+        eglGetConfigAttrib(dpy, configs[i], depthAttrib, &depth);
+        eglGetConfigAttrib(dpy, configs[i], stencilAttrib, &stencil);
+        if (i == 0)
+            request.renderableType = renderable;
+        entry.visual = (uint32_t)visual;
+        entry.renderableType = renderable;
+        entry.depth = depth;
+        entry.stencil = stencil;
+        entries.push_back(entry);
     }
-    os::Printer::log("EGL: no config matches the GBM surface format; using the first match", ELL_WARNING);
-    *out = configs[0];
+    request.depth = 0;      // the request's depth/stencil are a filter; every
+    request.stencil = 0;    // config here already satisfies the caller's attribs
+    const int pick = eqt_drm::selectEglConfigForGbmFormat(entries, request, gbmFormat);
+    if (pick < 0)
+        return false;
+    if (entries[(size_t)pick].visual != gbmFormat) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "EGL: no config matches the GBM surface format 0x%08x; "
+                 "using %s (visual 0x%08x)",
+                 (unsigned)gbmFormat,
+                 entries[(size_t)pick].visual == eqt_drm::kGbmFormatARGB8888 ? "the ARGB8888 config"
+                                                                             : "the first match",
+                 (unsigned)entries[(size_t)pick].visual);
+        os::Printer::log(buf, ELL_WARNING);
+    }
+    *out = configs[pick];
     return true;
 }
 

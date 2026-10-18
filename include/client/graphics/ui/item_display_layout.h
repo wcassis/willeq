@@ -60,8 +60,21 @@ namespace Graphics {
 namespace ItemDisplayLayout {
 
 // <Location> and <Size>, verbatim.
+//
+// B1052 (#372): the <Location> 0,80 in EQUI_ItemDisplay.xml is NOT where the
+// official client draws the window. The client's own per-resolution window
+// table -- defaults.ini [ItemDisplayWindow] (the shipped P1999 install) --
+// is 0,224 at EVERY resolution it lists (800x600, 1024x768, 1152x864,
+// 1280x720, 1280x1024, 1600x1200), and the measured oracle capture pins it:
+// #151 run1 (2026-10-05, stock Titanium, 1024x768, review/UIGAP-ORACLE/151/
+// run1.G29_rclick_HOLD_sword_display_while_held.png vs
+// run1.G29_after_release.png) right-held an item at window-local (341,476)
+// and the display came up at (0,224) 400x190 -- the INI default, not the
+// click point (offset (335,251) to the top-left corner). The XML <Location>
+// is the window's authored default, the INI table is the per-resolution
+// position the client actually renders at.
 constexpr irr::s32 WINDOW_X = 0;
-constexpr irr::s32 WINDOW_Y = 80;
+constexpr irr::s32 WINDOW_Y = 224;
 constexpr irr::s32 WINDOW_W = 400;
 constexpr irr::s32 WINDOW_H = 190;
 

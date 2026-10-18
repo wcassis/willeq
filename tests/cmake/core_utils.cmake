@@ -79,6 +79,28 @@ IF(UNIX AND NOT APPLE)
     GTEST_DISCOVER_TESTS(test_drm_card_select DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1034 (#357): the EGL-config choice for the GBM surface's format
+# (docker/irrlicht-drm/gbm_config_select.h) -- the 70-config case that
+# reproduced the fixed-configs[64] defect, the ARGB8888 fallback, and the
+# unchanged picks over the real llvmpipe dump (tests/data/b1034/, kept
+# honest by EglConfigDumpB1034 in hygiene.cmake) and the measured Lima
+# single-config shape. Pure and header-only like test_drm_mode_select, so it
+# is unguarded and runs in the hygiene tree too.
+ADD_EXECUTABLE(test_egl_config_select
+    test_egl_config_select.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(test_egl_config_select PRIVATE ${CMAKE_SOURCE_DIR})
+# B1090 idiom: per-target path defines as run-time expressions (never a
+# ${CMAKE_SOURCE_DIR} literal). WILLEQ_REPO_PATH("rel") expands to a
+# function-call EXPRESSION returning const char*, so the test body reads a
+# fixture as readFixture(B1034_SURFACELESS) -- one expression, no string
+# concatenation (which was the pre-fix compile error).
+TARGET_COMPILE_DEFINITIONS(test_egl_config_select PRIVATE
+    "B1034_SURFACELESS=WILLEQ_REPO_PATH(\"tests/data/b1034/surfaceless_es2.json\")"
+    "B1034_LIMA=WILLEQ_REPO_PATH(\"tests/data/b1034/lima_single.json\")")
+TARGET_LINK_LIBRARIES(test_egl_config_select GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_egl_config_select DISCOVERY_TIMEOUT 120)
+
 # B1049 (#373): the pure evdev-key -> key-event decision (drm_key_translation.h)
 # -- needs Irrlicht's key types, so it is gated on the graphics/Irrlicht tree,
 # Linux-only like the DRM device it belongs to.
