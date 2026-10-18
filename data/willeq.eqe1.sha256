@@ -13,7 +13,11 @@
 # and the 40x40 holder piece, and every zone's eqe1MappedBytes rises by
 # exactly that. The B1077 fix leg re-cut the holder piece (CW_SpellGemHolder,
 # 36x28) -- same pack size, new bytes.
-# Pinned here so a drift in
-# either input, or a hand-edit of the shared pack, is a ctest FAIL
-# (PackReproducible). Update this line in the SAME commit that changes an input.
+# Pinned here so a drift in either input is a ctest FAIL
+# (PackReproducible, which since B1094/#414 checks the rebuild against this
+# pin ONLY -- the installed pack's sha is INFO, never a verdict; the
+# installed-vs-pin property is the InstalledPackMatchesPin ctest, hard only
+# on fable). Update this line in the SAME commit that changes an input, and
+# leave the shared-pack install to the orchestrator at merge (write
+# `PACK INSTALL OWED AT MERGE: <sha>` in the summary).
 02a3d6e4e71fa1681291972eb40bae956a14153a9309a318b1831c0a193c0084  willeq.eqe1

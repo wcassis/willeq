@@ -126,8 +126,12 @@ ENDIF()
 # rebuilds it from the two checked-in input sources (procedural
 # tools/ui_atlas_builder plus the 64 BMPs in data/textures/) and installs it
 # atomically. This test rebuilds into a temp path and compares the sha256
-# against both the pinned data/willeq.eqe1.sha256 and the installed pack, so
-# a drift in either input -- or a hand-edit of the shared file -- is a red.
+# against the pinned data/willeq.eqe1.sha256 ONLY: reproducibility from the
+# inputs is the property it owns. B1094 (#414) removed the installed-pack
+# leg -- one mutable shared file was the oracle for N branches, so a
+# pack-changing card installing its branch pack over the shared file made
+# every other pipeline at the fable tip red here (MR !230 pipeline 1626).
+# The installed-vs-pin property is InstalledPackMatchesPin below.
 #
 # SLOW: the ETC1 encode of 65 textures takes ~1 minute. RUN_SERIAL because
 # it saturates the encoder and because three slots share the read side of
@@ -142,6 +146,33 @@ IF(TARGET eqe1_builder AND TARGET ui_atlas_builder)
         RUN_SERIAL TRUE
         TIMEOUT 900)
 ENDIF()
+
+# B1094 (#414): the other half of the old PackReproducible verdict. The
+# installed shared pack must match this tree's pin -- the property that
+# matters on fable, where the installed pack IS the tree's. The wrapper
+# scripts/ci/installed_pack_matches_pin.sh converts the verdict: on
+# CI_COMMIT_BRANCH=fable a mismatch is a HARD FAIL (a merge changed the pin
+# and the orchestrator has not installed yet -- say so loudly), anywhere
+# else it prints and passes (a pack-changing branch legitimately carries a
+# new pin against the fable-installed pack; its pipeline stays green on its
+# own, and the orchestrator installs the shared pack at merge). No build and
+# no builder binaries -- a plain hygiene test.
+ADD_TEST(NAME InstalledPackMatchesPin
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/ci/installed_pack_matches_pin.sh)
+SET_TESTS_PROPERTIES(InstalledPackMatchesPin PROPERTIES
+    LABELS "hygiene"
+    TIMEOUT 60)
+
+# B1094 (#414): the contract that pins the split above -- --check must ignore
+# the installed pack (stub builders, temp files only, the shared pack is
+# never read or written) and --check-installed must fail on a mismatch, with
+# the wrapper failing hard on fable and printing-and-passing elsewhere.
+# Pure python + bash against a temp directory, no builder binaries.
+ADD_TEST(NAME PackCheckContract
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_pack_check_contract.py)
+SET_TESTS_PROPERTIES(PackCheckContract PROPERTIES
+    LABELS "hygiene"
+    TIMEOUT 300)
 
 # T450 (2026-09-07, board B467): the third derived asset gets its pin.
 # data/willeq.db is built by tools/willeq_db_builder from the EQ client's
