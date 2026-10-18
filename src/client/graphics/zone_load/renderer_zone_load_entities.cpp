@@ -401,7 +401,8 @@ void ZoneLoadComponent::loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx) {
 
             std::set<std::string> loadedNames;
             auto loadVariantTexture = [&](const std::string& texName, const std::shared_ptr<TextureInfo>& texInfo) {
-                if (!texInfo || texInfo->data.empty()) return;
+                if (!texInfo || (texInfo->data.empty() &&
+                    !ctx_.constrainedTextureCache->hasEQE1Loaders())) return;
                 std::string lowerName = texName;
                 std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                                [](unsigned char c) { return std::tolower(c); });
