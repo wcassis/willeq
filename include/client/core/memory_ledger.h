@@ -47,7 +47,9 @@
 // switch the audit measures under.
 
 #include <array>
+#include <cstring>
 #include <cstddef>
+#include <cstdlib>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -258,6 +260,30 @@ private:
 // exactly as an unlabelled allocation would. The client opens far fewer
 // scopes than slots, so this overflow path is a safety net, not a routine.
 uint8_t startupSublabelIndex(const char* name);
+
+// B919 (#238): the owner table is a diagnostic (WILLEQ_LEDGER_OWNERS=<cat>
+// selects the category whose blocks the rows partition). Callers that open a
+// StartupScope on a HOT path (the bridge's per-event pushEvent) gate on this
+// so an ordinary run -- no table requested -- pays none of the per-block
+// label lookup (a mutex round-trip against the name table). It reads the
+// environment ONCE per process: WILLEQ_LEDGER_OWNERS is set before main
+// (every capture script exports it with the binary), so the answer never
+// changes; the same variable initOwnerCategoryFromEnv() reads for g_ownerCat.
+// Header-inline (getenv + the header-inline kCategoryNames): the definition
+// sits here because memory_ledger.cpp is at the 1,500-line ceiling (the same
+// reason B924's devices live in memory_ledger_b924.cpp).
+inline bool ownerRowsEnabled() {
+    static const bool on = [] {
+        if (!EQT_MEMORY_LEDGER) return false;  // the ledger is off (enabled())
+        const char* want = std::getenv("WILLEQ_LEDGER_OWNERS");
+        if (!want || !*want) return false;
+        for (size_t i = 0; i < kCategoryCount; ++i) {
+            if (std::strcmp(want, kCategoryNames[i]) == 0) return true;
+        }
+        return false;
+    }();
+    return on;
+}
 
 constexpr bool enabled() { return EQT_MEMORY_LEDGER != 0; }
 
