@@ -967,6 +967,12 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p, boo
 	// T491: everything a zone packet creates (entities, inventory, spells,
 	// doors on the game side) is game state, not the network buffer it came in.
 	eqt::memory::MemoryScope gsScope(eqt::memory::Category::GameState);
+	// B919 (#238): the dispatch path's OWN `game_state` allocations (WILLEQ_
+	// LEDGER_OWNERS=game_state) -- anything a handler that opens no row of its
+	// own allocates under the GameState scope. The rows that DO open (gs.
+	// entities, gs.doors, gs.world_objects, gs.event_queue, B941's gs.navmesh
+	// /gs.collision_map/gs.zone_lines/gs.zone_sources) win per block.
+	eqt::memory::StartupScope owner("gs.dispatch");
 	auto opcode = p.GetUInt16(0);
 
 	// B760 (issue #45): one line per zone packet, named by opcode, with

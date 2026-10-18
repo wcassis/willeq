@@ -45,6 +45,7 @@
 #include "common/logging.h"
 #include "common/packet_structs.h"
 #include "common/name_utils.h"
+#include "client/core/memory_ledger.h"  // B919: the gs.world_objects owner row
 
 // P28: entity_pose_state.h is game-state-owned (S2 decoupling comment in the
 // header), and inventory_manager.h/item_instance.h are the same
@@ -177,6 +178,10 @@ void eqt::entities::EntitiesComponent::ZoneProcessGroundSpawn(const EQ::Net::Pac
 	// (src/client/world_object.cpp) so a captured-bytes regression test can
 	// exercise exactly this decode without an EverQuest instance.
 	eqt::WorldObject worldObj;
+	// B919 (#238): named `game_state` owner row (WILLEQ_LEDGER_OWNERS=game_state):
+	// the ground-spawn world object in m_world_objects and its bridge event are
+	// gs.world_objects.
+	eqt::memory::StartupScope owner("gs.world_objects");
 	if (p.Length() < 2 ||
 	    !eqt::ParseGroundSpawn(static_cast<const uint8_t*>(p.Data()) + 2, p.Length() - 2, worldObj)) {
 		LOG_WARN(MOD_ENTITY, "GroundSpawn packet too small: {} bytes (need at least {})",
