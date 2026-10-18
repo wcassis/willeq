@@ -340,12 +340,15 @@ The ETC1 leg logs `RaceModelLoader::preloadVariantModel: merged texture cache
 not valid, using global textures only` (variant_loading_preload.cpp:91). When
 `mergedTexturesCacheValid_` is false, `preloadVariantModel` sources the variant
 mesh's textures from `globalTextures_` only — which holds the **base** series
-(`qcm*0001`, 60 uploads in the ETC1 leg) but **not** the per-NPC variant series
-(`qcm*0101/0201`, 0 uploads). In the plain path the merged cache is built and
-valid, so the variant series is present.
+(`qcm*0001`, 13 qcm uploads + 7 qcf = 20 in the ETC1 leg,
+`/home/user/b1051-after/fixed-etc1/client3.log`) but **not** the per-NPC
+variant series (`qcm*0101/0201`, 0 uploads for the guard race; the only
+`0101` uploads in that leg are non-guard races `betch*`/`betft*`/`bethe*`/
+`betlg*`/`fishe*`). In the plain path the merged cache is built and valid, so
+the variant series is present.
 
 The variant series is **present in the ETC1 packs** (enumerated via the EQE1
-index: `qeynos2_chr.eqe1` and `commons_chr.eqe1` each carry 55 `qcm*0101/0201`
+index: `qeynos2_chr.eqe1` and `commons_chr.eqe1` each carry 51 `qcm*01xx/02xx`
 entries incl. `qcmch0101`, `qcmfa0101` + their `_alpha` companions). So this is
 **not an asset gap** — it is the ETC1/archive-index load path failing to build
 the merged texture cache that `preloadVariantModel` falls back off. The base
