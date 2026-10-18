@@ -92,13 +92,76 @@ The pre-reconciliation "before/after stills" row was replaced by two checks:
   `measurement.txt:5-6`), so the finding is NOT REPRODUCED. NOT REPRODUCED
   is a reportable outcome of this check.
 
-## Not verified / left open
+## Close-out (2026-10-18): all tabs on the XU4 beside the official client
 
-- The reported XU4 Options-window overflow was not reproduced in the
-  General-page stills on constrained DRM, the measured control rectangles,
-  or the x86 GLES2 stills. Other XU4 tabs were not exercised with uinput;
-  a page-specific or text-rendering defect may remain. No layout coordinates
-  or page assignments were changed without a failing measurement. The
-  original XU4 still or a precise tab/control description is still needed.
-- There is no after-fix still because no layout fix has been made; the
-  applicable acceptance rows are the reconciled pair above.
+This leg exercises **every** Options tab on the XU4 (Will's Orange Pi, the
+`--constrained orangepi` play box) at **1280x720** and **1024x768**, beside
+the official Titanium client's same tab, and runs the mechanical clip check
+on every frame. It supersedes the "Not verified / left open" note above (only
+the General tab was previously exercised on the XU4).
+
+### Official-client stills (lane 5, ThinkPad)
+
+The B1048 driver (`scripts/eqemu/oracle/oracle_session.sh`) ran the official
+client on lane 5, which is a 1280x1024 Xorg rig; the stills are a 1280x800
+crop at +0+30 (`oracle_remote.sh:44`). The Options window is a fixed 400x452
+window (the XML's size, quoted in `options_layout.h`), so the rig's screen
+size does not change the window's geometry or its control layout -- the stills
+are the official client's Options window at its own native placement (measured
+crop origin (410,349), root (410,380); `oracle-tabs/summary.md`). One settled
+still per tab: `oracle-tabs/05` General, `07` Display, `09` Mouse, `11` Keys,
+`13` Filters, `15` Colors, `17` Mail.
+
+### fable frames (XU4, uinput-driven)
+
+`b1053_drive.py` (evidence dir) unbound the physical USB HIDs, created
+uinput keyboard+mouse devices the published by-branch/fable binary grabbed
+(`CIrrDeviceFB::initEvdev` takes the first KEY_A + REL_X devices), gated on
+`[memledger] point=ready`, dismissed the Tip-of-the-Day (3x ESC), sent Alt+O
+(`ToggleOptions`, Global hotkey), clicked all 7 tabs in turn (REL mouse
+deltas, 2 s hold each), and `/q`'d; teardown rebinds the USB HIDs. Frame
+dumps every rendered frame. The client log shows exactly one
+"Options window opened" per run. Verified tab identity: a 7-row tab-strip
+montage per resolution, vision-checked (correct active tab in every row).
+
+Named frames (evidence dir): `xu4-1280/xu4_720_<Tab>.png` and
+`xu4-1024/xu4_768_<Tab>.png` for all seven tabs; `side-by-side/manifest.txt`
+maps each to its source frame. Side-by-sides (official left, fable right,
+window crops): `side-by-side/<Tab>_720.png` and `<Tab>_768.png`.
+
+### Per-tab table (both resolutions)
+
+| tab | controls (layout == XML) | 1280x720 frame | 1024x768 frame | clip check | verdict |
+|-----|--------------------------|----------------|----------------|------------|---------|
+| General | 39 | xu4_720_General.png | xu4_768_General.png | PASS | OK |
+| Display | 63 | xu4_720_Display.png | xu4_768_Display.png | PASS | OK |
+| Mouse | 8 | xu4_720_Mouse.png | xu4_768_Mouse.png | PASS | OK |
+| Keys | 4 | xu4_720_Keys.png | xu4_768_Keys.png | PASS | OK |
+| Filters | 2 | xu4_720_Filters.png | xu4_768_Filters.png | PASS | OK |
+| Colors | 3 | xu4_720_Colors.png | xu4_768_Colors.png | PASS | OK |
+| Mail | 11 | xu4_720_Mail.png | xu4_768_Mail.png | PASS | OK |
+
+Control counts are per `options_layout.h`; the 130-row audit against
+`EQUI_OptionsWindow.xml` found zero rect mismatches (the table IS the XML),
+so the per-tab counts are identical in both clients. The listbox pages
+(Keys/Filters/Colors) show their full list plus scrollbar on both clients.
+
+### Mechanical check (refactor/B1053/check_frame.py)
+
+Per frame: (1) frame is the screen size and the window rect is fully on it;
+(2) the window's bottom 8px band is uniform panel (no control reaches the
+window's bottom edge on any tab, so a non-uniform band is 3D scene bleed =
+clipped); (3) every control rect from `emit_rects.py` is fully on the frame;
+(4) the bottom-right 32x32 corner is non-blank panel. All **14 frames pass**
+(7 tabs x 2 resolutions), exit 0 each. The right edge band is deliberately
+not a uniformity rule: the listbox tabs' scrollbar + list text edge live
+there legitimately (measured: bright rows only on those tabs, inside the
+Listbox y-span).
+
+### Verdict
+
+No control is missing, clipped, or cut off on any tab at either resolution,
+on the XU4 constrained-DRM render or the official client. **CLOSE #373: NOT
+REPRODUCED.** The General-tab-only evidence from MR !174 now extends to all
+seven tabs at both resolutions.
+
