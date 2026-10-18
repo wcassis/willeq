@@ -1,5 +1,6 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/slash/slash_commands_component.h"
+#include "client/data_paths.h"  // B1063: the screenshot's default path
 #include "client/graphics/renderer_zone_merge.h"  // ZoneMergeBuffers complete type (unique_ptr member destruction)
 #include "client/willeq_database.h"
 #include "client/graphics/loading_thread.h"
@@ -88,6 +89,7 @@ extern void gles2RegisterExternalHWBuffer(void* driver, const void* meshBuffer,
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <ctime>  // B1063: the screenshot stamp
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -161,9 +163,12 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
         // not reachable from --script's slash-command tour list). Explicit
         // filename arg so a tour script can capture deterministic
         // before/after pairs at a fixed pose.
-        std::string path = args.empty() ? "screenshot.png" : args;
-        bool ok = owner_.saveScreenshot(path);
-        chat(fmt::format("Screenshot {}: {}", path, ok ? "saved" : "FAILED"));
+        // B1063 (#383): the typed /screenshot and the F12 hotkey are ONE
+        // body now -- runScreenshot(). No argument is the default
+        // screenshots/<zone>_<stamp>.png under the cache root (previously
+        // "screenshot.png" in the process's cwd); an explicit argument is
+        // the path, so a tour script's fixed-pose pairs are unchanged.
+        runScreenshot(args);
     } else if (cmd == "/camera") {
         // T66 -- instance 7 of "reachable only through a UI gesture, invisible
         // to automation" (refactor/deferred.md): cycleCameraMode()/
@@ -629,6 +634,83 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
     }
 }
 
+// B1063 (#383): the screenshot's ONE body. The F12 hotkey reaches it through
+// FrameComponent::renderFrameTail() (the Receiver's HA::Screenshot queues
+// RA::Screenshot, which FrameComponent defers to after the frame is drawn
+// and before the swap); the typed /screenshot reaches it through the chain
+// above. The chat line "Screenshot <path>: saved|FAILED" comes from HERE,
+// so the hotkey and the command cannot disagree about WHERE the file went or
+// WHICH one confirmed.
+//
+// An empty filename is the default: screenshots/<zone>_<stamp>.png under the
+// first writable cache root (the $WILLEQ_CACHE_DIR walk, T402) -- the
+// official client writes its capture next to the client and names it per
+// zone, and that is the behaviour we match (a predictable folder + a chat
+// confirmation), not its .jpg. An explicit filename (a tour script's fixed
+// before/after pair, or /screenshot's argument) is used as given; a relative
+// name's parent directory is created.
+bool SlashCommandsComponent::runScreenshot(const std::string& filename) {
+    std::string path;
+    if (filename.empty()) {
+        // screenshots/<zone>_<YYYYMMDD-HHMMSS>.png (the issue's pattern),
+        // under the first writable cache root.
+        const std::time_t now = std::time(nullptr);
+        char stamp[32];
+        std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", std::localtime(&now));
+        const std::string leaf = sanitizeZoneName(owner_.getCurrentZoneName()) +
+                                 "_" + std::string(stamp) + ".png";
+        const std::string cached =
+            eqt::ResolveCachePathForWrite("screenshots/" + leaf);
+        if (cached.empty()) {
+            // No writable cache root anywhere: write to the client's cwd
+            // under screenshots/ rather than inventing a cache root.
+            path = "screenshots/" + leaf;
+            std::error_code ec;
+            std::filesystem::create_directories("screenshots", ec);
+        } else {
+            path = cached;  // "screenshots/" created by the resolver
+        }
+    } else {
+        path = filename;
+        const std::filesystem::path p(path);
+        if (p.has_parent_path()) {
+            std::error_code ec;
+            std::filesystem::create_directories(p.parent_path(), ec);
+        }
+    }
+    const bool ok = owner_.saveScreenshot(path);
+    // Same chat idiom as the chain's chat() lambda (registry 3's SystemMessage
+    // push + MOD_MAIN echo, T233) so a --script run and a log grep see it.
+    if (ctx_.bridge) {
+        eqt::state::ChatMessageData data;
+        data.message = fmt::format("Screenshot {}: {}", path, ok ? "saved" : "FAILED");
+        data.channelType = 0;
+        data.channelName = "system";
+        ctx_.bridge->pushEvent(eqt::state::GameEvent(
+            eqt::state::GameEventType::SystemMessage, std::move(data)));
+    }
+    LOG_INFO(MOD_MAIN, "Screenshot {}: {}", path, ok ? "saved" : "FAILED");
+    return ok;
+}
+
+// B1063: the default screenshot filename's zone component. Pure, so it is
+// unit-tested without a renderer. A zone with no filesystem-safe character
+// (empty, or only unsafe ones) becomes "nozone"; every other character that
+// is not [A-Za-z0-9_-] is replaced by '_' (a zone name with a space still
+// names itself).
+std::string SlashCommandsComponent::sanitizeZoneName(const std::string& zoneName) {
+    std::string safe;
+    safe.reserve(zoneName.size());
+    for (char c : zoneName) {
+        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                        (c >= '0' && c <= '9') || c == '_' || c == '-';
+        safe.push_back(ok ? c : '_');
+    }
+    if (safe.find_first_not_of("_-") == std::string::npos) {
+        return "nozone";
+    }
+    return safe;
+}
 
 } // namespace Graphics
 } // namespace EQT

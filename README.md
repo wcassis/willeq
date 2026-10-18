@@ -531,7 +531,7 @@ Bindings are configurable in `config/hotkeys.json` (or a `hotkeys` object in the
 | F9 | Cycle the camera (the official set; replaced Ctrl+F5) |
 | +/- or mouse wheel | Camera zoom in/out (the wheel zooms when the cursor is over no scrollable panel) |
 | LMB/RMB drag | Look around |
-| F12 | Screenshot |
+| F12 | Screenshot (saves to `screenshots/<zone>_<timestamp>.png` under the cache dir, like `/screenshot`) |
 
 **Debug:**
 | Key | Action |

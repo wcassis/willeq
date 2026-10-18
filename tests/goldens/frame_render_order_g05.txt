@@ -350,7 +350,7 @@
 349 nullptr, irr::video::SColor(255, 255, 255, 255), true);
 350 if (pendingScreenshot_) {
 351 pendingScreenshot_ = false;
-352 owner_.saveScreenshot("screenshot.png");
+352 ctx_.Slash().runScreenshot("");
 353 frameTimings_.postRender = measureSection();
 354 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
 355 eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);

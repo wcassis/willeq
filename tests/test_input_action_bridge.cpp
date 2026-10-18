@@ -26,6 +26,7 @@
 #include "action_test_fakes.h"
 #include "client/action/command_processor.h"
 #include "client/action/input_action_bridge.h"
+#include "client/bridge/game_state_bridge.h"  // B1063: the recording bridge
 #include "client/hotbar/hotbar_model.h"  // T174: content-typed hotbar routing
 #include "client/state/game_state.h"
 #include <gtest/gtest.h>
@@ -114,16 +115,70 @@ TEST_F(InputActionBridgeTest, EnabledFlag_DefaultsTrueAndRoundTrips) {
 // Discrete actions
 // ===================================================================
 
-TEST_F(InputActionBridgeTest, QuitAndScreenshot_ConsumedWithoutDispatch) {
+// B1063 (#383): Screenshot is NOT "consumed without dispatch" any more.
+// With no bridge attached (headless, no renderer) it is consumed and NOT
+// forwarded -- there is no renderer, so nothing to capture.
+TEST_F(InputActionBridgeTest, QuitAndScreenshot_ConsumedWithoutBridge) {
     input.pendingActions.insert(InputAction::Quit);
     input.pendingActions.insert(InputAction::Screenshot);
 
     update();
 
-    // Consumed (so they don't fire forever) but routed nowhere.
+    // Both consumed (so they do not fire forever); with no bridge the
+    // Screenshot is not pushed anywhere.
     EXPECT_TRUE(input.pendingActions.empty());
     EXPECT_TRUE(handler.empty());
     EXPECT_TRUE(reported.empty());
+}
+
+// B1063 (#383): the pin. The F12 hotkey's InputAction::Screenshot reaches the
+// renderer's screenshot entry through the event bridge: a RendererCommand
+// event whose command is EXACTLY "/screenshot" -- the string the /screenshot
+// arm of the renderer command chain consumes (the ONE body,
+// SlashCommandsComponent::runScreenshot, sees the same string from either
+// route).
+class ScreenshotBridge : public eqt::bridge::GameStateBridge {
+public:
+    // pushEvent() enqueues; the CONSUMER (the render thread, via
+    // forwardStagedEvents) drains and applies. The test plays the consumer.
+    std::vector<std::string> drainCommands() {
+        std::vector<std::string> out;
+        for (const auto& e : drainEvents()) {
+            if (e.type == eqt::state::GameEventType::RendererCommand) {
+                out.push_back(
+                    std::get<eqt::state::RendererCommandData>(e.data).command);
+            }
+        }
+        return out;
+    }
+    void applyEvent(const eqt::state::GameEvent&) override {}
+};
+
+TEST_F(InputActionBridgeTest, Screenshot_PushesTheScreenshotRendererCommand) {
+    ScreenshotBridge recording;
+    bridge->setBridge(&recording);
+    input.pendingActions.insert(InputAction::Screenshot);
+
+    update();
+
+    EXPECT_TRUE(input.pendingActions.empty());
+    const std::vector<std::string> commands = recording.drainCommands();
+    ASSERT_EQ(commands.size(), 1u);
+    EXPECT_EQ(commands[0], "/screenshot")
+        << "the hotkey must reach the SAME string the typed /screenshot arm "
+           "consumes, or the one-body guarantee is broken";
+}
+
+// B1063: a second press in the next frame pushes a second event (the bridge
+// does not coalesce RendererCommand, and each press is one capture).
+TEST_F(InputActionBridgeTest, Screenshot_OnePressOneCommand) {
+    ScreenshotBridge recording;
+    bridge->setBridge(&recording);
+    input.pendingActions.insert(InputAction::Screenshot);
+    update();
+    input.pendingActions.insert(InputAction::Screenshot);
+    update();
+    EXPECT_EQ(recording.drainCommands().size(), 2u);
 }
 
 TEST_F(InputActionBridgeTest, MovementAndCombatActions_RouteToMatchingDispatcherCalls) {
