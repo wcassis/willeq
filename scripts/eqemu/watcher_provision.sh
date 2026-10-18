@@ -200,9 +200,8 @@ busy_zone_leg() {
     #     the upstream default regex): the live default watcher kills it
     #     within the window and the kill line lands in process-kill.log.
     # ~3 min, one core. The provisioned watcher is never touched by phase
-    # B (it exempts the zone argv) and its compose var was passed at the
-    # provision step's restart, so the state after the leg is exactly the
-    # provisioned one -- re-proven below.
+    # B (it exempts the zone argv), so the state after the leg is exactly
+    # the provisioned one -- re-proven below.
     local live_wpid before psline alive newlines
     # The real watcher (the perl process), not its `sh -c while true`
     # wrapper: the wrapper's environ is identical (compose started both),
@@ -233,13 +232,17 @@ busy_zone_leg() {
     sleep 5
     before="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c 'wc -l < ~/process-kill.log 2>/dev/null' 2>/dev/null | tr -d '[:space:]')"
     [ -n "${before}" ] || before=0
-    # The default watcher: the SAME provisioned binary, PROCESS_WATCHER
-    # _EXCLUDE EMPTY so it compiles the upstream regex (the pre-B940
-    # behavior). The provisioned watcher is never touched -- it exempts
-    # the zone argv, so only this one can kill the burner. Both append
-    # to the same ~/process-kill.log (same user, same $HOME).
+    # The default watcher: the SAME provisioned binary with
+    # PROCESS_WATCHER_EXCLUDE UNSET (env -u), so it compiles the upstream
+    # regex -- the pre-B940 behavior. (The variable, if merely set empty,
+    # is DEFINED and empty: the watcher prints the empty pattern and
+    # exempts nothing's complement -- unset and empty are not the same
+    # state for the env-read, and the unset one is the stock one.) The
+    # provisioned watcher is never touched -- it exempts the zone argv,
+    # so only this one can kill the burner. Both append to the same
+    # ~/process-kill.log (same user, same $HOME).
     eq_docker exec -d "${EQEMU_CONTAINER}" bash -c \
-        "env PROCESS_WATCHER_EXCLUDE= /home/eqemu/assets/scripts/process-watcher.pl > /tmp/b940def.out 2>&1 &" >/dev/null 2>&1
+        "env -u PROCESS_WATCHER_EXCLUDE /home/eqemu/assets/scripts/process-watcher.pl > /tmp/b940def.out 2>&1 &" >/dev/null 2>&1
     sleep 3
     local defline
     defline="$(eq_docker exec "${EQEMU_CONTAINER}" bash -c 'head -1 /tmp/b940def.out 2>/dev/null')"
