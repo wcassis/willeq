@@ -335,8 +335,20 @@ void SimulationWorker::computeEntityVisibility(const SimulationInput& input, Sim
         }
         const auto& state = wit->second;
 
-        // Always show player
-        if (state.isPlayer) {
+        // Always show player. B1071 (GitLab #391): the current target is
+        // exempt for the same reason and must be handled HERE, before the
+        // full-model cap: a culled target is removed from the scene graph
+        // (renderer_sim_bridge.cpp), which takes it out of every candidate
+        // set the impostor pass builds -- the pin's setVisible(true) cannot
+        // re-parent a removed node, so the target disappears from the frame
+        // while OverlaysComponent::drawTargetOutline() (which only checks
+        // isVisible()) keeps painting its hull over the missing mesh:
+        // B1064's solid-silhouette still. One entity, exempt from distance /
+        // PVS / frustum / cap exactly like the player; the impostor cap
+        // already draws pinned entities first (entity_impostors.cpp), so a
+        // target occupying a slot while it would have been culled is the
+        // intended trade.
+        if (state.isPlayer || er.spawnId == input.targetId) {
             er.shouldBeVisible = true;
             visibleCount++;
             continue;

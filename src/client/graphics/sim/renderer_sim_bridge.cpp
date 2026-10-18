@@ -402,6 +402,15 @@ void SimBridgeComponent::postSimulationInput(float deltaTime) {
         if (ctx_.entityRenderer)
             input.maxVisibleEntities += ctx_.entityRenderer->impostorVisibilityAllowance();
         input.entityCullingEnabled = true;
+        // B1071 (GitLab #391): the worker must never cull the current target
+        // (PVS/frustum/distance/cap). It is read from the same source the
+        // impostor pass pins on (Overlays().currentTargetId(), refreshed by
+        // the event drain before this frame's input is posted), so the two
+        // decisions can never disagree. Without it, a culled target is
+        // removed from the scene graph and invisible on screen while the
+        // target outline keeps painting its hull -- B1064's solid-silhouette
+        // still (refactor/B1071/README.md).
+        input.targetId = ctx_.Overlays().currentTargetId();
 
         // Name tag visibility config
         input.nameTagDistance = ctx_.entityRenderer->getNameTagDistance();
