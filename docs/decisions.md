@@ -2159,6 +2159,134 @@ gestures at a fixed position fable chose. RULED:
    no drag, no z-order negotiation. A card that proposes movable windows
    reopens U07c, not this entry.
 
+## 2026-10-16 — A texture request carries its SOURCE ARCHIVE: the cache key is (archive, name, mask), resolution is source-first (B1083, #403)
+
+**Decision:** Two EQE1 packs of one zone family (`{zone}.eqe1`,
+`{zone}_obj.eqe1`, `{zone}_chr.eqe1`) may hold the same texture name with
+DIFFERENT content — measured over `data/eqe1_client`: 361 names across 172
+families with differing payload bytes
+(`scripts/refactor/eqe1_family_census.py`). A name-keyed texture cache
+collapses those into one entry and serves the wrong copy in configured
+order: in qeytoqrg the OBJECT's `tree70`/`treea` request was answered by
+the zone pack's opaque copy, so the willow's foliage drew as a solid
+rectangle (Will 2026-10-15, XU4).
+
+**Rule:** the texture request carries the S3D stem its bytes came from
+(`TextureInfo::archiveStem()`, B947's `sourceArchive`), the cache key is
+`(sourceArchiveStem, name, applyPaletteMask)` (control-character join,
+collision-proof, `splitCacheKey()` recovers all three axes), and
+`findCompressedEntry()` tries the request's OWN open pack first, then
+falls through to the unchanged configured-order scan + index late-open
+(T207/T266). An empty stem is the identity, so every call site that does
+not name a source (character models, equipment, composite sheets, UI) is
+byte-identical to before. The stem is threaded through
+`ZoneMeshBuilder::buildTexturedMesh` / `loadTextureFromBMP` /
+`getOrLoadTexture` and `mesh_building.cpp`, so `hasAlpha` /
+`getAlphaTexture` / `isETC1Texture` are properties of the `(archive, name)`
+entry, not the name. `refactor/B1083/README.md` carries the census, the
+before/after stills and the memory delta; `test_eqe1_source_archive.cpp`
+pins the two copies from two packs (red on the pre-B1083 tree).
+
+**Implications:** the ledger does not grow beyond the genuinely-duplicated
+names (qeytoqrg measured: +2 x 43,704 B = the two `_obj` copies that must
+now coexist; 103 entries both sides). The `zones[]` visual-gate manifest
+runs deliberately load no zone objects, so this fix has no manifest row to
+move; its proof is the `--objects` benchmark before/after
+(`refactor/B1083/README.md` Step 3). Do not key texture resolution on the
+name alone again, and do not let a new pack family join a zone family
+without re-running the census.
+
+## 2026-10-17 — the driver-facing texture name is decided once at STORE time (family-first), so evict->restore re-creates under the SAME name (B1083, #403, Will's ruling note 5964: Option A)
+
+**Ruling (Will, 2026-10-17, #403 note 5964):** "Option A, family-first
+driver name, as specified in `refactor/B1083/gate_ledger_diff.md`
+'Candidate fix'. Additional requirement: decide the driver name ONCE per
+entry and store it; an evict->restore re-creates under the SAME name
+(unit test covers it)." B and C (make the draw sort immune to the name;
+re-bless) are not approved.
+
+**The rule:** the GL texture name is the first thing a cache entry hands
+`COpenGLES2Driver::addTexture()`, and that name is (a) the driver's dedup
+key (`findTexture(name)` in `addTexture`/`gles2WrapTexture`) and (b) the
+draw-order key (`textureGroupId()` FNV-1a -> `materialKey` sort). It is
+therefore decided **once per entry at store time** (in `getOrLoad`, under
+the cache mutex, BEFORE the entry is first visible), not re-derived at
+promote time:
+
+- the **first stored member of a (name, mask) family** gets the pre-B1083
+  P46d name -- the plain `name` (unmasked) or `name\x01masked` (masked),
+  i.e. `cacheKey(name, "", masked)`;
+- a **later cross-archive twin** (same name+mask, second archive, the
+  qeytoqrg willow) gets the full `internalKey` (the stem-bearing
+  `(archive, name, mask)` key), so the driver's name-dedup can never fold
+  two distinct images.
+
+The stored name rides on `DecodedEntry::driverName` /
+`CompressedEntry::driverName` and is copied to
+`CachedTexture.driverName` at promote; the compressed alpha companion is
+`driverName + "_alpha"` (byte-identical to the pre-B1083 companion for a
+family-first member). An evict->restore re-adopts the storage into the
+same `ITexture` object, which keeps its name by construction; the store-
+time decision is what makes the name STABLE across a promote-order change
+(eviction/restore, async upload), which a promote-time re-reading of the
+family could not guarantee. The cache's own (archive,name,mask) keying
+and the content dedupe (the 2026-10-16 decision above) are untouched --
+this changes only what the DRIVER is told, not what the cache holds.
+
+**Implications:** in a single-archive run (the whole gate population)
+every entry is a family-first member, so the driver sees exactly the
+pre-B1083 names: `textureGroupId` -> `materialKey` -> per-pose draw-order
+sort is byte-identical to the golden. The 197/135/274/678/192 px gate
+regression from the keying commit `08ce2282` (the mangled
+`name\x01@<stem>\x01` the S3D path was handing the driver) is gone: all
+five gate zones are 0 px vs the committed goldens (MR !205 pipeline 1608,
+`gate` stage PASS attempt 1/3; local re-run, exact x86 gate invocation,
+all 15 frames 0 px, qeynos2 ledger identical to the golden's 126/81/20/
+21,932,691 B). The willow (qeytoqrg `--objects`) is unchanged: 103
+textures, 0 deduped, both cross-archive twins live under distinct names
+(`test_texture_driver_name.cpp` `CrossArchiveTwinKeepsBothImagesUnder
+DistinctNames`), frame byte-identical to the Step-3 "after" capture.
+Pinned by `tests/test_texture_driver_name.cpp` (5 tests: family-first,
+masked family-first, cross-archive twin distinct names, evict->restore
+same-name round-trip on a real `EDT_OGLES2` device, and the family
+membership check); red-before on pre-fix head `7fa8dff3` (4/5 fail).
+
+## 2026-10-16 — the duplicate (archive, name) entries are deduped by CONTENT: same bytes under two archives, one GPU entry (B1083, #403)
+
+**Decision (ruling 2026-10-16):** "dedupe by content (hash decoded payload;
+same bytes under two archives -> one entry)". The (archive, name) key above
+splits EVERY name a sibling pack also holds into two entries -- byte-
+identical or not -- and the extra bytes bust the texture budget on zones the
+name-keyed run stayed under (the x86 gate: qeynos2 at 99.6% of the 20 MiB
+ceiling, evicted textures drawing black). The content identity is an FNV-1a
+64 over what a GPU entry actually holds: the decoded RGBA image (pixels +
+dimensions + alpha) on the decode path, the compressed payload + alpha
+companion + shape fields on the EQE1 path. A scoped request about to create
+an entry asks the promote-time gate (`dedupeBeforePromote`, the ONLY dedupe
+decision point, in `uploadTexture()`) whether a (name, mask) family entry
+with the same digest exists: yes -> the request key becomes an alias of it
+(one entry, one budget charge, one LRU node); no -> it promotes and becomes
+the target for later siblings. First promoted in time wins -- the pre-B1083
+name-keyed cache's first-upload-wins answer. An evicted shell is a valid
+twin target (its driver-side bind restores the same pixels); a stale alias
+is dropped (`destroyEntry`/`clear` -> `dropAliasesTo`) and the next promote
+decides fresh. Genuinely different same-name textures (qeytoqrg tree70's
+DXT1-vs-DXT5, the willow fix itself) digest differently and keep two
+entries.
+
+**Implications:** unscoped requests never alias (they create/answer the
+plain key -- the configured-order answer); `findEntryForKey` remaps an
+aliased key before the scoped miss, so every accessor (getTexture/hasAlpha/
+getAlphaTexture/isETC1Texture/isResident) answers the alias like its
+target. The dedupe is a memory optimization, never a correctness gate: no
+alias exists for different content, and a missing target promotes normally.
+`getDedupedEntryCount()` is the bookkeeping; the texture gate reads
+`getTextureCount()` (GPU entries). Pinned by
+`ConstrainedTextureCacheTest.SameBytesUnderTwoArchivesIsOneEntry` (red on
+the pre-dedupe branch: the second upload creates a second entry) and
+`DifferentBytesUnderTwoArchivesKeepTwoEntries` (the willow pair must NOT
+fold), beside the scoping tests in `test_eqe1_source_archive.cpp`.
+
 ## 2026-10-15 — B1082: the character-select keyboard mirrors the measured official client (#402; Will's XU4 report)
 
 Will's report (2026-10-15 XU4 play sessions): "The arrow keys up/down do not

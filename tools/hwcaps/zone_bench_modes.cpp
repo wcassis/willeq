@@ -857,8 +857,9 @@ int runStaticPoseCapture(std::unique_ptr<ZoneBench::ZoneBenchData>& data, const 
 
     if (data->textureCache) {
         BenchMemorySnapshot snap = computeMemorySnapshot(*data, opts.width, opts.height);
-        printf("Texture cache: %zu / %zu bytes (%zu textures)\n",
-               snap.textureCacheBytesUsed, snap.textureCacheBytesLimit, snap.textureCacheCount);
+        printf("Texture cache: %zu / %zu bytes (%zu textures, %zu deduped)\n",
+               snap.textureCacheBytesUsed, snap.textureCacheBytesLimit, snap.textureCacheCount,
+               data->textureCache->getDedupedEntryCount());
         printf("Total tracked: %zu bytes | RSS: %zu bytes | untracked: %zu bytes\n",
                snap.totalEstimate, snap.processRssBytes, snap.untrackedBytes);
         if (!opts.memoryJsonPath.empty()) {

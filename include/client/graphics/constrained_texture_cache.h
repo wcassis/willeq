@@ -98,6 +98,15 @@ struct DecodedEntry {
     TextureOrigin origin;
     uint64_t rawDigest = 0;
     size_t rawSize = 0;
+    // B1083 dedupe: FNV-1a 64 over the DECODED image (see
+    // ConstrainedTextureCache::decodedContentDigest); a scoped request whose
+    // digest matches an existing (name, mask) entry reuses that entry.
+    uint64_t contentDigest = 0;
+    // B1083 Step 7 (#403 ruling, option A): the name the DRIVER will see
+    // when this entry is promoted (see decideDriverName()) -- decided at
+    // STORE time, so it is load-order-stable whatever the promote order is,
+    // and carried into CachedTexture.driverName there.
+    std::string driverName;
 };
 
 // LRU texture cache with memory budget enforcement
@@ -173,12 +182,24 @@ public:
     // bind re-reads and re-decodes those exact bytes. A decode-path entry
     // with no usable origin and no TextureSourceProvider serving the same
     // bytes is PINNED on eviction (never evicted again), never destroyed.
+    //
+    // B1083 (GitLab #403): sourceArchiveStem, when the caller knows it, names
+    // the EQE1 ARCHIVE these bytes came from (the S3D stem the loader read
+    // them out of, e.g. "qeytoqrg_obj"). The cache key is (stem, name) and
+    // EQE1 resolution tries that archive first, so two packs of the same zone
+    // family that hold one name with different content (zone opaque vs
+    // object alpha -- the qeytoqrg tree70/treea willow) no longer collapse
+    // into one name-keyed entry: the object material keeps its own copy and
+    // the zone material keeps its own. Empty (the overwhelming majority)
+    // leaves the key and the resolution exactly as before (configured
+    // order / index late-open).
     irr::video::ITexture* getOrLoad(const std::string& name,
                                      const std::vector<char>& data,
                                      const std::string& category = "uncategorized",
                                      const std::string& callsite = "",
                                      bool applyPaletteMask = false,
-                                     const TextureOrigin* origin = nullptr);
+                                     const TextureOrigin* origin = nullptr,
+                                     const std::string& sourceArchiveStem = "");
 
     // Upload a decoded texture to the GPU.
     // Promotes DecodedEntry → CachedTexture via driver_->addTexture().
@@ -193,7 +214,12 @@ public:
     // uploadTexture() themselves (rather than relying on uploadAllPending(),
     // which re-derives the correct internal key on its own — see .cpp) MUST
     // pass the same flag here or the lookup will miss.
-    irr::video::ITexture* uploadTexture(const std::string& name, bool applyPaletteMask = false);
+    //
+    // B1083: sourceArchiveStem must match what getOrLoad() recorded (see
+    // cacheKey(name, sourceArchiveStem, applyPaletteMask)); uploadAllPending()
+    // re-derives all three from its internal keys.
+    irr::video::ITexture* uploadTexture(const std::string& name, bool applyPaletteMask = false,
+                                        const std::string& sourceArchiveStem = "");
 
     // Upload all pending decoded textures to the GPU.
     // Calls uploadTexture() for each DecodedEntry in the cache.
@@ -242,7 +268,10 @@ public:
     // cacheKey()) — a plain-name query for a masked-variant entry always
     // missed before this parameter existed. Defaults to false, matching
     // every call site that never requests the masked variant.
-    irr::video::ITexture* getTexture(const std::string& name, bool applyPaletteMask = false);
+    // B1083: sourceArchiveStem must match what getOrLoad() recorded; empty
+    // (the default) queries the unscoped entry, exactly as before.
+    irr::video::ITexture* getTexture(const std::string& name, bool applyPaletteMask = false,
+                                     const std::string& sourceArchiveStem = "");
 
     // Register an externally-created texture into the LRU cache.
     // The texture must already be created via driver_->addTexture().
@@ -255,13 +284,22 @@ public:
     // Check if a cached texture has alpha transparency.
     // P50: see getTexture() above — applyPaletteMask must match the
     // variant's original getOrLoad()/uploadTexture() call.
-    bool hasAlpha(const std::string& name, bool applyPaletteMask = false) const;
+    // B1083: sourceArchiveStem must match what getOrLoad() recorded (see
+    // getTexture()); the zone and the _obj pack of one family ship the same
+    // name with different hasAlpha (qeytoqrg tree70: 0 vs 1), so the object
+    // material must ask for its own entry or it inherits the zone's answer.
+    bool hasAlpha(const std::string& name, bool applyPaletteMask = false,
+                  const std::string& sourceArchiveStem = "") const;
 
     // Get ETC1 alpha companion texture (for binding to texture unit 1)
     // Returns nullptr if texture has no alpha companion.
     // P50: see getTexture() above — applyPaletteMask must match the
     // variant's original getOrLoad()/uploadTexture() call.
-    irr::video::ITexture* getAlphaTexture(const std::string& name, bool applyPaletteMask = false) const;
+    // B1083: see hasAlpha() — the companion belongs to the (archive, name)
+    // entry, so an object material binds the _obj pack's companion, not the
+    // zone pack's (which has none).
+    irr::video::ITexture* getAlphaTexture(const std::string& name, bool applyPaletteMask = false,
+                                          const std::string& sourceArchiveStem = "") const;
 
     // Reverse-lookup overload for callers that only have the GPU texture
     // pointer (e.g. ZoneMeshBuilder::buildCompositeMesh, which builds from a
@@ -279,7 +317,13 @@ public:
     // unknown/not-yet-uploaded names.
     // P50: see getTexture() above — applyPaletteMask must match the
     // variant's original getOrLoad()/uploadTexture() call.
-    bool isETC1Texture(const std::string& name, bool applyPaletteMask = false) const;
+    // B1083: see hasAlpha() — the ETC1-ness is a property of the (archive,
+    // name) entry; the zone pack's opaque tree70 and the _obj pack's
+    // alpha-companioned one are both ETC1, but a name in only one of the
+    // two (bpine/gpine live only in _obj) must be asked for in its own entry
+    // or the query sees the other copy.
+    bool isETC1Texture(const std::string& name, bool applyPaletteMask = false,
+                       const std::string& sourceArchiveStem = "") const;
 
     // Reverse-lookup overload by GPU texture pointer (see getAlphaTexture(ITexture*)).
     bool isETC1Texture(irr::video::ITexture* texture) const;
@@ -299,6 +343,9 @@ public:
     size_t getAvailableMemory() const;
     // Entries, resident or evicted (an evicted entry is still a live object).
     size_t getTextureCount() const;
+    // B1083 dedupe: how many request keys were reused instead of creating an
+    // entry (the dedupe map's size; a stat, like the eviction counters).
+    size_t getDedupedEntryCount() const;
     // B944: entries whose GL storage is resident, and the restore statistics.
     size_t getResidentTextureCount() const;
     size_t getRestoreCount() const;
@@ -371,6 +418,21 @@ public:
 
     // Check if a texture name is decoded but not yet uploaded (not yet in cache)
     bool isPending(const std::string& name) const;
+
+    // B1083 (GitLab #403): the archive STEM that served a name, by its
+    // EQE1 request log ("", when the name was not served by an archive —
+    // decode path, resolver miss, or never looked up). Observation hook
+    // for the source-first resolution the archive axis introduces: the
+    // test drives two synthetic packs that hold one name with different
+    // content and reads back which pack each (archive, name) request
+    // actually came from. The log itself is written by dumpEQE1RequestLog()
+    // at zone load (T214); this returns one row's answer without the dump.
+    std::string eqe1ServedByStem(const std::string& name) const {
+        std::lock_guard<std::mutex> lock(eqe1RequestLogMutex_);
+        auto it = eqe1RequestLog_.find(name);
+        if (it == eqe1RequestLog_.end() || it->second.servedBy == "<NOT-FOUND>") return {};
+        return it->second.servedBy;
+    }
 
     // Check if any decoded textures are waiting for their upload
     bool hasPendingWork() const;
@@ -455,8 +517,13 @@ private:
         const uint8_t* alphaData;
         uint32_t alphaDataSize;
         uint8_t  payloadFormat = 0;  // EQE1PayloadFormat; 0 == EQE1_PAYLOAD_ETC1
+        // B1083 Step 7 (#403 ruling, option A): the driver-facing name,
+        // decided at STORE time by decideDriverName() and carried to the
+        // CachedTexture at promote time (DecodedEntry.driverName, same role).
+        std::string driverName;
     };
-    const CompressedEntry* findCompressedEntry(const std::string& name);
+    const CompressedEntry* findCompressedEntry(const std::string& name,
+                                               const std::string& sourceArchiveStem = "");
 
     // P04: copy of the loader-pointer vector taken under eqe1LoadersMutex_.
     std::vector<const EQE1Loader*> snapshotEQE1Loaders() const;
@@ -500,39 +567,48 @@ private:
                                                int width, int height);
 
     // P46d: internal cache/decodedEntries_/compressedEntries_ map key for
-    // (name, applyPaletteMask). Identity when applyPaletteMask is false (the
-    // overwhelming majority of calls) — cacheKey(x, false) == x always, which
-    // is why callers that only ever pass plain names (getTexture/hasTexture/
-    // touch/isPending/evictTexture, every eviction listener, P13b's
-    // deferredPerPartTextureNames_ skip-list, uploadAllPending()'s own
-    // re-derivation of the key it already collected) need NO changes: they
-    // never request the masked variant, so they always resolve to the
-    // unmasked entry, exactly as before this fix. Only getOrLoad() and
-    // uploadTexture() (the two call sites that take applyPaletteMask
-    // directly) ever produce or consume a masked key. A control character
-    // prefix (never legal in an EQ texture/EQE1 filename) makes collision
-    // with a real name impossible. See constrained_texture_cache.cpp's
-    // top-of-file comment for the full rationale (root cause:
-    // refactor/P46c_neutral_pair_stop.md; fix: refactor/P46d_cache_key_fix.md).
-    static std::string cacheKey(const std::string& name, bool applyPaletteMask);
+    // (name, sourceArchiveStem, applyPaletteMask). Identity when BOTH
+    // sourceArchiveStem and applyPaletteMask are empty/false (the
+    // overwhelming majority of calls) — cacheKey(x, "", false) == x always,
+    // which is why callers that only ever pass plain names (getTexture/
+    // hasTexture/touch/isPending/evictTexture, every eviction listener,
+    // P13b's deferredPerPartTextureNames_ skip-list, uploadAllPending()'s
+    // own re-derivation of the key it already collected) need NO changes:
+    // they never request the masked or archive-scoped variant, so they
+    // always resolve to the unscoped entry, exactly as before this fix.
+    // Only getOrLoad() and uploadTexture() (the two call sites that take
+    // applyPaletteMask / sourceArchiveStem directly) ever produce or
+    // consume a mangled key. Control characters (never legal in an EQ
+    // texture/EQE1 filename or archive stem) make collision with a real
+    // name impossible. See constrained_texture_cache.cpp's top-of-file
+    // comment for the full rationale (root cause:
+    // refactor/P46c_neutral_pair_stop.md; fix: refactor/P46d_cache_key_fix.md;
+    // archive axis: refactor/B1083, GitLab #403).
+    static std::string cacheKey(const std::string& name,
+                                const std::string& sourceArchiveStem,
+                                bool applyPaletteMask);
 
-    // P46d: inverse of cacheKey() — recovers (realName, applyPaletteMask)
-    // from an internal key. Needed by uploadAllPending(), which only has the
-    // (possibly mangled) keys it harvested from decodedEntries_/
-    // compressedEntries_, not the original plain names — calling
-    // uploadTexture(key) directly (relying on cacheKey(key,false)==key) is
-    // correct for cache_/decodedEntries_/compressedEntries_ lookups, but
-    // would leak the mangled key into uploadTexture's `name` parameter,
-    // which (unlike internalKey) is supposed to be the real display name
-    // (GL debug label, ledger row, ZoneMeshBuilder::registerUploadedTexture
-    // — see uploadTexture()'s comment). Without this split, masked entries
-    // uploaded via uploadAllPending() register into ZoneMeshBuilder's
-    // textureCache_ under the MANGLED name, which
+    // P46d: inverse of cacheKey() — recovers (realName, sourceArchiveStem,
+    // applyPaletteMask) from an internal key. Needed by uploadAllPending(),
+    // which only has the (possibly mangled) keys it harvested from
+    // decodedEntries_/compressedEntries_, not the original plain names —
+    // calling uploadTexture(key) directly (relying on
+    // cacheKey(key, "", false) == key) is correct for cache_/decodedEntries_/
+    // compressedEntries_ lookups, but would leak the mangled key into
+    // uploadTexture's `name` parameter, which (unlike internalKey) is
+    // supposed to be the real display name (GL debug label, ledger row,
+    // ZoneMeshBuilder::registerUploadedTexture — see uploadTexture()'s
+    // comment). Without this split, mangled entries uploaded via
+    // uploadAllPending() register into ZoneMeshBuilder's textureCache_
+    // under the MANGLED name, which
     // mesh_building.cpp::getOrLoadTexture()'s plain-name lookup then never
     // finds — silently falling back to the unmasked loadTextureFromBMP()
     // path and defeating this whole fix. Caught by this unit's own
     // discard-fire re-verification (see Review).
-    static void splitCacheKey(const std::string& key, std::string& realName, bool& applyPaletteMask);
+    static void splitCacheKey(const std::string& key, std::string& realName,
+                              std::string& sourceArchiveStem,
+                              bool& applyPaletteMask);
+
 
     // Move name to back of LRU list — call only while holding mutex_
     void touchInternal(const std::string& name);
@@ -660,9 +736,146 @@ private:
         size_t rawSize = 0;
         bool sourceChecked = false;   // decodedSourceAvailable() ran
         bool sourceOk = false;        // ...and found the same bytes
+        // B1083 dedupe: the content identity (see compressedContentDigest()
+        // / decodedContentDigest()) recorded at store time; a scoped request
+        // whose digest matches a (name, mask) twin reuses the twin's entry.
+        uint64_t contentDigest = 0;
+        // B1083 Step 7 (#403 ruling, option A): the name the DRIVER sees
+        // (addTexture / gles2WrapTexture) -- decided ONCE at store time by
+        // decideDriverName() (DecodedEntry.driverName /
+        // CompressedEntry.driverName) and carried here at promote, so an
+        // evict->restore (which keeps this object and re-adopts its
+        // storage) re-creates it under the SAME name. Family-first: the
+        // first STORED entry of a (name, mask) family takes the pre-B1083
+        // name (name [+ \x01masked]); a later cross-archive twin takes the
+        // full internalKey. See decideDriverName() for why this is what the
+        // draw order (textureGroupId's FNV input) and the willow need.
+        std::string driverName;
         // B947: an eviction found no restore source; never evicted again.
         bool pinned = false;
     };
+
+    // B1083: entry lookup for the three (archive, name) accessors. Returns the
+    // entry for the exact (archive, name, mask) key, or — for an UNSCOPED
+    // query (empty sourceArchiveStem) that misses — the entry stored for that
+    // (name, mask) under any archive. The fallback is deliberately absent for
+    // a SCOPED query: that is exactly the case B1083 must not answer with a
+    // sibling archive's entry (qeytoqrg tree70, zone vs _obj). An unscoped
+    // query carries no archive preference (T285's on-demand fallback queries
+    // an S3D-stemmed entry by plain name; pre-B1083 EQE1 lookups stored
+    // unscoped), so a single (name, mask) entry is unambiguous. Call while
+    // holding mutex_.
+    const CachedTexture* findEntryForKey(const std::string& name,
+                                         const std::string& sourceArchiveStem,
+                                         bool applyPaletteMask,
+                                         const std::string** foundKey = nullptr) const;
+
+    // B1083 (GitLab #403, ruling 2026-10-16): DEDUPE BY CONTENT. The
+    // (archive, name) keying splits every name a zone and one of its sibling
+    // packs also hold -- even when the copies are BYTE-IDENTICAL -- into two
+    // entries, and those extra bytes bust the texture budget on zones the
+    // name-keyed run stayed under (the x86 gate's 20 MiB ceiling: the split
+    // pushed qeynos2 to 99.6%, and evicted textures drew black). This map
+    // records which request keys were REUSED instead of created: the
+    // promote-time gate (dedupeBeforePromote, the only decision point)
+    // compares a scoped request's pending payload digest against the
+    // entries of the same (name, mask) family (findContentTwin), and a
+    // content-identical request maps its request key to that entry's key,
+    // so one GPU entry serves both. Genuinely different same-name textures
+    // (the qeytoqrg tree70 DXT1-vs-DXT5 case) digest differently and keep
+    // two entries. Guarded by mutex_; dropped when the target goes
+    // (destroyEntry / clear). uploadTexture() answers an alias from its
+    // target, and findEntryForKey() remaps an aliased key BEFORE the scoped
+    // miss, so every accessor (getTexture / hasAlpha / getAlphaTexture /
+    // isETC1Texture / isResident) answers an alias like its target.
+    std::unordered_map<std::string, std::string> deduped_;
+
+    // B1083 dedupe: a twin for a SCOPED request (see findContentTwin()).
+    struct ContentTwin {
+        const CachedTexture* entry = nullptr;  // the resident twin
+        const std::string* key = nullptr;      // the map key to alias to
+        bool found() const { return key != nullptr; }
+    };
+    // Find the first entry of the request's (name, mask) family (cache_ key
+    // order -- the plain key first, then the \x01-suffixed archive variants)
+    // under a DIFFERENT key whose content digest matches, or not found.
+    // Scoped requests only. An evicted shell counts: its driver-side bind
+    // restores the same pixels. Call while holding mutex_.
+    ContentTwin findContentTwin(const std::string& name,
+                                const std::string& sourceArchiveStem,
+                                bool applyPaletteMask,
+                                uint64_t contentDigest) const;
+    // The content identity of the request's PENDING payload, or 0 when the
+    // key holds none (a same-key re-arrival after a promotion: the gate
+    // then dedupes nothing, which is correct -- nothing is being promoted).
+    // Call while holding mutex_.
+    uint64_t pendingContentDigest(const std::string& internalKey) const;
+    // The promote-time gate (the ONLY dedupe decision point): a scoped
+    // request about to create a GPU entry checks whether an entry for this
+    // (name, mask) already exists with the same content digest. Deduped:
+    // the request key becomes an ALIAS (deduped_) of that entry -- one GPU
+    // entry serves both keys, the caller answers the entry's texture (a
+    // resident one, or an evicted shell whose driver-side bind restores the
+    // identical pixels) and drops the request's payload. None: no
+    // content-identical entry (a different-content same-name family keeps
+    // two entries by design) -- the caller promotes its own payload, which
+    // then becomes the target for any later content-identical sibling
+    // request (first promoted in time wins: the pre-B1083 name-keyed
+    // cache's first-upload-wins answer).
+    enum class DedupeGateResult : uint8_t { None, Deduped };
+    struct DedupeGateOutcome {
+        DedupeGateResult result = DedupeGateResult::None;
+        const CachedTexture* twinEntry = nullptr;  // set with Deduped
+    };
+    DedupeGateOutcome dedupeBeforePromote(const std::string& name,
+                                          const std::string& sourceArchiveStem,
+                                          bool applyPaletteMask,
+                                          const std::string& internalKey,
+                                          uint64_t contentDigest);
+    // Drop every recorded alias whose target is `key` (the target is going:
+    // destroyEntry / clear). The aliasers re-fold, or resolve on their own,
+    // when they next promote or query. Call while holding mutex_.
+    void dropAliasesTo(const std::string& key);
+    // B1083 Step 7 (#403 ruling, option A): decide the name the DRIVER sees
+    // for the entry about to be STORED under `internalKey`, ONCE at store
+    // time (getOrLoad, under mutex_), and the caller carries it on the
+    // pending entry into CachedTexture.driverName at promote time.
+    // Family-first: the pre-B1083 P46d name (cacheKey(name, "", mask) --
+    // `name`, or `name\x01masked`, where `mask` is internalKey's own mask
+    // axis) when NO OTHER key of this (name, mask) family is already stored
+    // (cache_/decodedEntries_/compressedEntries_ -- a dedupe alias points at
+    // such a key, so it counts too); the full internalKey (stem included)
+    // for a later, genuinely separate family member.
+    //
+    // Why: the name is the driver-side identity -- textureGroupId()'s FNV
+    // input, and the materialKey the merge sort orders by. B1083's stem axis
+    // made every S3D upload carry the \x01@<stem>\x01 suffix, re-shuffling
+    // every group ID and (in the single-archive gate zones) the whole draw
+    // order (the 197 px regression -- refactor/B1083/gate_ledger_diff.md).
+    // Family-first hands the driver base's exact name whenever the family
+    // never spans two archives, which is every one of the five gate zones.
+    // The willow (qeytoqrg tree70, zone vs _obj, DIFFERENT bytes) is the
+    // two-member family: the zone copy (loaded first, configured order) is
+    // family-first and keeps base's plain name; the _obj copy takes the
+    // stem-suffixed full key, so the driver's name-dedup (findTexture in
+    // addTexture / gles2WrapTexture) cannot fold the two images and the
+    // alpha-tested foliage survives. The naive "always the plain name"
+    // would share one driver name with that second copy and discard its
+    // image. P46d's distinct-name invariant holds: the mask suffix is
+    // always present, and the stem suffix only adds distinctness.
+    //
+    // Stored (not re-derived): an evict->restore re-creates the same object
+    // under the same name by construction, and a zone unload clears the
+    // maps so the next zone's first member is family-first again -- the
+    // decision is per-promote, and stable for the entry's lifetime.
+    std::string decideDriverName(const std::string& name, const std::string& internalKey) const;
+    // FNV-1a 64 over everything a compressed entry uploads (payload +
+    // companion, and the shape fields a raw byte run would not cover) --
+    // the content identity the ruling dedupes on.
+    static uint64_t compressedContentDigest(const CompressedEntry& e);
+    // Same for a decoded RGBA image (pixels + dimensions + alpha).
+    static uint64_t decodedContentDigest(const std::vector<uint8_t>& rgba, int width,
+                                         int height, bool hasAlpha);
 
     // Protects all state except decodedQueue_ (which has its own decodedQueueMutex_)
     mutable std::mutex mutex_;
