@@ -2374,3 +2374,19 @@ merchant blitted the 40x40 dragitem decal into the full list cell --
    windowRect()`; it now reads the drawn rect. `refactor/B1078/README.md`
    (before/after rect tables, measured dump).
 
+
+### 2026-10-18 -- FacePick numeric ranges: COUNT-MEASURED is the standard (B888-CC1, #204)
+
+Will (2026-10-18, option 1 of three): `data/char_create_faces.tsv` ships
+COUNT-MEASURED ranges and that is the accepted standard. A row's WIDTH is
+proven by image recurrence on the official client; its ENDPOINTS stay server
+candidates. The reason is measured, not assumed: the official Set Face window
+shows no numeric index, its rows wrap, and every new creation opens at a
+RANDOM face/hair/eye/beard state (`refactor/B888-CC1/facepick_wire_pilot.tsv`,
+two Barbarian-male Warriors opened red-hair/no-beard vs orange-hair/full-beard),
+so "step UP n times from the start" has no origin to count from. The server's
+create-time validation clamps anything out of range. The 52-packet wire leg is
+CLOSED, not owed; the `status` column (UNMEASURED / COUNT-MEASURED /
+COUNT-MEASURED+SAMPLED) stays as provenance, which is the truth, not a defect.
+Rejected: random-origin sampling (30-40 creations per pair) and reading the
+server source -- available if a visible mismatch ever appears in play.
