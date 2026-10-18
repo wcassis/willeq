@@ -207,9 +207,17 @@ TEST(BridgeIntentTable, NoIntentHandlerWithoutAnAlternative) {
 TEST(BridgeIntentTable, ProcessBridgeIntentsIsPureDispatch) {
     auto body = pumpBody();
     ASSERT_FALSE(body.empty());
-    EXPECT_LT(body.size(), 60u)
+    // The pump is ONE arm line per RendererIntent alternative plus a fixed
+    // handful of framing lines (the early return, the drain, the for, and the
+    // visit's open/close). The cap tracks the variant instead of a round
+    // number so the next intent add cannot silently break it: an arm BODY
+    // creeping back in would push the body far past variant_size + 8, which is
+    // what this exists to catch. (Re-pinned at B1076's 53rd alternative,
+    // ScribeSpellFromScrollIntent, #396 -- the body grew one arm line.)
+    const size_t cap = std::variant_size_v<eqt::events::RendererIntent> + 8u;
+    EXPECT_LT(body.size(), cap)
         << "ProcessBridgeIntents is " << body.size()
-        << " lines; it must stay a dispatch table (G02)";
+        << " lines (cap " << cap << "); it must stay a dispatch table (G02)";
 
     size_t arms = 0;
     for (const auto& raw : body) {
