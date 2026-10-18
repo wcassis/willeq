@@ -837,6 +837,12 @@ EXEMPT_GROUPS = {
 
 EXEMPT_TESTS_GROUPS = {
     ("(free)", "ComputeHelpCoverage"): "seam",
+    # B1083 (#403): the test's window onto which pack served an (archive, name)
+    # EQE1 request. Its production WRITER is recordEQE1Request()/dumpEQE1RequestLog()
+    # at zone load (T214); the reader is test_eqe1_source_archive, which asserts
+    # the object's tree70 was served by its own pack, not the configured-order
+    # scan. An observer on the request log.
+    ("ConstrainedTextureCache", "eqe1ServedByStem"): "observer",
     # B1075 (#395): the layout table's row -> rect map. Every arm forwards to
     # the UILayout member or <Window>Layout::windowRect() the window's own
     # render body and hit test call; the reader is the co-open census

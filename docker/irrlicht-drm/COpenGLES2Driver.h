@@ -266,6 +266,10 @@ public:
                                          E_INDEX_TYPE iType=EIT_16BIT);
     virtual void drawMeshBuffer(const scene::IMeshBuffer* mb);
 
+    // B1051 (GitLab #371): per-3D-draw sampler-state trace point
+    // (WILLEQ_B1051_TRACE; see the method in COpenGLES2Driver.cpp).
+    void b1051Trace3DDraw();
+
     // Material
     virtual void setMaterial(const SMaterial& material);
 

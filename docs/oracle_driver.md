@@ -63,6 +63,17 @@ lanes 1-4 (the run passes its lane as the third argument to
   `timeline.tsv` (`face-open attempt=N at=37,251`), so a lane-5 run
   proves whether the FIRST click opened the modal (the acceptance bar: a
   retry is a focus/sequence defect, not an acceptable settle).
+- **The Set Face classic/Luclin state** (B1086, #406): a lane-5 one-knob
+  FALSE → TRUE → FALSE A/B of the 26 in-era `UseLuclin*` keys produced
+  1 → 7 → 1 visible rows for the same Barbarian-male picker. The old
+  "half-open render regression" diagnosis and its KVM-host suspect are
+  withdrawn (`refactor/B1086/README.md`). The `facepick-rows` gate still
+  rejects a FACE-only still. Its ImageMagick probe must clear the screenshot's
+  `+0+30` virtual page origin *before* cropping the seven arrow strips;
+  clearing it afterward sampled 30 pixels too high and falsely rejected the
+  seven-row Luclin still. The `full26` plan opts into Luclin models and the
+  driver restores the original global INI byte-for-byte after the client
+  stops. Other plans retain the stock model preference.
 
 `install.sh` also writes `~/eq-oracle/uigap-scripts/.oracle-repo`, so the
 installed copy can be invoked from outside the checkout until that checkout
@@ -101,6 +112,12 @@ the original bytes, records the seeded before/changed after copies, then
 restores the original byte-identically when the client stops. The hotbutton
 plan uses it to make its placement diff reproducible even after an earlier
 session filled that slot.
+The optional `# use-luclin-models=true` directive enables the 26 in-era
+per-race Luclin keys in the global `eqclient.ini` before Wine starts. The
+driver saves the original bytes before the toggle and restores them after
+stopping Wine, even if the capture fails. Only the face-picker full26 plan
+uses it; a plan without the directive leaves the global model preference
+alone.
 The optional `# pose=x,y,z,heading` directive (B1065; heading in EQ units,
 0-512) seeds the login character's position together with the plan's `zone`
 row, so an official still is taken from a pose the willeq client can be put at

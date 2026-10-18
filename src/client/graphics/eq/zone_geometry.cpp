@@ -305,7 +305,8 @@ irr::scene::IMesh* ZoneMeshBuilder::buildColoredMesh(const ZoneGeometry& geometr
 irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& name,
                                                           const std::vector<char>& data,
                                                           bool applyPaletteMask,
-                                                          const TextureOrigin* origin) {
+                                                          const TextureOrigin* origin,
+                                                          const std::string& sourceArchiveStem) {
     // Note: fileSystem_ is not actually used in this function - textures are loaded
     // from raw byte data, not from the filesystem. Only driver_ is required.
     if (data.empty() || !driver_) {
@@ -323,11 +324,14 @@ irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& nam
         // this call site is ZoneMeshBuilder's general-purpose one, used by
         // mesh_building.cpp's composite-deferred on-demand fallback and
         // animated_mesh_creation.cpp's equipment texture-variant swap).
+        // B1083 (GitLab #403): sourceArchiveStem scopes the (archive, name)
+        // entry, and uploadTexture() MUST be given the SAME stem or it looks
+        // up the unscoped key and misses the entry getOrLoad() just stored.
         irr::video::ITexture* texture = constrainedCache_->getOrLoad(name, data, uploadCategory_, "loadTextureFromBMP",
-                                                                     applyPaletteMask, origin);
+                                                                     applyPaletteMask, origin, sourceArchiveStem);
         if (!texture) {
             // Not yet uploaded — upload now (requires GL context on this thread)
-            texture = constrainedCache_->uploadTexture(name, applyPaletteMask);
+            texture = constrainedCache_->uploadTexture(name, applyPaletteMask, sourceArchiveStem);
         }
         if (texture) {
             textureCache_[name] = texture;
@@ -338,7 +342,8 @@ irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& nam
             // WLD-derived textureMasked() flag at mesh-build time (see the
             // isMaskedMaterial OR below), so this fix is correctness/hygiene,
             // not a behavior change — see this unit's Review.
-            if (constrainedCache_->hasAlpha(name, applyPaletteMask)) {
+            // B1083: with the archive stem too, for the same reason.
+            if (constrainedCache_->hasAlpha(name, applyPaletteMask, sourceArchiveStem)) {
                 texturesWithAlpha_.insert(name);
             }
             return texture;
@@ -406,6 +411,14 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
         // Get texture name for this index
         std::string texName;
         irr::video::ITexture* texture = nullptr;
+        // B1083 (GitLab #403): the source archive stem of the texture
+        // resolved for this index ("" when it did not come from an
+        // archive, or was not found). The material setup below asks
+        // the cache for (archive, name) with it, so the zone region's
+        // opaque tree70 and the object's alpha tree70 — same name,
+        // two packs, two entries — each set up their own material
+        // instead of inheriting the configured-order winner's.
+        std::string sourceStem;
 
         if (texIdx < geometry.textureNames().size()) {
             texName = geometry.textureNames()[texIdx];
@@ -417,9 +430,18 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
 
                 // Try to load texture
                 auto texIt = textures.find(lowerTexName);
+                // B1083 (GitLab #403): this texture's source archive stem ("",
+                // when it did not come from an archive). The zone region and
+                // the zone object WLDs of one family can both use a name that
+                // two of the family's packs hold with different content
+                // (qeytoqrg.s3d tree70 opaque, qeytoqrg_obj.s3d tree70
+                // alpha); the stem is what keeps each mesh build on its OWN
+                // pack's copy.
+                sourceStem =
+                    (texIt != textures.end() && texIt->second) ? texIt->second->archiveStem() : "";
                 if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
                     const TextureOrigin origin = texIt->second->origin();  // B947
-                    texture = loadTextureFromBMP(texName, texIt->second->data, false, &origin);
+                    texture = loadTextureFromBMP(texName, texIt->second->data, false, &origin, sourceStem);
                     if (!texture) {
                         // T92: was LOG_DEBUG — the sole reason zone-geometry
                         // texture failures (the magenta/checkerboard wall and
@@ -442,14 +464,19 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
 
                 if (!texture && constrainedCache_) {
                     // Pixel data may have been released after initial load;
-                    // check the constrained cache which retains GPU textures
-                    texture = constrainedCache_->getTexture(lowerTexName);
+                    // check the constrained cache which retains GPU textures.
+                    // B1083: ask for the (archive, name) entry -- a plain
+                    // name query would find whichever pack's copy the
+                    // configured order cached first (the zone pack for an
+                    // object texture), not this texture's own.
+                    texture = constrainedCache_->getTexture(lowerTexName, false, sourceStem);
                     if (!texture) {
-                        texture = constrainedCache_->getTexture(texName);
+                        texture = constrainedCache_->getTexture(texName, false, sourceStem);
                     }
                     // Track alpha from cache (loadTextureFromBMP was skipped due to empty data)
                     if (texture) {
-                        if (constrainedCache_->hasAlpha(lowerTexName) || constrainedCache_->hasAlpha(texName)) {
+                        if (constrainedCache_->hasAlpha(lowerTexName, false, sourceStem) ||
+                            constrainedCache_->hasAlpha(texName, false, sourceStem)) {
                             texturesWithAlpha_.insert(texName);
                         }
                     }
@@ -520,7 +547,13 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                     // discards — the RGBA variant reads uTexture.a directly
                     // instead, matching desktop-GL's known-good
                     // EMT_TRANSPARENT_ALPHA_CHANNEL_REF semantics.
-                    bool isETC1 = constrainedCache_ && constrainedCache_->isETC1Texture(texName);
+                    // B1083 (GitLab #403): both queries are (archive, name) —
+                    // the companion and the ETC1-ness belong to THIS texture's
+                    // pack's entry, so the object's alpha tree70 binds the
+                    // _obj companion while the zone's opaque tree70 stays
+                    // companion-less, even though both are named tree70.
+                    bool isETC1 = constrainedCache_ &&
+                        constrainedCache_->isETC1Texture(texName, false, sourceStem);
                     if (isETC1) {
                         // Use GLSL shader alpha-test material if available, else fixed-function
                         if (shaderMaterialAlphaTest_ >= 0) {
@@ -530,7 +563,8 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                         }
                         // Bind ETC1 alpha companion texture on layer 1 (sampled by uAlphaTexture in shader)
                         if (constrainedCache_) {
-                            irr::video::ITexture* alphaTex = constrainedCache_->getAlphaTexture(texName);
+                            irr::video::ITexture* alphaTex =
+                                constrainedCache_->getAlphaTexture(texName, false, sourceStem);
                             if (alphaTex) {
                                 buffer->Material.setTexture(1, alphaTex);
                             }
@@ -648,13 +682,63 @@ irr::video::ITexture* ZoneMeshBuilder::getOrLoadTexture(const std::string& name,
     if (pendingIt != pendingTextures_.end() && pendingIt->second && !pendingIt->second->data.empty()) {
         // Load the texture now
         const TextureOrigin origin = pendingIt->second->origin();  // B947
+        // B1083 (GitLab #403): the pending TextureInfo's own source archive
+        // stem, so the deferred load lands on (archive, name) and this
+        // builder's textureCache_[name] (deliberately plain-name-keyed: one
+        // mesh build, one texture per name) holds the right pack's copy.
+        const std::string sourceStem = pendingIt->second->archiveStem();
         irr::video::ITexture* texture = loadTextureFromBMP(name, pendingIt->second->data, applyPaletteMask,
-                                                           &origin);
+                                                           &origin, sourceStem);
 
         // Remove from pending (data no longer needed)
         pendingTextures_.erase(pendingIt);
 
         return texture;
+    }
+
+    // B1051 (GitLab #371): the per-part texture's raw S3D bytes may have been
+    // released because the EQE1 pack is present ("EQE1 authoritative" —
+    // RaceModelLoader::loadModelZone's releaseBytesIfEqe1Authoritative) while
+    // the GPU storage was queued by a Compressed-source lookup
+    // (ConstrainedTextureCache::getOrLoad() -> findCompressedEntry). The
+    // The promotion (the actual glCompressedTexImage2D, logged as
+    // "ETC1 texture ... uploaded") normally happens later on the render
+    // thread's upload loop -- lane-2 run 912c measured it 80-94 ms AFTER
+    // the guard's mesh build (first race-71 build 11:02:47.871,
+    // Guard_Drath's own 11:02:47.885, first qcf ETC1 upload 11:02:47.965)
+    // -- so getTexture() alone still misses a freshly-queued
+    // entry. buildTexturedMesh() (the single-buffer zone path) survives by
+    // being built from already-promoted entries; this on-demand path runs
+    // inside the zone-load sequence, BEFORE the upload loop for a new
+    // race's qcs, so it must promote the queued entry itself. This path
+    // already does driver GL work (loadTextureFromBMP above), so the
+    // synchronous upload here is not a new thread/context assumption.
+    if (constrainedCache_ && !name.empty()) {
+        std::string lowerName = name;
+        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        irr::video::ITexture* texture = constrainedCache_->getTexture(lowerName, applyPaletteMask);
+        if (!texture) {
+            texture = constrainedCache_->getTexture(name, applyPaletteMask);
+        }
+        if (!texture) {
+            // Queued (compressed or decoded) but not yet promoted: promote now.
+            texture = constrainedCache_->uploadTexture(lowerName, applyPaletteMask);
+            if (!texture) {
+                texture = constrainedCache_->uploadTexture(name, applyPaletteMask);
+            }
+        }
+        if (texture) {
+            // Cache it so subsequent buffers/variants for the same texture
+            // (and hasTexture()) skip the constrained-cache lookup.
+            textureCache_[name] = texture;
+            if (constrainedCache_->hasAlpha(lowerName, applyPaletteMask) ||
+                constrainedCache_->hasAlpha(name, applyPaletteMask)) {
+                texturesWithAlpha_.insert(name);
+                texturesWithAlpha_.insert(lowerName);
+            }
+            return texture;
+        }
     }
 
     // Not found
@@ -663,7 +747,14 @@ irr::video::ITexture* ZoneMeshBuilder::getOrLoadTexture(const std::string& name,
 
 bool ZoneMeshBuilder::hasTexture(const std::string& name) const {
     return textureCache_.find(name) != textureCache_.end() ||
-           pendingTextures_.find(name) != pendingTextures_.end();
+           pendingTextures_.find(name) != pendingTextures_.end() ||
+           // B1051 (GitLab #371): same hole as getOrLoadTexture() above — the
+           // texture lives in the constrained cache (Compressed source, raw
+           // bytes released) without ever having been decoded through this
+           // builder. Without this, isTextureAvailable() (mesh_building.cpp)
+           // refuses the equipment-variant name and the buffer silently falls
+           // back to the base part's texture (or nothing).
+           (constrainedCache_ != nullptr && constrainedCache_->hasTexture(name));
 }
 
 void ZoneMeshBuilder::registerUploadedTexture(const std::string& name,

@@ -62,6 +62,24 @@ Provisioning evidence: `review/THINKPAD/README.md`.
   :99; every motion click carries its own focus. A lane-5 capture run logs
   each Set Face open attempt in `timeline.tsv` (`face-open attempt=N`), so a
   run proves whether the FIRST click opened the modal.
+- **The Set Face half-render is the CLASSIC-MODEL picker, not a rig defect**
+  (B1086, #406, take 3). The bullet above attributes the *opening* half of the
+  problem (the modal not opening at all) to the dual-vendor GLX, which is
+  correct. The *half-render* (the modal opens, shows the FACE row and the
+  Random/Accept/Cancel strip, and never the other six picker rows) is the
+  official client's own behaviour with `UseLuclin<Race><Gender>=FALSE` in
+  `eqclient.ini`: the classic model's picker exposes FACE only; the 26
+  in-era per-race keys set TRUE select the Luclin models and their full
+  seven-row list. Measured by a one-knob A/B on lane 5 (same lane, Testchar,
+  Barbarian male pair and `facepick-rows` plan): FALSE -> 1 row, TRUE -> 7,
+  FALSE restored -> 1, each a separate client start because the INI is read
+  at startup. The good-era 10-13 captures rendered seven rows because their
+  setup scripts ran `set_facepick_luclin.py` first and restored the INI
+  afterwards; every lane's stock INI is all-FALSE. The take-2 suspects (wine
+  prefix byte state, the GLX shim's dependencies, a KVM-host regression) are
+  **withdrawn**; the harness now applies the toggle itself and restores it.
+  See `refactor/B1086/README.md`. The `facepick-rows` row-count gate (>= 2)
+  stays: it fails loudly on a stock INI instead of silently capturing one row.
 - **The default oracle lane** (B1057, #377): oracle legs run
   `scripts/eqemu/oracle/oracle_session.sh 5 <plan> <out>` (`docs/oracle_driver.md`)
   unless lane 5's lock is held; lanes 1-4 are the fallback. The driver's stop

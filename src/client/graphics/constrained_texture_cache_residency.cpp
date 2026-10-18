@@ -108,7 +108,9 @@ size_t ConstrainedTextureCache::getRestoreFailureCount() const {
 
 bool ConstrainedTextureCache::isResident(const std::string& name, bool applyPaletteMask) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = cache_.find(cacheKey(name, applyPaletteMask));
+    // B1083: the callers (tests) query unscoped entries; "" is the identity
+    // for the archive axis, exactly as before.
+    auto it = cache_.find(cacheKey(name, "", applyPaletteMask));
     return it != cache_.end() && it->second.resident;
 }
 
@@ -172,8 +174,9 @@ bool ConstrainedTextureCache::readDecodedSource(const std::string& key, const Ca
         out.clear();
     }
     std::string realName;
+    std::string sourceArchiveStem;
     bool masked = false;
-    splitCacheKey(key, realName, masked);
+    splitCacheKey(key, realName, sourceArchiveStem, masked);
     for (auto* provider : sourceProviders_) {
         if (provider->hasSource(realName) && provider->readSource(realName, out) && matches(out)) return true;
         out.clear();
@@ -206,7 +209,8 @@ size_t ConstrainedTextureCache::getPinnedTextureCount() const {
 
 bool ConstrainedTextureCache::isPinned(const std::string& name, bool applyPaletteMask) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = cache_.find(cacheKey(name, applyPaletteMask));
+    // B1083: "" is the identity for the archive axis (see isResident).
+    auto it = cache_.find(cacheKey(name, "", applyPaletteMask));
     return it != cache_.end() && it->second.pinned;
 }
 
@@ -229,6 +233,9 @@ void ConstrainedTextureCache::releaseStorage(const std::string& key, CachedTextu
 void ConstrainedTextureCache::destroyEntry(const std::string& key) {
     auto it = cache_.find(key);
     if (it == cache_.end()) return;
+    // B1083 dedupe: this entry is the target of every alias pointing at it --
+    // they re-fold, or resolve on their own, when they next promote/query.
+    dropAliasesTo(key);
     destroyTextures(key, it->second, /*scrubMeshBuilder=*/true);
     if (it->second.resident) {
         currentUsage_ -= it->second.sizeBytes;
@@ -326,8 +333,9 @@ bool ConstrainedTextureCache::restoreEvicted(irr::video::ITexture* texture) {
     if (ledgerEnabled_) {
         const auto size = entry.texture->getSize();
         std::string realName;
+        std::string sourceArchiveStem;
         bool masked = false;
-        splitCacheKey(key, realName, masked);
+        splitCacheKey(key, realName, sourceArchiveStem, masked);
         ledger_.recordUpload(realName, static_cast<int>(size.Width), static_cast<int>(size.Height),
                               entry.sizeBytes, "restore", entry.category, "restoreEvicted");
     }
@@ -339,8 +347,9 @@ bool ConstrainedTextureCache::restoreEvicted(irr::video::ITexture* texture) {
 bool ConstrainedTextureCache::rebuildStorage(const std::string& key, CachedTexture& entry) {
 #ifdef EQT_EQE1_UPLOAD_AVAILABLE
     std::string realName;
+    std::string sourceArchiveStem;  // B1083: not consumed here (GL debug label only)
     bool masked = false;
-    splitCacheKey(key, realName, masked);
+    splitCacheKey(key, realName, sourceArchiveStem, masked);
 
     if (entry.source == CachedTexture::Source::Compressed) {
         const CompressedEntry& c = entry.compressed;
