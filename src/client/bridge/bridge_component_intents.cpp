@@ -535,6 +535,40 @@ void eqt::bridge::BridgeComponent::onScribeSpellFromScrollIntent(const eqt::even
 		i.spellId, static_cast<uint16_t>(bookSlot), i.sourceSlot});
 }
 
+// B1076 fix-2 (UIGAP-ORACLE 205, plan5_swap.tsv step 10, MEASURED on the
+// lane-1 official client 2026-10-18): the spellbook's committing
+// right-click. The oracle sends OP_SwapSpell (0x2126) -- opcode + two
+// uint32 spellbook-slot indices, 10 bytes on the wire (the zone log's
+// "Size [10]") -- and the server acks with the same opcode and payload
+// WITHOUT re-sending the book, so the client's display moves from the
+// exchange itself. The render thread already swapped its own copy for
+// the instant visual; here the game thread moves its model and queues
+// the packet, so the two can no longer drift and the server's book
+// (which is what the next zone-in reads) is updated too.
+void eqt::bridge::BridgeComponent::onSwapSpellbookSlotsIntent(const eqt::events::SwapSpellbookSlotsIntent& i) {
+	if (!ctx_.spell_manager) {
+		LOG_WARN(MOD_SPELL, "SwapSpellbookSlots: no spell manager");
+		return;
+	}
+	const bool modelMoved =
+		ctx_.spell_manager->swapSpellbookSlots(i.slotA, i.slotB);
+	if (!modelMoved) {
+		LOG_WARN(MOD_SPELL, "SwapSpellbookSlots: out-of-range book slots {} / {}",
+			i.slotA, i.slotB);
+		return;
+	}
+	// The measured payload: two uint32 slot indices after the 2-byte
+	// opcode (the capture read 0x00000000 0x00000001 for slots 0 and 1).
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(10);  // opcode(2) + slotA(4) + slotB(4)
+	packet.PutUInt16(0, HC_OP_SwapSpell);
+	packet.PutUInt32(2, i.slotA);
+	packet.PutUInt32(6, i.slotB);
+	LOG_DEBUG(MOD_SPELL, "Sending SwapSpell: slot_a={} slot_b={}", i.slotA, i.slotB);
+	eqt::strings::DumpPacket("C->S", HC_OP_SwapSpell, packet);
+	ctx_.net.SafeQueueZone(packet);
+}
+
 void eqt::bridge::BridgeComponent::onSpellbookStateIntent(const eqt::events::SpellbookStateIntent& i) {
 	ctx_.Entities().SendSpawnAppearance(AT_ANIMATION, i.isOpen ? 110 : 100);
 }
@@ -1203,6 +1237,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::MemorizeSpellIntent& i) { onMemorizeSpellIntent(i); },
 			[this](const eqt::events::ScribeSpellIntent& i) { onScribeSpellIntent(i); },
 			[this](const eqt::events::ScribeSpellFromScrollIntent& i) { onScribeSpellFromScrollIntent(i); },
+			[this](const eqt::events::SwapSpellbookSlotsIntent& i) { onSwapSpellbookSlotsIntent(i); },
 			[this](const eqt::events::SpellbookStateIntent& i) { onSpellbookStateIntent(i); },
 			[this](const eqt::events::BuffCancelIntent& i) { onBuffCancelIntent(i); },
 			[this](const eqt::events::SkillActivateIntent& i) { onSkillActivateIntent(i); },

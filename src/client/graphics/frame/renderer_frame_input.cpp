@@ -345,6 +345,11 @@ bool FrameComponent::toggleSpellbookWindow() {
         spellbookState_.scribScrollSlot = -1;
         spellbookState_.scribScrollSpell = 0;
         spellbookState_.swapFirstSlot = -1;
+        // B1076 fix-2, review t_d00ada41 finding 2: the scribe gauge's
+        // lifecycle also ends here -- a closed book has no in-flight scribe,
+        // so the gauge empties with it (the other arm is the
+        // SpellScribeCompleted event, irrlicht_bridge.cpp).
+        scribeGaugeClear(spellbookState_);
     }
     LOG_INFO(MOD_GRAPHICS, "Spellbook {}", spellbookState_.isOpen ? "opened" : "closed");
     return spellbookState_.isOpen;

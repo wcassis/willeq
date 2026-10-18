@@ -51,7 +51,7 @@ Evidence dir: `/home/user/kb-evidence/kb-b1076-spellbook-window/oracle_capture4/
 | Gesture | Ledger steps | What the oracle does |
 |---|---|---|
 | Left click a book slot | 14-16 | MEMORISE — server chat: "You are not high enough level to memorize that spell" (the attempt fired; Testcaster's 16 scribed spells are all level-69-reachable, so the gauge never ran; opcode table 14: 123 rows) |
-| Right click a book slot | 11-13 | Spell MOVE/SWAP — chat: "Right click on another Scribe Slot in your Spell Book to swap this Spell position". The step's opcodes are EMPTY of a swap packet: the move is client-local until a second slot is clicked |
+| Right click a book slot | 11-13 | Spell MOVE/SWAP -- chat: "Right click on another Scribe Slot in your Spell Book to swap this Spell position". The single rclick's opcodes were empty of a swap packet, so the move looked client-local; the COMMITTING second rclick (plan5_swap.tsv step 10, oracle_swap1, re-measured 2026-10-18) sends **OP_SwapSpell (0x2126)** -- opcode + two uint32 book-slot indices, server-acked, book display exchanged -- so the swap is a SERVER-side change sent as a packet, exactly as the chat line says |
 | Drag a slot onto a gem | 17-19 | MEMORISE (same level-gated refusal; the gem window settles unchanged) |
 | Scribe (scroll → open slot) | 38-43 | TWO-STEP: click the spell scroll in the inventory (32-34), then click an open slot in the book — the ledger tried 38-40 as a RIGHT-drag (the settle + still) and 41-43 as a LEFT-drag attempt + settle, and neither one dragged the scroll into a slot. The oracle's own Spellbook Tip window says exactly this two-click sequence: click the scroll, then the open slot. NOT a drag |
 | Page arrows | 20-25 | PageUp/Down flip the spread. Testcaster has exactly 16 scribed spells = ONE spread, so the arrows did not visibly turn — the stills show the same 16 slots; the direction is the XML's (PageDown at the left edge, PageUp at the right) |
@@ -59,9 +59,33 @@ Evidence dir: `/home/user/kb-evidence/kb-b1076-spellbook-window/oracle_capture4/
 | MemPage 1x1 buttons | — | Not separately probed; they are the whole-page hit targets and are present in the table |
 
 Fable's implementation: left click = memorise (T272 gem-pick contract kept),
-right click = the client-local swap, two-click scroll→slot = scribe, Done X =
-close (the shared toggle body, same as ESC/`/book`), arrows = page. Shift+click
-keeps T425's spell display.
+right click = the swap (committing click sends OP_SwapSpell, measured below),
+two-click scroll→slot = scribe, Done X = close (the shared toggle body, same
+as ESC/`/book`), arrows = page (ONE spread per click, the same body as the
+slash commands). Shift+click keeps T425's spell display.
+
+## Fix-2 re-measurement (2026-10-18, review t_d00ada41 finding 3)
+
+The committing swap click, measured on the SAME lane-1 official client with
+`refactor/B1076/plan5_swap.tsv` (right-click slot 0, settle + still, right-
+click slot 1 = the commit, settle + still, read the book, close):
+`/home/user/kb-evidence/kb-b1076-spellbook-window/oracle_swap1/`. The
+decoding (per-step opcode tables) shows:
+
+- the FIRST right-click: no swap packet (only keepalives) -- the latch is
+  local, matching capture 4's empty rclick rows;
+- the COMMITTING second right-click: **C->S OP_SwapSpell 0x2126** (8-byte
+  payload = the two uint32 book slots, captured 0x00000000 0x00000001)
+  followed by **S->C OP_SwapSpell 0x2126** with the same payload (the zone
+  log records both as "Size [10]"; the server does NOT re-send the book, so
+  the client's display moves from the exchange itself);
+- the stills show the two spell icons having exchanged positions
+  (before/after icon cross-correlation 0.999), and the recommit swaps them
+  back with a second OP_SwapSpell.
+
+So the oracle's swap is a server-side book change sent as a packet. The
+earlier "client-local" reading was the measurement gap the review flagged:
+capture 4 had only ever done the FIRST (latching) right-click.
 
 ## Not verified / left open
 
@@ -70,11 +94,19 @@ keeps T425's spell display.
   the quoted (204,312) with the quoted tints (render leg).
 - A page turn with a 2nd spread: not reachable with 16 scribed spells (the
   plan's >= 17 ideal was noted and not met). The arrow geometry and the
-  16-spread paging are what the capture covers.
+  16-spread paging are what the capture covers. The spread-turn MATH is now
+  covered by `tests/test_spellbook_fix2.cpp` (17-spread book, one body for
+  arrows and slash commands).
 - The scribe gauge likewise unmeasured (the scroll scribe is level-gated too).
+  Its lifecycle (start on the request, clear on completion / snapshot / close)
+  is covered by `tests/test_spellbook_fix2.cpp` against the real bridge arms.
 - Empty-slot name label: the capture's book has 16/16 slots filled; fable
   renders an empty slot as icon-less with no name text (the old behaviour),
   not re-measured.
+- The FABLE-side open-book render (the issue's visual-gate label row): still
+  owed -- it needs a windowed fable client (Xvfb + `--egl-x11` + `--dump-frames-dir`)
+  zoned into a lane with the book opened. The evidence stills above are the
+  ORACLE client's. See FOLLOW-UP.
 
 ## Acceptance
 

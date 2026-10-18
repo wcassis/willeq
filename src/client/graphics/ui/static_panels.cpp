@@ -704,6 +704,21 @@ void applySpellMemorizing(SpellbookPopupState& state,
     state.memorizeTotalMs = data.totalMs;
 }
 
+// B1076 (GitLab #396) fix leg 2, review t_d00ada41 finding 2: the scribe
+// gauge's lifecycle. One writer pair, the header's contract:
+//   * start -- the scribe's second click (the request going out).
+//   * clear -- SpellScribeCompleted (the attempt's end; there is no
+//     in-flight progress event on the wire, so the gauge is full for the
+//     attempt's whole duration and empty the moment the attempt ends), and
+//     the book closing (toggleSpellbookWindow()'s close branch).
+void scribeGaugeStart(SpellbookPopupState& state) {
+    state.scribeProgress = 1.0f;
+}
+
+void scribeGaugeClear(SpellbookPopupState& state) {
+    state.scribeProgress = 0.0f;
+}
+
 void renderCastingBar(UIRenderer& ui, const UILayout& layout,
                       const CastingBarState& state) {
     if (!state.isCasting) return;

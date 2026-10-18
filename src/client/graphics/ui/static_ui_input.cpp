@@ -9,6 +9,7 @@
 #include "client/graphics/ui/hotbar_panel.h"   // B1025-H2: hitTestHotbar
 #include "client/graphics/ui/spell_gem_layout.h"
 #include "client/graphics/ui/spellbook_layout.h"   // B1076 (#396): the book's own rects
+#include "client/graphics/ui/spellbook_page_turn.h"   // B1076 fix-2: the ONE spread-turn body
 #include "client/hotbar/hotbar_model.h"        // B1025-H2: PAGE_COUNT
 #include "client/graphics/ui/inventory_layout.h"
 #include "client/graphics/ui/tradeskill_panel.h"
@@ -469,8 +470,10 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     // the ones capture 4 measured on the official client, not the XML's:
     //   left click a SLOT   = memorise (server: the capture's "not high enough
     //                         level" is the attempt firing) -- T272's gem pick
-    //   right click a SLOT  = swap (the capture shows NO wire packet: the stock
-    //                         client only latches a pending destination)
+    //   right click a SLOT  = the stock client's book-order swap (capture 4:
+    //                         the first right-click sends no packet; the
+    //                         committing second click's wire -- if any -- is
+    //                         plan5_swap.tsv's measurement)
     //   drag slot -> gem    = memorise (fable's cursor gesture is not a
     //                         measured hold here; the slot's left click already
     //                         memorises, so the drag is not re-bound)
@@ -551,14 +554,23 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                             static_cast<int16_t>(spellbook.scribScrollSlot)});
                         spellbook.scribScrollSlot = -1;
                         spellbook.scribScrollSpell = 0;
-                        spellbook.scribeProgress = 1.0f;
+                        scribeGaugeStart(spellbook);
                     }
                 } else if (rightClicked_) {
-                    // The swap (client-local: capture 4's empty rclick opcodes).
-                    // A right-click latches the first destination; a right-click
-                    // on ANOTHER occupied slot commits by exchanging the two
-                    // scribed spells in the render cache; a right-click on the
-                    // same slot (or an empty slot) cancels the latch.
+                    // The swap. B1076 fix-2 (UIGAP-ORACLE 205, plan5_swap.tsv
+                    // step 10, MEASURED on the lane-1 official client
+                    // 2026-10-18): a right-click latches the first destination;
+                    // a right-click on ANOTHER occupied slot COMMITS by
+                    // exchanging the two scribed spells over the wire --
+                    // OP_SwapSpell (0x2126) carrying the two spellbook-slot
+                    // indices (the capture read slots 0 and 1), server-acked,
+                    // and the oracle updates its book display from that. The
+                    // FIRST right-click sends nothing (the latch is local);
+                    // only the second (commit) goes on the wire. A right-click
+                    // on the same slot (or an empty slot) cancels the latch.
+                    // The local std::swap below gives the display the instant
+                    // exchange the oracle shows; the intent makes the game
+                    // thread send the packet and move its own book model.
                     if (spellbook.swapFirstSlot < 0) {
                         spellbook.swapFirstSlot = occupied ? i : -1;
                     } else if (occupied && spellbook.swapFirstSlot != i) {
@@ -567,6 +579,11 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                                        spellbook.swapFirstSlot;
                         if (fa < static_cast<int>(spellbook.spells.size())) {
                             std::swap(spellbook.spells[fa], spellbook.spells[idx]);
+                            if (bridge_) {
+                                bridge_->pushIntent(eqt::events::SwapSpellbookSlotsIntent{
+                                    spellbook.spells[fa].slot,
+                                    spellbook.spells[idx].slot});
+                            }
                         }
                         spellbook.swapFirstSlot = -1;
                     } else {
@@ -588,18 +605,18 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
 
             // The edge arrows -- page a spread (two book pages) at a time.
             // SBW_PageDownButton (left edge) = back, SBW_PageUpButton (right) =
-            // forward.
+            // forward. The ONE spread-turn body the slash commands use
+            // (spellbook_page_turn.h): before this unit the arrows stepped
+            // currentPage (a SPREAD index) by SPELLS_PER_PAGE spreads per
+            // click, so a forward click jumped past every intermediate spread
+            // and a back click clamped straight to 0.
             if (leftClicked && inBook(EQT::Graphics::SpellBookLayout::pageDownRect()) &&
-                spellbook.currentPage > 0) {
-                spellbook.currentPage -= SpellbookPopupState::SPELLS_PER_PAGE;
-                if (spellbook.currentPage < 0) spellbook.currentPage = 0;
+                turnSpellbookSpreadBack(spellbook)) {
                 consumed = true;
                 onPiece = true;
             }
             if (leftClicked && inBook(EQT::Graphics::SpellBookLayout::pageUpRect()) &&
-                spellbook.currentPage < (spellbook.pageCount() - 1) *
-                                            SpellbookPopupState::SPELLS_PER_PAGE) {
-                spellbook.currentPage += SpellbookPopupState::SPELLS_PER_PAGE;
+                turnSpellbookSpreadForward(spellbook)) {
                 consumed = true;
                 onPiece = true;
             }

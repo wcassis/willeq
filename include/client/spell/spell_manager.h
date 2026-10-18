@@ -146,6 +146,15 @@ public:
     // Get spell ID at book slot
     uint32_t getSpellbookSpell(uint16_t slot) const;
 
+    // B1076 fix-2 (UIGAP-ORACLE 205): exchange the two spells currently in
+    // the given spellbook slots, in the model. The caller (the
+    // SwapSpellbookSlotsIntent consumer) sends OP_SwapSpell; this is the
+    // client's own copy of the exchange the server makes. Both slots must
+    // be in range, and at least one must be occupied (an empty slot is
+    // SPELL_UNKNOWN or 0); swapping two empties is a no-op. Returns false
+    // on any out-of-range slot.
+    bool swapSpellbookSlots(uint16_t slot_a, uint16_t slot_b);
+
     // Get all scribed spell IDs
     std::vector<uint32_t> getScribedSpells() const;
 

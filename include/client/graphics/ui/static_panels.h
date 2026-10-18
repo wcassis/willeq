@@ -556,14 +556,15 @@ struct SpellbookPopupState {
     int scribScrollSlot = -1;
     uint32_t scribScrollSpell = 0;
 
-    // B1076 (GitLab #396): the client-local spell swap. Capture 4 measured
-    // that a right-click on a book slot sends NO wire packet (the empty
-    // 11_slot0_rclick opcodes) -- the stock client only latches a pending
-    // destination, and the swap commits when the second slot is clicked.
-    // -1 = no swap in flight. The commit is /swap's local half (the two
-    // slots exchange their spells on the model via the same intent the
-    // command uses); a right-click on the already-latched slot or the Done
-    // X cancels it.
+    // B1076 (GitLab #396): the spell-swap latch. A right-click on an occupied
+    // slot latches it (`swapFirstSlot`, the slot index within the current
+    // spread); a right-click on ANOTHER occupied slot commits the exchange;
+    // a right-click on the already-latched slot, an empty slot, or the Done
+    // X cancels it. What the commit does -- and whether it reaches the
+    // server -- is measured on the oracle (fix leg 2, plan5_swap.tsv; the
+    // review's finding 3: capture 4 only ever measured the FIRST right-click,
+    // whose opcodes were empty of a swap packet, never the committing second
+    // one). -1 = no swap in flight.
     int swapFirstSlot = -1;
 
     // T413 (board B296): memorisation progress, from SpellMemorizingData.
@@ -577,11 +578,12 @@ struct SpellbookPopupState {
     // B1076 (GitLab #396): the scribe gauge, the oracle's SBW_Scribe_Gauge
     // (same 100x8 piece at the same place as the memorize gauge; the window
     // draws whichever action is in flight, tint (176,64,0) against the
-    // memorize tint (200,0,200)). There is no authoritative per-frame scribe
-    // progress on the wire (the server confirms with SpellScribeCompleted),
-    // so the gauge shows the in-flight attempt: full while a scribe request
-    // is pending, cleared by the completion/clearing event. `progress` is
-    // 0..1 (1 = a scribe is in flight).
+    // memorize tint (200,0,200)). There is no in-flight progress event on
+    // the wire -- the server confirms the attempt with SpellScribeCompleted
+    // -- so the gauge shows the in-flight attempt, driven by its lifecycle
+    // through scribeGaugeStart() (the scribe's second click) and
+    // scribeGaugeClear() (the completion event, and the book closing).
+    // 0..1 (1 = a scribe request is in flight).
     float scribeProgress = 0.0f;
 
     float memorizeProgress() const {
@@ -601,6 +603,18 @@ struct SpellbookPopupState {
  */
 void applySpellMemorizing(SpellbookPopupState& state,
                           const eqt::state::SpellMemorizingData& data);
+
+// B1076 (GitLab #396) fix leg 2, review t_d00ada41 finding 2: the scribe
+// gauge's ONE writer pair. The gauge is driven by the scribe lifecycle, not
+// by a set-and-forget write. scribeGaugeStart() runs on the second click
+// (the scribe request going out): full, because there is no in-flight
+// progress event on the wire -- the server confirms with SpellScribeCompleted
+// when the attempt ends. scribeGaugeClear() runs on that completion event
+// and on the book closing, so the gauge never outlives its attempt. Before
+// this unit nothing ever wrote the gauge back to 0, so it sat at 100 %
+// forever after a single scribe.
+void scribeGaugeStart(SpellbookPopupState& state);
+void scribeGaugeClear(SpellbookPopupState& state);
 
 // B1076 (#396): the old scaled spellbookMemorizeGaugeRect() is gone — the
 // window now draws at the oracle's own 510x360 (layout.bookPopup), so the

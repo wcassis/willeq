@@ -1129,6 +1129,24 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_spellbook_memorize DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1076 (GitLab #396) fix leg 2, review t_d00ada41 findings 1-3: the
+# edge-arrow spread-turn (one body, pinned against the slash commands),
+# the scribe gauge lifecycle (real bridge arms), and the swap commit
+# (the committing right-click pushes SwapSpellbookSlotsIntent -- the
+# measured OP_SwapSpell wire -- plus the model exchange). Needs Irrlicht
+# headers for static_panels.h/static_ui_input.h and willeq.db for the
+# spellbook-model leg (self-skips without it, test_spellbook_memorize's
+# precedent).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_spellbook_fix2
+        test_spellbook_fix2.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_spellbook_fix2 PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
+    TARGET_INCLUDE_DIRECTORIES(test_spellbook_fix2 PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_spellbook_fix2 GTest::gtest willeq_core)
+    GTEST_DISCOVER_TESTS(test_spellbook_fix2 DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T277: clicking a buff off the buff bar. Geometry (hitTestBuffBar), the
 # click producer (StaticUIInput), the OP_Buff request bytes, and the real
 # eq_bridge consumer arm asserting the buff is NOT removed optimistically.

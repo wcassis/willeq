@@ -225,6 +225,21 @@ struct ScribeSpellFromScrollIntent {
     int16_t sourceSlot;  // the scroll's inventory slot (Titanium numbering)
 };
 
+// B1076 fix-2 (UIGAP-ORACLE 205, plan5_swap.tsv step 10, MEASURED on the
+// lane-1 official client 2026-10-18): the spellbook's committing right-
+// click, which exchanges two book slots over the wire -- OP_SwapSpell
+// (0x2126) carrying the two spellbook-slot indices (the capture read
+// slots 0 and 1; the server acks and re-sends the book, so the client's
+// own local swap is NOT the oracle's mechanism). First click on slot A
+// latches locally (no wire); the second click on slot B commits. The
+// RENDER thread knows both slots (they are its own rects); it does not
+// send anything, it pushes this intent, and the consumer builds the
+// packet.
+struct SwapSpellbookSlotsIntent {
+    uint32_t slotA;  // spellbook slot index (0..399)
+    uint32_t slotB;  // spellbook slot index (0..399)
+};
+
 struct SpellbookStateIntent {
     bool isOpen;  // Sends appearance animation
 };
@@ -552,6 +567,7 @@ using RendererIntent = std::variant<
     MemorizeSpellIntent,
     ScribeSpellIntent,
     ScribeSpellFromScrollIntent,
+    SwapSpellbookSlotsIntent,  // B1076 fix-2
     SpellbookStateIntent,
     // Buffs
     BuffCancelIntent,
