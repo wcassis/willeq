@@ -52,6 +52,13 @@ public:
     void setNameResolver(NameResolver resolver) { nameResolver_ = std::move(resolver); }
     using SpellAtGem = std::function<uint32_t(uint8_t)>;
     void setSpellAtGem(SpellAtGem reader) { spellAtGem_ = std::move(reader); }
+    // B1077 (GitLab #397): a Spell slot's drawn icon is its spell's gem_icon
+    // (the Gems family of the spell-icon atlas), the same column the gem bar
+    // reads. A slot whose id resolves to nothing (or whose callback is not
+    // installed) stays 0: 0 draws the atlas's first cell, exactly as an
+    // unmemorised gem does.
+    using SpellIconFor = std::function<uint32_t(uint32_t)>;
+    void setSpellIconFor(SpellIconFor resolver) { spellIconFor_ = std::move(resolver); }
     int findSpellGem(uint32_t spellId) const;
     uint32_t spellAtGem(uint8_t gem) const { return spellAtGem_ ? spellAtGem_(gem) : 0; }
 
@@ -67,18 +74,16 @@ public:
     void reset();
 
     // --- Slot mutation (publishes events) ---
-    // B603 (T458 class: test seam, kept): no production caller. The only
-    // production slot writer is loadFromJson() (LoadHotbarConfig at zone-in);
-    // nothing in a command or the UI assigns or clears a slot, so the
-    // per-character save callback (setSaveCallback, registered in
-    // BridgeComponent::wireBridgeToSubsystems) has no production assignment
-    // trigger yet, i.e. hotbar
-    // slot assignment is a missing feature, not a live path. They stay
-    // because their tests drive assignSlot/clearSlot as the REAL producer of
-    // the HotbarSlotAssigned bridge event, not a hand-built fixture (T156's
+    // B1025-H3 (#345): BOTH now have production callers through the hotbar
+    // assignment gesture: BridgeComponent::onHotbarAssignIntent
+    // (bridge_component_intents.cpp) is the assignSlot one (a placed hot
+    // button, the render-thread hold or the /hotbutton command's), and
+    // onHotbarClearIntent is the clearSlot one (the pickup: a hold on an
+    // occupied slot clears the slot while the cursor carries the button).
+    // Their tests still drive them as the REAL producer of the
+    // HotbarSlotAssigned bridge event, not a hand-built fixture (T156's
     // skill-reachability leg, the T15 input-action-bridge routing, T230's
-    // hotbar item route) -- the tests are the net, so the functions live
-    // with them.
+    // hotbar item route) -- those stay the net for the event itself.
     void assignSlot(HotbarAddress address, HotbarSlotType type, uint32_t id,
                     const std::string& emoteText = "", uint32_t iconId = 0);
     void clearSlot(HotbarAddress address);
@@ -98,6 +103,7 @@ private:
     bridge::GameStateBridge* bridge_ = nullptr;
     NameResolver nameResolver_;
     SpellAtGem spellAtGem_;
+    SpellIconFor spellIconFor_;  // B1077
     SaveCallback saveCallback_;
 };
 

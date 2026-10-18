@@ -465,11 +465,22 @@ it without taking that measurement first.
   icon texture is not in the shipped atlas), close box, `HotbarPageChangedIntent`.
   The stock client cannot show Hotbars 2-4 (the XML gives them zero size; the
   H-O oracle measured them invisible even forced on), so there is no geometry
-  for bars 2-4. What remains is **H-3** (the slot-ASSIGNMENT gesture:
-  right-click/drag a gem or item onto a slot — `HotbarModel::assignSlot`
-  still has no production caller) and the live feature scenario. The
-  H0 partial official-client capture (`refactor/B1025-H0/README.md`) and its
-  "Not captured / not verified" cases remain open; this item is not closed.
+  for bars 2-4. Chain: **H-3** (merged, MR !198) — the slot-ASSIGNMENT gesture
+  (hold-to-pickup, place, clear, `/hotbutton`), the first production caller of
+  `HotbarModel::assignSlot`; **H-4** (this item's keys, MR !199, in review,
+  `refactor/B1025-H4/README.md`) — the official page keys (Shift+1..0) and
+  window toggle (Alt+H) with their Options Keys rows, addressed through the
+  one `HotbarModel` page; **H-5** (merged, MR !207, `refactor/B1025-H5/README.md`)
+  — the gap-rule test the issue's acceptance requires: `hotbar_lifecycle` (+
+  the `hotbar_isolation_assign` peer) drives the hotbar's whole user path on a
+  lane and asserts only server/chat observables (the buff, the charge
+  decrement, the client's own cast/use/emote lines, the #fish catch, the
+  per-character INI bytes for persistence + isolation). Its lane run PASSED on
+  lane 1 (run 12, 2026-10-16 22:09–22:22 UTC: exit 0 + post-check PASS, logs
+  attached to the task and in `refactor/B1025-H5/README.md`). The H0 partial
+  official-client capture (`refactor/B1025-H0/README.md`) and its "Not
+  captured / not verified" cases remain open; H-4 (MR !199) is in review, so
+  this item closes when it merges.
 - **B988** (A) → issue #307. Will 2026-10-05: "make the nobocache flag opt-in
   (off by default) and fix the stale docs". A DRM client now leaves
   `LIMA_DEBUG` untouched (Lima's BO cache on); `WILLEQ_LIMA_NOBOCACHE=1`
@@ -7337,8 +7348,10 @@ client uses every field.
   ignored by the drain) and `SimulationInput::cameraTarget`,
   `EntityVisual::corpseYOffset` (computed per corpse, never applied to the
   node), `ParticleEmitter::spawnRadius_` (seven callers set it; the spawn does
-  not use it), `SpellEffectInstance::spellID`, `RendererEvent::intData`,
-  `SpellActionInfo::level2`. Same class as B296 one layer down: a producer
+  not use it), `SpellEffectInstance::spellID`, `SpellActionInfo::level2`.
+  `RendererEvent::intData` closed by B1025-H4 (the hotbar page keys' first
+  consumer: `FrameComponent::processPlayerInput`'s `HotbarPageChange` arm).
+  Same class as B296 one layer down: a producer
   computes a value for a consumer that never reads it. Closes per field. Found
   by T414 Leg C.
 
@@ -8930,17 +8943,23 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
 
 - **B440** (B) `include/client/graphics/ui/cursor_attachment_layout.h`, → issue #150
   `/mnt/projects/EverQuestP1999/uifiles/default/EQUI_CursorAttachment.xml` --
-  **two of the CursorAttachment screen's three pieces have no fable producer.**
+  **one of the CursorAttachment screen's three pieces has no fable producer**
+  (B1025-H3 struck CA_SpellGem's half, below).
   The oracle's screen is `CA_Anim`, `CA_Anim2` and `CA_SpellGem`, all three at
   the same `<Location>(5,5)</Location>`, so at most one is ever visible; the
   official client shows `CA_Anim` for an item and `CA_SpellGem` for a spell
   being scribed off a scroll. fable's cursor holds an ITEM and nothing else --
   `InventoryManager`'s `cursorQueue_` is a queue of `ItemInstance` -- so T436
   drew `CA_Anim` and left the other two undrawn rather than inventing a state
-  to fill them. Closes when there is a cursor-held SPELL to draw (the scribe
-  path already exists: `ScribeSpellIntent` carries a `sourceSlot`), or when it
-  is established that Titanium never puts one there and the two elements are
-  recorded as deliberately unused. Found by T436.
+  to fill them. **B1025-H3 (2026-10-15, #345) struck the CA_SpellGem half**:
+  the hotbar assignment gesture's hot button (a held gem, ability row,
+  inventory item, or the `/hotbutton` command's social button) draws
+  CA_SpellGem's own box at the mouse (hotbar_assignment.cpp's
+  `renderHotbarCursorAttachment`, an item button reusing T430's dragitem
+  decal) -- its producer, and B440's closure condition ("a cursor-held
+  spell/button to draw") is met. CA_Anim2 (the second item piece) is still
+  undrawn: the item button is one decal, as the oracle's frames (H-O,
+  /home/user/kb-evidence/kb-h0-hotbar-oracle/) show. Found by T436.
 
 - ~~**B441** (C) `src/client/graphics/ui/bank_panel.cpp` (`BW_ChangeButton`), → issue #26
   `include/client/graphics/ui/bank_layout.h` -- **the bank window's Change
@@ -13550,6 +13569,7 @@ T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are cla
 
 - **B888** (B, feature) native character creation: the official two-page screen and progression, home city (no tutorial), post-Velious races/classes excluded. → issue #204
   - **B888-CC2 (2026-10-15, `task/kb-cc2-charselect-preview`)** the 3D PREVIEW: the select screen stands up the selected character (race/gender/face from the T14 wire -- the server fills them, fable dropped them), the creation screen the sample model of race + gender (+ FacePick picks), Rotate live (default on), via the paperdoll's `CharacterModelView` (own scene manager, RTT, no zone) hosted by `CharPreviewScene`; the model host borrows the entity renderer's already-wired `RaceModelLoader` (the B1029 trap, cited + tested). Oracle leg: lane-1 driver run (`oracle10`, 38 stills + video) -- select model present (Testchar 60 Warrior, Greater Faydark backdrop), creation model present (Human male, pedestal + archway backdrop), FacePick modal; the SELECT SPIN PERIOD was not resolved by the 10 fps capture (model region static 0.0-1.3% across post-toggle stills) -- stated, not blessed. `refactor/B888-CC2/README.md`, `tests/test_char_preview.cpp` (device-free appearance selection + the EDT_NULL model leg: the right race model stands up with no zone; Human vs Dwarf resolve to distinct model codes).
+  - **B888-CC3 (2026-10-17, `task/kb-cc3-charselect-explore`)** the select-screen backdrop + Explore mode. Oracle leg (lane-5, B1048 driver, `oracle-a6`/`oracle-b1`/`oracle-c1`): the backdrop is a client-internal 3D showroom -- the pcap has NO zone-server connection at char-select, and the client's own load log (`oracle-c1/client_dbg.txt`) shows `World initialized: clz` right before `Starting char select.`: the **`clz`** zone, shipped as **`clz.eqg`** (PFS, the same format the zone loader opens for a `.s3d`), base-game-era/in-era (NOT a post-Velious ruling). Explore (the select window's `CSW_Explore_Button`) opens `EXW_ExploreModeWindow`, hides the left list, stands the account's characters; **Enter enters with the LIST-SELECTED character** (oracle-b1: Testcaster, not the login target Testchar); Esc closes; forward (`d`) moves the free camera (diff 45.48). **Implementation leg: LANDED** (run 1042, this MR): the device-free layer (the state machine `explore_screen.{h,cpp}`, the EXW overlay layout from the stock XML `explore_layout.h`, the host wiring -- button live, Enter/Esc routed, list window hidden, overlay drawn -- `tests/test_explore_screen`) and the 3D clz backdrop scene: the showroom stands up in the host's own scene manager (`char_backdrop_scene.{h,cpp}`, 30 models / 157 placements), the account's character stands, the free camera (`exploreCameraVerb`, wired in `char_select_host.cpp`) and the click-to-row raycast (`backdropRowForClick()` -> `backdrop->rowForClick()`; `exploreCameraVerb`/`rowForClick` no longer rowed `EXEMPT_TESTS_GROUPS`), pinned headless by `tests/test_explore_backdrop.cpp`. `refactor/B888-CC3/README.md` (+ `explore.tsv`).
 - **B889** (B, feature) capability-level CI suite: a README-row → oracle → test → CI-lane matrix, nightly live + pi stages. → issue #205
 - **B890** (B, feature) boats/transport. → issue #206
 - **B891** (B, feature) swimming speeds are guesses, drowning and the Air Remaining window are missing. → issue #207

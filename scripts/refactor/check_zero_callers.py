@@ -796,7 +796,6 @@ EXEMPT_GROUPS = {
     ("Application", "getActionDispatcher"): "B497",
     ("Application", "getCommandProcessor"): "B497",
     ("Application", "getEverQuestClient"): "B497",
-    ("Application", "getGameMode"): "B497",
     ("CombatManager", "GetMemorizedSpells"): "B497",
     ("CombatManager", "GetNearbyAllies"): "B497",
     ("CombatManager", "LoadSpellSet"): "B497",
@@ -820,7 +819,6 @@ EXEMPT_GROUPS = {
     ("NullInputHandler", "injectChatMessage"): "B498",
     ("NullInputHandler", "injectFace"): "B498",
     ("NullInputHandler", "injectFaceEntity"): "B498",
-    ("NullInputHandler", "injectHotbar"): "B498",
     ("NullInputHandler", "injectLoot"): "B498",
     ("NullInputHandler", "injectMoveCommand"): "B498",
     ("NullInputHandler", "injectMoveToEntity"): "B498",
@@ -882,7 +880,7 @@ EXEMPT_TESTS_GROUPS = {
     ("(free)", "findControlClass"): "observer",
     ("(free)", "dispositionText"): "observer",
     ("(free)", "applyTradeskillContainerClosed"): "B899",
-    # B888 (#204): the era data's full lists and row sources are the tests'
+    # B888-CC3 (#204): the era data's full lists and row sources are the tests'
     # window onto the oracle rows the production lookups filter. (B998 hosted
     # the creation screen on the character-select screen, which made its
     # click resolver, Get Name round trip and refusal applier live.)
@@ -901,6 +899,15 @@ EXEMPT_TESTS_GROUPS = {
     # outside that logic is the test that pins the refusal table, so the
     # accessor is the test's observation window on a live class.
     ("SkillManager", "isFishing"): "observer",
+    # B1092 (#412): the queue's running_ latch is written live by stop() and
+    # read by the worker's top-of-loop and drain-loop checks; the only
+    # outside reader is StopWhileItemsPending, which blocks the in-flight
+    # item on a gate and must observe the stop landed (running_ false) before
+    # opening the gate so the drain loop's running_ check is ordered ahead of
+    # the next pop. The accessor is the test's observation window on a live
+    # class; removing it would force the test back to a wall-time bound (the
+    # very assumption that flaked).
+    ("BackgroundWorkQueue", "isStopping"): "observer",
     # T504: the ledger's stack-trace instrument is armed by an environment
     # variable in a live run (WILLEQ_LEDGER_TRACE); the unit test needs the
     # programmatic form of that switch and the report it prints.
@@ -1031,8 +1038,12 @@ EXEMPT_TESTS_GROUPS = {
     ("FrameComponent", "seedFrustumDebugBoxForTest"): "seam",
     ("GmComponent", "Test_GetLastGMHideMe"): "seam",
     ("GmComponent", "Test_GetLastGMSummon"): "seam",
+    # B1081 (#401): the OP_GMZoneRequest2 confirm packet, test_gm_component.
+    ("GmComponent", "Test_GetLastGMZoneRequest2"): "seam",
     ("LoginWorldComponent", "ReplayLoginPacket"): "seam",
     ("LoginWorldComponent", "ReplayWorldPacket"): "seam",
+    # B1081 (#401): the zone-change reconnect window, test_zone_change_no_flash.
+    ("LoginWorldComponent", "Test_EnterWorldSentForSeam"): "seam",
     ("OverlaysComponent", "mapOverlayTriangleCount"): "seam",
     ("OverlaysComponent", "navmeshOverlayTriangleCount"): "seam",
     ("OverlaysComponent", "seedMapOverlayTriangleForTest"): "seam",
@@ -1077,6 +1088,16 @@ EXEMPT_TESTS_GROUPS = {
     # the view" assertion; the class's live callers are setCharacter/
     # hasCharacterModel, wired by the preview host and the paperdoll.
     ("CharPreviewScene", "modelRace"): "observer",
+    # B888-CC3 (#204): the clz backdrop's observation windows. CharBackdropScene
+    # is thin/render-thread-only, exercised live in the visual gate (the
+    # showroom stood up in its own scene manager under the pre-zone frame);
+    # the headless leg (test_explore_backdrop.cpp) drives the same class under
+    # an EDT_NULL device. hasScene is its "the 3D slice stood up" window and
+    # characterCount is its "the per-row stands round-trip" window onto the
+    # setCharacter/clearCharacter bookkeeping; their live callers are init/
+    # setCharacter/renderScene/rowForClick, wired by the char-select host.
+    ("CharBackdropScene", "hasScene"): "observer",
+    ("CharBackdropScene", "characterCount"): "observer",
     ("CharacterModelView", "getCurrentGender"): "observer",
     ("CharacterModelView", "getCurrentRaceId"): "observer",
     ("CharacterModelView", "isReady"): "observer",
@@ -1124,7 +1145,9 @@ EXEMPT_TESTS_GROUPS = {
     ("IrrlichtRenderer", "isNewUIEnabled"): "observer",
     ("LoginWorldComponent", "CharacterSelectReturns"): "observer",  # B1005
     ("LoginWorldComponent", "GetAccountId"): "observer",
-    ("LoginWorldComponent", "GetCharacterSelectIndex"): "observer",
+    # B1081 (#401): GetCharacterSelectIndex gained a production caller
+    # (ApplicationScenarioWorld::CharacterSelectName) -- removed from this
+    # tests-only table; it is now classified by its live caller.
     ("LoginWorldComponent", "GetChatConnectionType"): "observer",
     ("LoginWorldComponent", "GetChatServerHost"): "observer",
     ("LoginWorldComponent", "GetChatServerPort"): "observer",
@@ -1259,19 +1282,18 @@ EXEMPT_TESTS_GROUPS = {
     # B603: the three rows reclassified seam (2026-10-11, issue #187) --
     # tests-only functions whose tests are the net for LIVE behaviour, so
     # the function lives with them (T458's test-seam class).
-    # assignSlot/clearSlot: no production caller (the only slot writer is
-    # loadFromJson); their tests (T156 skill-reachability, T15
-    # input-action-bridge routing, T230 hotbar item route) drive them as
-    # the REAL producer of the HotbarSlotAssigned bridge event, not a
-    # hand-built fixture. Hotbar slot assignment is a missing feature (no
-    # command or UI path reaches it) -- board it separately, do not wire
-    # it here.
+    # B1025-H3 (GitLab #345): the assignSlot/clearSlot seam rows are GONE --
+    # BridgeComponent::onHotbarAssignIntent (the placement: a held hot button
+    # or /hotbutton's, the first production caller of assignSlot) and
+    # onHotbarClearIntent (the pickup: a hold on an occupied slot cleared its
+    # source, the first production caller of clearSlot) are the production
+    # callers both comments predicted. Their tests (T156 skill-reachability,
+    # T15 input-action-bridge routing, T230 hotbar item route) still drive
+    # them as the REAL producer of the HotbarSlotAssigned bridge event.
     # calcBankBagSlotId: the wire-constant arithmetic of the bank-bag
     # sub-slots (2031+), asserted in the bag-move tests against the same
     # constants the server computes.
     ("(free)", "calcBankBagSlotId"): "seam",
-    ("HotbarModel", "assignSlot"): "seam",
-    ("HotbarModel", "clearSlot"): "seam",
     # B1025-H1's setCurrentPage seam row is GONE (H-2, #345): the hotbar
     # window's page buttons produce HotbarPageChangedIntent, and
     # BridgeComponent::onHotbarPageChangedIntent calls it -- the production

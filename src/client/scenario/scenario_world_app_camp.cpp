@@ -7,6 +7,7 @@
 
 #include "client/scenario/scenario_world_app.h"
 
+#include "client/application.h"
 #include "client/eq.h"
 #include "client/login_world/login_world_component.h"
 #include "client/player/player_component.h"
@@ -30,6 +31,21 @@ std::vector<std::string> ApplicationScenarioWorld::CharacterListNames() const {
     return names;
 }
 
+// B1081 (#401): the entry at the select screen's cursor, else the run's
+// configured character (the scenario config names exactly one character,
+// and the automatic Enter World -- suppressed while the screen is up --
+// would have entered it too). Empty neither = the scenario's WaitList has
+// nothing to Enter World as.
+std::string ApplicationScenarioWorld::CharacterSelectName() const {
+    const auto& lw = client_.LoginWorld();
+    const int idx = lw.GetCharacterSelectIndex();
+    const auto& list = lw.GetCharacterSelectList();
+    if (idx >= 0 && idx < static_cast<int>(list.size()) && !list[idx].name.empty()) {
+        return list[idx].name;
+    }
+    return app_.ConfiguredCharacter();
+}
+
 long long ApplicationScenarioWorld::CharacterListGeneration() const {
     return static_cast<long long>(client_.LoginWorld().CharacterListGeneration());
 }
@@ -47,6 +63,30 @@ long long ApplicationScenarioWorld::ZoneConnectOpens() const {
 bool ApplicationScenarioWorld::SimulateUnreachableZoneConnects(int attempts, int port) {
     if (attempts < 0 || port < 1 || port > 65535) return false;
     client_.SimulateUnreachableZoneConnects(attempts, static_cast<uint16_t>(port));
+    return true;
+}
+
+// B1081 (#401): the screen-up count the zone_change_no_flash scenario
+// asserts (exactly 1: the fresh login's). It reads the Application's own
+// CharacterSelectService -- the game thread's, and this runs on the game
+// thread. A run that drew the screen (graphics) logs "[CHARSELECT] screen
+// up" at the same moments.
+long long ApplicationScenarioWorld::CharacterSelectActivations() const {
+    return static_cast<long long>(app_.CharacterSelectActivations());
+}
+
+// B1080 (#400): the zone-OUT teardown's audio-silence count (the counter
+// CleanupZone() increments in every build -- a headless --scenario run has
+// no audio system, but the count still proves the silence path ran).
+long long ApplicationScenarioWorld::ZoneAudioSilenceCount() const {
+    return client_.Zone().ZoneAudioSilenceCount();
+}
+
+// B1079 (#399): the "zone answered then went silent" lever (EverQuest::
+// SimulateZoneSilentAfterHandshake, zone_connect.cpp / everquest.cpp). The
+// silent arm of zone_connect_timeout.
+bool ApplicationScenarioWorld::SimulateZoneSilentAfterHandshake() {
+    client_.SimulateZoneSilentAfterHandshake();
     return true;
 }
 

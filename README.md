@@ -41,7 +41,7 @@ current defect list; where the two disagree, the board wins.
 - ETC1 flat-pack texture assets (EQE1) for memory-constrained boards
 
 **What doesn't work or is incomplete:**
-- Character select and creation show a 3D preview (B888-CC2, #204): the select screen stands up the selected character (race/gender/face from the T14 wire) and the creation screen the sample model of the chosen race + gender + FacePick picks, each via the paperdoll's `CharacterModelView` (its own scene manager, render-to-texture, no zone loaded); Rotate toggles a spin (default on). Explore stays greyed (its 3D explore mode is CC-3, #204).
+- Character select and creation show a 3D preview (B888-CC2, #204): the select screen stands up the selected character (race/gender/face from the T14 wire) and the creation screen the sample model of the chosen race + gender + FacePick picks, each via the paperdoll's `CharacterModelView` (its own scene manager, render-to-texture, no zone loaded); Rotate toggles a spin (default on). Explore (B888-CC3, #204) is LIVE: the button opens the mode (the left list window hides and the EXW_ExploreModeWindow overlay takes its place, Enter enters with the list-selected character, Esc closes); the 3D clz backdrop scene and the click-to-select raycast LANDED with it (the showroom stands up in its own scene manager under the pre-zone frame, `char_backdrop_scene.{h,cpp}`, a backdrop click projects to an account row via `backdrop->rowForClick()`; `tests/test_explore_backdrop.cpp`).
 - Visual spell effects incomplete. Only the cast glow, the cast-complete flash and the impact are reached from the game; the projectile, buff-aura, rain and ground-circle code exists but has **no production caller** — its only callers are the `model_viewer` FX harness and a unit test (`refactor/BOARD.md` B161/B165), so no spell projectile and no buff aura is ever drawn in a real session
 - Swimming mechanics incomplete (keys exist, physics don't)
 - Boats/transport not implemented
@@ -162,7 +162,7 @@ Legend: Done | Partial | Not Implemented
 | Target info | Done | |
 | Spell book popup | Done | Searchable, click-to-memorise (no drag; T444) |
 | Spell gem bar | Done | 8 gems with casting bar |
-| Hotbar | Done | 10 slots, keys 1-0, content-typed |
+| Hotbar | Done | One window x 10 pages x 10 buttons (stock `EQUI_HotButtonWnd.xml`), content-typed slots (spell/item/skill/social), the hold-to-pickup assignment gesture (B1025-H3), the official page keys Shift+1..0 and Alt+H toggle (B1025-H4), per-character persisted (`UI_<Char>_<Server>.ini`); pinned by the `hotbar_lifecycle` live scenario (B1025-H5) |
 | Group panel | Done | HP/mana bars |
 | Pet panel | Done | Commands and status |
 | Buff bar | Done | Duration timers |

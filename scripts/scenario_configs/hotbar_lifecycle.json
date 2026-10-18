@@ -1,0 +1,15 @@
+{
+  "clients": [
+    {
+      "host": "172.16.200.99",
+      "port": 5998,
+      "user": "willeq_test",
+      "pass": "WillEqH03Pass",
+      "server": "WillEQ",
+      "character": "Testcaster",
+      "eq_client_path": "/mnt/projects/EverQuestP1999",
+      "maps_path": "/mnt/projects/maps/base",
+      "navmesh_path": "/mnt/projects/maps/nav"
+    }
+  ]
+}

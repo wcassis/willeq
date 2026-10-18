@@ -7,6 +7,7 @@
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/hotbar_panel.h"   // B1025-H2: hitTestHotbar
+#include "client/graphics/ui/spell_gem_layout.h"  // B1077: the oracle's gem/book rects
 #include "client/hotbar/hotbar_model.h"        // B1025-H2: PAGE_COUNT
 #include "client/graphics/ui/inventory_layout.h"
 #include "client/graphics/ui/tradeskill_panel.h"
@@ -21,6 +22,8 @@
 #include "client/graphics/ui/bank_panel.h"
 #include "client/graphics/ui/bank_layout.h"
 #include "client/graphics/ui/cursor_attachment.h"
+#include "client/graphics/ui/hotbar_assignment.h"
+#include "client/graphics/ui/hotbutton_holder.h"
 #include "common/packets/merchant.h"   // B442b: EQT::COINSLOT_BANK
 #include "client/inventory/inventory_constants.h"
 #include "client/bridge/game_state_bridge.h"
@@ -57,6 +60,17 @@ const SlotDisplayInfo* slotInfo(const InventoryPanelState& inv, int i) {
 
 }  // namespace
 
+// B442: setFrameClickState() moved out of the header with the cursor
+// reference (B1025-H3: the gesture writes the cursor's hold-timer fields, so
+// it is non-const now).
+void StaticUIInput::setFrameClickState(bool rightClicked,
+                                      eqt::inventory::ClickModifiers mods,
+                                      CursorAttachmentState* cursor) {
+    rightClicked_ = rightClicked;
+    mods_ = mods;
+    cursor_ = cursor;
+}
+
 bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                                   const UILayout& layout,
                                   HotbarPanelState& hotbar,
@@ -72,6 +86,8 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     // Reset hover states
     hotbar.hoveredSlot = -1;
     spellGems.hoveredGem = -1;
+    spellGems.bookClicked = false;   // B1077: consumed once per frame by FrameComponent
+    spellGems.bookHovered = false;   // B1077
     inventory.hoveredSlot = -1;
     spellbook.hoveredSlot = -1;
     skills.hoveredRow = -1;
@@ -85,7 +101,7 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     const irr::core::vector2di at(mouseX, mouseY);
     const bool overOpenPopup =
         (inventory.activePopup == PopupType::Inventory &&
-         layout.inventoryPopup.isPointInside(at)) ||
+         InventoryLayout::windowRect(layout).isPointInside(at)) ||
         ((spellbook.isOpen || skills.isOpen) && layout.centerPopup.isPointInside(at)) ||
         (loot.isOpen && layout.partnerPopup.isPointInside(at));
 
@@ -100,11 +116,72 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
             if (leftClicked && bridge_) {
                 switch (hbHit) {
                 case HotbarHit::Slot: {
-                    // T156: fill all four fields from the cached slot state so
-                    // the consumer switches on the model's enumerators.
                     const int slot = hotbar.hoveredSlot;
                     const auto& cached = hotbar.slots[slot];
-                    if (cached.type != eqt::HotbarSlotType::Empty) {
+                    // B1025-H3: with the gesture active (production, cursor
+                    // bound), a hot button on the cursor PLACES here (the
+                    // assignment -- the first production caller of
+                    // HotbarModel::assignSlot via BridgeComponent); otherwise a
+                    // slot press DEFERS its activate to the holder so a hold
+                    // can clone it away instead (a quick release still fires
+                    // the activate). A test (nullptr cursor) bypasses the
+                    // gesture and activates on the press, exactly as before.
+                    if (cursorGestureActive()) {
+                        if (cursor_->hasHotbutton) {
+                            // THE assignment: place the cursor's hot button.
+                            // H-O "hotbar-swap": placing over an OCCUPIED
+                            // slot replaces it and leaves the displaced
+                            // button on the cursor (the only thing on it)
+                            // -- replacement-with-cursor, not a persisted
+                            // two-slot swap. The assign lands on the model
+                            // first; the displacement keeps the window's
+                            // cache and the cursor in step (the displaced
+                            // button rides back as the cursor's next content,
+                            // placed by the next click or dismissed by a
+                            // world click -- H-O "hotbar-worlddrop").
+                            const auto oldButton = cached;  // pre-placement
+                            bridge_->pushIntent(eqt::events::HotbarAssignIntent{
+                                hotbar.currentPage, slot,
+                                cursor_->hotbutton.type,
+                                cursor_->hotbutton.id,
+                                cursor_->hotbutton.text,
+                                cursor_->hotbutton.iconId});
+                            applyHotbarPlacementDisplacement(
+                                hotbar, slot, oldButton, cursor_->hotbutton);
+                            if (oldButton.type != eqt::HotbarSlotType::Empty) {
+                                cursor_->hotbutton = eqt::HotButtonCarried{
+                                    oldButton.type, oldButton.id,
+                                    oldButton.emoteText, oldButton.iconId};
+                                // hasHotbutton stays true: the displaced
+                                // button is on the cursor now.
+                            } else {
+                                cursor_->clearHotbutton();
+                            }
+                        } else if (cached.type != eqt::HotbarSlotType::Empty) {
+                            // A press on an OCCUPIED slot defers its activate
+                            // (a short press still activates on release) so
+                            // the hold can clone it away instead (H-O
+                            // "hotbar-pickup": the clone appears and the
+                            // source's INI key is removed). The clone frame
+                            // (processFrameGesture) fires both the clone and
+                            // the source's clear.
+                            hotButtonHolder_.begin(
+                                HotbarHoldSource{
+                                    HotbarHoldSource::Kind::Slot,
+                                    static_cast<uint32_t>(slot),
+                                    cached.type, cached.id,
+                                    hotbar.currentPage, slot,
+                                    cached.name, cached.iconId},
+                                [slot, type = cached.type, id = cached.id,
+                                 text = cached.emoteText](
+                                    eqt::bridge::GameStateBridge& b) {
+                                    b.pushIntent(eqt::events::HotbarActivateIntent{
+                                        slot, type, id, text});
+                                });
+                        }
+                    } else if (cached.type != eqt::HotbarSlotType::Empty) {
+                        // T156: fill all four fields from the cached slot state so
+                        // the consumer switches on the model's enumerators.
                         bridge_->pushIntent(eqt::events::HotbarActivateIntent{
                             slot, cached.type, cached.id, cached.emoteText});
                     }
@@ -134,14 +211,14 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
         }
     }
 
-    // --- Spell gem hit test (8 vertical slots) ---
+    // --- Spell gem hit test: the oracle's own cell rects (B1077) ---
     if (!overOpenPopup) {
-        int sx = layout.spellGems.UpperLeftCorner.X;
-        int sy = layout.spellGems.UpperLeftCorner.Y;
         for (int i = 0; i < static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT); ++i) {
-            int gy = sy + i * (UILayout::SLOT_SIZE + UILayout::MARGIN);
-            if (mouseX >= sx && mouseX < sx + UILayout::SLOT_SIZE &&
-                mouseY >= gy && mouseY < gy + UILayout::SLOT_SIZE) {
+            const auto gr = SpellGemLayout::gemRect(i);
+            const int gx = layout.spellGems.UpperLeftCorner.X + gr.UpperLeftCorner.X;
+            const int gy = layout.spellGems.UpperLeftCorner.Y + gr.UpperLeftCorner.Y;
+            if (mouseX >= gx && mouseX < gx + gr.getWidth() &&
+                mouseY >= gy && mouseY < gy + gr.getHeight()) {
                 spellGems.hoveredGem = i;
                 consumed = true;
                 if (leftClicked && shift) {
@@ -165,11 +242,55 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                         spellGems.memorizeTargetGem =
                             (spellGems.memorizeTargetGem == i) ? -1 : i;
                     } else if (bridge_) {
-                        bridge_->pushIntent(eqt::events::CastSpellIntent{static_cast<uint8_t>(i)});
+                        // B1025-H3 (GitLab #345): a GEM PRESS defers its cast
+                        // to the holder so a hold can clone the gem away
+                        // instead (H-O gestures.tsv:3: the 3.074 s gem hold
+                        // cloned by ~1.1 s; the 0.117 s press cast and
+                        // produced no clone). A quick release over the gem
+                        // still fires the cast on its release frame; a hold
+                        // crossing the threshold cancels this pending cast
+                        // and puts a Spell button on the cursor.
+                        if (cursorGestureActive() &&
+                            spellGems.gems[i].spellId != 0) {
+                            hotButtonHolder_.begin(
+                                HotbarHoldSource{
+                                    HotbarHoldSource::Kind::Gem,
+                                    static_cast<uint32_t>(i),
+                                    eqt::HotbarSlotType::Spell,
+                                    spellGems.gems[i].spellId,
+                                    0, -1,
+                                    spellGems.gems[i].spellName,
+                                    spellGems.gems[i].iconId},
+                                [gem = static_cast<uint8_t>(i)](
+                                    eqt::bridge::GameStateBridge& b) {
+                                    // The sweep's producer grep (T264) reads
+                                    // one line: the push and its intent stay
+                                    // together, like the immediate arm below.
+                                    b.pushIntent(eqt::events::CastSpellIntent{gem});
+                                });
+                        } else {
+                            bridge_->pushIntent(
+                                eqt::events::CastSpellIntent{
+                                    static_cast<uint8_t>(i)});
+                        }
                     }
                 }
                 break;
             }
+        }
+
+        // B1077: the CSPW_SpellBook button -- the oracle's 22x22 toggle at
+        // (10,252) inside the gem window. A LEFT click lands bookClicked;
+        // FrameComponent consumes it and runs the SAME toggle body Ctrl+B
+        // and /book use (the /newbook body in renderer_slash_commands.cpp).
+        const auto br = SpellGemLayout::bookRect();
+        const int bx = layout.spellGems.UpperLeftCorner.X + br.UpperLeftCorner.X;
+        const int by = layout.spellGems.UpperLeftCorner.Y + br.UpperLeftCorner.Y;
+        if (mouseX >= bx && mouseX < bx + br.getWidth() &&
+            mouseY >= by && mouseY < by + br.getHeight()) {
+            spellGems.bookHovered = true;
+            consumed = true;
+            if (leftClicked) spellGems.bookClicked = true;
         }
     }
 
@@ -178,10 +299,11 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     // shared source also used by renderInventoryPopup() (T57). No
     // slot-position arithmetic here.
     if (inventory.activePopup == PopupType::Inventory) {
-        if (mouseX >= layout.inventoryPopup.UpperLeftCorner.X &&
-            mouseX < layout.inventoryPopup.LowerRightCorner.X &&
-            mouseY >= layout.inventoryPopup.UpperLeftCorner.Y &&
-            mouseY < layout.inventoryPopup.LowerRightCorner.Y) {
+        const auto invWin = InventoryLayout::windowRect(layout);
+        if (mouseX >= invWin.UpperLeftCorner.X &&
+            mouseX < invWin.LowerRightCorner.X &&
+            mouseY >= invWin.UpperLeftCorner.Y &&
+            mouseY < invWin.LowerRightCorner.Y) {
             consumed = true;
             for (int i = 0; i < InventoryLayout::TOTAL_SLOTS; ++i) {
                 irr::core::rect<irr::s32> r = InventoryLayout::slotRect(layout, i);
@@ -199,10 +321,63 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                         eqt::inventory::SlotSnapshot snap;
                         snap.occupied = info && info->hasItem;
                         snap.quantity = info ? info->quantity : 0;
-                        slotClick(static_cast<int16_t>(i), leftClicked, snap,
-                                  info ? info->itemName : std::string(),
-                                  info ? info->iconId : 0u,
-                                  info && info->hasItem ? info->bagSlots : uint8_t{0});
+                        // B1025-H3 (GitLab #345): a LEFT press on a holdable
+                        // item DEFERS its pickup to the holder so a hold can
+                        // clone the item away instead -- H-O "inventory-hold":
+                        // the 2.974 s hold cloned the item to the cursor and
+                        // the item REMAINED in inventory, i.e. the pickup
+                        // never fired. A quick release still fires the pickup
+                        // on its release frame. The deferral's conditions
+                        // mirror recomputeHoldSource's Item branch (general
+                        // slot, occupied, not a bag) plus what makes THIS
+                        // press a plain pickup rather than another measured
+                        // gesture: no modifiers (SHIFT/CTRL/ALT are their own
+                        // arms), the cursor holds nothing (a held item's press
+                        // is a place/swap, a coin's is a coin gesture -- both
+                        // unmeasured holds, kept immediate), nothing is being
+                        // placed (a hot button on the cursor is a placement
+                        // in flight), a single item (a stack's press is the
+                        // QuantityWnd, H-O measured none), and no merchant is
+                        // open (the empty-cursor click is the sale selection,
+                        // a measured flow with its own timing).
+                        const bool holdableItem = cursorGestureActive() &&
+                            leftClicked && !rightClicked_ &&
+                            !mods_.shift && !mods_.ctrl && !mods_.alt &&
+                            !quantity_.isOpen && !confirm_.isOpen &&
+                            !cursor_->hasHotbutton && !cursorHoldsItem() &&
+                            !cursorHoldsCoin() &&
+                            !(merchantSel_ && merchantSel_->isOpen) &&
+                            i >= InventoryPanelState::EQUIP_SLOTS &&
+                            info != nullptr && info->hasItem && info->bagSlots == 0 &&
+                            info->quantity <= 1;
+                        if (holdableItem) {
+                            const int16_t slotId = static_cast<int16_t>(i);
+                            const std::string itemName = info->itemName;
+                            const uint32_t itemIcon = info->iconId;
+                            hotButtonHolder_.begin(
+                                HotbarHoldSource{
+                                    HotbarHoldSource::Kind::Item,
+                                    static_cast<uint32_t>(i),
+                                    eqt::HotbarSlotType::Item,
+                                    info->itemId, 0, -1,
+                                    info->itemName, info->iconId},
+                                [this, slotId, snap, itemName, itemIcon](
+                                    eqt::bridge::GameStateBridge&) {
+                                    // The sweep's producer grep (T264) reads
+                                    // one line per push; the re-run is the
+                                    // press's own body, so the push stays in
+                                    // slotClick() where the immediate arm
+                                    // would have pushed it.
+                                    slotClick(slotId, /*leftClicked=*/true, snap,
+                                              itemName, itemIcon,
+                                              /*bagSlots=*/uint8_t{0});
+                                });
+                        } else {
+                            slotClick(static_cast<int16_t>(i), leftClicked, snap,
+                                      info ? info->itemName : std::string(),
+                                      info ? info->iconId : 0u,
+                                      info && info->hasItem ? info->bagSlots : uint8_t{0});
+                        }
                     }
                     break;
                 }
@@ -504,11 +679,14 @@ bool StaticUIInput::processPanelInput(int mouseX, int mouseY, bool leftClicked,
                 }
             }
         } else if (leftClicked &&
-                   layout.centerPopup.isPointInside(
+                   TradeskillLayout::windowRect(layout).isPointInside(
                        irr::core::vector2di(mouseX, mouseY))) {
-            // The tradeskill window IS layout.centerPopup (TradeskillLayout
-            // maps the oracle's 400x525 onto it), so this is "clicked in the
-            // window but not in an editbox".
+            // The rect the window is DRAWN into (renderTradeskillPopup's
+            // drawPanel), not layout.centerPopup: B1078 moved the tradeskill
+            // window to the oracle's own 400x525 at its own uniform factor,
+            // and a hit test reading a different rect would let a click in
+            // the drawn window fail to defocus the editbox (T57's rule:
+            // draw and click read the SAME layout).
             if (auto* prev = tradeskill.focusedEntry()) {
                 prev->inputActive = false;
             }
@@ -581,13 +759,147 @@ bool StaticUIInput::processPanelInput(int mouseX, int mouseY, bool leftClicked,
         if (row >= 0) {
             combatAbilities.hoveredButton = row;
             if (leftClicked && bridge_) {
-                bridge_->pushIntent(eqt::events::SkillActivateIntent{
-                    combatAbilities.abilities[row].skillId});
+                // B1025-H3 (GitLab #345): a row press DEFERS its activation to
+                // the holder so a hold can clone the row away instead -- H-O
+                // "ability-hold": the 3.286 s hold on Actions-Melee Bash
+                // cloned by ~1.0 s with no activation. A quick release over
+                // the row still fires the activation on its release frame.
+                // The window is fable's combat-ability panel (the oracle's
+                // Actions window has no fable half); the row's skill is the
+                // clone's id (the Combat slot type).
+                if (cursorGestureActive() &&
+                    !mods_.shift && !mods_.ctrl && !mods_.alt) {
+                    hotButtonHolder_.begin(
+                        HotbarHoldSource{
+                            HotbarHoldSource::Kind::Ability,
+                            combatAbilities.abilities[row].skillId,
+                            eqt::HotbarSlotType::Combat,
+                            combatAbilities.abilities[row].skillId,
+                            0, -1,
+                            combatAbilities.abilities[row].name, 0},
+                        [skill = combatAbilities.abilities[row].skillId](
+                            eqt::bridge::GameStateBridge& b) {
+                            // The sweep's producer grep (T264) reads one
+                            // line: the push and its intent stay together,
+                            // like the immediate arm below.
+                            b.pushIntent(eqt::events::SkillActivateIntent{
+                                skill});
+                        });
+                } else {
+                    bridge_->pushIntent(eqt::events::SkillActivateIntent{
+                        combatAbilities.abilities[row].skillId});
+                }
             }
         }
     }
 
     return consumed;
+}
+
+// B1025-H3 (GitLab #345) -- the hotbar assignment gesture.
+//
+// recomputeHoldSource() derives, from the CURRENT (previous-frame) hover, what
+// a pointer press is sitting on. It runs at the gesture tick, before this
+// frame's input pass overwrites the hover, and it is the hold timer's source
+// plus the "is the button still on its source" comparison. The sources are
+// the ones H-O measured clones from (refactor/B1025-H0/gestures.tsv): an
+// occupied hotbar slot (the pickup, row "hotbar-pickup"), a MEMORISED gem
+// ("spell-hold"), a combat-ability row ("ability-hold") and a main-inventory
+// item ("inventory-hold", 10-fps bounded onset 0.72-1.02 s). The direct
+// Skills-window row hold is NOT a source: H-O's own frame step found no clone
+// on a 4.5 s row press ("skills-row-direct-hold", delta 8.3 < 12) -- the
+// oracle's supported route there is the Make Hotkey control, which fable has
+// not built (refactor/B1025-H3/README.md "Not implemented").
+
+void StaticUIInput::recomputeHoldSource(const HotbarPanelState& hotbar,
+                                        const SpellGemPanelState& spellGems,
+                                        const InventoryPanelState& inventory,
+                                        const CombatAbilityPanelState& combatAbilities) {
+    pendingSource_ = HotbarHoldSource{};
+    // Priority is the hit-test order above: the hotbar window is asked first
+    // in processInput, then the gems, the inventory, the ability rows.
+    if (hotbar.isOpen && hotbar.hoveredSlot >= 0 &&
+        hotbar.hoveredSlot < HotbarPanelState::SLOT_COUNT) {
+        const auto& cached = hotbar.slots[hotbar.hoveredSlot];
+        if (cached.type == eqt::HotbarSlotType::Empty) return;  // nothing to clone
+        pendingSource_.kind = HotbarHoldSource::Kind::Slot;
+        pendingSource_.id = static_cast<uint32_t>(hotbar.hoveredSlot);
+        pendingSource_.page = hotbar.currentPage;
+        pendingSource_.slot = hotbar.hoveredSlot;
+        pendingSource_.cloneType = cached.type;
+        pendingSource_.cloneId = cached.id;
+        pendingSource_.name = cached.name;
+        pendingSource_.iconId = cached.iconId;
+        return;
+    }
+    if (spellGems.hoveredGem >= 0 &&
+        spellGems.hoveredGem < static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT) &&
+        spellGems.gems[spellGems.hoveredGem].spellId != 0) {
+        const auto& gem = spellGems.gems[spellGems.hoveredGem];
+        pendingSource_.kind = HotbarHoldSource::Kind::Gem;
+        pendingSource_.id = static_cast<uint32_t>(spellGems.hoveredGem);
+        pendingSource_.cloneType = eqt::HotbarSlotType::Spell;
+        pendingSource_.cloneId = gem.spellId;
+        pendingSource_.name = gem.spellName;
+        pendingSource_.iconId = gem.iconId;
+        return;
+    }
+    if (inventory.activePopup == PopupType::Inventory &&
+        inventory.hoveredSlot >= 0) {
+        const SlotDisplayInfo* info = slotInfo(inventory, inventory.hoveredSlot);
+        // H-O's measured clone is the MAIN-INVENTORY item ("inventory-hold");
+        // the bag-slot hold produced no clone in its session
+        // ("bag-item-hold", not supported), so a bag item is not a source.
+        const bool general = inventory.hoveredSlot >= InventoryPanelState::EQUIP_SLOTS;
+        if (info && info->hasItem && general && info->bagSlots == 0) {
+            pendingSource_.kind = HotbarHoldSource::Kind::Item;
+            pendingSource_.id = static_cast<uint32_t>(inventory.hoveredSlot);
+            pendingSource_.cloneType = eqt::HotbarSlotType::Item;
+            pendingSource_.cloneId = info->itemId;
+            pendingSource_.name = info->itemName;
+            pendingSource_.iconId = info->iconId;
+            return;
+        }
+    }
+    if (combatAbilities.isOpen && combatAbilities.hoveredButton >= 0) {
+        const auto& ab = combatAbilities.abilities[combatAbilities.hoveredButton];
+        if (ab.skillId != 0) {
+            pendingSource_.kind = HotbarHoldSource::Kind::Ability;
+            pendingSource_.id = ab.skillId;
+            pendingSource_.cloneType = eqt::HotbarSlotType::Combat;
+            pendingSource_.cloneId = ab.skillId;
+            pendingSource_.name = ab.name;
+            return;
+        }
+    }
+}
+
+// One frame of the gesture. Runs before the input pass; the button state is
+// the receiver's plain isLeftButtonDown (NOT the one-shot release latch, which
+// test_read_and_reset_ownership pins to its single consumer). A clone on the
+// cursor cancels any pending source action (the press was the clone's, not a
+// click); a clone itself is cleared only by placement (a slot click) or a
+// world click -- a plain RELEASE keeps it: H-O's clones survived release
+// (gestures.tsv:3, "remained attached to cursor on release").
+void StaticUIInput::processFrameGesture(float deltaTime, bool buttonDown,
+                                        const HotbarPanelState& hotbar,
+                                        const SpellGemPanelState& spellGems,
+                                        const InventoryPanelState& inventory,
+                                        const CombatAbilityPanelState& combatAbilities) {
+    if (!cursorGestureActive()) return;  // a test's nullptr cursor bypasses it
+    recomputeHoldSource(hotbar, spellGems, inventory, combatAbilities);
+
+    // The hold timer: a press on a source that stays down and on-source
+    // crosses the threshold and clones the source onto the cursor.
+    tickHotbarHold(*cursor_, buttonDown, pendingSource_, deltaTime);
+
+    // The clone (this frame or earlier -- a plain release keeps it) cancels
+    // any pending source action: the press was the clone's, not a click. A
+    // PICKUP clone also clears its source slot (the HotbarClearIntent).
+    // Otherwise the deferred action advances: a release over its source
+    // fires it, a move off with the button down cancels it.
+    stepHotbarGesture(*cursor_, hotButtonHolder_, pendingSource_, buttonDown,
+                      *bridge_);
 }
 
 // T434 -- the Options window. See the doc comment on the declaration for why

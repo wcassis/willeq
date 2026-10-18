@@ -6,6 +6,8 @@
 
 #include "client/graphics/text_batch.h"
 #include "client/graphics/ui/char_select_layout.h"
+#include "client/graphics/ui/explore_layout.h"
+#include "client/graphics/ui/explore_screen.h"
 #include "client/graphics/ui/ui_renderer.h"
 
 namespace EQT {
@@ -45,6 +47,41 @@ bool hasSelection(const CharSelectScreenState& s) {
     return s.selected >= 0 && s.selected < static_cast<int>(s.rows.size());
 }
 
+// B888-CC3: the EXW_ExploreModeWindow overlay (explore_layout.h quotes the
+// stock XML's rects). Drawn OVER the select screen while Explore is open,
+// with the left list window HIDDEN behind the backdrop (MEASURED,
+// oracle-a6 A3). Two plates, both RelativePosition false so they sit at
+// ABSOLUTE SCREEN coordinates (not relative to the window): the char info
+// line top-left (EXW_ExploreModeWindow2 at (0,0) 400x25, the selected
+// character's line) and the instructions (EXW_ExploreModeWindow3 at (0,420)
+// 400x40, the stock text).
+void renderExploreOverlay(UIRenderer& ui, TextBatch* tb, const CharSelectScreenState& s) {
+    using E = ExploreLayout;
+    // EXW_ExploreModeWindow2 (0,0) 400x25 -- the char-info plate.
+    const Rect infoWin = E::charInfoWindowRect(0, 0);
+    ui.drawPanel(infoWin);
+    ui.drawFrame(infoWin, kFrame);
+    if (tb) {
+        const Rect infoLabel = E::charInfoLabelRect(0, 0);
+        if (hasSelection(s)) {
+            const auto& r = s.rows[static_cast<size_t>(s.selected)];
+            tb->addTextCentered(r.infoLine, infoLabel, kSelected);
+        } else {
+            tb->addTextCentered("Click on a character to select that character.", infoLabel, kText);
+        }
+    }
+    // EXW_ExploreModeWindow3 (0,420) 400x40 -- the instruction plate.
+    const Rect instrWin = E::instructionsWindowRect(0, 0);
+    ui.drawPanel(instrWin);
+    ui.drawFrame(instrWin, kFrame);
+    if (tb) {
+        const Rect l1 = E::infoLabel1Rect(0, 0);
+        const Rect l2 = E::infoLabel2Rect(0, 0);
+        tb->addTextCentered("Click on a character to select that character.", l1, kText);
+        tb->addTextCentered("Press Enter to enter the game, or press Esc to leave explore mode.", l2, kText);
+    }
+}
+
 }  // namespace
 
 EqstrResolver charSelectResolver(const CharSelectScreenState& s) {
@@ -58,6 +95,16 @@ void renderCharSelectScreen(UIRenderer& ui, const UILayout& layout, const CharSe
         return;
     }
     TextBatch* tb = ui.getTextBatch();
+
+    // B888-CC3 (GitLab #204): Explore mode. The left list window HIDES
+    // (MEASURED, oracle-a6 A3) and the EXW_ExploreModeWindow overlay takes its
+    // place -- the char info line top-left, the instructions lower-left. Esc
+    // closes it (A9). The 3D backdrop (the clz showroom) fills the screen
+    // behind it (the host's scene).
+    if (s.exploreOpen) {
+        renderExploreOverlay(ui, tb, s);
+        return;
+    }
 
     const Rect win = L::windowRect(sw, sh);
     ui.drawPanel(win);
@@ -74,7 +121,13 @@ void renderCharSelectScreen(UIRenderer& ui, const UILayout& layout, const CharSe
     // (MEASURED, review/UIGAP-ORACLE/318/charselect.10_*).
     const bool modal = s.confirm.isOpen;
     const ButtonState live = modal ? ButtonState::Greyed : ButtonState::Normal;
-    drawButton(ui, tb, L::exploreRect(sw, sh), "Explore", ButtonState::Greyed);
+    // B888-CC3: Explore is LIVE on the select screen (the oracle's button is lit;
+    // it is not the greyed T363 control). It greys out only while a modal
+    // prompt is up. It is drawn SELECTED while its mode is open.
+    const ButtonState exploreState = modal ? ButtonState::Greyed
+                                          : s.exploreOpen ? ButtonState::Selected
+                                                          : ButtonState::Normal;
+    drawButton(ui, tb, L::exploreRect(sw, sh), "Explore", exploreState);
     drawButton(ui, tb, L::deleteRect(sw, sh), "Delete", sel ? live : ButtonState::Greyed);
     drawButton(ui, tb, L::rotateRect(sw, sh), "Rotate", ButtonState::Greyed);
 

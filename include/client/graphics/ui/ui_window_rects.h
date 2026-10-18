@@ -22,12 +22,15 @@
 #include "client/graphics/ui/container_layout.h"
 #include "client/graphics/ui/friends_layout.h"
 #include "client/graphics/ui/give_layout.h"
+#include "client/graphics/ui/inventory_layout.h"
 #include "client/graphics/ui/item_display_layout.h"
+#include "client/graphics/ui/merchant_layout.h"
 #include "client/graphics/ui/options_layout.h"
 #include "client/graphics/ui/quantity_layout.h"
 #include "client/graphics/ui/tip_layout.h"
 #include "client/graphics/ui/tracking_layout.h"
 #include "client/graphics/ui/trade_layout.h"
+#include "client/graphics/ui/tradeskill_layout.h"
 #include "client/graphics/ui/train_layout.h"
 
 namespace EQT {
@@ -46,11 +49,11 @@ inline irr::core::rect<irr::s32> windowRectFor(UIWindow w, const UILayout& l) {
         case UIWindow::CastingBar:      return l.castingBar;
         case UIWindow::XpBar:           return l.xpBar;
         case UIWindow::CombatAbilities: return CombatAbilityLayout::windowRect(l);
-        case UIWindow::Inventory:       return l.inventoryPopup;
+        case UIWindow::Inventory:       return InventoryLayout::windowRect(l);
         case UIWindow::Spellbook:       return l.centerPopup;
         case UIWindow::Skills:          return l.centerPopup;
-        case UIWindow::Tradeskill:      return l.centerPopup;
-        case UIWindow::Merchant:        return l.partnerPopup;
+        case UIWindow::Tradeskill:      return TradeskillLayout::windowRect(l);
+        case UIWindow::Merchant:        return MerchantLayout::windowRect(l);
         case UIWindow::Loot:            return l.partnerPopup;
         case UIWindow::Bank:            return BankLayout::windowRect(l);
         case UIWindow::Trade:           return TradeLayout::windowRect(l);

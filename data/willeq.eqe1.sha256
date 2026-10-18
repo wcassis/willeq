@@ -1,14 +1,19 @@
 # sha256 of /mnt/projects/EverQuest_ETC1/willeq.eqe1, the shared UI/effects
 # pack. Rebuilt by scripts/build_willeq_pack.sh from tools/ui_atlas_builder
-# (procedural) plus the 67 BMPs in data/textures/ -- 64 procedural, T417's
+# (procedural) plus the 71 BMPs in data/textures/ -- 64 procedural, T417's
 # spell_sprite_atlas.bmp (the official client's SpellEffects/*.tga, all sixteen
-# animation frames of each of its 33 sprites, 1024x1024 -- the pack grew by
-# exactly 1 MiB), and T430's item_icons0.bmp + item_icons1.bmp (the official
-# client's uifiles/default/dragitem1..34.tga, all 1224 40x40 item icons on two
-# 1024x1024 sheets, board B376). T430 grew the pack 6,930,116 -> 9,726,596
-# bytes, +2,796,480: two ETC1 sheets with mips plus their two ETC1 _alpha
-# companions, and every zone's eqe1MappedBytes rises by exactly that.
+# animation frames of each of its 33 sprites, 1024x1024), T430's
+# item_icons0.bmp + item_icons1.bmp (the official client's
+# uifiles/default/dragitem1..34.tga, all 1224 40x40 item icons on two
+# 1024x1024 sheets, board B376), and B1077's spell_icons{gems,spells,buff}.bmp
+# + spell_icon_holder.bmp (the official client's gemicons*.tga / spells*.tga /
+# Spell_Icons.tga sheets + its CW_SpellGemHolder piece of classic_pieces01.tga,
+# GitLab #397). B1077 grew the pack 9,726,596 -> 13,923,652 bytes, +4,197,056:
+# three ETC1 family atlases with mips plus their three ETC1 _alpha companions
+# and the 40x40 holder piece, and every zone's eqe1MappedBytes rises by
+# exactly that. The B1077 fix leg re-cut the holder piece (CW_SpellGemHolder,
+# 36x28) -- same pack size, new bytes.
 # Pinned here so a drift in
 # either input, or a hand-edit of the shared pack, is a ctest FAIL
 # (PackReproducible). Update this line in the SAME commit that changes an input.
-6549a3683d3cc46edb4ce1bb5c334832f14f1e8a5eef84a337fa329e11386d11  willeq.eqe1
+02a3d6e4e71fa1681291972eb40bae956a14153a9309a318b1831c0a193c0084  willeq.eqe1

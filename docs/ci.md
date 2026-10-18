@@ -32,11 +32,58 @@ connects, Enter World -- back at character select after the attempt plus ONE ret
 (`EQEMU_LANE=2 bash scripts/scenario.sh zone_connect_timeout --unit B1072`; offline net
 `test_zone_connect_timeout`).
 
+### Lane leases (B1089, #409)
+
+Cross-session use of an eqemu lane (and the XU4) is a **lease, not a lock**: a record with a TTL
+that is renewed by activity. The old file-`touch` lock (`/mnt/projects/.eqemu-lock`, noclobber over
+ssh) held forever when its holder died, and lane 5's copy lived on the NFS export shared with
+dev-u24's local lane -- two hosts, one file. The lease fixes both:
+
+- **The record lives ON the lane's own host** -- one key=value file per lane (`card`, `run`,
+  `host`, `pid`, `acquired_at`, `last_touched`, `purpose`), every `take` / `renew` / `release` /
+  `reap` one `flock` critical section, written by atomic rename. Lanes 1-4: the eqemu VM
+  (`/mnt/projects/.eqemu-lease/laneN`, local disk there); **lane 5: the ThinkPad's LOCAL disk**
+  (`/opt/akk-stack/.eqemu-lease/lane5` -- `/mnt/projects` is the NFS export on that box); the XU4:
+  on the box (`/home/user/.willeq-lease/xu4`).
+- **TTL from one env var**: `LANE_LEASE_TTL_S` (default 900 s). Expiry **releases the lane only;
+  nothing is ever killed by expiry**. A record whose `last_touched` is >= TTL old is free,
+  whatever pid it names (the holder's pid lives on the dev box, so liveness cannot be tested on
+  the lane host; a live holder renews before its TTL).
+- **Renew-on-use + the renewer**: `eq_remote` renews the lease before every lane touch when this
+  shell holds it (`LANE_LEASE_HELD`, set by `eqemu_lock_take`), so a long wait loop keeps the
+  lane without extra plumbing; long scripts ALSO start one background renewer
+  (`eqemu_lease_start_renewer`, interval TTL/3, floor `LANE_LEASE_RENEW_FLOOR_S` = 60 s, dies
+  with the script, `eqemu_lease_stop_renewer` in the cleanup trap). **A 30-min scenario is never
+  stolen.**
+- **A stolen lease fails loudly, with the lease's own code: 63** (`LEASE_EXPIRED`, beside
+  scenario.sh's 64-69 operator codes). `renew`/`release` by a holder whose lease expired or was
+  taken over prints the holder and a re-acquire one-liner:
+  `lease <card>: EXPIRED (held by <card>/<run> on <host>)` +
+  `re-lease: bash scripts/eqemu/lease take --lane <N> --card '<card>' --purpose '<why>'`.
+  `take` on a free lane after expiry **takes over and names the former holder**.
+- **The helper is the only door**: `scripts/eqemu/lease <take|renew|release|show|reap|track>
+  --lane <1-5|xu4> [--card <c> --run <r> --pid <p>] [--purpose <why>]`;
+  `scripts/eqemu/leases` is the status view (one line per lane, lanes 1-5 + XU4, parallel ssh,
+  `UNREACHABLE` instead of a hang). **SCRIPTS ARE MANDATORY: a hand-rolled ssh gets no renewal
+  and loses the lane at TTL.** The old `eqemu_lock_take/_show/_release`
+  (`scripts/eqemu/env.sh`, sourced from `lease_lib.sh`) are thin wrappers over the lease, so every
+  caller keeps working; `release` is now owner-checked (a release of someone else's lease is
+  refused with 63 -- the eqemu half of B922 #241).
+- **`reap`**: `scripts/eqemu/lease reap --lane N --dead-runs <file> [--dry]` kills exactly the
+  pids a run recorded on the lane host (`lease track --run <r> --pid <p>`, the file
+  `runs/<run>.pids` beside the record) and releases that run's lease when it holds it; a live
+  run's record names the live run, so it is never touched. The dry flag reports what it would do
+  and does nothing.
+- **The net**: `scripts/eqemu/lease_selftest.sh` (ctest `LeaseCoreSelfTest`, label `hygiene`),
+  hermetic -- the core against a temp dir, no ssh, no network: TTL expiry, renew extends,
+  takeover after expiry, 63 + the re-lease one-liner, re-acquire, reap dead-vs-live, dry-run,
+  five-way take race (exactly one winner), corrupt record refused. Red-before is N/A (new helper).
+
 | | |
 | --- | --- |
 | GitLab | `https://gitlab.goldfarm.local`, project `willeq/willeq` (id 1) |
-| Primary runner | **`thinkpad`** (runner id 7, 172.16.200.205, B1087, Will 2026-10-16): runs EVERY job, x86 and ARM — tags `x86-build`, `arm-nfs`, `goldfarm`, `x86-gpu`, `x86-build-fast`, runs untagged, `concurrent = 3`, in `ci-build.slice` beside the lane-5 oracle ("The ThinkPad primary runner" below) |
-| x86 runners | **gitlab-runner-1** and **gitlab-runner-2** (10.0.30.81/.82, B1008): shell executor (bash), `concurrent = 1` each, **both tagged `x86-build`** since 2026-10-11 — one pipeline's stages may run on different hosts (B1026, "Two x86 runners" below). **Paused since B1087**, not unregistered |
+| Primary runner | **`thinkpad`** (runner id 7, 172.16.200.205, B1087, Will 2026-10-16): runs EVERY job, x86 and ARM — tags `x86-build`, `arm-nfs`, `goldfarm`, `x86-gpu`, `x86-build-fast`, runs untagged, `concurrent = 1` (3 until 2026-10-18), in `ci-build.slice` beside the lane-5 oracle ("The ThinkPad primary runner" below) |
+| x86 runners | **gitlab-runner-1** and **gitlab-runner-2** (10.0.30.81/.82, B1008): shell executor (bash), `concurrent = 1` each, **both tagged `x86-build`** since 2026-10-11 — one pipeline's stages may run on different hosts (B1026, "Two x86 runners" below). Paused by B1087; **un-paused 2026-10-18 (Will) with the ThinkPad's full tag set and run-untagged**: docker + the NAS share on `/mnt/projects` + `/var/cache/ccache-ci-arm` provisioned, so they take ARM jobs too (one job at a time on each of the three runners) |
 | ARM runner | `dev-u24-arm-nfs` on dev-u24, tag `arm-nfs` (T503, below). **Paused since B1087**, not unregistered |
 | Former host | **hermes-ext** (172.16.200.100): runner id 1, untagged; it ran every job until B1008 (2026-10-08) and no longer builds |
 | Config | `.gitlab-ci.yml` at the repo root |
@@ -63,8 +110,14 @@ starve a live worker.
 ## The ThinkPad primary runner (B1087)
 
 Will (2026-10-16): the ThinkPad (lane 5, `docs/thinkpad.md`) runs **every** CI job, x86 and ARM; runners 1
-(hermes-ext), 5, 6 (gitlab-runner-1/2) and 2 (dev-u24-arm-nfs) are **paused, not unregistered** (un-pause
-with `PUT /api/v4/runners/<id>` `paused=false`). The box also hosts the lane-5 oracle (headless Xorg :99 + the
+(hermes-ext), 5, 6 (gitlab-runner-1/2) and 2 (dev-u24-arm-nfs) were **paused, not unregistered** (un-pause
+with `PUT /api/v4/runners/<id>` `paused=false`). **2026-10-18 (Will): runners 5 and 6 are un-paused again
+with the same tag set as the ThinkPad and run untagged**, so every job has three candidate hosts and each
+runner takes ONE job at a time (`concurrent = 1` on all three). For the ARM jobs each of the two VMs got
+`docker.io`, the `willeq-arm-noble` / `willeq-arm64-noble` images (loaded from the ThinkPad), the NAS share
+on `/mnt/projects` (so `scripts/ci/vendor_fetch.sh` and `scripts/pi/publish_arm*_build.sh` see the same
+store and publish dirs) and an empty `/var/cache/ccache-ci-arm`; the job allow-lists in `.gitlab-ci.yml`
+name them. The box also hosts the lane-5 oracle (headless Xorg :99 + the
 Wine official client + the `/opt/akk-stack` eqemu containers), so the builds run under resource control:
 
 - **`ci.slice` / `ci-build.slice`** (`/etc/systemd/system/`): `CPUWeight=30`, `IOWeight=30`,
@@ -308,6 +361,23 @@ longer downloads them: SourceForge returned HTTP 522 for ~3 h on 2026-10-01 and 
 - **Refreshing a pin.** Put the new file in the store, change the name/hash in `docker/vendor.sha256` and the
   source URLs in `vendor_fetch.sh`, and commit the pin. Never commit the archive.
 - The x86 bootstrap (`scripts/build-gles2-x86.sh`) never downloaded: it copies `/mnt/projects/irrlicht-1.8.5`.
+
+### The ARM build container dies with its job (B1093, #413)
+
+A cancelled or timed-out `build-arm`/`build-arm64` used to leave its cross-build container compiling: the
+runner kills the job shell and the docker CLI, dockerd keeps the container until its command ends. On
+2026-10-18 the ThinkPad carried four such orphans at `-j8`/`-j12` (load average 46) beside its real jobs.
+`scripts/ci/arm_container.sh` is the fix, in two halves, pinned by the `ArmContainerGuard` hygiene test:
+
+- **Sourced by both build scripts.** `arm_container_guard <prefix>` names and labels the container
+  (`willeq.ci.arm=1`, `--init`) and traps EXIT/TERM/INT/HUP to `docker kill` it; `arm_container_run <args>`
+  runs `docker run --rm` **in the background and `wait`s** -- bash defers a trap while a foreground child runs
+  (measured: SIGTERM to the shell left a foreground container alive), but a signal interrupts `wait`, the
+  trap fires, and the container's own exit status still comes back to the script (`rc=7` round-trips).
+- **`bash scripts/ci/arm_container.sh --sweep`** is the first line of both CI ARM jobs: it kills every
+  labelled container on the host and prints what it killed. The runners are `concurrent = 1`, so a labelled
+  container alive at job start is always an orphan (a SIGKILL skips every trap). The sweep is deliberately not
+  in the build scripts, where a dev box may legitimately run two.
 
 ## The stages
 

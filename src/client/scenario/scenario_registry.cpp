@@ -73,11 +73,19 @@ const Entry kScenarios[] = {
     {"camp_desktop", &MakeCampDesktopScenario},
     // B1072 (#392): the zone-in connect bound, live.
     {"zone_connect_timeout", &MakeZoneConnectTimeoutScenario},
+    // B1081 (#401): no character-select flash on a zone change.
+    {"zone_change_no_flash", &MakeZoneChangeNoFlashScenario},
     // B893 (#209): fall damage -- the client sends OP_EnvDamage and the
     // server's HP change comes back.
     {"fall_damage", &MakeFallDamageScenario},
     // B900 (#216): the single ranged attack, live. The packet half's lane leg.
     {"ranged_single_shot", &MakeRangedSingleShotScenario},
+    // B1025-H5 (#345): the hotbar lifecycle, live.
+    {"hotbar_lifecycle", &MakeHotbarLifecycleScenario},
+    // B1025-H5 (#345): the lifecycle's peer -- acceptance C (isolation).
+    {"hotbar_isolation_assign", &MakeHotbarIsolationAssignScenario},
+    // B1088 (#408): the loading screen's "Entering <zone long name>..." line.
+    {"loading_name", &MakeLoadingNameScenario},
 };
 
 }  // namespace

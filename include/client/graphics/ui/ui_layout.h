@@ -16,6 +16,7 @@
 
 #include "common/packets/common.h"  // T483: the gem counts
 #include "client/graphics/ui/hotbar_layout.h"  // B1025-H2: the stock window rect
+#include "client/graphics/ui/spell_gem_layout.h"  // B1077: the oracle's gem window size
 #include "client/graphics/ui/ui_layout_table.h"  // B1075: the anchors + co-open sets
 
 namespace EQT {
@@ -94,6 +95,16 @@ struct UILayout {
     // fill it; bank, trade and give are right-aligned in it at their own
     // oracle sizes via placePairLeft()) ---
     irr::core::rect<irr::s32> partnerPopup;
+
+    // --- B1078 (#398): the middle band as a member ---
+    // Right of the player column, left of the gem column, under the buff
+    // strip, above the chat and the casting bar (the locals in
+    // computeLayout()). The pair windows' `windowRect()`s and the
+    // centre-popup window scale their oracle size to fit this band (one
+    // uniform factor, never two) and anchor at its top, so a 480-tall
+    // merchant clears the chat at 1024x768, where the band is only 451
+    // tall.
+    irr::core::rect<irr::s32> middleBand;
 
     // --- UnderPlayerColumn: Group panel, then the Pet panel ---
     irr::core::rect<irr::s32> groupPanel;
@@ -203,11 +214,12 @@ struct UILayout {
         }
 
         // RightEdgeAboveHotbar: Spell gems, the right edge, ending at the
-        // hotbar's top (test_ninth_spell_gem pins that end).
-        irr::s32 gemsW = SLOT_SIZE;
+        // hotbar's top (test_ninth_spell_gem pins that end). B1077: the
+        // oracle's own CastSpellWnd size (48x290, EQUI_CastSpellWnd.xml),
+        // the content = oracle / placement = table ruling (B1075).
+        irr::s32 gemsW = SpellGemLayout::kWindowW;
         // T483: EQT::VISIBLE_SPELL_GEM_COUNT gems, the official skin's eight.
-        const irr::s32 gemCount = static_cast<irr::s32>(EQT::VISIBLE_SPELL_GEM_COUNT);
-        irr::s32 gemsH = SLOT_SIZE * gemCount + MARGIN * (gemCount - 1);
+        irr::s32 gemsH = SpellGemLayout::kWindowH;
         irr::s32 gemsX = width - MARGIN - gemsW;
         irr::s32 gemsY = hotbar.UpperLeftCorner.Y - MARGIN - gemsH;
         spellGems = {gemsX, gemsY, gemsX + gemsW, gemsY + gemsH};
@@ -227,6 +239,10 @@ struct UILayout {
         irr::s32 bandB = castingBar.UpperLeftCorner.Y - MARGIN;
         if (chatPanel.UpperLeftCorner.Y - MARGIN < bandB)
             bandB = chatPanel.UpperLeftCorner.Y - MARGIN;
+        // B1078 (#398): the band as a member -- the pair windows
+        // (merchant, inventory) and the tradeskill window scale their oracle
+        // size to fit it (one uniform factor) and anchor at its top.
+        middleBand = {bandL, bandT, bandR, bandB};
         irr::s32 popY = bandT + (bandB - bandT - POPUP_H) / 2;
         if (popY < bandT) popY = bandT;
         if (popY + POPUP_H > height) popY = height - POPUP_H;
