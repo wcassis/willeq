@@ -192,9 +192,15 @@ the same guard and showed distinct gold chest/crest, grey arms and helmet
 (`xu4/after/frame_000015.png`). This is a client-side visual fix on the XU4,
 so the earlier Panfrost-only attribution is withdrawn for this guard. The
 scripted nearby-cluster relocation did not frame five classifiable NPCs; the
+same-zone safe-point scout (`/loc 428,-74,3`) also framed scenery, so the
 crowd-wide before/after count remains unverified, not zero. The x86 Guard
 Liben colour numbers quoted in the previous analysis also came from scenery,
-not a visible guard, and cannot establish a per-NPC pixel band. Evidence:
+not a visible guard, and cannot establish a per-NPC pixel band. A new x86
+lane-2 A/B on class-equivalent Guard Treitan did frame the torso: ETC1 versus
+RGBA coarse-unique 1193/1142, gold 0.1631/0.1533, red 0.0220/0.0304 at
+3840x2160 (`b1051_per_npc_metrics.py`). Both modes show the armour; the
+literal Guard Liben requirement is still open because he was absent from
+that server roster. Evidence:
 `/home/user/kb-evidence/kb-b1051-etc1-variant-cache/`.
 
 ## Kernel and module state on the box

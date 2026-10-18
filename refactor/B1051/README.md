@@ -393,8 +393,21 @@ per-NPC evidence: `fixed-etc1/frames3/frame_000155.png` shows a wall and
 `fixed-rgba/frames3/frame_000164.png` shows the Ironforge Estate sign and
 fence, not Guard Liben. Do not quote their 42/292 coarse-unique values as an
 NPC before/after. Current raw x86 logs and stills are under
-`/home/user/kb-evidence/kb-b1051-etc1-variant-cache/x86/`; the pixel-band
-acceptance remains unverified.
+`/home/user/kb-evidence/kb-b1051-etc1-variant-cache/x86/`. A further
+lane-2 run at the same pose as the XU4 A/B framed Guard Treitan (race 71,
+the same variant-armoured QCM class). `b1051_per_npc_metrics.py` on the
+visible guard crop of 3840x2160 raw stills yielded:
+
+| lane-2 still | coarse-unique | gold | red | top-5 share |
+|---|---:|---:|---:|---:|
+| ETC1, `x86/treitan/etc1/frame_000029.png` | 1193 | 0.1631 | 0.0220 | 0.301 |
+| RGBA, `x86/treitan/rgba/frame_000028.png` | 1142 | 0.1533 | 0.0304 | 0.291 |
+
+Both stills visibly show distinct gold, crest and grey armour, and ETC1 is
+in the RGBA band for this *actual NPC* crop. Their 4K coarse-unique numbers
+must not be compared to the old 720p wall/sign values. Guard Liben was absent
+from this later server roster, so the card's literal named-NPC requirement
+remains unverified even though its same-class pixel discriminator passes.
 
 The XU4 device A/B DID frame one classifiable race-71 guard at the same
 saved pose: `before2/frame_000018.png` shows Guard Treitan as one flat
@@ -403,8 +416,9 @@ gold chest/crest, grey arms and gold helmet. Step 8c changed from 0 to 13
 variant textures for that same guard (`xu4/before2.log`, `xu4/after.log`).
 The count for this one visible guard is flat 1 before, 0 after. The scripted
 relocation to the nominal nearby guard cluster showed no classifiable NPC
-in frame, so the card's five-NPC crowd count remains open; do not report a
-zero-flat crowd from empty scenery. Raw device stills and logs are under
+in frame; a same-zone `#zone qeynos2` safe-point scout at `/loc 428,-74,3`
+also showed only scenery. The card's five-NPC crowd count remains open; do
+not report a zero-flat crowd from empty scenery. Raw device stills and logs are under
 `/home/user/kb-evidence/kb-b1051-etc1-variant-cache/xu4/`.
 
 ### The step-8c promote fix (separate, smaller, real)
