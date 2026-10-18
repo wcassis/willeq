@@ -92,6 +92,30 @@ keeps T425's spell display.
   the open book is proposed in the MR, not committed).
 - (H) this "Not verified / left open" — as above.
 
+## Finish leg (2026-10-17, after the fable merge)
+
+The 23:01 `origin/fable` merge brought in B1077's CW-holder
+`spell_icon_atlas_builder` source while the rbuild tree still held the
+pre-merge binary; the stale binary regenerated the old `spell_icon_holder.bmp`
+and `TexturesReproducible` went red against B1077's pin. Rebuilding the
+builder from the merged source clears it (not a source regression).
+
+The render/input step also made the twelve `SpellBookLayout` accessors
+production-called, which the `ZeroCallers` census caught as stale exemptions
+(retired in `check_zero_callers.py`), and the old scaled
+`spellbookMemorizeGaugeRect()` became dead (the window now draws at the
+oracle's own 510x360, so the gauge is `SpellBookLayout::memorizeGaugeRect()`
+blitted 1:1); the function and its three scaled-placement tests went, and the
+placement stays pinned by `test_spellbook_layout`.
+
+Local (rbuild, ThinkPad) at the finish-leg tip: the targeted ctest set
+(SpellBookLayout, SpellbookMemorize, UiLayoutCoOpen, TextureAlphaCensus,
+CastingBarT413, TexturesReproducible, PackReproducible) 45/45, and hygiene
+38/39 with the only red the five `DocCounts` rows on the protected
+CLAUDE.md files (see the completion summary's `CLAUDE.md EDITS` block; the
+MR pipeline's hygiene job is red on exactly that until the orchestrator
+applies them, per B1077's precedent).
+
 ## Lane record
 
 Lane 1 (eqemu lane, oracle box): lease `t_304d99ff/1156` taken 2026-10-17
