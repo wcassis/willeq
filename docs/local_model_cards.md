@@ -73,6 +73,15 @@ and issue mechanics are in `docs/issues.md`; CI behaviour in `docs/ci.md`.
   worktree (the script writes under that checkout's own `third_party/`), then
   configures with `-DEQT_GLES2_IRRLICHT_DIR` pointing at it.
   (RETRO-WAVE7 ids 17, 28, 34.)
+- **Never install the shared pack** (`/mnt/projects/EverQuest_ETC1/willeq.eqe1`).
+  A pack-changing card rebuilds with `scripts/build_willeq_pack.sh --output
+  <tmpfile>` (never a bare install -- the installed file is the oracle every
+  other pipeline reads, B1094/#414: one install over it made every other
+  pipeline at the fable tip red on PackReproducible), commits the inputs plus
+  the rewritten `data/willeq.eqe1.sha256` in ONE commit, and writes
+  `PACK INSTALL OWED AT MERGE: <full 40-char sha>` in the completion summary;
+  the orchestrator installs at merge, and fable's `InstalledPackMatchesPin`
+  ctest is the loud red until it does.
 - **Evidence rules.** Every derived number shows its arithmetic inline
   (`8 B = 280 - 272`); a number quoted from another unit is re-derived from
   that unit's raw file; test counts come only from the head's CI test-job

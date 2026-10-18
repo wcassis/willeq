@@ -23,13 +23,22 @@
 # byte-identical by the `PackReproducible` ctest test.
 #
 # Usage:
-#   scripts/build_willeq_pack.sh [--check] [--bin-dir DIR] [--output PATH]
-#                                [--sha-file PATH] [--uifiles-path DIR]
-#                                [--keep-temp]
+#   scripts/build_willeq_pack.sh [--check | --check-installed] [--bin-dir DIR]
+#                                [--output PATH] [--sha-file PATH]
+#                                [--uifiles-path DIR] [--keep-temp]
 #
 #   --check       Build into a temp file and compare against the pinned
-#                 sha256 and the installed pack; do NOT install. Exit 0 only
-#                 if all three agree. This is what the ctest test runs.
+#                 sha256 ONLY; do NOT install. Exit 0 iff built == pinned.
+#                 The pack at --output (the installed pack by default) is
+#                 reported as INFO, never as a verdict -- one mutable shared
+#                 file cannot be the oracle for N branches (B1094, #414).
+#                 This is what the PackReproducible ctest test runs.
+#   --check-installed
+#                 No build, no builder: exit 0 iff the pack at --output
+#                 (the installed pack by default) matches the pinned
+#                 sha256. That is the property that matters on fable; the
+#                 InstalledPackMatchesPin ctest test runs it through a
+#                 wrapper that fails hard only on fable (B1094, #414).
 #   --bin-dir     Directory holding `eqe1_builder` and `ui_atlas_builder`
 #                 (default: the first of build/bin, build-gles2/bin that has
 #                 both).
@@ -60,6 +69,7 @@ set -u
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 CHECK_ONLY=0
+CHECK_INSTALLED=0
 BIN_DIR=""
 OUTPUT="/mnt/projects/EverQuest_ETC1/willeq.eqe1"
 SHA_FILE=""
@@ -69,19 +79,53 @@ KEEP_TEMP=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --check)     CHECK_ONLY=1; shift ;;
+        --check)             CHECK_ONLY=1; shift ;;
+        --check-installed)   CHECK_INSTALLED=1; shift ;;
         --bin-dir)   BIN_DIR="$2"; shift 2 ;;
         --output)    OUTPUT="$2"; shift 2 ;;
         --sha-file)  SHA_FILE="$2"; shift 2 ;;
         --uifiles-path) UIFILES_PATH="$2"; shift 2 ;;
         --textures-dir) TEXTURES_DIR_OVERRIDE="$2"; shift 2 ;;
         --keep-temp) KEEP_TEMP=1; shift ;;
-        -h|--help)   sed -n '2,51p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help)   sed -n '2,60p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "build_willeq_pack.sh: unknown argument '$1'" >&2; exit 2 ;;
     esac
 done
 
 [ -n "$SHA_FILE" ] || SHA_FILE="$REPO_ROOT/data/willeq.eqe1.sha256"
+
+# B1094 (#414): --check-installed is its own mode -- it reads the installed
+# pack and the pin, never builds and never needs the builders. The
+# InstalledPackMatchesPin ctest runs it through a wrapper that fails hard
+# only on fable; on a pack-changing branch the installed pack legitimately
+# differs and this mode prints-and-passes.
+if [ "$CHECK_INSTALLED" -eq 1 ]; then
+    rc=0
+    PINNED_SHA=""
+    if [ -f "$SHA_FILE" ]; then
+        PINNED_SHA="$(awk 'NF && $1 !~ /^#/ {print $1; exit}' "$SHA_FILE")"
+    fi
+    if [ -z "$PINNED_SHA" ]; then
+        echo "FAIL: no pinned sha256 at $SHA_FILE" >&2
+        rc=1
+    elif [ ! -f "$OUTPUT" ]; then
+        echo "FAIL: installed pack $OUTPUT is missing" >&2
+        rc=1
+    else
+        INSTALLED_SHA="$(sha256sum "$OUTPUT" | awk '{print $1}')"
+        echo "installed: $INSTALLED_SHA  ($OUTPUT)"
+        echo "pinned:    $PINNED_SHA  ($SHA_FILE)"
+        if [ "$INSTALLED_SHA" != "$PINNED_SHA" ]; then
+            echo "FAIL: the installed pack does not match the pinned sha256." >&2
+            echo "      If the pin changed at a merge, the orchestrator installs" >&2
+            echo "      the pack (this script without --check/--check-installed)." >&2
+            rc=1
+        else
+            echo "PASS: the installed pack matches the pinned sha256."
+        fi
+    fi
+    exit "$rc"
+fi
 
 if [ -z "$BIN_DIR" ]; then
     for cand in "$REPO_ROOT/build/bin" "$REPO_ROOT/build-gles2/bin"; do
@@ -227,23 +271,24 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
     elif [ "$BUILT_SHA" != "$PINNED_SHA" ]; then
         echo "FAIL: rebuild does not match the pinned sha256." >&2
         echo "      The pack inputs (data/textures/*.bmp or tools/ui_atlas_builder.cpp)" >&2
-        echo "      changed. If that was deliberate, rerun this script without --check" >&2
-        echo "      to reinstall the pack and update $SHA_FILE in the SAME commit." >&2
+        echo "      changed. If that was deliberate, rebuild into a temp pack" >&2
+        echo "      (--output <tmpfile>) and update $SHA_FILE in the SAME commit." >&2
         rc=1
     fi
-    if [ ! -f "$OUTPUT" ]; then
-        echo "FAIL: installed pack $OUTPUT is missing" >&2
-        rc=1
-    else
+    # B1094 (#414): the installed pack is reported as INFO, never as a verdict.
+    # One mutable shared file was the oracle for every branch at once, so a
+    # pack-changing card installing its branch pack over the shared file made
+    # every OTHER pipeline at the fable tip red here. Reproducibility from
+    # the inputs is the property --check owns; the installed-vs-pin property
+    # on fable is --check-installed / InstalledPackMatchesPin's.
+    if [ -f "$OUTPUT" ]; then
         INSTALLED_SHA="$(sha256sum "$OUTPUT" | awk '{print $1}')"
-        echo "shipped: $INSTALLED_SHA  ($OUTPUT)"
-        if [ "$INSTALLED_SHA" != "$BUILT_SHA" ]; then
-            echo "FAIL: the installed pack differs from the rebuild." >&2
-            rc=1
-        fi
+        echo "installed (INFO only): $INSTALLED_SHA  ($OUTPUT)"
+    else
+        echo "installed (INFO only): $OUTPUT missing"
     fi
     if [ "$rc" -eq 0 ]; then
-        echo "PASS: rebuild is byte-identical to the pinned hash and the installed pack."
+        echo "PASS: rebuild is byte-identical to the pinned hash."
     fi
     exit "$rc"
 fi
