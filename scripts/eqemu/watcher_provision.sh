@@ -108,6 +108,19 @@ container_up() {
     eq_docker exec "${EQEMU_CONTAINER}" true >/dev/null 2>&1
 }
 
+# eq_remote is `ssh -n` (env.sh:111 -- stdin is deliberately NOT forwarded
+# to a lane, so a caller's `read` loops stay intact): `cat > f < local`
+# across it ships nothing. The sanctioned transfer is base64 over the
+# command line: one file per call, size-checked on the other end.
+ship_file() {  # ship_file <local-path> <remote-path>
+    local b64 size rsize
+    b64="$(base64 -w0 < "$1")"
+    eq_remote bash -c "mkdir -p $(dirname $2) && echo '${b64}' | base64 -d > '$2'" || return 1
+    size="$(wc -c < "$1" | tr -d '[:space:]')"
+    rsize="$(eq_remote bash -c "wc -c < '$2' 2>/dev/null" | tr -d '[:space:]')"
+    [ -n "${rsize}" ] && [ "${rsize}" = "${size}" ] || { echo "ship_file: $1 -> $2 size mismatch (${rsize:-0}/${size})"; return 1; }
+}
+
 # c. The exclusion decision through the provisioned code path, on the lane
 # host with the exact compose value (the same env the container would
 # carry). The test file was shipped by the edit section above; a --check
@@ -115,8 +128,7 @@ container_up() {
 match_test() {
     local out rc
     if [ "${CHECK_ONLY}" -eq 1 ]; then
-        eq_remote bash -c "mkdir -p /tmp/atcher" >/dev/null 2>&1 || return 1
-        eq_remote bash -c "cat > /tmp/atcher/b940_watcher_match_test.pl" < "${MATCHTEST}" || return 1
+        ship_file "${MATCHTEST}" "/tmp/atcher/b940_watcher_match_test.pl" || return 1
     fi
     out="$(eq_remote bash -c "PROCESS_WATCHER_EXCLUDE='${EXCLUDE_VALUE}' perl /tmp/atcher/b940_watcher_match_test.pl" 2>&1)"
     rc=$?
@@ -166,10 +178,10 @@ lane_provision() {  # lane_provision <lane>
 
         if [ "${CHECK_ONLY}" -eq 0 ]; then
             rc=0
-            eq_remote bash -c "mkdir -p /tmp/atcher" >/dev/null 2>&1 || rc=1
-            eq_remote bash -c "cat > /tmp/atcher/b940_patch_watcher.pl" < "${PATCHER}" || rc=1
-            eq_remote bash -c "cat > /tmp/atcher/b940_patch_compose.pl" < "${COMPOSE_PATCHER}" || rc=1
-            eq_remote bash -c "cat > /tmp/atcher/b940_watcher_match_test.pl" < "${MATCHTEST}" || rc=1
+            ship_file "${PATCHER}" "/tmp/atcher/b940_patch_watcher.pl" || rc=1
+            ship_file "${COMPOSE_PATCHER}" "/tmp/atcher/b940_patch_compose.pl" || rc=1
+            ship_file "${MATCHTEST}" "/tmp/atcher/b940_watcher_match_test.pl" || rc=1
+            [ "${rc}" -eq 0 ] || echo "FAIL: shipping the B940 patchers to the lane host failed"
             if [ "${rc}" -eq 0 ]; then
                 eq_remote bash -c "perl /tmp/atcher/b940_patch_watcher.pl ${watcher}" 2>&1 || rc=1
                 eq_remote bash -c "perl /tmp/atcher/b940_patch_compose.pl ${composef} '${EXCLUDE_VALUE}'" 2>&1 || rc=1
