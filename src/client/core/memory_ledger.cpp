@@ -33,11 +33,7 @@
 #include "client/core/malloc_compat.h"  // mallinfo2 (+ shim for glibc < 2.33, B1056)
 #include <unistd.h>
 #endif
-#if defined(__APPLE__)
-#include <malloc/malloc.h>
-#include <unistd.h>
-#include "memory_ledger_darwin.h"  // B1044: phys_footprint
-#endif
+#include "memory_ledger_darwin.h"  // B1044: phys_footprint reading + log/JSON extras
 
 #include "common/logging.h"
 
@@ -385,13 +381,10 @@ Snapshot snapshot(const std::string& point, const std::string& zone) {
     // gpu_driver; the ceiling above stays on the whole RssAnon.
     s.gpuDriverBytes = s.categories[static_cast<size_t>(Category::GpuDriver)].liveBytes;
     s.gpuBuffers = readGpuBufferCensus();  // B955: GPU buffers outside RssAnon (Lima GEM)
-#if defined(__APPLE__)
-    readDarwinFootprint(s);  // B1044 ruling: memory_ledger_darwin.h
-#endif
+    readDarwinFootprint(s);  // B1044: no-op off-Darwin
     finishTargetGap(s);
     return s;
 }
-
 void finishTargetGap(Snapshot& s) {
     s.ownedRssAnonBytes = s.rssAnonBytes > s.gpuDriverBytes ? s.rssAnonBytes - s.gpuDriverBytes : 0;
     // B978: owned = RssAnon - gpu_driver + gpu_buffers (only when outside RssAnon).
@@ -469,10 +462,7 @@ std::string toLogLine(const Snapshot& s) {
     appendKV(out, "over_target_rss_anon", s.overTargetRssAnonBytes);
     appendKV(out, "ceiling", s.rssCeilingBytes);
     appendKV(out, "over_ceiling", s.overCeilingBytes);
-#if defined(__APPLE__)  // B1044 ruling: the Darwin reading; Linux lines unchanged
-    appendKV(out, "phys_footprint", s.physFootprintBytes);
-    appendKV(out, "owned_phys_footprint", s.ownedPhysFootprintBytes);
-#endif
+    out += darwinLogExtra(s);  // B1044: the phys_footprint keys (empty off-Darwin)
     appendKV(out, "allocs", s.allocCount);
     // B924: frames rendered since start -- the growth-vs-frames correlation.
     appendKV(out, "frames", s.renderedFrames);
@@ -626,10 +616,7 @@ std::string toJson(const Snapshot& s) {
     out += "\"gpuBuffers\":" + gpuBuffersToJson(s.gpuBuffers, s.ownedRssAnonBytes) + ",";
     out += "\"rssCeilingBytes\":" + std::to_string(s.rssCeilingBytes) + ",";
     out += "\"overCeilingBytes\":" + std::to_string(s.overCeilingBytes);
-#if defined(__APPLE__)  // B1044 ruling: the Darwin reading; absent from Linux JSON
-    out += ",\"physFootprintBytes\":" + std::to_string(s.physFootprintBytes);
-    out += ",\"ownedPhysFootprintBytes\":" + std::to_string(s.ownedPhysFootprintBytes);
-#endif
+    out += darwinJsonExtra(s);  // B1044: the physFootprint fields (empty off-Darwin)
     out += "}";
     return out;
 }
