@@ -401,7 +401,8 @@ build-arm:
   script:
     - set -o pipefail
     # B1087 (#407): the ThinkPad is the primary runner; dev-u24's runner is paused but kept.
-    - 'case "$(hostname)" in dev-u24|thinkpad) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac'
+    # 2026-10-18 (Will): gitlab-runner-1/2 carry every tag again (docker + NAS NFS + ARM ccache provisioned), concurrent=1 each.
+    - 'case "$(hostname)" in dev-u24|thinkpad|gitlab-runner-1|gitlab-runner-2) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac'
     # B970: verify/fill the vendored Irrlicht+libpng store first; fails naming the pin.
     # B1093 (#413): kill any ARM build container an earlier cancelled/timed-out job left on this host.
     - bash scripts/ci/arm_container.sh --sweep
@@ -442,7 +443,8 @@ build-arm64:
   script:
     - set -o pipefail
     # B1087 (#407): the ThinkPad is the primary runner; dev-u24's runner is paused but kept.
-    - 'case "$(hostname)" in dev-u24|thinkpad) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac'
+    # 2026-10-18 (Will): gitlab-runner-1/2 carry every tag again (docker + NAS NFS + ARM ccache provisioned), concurrent=1 each.
+    - 'case "$(hostname)" in dev-u24|thinkpad|gitlab-runner-1|gitlab-runner-2) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac'
     # B1093 (#413): kill any ARM build container an earlier cancelled/timed-out job left on this host.
     - bash scripts/ci/arm_container.sh --sweep
     - scripts/ci/vendor_fetch.sh --ensure
