@@ -88,8 +88,10 @@ configurations, so the failed sweep is preserved pending this ruling.
 
 ## Not verified
 
-- The diagnostic capture used the pre-tag `31dd7b6b` binary; the new tag needs
-  a published-head capture to prove its exact BO-to-row mapping on lane 2.
+- The three-zone diagnostic capture used the pre-tag `31dd7b6b` binary. A
+  one-zone published-head capture (`census_final_tag/zones/qeynos2/gem_owners.tsv`)
+  confirms `tex:impostor-page` at both poses, but the tagged binary has not
+  repeated the full three-zone owner table.
 - The connected 1280×720 baseline lacks a tagged owner dump. Its 17.23 MiB
   attribution is inferred from the same lane's forced-mode owner table and
   the separately measured scanout-size change, not a byte-identical replay.
