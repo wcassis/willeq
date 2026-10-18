@@ -145,6 +145,10 @@ Control counts are per `options_layout.h`; the 130-row audit against
 `EQUI_OptionsWindow.xml` found zero rect mismatches (the table IS the XML),
 so the per-tab counts are identical in both clients. The listbox pages
 (Keys/Filters/Colors) show their full list plus scrollbar on both clients.
+Display's 63 = 39 direct page pieces (the XML's own `OptionsDisplayPage`
+census) + 24 nested particle-sub-page pieces (9 Spell + 7 Environment +
+9 Actor) inside `ODP_ParticlesTabs` — the same split the XML defines, so
+the oracle's tab carries the identical 63.
 
 ### Mechanical check (refactor/B1053/check_frame.py)
 
@@ -153,10 +157,22 @@ Per frame: (1) frame is the screen size and the window rect is fully on it;
 window's bottom edge on any tab, so a non-uniform band is 3D scene bleed =
 clipped); (3) every control rect from `emit_rects.py` is fully on the frame;
 (4) the bottom-right 32x32 corner is non-blank panel. All **14 frames pass**
-(7 tabs x 2 resolutions), exit 0 each. The right edge band is deliberately
-not a uniformity rule: the listbox tabs' scrollbar + list text edge live
-there legitimately (measured: bright rows only on those tabs, inside the
-Listbox y-span).
+(7 tabs x 2 resolutions), exit 0 each. Measured: at 1280x720 (window
+440,134) the bottom band is mean 31.2 std 10.9 on six tabs and 37.9 std
+15.4 on Keys (the list's bottom rows reach lower, still inside the page);
+corner 32x32 mean 20.8-21.3. At 1024x768 (window 312,158) bottom band mean
+27.9-28.0 std 10.8 (35.6 std 16.2 on Keys), corner mean 18.4-19.1. All
+well inside the std 40 / blank-5 bounds. The right edge band is
+deliberately not a uniformity rule: the listbox tabs' scrollbar + list text
+edge live there legitimately (measured: bright rows only on those tabs,
+inside the Listbox y-span).
+
+Tab identity is checked mechanically, not only by eye: the seven named
+frames per resolution are pairwise distinct in their window crop (smallest
+mean abs diff 4.20-5.36, the sparse Mouse/Mail pair; the largest is the
+General/Colors 15.75-17.91 pair, the two most different pages). A failed
+tab click would make two crops near-identical; none is (script: the
+pairwise-window-crop comparison over the evidence dir's named frames).
 
 ### Verdict
 
