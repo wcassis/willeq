@@ -27,6 +27,21 @@ symbolization). Each table row below quotes the exact `[memledger]` field.
 (the five gate zones, the gate's own invocation, the `[memledger]` line per
 point). It is a measurement tool — it prints, it never fails.
 
+**CI status of this branch (recorded 2026-10-18, honest):** the full MR
+pipeline is green at the CODE head `10c8b0a7` (pipeline 1724: hygiene,
+build-headless, build-test, gate, zone-budget-census, build-arm — every
+automatic job `success`; `arm64` and `client-ledger-live` are manual).
+Everything pushed after that head is docs (this README) plus the standalone
+sweep script above, plus the `origin/fable` merge of already-merged MRs —
+verified by `git diff 10c8b0a7..HEAD -- ':(exclude)refactor/*' ':(exclude)
+scripts/ci/zone_parse_sweep.sh'` naming only the other MRs' own files. Since
+~14:49 the GitLab instance has been creating MR-event pipelines as
+**skipped with 0 jobs and `name: null`** for this MR (1727, 1730, 1733) and
+other open MRs show no head pipeline at all — an instance-level condition,
+not this branch. At the merged head `7b111635` the hygiene net (45/45) and
+the B928 tests (`ZoneSourceRelease*`, `VisualGateLedgerAssertions`, 7/7) were
+re-run through rbuild and pass.
+
 ## The per-step table (what `zone_parse` holds at each load step)
 
 The ledger's `[memledger]` line is printed at each lifecycle point by
