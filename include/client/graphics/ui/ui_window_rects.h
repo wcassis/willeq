@@ -27,6 +27,7 @@
 #include "client/graphics/ui/merchant_layout.h"
 #include "client/graphics/ui/options_layout.h"
 #include "client/graphics/ui/quantity_layout.h"
+#include "client/graphics/ui/spellbook_layout.h"
 #include "client/graphics/ui/tip_layout.h"
 #include "client/graphics/ui/tracking_layout.h"
 #include "client/graphics/ui/trade_layout.h"
@@ -50,7 +51,7 @@ inline irr::core::rect<irr::s32> windowRectFor(UIWindow w, const UILayout& l) {
         case UIWindow::XpBar:           return l.xpBar;
         case UIWindow::CombatAbilities: return CombatAbilityLayout::windowRect(l);
         case UIWindow::Inventory:       return InventoryLayout::windowRect(l);
-        case UIWindow::Spellbook:       return l.centerPopup;
+        case UIWindow::Spellbook:       return l.bookPopup;
         case UIWindow::Skills:          return l.centerPopup;
         case UIWindow::Tradeskill:      return TradeskillLayout::windowRect(l);
         case UIWindow::Merchant:        return MerchantLayout::windowRect(l);

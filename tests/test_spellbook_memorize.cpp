@@ -39,6 +39,7 @@
 #include "client/events/renderer_intents.h"
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/static_ui_input.h"
+#include "client/graphics/ui/spellbook_layout.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/willeq_database.h"
 #include "zone_stream_test_utils.h"
@@ -124,9 +125,10 @@ public:
 //   (B1075: the spellbook is the layout table's CentreSlot; the gem window
 //   is right-aligned and ends MARGIN above the 1x10 hotbar's top, y=486;
 //   B1077: the oracle's 48x290 window, so it is wider than the old gem bar)
-// Spellbook rows: startY = 65 + 24 = 89, LINE_H 28 + MARGIN 4 = 32 pitch.
-//   row 0 -> y in [89, 117)    -> probe y=100
-//   row 1 -> y in [121, 149)   -> probe y=130
+// B1076 (#396): the book is its own 510x360 (layout.bookPopup), and every
+// click lands on a slot from SpellBookLayout -- the same table the input
+// hit-tests, so the probes below are the slots' own screen centers, not
+// hand-measured rows.
 // Gems (B1077): the oracle's 36x28 cells at (3, 10+30i) in the window,
 // screen x in [751, 787) (probe x=770), top y = 192 + 10 + 30i = 202 + 30i.
 //   gem 0 -> y in [202, 230) -> probe y=216
@@ -162,10 +164,19 @@ protected:
         input.processInput(x, y, /*leftClicked=*/true, layout, hotbar, gems,
                             inventory, spellbook, skills, buffs, loot);
     }
+
+    // The screen center of book slot `i` (the table's own rect, offset by
+    // the window's top-left) -- the same source the input hit-tests from.
+    void clickSlot(int i) {
+        const auto& p = layout.bookPopup;
+        const auto r = SpellBookLayout::slotRect(i);
+        click(p.UpperLeftCorner.X + (r.UpperLeftCorner.X + r.LowerRightCorner.X) / 2,
+              p.UpperLeftCorner.Y + (r.UpperLeftCorner.Y + r.LowerRightCorner.Y) / 2);
+    }
 };
 
-TEST_F(SpellbookClickTest, ClickOnFirstRowPushesMemorizeIntentForThatSpell) {
-    click(300, 100);
+TEST_F(SpellbookClickTest, ClickOnFirstSlotPushesMemorizeIntentForThatSpell) {
+    clickSlot(0);
 
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -175,8 +186,8 @@ TEST_F(SpellbookClickTest, ClickOnFirstRowPushesMemorizeIntentForThatSpell) {
     EXPECT_EQ(m.gemSlot, 0);
 }
 
-TEST_F(SpellbookClickTest, ClickOnSecondRowCarriesThatRowsSpellId) {
-    click(300, 130);
+TEST_F(SpellbookClickTest, ClickOnSecondSlotCarriesThatSlotsSpellId) {
+    clickSlot(1);
 
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -184,32 +195,32 @@ TEST_F(SpellbookClickTest, ClickOnSecondRowCarriesThatRowsSpellId) {
     EXPECT_EQ(m.spellId, 3001u);
 }
 
-TEST_F(SpellbookClickTest, PageOffsetIsAppliedToTheRowIndex) {
-    // Nine spells -> two pages; page 1 row 0 is the ninth spell.
-    for (int i = 3; i < 9; ++i) {
+TEST_F(SpellbookClickTest, PageOffsetIsAppliedToTheSlotIndex) {
+    // Seventeen spells -> two spreads; spread 1 slot 0 is the seventeenth.
+    for (int i = 3; i < 17; ++i) {
         SpellbookDisplayEntry e;
         e.spellId = 3000u + i;
         e.name = "Spell " + std::to_string(i);
         spellbook.spells.push_back(e);
     }
     spellbook.currentPage = 1;
-    click(300, 100);
+    clickSlot(0);
 
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
-    EXPECT_EQ(std::get<eqt::events::MemorizeSpellIntent>(intents[0]).spellId, 3008u);
+    EXPECT_EQ(std::get<eqt::events::MemorizeSpellIntent>(intents[0]).spellId, 3016u);
 }
 
-TEST_F(SpellbookClickTest, ClickOnAnEmptyRowPushesNothing) {
-    // Three spells populated, row 5 is past the end of the page.
-    click(300, 89 + 5 * 32 + 4);
+TEST_F(SpellbookClickTest, ClickOnAnEmptySlotPushesNothing) {
+    // Three spells populated, slot 5 is past the end of the spread.
+    clickSlot(5);
     EXPECT_TRUE(bridge.drainIntents().empty());
 }
 
 TEST_F(SpellbookClickTest, DestinationIsTheFirstEmptyGem) {
     gems.gems[0].spellId = 500;
     gems.gems[1].spellId = 501;
-    click(300, 100);
+    clickSlot(0);
 
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -232,7 +243,7 @@ TEST_F(SpellbookClickTest, ClickingTheSelectedGemAgainClearsTheSelection) {
 
 TEST_F(SpellbookClickTest, SelectedGemBecomesTheMemorizeDestinationAndIsThenConsumed) {
     click(770, 286);            // pick gem 2 as the destination
-    click(300, 100);            // memorize row 0 there
+    clickSlot(0);               // memorize slot 0 there
 
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -244,7 +255,7 @@ TEST_F(SpellbookClickTest, SelectedGemBecomesTheMemorizeDestinationAndIsThenCons
 
 TEST_F(SpellbookClickTest, AllGemsFullAndNoPickPushesNothing) {
     for (int i = 0; i < static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT); ++i) gems.gems[i].spellId = 100 + i;
-    click(300, 100);
+    clickSlot(0);
     EXPECT_TRUE(bridge.drainIntents().empty());
 }
 

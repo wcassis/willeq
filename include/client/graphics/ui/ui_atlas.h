@@ -11,6 +11,7 @@
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/ui/item_icon_sheets.h"
 #include "client/graphics/ui/spell_icon_sheets.h"
+#include "client/graphics/ui/spellbook_backdrop_loader.h"
 #include <irrlicht.h>
 #include <cstdint>
 #include <string>
@@ -95,6 +96,16 @@ public:
     SpellIconSheets& spellIcons() { return spellIcons_; }
     const SpellIconSheets& spellIcons() const { return spellIcons_; }
 
+    /**
+     * B1076 (GitLab #396): the composed spellbook backdrop
+     * (data/textures/spellbook_backdrop.bmp, one ETC1 pack entry the way
+     * spell_icon_sheets carries its four). Loaded by load() beside the
+     * sheets; renderSpellbookPopup() blits its four tiles through
+     * UIRenderer::drawSpellBookBackdrop().
+     */
+    SpellBookBackdropLoader& spellBookBackdrop() { return spellBookBackdrop_; }
+    const SpellBookBackdropLoader& spellBookBackdrop() const { return spellBookBackdrop_; }
+
 private:
     bool loadJsonFromMemory(const char* data, size_t size);
     void mapSprite(const std::string& name, const irr::core::rect<irr::s32>& rect);
@@ -102,6 +113,7 @@ private:
     irr::video::ITexture* texture_ = nullptr;
     ItemIconSheets icons_;
     SpellIconSheets spellIcons_;
+    SpellBookBackdropLoader spellBookBackdrop_;  // B1076 (GitLab #396)
     UISpriteRect sprites_[static_cast<int>(UISprite::Count)];
     UISpriteRect emptySprite_{};
 };

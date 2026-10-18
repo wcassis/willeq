@@ -41,6 +41,7 @@ bool UIAtlas::load(irr::video::IVideoDriver* driver, ConstrainedTextureCache* ca
     // the same startup failure a missing ui_atlas already gives.
     icons_.load(cache);
     spellIcons_.load(cache);
+    spellBookBackdrop_.load(cache);  // B1076 (GitLab #396): the book art
 
     // Load sprite rects from JSON raw data entry in EQE1
     const uint8_t* jsonData = nullptr;

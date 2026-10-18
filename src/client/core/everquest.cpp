@@ -789,6 +789,7 @@ void EverQuest::PublishFullStateSnapshot() {
 			data.iconId = item ? item->icon : 0;
 			data.quantity = item ? item->quantity : 0;
 			data.bagSlots = item ? item->bagSlots : 0;  // B442b
+			data.scrollSpellId = item ? item->getScrollSpellId() : 0;  // B1076
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 		}

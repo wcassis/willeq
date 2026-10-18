@@ -830,6 +830,10 @@ IF(EQT_GRAPHICS)
         # B1077 (GitLab #397): the spell-icon sheets, loaded beside the item
         # sheets and addressed by include/client/graphics/ui/spell_icon_atlas.h.
         src/client/graphics/ui/spell_icon_sheets.cpp
+        # B1076 (GitLab #396): the composed spellbook backdrop (the four book
+        # tiles + the Done X in one 512x363 pack entry, tool-composed from the
+        # official default_spellbook01-05.tga).
+        src/client/graphics/ui/spellbook_backdrop_loader.cpp
         src/client/graphics/ui/static_ui_input.cpp
         src/client/graphics/ui/static_ui_cursor.cpp  # B442
         src/client/graphics/ui/quantity_window.cpp  # B442
@@ -2077,6 +2081,21 @@ ADD_EXECUTABLE(spell_icon_atlas_builder
     tools/spell_icon_atlas_builder.cpp
 )
 TARGET_INCLUDE_DIRECTORIES(spell_icon_atlas_builder PRIVATE
+    ${CMAKE_SOURCE_DIR}/tools
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+# B1076 (GitLab #396): spellbook book-art composer. It is the spellbook
+# window's backdrop -- the four default_spellbook01-04.tga tiles
+# (256x256 page halves + 256x107 control strips, the XML's own per-tile
+# source crops) plus the 13x13 Done "X" from default_spellbook05.tga --
+# composed from the official client's own art into ONE 512x363 image,
+# data/textures/spellbook_backdrop.bmp. Header-only inputs (tga_reader.h,
+# bmp32_writer.h) plus the shared spellbook_backdrop.h, so it links nothing.
+ADD_EXECUTABLE(spellbook_backdrop_builder
+    tools/spellbook_backdrop_builder.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(spellbook_backdrop_builder PRIVATE
     ${CMAKE_SOURCE_DIR}/tools
     ${CMAKE_SOURCE_DIR}/include
 )
