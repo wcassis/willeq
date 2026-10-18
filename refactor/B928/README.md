@@ -31,14 +31,21 @@ point). It is a measurement tool — it prints, it never fails.
 pipeline is green at the CODE head `10c8b0a7` (pipeline 1724: hygiene,
 build-headless, build-test, gate, zone-budget-census, build-arm — every
 automatic job `success`; `arm64` and `client-ledger-live` are manual).
-Everything pushed after that head is docs (this README) plus the standalone
-sweep script above, plus the `origin/fable` merge of already-merged MRs —
-verified by `git diff 10c8b0a7..HEAD -- ':(exclude)refactor/*' ':(exclude)
-scripts/ci/zone_parse_sweep.sh'` naming only the other MRs' own files. Since
-~14:49 the GitLab instance has been creating MR-event pipelines as
+Everything pushed after that head is docs (this README, plus the
+comment-only fix in `include/client/graphics/eq/s3d_loader.h`) plus the
+standalone sweep script above, plus the `origin/fable` merge of already-merged
+MRs — verified by `git diff 10c8b0a7..HEAD -- ':(exclude)refactor/*'
+':(exclude)scripts/ci/zone_parse_sweep.sh'` naming only the other MRs' own
+files and `include/client/graphics/eq/s3d_loader.h` (comment only). Since
+~14:49 the GitLab instance had been creating MR-event pipelines as
 **skipped with 0 jobs and `name: null`** for this MR (1727, 1730, 1733) and
-other open MRs show no head pipeline at all — an instance-level condition,
-not this branch. At the merged head `7b111635` the hygiene net (45/45) and
+other open MRs showed no head pipeline at all — an instance-level condition,
+not this branch. **That condition cleared at ~17:59Z on 2026-10-18**
+(pipeline 1750 on MR !243, `merge_request` event, `success`), and a fresh MR
+pipeline at this head is created by the push of this commit — it is the
+process gate this commit exists to close (the fix leg of QA t_e62ed92a /
+review t_b1176af6, whose sole not-met row was the skipped pipeline 1735 at
+the previous head). At the merged head `7b111635` the hygiene net (45/45) and
 the B928 tests (`ZoneSourceRelease*`, `VisualGateLedgerAssertions`, 7/7) were
 re-run through rbuild and pass.
 
@@ -165,10 +172,12 @@ minus gpu_driver):
 
 That is the whole-process load peak — the memory that gets the process killed —
 down 15.3 MiB in iceclad and 15.6 MiB in timorous. The process peak is set at
-the `objects` point (the rows above quote that point's `ledger_peak`); at that
+the `objects` point in iceclad and timorous and at the `entities` point in the
+three small zones (the rows above quote the peak point's `ledger_peak` per
+zone, and the `owned` column quotes it at the same point); at that
 point the `zone_parse` live is now the retained half only:
 
-| zone     | zone_parse live @ objects before | after   |
+| zone     | zone_parse live at the peak point (before) | after   |
 |----------|----------------------------------|---------|
 | iceclad  | 31,669,664                       | 12,848,688 (−18.8 MiB released early) |
 | timorous | 25,870,064                       | 6,493,776 (−18.4 MiB released early) |

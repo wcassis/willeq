@@ -333,7 +333,7 @@ struct S3DZone {
 
     // B928 (#246): the region-geometry half of the end-of-load release, done
     // EARLY -- as soon as every region mesh, bounding box and occluder is
-    // built (the client's Step 4; the benchmark's step 10). The zone's
+    // built (the client's Step 4; the benchmark's Step 7c). The zone's
     // per-region source geometry is a second copy of the vertices and
     // triangles the meshes already hold; keeping it alive until Step 13
     // carries ~20 MiB (iceclad) into the objects/entities build, which is
