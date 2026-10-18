@@ -465,3 +465,144 @@ TEST(GpuBufferCensus, FdinfoGuardFailsClosedAndHonoursKillSwitch) {
     }
     if (!anyReal) GTEST_SKIP() << "no DRM node with a sysfs driver row on this host";
 }
+
+// B1035 (#354, GitLab issue 354): the ROCK 4D captures (run of build
+// bfcf50ea on the published aarch64 build, qeynos2, own cgroup, the
+// steady_60s window; raw files
+// /home/user/kb-evidence/kb-b1035-lane3-fdinfo-gap/raw/raw030/):
+//
+// (a) the panfrost render node's fdinfo (rock4d_fdinfo_renderD128_steady):
+//     drm-resident-memory 30088 KiB = 30,810,112 B,
+//     drm-shared-memory 9288 KiB = 9,510,912 B (the three scanout
+//     framebuffers, each 1024x768 XR24 -- debugfs framebuffer size
+//     3,170,304 x 3; the device's stride-based tally reads 9,437,184);
+// (b) the rockchip-drm CARD node's fdinfo (rock4d_fdinfo_card0): NO drm-*
+//     memory key at all -- pos/flags/mnt_id/ino only;
+// (c) the exclusive memcg's memory.stat (rock4d_memory.stat): shmem
+//     39,841,792 B ~= (a)'s resident 30,810,112 + (a)'s shared 9,510,912
+//     within the capture window (the render node's keys move a few hundred
+//     KiB second to second; shmem tracks them with the same jitter);
+// (d) smaps: the scanout framebuffers are shmem-backed objects, not
+//     process mappings (smaps Shmem: 0).
+//
+// The gap the issue names (resident below the cgroup's shmem) is the
+// scanout framebuffers: charged to the process memcg as shmem, published
+// by the render node as SHARED, and present in no node's RESIDENT figure
+// (the card node publishes none). The hypothesis's "shows under the
+// rockchip-drm node's fdinfo" half does NOT hold -- that node has no
+// memory keys -- so the ledger names the mechanism instead: when the
+// cgroup is exclusive and its shmem exceeds the resident figure, the row
+// takes the shmem (the higher measurement of the same bytes) and
+// fdinfo_scanout_gap names the delta.
+TEST(GpuBufferCensus, B1035CardNodePublishesNoMemoryKeys) {
+    const DrmFdinfo f = parseDrmFdinfo(fixture("rock4d_fdinfo_card0"));
+    EXPECT_FALSE(f.isDrm);            // no drm-driver/client-id/memory key
+    EXPECT_FALSE(f.hasMemoryKeys);
+    EXPECT_EQ(f.clientId, 0u);
+    EXPECT_EQ(f.totalBytes, 0u);
+    EXPECT_EQ(f.residentBytes, 0u);
+    GpuBufferInputs in;
+    DrmFdinfoSeen seen;
+    foldDrmFdinfo(f, seen, in);   // skipped: no memory key
+    EXPECT_EQ(seen.n, 0u);
+    EXPECT_FALSE(in.fdinfoMemoryKeys);
+}
+
+TEST(GpuBufferCensus, B1035CaptureFoldsToTheResidentRow) {
+    // Both nodes of the SAME client (a display card + its render node):
+    // the card fd contributes nothing (no memory keys), the render fd the
+    // resident figure. This is exactly the two-node fold
+    // readGpuBufferCensus() performs.
+    const DrmFdinfo card = parseDrmFdinfo(fixture("rock4d_fdinfo_card0"));
+    const DrmFdinfo render = parseDrmFdinfo(fixture("rock4d_fdinfo_renderD128_steady"));
+    GpuBufferInputs in;
+    DrmFdinfoSeen seen;
+    in.drmFds = 6;   // three fds per node (dup'd)
+    foldDrmFdinfo(card, seen, in);
+    foldDrmFdinfo(card, seen, in);
+    foldDrmFdinfo(card, seen, in);
+    foldDrmFdinfo(render, seen, in);
+    foldDrmFdinfo(render, seen, in);
+    foldDrmFdinfo(render, seen, in);   // dup'd render fd: one client, once
+    EXPECT_EQ(seen.n, 1u);
+    EXPECT_TRUE(in.fdinfoResidentKeys);
+    EXPECT_EQ(in.fdinfoResidentBytes, 30088u * 1024);
+    EXPECT_EQ(in.fdinfoTotalBytes, 168400u * 1024);
+}
+
+TEST(GpuBufferCensus, B1035ShmemHigherThanResidentWinsAndNamesTheGap) {
+    // The capture's steady numbers (raw030): resident 30,810,112 (fixture
+    // 30088 KiB) vs the exclusive memcg's shmem 39,841,792 (fixture). The
+    // row is the shmem -- the higher measurement of the same bytes -- and
+    // the delta is named; the scanout_fb row carries the device's own
+    // tally of those bytes (the [memgpu] line of the run: 9,437,184 over
+    // 3 buffers).
+    GpuBufferInputs in;
+    const DrmFdinfo card = parseDrmFdinfo(fixture("rock4d_fdinfo_card0"));
+    const DrmFdinfo render = parseDrmFdinfo(fixture("rock4d_fdinfo_renderD128_steady"));
+    DrmFdinfoSeen seen;
+    in.drmFds = 6;
+    foldDrmFdinfo(card, seen, in);
+    foldDrmFdinfo(render, seen, in);
+    in.memcg = parseMemcgStat(fixture("rock4d_memory.stat"));
+    ASSERT_TRUE(in.memcg.ok);
+    in.cgroupProcs = 1;
+    in.softwareRasteriser = 0;
+    in.scanoutFbBufs = 3;
+    in.scanoutFbBytes = 9437184u;   // the device's tally (the run's [memgpu] line)
+    const GpuBufferCensus c = decideGpuBuffers(in);
+    EXPECT_EQ(c.source, GpuBufferSource::DrmFdinfo);   // a resident figure exists
+    EXPECT_EQ(c.gpuBuffersBytes, 39841792u);           // the shmem, not 30810112
+    EXPECT_EQ(c.fdinfoScanoutGapBytes, 39841792u - 30088u * 1024u);
+    EXPECT_TRUE(c.outsideRssAnon);
+    // The named delta brackets the device's own scanout tally (shmem and
+    // the render node's shared figure carry the same jitter -- a few
+    // hundred KiB second to second -- plus page rounding): it is NOT the
+    // total (the tiler heap) and it is of the scanout's size.
+    EXPECT_GT(c.fdinfoScanoutGapBytes, in.scanoutFbBytes / 2u);
+    EXPECT_LT(c.fdinfoScanoutGapBytes, in.scanoutFbBytes * 2u);
+    // The [memgpu] line names it, positioned after memcg_kernel_seen and
+    // BEFORE the B978 owned fields (which stay last for the pre-B961
+    // parsers); the owned arithmetic is unchanged in meaning: owned still
+    // adds the row when it is outside RssAnon.
+    const std::string line = gpuBuffersToLogLine("steady_60s", "qeynos2", c, 25208784u);
+    const size_t kernelSeen = line.find(" memcg_kernel_seen=");
+    const size_t gap = line.find(" fdinfo_scanout_gap=" + std::to_string(c.fdinfoScanoutGapBytes) + " ");
+    const size_t owned = line.find(" owned_rss_anon=");
+    ASSERT_NE(kernelSeen, std::string::npos) << line;
+    ASSERT_NE(gap, std::string::npos) << line;
+    ASSERT_NE(owned, std::string::npos) << line;
+    EXPECT_LT(kernelSeen, gap) << "fdinfo_scanout_gap rides after memcg_kernel_seen";
+    EXPECT_LT(gap, owned) << "the B978 owned fields stay last";
+    EXPECT_NE(line.find(" scanout_fb=9437184 scanout_fb_bufs=3 "), std::string::npos) << line;
+    EXPECT_EQ(ownedPlusGpuBuffers(25208784u, c), 25208784u + 39841792u);
+    const std::string json = gpuBuffersToJson(c, 25208784u);
+    EXPECT_NE(json.find("\"fdinfoScanoutGapBytes\":" + std::to_string(c.fdinfoScanoutGapBytes)), std::string::npos) << json;
+}
+
+// The rule must not move a lane whose fdinfo resident figure already
+// covers the shmem (the Lima lanes: no fdinfo keys at all, the shmem IS
+// the row; a Panfrost run where the resident figure leads): the row is
+// the resident figure and the gap is named as 0.
+TEST(GpuBufferCensus, B1035ResidentAtLeastShmemKeepsTheResidentRow) {
+    GpuBufferInputs in;
+    in.drmFds = 1;
+    in.fdinfoMemoryKeys = true;
+    in.fdinfoResidentKeys = true;
+    in.fdinfoTotalBytes = 175411200;
+    in.fdinfoResidentBytes = 39407616;   // the B1032 run: shmem 41.2 MB was
+    in.softwareRasteriser = 0;           // within it
+    in.memcg = parseMemcgStat("shmem 39000000\n");
+    in.cgroupProcs = 1;
+    const GpuBufferCensus c = decideGpuBuffers(in);
+    EXPECT_EQ(c.source, GpuBufferSource::DrmFdinfo);
+    EXPECT_EQ(c.gpuBuffersBytes, 39407616u);   // the resident figure, unchanged
+    EXPECT_EQ(c.fdinfoScanoutGapBytes, 0u);
+    // And a non-exclusive cgroup never reaches the shmem at all:
+    in.cgroupProcs = 3;
+    const GpuBufferCensus c2 = decideGpuBuffers(in);
+    EXPECT_EQ(c2.gpuBuffersBytes, 39407616u);
+    EXPECT_EQ(c2.fdinfoScanoutGapBytes, 0u);
+    const std::string line = gpuBuffersToLogLine("steady_60s", "qeynos2", c, 1000);
+    EXPECT_NE(line.find(" fdinfo_scanout_gap=0 "), std::string::npos) << line;
+}
