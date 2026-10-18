@@ -37,6 +37,11 @@ def load(stem):
 
 
 class GemOwnerTableTest(unittest.TestCase):
+    def test_impostor_page_owner(self):
+        bo = {"tag": "tex:impostor-page", "size": 4194304, "heap": 0,
+              "mapped": 0, "scope": "textures_driver"}
+        self.assertEqual(g.owner_of(bo), ("textures: impostor atlas pages", "tex:impostor-page"))
+
     def check_partition(self, stem):
         block, memgpu = load(stem)
         t = g.fold(block, memgpu)
@@ -53,7 +58,7 @@ class GemOwnerTableTest(unittest.TestCase):
 
     def test_fixed_partition_and_reconciliation(self):
         block, t = self.check_partition("qeynos2_steady")
-        depth = t["rows"]["egl: window surface depth/stencil"]
+        depth = t["rows"]["egl: window surface BOs (colour + depth/stencil)"]
         self.assertEqual(depth["count"], 1)
         with open(os.path.join(DATA, "qeynos2_steady_memgpu.txt")) as f:
             line = f.read()
