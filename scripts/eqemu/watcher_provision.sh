@@ -166,6 +166,11 @@ busy_zone_leg() {
 
 lane_provision() {  # lane_provision <lane>
     local lane="$1" fail=0 rc out
+    # env.sh honors an exported EQEMU_HOST over the lane table (env.sh:37)
+    # and only defaults the unset ones -- so a loop that re-sources it in
+    # ONE shell keeps lane 1's host for every later lane. The host, the ssh
+    # target and the lease namespace all follow the lane, not a sticky env.
+    unset EQEMU_HOST EQEMU_SSH
     EQEMU_LANE="${lane}"
     source "${SCRIPT_DIR}/env.sh"
     echo "== lane ${lane} (${EQEMU_HOST}, ${AKK_DIR}) =="
