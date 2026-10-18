@@ -16,10 +16,16 @@ local build). The benchmark is the gate's own invocation
 number the gate sees.
 
 Raw evidence: `~/kb-evidence/kb-b928-zone-parse-peak/` — `base/<zone>.log` (the
-full benchmark stdout, every `[memledger]` line per step), `trace/<zone>.log`
-(the `WILLEQ_LEDGER_TRACE=zone_parse` run, the `[memledger-trace]` per-site
+full benchmark stdout, every `[memledger]` line per step), `after/<zone>.log`
+(the same sweep after the early release), `trace/<zone>.log` (the
+`WILLEQ_LEDGER_TRACE=zone_parse` run, the `[memledger-trace]` per-site
 blocks), the sweep scripts, and `parse_trace.py`/`b928_sym.py` (offset
 symbolization). Each table row below quotes the exact `[memledger]` field.
+
+**Reproducing:** `scripts/ci/zone_parse_sweep.sh <benchmark> <eq-client>
+<eqe1-pack> <out-dir> [extra flags]` re-takes every number in this document
+(the five gate zones, the gate's own invocation, the `[memledger]` line per
+point). It is a measurement tool — it prints, it never fails.
 
 ## The per-step table (what `zone_parse` holds at each load step)
 
