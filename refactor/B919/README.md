@@ -158,7 +158,36 @@ B854 numbers pre-date the B941/B951 geometry shrink) or a different owner
 (the Pi's entity/model state is charged to `game_state` where x86's is
 charged elsewhere). The Pi run is the arbiter.
 
-**Status of the Pi leg (2026-10-18):** NOT YET LANDED — it is gated on host
+**Pi leg LANDED (2026-10-18 18:31-18:46Z, run by the orchestrator from dev-u24, the only host
+with keys to both the local eqemu `10.0.30.23` and the Pi `10.0.30.192`).** Rendered sweep
+`scripts/pi_rendered_zone_sweep.sh --zones emeraldjungle,overthere,timorous,nurga --env
+WILLEQ_LEDGER_OWNERS=game_state --snap-points startup,ready,steady_60s --hold 75 --pi-dir
+ci-arm/3fe06bf4...` on the orangepi preset, `bin/willeq-nollvm` of THIS head (published sha256
+`917727a7...`, `binary_identity.txt`). Evidence: `/mnt/projects/fable/game-state/b919-pi/`
+(`results.tsv`, `results_retry.tsv`, `zones/<zone>/client.log`); sweep log
+`/mnt/projects/fable/review/B919-pi/sweep.log`. The owner rows on the Pi carry the `startup.`
+thread-category prefix (`owner=startup.gs.navmesh ...`), stripped here. Values are the
+`[memledger-owner] point=ready` `live=` bytes in MB; the total is the `[memledger] point=ready`
+`game_state=live/peak` pair. Entity/door counts from the Pi client's own snapshot line.
+
+| zone | entities | doors | `game_state` live (peak) | `gs.navmesh` | `gs.collision_map.*` (sum) | `gs.entities` | `gs.doors` | `gs.world_objects` | `gs.event_queue` | `gs.event_stage` | `gs.dispatch` | `gs.nav_query` |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| emeraldjungle | 266 | 3 | 26.27 (peak 26.84) | 15.73 | 10.14 | — | 0.00 | — | — | — | 0.21 | 0.07 |
+| overthere | 432 | 23 | 25.18 (peak 28.43) | 21.13 | 3.68 | 0.00 | 0.00 | 0.00 | — | — | 0.30 | 0.07 |
+| timorous | 303 | 47 | 24.95 (peak 29.64) | 18.89 | 5.62 | — | 0.00 | 0.00 | — | — | 0.22 | 0.07 |
+| nurga | 2 | 0 | 2.48 (peak 3.39) | 0.52 | 1.78 | — | — | — | — | 0.03 | 0.08 | 0.07 |
+
+Reading: the Pi agrees with x86 to within the preset's differences -- `gs.navmesh` and the
+`gs.collision_map.*` sum are the whole category in every zone (emeraldjungle 15.7 + 10.1 of
+26.3 MB; nurga 0.5 + 1.8 of 2.5 MB), `gs.entities`/`gs.doors` are bytes, not megabytes, and
+overthere's 432 entities cost nothing visible in `game_state`. The entity-count hypothesis
+stays FALSIFIED on the target; the bytes follow zone geometry (navmesh + collision map).
+`steady_60s` was NOT reached for timorous and overthere in this sweep (both attempts:
+`no_steady_60s (exit 0)`, the client reached 15/15 and `ready`, then exited before the
+60 s hold completed -- the `ready` rows above are complete; the steady rows are owed if the
+shrink work needs them). emeraldjungle and nurga passed with steady_60s.
+
+**Status of the Pi leg (2026-10-18, before the run above):** NOT YET LANDED — it is gated on host
 access this worker does not hold, so it is the open item on this card (the
 task is BLOCKED on it, not silently deferred). What is already true:
 
