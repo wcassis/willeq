@@ -1,0 +1,10 @@
+[
+  {"visual": 0, "renderableType": 77, "depth": 16, "stencil": 0},
+  {"visual": 0, "renderableType": 77, "depth": 24, "stencil": 0},
+  {"visual": 0, "renderableType": 77, "depth": 24, "stencil": 8},
+  {"visual": 0, "renderableType": 77, "depth": 32, "stencil": 0},
+  {"visual": 0, "renderableType": 77, "depth": 16, "stencil": 0},
+  {"visual": 0, "renderableType": 77, "depth": 24, "stencil": 0},
+  {"visual": 0, "renderableType": 77, "depth": 24, "stencil": 8},
+  {"visual": 0, "renderableType": 77, "depth": 32, "stencil": 0}
+]
