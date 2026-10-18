@@ -116,6 +116,20 @@ CLAUDE.md files (see the completion summary's `CLAUDE.md EDITS` block; the
 MR pipeline's hygiene job is red on exactly that until the orchestrator
 applies them, per B1077's precedent).
 
+CI note: MR !223's previous head pipelines were all `skipped` because every
+push before the finish leg used `-o ci.skip` (that flag is for the FIRST push
+of a new branch, B1042). The finish-leg code push (93e73542) still carried it,
+which is why the finish leg ends with a docs-only commit (this section)
+pushed WITHOUT the flag: a `merge_request_event` pipeline whose diff is only
+`*.md` runs the hygiene stage alone (B1042's docs-only rule), and hygiene
+is the only job that is red here (build-test / gate / client-ledger-live /
+zone-budget-census carry the `.code_rules` code-change gate). So the head
+pipeline is: hygiene = the five owed DocCounts rows (the expected red),
+build-test = skipped (docs-only diff; the full build+suite ran green at the
+code commits per the local rbuild run above), gate = skipped. After the
+CLAUDE.md EDITS land on the branch, the MR pipeline re-runs hygiene and goes
+fully green.
+
 ## Lane record
 
 Lane 1 (eqemu lane, oracle box): lease `t_304d99ff/1156` taken 2026-10-17
