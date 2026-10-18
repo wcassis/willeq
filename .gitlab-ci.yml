@@ -403,6 +403,8 @@ build-arm:
     # B1087 (#407): the ThinkPad is the primary runner; dev-u24's runner is paused but kept.
     - 'case "$(hostname)" in dev-u24|thinkpad) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac'
     # B970: verify/fill the vendored Irrlicht+libpng store first; fails naming the pin.
+    # B1093 (#413): kill any ARM build container an earlier cancelled/timed-out job left on this host.
+    - bash scripts/ci/arm_container.sh --sweep
     - scripts/ci/vendor_fetch.sh --ensure
     # Full log kept as an artifact; on failure print the compiler errors, not a
     # blind tail (B1054's ARM-only compile error never reached the trace).
@@ -441,6 +443,8 @@ build-arm64:
     - set -o pipefail
     # B1087 (#407): the ThinkPad is the primary runner; dev-u24's runner is paused but kept.
     - 'case "$(hostname)" in dev-u24|thinkpad) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac'
+    # B1093 (#413): kill any ARM build container an earlier cancelled/timed-out job left on this host.
+    - bash scripts/ci/arm_container.sh --sweep
     - scripts/ci/vendor_fetch.sh --ensure
     - 'if [ -n "${CI_JOBS:-}" ]; then export BUILD_JOBS="$CI_JOBS"; fi; echo "BUILD_JOBS=$BUILD_JOBS"'
     # Full log kept as an artifact; on failure print the compiler errors, not a

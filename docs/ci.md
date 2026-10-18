@@ -356,6 +356,23 @@ longer downloads them: SourceForge returned HTTP 522 for ~3 h on 2026-10-01 and 
   source URLs in `vendor_fetch.sh`, and commit the pin. Never commit the archive.
 - The x86 bootstrap (`scripts/build-gles2-x86.sh`) never downloaded: it copies `/mnt/projects/irrlicht-1.8.5`.
 
+### The ARM build container dies with its job (B1093, #413)
+
+A cancelled or timed-out `build-arm`/`build-arm64` used to leave its cross-build container compiling: the
+runner kills the job shell and the docker CLI, dockerd keeps the container until its command ends. On
+2026-10-18 the ThinkPad carried four such orphans at `-j8`/`-j12` (load average 46) beside its real jobs.
+`scripts/ci/arm_container.sh` is the fix, in two halves, pinned by the `ArmContainerGuard` hygiene test:
+
+- **Sourced by both build scripts.** `arm_container_guard <prefix>` names and labels the container
+  (`willeq.ci.arm=1`, `--init`) and traps EXIT/TERM/INT/HUP to `docker kill` it; `arm_container_run <args>`
+  runs `docker run --rm` **in the background and `wait`s** -- bash defers a trap while a foreground child runs
+  (measured: SIGTERM to the shell left a foreground container alive), but a signal interrupts `wait`, the
+  trap fires, and the container's own exit status still comes back to the script (`rc=7` round-trips).
+- **`bash scripts/ci/arm_container.sh --sweep`** is the first line of both CI ARM jobs: it kills every
+  labelled container on the host and prints what it killed. The runners are `concurrent = 1`, so a labelled
+  container alive at job start is always an orphan (a SIGKILL skips every trap). The sweep is deliberately not
+  in the build scripts, where a dev box may legitimately run two.
+
 ## The stages
 
 | Stage | What it does | Cold | Warm |
