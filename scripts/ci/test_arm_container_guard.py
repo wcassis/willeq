@@ -50,6 +50,15 @@ def check(helper, builds, ci):
     expect("--init" in helper, "helper: guard passes no --init")
     expect(re.search(r"trap .*docker kill .*EXIT TERM INT HUP", helper), "helper: no kill trap on EXIT TERM INT HUP")
     expect("arm_container_run()" in helper, "helper: arm_container_run missing")
+    # layer 2: a detached watchdog (setsid, stdio on /dev/null) that polls the script's PARENT
+    # and the script, then docker-kills the container -- the runner's cancel kills only the job
+    # shell and leaves the script signal-less (gitlab-runner-1 job 8777, 2026-10-18).
+    expect(re.search(r"setsid bash -c '", helper), "helper: no setsid watchdog")
+    expect(re.search(r'while kill -0 "\$parent" 2>/dev/null && kill -0 "\$self" 2>/dev/null; do sleep', helper),
+           "helper: watchdog must poll both the parent and the script")
+    expect('"$ARM_CONTAINER_NAME" "$parent" "$self"' in helper, "helper: watchdog is not given name/parent/self")
+    expect("</dev/null >/dev/null 2>&1 &" in helper, "helper: watchdog must not hold the runner's pipes")
+    expect("local prefix=\"$1\" parent=$PPID self=$$" in helper, "helper: parent must be captured as $PPID")
     expect(re.search(r'docker run --rm "\$\{ARM_CONTAINER_ARGS\[@\]\}" "\$@" &\n\s*pid=\$!\n\s*wait "\$pid"', helper),
            "helper: arm_container_run must background docker run and wait (a foreground child defers the trap)")
     expect('docker ps -q --filter "label=$ARM_CONTAINER_LABEL"' in helper, "helper: sweep does not select by label")
@@ -96,6 +105,8 @@ def main():
         ("build guard", check(helper, [(n, t.replace("arm_container_guard ", "true ")) for n, t in builds], ci)),
         ("build run", check(helper, [(n, t.replace("arm_container_run \\", "docker run --rm \\")) for n, t in builds], ci)),
         ("helper wait", check(helper.replace('wait "$pid"', 'true'), builds, ci)),
+        ("helper watchdog", check(helper.replace("setsid bash -c '", "bash -c '"), builds, ci)),
+        ("helper watchdog parent", check(helper.replace('kill -0 "$parent" 2>/dev/null && ', ""), builds, ci)),
         ("ci sweep", check(helper, builds, ci.replace("bash scripts/ci/arm_container.sh --sweep", "true"))),
     ]
     for name, f in broken:
