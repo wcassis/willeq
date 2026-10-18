@@ -307,6 +307,14 @@ measurements a per-lane preset ruling needs); the client runs in its own cgroup 
 eqemu lane, so the `[memgpu]` row and the rendered-zone TSV row are both device figures. Evidence from the
 first runs: `review/B1030/README.md`.
 
+**Lane 2 GEM census (B1036, #355).** The arm64 image now ships the B962
+`lima_bo_census.so` owner shim. The rendered owner census in
+`refactor/B1036/README.md` finds that the Rock64 charges its display scanout
+to the client's `memcg_shmem` `gpu_buffers` row, unlike the Orange Pi, and
+that its EGL surface has colour BOs beyond the logical depth/stencil tally.
+The existing 10 MiB unnamed-GEM sweep still fails; B1036 records a class-C
+ledger-decomposition ruling request, not a bound or preset change.
+
 **Lane 5, the Orange Pi Zero** (B1060, #380; `docs/reference/orangepizero.md`) is lane 1's sibling: the same armhf
 `ci-arm/` publish and shipped Mesa prefix, the same preset and ceilings, on Armbian **trixie** (glibc 2.41; the noble
 build runs unmodified once the GL runtime packages are installed). The board has no HDMI and its device tree leaves
