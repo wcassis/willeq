@@ -773,6 +773,13 @@ stop_capture() {
         cmp -s "$DIR/eqclient-global-original.ini" "$CLIENT/eqclient.ini" || return 65
         touch "$DIR/eqclient-global-restored"
     fi
+    # B1002: the ini-set backup was taken AFTER the luclin backup, so its
+    # restore must run last or it would clobber the (already restored) INI.
+    if [[ -f $DIR/eqclient-iniset-original.ini && ! -e $DIR/eqclient-iniset-restored ]]; then
+        cp "$DIR/eqclient-iniset-original.ini" "$CLIENT/eqclient.ini" || return 65
+        cmp -s "$DIR/eqclient-iniset-original.ini" "$CLIENT/eqclient.ini" || return 65
+        touch "$DIR/eqclient-iniset-restored"
+    fi
     if [[ -s $DIR/character-file.txt && -f $DIR/character-original.ini && ! -e $DIR/character-restored ]]; then
         cp "$(cat "$DIR/character-file.txt")" "$DIR/character-after.ini" || :
         cp "$DIR/character-original.ini" "$(cat "$DIR/character-file.txt")" || return 65
@@ -808,6 +815,17 @@ fi
 CHARACTER=$(awk -F'\t' '$1=="login" {print $2; exit}' "$DIR/plan.tsv")
 [[ $CHARACTER =~ ^[A-Za-z]+$ ]] || exit 65
 INI_UNSET=$(sed -n 's/^# ini-unset=//p' "$DIR/plan.tsv" | head -1)
+# B1002: `# ini-set=Section.Key=VALUE` edits the GLOBAL eqclient.ini (the
+# character- INI is the ini-unset domain; eqclient.ini's [Defaults] holds
+# HideChatWin and friends). Backed up and restored like the global luclin
+# edit.
+INI_SET=$(sed -n 's/^# ini-set=//p' "$DIR/plan.tsv" | head -1)
+if [[ -n $INI_SET ]]; then
+    [[ $INI_SET =~ ^[A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9]*=.+$ ]] || exit 65
+    cp "$CLIENT/eqclient.ini" "$DIR/eqclient-iniset-original.ini" || exit 65
+    python3 /home/user/eq-oracle/uigap-scripts/oracle_ini_seed.py \
+        "$CLIENT" "$DIR" "" "$INI_SET" || exit 65
+fi
 # B1058: `# create-clicks=template` makes a create row locate its race, class,
 # gender and Name-field controls from templates instead of the table above.
 CREATE_CLICKS=$(sed -n 's/^# create-clicks=//p' "$DIR/plan.tsv" | head -1)

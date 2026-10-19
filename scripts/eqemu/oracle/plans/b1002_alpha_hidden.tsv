@@ -1,0 +1,34 @@
+# action	target	hold_ms	still_name
+# B1002 (#322) -- the CLEAN-BACKDROP leg: chat HIDDEN (eqclient.ini
+# [Defaults] HideChatWin=TRUE via the # ini-set directive), noon, two camera
+# angles. Frames 04/12 are the scene at the chat location, no chat:
+# B1 (camera 1) and B2 (camera 8 right-arrows later). Pairs with
+# b1002_alpha_visible.tsv (same run shape, chat VISIBLE) so that per body
+# pixel: a = 1 - (O2-O1)/(B2-B1),  O from the visible leg, B from here.
+# Noon is required: the ground under the chat is dark/uniform at night
+# (delta < 1) but the noon horizon + grass gives a large, varied delta.
+# Both legs zone into the same spawn, so the spawn must be deterministic
+# (eqemu's zone seed); the solver checks O1 vs B1 agree where no chat.
+# ini-set=Defaults.HideChatWin=TRUE
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+command	#set time 14 0	0	noon
+wait	12000	0	settle
+wait	2000	0	c1_closed
+press	Right	0	turn1
+wait	1500	0	t1
+press	Right	0	turn2
+wait	1500	0	t2
+press	Right	0	turn3
+wait	1500	0	t3
+press	Right	0	turn4
+wait	1500	0	t4
+press	Right	0	turn5
+wait	1500	0	t5
+press	Right	0	turn6
+wait	1500	0	t6
+press	Right	0	turn7
+wait	1500	0	t7
+press	Right	0	turn8
+wait	4000	0	c2_closed
+command	/q	0	quit

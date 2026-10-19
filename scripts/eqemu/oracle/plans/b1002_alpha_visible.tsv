@@ -1,0 +1,32 @@
+# action	target	hold_ms	still_name
+# B1002 (#322) -- the COMPOSITE leg: chat VISIBLE (HideChatWin=FALSE forced,
+# the rig default), noon, the SAME run shape as b1002_alpha_hidden.tsv so
+# the two legs share a camera path. o1 (camera 1) and o2 (camera 8) are
+# chat-over-scene at the same screen locations as the hidden leg's
+# c1_closed / c2_closed. Solve per body pixel:
+#   O = a*f + (1-a)*B  ->  a = 1 - (O2-O1)/(B2-B1)
+# (the fill f cancels; B from the hidden leg). The chat window box is
+# located from |O1-B1| in the solver. Solver: solve_alpha.py (evidence dir).
+# ini-set=Defaults.HideChatWin=FALSE
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+command	#set time 14 0	0	noon
+wait	12000	0	settle
+wait	2000	0	o1_open
+press	Right	0	turn1
+wait	1500	0	t1
+press	Right	0	turn2
+wait	1500	0	t2
+press	Right	0	turn3
+wait	1500	0	t3
+press	Right	0	turn4
+wait	1500	0	t4
+press	Right	0	turn5
+wait	1500	0	t5
+press	Right	0	turn6
+wait	1500	0	t6
+press	Right	0	turn7
+wait	1500	0	t7
+press	Right	0	turn8
+wait	4000	0	o2_open
+command	/q	0	quit

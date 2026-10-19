@@ -1,0 +1,12 @@
+# action	target	hold_ms	still_name
+# B1002 (#322) time-contrast check: does `#set time` work on eqemu and does
+# noon->midnight change the scene under the chat enough to solve the alpha?
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+command	#set time 14 0	0	noon
+wait	12000	0	day1
+wait	3000	0	day2
+command	#set time 0 0	0	midnight
+wait	8000	0	night1
+wait	3000	0	night2
+command	/q	0	quit

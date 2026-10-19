@@ -1,44 +1,45 @@
 # action	target	hold_ms	still_name
-# B1002 (#322): measure the official client's Style_Transparent blend alpha
-# with the two-known-backdrops method.
+# B1002 (#322) v4: the chat window's Style_Transparent alpha, two-backdrop
+# per-pixel solve, NO chat-free frame needed.
 #
-# v3 -- the CHAT window. v2 measured the inventory, but its visible body is
-# OPAQUE: EQUI_Inventory.xml's single Style_Transparent=true (line 2642) is on
-# the hidden "Shroud Progression" sub-page, not the default page, and the
-# v2 frames solved a = 255.000 over 19,867 pixels. Chat is the clean subject:
-# EQUI_ChatWindow.xml has BOTH its output (CWChatOutput) and input
-# (CWChatInput) elements Style_Transparent=true, the default page, and the
-# v2/03_noon frame shows the grass through the dark fill. The chat is ALWAYS
-# open in-world (no toggle needed), so the four frames are:
-#   c1_closed  -- camera 1, chat as-is (its content is static across the
-#                 run: the same zone-entry lines, no new messages) -> B1
-#   o1_open    -- camera 1, +0.5 s settle (nothing changed)         -> o1
-#   camera turn-- RIGHT-ARROW x6: the arrow keys turn the camera
-#                  (mouse-while-held is the item drag); the chat window
-#                  stays screen-fixed while the backdrop turns
-#   c2_closed  -- camera 2, chat as-is                              -> B2
-#   o2_open    -- camera 2, +0.5 s settle                           -> o2
-# Per body pixel (same screen location all frames, chat content unchanged):
-#   (o2-o1) = (1-a)*(B2-B1)   =>   a = 1 - (o2-o1)/(B2-B1)
-# The fill f cancels; B2-B1 is measured from the two CLOSED frames, so no
-# assumption about the fill or the absolute backdrop. Solver:
-# refactor/B1002/solve_alpha.py (per-channel alpha + spread over >= 50 px).
+# Why v3 failed: the chat is ALWAYS open (no hotkey; HideChatWin=FALSE lives
+# in eqclient.ini's [Defaults], which the ini-seeder does not edit), so
+# v3's "closed" frames were composites; and at night the ground under the
+# chat is uniform (B2-B1 < 1, horizon dy=0) -- no signal.
+#
+# Why v4 works: with the chat OPEN the whole time, per body pixel p:
+#   O1[p] = a*f + (1-a)*B1[p]   (camera 1, two frames -> least squares)
+#   O2[p] = a*f + (1-a)*B2[p]   (camera 2, two frames -> least squares)
+# Two equations, two unknowns (a and f):
+#   a = (m1 - m2) / (B1 - B2) ,  f = (m1 - B1*(1-a)) / a
+# where m1, m2 are the per-pixel means of the two same-camera frames (the
+# chat TEXT differs between frames -> outliers; the FILL is the robust
+# median over pixels). NO closed backdrop is required.
+#
+# Contrast: at NOON the horizon (bright sky + tree silhouettes) sits at the
+# chat's TOP edge (chat box y ~595-790 of 800), so the yaw turn changes the
+# backdrop under a large part of the body. Solver: refactor/B1002/solve_v4.py.
 login	Testcaster	0	char_select
 zone	qeynos2	0	in_world
+command	#set time 14 0	0	noon
 wait	12000	0	settle
-wait	2000	0	c1_closed
-wait	2000	0	o1_open
+wait	2500	0	o1
+wait	2500	0	o2
 press	Right	0	turn1
-wait	1500	0	t1
+wait	2000	0	t1
 press	Right	0	turn2
-wait	1500	0	t2
+wait	2000	0	t2
 press	Right	0	turn3
-wait	1500	0	t3
+wait	2000	0	t3
 press	Right	0	turn4
-wait	1500	0	t4
+wait	2000	0	t4
 press	Right	0	turn5
-wait	1500	0	t5
+wait	2000	0	t5
 press	Right	0	turn6
-wait	4000	0	c2_closed
-wait	2000	0	o2_open
+wait	2000	0	t6
+press	Right	0	turn7
+wait	2000	0	t7
+press	Right	0	turn8
+wait	4500	0	o6
+wait	2500	0	o7
 command	/q	0	quit
