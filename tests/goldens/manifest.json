@@ -1,6 +1,5 @@
 {
   "platforms": {
-
     "pi": {
       "note": "B1024: the Pi golden set's manifest section -- the same per-zone fields bless() writes for x86, minus p95CpuMsBaseline (Pi timing is H04's: scripts/pi/compare_pi.sh). Committed by the orchestrator from a --capture staging; a Pi golden moves only on a Pi re-bless by Will. docs/ci.md 'Two golden sets: x86 and Pi (B1024)'.",
       "blessedUnder": {
@@ -301,6 +300,328 @@
             "eqe1ArchiveCount": 0,
             "processRssBytes": 96628736,
             "untrackedBytes": 61232093
+          }
+        }
+      ]
+    },
+    "mac": {
+      "note": "B1044: the Mac golden set's manifest section (Will 2026-10-14, platform-scoped figures): the Mac's own metrics and memory rows, phys_footprint as the Darwin reading. Committed by the orchestrator from a --capture staging at Will's bless.",
+      "blessedUnder": {
+        "glVersion": "OpenGL ES 3.0 (ANGLE 2.1.29094 git hash: 25078a7740fd)"
+      },
+      "x86Divergence": [
+        "timorous f0 draws mac 579 x86 586",
+        "timorous f0 polys mac 11114 x86 11258"
+      ],
+      "zones": [
+        {
+          "zone": "qeynos2",
+          "extraArgs": [
+            "--camera-pose",
+            "201.9,393.4,5.0,180.0,-5.0",
+            "--camera-pose",
+            "-134.9,-238.9,6.0,0.0,-5.0",
+            "--camera-pose",
+            "-202.9,-706.7,20.0,90.0,-5.0"
+          ],
+          "designatedFrames": [
+            0,
+            1,
+            2
+          ],
+          "metrics": {
+            "0": {
+              "draws": 236,
+              "stateChanges": 31,
+              "polys": 885
+            },
+            "1": {
+              "draws": 119,
+              "stateChanges": 22,
+              "polys": 542
+            },
+            "2": {
+              "draws": 228,
+              "stateChanges": 16,
+              "polys": 663
+            }
+          },
+          "memory": {
+            "textureCacheBytesUsed": 21932691,
+            "textureCacheBytesLimit": 22020096,
+            "framebufferBytes": 2880000,
+            "framebufferBudgetBytes": 10485760,
+            "gpuTextureBytes": 16515072,
+            "gpuTextureBudgetBytes": 39845888,
+            "zoneGeometryBytes": 1269654,
+            "zoneGeometryBudgetBytes": 16777216,
+            "placeableObjectsBytes": 0,
+            "placeableObjectsBudgetBytes": 25165824,
+            "s3dZoneSourceBytes": 573123,
+            "s3dZoneSourceBudgetBytes": 14680064,
+            "vboEboBytes": 1269654,
+            "vboEboBudgetBytes": 41943040,
+            "characterModelsBytes": 0,
+            "characterModelsBudgetBytes": 2097152,
+            "eqe1MappedBytes": 0,
+            "eqe1MappedBudgetBytes": 268435456,
+            "totalEstimate": 22507503,
+            "totalEstimateBudgetBytes": 134217728,
+            "textureCount": 126,
+            "eqe1ArchiveCount": 0,
+            "processRssBytes": 0,
+            "untrackedBytes": 0,
+            "physFootprintBytes": 172000216,
+            "ownedPhysFootprintBytes": 171655016,
+            "coveragePhysFootprintBytes": 192267392
+          }
+        },
+        {
+          "zone": "gfaydark",
+          "extraArgs": [
+            "--camera-pose",
+            "820.0,84.9,110.0,0.0,-5.0",
+            "--camera-pose",
+            "444.7,688.9,141.0,90.0,-5.0",
+            "--camera-pose",
+            "-440.9,72.3,110.0,180.0,-5.0"
+          ],
+          "designatedFrames": [
+            0,
+            1,
+            2
+          ],
+          "metrics": {
+            "0": {
+              "draws": 143,
+              "stateChanges": 15,
+              "polys": 3338
+            },
+            "1": {
+              "draws": 134,
+              "stateChanges": 13,
+              "polys": 3633
+            },
+            "2": {
+              "draws": 203,
+              "stateChanges": 16,
+              "polys": 4421
+            }
+          },
+          "memory": {
+            "textureCacheBytesUsed": 11184800,
+            "textureCacheBytesLimit": 22020096,
+            "framebufferBytes": 2880000,
+            "framebufferBudgetBytes": 10485760,
+            "gpuTextureBytes": 8454144,
+            "gpuTextureBudgetBytes": 39845888,
+            "zoneGeometryBytes": 4991634,
+            "zoneGeometryBudgetBytes": 16777216,
+            "placeableObjectsBytes": 0,
+            "placeableObjectsBudgetBytes": 25165824,
+            "s3dZoneSourceBytes": 680653,
+            "s3dZoneSourceBudgetBytes": 14680064,
+            "vboEboBytes": 4991634,
+            "vboEboBudgetBytes": 41943040,
+            "characterModelsBytes": 0,
+            "characterModelsBudgetBytes": 2097152,
+            "eqe1MappedBytes": 0,
+            "eqe1MappedBudgetBytes": 268435456,
+            "totalEstimate": 21998065,
+            "totalEstimateBudgetBytes": 134217728,
+            "textureCount": 32,
+            "eqe1ArchiveCount": 0,
+            "processRssBytes": 0,
+            "untrackedBytes": 0,
+            "physFootprintBytes": 167986040,
+            "ownedPhysFootprintBytes": 167623272,
+            "coveragePhysFootprintBytes": 194282552
+          }
+        },
+        {
+          "zone": "befallen",
+          "extraArgs": [
+            "--camera-pose",
+            "-554.8,-186.9,-50.1,270.0,-5.0",
+            "--camera-pose",
+            "-299.9,-181.9,-9.0,0.0,-5.0",
+            "--camera-pose",
+            "-149.9,-5.8,7.1,180.0,-5.0"
+          ],
+          "designatedFrames": [
+            0,
+            1,
+            2
+          ],
+          "metrics": {
+            "0": {
+              "draws": 368,
+              "stateChanges": 13,
+              "polys": 1241
+            },
+            "1": {
+              "draws": 75,
+              "stateChanges": 9,
+              "polys": 384
+            },
+            "2": {
+              "draws": 170,
+              "stateChanges": 9,
+              "polys": 526
+            }
+          },
+          "memory": {
+            "textureCacheBytesUsed": 2883581,
+            "textureCacheBytesLimit": 22020096,
+            "framebufferBytes": 2880000,
+            "framebufferBudgetBytes": 10485760,
+            "gpuTextureBytes": 2228224,
+            "gpuTextureBudgetBytes": 39845888,
+            "zoneGeometryBytes": 1729050,
+            "zoneGeometryBudgetBytes": 16777216,
+            "placeableObjectsBytes": 0,
+            "placeableObjectsBudgetBytes": 25165824,
+            "s3dZoneSourceBytes": 1085917,
+            "s3dZoneSourceBudgetBytes": 14680064,
+            "vboEboBytes": 1729050,
+            "vboEboBudgetBytes": 41943040,
+            "characterModelsBytes": 0,
+            "characterModelsBudgetBytes": 2097152,
+            "eqe1MappedBytes": 0,
+            "eqe1MappedBudgetBytes": 268435456,
+            "totalEstimate": 9652241,
+            "totalEstimateBudgetBytes": 134217728,
+            "textureCount": 9,
+            "eqe1ArchiveCount": 0,
+            "processRssBytes": 0,
+            "untrackedBytes": 0,
+            "physFootprintBytes": 170541920,
+            "ownedPhysFootprintBytes": 170196720,
+            "coveragePhysFootprintBytes": 195298264
+          }
+        },
+        {
+          "zone": "iceclad",
+          "extraArgs": [
+            "--camera-pose",
+            "2365.4,2873.6,131.7,270.0,-5.0",
+            "--camera-pose",
+            "1374.8,5619.3,13.9,270.0,-5.0",
+            "--camera-pose",
+            "7234.6,-285.1,13.9,180.0,-5.0"
+          ],
+          "designatedFrames": [
+            0,
+            1,
+            2
+          ],
+          "metrics": {
+            "0": {
+              "draws": 35,
+              "stateChanges": 5,
+              "polys": 1129
+            },
+            "1": {
+              "draws": 36,
+              "stateChanges": 3,
+              "polys": 979
+            },
+            "2": {
+              "draws": 32,
+              "stateChanges": 3,
+              "polys": 533
+            }
+          },
+          "memory": {
+            "textureCacheBytesUsed": 3866619,
+            "textureCacheBytesLimit": 22020096,
+            "framebufferBytes": 2880000,
+            "framebufferBudgetBytes": 10485760,
+            "gpuTextureBytes": 2965504,
+            "gpuTextureBudgetBytes": 39845888,
+            "zoneGeometryBytes": 6926622,
+            "zoneGeometryBudgetBytes": 16777216,
+            "placeableObjectsBytes": 0,
+            "placeableObjectsBudgetBytes": 25165824,
+            "s3dZoneSourceBytes": 10577764,
+            "s3dZoneSourceBudgetBytes": 14680064,
+            "vboEboBytes": 6926622,
+            "vboEboBudgetBytes": 41943040,
+            "characterModelsBytes": 0,
+            "characterModelsBudgetBytes": 2097152,
+            "eqe1MappedBytes": 0,
+            "eqe1MappedBudgetBytes": 268435456,
+            "totalEstimate": 30276512,
+            "totalEstimateBudgetBytes": 134217728,
+            "textureCount": 15,
+            "eqe1ArchiveCount": 0,
+            "processRssBytes": 0,
+            "untrackedBytes": 0,
+            "physFootprintBytes": 249562240,
+            "ownedPhysFootprintBytes": 249235216,
+            "coveragePhysFootprintBytes": 276055264
+          }
+        },
+        {
+          "zone": "timorous",
+          "extraArgs": [
+            "--camera-pose",
+            "-686.6,2431.5,4.2,0.0,-5.0",
+            "--camera-pose",
+            "-512.7,2406.5,1.5,0.0,-5.0",
+            "--camera-pose",
+            "-9479.7,-5678.7,25.9,90.0,-5.0"
+          ],
+          "designatedFrames": [
+            0,
+            1,
+            2
+          ],
+          "metrics": {
+            "0": {
+              "draws": 579,
+              "stateChanges": 20,
+              "polys": 11114
+            },
+            "1": {
+              "draws": 432,
+              "stateChanges": 20,
+              "polys": 7624
+            },
+            "2": {
+              "draws": 197,
+              "stateChanges": 7,
+              "polys": 6802
+            }
+          },
+          "memory": {
+            "textureCacheBytesUsed": 3183945,
+            "textureCacheBytesLimit": 22020096,
+            "framebufferBytes": 2880000,
+            "framebufferBudgetBytes": 10485760,
+            "gpuTextureBytes": 2453504,
+            "gpuTextureBudgetBytes": 39845888,
+            "zoneGeometryBytes": 12758982,
+            "zoneGeometryBudgetBytes": 16777216,
+            "placeableObjectsBytes": 0,
+            "placeableObjectsBudgetBytes": 25165824,
+            "s3dZoneSourceBytes": 5088594,
+            "s3dZoneSourceBudgetBytes": 14680064,
+            "vboEboBytes": 12758982,
+            "vboEboBudgetBytes": 41943040,
+            "characterModelsBytes": 0,
+            "characterModelsBudgetBytes": 2097152,
+            "eqe1MappedBytes": 0,
+            "eqe1MappedBudgetBytes": 268435456,
+            "totalEstimate": 35940062,
+            "totalEstimateBudgetBytes": 134217728,
+            "textureCount": 35,
+            "eqe1ArchiveCount": 0,
+            "processRssBytes": 0,
+            "untrackedBytes": 0,
+            "physFootprintBytes": 260719576,
+            "ownedPhysFootprintBytes": 260356808,
+            "coveragePhysFootprintBytes": 300647672
           }
         }
       ]
