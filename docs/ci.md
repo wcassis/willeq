@@ -1102,7 +1102,10 @@ exact-match rule works per set.
 **A Pi golden moves only on a Pi re-bless by Will; an x86 re-bless never
 touches the Pi set, and vice versa.** The Pi verify fails `NOT YET
 BLESSED` (exit 1) until the section exists — it never falls back to the
-x86 set. The live-client sweep (`scripts/pi_rendered_zone_sweep.sh`) is
+x86 set. The Pi goldens are post-B976 as of 2026-10-19 (#417, B1097:
+re-blessed on lane 1 at fable tip `c03c44a0`; `refactor/B1097/README.md`);
+a Panfrost lane, if gated, is judged with a frame-wide 1-LSB bound (Will's
+2026-10-19 ruling — no per-lane golden sets, no code). The live-client sweep (`scripts/pi_rendered_zone_sweep.sh`) is
 not a pixel channel: it drives the LIVE client, whose frames are not
 frame-locked (B997 measured 0/18 identical across two baseline legs), so
 it can never be an exact pixel compare.
