@@ -3,6 +3,7 @@
 // integrity against the format documented in session_log.h.
 
 #include "common/net/session_recorder.h"
+#include "scoped_temp_dir.h"
 #include <gtest/gtest.h>
 
 #include <cstdio>
@@ -13,8 +14,16 @@ using namespace EQT::Net;
 
 namespace {
 
+// B1098 (#418): every case used to write a FIXED name straight under
+// gtest's TempDir() (/tmp), shared by every ctest run on the host -- the
+// cases went red on a runner with "failed to open ... for writing" while
+// another run held the file. One mkdtemp() directory per test
+// PROCESS (removed at exit) keeps the names unique across slots, runners
+// and concurrent ctest workers; the T477 census does not see TempDir(),
+// which is why this slipped past it.
 std::string TempPath(const char* name) {
-	return std::string(::testing::TempDir()) + name;
+	static willeq_test::ScopedTempDir dir{"session_recorder"};
+	return (dir / name).string();
 }
 
 } // namespace
