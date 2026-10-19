@@ -40,6 +40,14 @@ namespace {
 // dl_iterate_phdr entry on Linux).
 void probeCallSite() {}
 
+// A pointer into probeCallSite's CODE (the function's return-address
+// target). dladdr/backtrace take exactly this shape on both glibc and
+// Darwin, so reinterpret_cast (not static_cast, which clang rejects) is
+// the conversion.
+inline const void* probeCallSiteAddr() {
+    return reinterpret_cast<const void*>(probeCallSite);
+}
+
 // A pointer value in no known module on either platform (dyld images
 // map far above this; the ELF main executable maps at 0x400000+ or,
 // PIE, in the 47-bit range). Never dereferenced.
@@ -115,10 +123,10 @@ TEST(GpuDriverClassifier, MainExecutableCallerIsNotGpu) {
     // known non-GPU image (0) -- not the GPU stack (1) and not unknown
     // (-1, which would mean the table never saw the executable at all).
     EXPECT_EQ(eqt::memory::classify_detail::classifyCallerAddress(
-                  static_cast<const void*>(probeCallSite)),
+                  probeCallSiteAddr()),
               0);
     EXPECT_FALSE(eqt::memory::classify_detail::callerIsGlStackDarwin(
-        static_cast<const void*>(probeCallSite)));
+        probeCallSiteAddr()));
 #else
     // Driven through the PUBLIC hook the same way real allocations drive
     // it (the Linux arm's lookupCaller/rebuild are file-private, so the
@@ -170,7 +178,7 @@ TEST(GpuDriverClassifier, CostBoundMeasured) {
     // classifier's own hot path (the table binary search, also printed
     // on that line) is what every allocation actually pays.
     const double dladdrNs = eqt::memory::classify_detail::measureClassifierCostNs(
-        static_cast<const void*>(probeCallSite), 10000);
+        probeCallSiteAddr(), 10000);
     EXPECT_GT(dladdrNs, 0.0);
     EXPECT_LT(dladdrNs, 100000.0);  // dladdr is at worst tens of us on macOS
 #else
