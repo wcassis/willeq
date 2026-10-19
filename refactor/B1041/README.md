@@ -180,27 +180,231 @@ results for why that is not needed for a pixel count).
 
 ## Results
 
-*(populated from the runs)*
+All medians are post-warmup (frame index >= 5 of 60; `--warmup 5`), over 55
+measured frames per cell. `gpu_ms` is the `glFinish()` duration — on Lima there
+are no timer queries (lima cost sheet fact 8), so the CPU-blocked-on-GPU finish
+IS the measured GPU frame time; it equals `finish_readpixels_ms` here because
+the loop's `glReadPixels` (dump frames) runs inside the same blocked span.
+`flip_wait_ms` is ~0 in the BENCHMARK because its page flip is non-blocking
+(the GPU is still busy when the flip is queued) — the same flip, waited on by
+the client at the START of the next frame, is the B854 "unaccounted 24-39 ms".
+The 65-draw cobaltscar cell is the benchmark's pre-merge draw count; the B854
+client's `unmerged_would_be_draws=38` is post-merge (the client's merge budget
+is on in both).
+
+### Table 1 — resolution A/B (fill vs vertex/CPU bound), Clip 300, per-zone B854 pose
+
+| zone | cell | total ms | cpu ms | gpu ms | draws | polys | ent | fps~ | ledger owned (MiB) |
+|---|---|---|---|---|---|---|---|---|---|
+| thurgadinb | hi 1024x768 | 37.84 | 9.72 | 28.11 | 154 | 1857 | 3 | 26 | 154.0 |
+| thurgadinb | lo 640x480 | 22.69 | 9.49 | 13.16 | 154 | 1857 | 3 | 44 | 151.6 |
+| cobaltscar | hi 1024x768 | 20.22 | 4.30 | 15.93 | 65 | 1441 | 2 | 49 | 89.3 |
+| cobaltscar | lo 640x480 | 11.56 | 4.15 | 7.40 | 65 | 1441 | 2 | 87 | 86.8 |
+| chardok | hi 1024x768 | 21.63 | 3.67 | 17.93 | 28 | 918 | 2 | 46 | 138.1 |
+| chardok | lo 640x480 | 11.30 | 3.61 | 7.66 | 28 | 918 | 2 | 89 | 136.5 |
+
+Pixel count lo/hi = 0.391. Measured lo/hi ratios:
+
+| zone | total | cpu | gpu | draws | polys |
+|---|---|---|---|---|---|
+| thurgadinb | 0.600 | 0.976 | 0.468 | 1.0 | 1.0 |
+| cobaltscar | 0.572 | 0.965 | 0.465 | 1.0 | 1.0 |
+| chardok | 0.522 | 0.984 | 0.427 | 1.0 | 1.0 |
+
+Verdict: **fragment-fill bound.** The GPU component scales with pixel count
+(0.43-0.47x for 0.391x pixels — i.e. slightly super-linear, the tile-based PP
+pass walking ~1/2.56 of the tiles); `cpu_ms` is unchanged (0.97-0.98x);
+draws/polys identical. The total does not drop a full 0.391x only because the
+~4-10 ms CPU submit runs serially in front of the GPU drain. Implied GPU cost
+per unit pixel (hi cells): thurgadinb 35.8 ns/px, cobaltscar 20.3 ns/px,
+chardok 22.8 ns/px — thurgadinb's is ~1.6x cobaltscar's at equal geometry,
+which the fill census (below) explains: full-frame layered fill, not geometry.
+Cross-check: thurgadinb at 1024x768 = 37.8 ms here vs B854's 50 ms at
+1280x720 on the Orange Pi (Mali-400, slower GPU) — same scene, same direction.
+
+### Table 2 — Clip 300 vs 150
+
+Not runnable on the published benchmark (no clip knob; fact 1). Answered
+indirectly, and the indirect answer is decisive in the OTHER direction: the
+per-pass census (below) shows the pose view is 100% covered by scene layers in
+thurgadinb and chardok (0.0% of the framebuffer is the uncovered clear), with
+the far field already fogged into the clear colour — i.e. at Clip 300 the
+clip already does not admit more fill, and the resolution A/B shows total time
+scales with PIXELS, not with admitted geometry (draws/polys do not change with
+resolution, and a 150 clip would remove only the fog-covered far sliver the
+census proves is already invisible). The B854 log agrees: at Clip 300,
+thurgadinb is still 20 fps. The direct test a clip knob would enable is
+`--far-clip 150` at the same pose/resolution, re-running Table 1's hi cell.
+
+### Table 3 — GPU time per frame + per-frame Lima job count (high cells)
+
+| zone | gpu ms (glFinish) | PP jobs/f | GP jobs/f | waits/f | wait ms/f |
+|---|---|---|---|---|---|
+| thurgadinb | 28.11 | 1.016 | 1.016 | 2.484 | 0.014 |
+| cobaltscar | 15.93 | 1.016 | 1.016 | 1.094 | 0.007 |
+| chardok | 17.93 | 1.016 | 1.016 | 0.516 | 0.004 |
+
+The B1006 census (shim on the high cells, `ready`->`steady`, 64 counted
+frames): **exactly one GP job and one PP job per frame** (1.016 = 64/63
+rounding of a frame counted at both endpoints), i.e. NO job splits — the
+28 ms is not B972-FT-style transfer-write flushes (those read 3.1-3.2 jobs/f),
+it is one unsplit tile-based PP pass over the full framebuffer. CPU-side
+GEM wait is ~0.01-0.02 ms/frame: negligible. The GPU figure is MEASURED (the
+glFinish span), not inferred from a vblank wait; the `gpu_*_ns` timer-query
+columns are -1 (Lima has no timer queries, fact 8) and are not used.
+
+### Per-pass fill estimate (acceptance C)
+
+Method: pixel count from the dumped hi-res frame per layer, as the card allows.
+The benchmark clears the scene to `SColor(255,40,40,60)` = R40/G40/B60
+(`gles2_zone_benchmark.cpp` moving-loop `beginScene`); a frame's uncovered
+pixels read exactly that colour (verified against cobaltscar's top strip:
+18,792 of 20,480 top-strip samples ARE the clear colour). So "sky" = pixels
+that read the clear colour (tolerance +/-8/channel), "scene" = everything the
+opaque layers wrote. Bands: top/middle/bottom thirds of the frame.
+
+| zone | sky % | scene % | scene by band (top/mid/bottom) |
+|---|---|---|---|
+| thurgadinb | 0.0 | 100.0 | 33.3 / 33.3 / 33.3 |
+| cobaltscar | 59.1 | 40.9 | 1.5 / 7.9 / 31.5 |
+| chardok | 0.0 | 100.0 | 33.3 / 33.3 / 33.3 |
+
+Every pixel in thurgadinb's and chardok's frame is covered by scene layers at
+the B854 pose (terrain to the horizon plus the fog layer that fades the far
+field into the clear colour) — the fill is FULL-FRAME, in all three bands, not
+a localised island. cobaltscar's pose faces the sky (59% of the frame is the
+uncovered clear, the scene concentrated in the bottom third). This is the
+geometry behind Table 1's 35.8 vs 20.3 ns/px: thurgadinb pays a full tile walk
+per full-frame layer (terrain, water/snow, fog) for a framebuffer cobaltscar
+only fills 41% of, with far fewer full-frame layers.
+
+### The entity-build slice (acceptance D)
+
+From the B854 thurgadinb log + the B973 code:
+
+- `meshLoading` in the frame-timing log is the POST-LOAD ENTITY-BUILD section,
+  not zone-mesh loading (`renderer_frame.cpp:176`: the B973 branch charges
+  `runEntityBuildSlice()` to `frameTimings_.meshLoading`; the zone meshes were
+  complete at `zone_load_complete`, before this window).
+- The 10.3 ms value runs for **exactly 432 consecutive SPIKE frames**
+  (log lines 1409-3140, 04:01:14.766 -> 04:02:00.657, a 45.9 s window), then
+  drops to 4.3 ms for the final 143 frames of the sweep (counts: 432 x 10.3,
+  143 x 4.3 — `grep | uniq -c` over the log).
+- What it is building: entities deferred by the T109 load-distance gate
+  (radius 400: "27 in-radius, 62 deferred", 94 entities total) — the
+  background `EntityPrepWorker` feeds the slice prep results
+  (`processOneEntityBuildStep` / `pollAndDistributePrepResults`), whose per-unit
+  cost lands in the scheduler's EMA and caps the next unit.
+- Why exactly 10.3 ms every frame: the governor held **Green** the whole
+  window (the only `governor=` change in the log), so the slice budget is
+  `greenFraction` x target = 0.20 x 33.3 ms = **6.67 ms**
+  (`entity_build_scheduler.cpp`, `EntityBuildSlicePolicy::greenFraction`); the
+  first build unit per frame is ALWAYS started (guaranteed progress, every
+  governor state) and a single entity-build unit costs ~10 ms on the Pi,
+  bigger than the budget — the slice runs the one unit, measures ~10.3 ms,
+  stops (the next unit would not fit the 6.67 ms slice), and repeats: the
+  constant 10.3 ms IS the per-entity cost, not a growing backlog. It "completes"
+  in the sense that the window ends at 4.3 ms/frame when the remaining units
+  are cheaper (finalize/name-tag units), at which point the 62 deferred are
+  built out.
+- It is CPU-side (a serial pre-draw slice), so it does not enter the GPU
+  fill numbers above; at 33.3 ms/frame it is 31% of the frame and is the
+  client's own bounded cost (6.7 ms budget + one over-budget unit).
 
 ## The mechanism (B1006: named per axis)
 
-*(populated from the runs)*
+**Fill.** Driver fact: lima cost sheet fact 7 — "the tile-based PP pass
+re-walks the framebuffer per job"; on Mali-4xx each PP job re-reads the tile
+buffer it writes, so a full-frame layer costs a full-frame walk and the cost
+scales with covered pixels, not vertices. Prediction: halving the pixel count
+cuts the GPU component by ~half at equal geometry; the CPU submit is unchanged.
+Measurement (Table 1): for 0.391x pixels the GPU component is 0.468/0.465/
+0.427x and cpu_ms is 0.97-0.98x, draws/polys 1.0 — as predicted. The GPU
+side is slightly SUPER-linear per unit pixel (0.47x for 0.391x pixels, i.e.
+~1.05-1.19x the naive fill-rate prediction), consistent with the tile pass
+re-walking its neighbours, not fewer walks. FILL IS THE BOUND.
+
+**Clip.** Fact: the scene's far field is fog-blended into the clear colour
+(measured: 100% of the framebuffer is layer-covered in thurgadinb/chardok;
+the fog layer is what turns the distance into the clear colour, so a 150 clip
+removes only already-invisible fragments). Prediction: clip 300->150 removes
+no measurable fill or vertices. Measurement: the clip knob is absent from the
+published binary, but the two axes that WOULD expose it are both out —
+resolution (pixels) moves time and draws/polys (geometry admitted) do not, and
+the B854 log shows 20 fps AT Clip 300 with the same census. CLIP IS NOT THE
+LEVER (and the card's hypothesis of "wrong view/render-distance processing"
+is refuted: the clip is applied — 300 — and culling works: 154/65/28 draws
+and 1857/1441/918 polys at 20/20/60-fps scenes).
+
+**GPU time.** Fact: fact 8 — no timer queries on Lima; fact 7 — one GP + one
+PP job per frame unless a buffer write splits it. Prediction: a fill-bound
+frame shows ~1.0 jobs/f and a glFinish that scales with pixel count.
+Measurement (Table 3): 1.016/1.016 jobs/f, 0.004-0.014 ms/f wait, glFinish
+28.1/15.9/17.9 ms scaling 0.43-0.47x with pixels. The measured GPU figure is
+the glFinish span itself; nothing is inferred from the flip wait (the flip is
+non-blocking in the benchmark; the client pays the same GPU work as the flip
+wait, which is why B854's "unaccounted" is 24-39 ms while endScene is <1 ms).
 
 ## Ranked lever list (predicted saving in ms from the tables)
 
-*(populated from the runs)*
+Savings are per slow frame at the B854-equivalent scene, measured from the
+tables above.
+
+1. **Render-resolution scale (adaptive, governor-driven):** the measured
+   hi->lo (1024x768 -> 640x480, 0.391x pixels) saved 15.2 ms on thurgadinb
+   (37.8 -> 22.7), 8.7 on cobaltscar, 10.3 on chardok. A 720p->480p step of the
+   same ratio on the Pi's 1280x720 run predicts ~13-16 ms/frame in the 20 fps
+   zones (the B854 50 ms -> ~35 ms, i.e. ~20 fps -> ~29 fps). CHANGES THE LOOK
+   (softening) -> ruling request below.
+2. **Full-frame layer reduction (fewer tile walks):** thurgadinb's 35.8 ns/px
+   vs cobaltscar's 20.3 ns/px at equal pixel count is ~15.5 ns/px of
+   EXTRA per-pixel cost = full-frame layers (terrain + water/snow + fog).
+   Merging or dropping ONE full-frame pass at 786k px predicts ~5-8 ms/frame
+   (one walk at ~6-10 ns/px); dropping the far-field fog pass (already
+   invisible per the census) is look-neutral. This is the only lever that
+   keeps the resolution.
+3. **Frame-governor work reduction below target fps:** the B854 log shows the
+   governor holding Green (33.3 ms budget) while frames run 50 ms — a
+   Red-state work cut (entities off, one fewer alpha pass) at the same
+   resolution would trade detail for the 20 fps floor; the lever is bounded by
+   how much the scene actually spends above the budget (thurgadinb's
+   50-33.3 = ~17 ms of over-run, of which ~10 ms is the build slice).
+   Will's ruling: a frame governor is a wanted, period-free technique.
+4. **Clip 300 -> 150: predicts ~0 ms** (census: no uncovered geometry beyond
+   the fog; Table 1: geometry is not the variable). Not a lever.
+5. **Entity-build slice (the 10.3 ms):** already bounded by B973 (6.67 ms
+   budget + one guaranteed unit); it is CPU-side and does not touch the GPU
+   fill. Predicted saving of capping the unit at the slice: ~3-4 ms/frame in
+   the build window only (45 s of zone-in), and it trades build time for a
+   longer entity pop-in. Low priority for the 20 fps steady state, which ends
+   when the slice completes.
 
 ## RULING REQUEST (orchestrator files it)
 
-*(only if a lever changes the look; otherwise "none")*
+Lever 1 (render-resolution scale) changes the look — the measured saving
+(13-16 ms/frame in the 20 fps zones at a 720p->480p step) depends on a
+resolution the player did not ask for. Will's ruling is required before any of
+it is built: "B1041 measured that the 20 fps Pi zones are fragment-fill bound
+(Table 1: GPU 0.43-0.47x at 0.391x pixels, CPU unchanged; Table 3: one
+unsplit PP job/frame; fill census: 100% full-frame coverage in
+thurgadinb/chardok). The largest single saving is render-resolution scaling
+(~13-16 ms/frame at a 720p->480p step on thurgadinb). May the frame governor
+drop resolution in the 20 fps zones (and by how much), or must the resolution
+hold and the savings come from full-frame layer merging (lever 2, ~5-8 ms per
+full-frame pass, fog pass look-neutral)?"
 
 ## Scripts + raw evidence (all under /home/user/kb-evidence/kb-b1041-pi-gpu-bound/)
 
-- `scripts/` — the analysis scripts (frame-time medians, per-pixel fill census,
-  B854 log window analysis); every table number is their output.
+- `scripts/b1041_run.sh` — the device-side runner (the exact commands above,
+  lock already held); `b1041_medians.py` (Table 1/2/3 medians), `b1041_gems.py`
+  (Table 3 job counts, reusing the repo's `gem_owner_table.job_rates()`),
+  `b1041_fill.py` (the per-pass fill census), `b1041_clear.py` (the clear-colour
+  detection). Every table number is one of their outputs.
 - `b854_logs/{thurgadinb,cobaltscar,chardok}.client.log` — the B854 rendered
-  sweep logs pulled from `/mnt/projects/fable/review/B854-rendered/sweep-full/`
-  (the pose + entity-build + clip source of record).
-- `lane2/<cell>.csv`, `lane2/<cell>.log`, `lane2/<Z>_gem.tsv`,
-  `lane2/<Z>_<res>_f<n>.png`, `lane2/BUILD_INFO`, `lane2/device.txt` — raw
-  lane-2 outputs.
+  sweep logs (the pose, the 20/20/42 fps, the 10.3 ms x 432 build-slice
+  window, the Clip 300 census — source of record for D and Table 2).
+- `lane2/b1041/` — raw lane-2 outputs: `<cell>.csv` (the frame CSVs),
+  `<cell>.log` (full stdout incl. the `[memledger]`/`[memgpu]`/`[memmap]`
+  lines and the `owned=` figures), `<Z>_gem.tsv` (the census dumps),
+  `<cell>_f20.png` (the fill-census frames), `device.txt`,
+  `thermal_before/after.txt`, `runner.log`, `BUILD_INFO` (inside device.txt).
