@@ -56,6 +56,9 @@ bool FrameComponent::toggleOptionsWindow() {
 }
 
 void FrameComponent::applyOptionsSetting(OptionsLayout::Setting setting) {
+    // Runs once per UI frame even when no setting changed: zone/preset caps
+    // can change independently of a slider gesture.
+    optionsState_.appliedClipPlane = owner_.getRenderDistance();
     switch (setting) {
         case OptionsLayout::Setting::None:
             return;

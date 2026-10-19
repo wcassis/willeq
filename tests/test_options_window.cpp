@@ -471,7 +471,8 @@ TEST(OptionsWindowB1100, HeldClipDragAppliesEachNewStep) {
     auto knob = OL::sliderKnobRect(l, i, s.clipPlane);
     const int y = centre(knob).Y;
     OL::Setting changed = OL::Setting::None;
-    EXPECT_TRUE(input.processOptionsInput(centre(knob).X, y, true, l, s, changed, true));
+    s.leftHeld = true;
+    EXPECT_TRUE(input.processOptionsInput(centre(knob).X, y, true, l, s, changed));
     EXPECT_EQ(changed, OL::Setting::None);
 
     // No new press edge: production must still report each crossed step to
@@ -479,22 +480,23 @@ TEST(OptionsWindowB1100, HeldClipDragAppliesEachNewStep) {
     for (int step : {6, 7}) {
         knob = OL::sliderKnobRect(l, i, step);
         changed = OL::Setting::None;
-        EXPECT_TRUE(input.processOptionsInput(centre(knob).X, y, false, l, s, changed, true));
+        EXPECT_TRUE(input.processOptionsInput(centre(knob).X, y, false, l, s, changed));
         EXPECT_EQ(s.clipPlane, step);
         EXPECT_EQ(changed, OL::Setting::ClipPlane);
         changed = OL::Setting::None;
-        input.processOptionsInput(centre(knob).X, y, false, l, s, changed, true);
+        input.processOptionsInput(centre(knob).X, y, false, l, s, changed);
         EXPECT_EQ(changed, OL::Setting::None);
     }
     // Ownership follows the original press, not the hover rectangle.
     const int outsideX = OL::windowRect(l).LowerRightCorner.X + 20;
-    input.processOptionsInput(outsideX, y, false, l, s, changed, true);
+    input.processOptionsInput(outsideX, y, false, l, s, changed);
     EXPECT_EQ(s.clipPlane, OL::SLIDER_STEPS);
     EXPECT_EQ(changed, OL::Setting::ClipPlane);
     // A release disarms the drag; later pointer motion cannot change it.
-    input.processOptionsInput(outsideX, y, false, l, s, changed, false);
+    s.leftHeld = false;
+    input.processOptionsInput(outsideX, y, false, l, s, changed);
     knob = OL::sliderKnobRect(l, i, 8);
-    input.processOptionsInput(centre(knob).X, y, false, l, s, changed, false);
+    input.processOptionsInput(centre(knob).X, y, false, l, s, changed);
     EXPECT_EQ(s.clipPlane, OL::SLIDER_STEPS);
     EXPECT_EQ(changed, OL::Setting::None);
 }
@@ -516,23 +518,27 @@ TEST(OptionsWindowB1100, MusicAndSoundDragAndTrackClickStillJumps) {
         setOptionsSettingStep(s, c.setting, 5);
         OL::Setting changed = OL::Setting::None;
         auto knob = OL::sliderKnobRect(l, i, 5);
+        s.leftHeld = true;
         EXPECT_TRUE(input.processOptionsInput(centre(knob).X, centre(knob).Y,
-                                              true, l, s, changed, true));
+                                              true, l, s, changed));
         EXPECT_EQ(changed, OL::Setting::None);
         knob = OL::sliderKnobRect(l, i, 6);
         input.processOptionsInput(centre(knob).X, centre(knob).Y,
-                                  false, l, s, changed, true);
+                                  false, l, s, changed);
         EXPECT_EQ(optionsSettingStep(s, c.setting), 6);
         EXPECT_EQ(changed, c.setting);
+        s.leftHeld = false;
         input.processOptionsInput(centre(knob).X, centre(knob).Y,
-                                  false, l, s, changed, false);
+                                  false, l, s, changed);
         const auto track = OL::controlRect(l, i);
+        s.leftHeld = true;
         input.processOptionsInput(track.UpperLeftCorner.X + 1, centre(track).Y,
-                                  true, l, s, changed, true);
+                                  true, l, s, changed);
         EXPECT_EQ(optionsSettingStep(s, c.setting), 0);
         EXPECT_EQ(changed, c.setting);
+        s.leftHeld = false;
         input.processOptionsInput(track.UpperLeftCorner.X + 1, centre(track).Y,
-                                  false, l, s, changed, false);
+                                  false, l, s, changed);
     }
 }
 

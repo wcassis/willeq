@@ -92,6 +92,7 @@ struct OptionsPanelState {
     float appliedClipPlane = 300.0f;
     // B1100: the slider whose press this window owns until release.
     int draggedSlider = -1;
+    bool leftHeld = false;  // Physical button state sampled before UI rendering.
 
     // --- B430/B433: every other wired setting, indexed by Setting ---
     // Renderer-owned values are persisted; Game-owned ones mirror what the

@@ -323,8 +323,7 @@ public:
     bool processOptionsInput(int mouseX, int mouseY, bool leftClicked,
                              const UILayout& layout,
                              OptionsPanelState& options,
-                             OptionsLayout::Setting& changed,
-                             bool leftHeld = false);
+                             OptionsLayout::Setting& changed);
 
     /**
      * B899 (#215 / #151 Leg B): the container windows -- world and carried.

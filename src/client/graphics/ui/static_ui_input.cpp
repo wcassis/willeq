@@ -1029,17 +1029,16 @@ void StaticUIInput::processFrameGesture(float deltaTime, bool buttonDown,
 bool StaticUIInput::processOptionsInput(int mouseX, int mouseY, bool leftClicked,
                                         const UILayout& layout,
                                         OptionsPanelState& options,
-                                        OptionsLayout::Setting& changed,
-                                        bool leftHeld) {
+                                        OptionsLayout::Setting& changed) {
     changed = OptionsLayout::Setting::None;
-    if (!leftHeld) options.draggedSlider = -1;
+    if (!options.leftHeld) options.draggedSlider = -1;
     if (!optionsWindowIsVisible(options)) {
         options.draggedSlider = -1;
         options.hoveredTab = -1;
         options.hoveredControl = -1;
         return false;
     }
-    if (leftHeld && options.draggedSlider >= 0 && !leftClicked) {
+    if (options.leftHeld && options.draggedSlider >= 0 && !leftClicked) {
         // The initial press, not the current hover, owns this slider. A drag
         // continues beyond the track/window and reports only new steps.
         changed = resolveOptionsClick(layout, options, options.draggedSlider,

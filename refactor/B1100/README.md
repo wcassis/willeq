@@ -13,16 +13,17 @@ disarms it. Other controls keep their press-edge behaviour. The frame still
 reports the initial press as UI-owned to `PressOwnership`, which holds that
 owner until release; a slider drag cannot turn into camera look.
 
-The frame passes the event receiver's physical held-button state to
-`StaticUIInput`. A track click remains an immediate jump to its pointer step.
+The input frame samples the event receiver's physical held-button state into
+`OptionsPanelState` before `StaticUIInput` runs. A track click remains an
+immediate jump to its pointer step.
 The three legacy sliders use the same control-kind path; no per-slider gesture
 state is added.
 
 ## Clip cap display
 
-The requested 0..20 slider step remains persisted as set. The apply arm asks
-the renderer for its effective render distance after `setRenderDistance()` and
-feeds that into `OptionsPanelState` for the value label. The label prints the
+The requested 0..20 slider step remains persisted as set. The apply path asks
+the renderer for its effective render distance each UI frame and after
+`setRenderDistance()`, feeding `OptionsPanelState` for the value label. It prints the
 effective world-unit distance with ` (max)` only when it is below the
 requested distance. The renderer logs a clamp once when the requested or
 effective value changes, naming `preset` or `zone`.
@@ -43,6 +44,14 @@ the verification bar.
   including the new release, outside-window drag, music/sound and
   cap-label checks.
 - `rbuild ... hygiene` passed; its environment skips are retained as skips.
+- The first MR pipeline's `build-headless` job failed
+  `FrameRenderOrder.ComposedDrawOrderMatchesThePreG05Golden` because the initial
+  implementation added bookkeeping to `renderer_frame_render.cpp`. The trace
+  is retained in `ci-headless-failure.log` beside the negative log. The
+  bookkeeping moved into `renderer_frame_input.cpp` and the existing
+  `applyOptionsSetting()` call, leaving the golden-covered render TU unchanged.
+  The rebuilt `test_frame_render_order` and Options tests pass together via
+  `rbuild ... test -R 'Options|FrameRenderOrder'`; the golden was not edited.
 
 ## CLAUDE.md EDITS
 

@@ -668,10 +668,8 @@ void FrameComponent::renderStaticUI() {
         OptionsLayout::Setting optionsChanged = OptionsLayout::Setting::None;
         uiTook |= staticUIInput_->processOptionsInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-            pendingUIClick_, uiLayout_, optionsState_, optionsChanged,
-            ctx_.eventReceiver->isLeftButtonHeld());
+            pendingUIClick_, uiLayout_, optionsState_, optionsChanged);
         applyOptionsSetting(optionsChanged);
-        optionsState_.appliedClipPlane = owner_.getRenderDistance();
         // B442b (#151): the world drop click and the item display's lifetime.
         processCursorGestureFrame(uiTook);
         pendingUIClick_ = false;

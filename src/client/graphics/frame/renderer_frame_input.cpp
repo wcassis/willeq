@@ -104,6 +104,7 @@ void FrameComponent::processFrameInput(float deltaTime) {
     int clickY = ctx_.eventReceiver->getClickMouseY();
     pendingUIClick_ = hadClick;  // Preserved for UI input processing in render phase
     pendingUIRelease_ = hadRelease;  // B442b: the motionless world click's release
+    optionsState_.leftHeld = ctx_.eventReceiver->isLeftButtonHeld();
 
     // Update chat panel mouse hover state
     {
