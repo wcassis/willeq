@@ -1307,7 +1307,7 @@ inline bool callerIsGlStack(const void* caller) {
     if (r < 0) g_unknownAfterRebuild.fetch_add(1, std::memory_order_relaxed);
     return r == 1;
 #elif defined(__APPLE__)
-    return classify_detail::callerIsGlStackDarwin(caller);
+    return eqt::memory::classify_detail::callerIsGlStackDarwin(caller);
 #else
     (void)caller;
     return false;
