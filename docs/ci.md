@@ -1089,10 +1089,15 @@ Why two sets: the Pi-vs-x86 residual (B980) is entirely coverage flips at
 alpha-cutout edges (Lima's FS is FP16; Mali's hardware sampler vs
 llvmpipe's software filter turns a sub-LSB sampling difference into a
 whole-pixel flip) plus polygon/far-clip subpixel rules, and the x86
-goldens are 16-bit depth while the Pi's EGL answers 24 — a
-cross-platform compare can never be exact. The Pi IS deterministic
-(B971: 0 px across two binaries in 15 of 15 frames), so one exact-match
-rule works per set.
+goldens are 16-bit depth while the Pi renders 24-bit — a cross-platform
+compare can never be exact. (B1023, #343, named the Pi's 24-bit depth
+measured: it is NOT the fable chooser and NOT the hardware — Mesa's
+`driCreateConfigs()` (25.2.8 `dri_screen.c`) skips the Z16 format for
+32-bit color because `lima_screen.c` does not set
+`caps->mixed_color_depth_bits` (panfrost does — the ROCK 4D lane answers
+depth=16 for the same request); `refactor/B1023/README.md`.) The Pi IS
+deterministic (B971: 0 px across two binaries in 15 of 15 frames), so one
+exact-match rule works per set.
 
 **A Pi golden moves only on a Pi re-bless by Will; an x86 re-bless never
 touches the Pi set, and vice versa.** The Pi verify fails `NOT YET

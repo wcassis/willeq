@@ -1,0 +1,51 @@
+eglGetDisplay(native=0x1b2fab0) -> 0x1b41db0
+eglInitialize(0x1b41db0) -> 1 (1.5)
+eglBindAPI(0x30a0) -> 1
+eglChooseConfig #1: attribs=[0x3033=4,0x4=12324,0x3024=8,0x8=12323,0x3023=8,0x8=12322,0x3022=8,0x8=12321,0x3021=0]
+  -> 8 configs
+eglChooseConfig #2: attribs=[0x3033=4,0x4=12324,0x3024=8,0x8=12323,0x3023=8,0x8=12322,0x3022=8,0x8=12321,0x3021=0]
+  -> 8 configs
+  cfg[0] visual=0x00000000 renderable=0x5 depth=0 stencil=0 surface=0x0 rgb=0/4/12344/0
+  cfg[1] visual=0x00000000 renderable=0x5 depth=0 stencil=0 surface=0x0 rgb=0/4/12344/0
+  cfg[2] visual=0x00000000 renderable=0x5 depth=0 stencil=0 surface=0x4 rgb=1/4/12344/0
+  cfg[3] visual=0x00000000 renderable=0x5 depth=0 stencil=0 surface=0x4 rgb=1/4/12344/0
+  cfg[4] visual=0x00000000 renderable=0x5 depth=0 stencil=0 surface=0x0 rgb=0/4/12344/0
+  cfg[5] visual=0x00000000 renderable=0x5 depth=0 stencil=0 surface=0x0 rgb=0/4/12344/0
+  cfg[6] visual=0x00000000 renderable=0x5 depth=0 stencil=0 surface=0x4 rgb=1/4/12344/0
+  cfg[7] visual=0x00000000 renderable=0x5 depth=0 stencil=0 surface=0x4 rgb=1/4/12344/0
+eglGetConfigAttrib(0x302e) -> 875713112 (?)
+eglGetConfigAttrib(0x3040) -> 5 (RENDERABLE_TYPE)
+eglGetConfigAttrib(0x3025) -> 24 (?)
+eglGetConfigAttrib(0x3026) -> 0 (?)
+eglGetConfigAttrib(0x302e) -> 875713112 (?)
+eglGetConfigAttrib(0x3040) -> 5 (RENDERABLE_TYPE)
+eglGetConfigAttrib(0x3025) -> 24 (?)
+eglGetConfigAttrib(0x3026) -> 8 (?)
+eglGetConfigAttrib(0x302e) -> 875713112 (?)
+eglGetConfigAttrib(0x3040) -> 5 (RENDERABLE_TYPE)
+eglGetConfigAttrib(0x3025) -> 24 (?)
+eglGetConfigAttrib(0x3026) -> 0 (?)
+eglGetConfigAttrib(0x302e) -> 875713112 (?)
+eglGetConfigAttrib(0x3040) -> 5 (RENDERABLE_TYPE)
+eglGetConfigAttrib(0x3025) -> 24 (?)
+eglGetConfigAttrib(0x3026) -> 8 (?)
+eglGetConfigAttrib(0x302e) -> 875713089 (?)
+eglGetConfigAttrib(0x3040) -> 5 (RENDERABLE_TYPE)
+eglGetConfigAttrib(0x3025) -> 24 (?)
+eglGetConfigAttrib(0x3026) -> 0 (?)
+eglGetConfigAttrib(0x302e) -> 875713089 (?)
+eglGetConfigAttrib(0x3040) -> 5 (RENDERABLE_TYPE)
+eglGetConfigAttrib(0x3025) -> 24 (?)
+eglGetConfigAttrib(0x3026) -> 8 (?)
+eglGetConfigAttrib(0x302e) -> 875713089 (?)
+eglGetConfigAttrib(0x3040) -> 5 (RENDERABLE_TYPE)
+eglGetConfigAttrib(0x3025) -> 24 (?)
+eglGetConfigAttrib(0x3026) -> 0 (?)
+eglGetConfigAttrib(0x302e) -> 875713089 (?)
+eglGetConfigAttrib(0x3040) -> 5 (RENDERABLE_TYPE)
+eglGetConfigAttrib(0x3025) -> 24 (?)
+eglGetConfigAttrib(0x3026) -> 8 (?)
+eglGetConfigAttrib(0x3025) -> 24 (?)
+eglGetConfigAttrib(0x3026) -> 0 (?)
+eglCreateContext(config=0x1b44fb0)
+eglCreateWindowSurface(config=0x1b44fb0)
