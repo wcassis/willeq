@@ -1,0 +1,132 @@
+# B1096 (#416): pre-zone EQE1 resolution — the player model is built before the packs are open
+
+Class A, live defect. Every ETC1 run of the fable tip dies at zone-in to
+qeynos2 with `Texture 'daffa0001.bmp' not found in any EQE1 flat pack` (Will's
+XU4 play test 2026-10-19, `xu4:~/willeq/logs/play-20261019T01*.log`, the last at
+`--log-level=DEBUG`).
+
+## The call order, from "Loading characters" to the FATAL
+
+The player's race model (DAF, face variant 1) is built in the PRE-ZONE phase —
+the render thread draws the character before the zone-load thread has run its
+EQE1 step. Two independent pre-zone builders reach the same FATAL:
+
+1. **The paperdoll** (`CharacterModelView`) is rebuilt by the render thread the
+   frame after the player entity exists, on the loading screen:
+   - `overlays_hud_env.cpp:614` — `characterModelView_->setCharacter(...)`
+   - `character_model_view.cpp:96` — `CharacterModelView::setCharacter`
+   - `character_model_view.cpp:208` — `raceModelLoader_->createAnimatedNodeWithEquipment(...)`
+   - `animated_mesh_creation.cpp:365` — `RaceModelLoader::createAnimatedNodeWithEquipment`
+   - `animated_mesh_creation.cpp:403` — `getAnimatedMeshWithAppearance(race, gender, headVariant, bodyVariant, textureVariant, ...)`
+   - `mesh_building.cpp:690` / `:306` — `buildMeshFromGeometry` → `meshBuilder_->loadTextureFromBMP(name, texInfo->data, ...)`
+   - `zone_geometry.cpp:314` — `ZoneMeshBuilder::loadTextureFromBMP`
+   - `zone_geometry.cpp:332` — `constrainedCache_->getOrLoad(name, data, ...)`
+
+2. **The in-zone player model** is built on the loading thread, but that thread
+   runs the zone steps in order — and the FATAL is reached from the *render*
+   thread (path 1) first, before Step0 runs:
+   - `application_zone_loading.cpp:185` — `Application::loadZoneGraphicsOnThread`
+   - `application_zone_loading.cpp:322` — `m_renderer->loadZoneSequential(...)`
+   - `renderer_zone_load.cpp:994` — `ZoneLoadComponent::loadZoneSequential`
+   - `renderer_zone_load.cpp:1065` — `loadZoneStep0_EQE1(ctx)` ← opens the zone packs **and** registers the archive resolver
+   - `renderer_zone_load.cpp:1097` — `loadZoneStep8_Entities(ctx)` ← where the in-zone player model is prepared
+
+**Step0 runs on the loading thread; the paperdoll (path 1) runs on the render
+thread and is already building the model before Step0 returns.** The DEBUG log
+confirms it: exactly one `EQE1Loader: mmap'd` (willeq.eqe1, from startup) and no
+`SEQ Step0` line before the FATAL.
+
+## The FATAL branch
+
+`constrained_texture_cache.cpp:622`, in `ConstrainedTextureCache::getOrLoad`:
+
+```
+getOrLoad(name, data, ...)                              constrained_texture_cache.cpp:511
+  findCompressedEntry(name, stem)                       :594  -> _compressed.cpp:300
+    scan the OPEN loaders ... miss                       _compressed.cpp:384
+    if (!eqe1ArchiveResolver_) return nullptr           _compressed.cpp:391   <-- unset pre-zone
+  if (!snapshotEQE1Loaders().empty()) {                 :622   <-- willeq.eqe1 IS open
+    LOG_FATAL("Texture '{}' not found in any EQE1 flat pack")   :646
+    std::exit(1);                                                     :651
+  }
+```
+
+The resolver (`eqe1ArchiveResolver_`) is registered ONLY in
+`loadZoneStep0_EQE1` (`renderer_zone_load.cpp:174`). Until then, `willeq.eqe1`
+open makes `snapshotEQE1Loaders()` non-empty, so any name whose owner is another
+pack (daffa0001 → global_archive, globaldaf_archive per the index) hits the
+all-or-nothing rule and exits.
+
+### The key correction to the issue's mechanism
+
+The FATAL gate at `:622` is **`!snapshotEQE1Loaders().empty()`** — *any* loader
+open — **not** "the caller's data was empty". B1051's three sites
+(`renderer_zone_load_entities.cpp:404`, `zone_geometry.cpp:314`,
+`variant_loading_preload.cpp`) made the loaders *proceed with empty data* when
+`hasEQE1Loaders()` — but that is a red herring for the FATAL itself: keeping the
+S3D bytes would not stop the exit, because the branch never reads `data`. What
+matters is that the name is **unresolvable** (no open pack holds it and no
+resolver is set). This is why the fix is to make the name *resolvable* before
+the pre-zone build, not to keep the bytes (the card's "preferred" Option B is
+inert for this FATAL — see "Why this option, not keeping the bytes").
+
+## The fix
+
+Install the EQE1 name→archive resolution at startup, in `initLoadingScreen`,
+right after willeq.eqe1 opens (U02) and before the pre-zone UI (U03):
+
+- `renderer_init.cpp:586` — `initializeEQE1EarlyResolution(*this, constrainedTextureCache_)`
+- new TU `src/client/graphics/eqe1/eqe1_early_resolution.cpp` — loads
+  `data/eqe1_texture_index.json` (once; Step0's `isLoaded()` guard makes its
+  re-load a no-op) and registers
+  `cache->setEQE1ArchiveResolver(name -> Eqe1().openArchiveContaining(name))`.
+
+With the resolver in place before the pre-zone build, `findCompressedEntry`
+(`_compressed.cpp:391`) resolves a miss to the ONE archive that holds the name
+and opens it (daffa0001 → global_chr). A genuine asset gap (a name in no
+archive) still resolves to nothing and stays fatal under decision #2 — no new
+FATAL sites. `loadZoneStep0_EQE1` still re-registers; that stays a no-op.
+
+### Why this option, not "keep the S3D bytes"
+
+The card's preferred Option B (the B1051 condition becomes "this name's archive
+is open or resolvable", keeping the bytes otherwise) does not prevent the FATAL:
+`getOrLoad`'s all-or-nothing branch at `:622` is reached before `data` is ever
+decoded, and it fires on *any* open loader + unresolvable name. Keeping the bytes
+only changes which *later* line would warn. Registering the resolver (and letting
+the index open the owning pack) is what actually removes the miss. B1051's own
+fix is left intact — the per-NPC variant series still resolves from EQE1 once the
+zone's packs are open, and now resolves pre-zone too.
+
+## Red / green
+
+- **Red** (`test_pre_zone_eqe1_resolution_order`, source scan): `initLoadingScreen`
+  must name `initializeEQE1EarlyResolution()` between the U02 willeq.eqe1 open
+  and the U03 UI atlas. Compiles on the parent (no new symbol) and FAILS there —
+  the anchor is absent. Green at the head.
+- **Green / behavior** (`test_pre_zone_eqe1_resolution`, two tests):
+  - `PreZoneMissWithNoResolverExits` — death test, the exact branch: willeq.eqe1
+    open, no resolver, daffa0001 → `getOrLoad` exits(1). (The parent's *behavioral*
+    red; it names the new seam so it builds at the head, where it pins the FATAL
+    branch is still the behavior a *no-resolver* configuration has.)
+  - `EarlyResolutionResolvesANameNoOpenPackHolds` — the SAME single-open-pack
+    configuration, but the early resolution installed: the index resolves
+    daffa0001 → global_chr, the pack is opened on demand, the name is served
+    by it. No exit. It requests the name with and without bytes to show the FATAL
+    gate is the open-loader set, never the data.
+
+Both behavioral tests skip when the ETC1 tree is not mounted (asset dependency,
+same idiom as `test_eqe1_archive_component.cpp`); on the build host (ThinkPad,
+via rbuild) both are present.
+
+## B1051 tests still green
+
+`test_entity_model_sharing` and `test_eqe1_source_archive` are untouched and run
+in the full suite; the fix adds a resolver before them, never removes one.
+
+## No new FATAL sites, no budget/golden/preset/third_party change
+
+`git grep 'LOG_FATAL' -- <new files>` is empty for the new TU; the only behavioral
+change is registering a resolver earlier. `tests/goldens/*`, any `manifest.json`,
+baselines, ratchets, `config/constrained_presets.json` and `third_party/` are
+untouched (empty grep).
