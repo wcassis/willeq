@@ -147,6 +147,10 @@ public:
 	void SetLoadingPhase(LoadingPhase phase, const char* statusText = nullptr);
 	float GetLoadingProgress() const;
 	const char* GetLoadingStatusText() const;
+	// B1099 (#419): the line the loading screen shows NOW -- the phase's
+	// table text, or the override SetLoadingPhase() was handed (the
+	// "Could not connect to ..." line of a pre-zone connect give-up).
+	const char* CurrentLoadingStatusText() const { return m_loading_status_text; }
 	bool IsGameStateReady() const { return static_cast<int>(m_loading_phase) >= static_cast<int>(LoadingPhase::ZONE_AWAITING_CONFIRM); }
 	bool IsGraphicsReady() const { return m_loading_phase == LoadingPhase::COMPLETE; }
 

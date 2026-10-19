@@ -11,6 +11,7 @@
 
 #include "client/core/memory_ledger.h"
 #include "client/graphics/frame/frame_component.h"
+#include "client/graphics/renderer_event_receiver.h"  // B1099
 #include "client/graphics/ui/ui_renderer.h"
 
 namespace EQT {
@@ -42,6 +43,20 @@ bool IrrlichtRenderer::drawPreZoneUI(const std::function<void(UIRenderer&, const
     }
     driver_->endScene();
     return true;
+}
+
+// B1099 (GitLab #419): see loading_screen_quit.h. The ESC latch is the one
+// RendererEventReceiver::OnEvent() already sets for an unfocused chat (no chat
+// exists before a zone), so a loading-screen ESC is read, and spent, here.
+LoadingScreenQuit IrrlichtRenderer::pollLoadingScreenQuit(bool loaderOwnsContext) {
+    if (!device_) return LoadingScreenQuit::None;
+    if (!loadingScreenMayPump(loaderOwnsContext, config_.constrainedConfig.useDRM)) {
+        return LoadingScreenQuit::None;
+    }
+    const bool running = device_->run();
+    const bool escape = eventReceiver_ && eventReceiver_->escapeKeyPressed();
+    const bool flag = eventReceiver_ && eventReceiver_->quitRequested();
+    return loadingScreenQuitDecision(running, escape, flag);
 }
 
 }  // namespace Graphics

@@ -2,6 +2,24 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.14)
 
 PROJECT(willeq VERSION 1.0.0 LANGUAGES CXX C)
 
+# 2026-10-19 OOM on dev-u24: a tree configured with NO build type compiles with
+# neither -O nor -g, and the objects balloon with mangled template symbol names
+# (85 MB per TU; libwilleq_core.a 5.7 GB against 130 MB for Release). A full
+# `cmake --build -j12` of that tree then ran ten links at once, 38 GB on a
+# 32 GB box, and the kernel OOM killer took two sessions with it. An empty
+# build type therefore means Release; pass -DCMAKE_BUILD_TYPE explicitly for
+# anything else.
+IF(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    SET(CMAKE_BUILD_TYPE Release CACHE STRING
+        "Build type (empty defaulted to Release, see the 2026-10-19 note)" FORCE)
+ENDIF()
+
+# Cap concurrent link steps: each test binary links the whole core archive.
+# Ninja honours job pools; the Unix Makefiles generator ignores them, so on
+# make trees the Release default above is the only guard.
+SET_PROPERTY(GLOBAL PROPERTY JOB_POOLS link_pool=2)
+SET(CMAKE_JOB_POOL_LINK link_pool)
+
 # C++17 required
 SET(CMAKE_CXX_STANDARD 17)
 SET(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -381,6 +399,8 @@ SET(CLIENT_CORE_SOURCES
     # T397 (board B221): the one shipped-data path resolution.
     src/client/core/data_paths.cpp
     src/client/login_world/login_world_component.cpp
+    # B1099 (#419): the bounded login/world connect
+    src/client/login_world/login_connect_bound.cpp
     # B888 (#204): native character creation -- the server's rules, the era
     # data (data/char_create.tsv and FacePick ranges), the four
     # packets, and the world-stage script.
@@ -459,6 +479,8 @@ SET(CLIENT_CORE_SOURCES
     src/client/zone_load_handoff.cpp
     # B918: the process-wide FATAL-exit record main() turns into exit code 4
     src/client/fatal_exit.cpp
+    # B1099: SIGINT/SIGTERM -> the clean quit (second signal forces)
+    src/client/quit_signal.cpp
     # P28: PfsArchive/WldLoader have no renderer dependency (zone_bsp.h: "no
     # graphics dependencies") and are used unconditionally by base game logic
     # regardless of EQT_GRAPHICS — audio_manager.cpp scans sound archives via
@@ -594,6 +616,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/application_config.cpp
     src/client/application_world_script.cpp  # B888
     src/client/application_char_select.cpp  # B998
+    src/client/application_quit.cpp  # B1099
     src/client/action/eq_action_handler.cpp
     src/client/action/eq_action_handler_spells_trade.cpp
     src/client/action/eq_action_handler_extended.cpp

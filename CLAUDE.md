@@ -160,9 +160,10 @@ specifically.
 
 ## Build Commands
 
-**`-j$(nproc)` does not expand reliably in a Bash tool command. Pass a hardcoded
-value, e.g. `cmake --build build -j24`** (hermes-ext workers: 4 GiB cgroup, `-j3`, B1046). From a script
-(e.g. `scripts/build-arm-noble.sh`), `$(nproc)` works fine.
+**Pass a hardcoded `-j` (`-j$(nproc)` does not expand in a Bash tool command;
+hermes-ext workers `-j3`, B1046) and `-DCMAKE_BUILD_TYPE=Release`; build NAMED
+targets, never a whole tests-on tree at `-j12`** (2026-10-19 OOM,
+`docs/decisions.md`).
 
 **Desktop-GL Irrlicht support has been removed (P30,
 `refactor/desktop_gl_elimination_plan.md`).** `EQT_GRAPHICS=ON` (the default)
@@ -182,6 +183,7 @@ bash scripts/build-gles2-x86.sh --irrlicht-only
 # tree (tests on, full ctest suite). Since T392 (2026-09-05, board B215) the
 # suite has NO expected failures: a red test is a real red.
 mkdir -p build && cmake -S . -B build \
+    -DCMAKE_BUILD_TYPE=Release \
     -DEQT_GRAPHICS=ON \
     -DEQT_GLES2=ON \
     -DEQT_DRM=OFF \

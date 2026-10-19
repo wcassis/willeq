@@ -11,6 +11,7 @@
 #include "client/application.h"
 #include "client/core/memory_ledger.h"
 #include "client/eq.h"
+#include "client/fatal_exit.h"  // B1099: CouldNotConnectRecorded
 #include "client/scenario/scenarios.h"
 #include "common/logging.h"
 
@@ -112,8 +113,16 @@ int main(int argc, char* argv[]) {
     // return 0 too. The one decision is eqt::scenario::ProcessExitCode()
     // (scenario_runner.h).
     const bool fatal = app.fatalShutdown();
+    // B1099 (#419): the pre-zone connect bound gave up -> 3 (scenario_runner.h).
+    const bool noConnect = eqt::CouldNotConnectRecorded();
     exitCode = eqt::scenario::ProcessExitCode(
-        app.scenarioRequested(), app.scenarioRequested() ? app.scenarioExitCode() : 0, fatal);
+        app.scenarioRequested(), app.scenarioRequested() ? app.scenarioExitCode() : 0, fatal,
+        noConnect);
+    if (noConnect && !fatal) {
+        LOG_ERROR(MOD_MAIN, "exiting {}: {}", exitCode, eqt::CouldNotConnectReason());
+        std::cerr << "COULD-NOT-CONNECT exit=" << exitCode
+                  << " reason=" << eqt::CouldNotConnectReason() << "\n";
+    }
     if (fatal) {
         LOG_FATAL(MOD_MAIN, "exiting {} after a FATAL: {}", exitCode, app.fatalShutdownReason());
         std::cerr << "FATAL exit=" << exitCode << " reason=" << app.fatalShutdownReason() << "\n";

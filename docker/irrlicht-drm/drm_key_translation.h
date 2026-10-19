@@ -115,4 +115,16 @@ inline bool translateKeyEvent(const input_event& input, irr::EKEY_CODE key,
     return true;
 }
 
+// B1099 (GitLab #419): Ctrl+C on the evdev keyboard is the quit chord.
+// Under K_OFF the VT never turns it into SIGINT (that is what K_OFF is for:
+// the console must not eat Ctrl+key), so the device does -- raise(SIGINT) in
+// pollEvdev(), the VT's own meaning of the chord. Evaluate it AFTER
+// translateKeyEvent() so `ctrlDown` already holds this event's modifier state.
+// The first press only (value 1): a held C's auto-repeat (value 2) must not
+// turn one Ctrl+C into the second signal that forces the exit.
+inline bool isQuitChord(const input_event& input, bool ctrlDown)
+{
+    return input.type == EV_KEY && input.code == KEY_C && input.value == 1 && ctrlDown;
+}
+
 } // namespace eqt_drm

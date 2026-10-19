@@ -905,6 +905,17 @@ EXEMPT_TESTS_GROUPS = {
     # run (set once, read by main()); a test that trips it on purpose must
     # clear it so later cases in the same binary start clean.
     ("(free)", "ResetFatalExitForTest"): "seam",
+    # B1099 (#419): the could-not-connect record and the quit-signal latch
+    # are the same one-way process-wide shape as B918's FATAL record; a test
+    # that trips one on purpose clears it for the next case.
+    ("(free)", "ResetCouldNotConnectForTest"): "seam",
+    ("(free)", "ResetQuitSignalsForTest"): "seam",
+    # B1099: the test's windows onto the pre-zone connect bound -- the text
+    # the loading screen shows now (production writer: SetLoadingPhase's
+    # override, read by the bridge's setProgress/ZoneLoading publish from the
+    # member) and the watchdog itself (production driver: TickLoginConnect).
+    ("BridgeComponent", "CurrentLoadingStatusText"): "observer",
+    ("LoginWorldComponent", "LoginConnectBound"): "observer",
     # B894 (#210): the in-flight fishing latch is gated live by
     # stopFishingOnMove/stopFishingOnPositionState (the state-bus listeners
     # that end a cast with eqstr 165) and by getSkillUseError's

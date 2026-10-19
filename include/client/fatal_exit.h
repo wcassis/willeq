@@ -31,4 +31,23 @@ std::string FatalExitReason();
 /** Tests only: forget a recorded FATAL. */
 void ResetFatalExitForTest();
 
+// B1099 (GitLab #419): the sibling record for a run that ended because the
+// server could not be reached -- the pre-zone connect bound gave up
+// (LoginWorldComponent::TickLoginConnect, login_connect_watchdog.h). It is not
+// a FATAL (nothing in the client is broken), so it is its own record, and
+// eqt::scenario::ProcessExitCode() maps it to kClientCouldNotConnectExit (3,
+// the same number --scenario calls could-not-start). A FATAL wins over it.
+
+/** Record that the server could not be reached. The first reason wins. */
+void RecordCouldNotConnect(const std::string& reason);
+
+/** True once RecordCouldNotConnect() has been called in this process. */
+bool CouldNotConnectRecorded();
+
+/** The first recorded reason ("" when none). */
+std::string CouldNotConnectReason();
+
+/** Tests only: forget a recorded could-not-connect. */
+void ResetCouldNotConnectForTest();
+
 }  // namespace eqt

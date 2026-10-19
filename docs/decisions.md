@@ -2648,3 +2648,87 @@ exited the client.
    the early resolution installed, which resolves daffa0001 → global_chr by
    opening it on demand). `refactor/B1096/README.md` has the call order, the
    mechanism, and the red/green.
+
+## 2026-10-19 — quit is reachable from every loading phase, and the pre-zone connect is bounded (B1099, #419)
+
+Will, 2026-10-19 (the XU4, `play.sh` against a stopped akk-stack): the client
+sat on "Connecting to login server..." and nothing could quit it -- "I should
+be able to ctrl+c or quit the application at any time." Four mechanisms, each
+fixed where it lives:
+
+1. **SIGINT is the clean quit, like SIGTERM** (`include/client/quit_signal.h`).
+   One handler for both, installed at the top of `Application::mainLoop()` --
+   AFTER `initGraphics()`, because the DRM device installs its own
+   keyboard-restore handler for both signals there and used to overwrite P36's
+   SIGTERM flag, so a SIGTERM on the Pi killed the client without
+   `Application::shutdown()`. The first signal latches and the main loop calls
+   `requestQuit()`; a SECOND signal runs the handler installed before (the
+   device's keyboard restore) and then the default disposition -- the way out
+   of a clean shutdown that does not finish.
+2. **Ctrl+C on the DRM/evdev keyboard raises SIGINT**
+   (`eqt_drm::isQuitChord`, `docker/irrlicht-drm/drm_key_translation.h`, both
+   device forks). Chosen over posting a window-close because K_OFF is what took
+   the chord's meaning away: raising SIGINT restores exactly the VT's own
+   behaviour for every host of the device (willeq's handler = the clean quit;
+   no handler = the device's restore-then-die), with no new coupling between
+   the device and `Application`. ESC is NOT a device-level quit (it closes
+   windows in game); it quits only from a loading screen (item 3). The device
+   logs "evdev: VT keyboard mode restored" on every restore.
+3. **The loading screen reads input** (`include/client/graphics/loading_screen_quit.h`).
+   `Application::render()` drew the handshake loading screen INSTEAD of
+   `processFrame()`, the only caller of `device->run()`, which on DRM is the
+   only place evdev is read -- so nothing was read at all. The loading-screen
+   frames now pump the device; ESC, a closed window or the receiver's quit flag
+   requests the quit. While the zone loading thread owns the GL context only
+   the DRM device is pumped (its `run()` makes no GL or windowing call).
+4. **The pre-zone connect is bounded** (`include/client/login_world/login_connect_watchdog.h`):
+   `LOGIN_CONNECTING`, `LOGIN_AUTHENTICATING` and `WORLD_CONNECTING` each get
+   30 s, a STATED DEFAULT: no login-connect census and no official-client
+   dead-host measurement exist in-tree, and these connects are the same
+   Daybreak session handshake whose bound IS measured for the zone
+   (`review/B1072/zone_connect_interval_census.txt`). No retry. A give-up tears
+   the session down, puts "Could not connect to login server" (or "... world
+   server") on the loading screen, and records the could-not-connect exit:
+   **exit code 3** (`kClientCouldNotConnectExit` = `kScenarioCouldNotStart`,
+   `include/client/scenario/scenario_runner.h`) -- the same number `--scenario`
+   already gives "never reached a zone (server down)", distinct from a clean
+   quit (0), bad arguments (1) and a client FATAL (4, which wins). A headless or
+   `--scenario` run then quits; a graphics run keeps the message up with quit
+   available. Pinned by `test_login_connect_timeout`, `test_quit_signal` and
+   `test_drm_key_translation` (`DRMQuitChord`).
+5. **A quit during the GL half of a zone-in does not wait for the load.**
+   `Application::shutdown()` already set `LoadingStatus::quitRequested` before
+   joining the loading thread, but nothing read it until the load ended (many
+   seconds on the XU4). `ZoneLoadComponent::loadZoneSequential()` now checks it
+   at every step boundary and abandons the rest; `loadZoneGraphicsOnThread()`
+   then returns without the impostor prep. Measured on x86 against the local
+   akk-stack: SIGINT at 71 % (05_Assets) -> exit 0 in 0.28 s
+   (`review/B1099/x86_gfx_live_sigINT_during_zone_load.log`).
+
+## 2026-10-19 — an empty CMAKE_BUILD_TYPE means Release; never full-build a tests-on tree at high -j on a shared box
+
+Will (2026-10-19, "do 1 through 4"), after the 12:19Z OOM on dev-u24 (32 GB +
+8 GB swap) killed two Claude sessions. An opus executor configured
+`wt/b1099/build` with NO build type and ran `cmake --build build -j12` over the
+whole tree. With neither `-O` nor `-g` the objects balloon with mangled
+template symbol names (`.strtab` + `.shstrtab` are 80 of an 88 MB TU);
+`libwilleq_core.a` came out at 5.7 GB against 130 MB for a Release tree and
+3.4 GB for RelWithDebInfo. After the archive rebuilt, make relinked the ~200
+test binaries with no link cap: ten `ld` at once, 1.4-5.2 GB each, 38.6 GB
+resident. The kernel OOM killer took one `ld`, the user dbus daemon and the
+GitLab runner. systemd's default `OOMPolicy=stop` then stopped the tmux pane
+scope that held the executor: SIGTERM ended session one, Will restarted
+claude in the same pane, and the stop job's 90 s timeout SIGKILLed session
+two. Decisions:
+
+1. **CMakeLists defaults an empty build type to Release** (single-config
+   generators) and declares a Ninja link pool of 2. Unix Makefiles ignores
+   job pools, so on make trees the Release default is the only guard.
+2. **Executor rule:** every configure passes `-DCMAKE_BUILD_TYPE=Release`
+   (RelWithDebInfo when a debugger is needed); build named targets; check
+   `free -g` before any `-j12`+ build; a Debug tree is still 5 GB+ of
+   archive and is never full-built above `-j4`.
+3. **dev-u24 user systemd:** `~/.config/systemd/user/tmux-spawn-.scope.d/
+   10-oom-continue.conf` sets `OOMPolicy=continue`, so an OOM-killed build
+   child no longer takes the Claude pane with it (verified on a test scope).
+4. The untyped `wt/b1099/build` (14 GB) was deleted and reconfigured Release.
