@@ -38,16 +38,8 @@
 
 #if defined(EQT_HAS_DRM) || defined(EQT_HAS_GLES2)
 #define EQT_EQE1_UPLOAD_AVAILABLE 1
-#ifdef __APPLE__
-// B1043 (#363): macOS has no desktop GL/gl.h on the GLES2 path; ANGLE ships
-// the GLES2 headers. (Linux keeps Mesa's GL/gl.h: the FIX card moves every
-// GLES2 build to <GLES2/gl2.h>.)
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
-#else
-#include <GL/gl.h>
-#include <GL/glext.h>
-#endif
 // Defined in COpenGLES2Driver.cpp (docker/irrlicht-drm) -- see
 // COGLES2Texture's "Residency" block.
 extern void gles2TextureReleaseStorage(void* texture);

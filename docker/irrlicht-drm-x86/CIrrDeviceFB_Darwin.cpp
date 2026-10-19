@@ -7,8 +7,8 @@
 // initEGLSurfaceless(): on ANGLE the Mesa surfaceless platform is refused and
 // eglGetDisplay(EGL_DEFAULT_DISPLAY) gives ANGLE's default (Metal) display,
 // with a pbuffer surface -- the headless shape gles2_zone_benchmark and the
-// visual gate use on x86. No input and no window: a Cocoa window path (the
-// parallel of --egl-x11) and Cocoa input are the FIX card's.
+// visual gate use on x86. The opt-in window + input (--egl-window, the
+// parallel of --egl-x11) is CIrrDeviceFB_Cocoa.mm (B1044).
 //
 // Compiled only on Darwin (scripts/build-gles2-darwin.sh adds the object);
 // the whole body is guarded so a stray Linux compile is empty.
@@ -44,14 +44,8 @@ void CIrrDeviceFB::initEvdev() {}
 void CIrrDeviceFB::pollEvdev() {}
 void CIrrDeviceFB::initKeyMap() {}
 
-bool CIrrDeviceFB::initEGLX11()
-{
-    os::Printer::log("--egl-x11: no X11 on Darwin (B1043)", ELL_ERROR);
-    return false;
-}
-
-void CIrrDeviceFB::closeX11Window() {}
-void CIrrDeviceFB::pollX11Events() {}
+// B1044 (#364): initEGLX11() / pollX11Events() / closeX11Window() are the
+// Cocoa window backend on Darwin, in CIrrDeviceFB_Cocoa.mm.
 
 } // end namespace irr
 
