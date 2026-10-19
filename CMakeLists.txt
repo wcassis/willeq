@@ -736,6 +736,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/zone_stream/renderer_zone_merge.cpp
         src/client/graphics/zone_stream/renderer_zone_stream.cpp
         src/client/graphics/eqe1/eqe1_archive_component.cpp
+        src/client/graphics/eqe1/eqe1_early_resolution.cpp  # B1096: pre-zone EQE1 resolution
         src/client/graphics/sim/renderer_sim_bridge.cpp
         src/client/graphics/frame/renderer_frame.cpp
         src/client/graphics/frame/renderer_frame_input.cpp

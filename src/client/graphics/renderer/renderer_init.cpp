@@ -10,6 +10,7 @@
 #include "client/zone/zone_display_name.h"  // B1088 (#408): the loading screen's zone name
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/eqe1_loader.h"
+#include "client/graphics/eqe1/eqe1_early_resolution.h"  // B1096: pre-zone EQE1 resolution
 #include <filesystem>
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/eq/equipment_textures.h"
@@ -574,6 +575,19 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
             return false;
         }
     }
+
+    // B1096 (#416): install the EQE1 name->archive resolution NOW, not at zone
+    // Step0. The player's race model (the paperdoll, and the pre-zone
+    // character view) is built on the render thread BEFORE
+    // loadZoneStep0_EQE1 opens the zone's packs and registers this resolver;
+    // with only willeq.eqe1 open, a variant texture whose owner is a global
+    // pack (e.g. daffa0001 in global_chr) missed every open pack, and
+    // getOrLoad()'s all-or-nothing rule -- gated on ANY loader being open,
+    // not on the data being empty -- exited the client at zone-in. The index
+    // (data/eqe1_texture_index.json) answers a miss with at most one open,
+    // so the pre-zone build resolves exactly as the in-zone build does.
+    // loadZoneStep0_EQE1 still re-registers; that stays a no-op.
+    initializeEQE1EarlyResolution(*this, constrainedTextureCache_);
 
     // U03: Initialize static layout UI renderer
     LOG_TRACE(MOD_GRAPHICS, "Initializing UI renderer...");
