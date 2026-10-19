@@ -99,7 +99,7 @@ if ! bash "$REPO/scripts/eqemu/up.sh" >>"$OUT/driver.log" 2>&1 || ! eqemu_stack_
 # below still seeds any zone per run.
 eqemu_roster_zone_seed >>"$OUT/driver.log" 2>&1 || { STATUS=65; exit "$STATUS"; }
 eqemu_snapshot "$OUT/db-before.tsv" || { STATUS=65; exit "$STATUS"; }
-CHAR_IDS=$(eqemu_sql "SELECT id FROM character_data WHERE name IN ('Testcaster','Testchar') ORDER BY id;" | paste -sd, -)
+CHAR_IDS=$(eqemu_sql "SELECT id FROM character_data WHERE name IN ('Testcaster','Testchar','Testbuddy') ORDER BY id;" | paste -sd, -)
 [[ -n $CHAR_IDS ]] || { STATUS=65; exit "$STATUS"; }
 eqemu_inventory_snapshot "$OUT/inventory-before.tsv" "$CHAR_IDS" || { STATUS=65; exit "$STATUS"; }
 eqemu_sql "SELECT id,name FROM account ORDER BY id;" >"$OUT/accounts-before.tsv" || { STATUS=65; exit "$STATUS"; }

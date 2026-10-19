@@ -1,0 +1,81 @@
+# B1022 oracle checkpoint — blocked before a swing-rate mapping
+
+The prescribed two-client oracle was run on eqemu/oracle lane 2 on 2026-10-19.
+The official client observed as Testcaster; the headless fable client acted as
+Testbuddy. Both weapon phases used the **same actor**. The captured video and
+packet records are under
+`/home/user/kb-evidence/kb-b1022-weapon-delay/oracle-d/` and
+`/home/user/kb-evidence/kb-b1022-weapon-delay/actor4/`. Earlier unsuccessful
+setups remain as `oracle-b`/`actor` (observer faced a wall; actor Z was 51) and
+`oracle-c`/`actor2`/`actor3` (server reloaded a cached Z=51 after a late DB
+correction). They are failed checks, not discarded green evidence.
+
+## Controlled run
+
+`oracle-plan-3.tsv` put Testcaster in arena at `(200,-963,3.13)`, set daytime,
+spawned `a_training_dummy` (npc type 77002), then recorded the actor window at
+10 fps. After the oracle wrapper's DB/inventory snapshot and **before the
+actor's first login**, Testbuddy was seeded at `(200,-960,3.13)`, level 75.
+The actor's zone-in log confirms the server profile's Z was 3.13
+(`actor4/actor.log`, `[ZONE-IN] PlayerProfile position`). The earlier Z=51
+out-of-range messages are absent. The actor targeted `a_training_dummy001`
+and `/attack` was accepted in both phases.
+
+The server's `items` table was read back, and its inventory at the phase
+change showed both actual equipment rows:
+
+| Phase | item ID | server item | delay | actor `/attack` timestamp | official video period | OP_Animation speed byte |
+| --- | ---: | --- | ---: | --- | --- | --- |
+| slow | 2492 | Crystal Staff of the Nexus | 45 | 05:14:21.292 UTC | **not measurable** | **absent** |
+| fast | 5730 | Di`zok Sceptre of Authority | 20 | 05:14:58.387 UTC | **not measurable** | **absent** |
+
+These are item delays, **not measured swing periods**. No frame-index
+arithmetic can be reported honestly: no swing animation reached the official
+observer to establish a pair of swing starts. The video is retained for frame
+stepping when a real swing source is available.
+
+## Packet result and cause
+
+`actor4/session.sleq`, parsed with the repository's packed `session_log.h`
+layout by `read_sleq.py` in the evidence root, contains **zero** OP_Animation
+(`0x2acf`), OP_Action (`0x497c`), or OP_Damage (`0x5c78`) records in the
+actor window. It records the two on/off pairs of OP_AutoAttack (`0x5e55`)
+and OP_AutoAttack2 (`0x0701`) at recording offsets 13.066, 45.099, 50.162,
+and 82.183 seconds. `oracle-d/05_actor_slow_then_fast.opcodes.tsv` has 318
+client-to-server and 51 server-to-client packets, **zero** OP_Animation,
+OP_Action, or OP_Damage, and 9 OP_WearChange packets. The source census
+agrees: `CombatManager::EnableAutoAttack()` sends only the two auto-attack
+toggles (`src/client/combat.cpp`), while `EntitiesComponent::SendAnimation()`
+is called for an explicit action or skill (`src/client/action/` and
+`src/client/skill/`), not the ordinary `/attack` path. Thus the card's
+fable-actor capture does not expose the speed byte it asks us to map.
+
+The wrapper stopped the world before restoring. `cmp` of `db-before.tsv`
+against `db-after.tsv` and `inventory-before.tsv` against
+`inventory-after.tsv` both exited 0; `ledger_check.txt` says
+`BROKEN REFERENCES: 0`; the wrapper exited 0 with `lane=2 lock=state=FREE`.
+The Testbuddy inventory rows were included in the wrapper's snapshot for
+this run. No lane resource remains held.
+
+## Verification at this checkpoint
+
+`bash -n scripts/eqemu/oracle/oracle_session.sh`, `git diff --check`, and
+`python3 scripts/refactor/check_doc_counts.py` exited 0. The first
+`rbuild <worktree> hygiene` exited 8: `CrowdObservationControls` tried to copy
+a concurrent `scripts/b975/__pycache__/*.pyc` that vanished before the copy
+(44/45 tests passed, three skips). The unchanged-tree retry exited 0:
+45/45 hygiene tests passed, with the same three skips. The failed run remains
+a failure in this record. The full C++ suite and MR pipeline were **not run**:
+the required oracle mapping and test cannot yet be written.
+
+## Required decision before implementation
+
+The issue requires the official client's measured swing period and packet
+speed bytes before a mapping or golden test is written. The prescribed fable
+headless actor never emits ordinary swing OP_Animation, even with the correct
+ground-level position and an accepted target/auto-attack. An official-client
+**actor** (with a second observing client) or a separately specified outbound
+combat-animation source is needed to obtain that oracle. Neither source nor
+mapping is guessed here. Consequently the red/green test, packet-to-renderer
+fix, B494 census removal, decisions entry, and MR acceptance pipeline are
+**not complete**.
