@@ -45,9 +45,11 @@
 
 #include "client/client_context.h"
 #include "client/guild/guild_name_table.h"
+#include "client/login_world/login_connect_watchdog.h"
 #include "client/login_world/world_script.h"
 #include "common/net/daybreak_connection.h"
 
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -217,6 +219,24 @@ public:
 	 *  host (the zone-to-zone path's step 2 and the camp return's). */
 	void ReconnectWorld();
 
+	// ------------------------------------------------------------------
+	// B1099 (GitLab #419): the bounded login/world connect
+	// (login_connect_watchdog.h). Called every game-thread iteration from
+	// EverQuest::TickNetwork() with the real clock; public with an explicit
+	// clock so tests/test_login_connect_timeout.cpp can step the deadline.
+	// Entering LOGIN_CONNECTING / LOGIN_AUTHENTICATING / WORLD_CONNECTING from
+	// any other phase arms the bound; on a give-up the stage's session is torn
+	// down (no reconnect), the loading screen reads
+	// LoginConnectFailureText() and the process-wide could-not-connect record
+	// is set (fatal_exit.h) so main() returns kClientCouldNotConnectExit.
+	// Whether the process then quits is the Application's call (headless and
+	// --scenario runs quit; a graphics run keeps the message up with quit
+	// available). Body: login_connect_bound.cpp.
+	void TickLoginConnect(std::chrono::steady_clock::time_point now);
+	const LoginConnectWatchdog& LoginConnectBound() const { return m_login_watchdog; }
+	/** True once the pre-zone connect bound gave up (sticky). */
+	bool PreZoneConnectFailed() const { return m_login_watchdog.GaveUp(); }
+
 private:
 	// B888: the reply handlers and the script driver.
 	void WorldProcessApproveName(const EQ::Net::Packet &p);
@@ -337,6 +357,12 @@ private:
 	// B1005: the camp return (see ReturnToCharacterSelect).
 	bool m_awaiting_fresh_list = false;
 	uint32_t m_select_returns = 0;
+
+	// B1099: the pre-zone connect bound, and whether the previous tick was
+	// already inside a tracked stage (an entry from outside arms it).
+	LoginConnectWatchdog m_login_watchdog;
+	bool m_login_stage_tracked = false;
+	void AbandonPreZoneConnect(int stage);
 
 	ClientContext& ctx_;
 };

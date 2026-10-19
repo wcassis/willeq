@@ -558,6 +558,25 @@ private:
     void updateGameState(float deltaTime);
     void render(float deltaTime);
 
+    // B1099 (GitLab #419): quit is reachable from every loading phase.
+    // Bodies: application_quit.cpp.
+    //  - serviceQuitSignals(): render thread, every mainLoop() iteration --
+    //    a latched SIGINT/SIGTERM (quit_signal.h) -> requestQuit().
+    //  - serviceConnectFailure(): game thread -- the pre-zone connect bound
+    //    gave up (login_connect_watchdog.h): a headless or --scenario run
+    //    quits (exit 3); a graphics run keeps "Could not connect to ..." on
+    //    the loading screen with quit (ESC, Ctrl+C, window close) available.
+    //  - pollLoadingScreenQuit(): render thread, on the frames that draw a
+    //    loading screen instead of processFrame() -- pumps the device (the
+    //    only place evdev is read) and turns ESC / a closed device into
+    //    requestQuit(). `loaderOwnsContext`: the zone loading thread holds GL.
+    void serviceQuitSignals();
+    void serviceConnectFailure();
+#ifdef EQT_HAS_GRAPHICS
+    void pollLoadingScreenQuit(bool loaderOwnsContext);
+#endif
+    bool m_connectFailureHandled = false;  // game thread only
+
     // ========== Synchronization ==========
 
     // syncGameStateFromClient() was deleted (T104) -- it had shrunk to a

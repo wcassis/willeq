@@ -321,6 +321,14 @@ void Application::loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status)
     // 8. Sequential zone asset loading
     m_renderer->loadZoneSequential(snap.eqClientPath, status);
 
+    // B1099 (#419): shutdown() asked the load to stop (a quit mid-zone-in);
+    // loadZoneSequential() abandoned it at a step boundary. Nothing more to
+    // build for a process that is exiting -- and it is not a load failure.
+    if (status.quitRequested.load(std::memory_order_acquire) && !m_renderer->hasLoadFailed()) {
+        LOG_INFO(MOD_GRAPHICS, "loadZoneGraphicsOnThread: quit requested, load abandoned");
+        return;
+    }
+
     if (m_renderer->hasLoadFailed()) {
         LOG_FATAL(MOD_GRAPHICS, "loadZoneGraphicsOnThread: sequential loader failed — requesting quit");
         status.quitRequested.store(true, std::memory_order_release);

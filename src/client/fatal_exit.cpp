@@ -36,4 +36,34 @@ void ResetFatalExitForTest() {
     g_fatal.store(false, std::memory_order_release);
 }
 
+// B1099 (#419): the could-not-connect record, same shape.
+namespace {
+std::atomic<bool> g_noConnect{false};
+std::mutex g_noConnectMutex;
+std::string g_noConnectReason;
+}  // namespace
+
+void RecordCouldNotConnect(const std::string& reason) {
+    std::lock_guard<std::mutex> lock(g_noConnectMutex);
+    if (!g_noConnect.load(std::memory_order_acquire)) {
+        g_noConnectReason = reason;
+    }
+    g_noConnect.store(true, std::memory_order_release);
+}
+
+bool CouldNotConnectRecorded() {
+    return g_noConnect.load(std::memory_order_acquire);
+}
+
+std::string CouldNotConnectReason() {
+    std::lock_guard<std::mutex> lock(g_noConnectMutex);
+    return g_noConnectReason;
+}
+
+void ResetCouldNotConnectForTest() {
+    std::lock_guard<std::mutex> lock(g_noConnectMutex);
+    g_noConnectReason.clear();
+    g_noConnect.store(false, std::memory_order_release);
+}
+
 }  // namespace eqt

@@ -2,6 +2,7 @@
 #include "common/thread_name.h"  // T504 thread names; B1039: Linux + macOS forms
 #include <json/json.h>  // Must be before eq.h → logging.h so JSONCPP_VERSION_STRING is defined
 #include "client/eq.h"
+#include "client/quit_signal.h"  // B1099
 #include "client/data_paths.h"
 #include "client/help/merged_help.h"
 // T310 Leg A: --fpcam. No renderer dependency -- the tunable store is a plain
@@ -1058,6 +1059,7 @@ void Application::gameThreadLoop() {
             if (m_eqClient && m_eqClient->IsQuitRequested()) {
                 m_running.store(false);
             }
+            serviceConnectFailure();  // B1099: application_quit.cpp
 
             // Sleep to target ~60 Hz game tick without spinning
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -1081,6 +1083,11 @@ void Application::gameThreadLoop() {
 void Application::mainLoop() {
     LOG_INFO(MOD_MAIN, "Starting game thread");
     m_gameThread = std::make_unique<std::thread>(&Application::gameThreadLoop, this);
+
+    // B1099 (#419): SIGINT + SIGTERM -> the clean quit, installed HERE --
+    // after initGraphics() created the device, whose keyboard-restore handler
+    // it chains to on a second signal (quit_signal.h).
+    InstallQuitSignalHandlers();
 
     LOG_INFO(MOD_MAIN, "Entering render loop (main thread)");
     // T491: per-frame driver/scene-manager work on the render thread is
@@ -1119,6 +1126,7 @@ void Application::mainLoop() {
                 LOG_INFO(MOD_MAIN, "SIGTERM received, requesting clean shutdown...");
                 requestQuit();
             }
+            serviceQuitSignals();  // B1099: application_quit.cpp
 
             // Render
             render(0.0f);  // deltaTime computed inside render()

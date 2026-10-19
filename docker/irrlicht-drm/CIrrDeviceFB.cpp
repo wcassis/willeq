@@ -142,12 +142,22 @@ void publishScanoutTally(uint32_t bufs, uint64_t bytes);
 static int s_savedTtyFd = -1;
 static int s_savedKbMode = -1;
 
+// B1099 (#419): every restore says so on stderr -- write(2), never stdio,
+// because this also runs inside a signal handler.
+static void logKeyboardRestored()
+{
+    static const char kMsg[] = "evdev: VT keyboard mode restored\n";
+    ssize_t ignored = write(STDERR_FILENO, kMsg, sizeof(kMsg) - 1);
+    (void)ignored;
+}
+
 static void restoreKeyboardMode()
 {
     if (s_savedTtyFd >= 0 && s_savedKbMode >= 0) {
         ioctl(s_savedTtyFd, KDSKBMODE, s_savedKbMode);
         s_savedTtyFd = -1;
         s_savedKbMode = -1;
+        logKeyboardRestored();
     }
 }
 
@@ -333,8 +343,10 @@ CIrrDeviceFB::~CIrrDeviceFB()
 
     // Restore VT keyboard mode before closing evdev
     if (ttyFd_ >= 0) {
-        if (savedKbMode_ >= 0)
+        if (savedKbMode_ >= 0) {
             ioctl(ttyFd_, KDSKBMODE, savedKbMode_);
+            logKeyboardRestored();  // B1099
+        }
         // Clear signal handler state so it becomes a no-op
         s_savedTtyFd = -1;
         s_savedKbMode = -1;
@@ -1174,6 +1186,13 @@ void CIrrDeviceFB::pollEvdev()
                                                keyIsDown_, EVDEV_KEY_MAX,
                                                shiftDown_, ctrlDown_, altDown_, event))
                     postEventFromUser(event);
+                // B1099 (#419): Ctrl+C -> SIGINT, the chord's VT meaning that
+                // K_OFF took away. The host's handler decides (willeq: the
+                // clean quit, quit_signal.h; none: the restore handler below).
+                if (eqt_drm::isQuitChord(ev, ctrlDown_)) {
+                    os::Printer::log("evdev: Ctrl+C -- raising SIGINT", ELL_INFORMATION);
+                    raise(SIGINT);
+                }
             }
         }
     }

@@ -336,6 +336,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_zone_connect_timeout DISCOVERY_TIMEOUT 120)
 
+# B1099 (GitLab #419): the PRE-ZONE connect bound -- LoginConnectWatchdog on a
+# test clock, and a headless EverQuest whose login host is a dead port:
+# timeout -> the session torn down -> "Could not connect to login server" on
+# the loading screen -> the could-not-connect record (exit 3).
+ADD_EXECUTABLE(test_login_connect_timeout
+    test_login_connect_timeout.cpp
+)
+TARGET_LINK_LIBRARIES(test_login_connect_timeout GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_login_connect_timeout PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_login_connect_timeout DISCOVERY_TIMEOUT 120)
+
 # B1081 (GitLab #401): no character-select flash on a zone change.
 # IsZoningReconnect() over the real client (fresh login / zone-change
 # reconnect / camp return / B1072 give-up), the Activations() count over the
