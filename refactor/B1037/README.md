@@ -129,7 +129,9 @@ client's own census.
 | timorous | f1 | differs (1 218 px) | bit-exact |
 | timorous | f2 | differs (143 514 px) | bit-exact |
 
-4 of 15 frames byte-identical; the other 11 differ, and every non-identical
+3 of 15 frames byte-identical (and, under the gate's decoded-pixel compare
+rule, pixel-identical); the other 12 differ — qeynos2 f2 by 290 px, the rest
+by the counts in the table — and every non-identical
 diff is **localized to the lower frame (the flat floor)** with a uniform
 tint shift and near-zero edge signature (0.4–97% near a golden edge, the rest
 clean floor). **Per-pixel census (`definitive_census.py`, locus = the
@@ -140,8 +142,9 @@ exactly, and the A+C share (blessed value, or 1–3 LSB from it) is 0–41%.
 Over the full locus, 74–99% of the pixels are within 1 LSB and 92–100% within
 3 LSB of the blessed value — the unlit part of the floor is at most a few LSB
 away from where the fix puts it. The off-locus diff (pixels the fix never
-touched) is 0–3 088 px per frame (mostly ≤1 LSB; a dozen 8-16-LSB pixels on
-one frame). In other words: **on Lima the B976 bias lights a limb of the
+touched) is 0–3 088 px per frame (mostly ≤1 LSB; at most 6 pixels over 7 LSB
+in any one frame — 32–34 LSB on timorous f2, 13 LSB on timorous f0, 18–21 LSB
+on qeynos2 f2). In other words: **on Lima the B976 bias lights a limb of the
 floor, but the majority of the floor it lit on x86 stays dark** — the
 layers' stored-depth gap exceeds the 2-D16-cell bias over most of the floor
 on this D24 surface, which is outside B976's tie-only scope. Lane 2 is
@@ -172,7 +175,7 @@ diff vs the committed (pre-B976) Pi golden is that limb.
 
 1. **The B976 floor flip, in full** (unlike lane 2, which is partial): the
    `definitive_census.py` A/B/C census shows the lane matching the blessed
-   x86 lit value on 45–96% of the locus per frame (72–98% within 1–3 LSB,
+   x86 lit value on 45–96% of the locus per frame (80–98% within 1–3 LSB,
    A+C), at 0–1 LSB where it disagrees with the blessed.
 2. **A frame-wide ~1-LSB offset the Lima lane does not have** — measurable
    OUTSIDE the floor locus, where the Pi and x86 goldens agree:
@@ -229,7 +232,7 @@ value within 1–3 LSB of blessed):
 
 - **Lane 3 (Panfrost, depth=16): the fix lands IN FULL.** A is 45–96% of the
   locus per frame and A+C (matching the blessed lit value, or 1–3 LSB from
-  it) is 72–98%; over the full locus 99.6–100% of the pixels are within 1 LSB
+  it) is 80–98%; over the full locus 99.6–100% of the pixels are within 1 LSB
   and 100% within 3 LSB of the blessed value (the B limb is 1–19%,
   timorous f1's 19% the largest still-dark share; the C share 2–38%,
   qeynos2 f1's 38% the largest). **The floor lights the way the blessed
@@ -262,7 +265,7 @@ is how a single constant works on every surface, and why a gap larger than
 the bias on some surface is expected behavior, not a defect of the bias.
 The census measures where each surface sits on that spectrum: on a **D16**
 surface the quantized gap is mostly ≤ 2 D16 cells, so the push wins nearly
-everywhere — lane 3 (D16) shows 72–98% of the locus at or within 1–3 LSB of
+everywhere — lane 3 (D16) shows 80–98% of the locus at or within 1–3 LSB of
 the blessed lit value (A+C), 1–19% the still-dark limb. On lane 2's
 **D24** surface the finer grid preserves a larger rasterized gap that exceeds
 the bias over most of the floor, so the −Y layer keeps winning: 58–100% of
@@ -319,7 +322,7 @@ leg has been waiting to answer, and it changes what the Pi leg is:
 1. **B976's Pi leg splits by depth format, and that is now measured, not
    assumed.** The committed Pi goldens are a D16 image (B971: the Orange Pi
    runs a 16-bit depth buffer). Lane 3 (D16) confirms the fix at the 1-LSB
-   level: 45–96% of the floor locus matches the blessed lit value (72–98%
+   level: 45–96% of the floor locus matches the blessed lit value (80–98%
    within 1–3 LSB), 1–19% is the still-dark limb. Lane 2's Rock64 negotiates
    a **D24** surface and the same bias no longer dominates the preserved
    rasterized gap: 58–100% of the locus stays at the pre-fix dark value. So a
