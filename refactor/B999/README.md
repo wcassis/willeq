@@ -110,8 +110,8 @@ moving a third one, which and why") answers: none.
 
 - RED at the parent (run 1, `red_run.txt`): 4 of 5 tests pass;
   `UiLayoutRectsB999.TheGroupRowsFitTheFrameAndClearThePet` fails at all
-  four resolutions -- at 800x600 "row 5 (4,202)-(164,228) runs past the
-  group frame (4,112)-(164,206)" and "group row 5 (4,202)-(164,228) is
+  four resolutions -- at 800x600 "row 5 (4,202)-(164,216) runs past the
+  group frame (4,112)-(164,206)" and "group row 5 (4,202)-(164,216) is
   under the pet panel (4,210)-(164,262)", the same at 1024x768, 1280x720
   and 1920x1080.
 - GREEN at the head (run 2, `green_run.txt`): all 5 tests pass, including
