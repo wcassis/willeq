@@ -28,6 +28,7 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "client/graphics/constrained_renderer_config.h"
@@ -101,6 +102,8 @@ std::string fingerprint(const EQT::Graphics::RaceModelData& m) {
 int main(int argc, char** argv) {
     std::string zone, eq = EQ_CLIENT_DATA_PATH, db = WILLEQ_DB_REAL_PATH, outPath, logLevel = "ERROR";
     int maxRace = 700;
+    int onlyRace = 0;
+    bool variantFirst = false;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto next = [&](std::string& dst) { if (i + 1 < argc) dst = argv[++i]; };
@@ -109,6 +112,8 @@ int main(int argc, char** argv) {
         else if (a == "--db") next(db);
         else if (a == "--out") next(outPath);
         else if (a == "--max-race") { std::string v; next(v); maxRace = std::atoi(v.c_str()); }
+        else if (a == "--only-race") { std::string v; next(v); onlyRace = std::atoi(v.c_str()); }
+        else if (a == "--variant-first") variantFirst = true;
         else if (a == "--log") next(logLevel);
         else { std::fprintf(stderr, "unknown arg %s\n", a.c_str()); return 2; }
     }
@@ -141,25 +146,34 @@ int main(int argc, char** argv) {
     loader->setCurrentZone(zone);
     loader->loadZoneModels(zone);
 
-    std::vector<std::string> lines;
+    // Keep model data alive until every preload has finished mutating any
+    // shared skeleton. Fingerprinting while building makes the result depend
+    // on which race/variant happened to load first.
+    std::vector<std::pair<std::string, std::shared_ptr<EQT::Graphics::RaceModelData>>> rows;
     for (int race = 1; race <= maxRace; ++race) {
+        if (onlyRace != 0 && race != onlyRace) continue;
         const auto info = database.getRaceModel(static_cast<uint16_t>(race));
         if (!info.found) continue;
         for (uint8_t gender = 0; gender < 2; ++gender) {
             const auto rid = static_cast<uint16_t>(race);
             // ensureModelDataLoaded is the client's synchronous build path
             // (getRaceModelData only reads what is already built).
+            if (variantFirst) loader->preloadVariantModel(rid, gender, 1, 1);
             auto base = loader->ensureModelDataLoaded(rid, gender);
             char head[64];
             std::snprintf(head, sizeof(head), "race=%d gender=%d variant=0,0 ", race, gender);
-            lines.push_back(std::string(head) + (base ? fingerprint(*base) : "none"));
+            rows.emplace_back(head, base);
             if (!base) continue;
-            loader->preloadVariantModel(rid, gender, 1, 1);
+            if (!variantFirst) loader->preloadVariantModel(rid, gender, 1, 1);
             auto var = loader->getVariantModelData(rid, gender, 1, 1);
             std::snprintf(head, sizeof(head), "race=%d gender=%d variant=1,1 ", race, gender);
-            lines.push_back(std::string(head) + (var ? fingerprint(*var) : "none"));
+            rows.emplace_back(head, var);
         }
     }
+    std::vector<std::string> lines;
+    lines.reserve(rows.size());
+    for (const auto& [head, data] : rows)
+        lines.push_back(head + (data ? fingerprint(*data) : "none"));
     std::sort(lines.begin(), lines.end());
     std::string text = "# model_fingerprint zone=" + zone + "\n";
     for (const auto& l : lines) text += l + "\n";
