@@ -27,7 +27,6 @@ SUBS = [
     ('arm-linux-gnueabihf', 'aarch64-linux-gnu'),
     ('-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard', '-march=armv8-a'),
     ('-DCMAKE_SYSTEM_PROCESSOR=arm ', '-DCMAKE_SYSTEM_PROCESSOR=aarch64 '),
-    ('-j$(nproc)', '-j${BUILD_JOBS:-$(nproc)}'),
     ('NEON intrinsics on Cortex-A7',
      'NEON intrinsics (NEON is baseline on ARMv8; libpng still needs the arm/ objects)'),
 ]

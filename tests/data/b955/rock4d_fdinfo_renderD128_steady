@@ -1,0 +1,14 @@
+pos:	0
+flags:	0400002
+mnt_id:	32
+ino:	559
+drm-driver:	panfrost
+drm-client-id:	60
+drm-maxfreq-fragment:	900000000 Hz
+drm-curfreq-fragment:	200000000 Hz
+drm-maxfreq-vertex-tiler:	900000000 Hz
+drm-curfreq-vertex-tiler:	200000000 Hz
+drm-total-memory:	168400 KiB
+drm-shared-memory:	9288 KiB
+drm-resident-memory:	30088 KiB
+drm-purgeable-memory:	1792 KiB

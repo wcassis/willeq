@@ -146,6 +146,25 @@ the line numbers move, the function names do not.
     the pool's own columns -- `gem_pool_growth_mib` and
     `gem_pool_creates_steady_window` (0 = frozen, the lever bought nothing) --
     not on the guard.
+14. **Rock64 scanout lands inside its `memcg_shmem` GPU row; the Pi's does
+    not.** B1036's lane-2 tagged census (`refactor/B1036/README.md`, raw
+    `census_retry/zones/*/gem_owners.tsv` and `client.log`) subtracts all
+    regular Lima BOs from the cgroup's `gpu_buffers`. At `ready` in qeynos2
+    and gfaydark the residual is 9.06 MiB against 9.00 MiB of `scanout_fb`;
+    at `steady_60s` the residual minus scanout and frame dumps is 0.07 MiB.
+    On the Pi, B961's scanout is CMA on the display device and outside that
+    cgroup row (`include/client/core/gpu_buffer_census.h`). This is a measured
+    accounting difference, not a claim that the kernel allocation function
+    has been isolated. Prediction: an extra scanout buffer on Rock64 moves
+    `gpu_unnamed_steady` by its size unless the ledger names the inside-cgroup
+    share; on the Pi it cannot. The connected-to-forced display change moves
+    reported scanout from 7.03 to 9.00 MiB and the unnamed qeynos2 value
+    from 17.23 to 19.36 MiB, consistent within 0.16 MiB. In addition,
+    Rock64's `egl:device` owner holds three regular window-surface BOs of
+    7.00 MiB, while the depth/stencil logical tally names only 3.00 MiB;
+    the extra 4.00 MiB is colour surface storage. Whether to add both as
+    conditional tally rows is B1036's class-C ruling request, not a reason
+    to raise the 10 MiB bound.
 
 ## Using this sheet
 

@@ -394,6 +394,10 @@ build-arm:
     # slot that never built ARM; this host ccache (scripts/ci/arm_ccache.sh) is shared by all
     # slots. Absent on a host = ccache off, never a failure.
     ARM_CCACHE_DIR: /var/cache/ccache-ci-arm
+    # B1095: same cap as build-arm64 below. Without it the armhf container ran cmake at
+    # -j$(nproc) = 16 on the 16 GB runner VMs (MemAvailable 0.26 GB, 1-2 GB swap, load 16.8,
+    # Prometheus 2026-10-18) while every x86 job left >= 7.5 GB free.
+    BUILD_JOBS: "8"
   rules:
     - if: $CI_COMMIT_BRANCH == "fable"
     - when: manual
@@ -407,6 +411,8 @@ build-arm:
     # B1093 (#413): kill any ARM build container an earlier cancelled/timed-out job left on this host.
     - bash scripts/ci/arm_container.sh --sweep
     - scripts/ci/vendor_fetch.sh --ensure
+    # B1095: the runner's CI_JOBS wins (B1087's rule for the x86 jobs), as in build-arm64.
+    - 'if [ -n "${CI_JOBS:-}" ]; then export BUILD_JOBS="$CI_JOBS"; fi; echo "BUILD_JOBS=$BUILD_JOBS"'
     # Full log kept as an artifact; on failure print the compiler errors, not a
     # blind tail (B1054's ARM-only compile error never reached the trace).
     - nice -n 10 scripts/build-arm-noble.sh > build-arm-noble.log 2>&1 || { grep -nE 'error:|undefined reference|ERROR:' build-arm-noble.log | head -n 40; tail -n 40 build-arm-noble.log; exit 1; }
