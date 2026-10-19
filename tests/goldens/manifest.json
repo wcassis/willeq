@@ -50,7 +50,7 @@
             "zoneGeometryBudgetBytes": 16777216,
             "placeableObjectsBytes": 0,
             "placeableObjectsBudgetBytes": 25165824,
-            "s3dZoneSourceBytes": 501079,
+            "s3dZoneSourceBytes": 501081,
             "s3dZoneSourceBudgetBytes": 14680064,
             "vboEboBytes": 1269654,
             "vboEboBudgetBytes": 41943040,
@@ -58,12 +58,12 @@
             "characterModelsBudgetBytes": 2097152,
             "eqe1MappedBytes": 0,
             "eqe1MappedBudgetBytes": 268435456,
-            "totalEstimate": 22435459,
+            "totalEstimate": 22435461,
             "totalEstimateBudgetBytes": 134217728,
             "textureCount": 126,
             "eqe1ArchiveCount": 0,
-            "processRssBytes": 44027904,
-            "untrackedBytes": 21592445
+            "processRssBytes": 50663424,
+            "untrackedBytes": 28227963
           }
         },
         {
@@ -121,8 +121,8 @@
             "totalEstimateBudgetBytes": 134217728,
             "textureCount": 32,
             "eqe1ArchiveCount": 0,
-            "processRssBytes": 41701376,
-            "untrackedBytes": 19790643
+            "processRssBytes": 42098688,
+            "untrackedBytes": 20187955
           }
         },
         {
@@ -180,8 +180,8 @@
             "totalEstimateBudgetBytes": 134217728,
             "textureCount": 9,
             "eqe1ArchiveCount": 0,
-            "processRssBytes": 44617728,
-            "untrackedBytes": 35087405
+            "processRssBytes": 45031424,
+            "untrackedBytes": 35501101
           }
         },
         {
@@ -239,8 +239,8 @@
             "totalEstimateBudgetBytes": 134217728,
             "textureCount": 15,
             "eqe1ArchiveCount": 0,
-            "processRssBytes": 96776192,
-            "untrackedBytes": 67555144
+            "processRssBytes": 93507584,
+            "untrackedBytes": 64286536
           }
         },
         {
@@ -298,8 +298,8 @@
             "totalEstimateBudgetBytes": 134217728,
             "textureCount": 35,
             "eqe1ArchiveCount": 0,
-            "processRssBytes": 100298752,
-            "untrackedBytes": 64902109
+            "processRssBytes": 96628736,
+            "untrackedBytes": 61232093
           }
         }
       ]
