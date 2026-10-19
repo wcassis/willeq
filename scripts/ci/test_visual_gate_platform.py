@@ -580,11 +580,21 @@ def check_mac():
         mem["ledger"]["ownedPhysFootprintBytes"] = 123000000
         return pngs, csv, mem, text
 
+    # BLESS-STATE-SAFE (mirrors check_pi step 4): since the 2026-10-19 bless
+    # the real manifest carries platforms.mac, so every case below runs over
+    # a manifest WITHOUT the section (the pre-bless state the check was
+    # written for) -- the NOT YET BLESSED path, and the --goldens-dir cases,
+    # which take the section from DIR/manifest_mac.json only when the
+    # manifest has none.
+    unsectioned = json.loads(json.dumps(gate.load_manifest()))
+    unsectioned.get("platforms", {}).pop("mac", None)
+
     def run(argv):
         gate.BENCH_BIN = Path(tempfile.mkdtemp(prefix="b1044_bin_")) / "gles2_zone_benchmark"
         gate.BENCH_BIN.write_bytes(b"")
         gate.ARTIFACTS_DIR = Path(tempfile.mkdtemp(prefix="b1044_art_"))
-        with mock.patch.object(gate, "run_benchmark", stub), \
+        with mock.patch.object(gate, "load_manifest", return_value=unsectioned), \
+             mock.patch.object(gate, "run_benchmark", stub), \
              mock.patch.object(gate, "run_memory_coverage_benchmark",
                                lambda *a, **kw: {"physFootprintBytes": 222}), \
              mock.patch.object(gate, "assert_memory_budgets", lambda *a, **kw: None), \

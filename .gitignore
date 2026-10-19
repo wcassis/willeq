@@ -155,3 +155,5 @@ data/*.db-shm
 # there. The shipped originals' "host" is never edited in place.
 scripts/scenario_configs/*.local.json
 !tests/goldens/pi/**/*.png
+# B1044: the Mac golden set (blessed by Will 2026-10-19) lives beside the Pi set
+!tests/goldens/mac/**/*.png
