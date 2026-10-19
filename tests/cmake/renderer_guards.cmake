@@ -366,6 +366,48 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_eqe1_archive_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1096 (#416) -- the parent-side RED: initLoadingScreen must install the
+# EQE1 name->archive resolution before the pre-zone model build. Pure source
+# scan (no new symbol, no assets), so this TU COMPILES ON THE PARENT too --
+# that is what makes it the red: on the parent the anchor is missing and the
+# test fails. The behavioral death+green (test_pre_zone_eqe1_resolution)
+# names the new seam and so builds only at the head.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_pre_zone_eqe1_resolution_order
+        test_pre_zone_eqe1_resolution_order.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_pre_zone_eqe1_resolution_order PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_pre_zone_eqe1_resolution_order GTest::gtest_main)
+    TARGET_COMPILE_DEFINITIONS(test_pre_zone_eqe1_resolution_order PRIVATE
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
+    GTEST_DISCOVER_TESTS(test_pre_zone_eqe1_resolution_order DISCOVERY_TIMEOUT 120)
+    # (No SET_TESTS_PROPERTIES: under PRE_TEST discovery (T163) the test does
+    # not exist at configure, so a properties line would fail the configure.
+    # None is needed anyway: WILLEQ_SOURCE_DIR resolves to the checkout at
+    # RUN time via willeq_paths.txt, so the scan reads the checkout, not the
+    # build tree, and ctest's CWD is irrelevant.)
+ENDIF()
+
+# B1096 (#416): the behavioral net -- death test (the FATAL branch) + the
+# early-resolution green. Same bare-renderer idiom as the test above; the two
+# asset-dependent cases skip when the ETC1 tree is not mounted. The death
+# test forks, so it needs no display or driver -- getOrLoad() exits before
+# any GL call.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_pre_zone_eqe1_resolution
+        test_pre_zone_eqe1_resolution.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_pre_zone_eqe1_resolution PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_pre_zone_eqe1_resolution GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_pre_zone_eqe1_resolution PRIVATE
+        "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
+    GTEST_DISCOVER_TESTS(test_pre_zone_eqe1_resolution DISCOVERY_TIMEOUT 120)
+    # (No SET_TESTS_PROPERTIES: same PRE_TEST reason as the scan test above.
+    # The index -- a shipped-data load -- is found instead because the test
+    # itself pins WILLEQ_DATA_ROOT to the checkout at run time, where
+    # ctest's CWD is <build>/tests.)
+ENDIF()
+
 # L03 (Batch L, refactor/L03_overlays_component.md): the OverlaysComponent
 # extracted from IrrlichtRenderer. Same bare, never-Init()'d IrrlichtRenderer
 # idiom as test_rdp_component above.

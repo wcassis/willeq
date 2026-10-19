@@ -168,11 +168,26 @@ struct UILayout {
         targetHPBar     = {tX, tY + BAR_HEIGHT + 2, tX + BAR_WIDTH, tY + BAR_HEIGHT * 2 + 2};
         targetInfo      = {tX, tY, tX + BAR_WIDTH, targetHPBar.LowerRightCorner.Y + MARGIN};
 
-        // UnderPlayerColumn: Group panel, under the target
+        // UnderPlayerColumn: Group panel, under the target. B999 (#319):
+        // the height is the content renderGroupPanel() actually paints --
+        // the BAR_HEIGHT + MARGIN title band, then BAR_HEIGHT + MARGIN per
+        // member row, with the last row's HP bar (BAR_HEIGHT - 2, drawn in
+        // the row below its name line) ending 4px below the last name line.
+        // The old 5 * (BAR_HEIGHT + MARGIN) + MARGIN = 94px frame carried no
+        // title band at all, so its bottom landed inside the member rows
+        // and the pet panel below it painted over the overflow (the B992
+        // hud_all capture). The pet panel, anchored to this frame's bottom,
+        // moves down with it. No row height changes: the content is the
+        // oracle's.
         irr::s32 gpX = MARGIN;
         irr::s32 gpY = targetInfo.LowerRightCorner.Y + MARGIN;
         irr::s32 gpW = BAR_WIDTH;
-        irr::s32 gpH = 5 * (BAR_HEIGHT + MARGIN) + MARGIN;
+        irr::s32 kGroupMaxMembers = 5;  // GroupPanelState::MAX_MEMBERS
+        // 18 (title) + 4 * 18 (gaps between the five rows) + 14 (last name
+        // line) + 12 (last row's HP bar, BAR_HEIGHT - 2) = 116: the bottom
+        // of the last row's painted HP bar, on the frame's bottom edge.
+        irr::s32 gpH = (BAR_HEIGHT + MARGIN) * (1 + kGroupMaxMembers - 1) +
+                       BAR_HEIGHT + (BAR_HEIGHT - 2);
         groupPanel = {gpX, gpY, gpX + gpW, gpY + gpH};
 
         // UnderPlayerColumn: Pet panel, under the group. Name row + HP bar +

@@ -464,6 +464,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_ui_layout_coopen DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B999 (#319): no two co-open HUD panels overlap at any supported
+# resolution, the group x pet pair named in the table's co-open sets (the
+# B992 hud_all capture's finding), and a rect dump per window per resolution
+# (refactor/B999/README.md copies its stdout). Same shape as
+# test_ui_layout_coopen: header-only layout code behind the irrlicht rect
+# type, so it is gated at registration (B1038).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_ui_layout_rects test_ui_layout_rects.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_ui_layout_rects PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_ui_layout_rects GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_ui_layout_rects DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B1078 (#398): every item-icon decal rect is SQUARE at every supported
 # resolution -- each drawItemIcon() call site, through the same layout
 # functions the render bodies call. The other half of B1078's net:
