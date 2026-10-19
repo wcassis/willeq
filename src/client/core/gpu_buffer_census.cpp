@@ -15,6 +15,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 #endif
+#if defined(__APPLE__)
+#include <unistd.h>  // B1044-nf: readlink (drmFdinfoIsSafe's /sys probe is dead
+                     // on macOS but the top-level function still compiles)
+#endif
 
 namespace eqt {
 namespace memory {
@@ -326,9 +330,31 @@ GpuBufferCensus decideGpuBuffers(const GpuBufferInputs& in) {
         // mapped lower bound, keeping the documented order a ranking of
         // RESIDENT sources (an fdinfo row of 0 would claim a measurement the
         // kernel did not make).
+        const uint64_t resident =
+            in.fdinfoResidentBytes + in.fdinfoLegacyResidentBytes;
         c.source = GpuBufferSource::DrmFdinfo;
-        c.gpuBuffersBytes = in.fdinfoResidentBytes + in.fdinfoLegacyResidentBytes;
+        c.gpuBuffersBytes = resident;
         c.outsideRssAnon = true;
+        // B1035 (#354): the resident figure is a PER-NODE tally. The
+        // process's scanout framebuffers are charged to its cgroup's
+        // shmem and published by the panfrost render node as
+        // drm-shared-memory, yet count as 0 in EVERY node's resident
+        // figure -- the rockchip card node publishes no memory key at all
+        // (tests/data/b955/rock4d_fdinfo_card0). When the cgroup is ours
+        // alone and its shmem exceeds the resident figure, the shmem is
+        // the higher measurement of the same bytes (the exclusive memcg is
+        // the second-best source in this very ranking); take it, and name
+        // the delta the bytes the fdinfo could not see. On the ROCK 4D
+        // the delta is the scanout framebuffers within capture noise
+        // (shmem 39,841,792 - resident 30,810,112 = 9,031,680 vs
+        // scanout_fb 9,437,184: the framebuffers' page rounding and the
+        // render node's own shmem-backed objects); on the Lima lanes the
+        // shmem never exceeds the resident figure (Lima publishes no
+        // key and the cgroup shmem IS the row there), so nothing changes.
+        if (c.cgroupExclusive && in.memcg.shmemBytes > resident) {
+            c.gpuBuffersBytes = in.memcg.shmemBytes;
+            c.fdinfoScanoutGapBytes = in.memcg.shmemBytes - resident;
+        }
     } else if (c.cgroupExclusive) {
         c.source = GpuBufferSource::MemcgShmem;
         c.gpuBuffersBytes = in.memcg.shmemBytes;
@@ -420,6 +446,11 @@ std::string gpuBuffersToLogLine(const std::string& point, const std::string& zon
     appendKV(out, "scanout_fb", b961.scanoutFbBytes);
     appendKV(out, "scanout_fb_bufs", b961.scanoutFbBufs);
     appendKV(out, "memcg_kernel_seen", b961.memcgKernelAvailable ? 1 : 0);
+    // B1035 (#354): the bytes the fdinfo resident figure could not see
+    // (the row took the exclusive cgroup's shmem over it); 0 otherwise.
+    // Named before the B978 owned fields, which stay last for the
+    // pre-B961 parsers (owned_from_memgpu, rendered_zone_summarize.py).
+    appendKV(out, "fdinfo_scanout_gap", c.fdinfoScanoutGapBytes);
     // B978: owned = RssAnon - gpu_driver + gpu_buffers (outside RssAnon only).
     appendKV(out, "owned_rss_anon", ownedRssAnonBytes);
     appendKV(out, "owned", ownedPlusGpuBuffers(ownedRssAnonBytes, c));
@@ -452,6 +483,9 @@ std::string gpuBuffersToJson(const GpuBufferCensus& c, uint64_t ownedRssAnonByte
     out += ",\"scanoutFbBytes\":" + std::to_string(b961.scanoutFbBytes);
     out += ",\"scanoutFbBufs\":" + std::to_string(b961.scanoutFbBufs);
     out += ",\"memcgKernelSeen\":" + std::string(b961.memcgKernelAvailable ? "true" : "false");
+    // B1035 (#354): the bytes the fdinfo resident figure could not see
+    // (the row took the exclusive cgroup's shmem over it); 0 otherwise.
+    out += ",\"fdinfoScanoutGapBytes\":" + std::to_string(c.fdinfoScanoutGapBytes);
     out += ",\"ownedRssAnonBytes\":" + std::to_string(ownedRssAnonBytes);
     out += ",\"ownedBytes\":" + std::to_string(ownedPlusGpuBuffers(ownedRssAnonBytes, c));
     out += "}";

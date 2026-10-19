@@ -227,7 +227,7 @@ ENDIF()
 # no graphics driver. Needs only gtest + <Keycodes.h> (IRRLICHT_INCLUDE_DIR) +
 # the system X11 headers, so it links no driver and runs in the normal suite.
 # RED before the fix (the ten nav-alias cases returned 0), GREEN after.
-IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY AND NOT APPLE)
     ADD_EXECUTABLE(test_x11_keysym_map
         test_x11_keysym_map.cpp
     )
@@ -248,7 +248,7 @@ ENDIF()
 # drm/gbm/X11, the same set test_graphics links for the windowed-EGL backend)
 # plus the HotkeyManager TU. SKIPs loudly only when Xvfb/xdotool are genuinely
 # absent; any device-path failure is a hard FAIL. RED before the fix, GREEN after.
-IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY AND NOT APPLE)
     ADD_EXECUTABLE(test_x11_numpad_e2e
         test_x11_numpad_e2e.cpp
         ${CMAKE_SOURCE_DIR}/src/client/input/hotkey_manager.cpp

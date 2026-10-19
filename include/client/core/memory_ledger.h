@@ -47,7 +47,9 @@
 // switch the audit measures under.
 
 #include <array>
+#include <cstring>
 #include <cstddef>
+#include <cstdlib>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -59,16 +61,6 @@
 #include "client/core/gpu_buffer_census.h"  // B955: the gpu_buffers row
 
 #ifndef EQT_MEMORY_LEDGER
-#define EQT_MEMORY_LEDGER 0
-#endif
-
-// B1039 (#359): the allocator hooks wrap glibc's __libc_* entry points, which
-// macOS libSystem does not have. On Darwin the ledger is ALWAYS its OFF shape
-// (no symbol replaced, empty MemoryScope, every category 0, enabled() false)
-// whatever the build asked for; CMakeLists.txt passes 0 there too, so no TU
-// can disagree about the layout. A malloc_zone backend is open (B1039 README).
-#if defined(__APPLE__) && EQT_MEMORY_LEDGER
-#undef EQT_MEMORY_LEDGER
 #define EQT_MEMORY_LEDGER 0
 #endif
 
@@ -269,6 +261,30 @@ private:
 // scopes than slots, so this overflow path is a safety net, not a routine.
 uint8_t startupSublabelIndex(const char* name);
 
+// B919 (#238): the owner table is a diagnostic (WILLEQ_LEDGER_OWNERS=<cat>
+// selects the category whose blocks the rows partition). Callers that open a
+// StartupScope on a HOT path (the bridge's per-event pushEvent) gate on this
+// so an ordinary run -- no table requested -- pays none of the per-block
+// label lookup (a mutex round-trip against the name table). It reads the
+// environment ONCE per process: WILLEQ_LEDGER_OWNERS is set before main
+// (every capture script exports it with the binary), so the answer never
+// changes; the same variable initOwnerCategoryFromEnv() reads for g_ownerCat.
+// Header-inline (getenv + the header-inline kCategoryNames): the definition
+// sits here because memory_ledger.cpp is at the 1,500-line ceiling (the same
+// reason B924's devices live in memory_ledger_b924.cpp).
+inline bool ownerRowsEnabled() {
+    static const bool on = [] {
+        if (!EQT_MEMORY_LEDGER) return false;  // the ledger is off (enabled())
+        const char* want = std::getenv("WILLEQ_LEDGER_OWNERS");
+        if (!want || !*want) return false;
+        for (size_t i = 0; i < kCategoryCount; ++i) {
+            if (std::strcmp(want, kCategoryNames[i]) == 0) return true;
+        }
+        return false;
+    }();
+    return on;
+}
+
 constexpr bool enabled() { return EQT_MEMORY_LEDGER != 0; }
 
 // T491 addendum -- Will's standing decision, 2026-09-17: "the goal is willeq's
@@ -387,6 +403,16 @@ struct Snapshot {
     // (gpu_buffer_census.h has the sources and the decision). Since B978 it is
     // the second component of ownedBytes when it is outside RssAnon.
     GpuBufferCensus gpuBuffers;
+    // B1044 (#364), Will's 2026-10-14 ruling (option 1, platform-scoped
+    // memory figures): macOS has no RssAnon; its reading is the Mach
+    // task_vm_info.phys_footprint (task_info(TASK_VM_INFO): dirty + compressed
+    // + swapped process memory, the figure Activity Monitor calls "Memory",
+    // which includes Metal/IOSurface memory charged to the task). Read only on
+    // Darwin (0 elsewhere); rssAnonBytes stays 0 there, so no Linux bound
+    // reads it. ownedPhysFootprintBytes = max(0, phys_footprint - gpu_driver),
+    // the Darwin counterpart of ownedRssAnonBytes.
+    uint64_t physFootprintBytes = 0;
+    uint64_t ownedPhysFootprintBytes = 0;
 };
 
 // T491 addendum: the categories that would have to shrink to reach the 64 MB

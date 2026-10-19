@@ -50,7 +50,8 @@ compute() {
                 printf '%s  %s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "$f"
             done
         # The shared patch and the build script itself.
-        sha256sum docker/irrlicht-drm-patch.py scripts/build-gles2-x86.sh
+        sha256sum docker/irrlicht-drm-patch.py scripts/build-gles2-x86.sh \
+            scripts/build-gles2-darwin.sh scripts/ci/irrlicht_gles2_files.sh
     } | sha256sum | cut -d' ' -f1
 }
 

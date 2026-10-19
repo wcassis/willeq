@@ -54,13 +54,7 @@ OPTION(EQT_LIVE_TESTS "Register the live/integration tests (need a server + disp
 # macro is defined for EVERY target (it is in a header every TU may include)
 # so the ledger TU and its callers can never disagree about the layout.
 OPTION(EQT_MEMORY_LEDGER "Attribute every anonymous byte to a lifecycle category at the allocator (T491)" ON)
-IF(EQT_MEMORY_LEDGER AND APPLE)
-    # B1039 (#359): the hooks wrap glibc's __libc_* entry points; macOS has
-    # none, so the ledger compiles to its OFF shape there (memory_ledger.h
-    # enforces the same in source). A malloc_zone backend is not written.
-    MESSAGE(STATUS "Memory ledger: ON requested; macOS has no glibc allocator entry points -- compiled in its OFF shape")
-    ADD_DEFINITIONS(-DEQT_MEMORY_LEDGER=0)
-ELSEIF(EQT_MEMORY_LEDGER)
+IF(EQT_MEMORY_LEDGER)
     ADD_DEFINITIONS(-DEQT_MEMORY_LEDGER=1)
 ELSE()
     ADD_DEFINITIONS(-DEQT_MEMORY_LEDGER=0)
@@ -218,7 +212,8 @@ ENDIF()
 # links the literal names `EGL GLESv2 drm gbm` (+ `X11` on x86). On Darwin
 # those names become CMake targets: EGL/GLESv2 = ANGLE's dylibs, drm/gbm/X11 =
 # empty INTERFACE libraries (the patched Irrlicht's Darwin device has no
-# DRM/GBM/X11 code -- docker/irrlicht-drm-x86/CIrrDeviceFB_Darwin.cpp). No
+# DRM/GBM/X11 code -- docker/irrlicht-drm-x86/CIrrDeviceFB_Darwin.cpp; its
+# window is Cocoa, CIrrDeviceFB_Cocoa.mm). No
 # Linux/ARM configure sees any of this. Recipe: docs/macos.md,
 # scripts/build-gles2-darwin.sh.
 IF(APPLE AND EQT_GRAPHICS AND EQT_GLES2)
@@ -232,7 +227,12 @@ IF(APPLE AND EQT_GRAPHICS AND EQT_GLES2)
     ENDIF()
     INCLUDE_DIRECTORIES(SYSTEM "${EQT_ANGLE_DIR}/include")
     ADD_LIBRARY(EGL SHARED IMPORTED)
-    SET_TARGET_PROPERTIES(EGL PROPERTIES IMPORTED_LOCATION "${EQT_ANGLE_LIB_DIR}/libEGL.dylib")
+    # B1044: every target that links the patched Irrlicht links `EGL`, and the
+    # archive's device now carries the Cocoa window backend
+    # (CIrrDeviceFB_Cocoa.mm: AppKit, CAMetalLayer, CGSession), so the
+    # frameworks ride on EGL rather than on every tool's own link line.
+    SET_TARGET_PROPERTIES(EGL PROPERTIES IMPORTED_LOCATION "${EQT_ANGLE_LIB_DIR}/libEGL.dylib"
+        INTERFACE_LINK_LIBRARIES "-framework Cocoa;-framework QuartzCore;-framework CoreGraphics")
     ADD_LIBRARY(GLESv2 SHARED IMPORTED)
     SET_TARGET_PROPERTIES(GLESv2 PROPERTIES IMPORTED_LOCATION "${EQT_ANGLE_LIB_DIR}/libGLESv2.dylib")
     ADD_LIBRARY(drm INTERFACE)
@@ -365,6 +365,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/core/memory_ledger.cpp
     src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
     src/client/core/memory_ledger_trace.cpp
+    src/client/core/memory_ledger_gpu_driver_classifier_darwin.cpp  # B1062: the Darwin gpu_driver classifier (no-op off-Apple)
     src/client/core/gpu_buffer_census.cpp
     src/client/core/gl_driver_census.cpp  # B946 (GitLab #264): the [gldriver] line
     src/client/zone/zone_dispatch.cpp
@@ -753,6 +754,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/zone_stream/renderer_zone_merge.cpp
         src/client/graphics/zone_stream/renderer_zone_stream.cpp
         src/client/graphics/eqe1/eqe1_archive_component.cpp
+        src/client/graphics/eqe1/eqe1_early_resolution.cpp  # B1096: pre-zone EQE1 resolution
         src/client/graphics/sim/renderer_sim_bridge.cpp
         src/client/graphics/frame/renderer_frame.cpp
         src/client/graphics/frame/renderer_frame_input.cpp
@@ -1118,21 +1120,14 @@ ENDIF()
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     LIST(APPEND LINK_LIBS ${IRRLICHT_LIBRARY})
     IF(APPLE)
-        # B1043 (#363): STALE. These frameworks are the desktop-GL era's
-        # (Irrlicht's Cocoa/NSOpenGL CIrrDeviceMacOSX); P30 removed desktop GL
-        # and nothing in the tree builds that device any more. macOS GLES2 is
-        # ANGLE + the patched FB device (the EGL/GLESv2 targets defined near
-        # the top of this file); OpenGL/Carbon/IOKit go with the FIX card,
-        # Cocoa stays for the windowed (CAMetalLayer) device path.
+        # ANGLE + the patched FB device use Cocoa for the window, not the
+        # retired desktop-GL/Carbon/IOKit backend.
         IF(EQT_GLES2)
             ADD_DEFINITIONS(-DEQT_HAS_GLES2)
             LIST(APPEND LINK_LIBS EGL GLESv2)
         ENDIF()
         FIND_LIBRARY(COCOA_FRAMEWORK Cocoa)
-        FIND_LIBRARY(OPENGL_FRAMEWORK OpenGL)
-        FIND_LIBRARY(IOKIT_FRAMEWORK IOKit)
-        FIND_LIBRARY(CARBON_FRAMEWORK Carbon)
-        LIST(APPEND LINK_LIBS ${COCOA_FRAMEWORK} ${OPENGL_FRAMEWORK} ${IOKIT_FRAMEWORK} ${CARBON_FRAMEWORK})
+        LIST(APPEND LINK_LIBS ${COCOA_FRAMEWORK})
     ELSE()
         # DRM/KMS/GBM/EGL (no X11) - for ARM boards with Lima/Panfrost, and for
         # H01's x86 GLES2 dev builds (EQT_DRM=OFF, EQT_GLES2=ON — CIrrDeviceFB
@@ -1419,9 +1414,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
             ${JSONCPP_LIBRARIES}
             fmt::fmt
             ${COCOA_FRAMEWORK}
-            ${OPENGL_FRAMEWORK}
-            ${IOKIT_FRAMEWORK}
-            ${CARBON_FRAMEWORK}
+            EGL GLESv2
         )
     ELSE()
         # P30: this is now the only non-APPLE path (desktop X11/Xxf86vm/GL
@@ -1919,6 +1912,8 @@ IF(EQT_GRAPHICS)
         etc2comp
         GIT_REPOSITORY https://github.com/google/etc2comp.git
         GIT_TAG master
+        PATCH_COMMAND ${CMAKE_COMMAND} -DETC2COMP_SOURCE_DIR=<SOURCE_DIR>
+            -P ${CMAKE_SOURCE_DIR}/scripts/ci/patch_etc2comp_cmake.cmake
     )
     FetchContent_MakeAvailable(etc2comp)
 
@@ -2243,9 +2238,15 @@ ENDIF()
 # B1039 (#359): they include <EGL/egl.h> and link EGL + GLESv2, so they (and
 # test_gl_points below) are built only where both are found -- every Linux
 # host and the ARM sysroots; not macOS, which has neither.
-FIND_PATH(EQT_EGL_INCLUDE_DIR EGL/egl.h)
-FIND_LIBRARY(EQT_EGL_LIBRARY EGL)
-FIND_LIBRARY(EQT_GLESV2_LIBRARY GLESv2)
+IF(APPLE AND EQT_GRAPHICS AND EQT_GLES2)
+    SET(EQT_EGL_INCLUDE_DIR "${EQT_ANGLE_DIR}/include")
+    SET(EQT_EGL_LIBRARY EGL)
+    SET(EQT_GLESV2_LIBRARY GLESv2)
+ELSE()
+    FIND_PATH(EQT_EGL_INCLUDE_DIR EGL/egl.h)
+    FIND_LIBRARY(EQT_EGL_LIBRARY EGL)
+    FIND_LIBRARY(EQT_GLESV2_LIBRARY GLESv2)
+ENDIF()
 IF(EQT_EGL_INCLUDE_DIR AND EQT_EGL_LIBRARY AND EQT_GLESV2_LIBRARY)
     SET(EQT_HAVE_EGL_TOOLS ON)
 ELSE()
@@ -2253,6 +2254,9 @@ ELSE()
     MESSAGE(STATUS "EGL/GLESv2: NOT FOUND (tools/hwcaps GPU probes and test_gl_points not built)")
 ENDIF()
 IF(EQT_HAVE_EGL_TOOLS)
+    # This one probe still requests EGL_OPENGL_API and desktop GL/gl.h;
+    # ANGLE on macOS exposes GLES only. All GLES2 probes below build there.
+    IF(NOT APPLE)
     ADD_EXECUTABLE(gpu_texture_formats tools/hwcaps/gpu_texture_formats.cpp)
     TARGET_INCLUDE_DIRECTORIES(gpu_texture_formats PRIVATE ${CMAKE_SOURCE_DIR}/include)
     IF(EQT_DRM)
@@ -2264,6 +2268,7 @@ IF(EQT_HAVE_EGL_TOOLS)
         TARGET_LINK_LIBRARIES(gpu_texture_formats EGL GL drm gbm)
     ELSE()
         TARGET_LINK_LIBRARIES(gpu_texture_formats EGL GL)
+    ENDIF()
     ENDIF()
 
     ADD_EXECUTABLE(gles2_etc1_benchmark tools/hwcaps/gles2_etc1_benchmark.cpp)
@@ -2428,6 +2433,7 @@ IF(EQT_GRAPHICS)
         src/client/core/memory_ledger.cpp
         src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
+        src/client/core/memory_ledger_gpu_driver_classifier_darwin.cpp  # B1062: the Darwin gpu_driver classifier (no-op off-Apple)
         src/client/core/gpu_buffer_census.cpp
         src/client/core/gl_driver_census.cpp   # B1016: the gate's [gldriver] net
         tools/hwcaps/zone_bench_loadpoint_trace.cpp  # B928: per-load-point [memledger-trace] rows
@@ -2640,6 +2646,7 @@ IF(EQT_GRAPHICS)
         src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
         src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
+        src/client/core/memory_ledger_gpu_driver_classifier_darwin.cpp  # B1062: the Darwin gpu_driver classifier (no-op off-Apple)
         src/client/core/gpu_buffer_census.cpp
         src/client/core/gl_driver_census.cpp  # B1016: zone_bench_loader.cpp emits the [gldriver] line
         tools/hwcaps/zone_bench_loader.cpp
@@ -2765,6 +2772,7 @@ IF(EQT_GRAPHICS)
         src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
         src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
+        src/client/core/memory_ledger_gpu_driver_classifier_darwin.cpp  # B1062: the Darwin gpu_driver classifier (no-op off-Apple)
         src/client/core/gpu_buffer_census.cpp
         src/client/core/gl_driver_census.cpp  # B1016: zone_bench_loader.cpp emits the [gldriver] line
         tools/hwcaps/zone_bench_loader.cpp

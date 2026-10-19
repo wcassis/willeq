@@ -379,6 +379,17 @@ ADD_EXECUTABLE(test_data_path_routing
 TARGET_LINK_LIBRARIES(test_data_path_routing GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_data_path_routing DISCOVERY_TIMEOUT 120)
 
+# B919 (#238): the `game_state` owner-row census. A source reader over the
+# scoping sites (every MemoryScope(GameState) and the thread default) that
+# fails on one without its named owner row. No link deps on purpose: the sites
+# are network handlers and cannot be exercised in-process (same shape as
+# test_data_path_routing.cpp).
+ADD_EXECUTABLE(test_game_state_owners
+    test_game_state_owners.cpp
+)
+TARGET_LINK_LIBRARIES(test_game_state_owners GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_game_state_owners DISCOVERY_TIMEOUT 120)
+
 # T477 (board B571): the /tmp census. A source reader over tests/
 # (WILLEQ_REPO_ROOT, set globally in tests/CMakeLists.txt) that fails on a temp
 # path with no per-process component -- the name every slot and every
@@ -408,9 +419,12 @@ GTEST_DISCOVER_TESTS(test_config_key_reachability DISCOVERY_TIMEOUT 120)
 # (include/client/core/memory_ledger.h). Links the ledger TU directly -- it
 # REPLACES malloc/free/operator new for this whole binary, gtest included --
 # and exercises the hooks through the public allocation entry points.
-# B1039 (#359): the suite tests the allocator hooks (it asserts enabled()
-# first) and glibc's mallinfo2/malloc_info census, so it is built only where
-# the hooks exist: on macOS the ledger is its OFF shape (memory_ledger.h).
+# B1039 (#359): the suite asserts enabled() first and reads glibc's
+# mallinfo2/malloc_info census (the `#if defined(__linux__)` include block
+# at the ledger TU's top), so the SUITE is built only off-Apple. The
+# ledger itself is ON on macOS too (B1044: the malloc-zone shape,
+# memory_ledger_backend.h) -- test_gpu_driver_classifier below runs both
+# platform arms.
 IF(NOT APPLE)
     ADD_EXECUTABLE(test_memory_ledger
         test_memory_ledger.cpp
@@ -431,8 +445,35 @@ IF(NOT APPLE)
     ENDIF()
     GTEST_DISCOVER_TESTS(test_memory_ledger DISCOVERY_TIMEOUT 120)
 ELSE()
-    MESSAGE(STATUS "test_memory_ledger: not built on macOS (the ledger compiles to its OFF shape there)")
+    MESSAGE(STATUS "test_memory_ledger: not built on macOS (glibc-only census: mallinfo2/__libc_*)")
 ENDIF()
+
+# B1062 (#382): the gpu_driver caller classifier -- the two-platform test
+# (spec step 2): a known caller in a named image classifies, a caller in
+# the main executable does not, an address in no module never classifies
+# as the GL stack, and (Darwin) the dladdr-vs-backtrace cost A/B prints
+# its [classifier-cost] line. Built on BOTH platforms, unlike
+# test_memory_ledger (whose remaining cases read glibc's mallinfo2): it
+# links the ledger TU (the hooks are ON on both -- macOS is the
+# malloc-zone shape, B1044) plus, on Darwin, the new
+# memory_ledger_gpu_driver_classifier_darwin.cpp the host's
+# callerIsGlStack() arm calls.
+ADD_EXECUTABLE(test_gpu_driver_classifier
+    test_gpu_driver_classifier.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_gpu_driver_classifier_darwin.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
+)
+TARGET_LINK_LIBRARIES(test_gpu_driver_classifier GTest::gtest_main ${FMT_LIB} Threads::Threads)
+# The Darwin classifier's header is a private header under src/client/core/
+# (memory_ledger.h lives in include/); the host TU includes it relatively,
+# the test through the source root.
+IF(APPLE)
+    TARGET_INCLUDE_DIRECTORIES(test_gpu_driver_classifier PRIVATE ${CMAKE_SOURCE_DIR}/src)
+ENDIF()
+GTEST_DISCOVER_TESTS(test_gpu_driver_classifier DISCOVERY_TIMEOUT 120)
 
 # B946 (GitLab #264): the [gldriver] line -- which GL driver the process
 # really loaded (the mapped libgallium, the GL_RENDERER string, whether

@@ -9,6 +9,7 @@
 
 #include "client/core/memory_ledger.h"
 #include "client/core/memory_owner_rows.h"
+#include "client/core/gem_owner_census.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/impostor/impostor_batch_node.h"
 #include "common/logging.h"
@@ -78,6 +79,7 @@ bool ImpostorCache::ensurePage(int page) {
     using Clock = std::chrono::steady_clock;
     const auto t0 = Clock::now();
     eqt::memory::MemoryScope scope(eqt::memory::Category::TexturesDriver);
+    eqt::memory::GemTag gemTag("tex:impostor-page");
     if (static_cast<size_t>(page) >= pages_.size()) pages_.resize(page + 1);
     GLint prevTex = 0;
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTex);

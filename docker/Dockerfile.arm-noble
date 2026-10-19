@@ -10,6 +10,10 @@
 # Build options (passed as --build-arg):
 #   ENABLE_GRAPHICS=ON|OFF   (default: ON)
 #   ENABLE_AUDIO=ON|OFF      (default: ON)
+# Run-time env: BUILD_JOBS (default: nproc), same contract as Dockerfile.arm64-noble.
+#   B1095: this file hardcoded -j$(nproc) while the CI job exported CI_JOBS only for
+#   arm64, so build-arm ran 16 compilers on the 16 GB runner VMs (MemAvailable 0.26 GB,
+#   swap, load 16.8 -- Prometheus 2026-10-18). The CI job now caps it like arm64 does.
 
 FROM ubuntu:24.04 AS base
 
@@ -394,31 +398,32 @@ ENTRYPOINT ["/bin/bash", "-c", "\
         -DIRRLICHT_LIBRARY=${ARM_SYSROOT}/usr/lib/libIrrlicht.a \
         -DWITH_RDP=OFF \
         -DEQT_BUILD_TESTS=OFF \
-    && cmake --build . --target willeq -j$(nproc) \
-    && cmake --build . --target model_viewer -j$(nproc) \
-    && cmake --build . --target gpu_texture_formats -j$(nproc) \
-    && cmake --build . --target gles2_etc1_benchmark -j$(nproc) \
-    && cmake --build . --target egl_image_sharing_test -j$(nproc) \
-    && cmake --build . --target test_gl_points -j$(nproc) \
-    && cmake --build . --target gles2_derivatives_test -j$(nproc) \
-    && cmake --build . --target gles2_npot_test -j$(nproc) \
-    && cmake --build . --target gles2_shader_perpixel_benchmark -j$(nproc) \
-    && cmake --build . --target gles2_program_switch_benchmark -j$(nproc) \
-    && cmake --build . --target gles2_fog_volume_benchmark -j$(nproc) \
-    && cmake --build . --target gles2_fog_visual_compare -j$(nproc) \
-    && cmake --build . --target gles2_icosphere_anim_benchmark -j$(nproc) \
-    && cmake --build . --target gles2_texture_read_benchmark -j$(nproc) \
-    && cmake --build . --target gles2_zone_benchmark -j$(nproc) \
-    && cmake --build . --target gles2_shader_diagnostic -j$(nproc) \
-    && cmake --build . --target gles2_composite_audit -j$(nproc) \
-    && cmake --build . --target gles2_etc1_alpha_readback_test -j$(nproc) \
-    && cmake --build . --target ui_inventory_capture -j$(nproc) \
-    && cmake --build . --target gles2_alpha_test_probe -j$(nproc) \
-    && cmake --build . --target impostor_pixel_compare -j$(nproc) \
-    && cmake --build . --target gles2_player_light_probe -j$(nproc) \
-    && cmake --build . --target nametag_drawcost -j$(nproc) \
+    && cmake --build . --target willeq -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target model_viewer -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gpu_texture_formats -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_etc1_benchmark -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target egl_image_sharing_test -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target test_gl_points -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_derivatives_test -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_npot_test -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_shader_perpixel_benchmark -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_program_switch_benchmark -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_fog_volume_benchmark -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_fog_visual_compare -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_icosphere_anim_benchmark -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_texture_read_benchmark -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_zone_benchmark -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_shader_diagnostic -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_composite_audit -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_etc1_alpha_readback_test -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target ui_inventory_capture -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_alpha_test_probe -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target impostor_pixel_compare -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_player_light_probe -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target nametag_drawcost -j${BUILD_JOBS:-$(nproc)} \
     && echo 'Skipping strip — debug symbols retained for GDB' \
     && mkdir -p /output && cp bin/willeq bin/model_viewer bin/gpu_texture_formats bin/gles2_etc1_benchmark bin/egl_image_sharing_test bin/test_gl_points bin/gles2_derivatives_test bin/gles2_npot_test bin/gles2_shader_perpixel_benchmark bin/gles2_program_switch_benchmark bin/gles2_fog_volume_benchmark bin/gles2_fog_visual_compare bin/gles2_icosphere_anim_benchmark bin/gles2_texture_read_benchmark bin/gles2_zone_benchmark bin/gles2_shader_diagnostic bin/gles2_composite_audit bin/ui_inventory_capture bin/gles2_alpha_test_probe bin/gles2_player_light_probe bin/impostor_pixel_compare bin/nametag_drawcost /output/ \
+    && arm-linux-gnueabihf-gcc -O2 -Wall -shared -fPIC -o /output/lima_bo_census.so /src/scripts/pi/lima_bo_census.c -ldl -lpthread \
     && echo '=== Build complete ===' \
     && if [ -n \"${CCACHE_DIR:-}\" ]; then echo '=== ccache (this build) ==='; ccache --show-log-stats || true; echo '=== ccache (cache totals) ==='; ccache -s || true; fi \
 "]
