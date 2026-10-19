@@ -32,6 +32,8 @@ Three jobs, one file, no benchmark, no build artefact, no display:
     writes under tests/goldens/; a blessed Pi set verifies 15/15-exact
     (stubbed) with no p95 assertion.
 
+--check-pi also runs check_mac() (B1044): the Mac set's own section.
+
 No-arg mode: --verify-x86 AND --check-pi (the ctest entry point).
 """
 import argparse
@@ -563,6 +565,77 @@ def _run_main(gate, argv, *, maps_text=None):
     return rc, buf.getvalue()
 
 
+def check_mac():
+    """B1044 (#364, Will's 2026-10-14 ruling, option 1): the Mac set is its
+    own. --capture stages DIR/manifest_mac.json with the Mac's own metrics and
+    memory rows (phys_footprint included) and REPORTS an x86 metric
+    difference without failing; a verify with no mac section is NOT YET
+    BLESSED (exit 1); a verify against a blessed section whose metrics differ
+    fails."""
+    gate = load_gate()
+
+    def stub(zc, bc, out, pa=None, cfg=None):
+        pngs, csv, mem, text = _stub_benchmark(gate, zc, out)
+        mem["physFootprintBytes"] = 123456789
+        mem["ledger"]["ownedPhysFootprintBytes"] = 123000000
+        return pngs, csv, mem, text
+
+    def run(argv):
+        gate.BENCH_BIN = Path(tempfile.mkdtemp(prefix="b1044_bin_")) / "gles2_zone_benchmark"
+        gate.BENCH_BIN.write_bytes(b"")
+        gate.ARTIFACTS_DIR = Path(tempfile.mkdtemp(prefix="b1044_art_"))
+        with mock.patch.object(gate, "run_benchmark", stub), \
+             mock.patch.object(gate, "run_memory_coverage_benchmark",
+                               lambda *a, **kw: {"physFootprintBytes": 222}), \
+             mock.patch.object(gate, "assert_memory_budgets", lambda *a, **kw: None), \
+             mock.patch.object(gate, "assert_memory_ledger", lambda *a, **kw: None):
+            buf = io.StringIO()
+            old_argv = sys.argv
+            sys.argv = ["visual_gate.py"] + argv
+            try:
+                with redirect_stdout(buf):
+                    rc = gate.main()
+            finally:
+                sys.argv = old_argv
+        return rc, buf.getvalue()
+
+    fails = []
+    rc, out = run(["--platform", "mac"])
+    if rc != 1 or "NOT YET BLESSED" not in out:
+        fails.append(f"mac verify without a section: rc={rc}, want 1 + NOT YET BLESSED")
+    cap = Path(tempfile.mkdtemp(prefix="b1044_cap_"))
+    rc, out = run(["--platform", "mac", "--capture", str(cap)])
+    staged = cap / "manifest_mac.json"
+    if rc != 0 or not staged.exists():
+        fails.append(f"mac capture: rc={rc}, manifest_mac.json exists={staged.exists()}\n{out}")
+    else:
+        sec = json.loads(staged.read_text())["platforms"]["mac"]
+        z0 = sec["zones"][0]
+        if z0["memory"].get("physFootprintBytes") != 123456789 or \
+                z0["memory"].get("textureCacheBytesLimit") != 200 or \
+                z0["memory"].get("coveragePhysFootprintBytes") != 222:
+            fails.append(f"mac section memory rows wrong: {z0['memory']}")
+        if not sec["x86Divergence"] or "[x86-diff]" not in out:
+            fails.append("mac capture did not report the x86 metric difference")
+        rc2, out2 = run(["--platform", "mac", "--goldens-dir", str(cap)])
+        if rc2 != 0:
+            fails.append(f"mac verify against its own captured set: rc={rc2}\n{out2}")
+        z0["metrics"][next(iter(z0["metrics"]))]["draws"] += 1
+        staged.write_text(json.dumps({"platforms": {"mac": sec}}))
+        rc3, out3 = run(["--platform", "mac", "--goldens-dir", str(cap)])
+        if rc3 != 1 or "!= blessed mac" not in out3:
+            fails.append(f"mac verify with a differing blessed metric: rc={rc3}")
+    if gate.platform_config({"zones": []}, "mac").golden_root != gate.GOLDENS_DIR / "mac":
+        fails.append("mac golden root is not tests/goldens/mac")
+    for f in fails:
+        print(f"FAIL: {f}")
+    if fails:
+        return 1
+    print("ok: mac NOT YET BLESSED, --capture manifest_mac.json (own metrics, phys_footprint, "
+          "x86 difference reported), blessed-section verify")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--write-plan", metavar="PATH")
@@ -579,6 +652,7 @@ def main():
         rc = max(rc, verify_x86_plan())
     if do_pi:
         rc = max(rc, check_pi())
+        rc = max(rc, check_mac())
     sys.exit(rc)
 
 

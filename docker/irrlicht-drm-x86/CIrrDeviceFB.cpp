@@ -297,6 +297,9 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
             eglOk = gbmOk ? initEGL() : false;
 
             if (!eglOk) {
+#ifdef __APPLE__
+                os::Printer::log("DRM unavailable - using ANGLE/Metal pbuffer EGL", ELL_INFORMATION);
+#else
                 // x86 fallback: no real DRM/KMS display available (headless dev VM,
                 // no /dev/dri permission, or no connected connector on any card --
                 // B1054: every card was tried before reaching this line). Fall
@@ -306,6 +309,7 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
                 // otherwise -- initEGLSurfaceless() below names the vendor it
                 // actually got, because it is NOT always llvmpipe).
                 os::Printer::log("DRM/GBM/EGL initialization failed - falling back to surfaceless EGL", ELL_WARNING);
+#endif
                 eglOk = initEGLSurfaceless();
                 if (eglOk) {
                     surfaceless_ = true;
@@ -1031,7 +1035,11 @@ bool CIrrDeviceFB::initEGLSurfaceless()
         os::Printer::log(buf, ELL_INFORMATION);
     }
 
+#ifdef __APPLE__
+    os::Printer::log("EGL (pbuffer): Context created and made current (ANGLE/Metal)",
+#else
     os::Printer::log("EGL (surfaceless): Context created and made current",
+#endif
                      ELL_INFORMATION);
     return true;
 }
@@ -1622,6 +1630,8 @@ void CIrrDeviceFB::setWindowCaption(const wchar_t* text)
         buf[n] = '\0';
 #ifndef __APPLE__ // B1043: Linux-only
         XStoreName((Display*)x11Display_, x11Window_, buf);
+#else
+        setCocoaWindowCaption(buf); // B1044: the Cocoa window (CIrrDeviceFB_Cocoa.mm)
 #endif // !__APPLE__
     }
 }
@@ -1639,6 +1649,11 @@ bool CIrrDeviceFB::present(video::IImage* surface, void* windowId, core::rect<s3
 
     // P25: X11-windowed backend - swap the real window surface.
     if (x11Active_) {
+#ifdef __APPLE__
+        // B1044: a tool that never calls run() (gles2_zone_benchmark) still
+        // needs its Cocoa window's events pumped, or the window never paints.
+        pumpCocoaIfIdle();
+#endif
         if (probeOn) {
             const auto t0 = std::chrono::steady_clock::now();
             eglSwapBuffers(eglDisplay_, eglSurface_);

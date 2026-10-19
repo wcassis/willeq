@@ -92,6 +92,7 @@ struct BenchMemorySnapshot {
 
     size_t totalEstimate = 0;      // sum of every category above with a defined estimate
     size_t processRssBytes = 0;    // this process's own RSS (/proc/self/statm)
+    size_t physFootprintBytes = 0; // macOS TASK_VM_INFO at this report point
     size_t untrackedBytes = 0;     // processRssBytes - totalEstimate (0 if RSS unavailable or <= total)
 };
 

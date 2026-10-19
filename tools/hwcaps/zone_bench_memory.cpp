@@ -96,6 +96,9 @@ extern size_t gles2GetGpuTextureMemoryUsage(void* driver);
 #ifdef __linux__
 #include <unistd.h>
 #endif
+#ifdef __APPLE__
+#include <mach/mach.h>
+#endif
 
 #ifdef __linux__
 static size_t readProcessRssBytes() {
@@ -113,6 +116,17 @@ static size_t readProcessRssBytes() {
 #else
 static size_t readProcessRssBytes() { return 0; }
 #endif
+
+static size_t readPhysFootprintBytes() {
+#ifdef __APPLE__
+    task_vm_info_data_t info{};
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    if (task_info(mach_task_self(), TASK_VM_INFO,
+                  reinterpret_cast<task_info_t>(&info), &count) == KERN_SUCCESS)
+        return static_cast<size_t>(info.phys_footprint);
+#endif
+    return 0;
+}
 
 static size_t sumMeshBufferBytes(irr::scene::IMesh* mesh) {
     if (!mesh) return 0;
@@ -235,6 +249,7 @@ BenchMemorySnapshot computeMemorySnapshot(ZoneBench::ZoneBenchData& data, int wi
 #endif
 
     snap.processRssBytes = readProcessRssBytes();
+    snap.physFootprintBytes = readPhysFootprintBytes();
     if (snap.processRssBytes > snap.totalEstimate) {
         snap.untrackedBytes = snap.processRssBytes - snap.totalEstimate;
     }
@@ -281,6 +296,7 @@ void writeMemoryJson(const std::string& path, const std::string& zoneName,
             "  \"totalEstimateBudgetBytes\": %zu,\n"
             "  \"totalEstimate\": %zu,\n"
             "  \"processRssBytes\": %zu,\n"
+            "  \"physFootprintBytes\": %zu,\n"
             "  \"untrackedBytes\": %zu,\n",
             zoneName.c_str(),
             snap.textureCacheBytesUsed, snap.textureCacheBytesLimit, snap.textureCacheCount,
@@ -293,7 +309,8 @@ void writeMemoryJson(const std::string& path, const std::string& zoneName,
             snap.placeableObjectsBudgetBytes, snap.s3dZoneSourceBudgetBytes,
             snap.vboEboBudgetBytes, snap.characterModelsBudgetBytes,
             snap.eqe1MappedBudgetBytes, snap.totalEstimateBudgetBytes,
-            snap.totalEstimate, snap.processRssBytes, snap.untrackedBytes);
+            snap.totalEstimate, snap.processRssBytes, snap.physFootprintBytes,
+            snap.untrackedBytes);
     // T491: the ledger object and its budgets, appended in the same file so
     // the gate reads one JSON per run.
     fprintf(f, "  \"ledger\": %s,\n", eqt::memory::toJson(snap.ledger).c_str());
