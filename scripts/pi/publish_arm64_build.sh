@@ -55,6 +55,10 @@ chmod -R a+rwX "$DEST" 2>/dev/null || true
 keepers=$(for l in "$ROOT"/by-branch/*; do [ -L "$l" ] && basename "$(readlink "$l")"; done | sort -u)
 ls -1dt "$ROOT"/[0-9a-f]*/ 2>/dev/null | tail -n +"$((KEEP + 1))" | while read -r d; do
     b=$(basename "$d"); echo "$keepers" | grep -qx "$b" && continue
+    if [ ! -w "$d" ]; then
+        echo "publish_arm64_build: cannot prune $d (not writable by this runner)" >&2
+        continue
+    fi
     rm -rf "$d" 2>/dev/null || echo "prune: could not remove $d (another publisher uid owns it); leaving it" >&2
 done
 echo "published $DEST ($(du -sh "$DEST" | cut -f1))"

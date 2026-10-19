@@ -69,6 +69,8 @@ def owner_of(bo):
         return "textures: glGenerateMipmap reallocation", inner
     if inner.startswith("tex:atlas"):
         return "textures: zone atlas pages", inner
+    if inner == "tex:impostor-page":
+        return "textures: impostor atlas pages", inner
     if inner.startswith("tex:"):
         return "textures: other (" + inner.split(" ")[0] + ")", inner
     if inner.startswith("rtt"):
@@ -79,7 +81,7 @@ def owner_of(bo):
         if size == STREAM_UPLOADER_BYTES and bo["mapped"]:
             return "mesa: stream uploader (1 MiB, context 1)", tag
         if size >= 1000000 and not bo["mapped"]:
-            return "egl: window surface depth/stencil", tag
+            return "egl: window surface BOs (colour + depth/stencil)", tag
         if size == 262144:
             return "lima: PLB (context 1)", tag
         return "lima: context 1 + screen small BOs (PLB streams, pp buffer)", tag
