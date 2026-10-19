@@ -39,15 +39,30 @@ const char* ScenarioExitCodeName(int code);
 constexpr int kClientFatalExit = 4;
 
 /**
+ * B1099 (issue #419): the exit code of a run that ended because the server
+ * could not be reached -- the pre-zone connect bound gave up
+ * (include/client/login_world/login_connect_watchdog.h; recorded through
+ * eqt::RecordCouldNotConnect(), include/client/fatal_exit.h). It is the SAME
+ * number --scenario already uses for "never reached a zone (server down)",
+ * so a wrapper (play.sh, a lane script) reads one meaning in both modes, and
+ * it stays distinct from a clean quit (0), bad arguments (1) and a client
+ * FATAL (4).
+ */
+constexpr int kClientCouldNotConnectExit = kScenarioCouldNotStart;
+
+/**
  * main()'s exit code, decided in one place.
  *  - --scenario: the scenario taxonomy wins and nothing outside 0..3 is ever
  *    returned. A FATAL that ended the run before a verdict already reads as
  *    kScenarioTimeout (the unfinished-run code); a pass can never be reported
- *    for a run that died on a FATAL.
- *  - otherwise: kClientFatalExit when the run ended on a FATAL, else 0 (a
- *    clean /q, /camp, window close or SIGTERM).
+ *    for a run that died on a FATAL. B1099: an unfinished run that ended on
+ *    the connect bound reads as kScenarioCouldNotStart.
+ *  - otherwise: kClientFatalExit when the run ended on a FATAL, else
+ *    kClientCouldNotConnectExit when the server could not be reached, else 0
+ *    (a clean /q, /camp, window close, SIGTERM or SIGINT).
  */
-int ProcessExitCode(bool scenarioRequested, int scenarioCode, bool fatalShutdown);
+int ProcessExitCode(bool scenarioRequested, int scenarioCode, bool fatalShutdown,
+                    bool couldNotConnect = false);
 
 /**
  * Drives one scenario.

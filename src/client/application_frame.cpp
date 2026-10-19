@@ -152,6 +152,7 @@ void Application::render(float deltaTime) {
         if (gfxDeltaTime >= 1.0f / 60.0f) {
             // Loading thread active — it owns the GL context, just check if done
             if (isLoadingThreadActive()) {
+                pollLoadingScreenQuit(true);  // B1099: DRM evdev only (loader owns GL)
                 checkLoadingComplete();
                 m_lastGraphicsUpdate = now;
                 return;
@@ -179,6 +180,7 @@ void Application::render(float deltaTime) {
             // Network handshake phase (0-50%): render loading screen on main thread
             if (!m_loadingStatus.loadingComplete.load(std::memory_order_relaxed) &&
                 m_loadingStatus.percent.load(std::memory_order_relaxed) < 50) {
+                pollLoadingScreenQuit(false);  // B1099 (#419): ESC / window close
                 float progress = m_loadingStatus.percent.load(std::memory_order_relaxed) / 100.0f;
                 std::wstring title = m_loadingStatus.getTitle();
                 std::string textNarrow = m_loadingStatus.getText();

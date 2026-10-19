@@ -30,6 +30,7 @@
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/graphics_archive_index.h"
 #include "client/graphics/frustum_culler.h"
+#include "client/graphics/loading_screen_quit.h"  // B1099
 #include "client/graphics/software_occlusion_culler.h"
 #include "client/graphics/detail/detail_manager.h"
 #include "client/graphics/tree_wind_controller.h"
@@ -142,6 +143,12 @@ public:
     // False when the device has stopped. Render thread, no loading thread
     // running. Body: renderer/renderer_pre_zone.cpp.
     bool drawPreZoneUI(const std::function<void(UIRenderer&, const UILayout&)>& draw);
+    // B1099 (#419): on a frame that draws a loading screen instead of
+    // processFrame(), pump the device (evdev lives in run()) and report a
+    // quit: device closed, ESC, or the receiver's quit flag
+    // (loading_screen_quit.h). With `loaderOwnsContext` only the DRM device
+    // is pumped. Body: renderer_pre_zone.cpp.
+    LoadingScreenQuit pollLoadingScreenQuit(bool loaderOwnsContext);
 
     // Loading thread owns GL context — main thread must not call GL-mutating methods.
     void setLoading(bool loading) { loading_.store(loading, std::memory_order_release); }

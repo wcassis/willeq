@@ -71,3 +71,51 @@ TEST(DRMKeyTranslation, RejectsNonKeyAndOutOfRangeValuesWithoutMutation) {
         EXPECT_EQ(invalidState.event.EventType, irr::EET_USER_EVENT) << value;
     }
 }
+
+// B1099 (GitLab #419): Ctrl+C is the quit chord the device turns into SIGINT
+// (K_OFF keeps the VT from doing it). Driven through translateKeyEvent first,
+// exactly as pollEvdev() does, so ctrlDown is the device's own state.
+namespace {
+bool quitChordAfter(KeyState& state, unsigned code, int value, irr::EKEY_CODE key) {
+    input_event input = {};
+    input.type = EV_KEY;
+    input.code = code;
+    input.value = value;
+    state.send(code, value, key);
+    return eqt_drm::isQuitChord(input, state.ctrl);
+}
+} // namespace
+
+TEST(DRMQuitChord, CtrlCIsTheQuitChord) {
+    KeyState state;
+    EXPECT_FALSE(quitChordAfter(state, KEY_LEFTCTRL, 1, irr::KEY_LCONTROL));
+    EXPECT_TRUE(quitChordAfter(state, KEY_C, 1, irr::KEY_KEY_C));
+    EXPECT_FALSE(quitChordAfter(state, KEY_C, 0, irr::KEY_KEY_C)) << "the release is not a second chord";
+    EXPECT_FALSE(quitChordAfter(state, KEY_LEFTCTRL, 0, irr::KEY_LCONTROL));
+}
+
+TEST(DRMQuitChord, RightControlCountsToo) {
+    KeyState state;
+    quitChordAfter(state, KEY_RIGHTCTRL, 1, irr::KEY_RCONTROL);
+    EXPECT_TRUE(quitChordAfter(state, KEY_C, 1, irr::KEY_KEY_C));
+}
+
+TEST(DRMQuitChord, PlainCAndOtherCtrlChordsAreNot) {
+    KeyState state;
+    EXPECT_FALSE(quitChordAfter(state, KEY_C, 1, irr::KEY_KEY_C)) << "a plain c types a c";
+    quitChordAfter(state, KEY_C, 0, irr::KEY_KEY_C);
+    quitChordAfter(state, KEY_LEFTCTRL, 1, irr::KEY_LCONTROL);
+    EXPECT_FALSE(quitChordAfter(state, KEY_V, 1, irr::KEY_KEY_V));
+    EXPECT_FALSE(quitChordAfter(state, KEY_ESC, 1, irr::KEY_ESCAPE))
+        << "ESC is the loading screen's quit (loading_screen_quit.h), not the device's";
+}
+
+TEST(DRMQuitChord, AutoRepeatDoesNotFireASecondSignal) {
+    // A second SIGINT forces the exit (quit_signal.h); a held Ctrl+C must
+    // stay ONE request.
+    KeyState state;
+    quitChordAfter(state, KEY_LEFTCTRL, 1, irr::KEY_LCONTROL);
+    EXPECT_TRUE(quitChordAfter(state, KEY_C, 1, irr::KEY_KEY_C));
+    EXPECT_FALSE(quitChordAfter(state, KEY_C, 2, irr::KEY_KEY_C));
+    EXPECT_FALSE(quitChordAfter(state, KEY_C, 2, irr::KEY_KEY_C));
+}

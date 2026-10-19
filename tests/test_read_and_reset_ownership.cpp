@@ -271,7 +271,7 @@ const SweepEntry kSweep[] = {
     {"popKeyEvent", 6, "render thread only; processChatInput early-returns into processOptionsKeyCapture (B433), processTradeskillSearchInput, processFriendsNameInput (B897) or processQuantityKeyInput (B442b), mutually exclusive; pre-zone, the B998 character-select host. T241/T421."},
     {"enterKeyPressed", 3, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433; pre-zone, the B998 host). T241."},
     {"slashKeyPressed", 3, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433; pre-zone, the B998 host). T241."},
-    {"escapeKeyPressed", 3, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433; pre-zone, the B998 host). T241."},
+    {"escapeKeyPressed", 4, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433; pre-zone, the B998 host; B1099: the loading-screen frames, IrrlichtRenderer::pollLoadingScreenQuit -- render() draws those INSTEAD of processFrame()/the char-select host, so the readers never share a frame). T241."},
 };
 
 }  // namespace

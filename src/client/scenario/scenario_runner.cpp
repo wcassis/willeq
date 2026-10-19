@@ -16,14 +16,19 @@ const char* ScenarioExitCodeName(int code) {
     }
 }
 
-int ProcessExitCode(bool scenarioRequested, int scenarioCode, bool fatalShutdown) {
+int ProcessExitCode(bool scenarioRequested, int scenarioCode, bool fatalShutdown,
+                    bool couldNotConnect) {
     if (scenarioRequested) {
         // The taxonomy is closed (0..3). A run that died on a FATAL must not
         // read as a pass; the unfinished-run code is what it is.
         if (fatalShutdown && scenarioCode == kScenarioPass) return kScenarioTimeout;
+        // B1099: no verdict, and the server never answered -- that is what
+        // could-not-start means.
+        if (couldNotConnect && scenarioCode == kScenarioTimeout) return kScenarioCouldNotStart;
         return scenarioCode;
     }
-    return fatalShutdown ? kClientFatalExit : 0;
+    if (fatalShutdown) return kClientFatalExit;
+    return couldNotConnect ? kClientCouldNotConnectExit : 0;
 }
 
 ScenarioRunner::ScenarioRunner(std::unique_ptr<IScenario> scenario, IScenarioWorld& world,

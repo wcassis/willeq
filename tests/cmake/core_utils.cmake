@@ -101,6 +101,17 @@ TARGET_COMPILE_DEFINITIONS(test_egl_config_select PRIVATE
 TARGET_LINK_LIBRARIES(test_egl_config_select GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_egl_config_select DISCOVERY_TIMEOUT 120)
 
+# B1099 (#419): SIGINT/SIGTERM -> the clean quit (quit_signal.cpp, linked
+# directly) and the loading screen's pure quit decision (header-only). No
+# client, device or display -- built and run in every tree, headless included.
+ADD_EXECUTABLE(test_quit_signal
+    test_quit_signal.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/quit_signal.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(test_quit_signal PRIVATE ${CMAKE_SOURCE_DIR}/include)
+TARGET_LINK_LIBRARIES(test_quit_signal GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_quit_signal DISCOVERY_TIMEOUT 120)
+
 # B1049 (#373): the pure evdev-key -> key-event decision (drm_key_translation.h)
 # -- needs Irrlicht's key types, so it is gated on the graphics/Irrlicht tree,
 # Linux-only like the DRM device it belongs to.

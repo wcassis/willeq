@@ -514,6 +514,9 @@ void EverQuest::TickNetwork()
 	if (m_zone_connection_manager) {
 		m_zone_connection_manager->Tick();
 	}
+	// B1099 (#419): the pre-zone connect bound (login_connect_watchdog.h),
+	// after the managers so a session that just came up is seen first.
+	m_login_world->TickLoginConnect(std::chrono::steady_clock::now());
 }
 
 EverQuest::~EverQuest()

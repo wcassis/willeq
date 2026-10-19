@@ -1055,6 +1055,18 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
         logLoadMemAuditStep(stepName, ctx_.Eqe1().getEQE1MappedBytesTotal(), texBytes, meshBytes, 0);
     };
 
+    // B1099 (GitLab #419): a quit during the GL half of a zone-in must not
+    // wait for the whole load. Application::shutdown() sets
+    // status.quitRequested before it joins this thread, so every step
+    // boundary checks it and abandons the rest (the process is going away;
+    // the half-built zone is torn down by IrrlichtRenderer::shutdown()).
+    auto quitting = [&](const char* stepName) {
+        if (!status.quitRequested.load(std::memory_order_acquire)) return false;
+        LOG_INFO(MOD_GRAPHICS, "loadZoneSequential: quit requested -- abandoning the load after {}",
+                 stepName);
+        return true;
+    };
+
     sampleStep("00_start");
     // T491: every [memledger] line of this zone-in carries the zone and a
     // zone-in sequence number; the per-step points below are the contract's
@@ -1064,13 +1076,16 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
 
     loadZoneStep0_EQE1(ctx);
     sampleStep("00_EQE1");
+    if (quitting("00_EQE1")) return;
 
     if (!loadZoneStep1_S3D(ctx)) return;
     sampleStep("01_S3D");
+    if (quitting("01_S3D")) return;
     eqt::memory::recordPoint("zone_parse");
 
     loadZoneStep2_BSP(ctx);
     sampleStep("02_BSP");
+    if (quitting("02_BSP")) return;
     eqt::memory::recordPoint("spatial_bsp");
 
     // Step 3 (zone texture atlas) removed — E10: EQE1 flat packs replace atlas system.
@@ -1079,6 +1094,7 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
 
     loadZoneStep4_Regions(ctx);
     sampleStep("04_Regions");
+    if (quitting("04_Regions")) return;
     // Region build decodes and uploads the zone textures inline (the cache
     // scopes them TexturesDecoded/TexturesDriver underneath ZoneMesh), so
     // this one point is both "mesh build" and "textures".
@@ -1086,32 +1102,41 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
 
     loadZoneStep5_Assets(ctx);
     sampleStep("05_Assets");
+    if (quitting("05_Assets")) return;
 
     loadZoneStep6_Objects(ctx);
     sampleStep("06_Objects");
+    if (quitting("06_Objects")) return;
     eqt::memory::recordPoint("objects");
 
     loadZoneStep7_Doors(ctx);
     sampleStep("07_Doors");
+    if (quitting("07_Doors")) return;
 
     if (!loadZoneStep8_Entities(ctx)) return;
     sampleStep("08_Entities");
+    if (quitting("08_Entities")) return;
     eqt::memory::recordPoint("entities");
 
     loadZoneStep9_Collision(ctx);
     sampleStep("09_Collision");
+    if (quitting("09_Collision")) return;
 
     if (!loadZoneStep10_Sky(ctx)) return;
     sampleStep("10_Sky");
+    if (quitting("10_Sky")) return;
 
     loadZoneStep11_Env(ctx);
     sampleStep("11_Env");
+    if (quitting("11_Env")) return;
 
     loadZoneStep12_Lights(ctx);
     sampleStep("12_Lights");
+    if (quitting("12_Lights")) return;
 
     loadZoneStep12b_Simulation(ctx);
     sampleStep("12b_Simulation");
+    if (quitting("12b_Simulation")) return;
 
     loadZoneStep13_Cleanup(ctx);
     sampleStep("13_Cleanup");
