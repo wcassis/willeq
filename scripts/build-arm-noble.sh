@@ -7,6 +7,8 @@
 #   ./scripts/build-arm-noble.sh --headless     # Build without graphics
 #   ./scripts/build-arm-noble.sh --no-audio     # Build without audio
 #   ./scripts/build-arm-noble.sh --headless --no-audio  # Minimal build
+#   BUILD_JOBS=8 ./scripts/build-arm-noble.sh    # cap the container's cmake -j (default: its nproc);
+#                                                 # CI sets it from the runner's CI_JOBS (B1095)
 #
 # P32 (Phase 4, docs/decisions.md 2026-07-28 addendum): the --no-gles2
 # desktop-GL-via-Lima build was retired — GLES2 (COpenGLES2Driver) is the
@@ -136,6 +138,7 @@ arm_container_run \
     -e "ENABLE_GRAPHICS=${ENABLE_GRAPHICS}" \
     -e "ENABLE_AUDIO=${ENABLE_AUDIO}" \
     -e "ENABLE_GLES2=${ENABLE_GLES2}" \
+    -e "BUILD_JOBS=${BUILD_JOBS:-}" \
     "$IMAGE_NAME"
 
 # Record the flag state this build used, so a future run can detect a toggle.
