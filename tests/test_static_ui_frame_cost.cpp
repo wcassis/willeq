@@ -502,7 +502,11 @@ TEST_F(StaticUiFrameCostTest, TheOpenInventoryFlushIssuesAtMostTwoDrawsPerTextur
     // fixture renders via renderSpellGemPanel, same here whether or not the
     // inventory popup is open): 210 -> 217 and 107 -> 114. Text entries are
     // unchanged (the gem glyphs are quads, not text).
-    EXPECT_EQ(s.commands, 217u);
+    // B1002 (#322): +4 on EVERY frame -- the spell gem window's fill went
+    // from a bare drawSprite(PanelBackground) (no border) to drawPanelFor(),
+    // which adds the window's 4-edge frame. Same +4 in both frames, text
+    // entries unchanged: 217 -> 221 and 114 -> 118.
+    EXPECT_EQ(s.commands, 221u);
     EXPECT_EQ(s.textEntries, 54u);
     ASSERT_GT(s.textureRuns, 0u);
     EXPECT_LT(s.textureRuns, s.commands / 4)
@@ -514,7 +518,7 @@ TEST_F(StaticUiFrameCostTest, TheOpenInventoryFlushIssuesAtMostTwoDrawsPerTextur
     inv_.activePopup = PopupType::None;
     img = renderFrames([&] { submitStaticUI(); }, &s);
     if (img) img->drop();
-    EXPECT_EQ(s.commands, 114u);
+    EXPECT_EQ(s.commands, 118u);
     EXPECT_EQ(s.textEntries, 29u);
     EXPECT_LE(s.driverDraws, 2 * s.textureRuns);
 }

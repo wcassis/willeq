@@ -61,6 +61,11 @@ namespace Graphics {
 // draw at 255, exactly like the opaque ones.
 constexpr uint8_t kTranslucentPanelAlpha = 255;  // MEASURED 255: see B1002 README
 
+// Test seam (tests/test_ui_panel_z_order.cpp): 0 keeps kTranslucentPanelAlpha,
+// a non-zero value overrides it, so the translucent path can be exercised at a
+// genuinely translucent blend even though the measured value is 255.
+inline uint8_t translucentPanelAlphaOverride = 0;
+
 struct WindowFlagRow {
     const char* officialName;  // "EQUI_..." -- the file in the snapshot
     bool transparent;          // the file-level flag
@@ -109,8 +114,10 @@ constexpr bool windowIsTranslucent(UIWindow w) {
 }
 
 /** The panel alpha a window's drawPanel() uses. */
-constexpr uint8_t windowPanelAlpha(UIWindow w) {
-    return windowIsTranslucent(w) ? kTranslucentPanelAlpha : 255;
+inline uint8_t windowPanelAlpha(UIWindow w) {
+    if (!windowIsTranslucent(w)) return 255;
+    return translucentPanelAlphaOverride ? translucentPanelAlphaOverride
+                                         : kTranslucentPanelAlpha;
 }
 
 }  // namespace Graphics

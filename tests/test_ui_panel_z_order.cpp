@@ -14,14 +14,17 @@
 // The pixel assertion: inside the upper window's rect, a frame with the
 // lower window under it may differ from the upper window drawn alone by no
 // more than what the upper window's own panel lets through. B1002 (#322):
-// the panel fill is now per-window -- the atlas `white` sprite tinted at
-// windowPanelAlpha(w), 255 for every fable window (the official client's
-// measured blend alpha for its Style_Transparent windows is 255, so all 30
-// fable windows draw fully opaque, see window_flags.h). With 255 the lower
-// window's text is ABSENT in the region the upper covers: kMaxThrough is
-// 0. Before B1002 the shared panel_background was baked at alpha 180
+// the panel fill is now per-window -- the atlas `white` sprite
+// tinted at windowPanelAlpha(w), 255 for every fable window (the official
+// client's measured blend alpha for its Style_Transparent windows is 255, so
+// all 29 fable windows draw fully opaque, see window_flags.h). With 255 the
+// lower window's text is ABSENT in the region the upper covers: it reaches 0,
+// and kMaxThrough is then only the headroom for the upper window's OWN text
+// anti-aliasing (a glyph-edge pixel blends against black alone, against the
+// lower content stacked; the measured maxima are 85 and 26, bound 96). Before
+// B1002 the shared panel_background was baked at alpha 180
 // (tools/ui_atlas_builder.cpp) and let 75/255 through (kMaxThrough 76);
-// that uniform 180 is superseded, and the pre-B1002 render fails these
+// that uniform 180 is superseded, and the pre-B992 render fails these
 // assertions (a 180-alpha panel dims but does not hide).
 //
 // The draw-call account (TheLayeredFlushCost...) is the measurement the
@@ -36,6 +39,7 @@
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/ui/ui_layout.h"
+#include "client/graphics/ui/window_flags.h"  // B1002: translucentPanelAlphaOverride
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/hotbar_panel.h"  // B1025-H2: renderHotbar's home
 #include "client/graphics/ui/tradeskill_panel.h"
@@ -47,6 +51,7 @@
 #include "client/graphics/ui/cursor_attachment.h"
 #include "client/graphics/ui/container_panel.h"
 #include "client/graphics/ui/container_layout.h"
+#include "client/graphics/ui/inventory_layout.h"  // B1002: windowRect for the test
 #include "client/graphics/ui/quantity_window.h"
 #include "client/graphics/ui/confirmation_dialog.h"
 #include "client/graphics/ui/confirmation_layout.h"
@@ -87,6 +92,16 @@ const char* kWilleqEqe1 = "/mnt/projects/EverQuest_ETC1/willeq.eqe1";
 // This is the re-based assertion the issue asks for: lower text absent, not
 // "dimmed to the panel's own passes" (B992's 76).
 constexpr int kMaxThrough = 96;
+
+// One pixel's max per-channel difference (the diffInside body, unrolled).
+int diffInsidePixel(irr::video::IImage* a, irr::video::IImage* b, irr::s32 x,
+                    irr::s32 y) {
+    const irr::video::SColor ca = a->getPixel(x, y);
+    const irr::video::SColor cb = b->getPixel(x, y);
+    return std::max({std::abs(int(ca.getRed()) - int(cb.getRed())),
+                     std::abs(int(ca.getGreen()) - int(cb.getGreen())),
+                     std::abs(int(ca.getBlue()) - int(cb.getBlue()))});
+}
 
 }  // namespace
 
@@ -340,12 +355,10 @@ protected:
         int maxDiff = 0;
         size_t over = 0;
         diffInside(preB992, alone, upperRect, &maxDiff, &over);
-        std::printf("%s: preB992 maxDiff=%d over=%zu\n", what, maxDiff, over);
-        EXPECT_GT(over, 20u) << what << ": the pre-B992 flush must show the lower window's text "
+        EXPECT_GT(over, 20U) << what << ": the pre-B992 flush must show the lower window's text "
                                 "through the upper one (max diff " << maxDiff
                              << ") -- otherwise this case cannot detect the bleed";
         diffInside(stacked, alone, upperRect, &maxDiff, &over);
-        std::printf("%s: layered  maxDiff=%d over=%zu (kMaxThrough=%d)\n", what, maxDiff, over, kMaxThrough);
         EXPECT_EQ(over, 0u) << what << ": " << over << " pixels inside the upper window differ "
                                "by more than its translucent panel lets through (max "
                             << maxDiff << ") -- the lower window's text is drawn over it";
@@ -353,6 +366,32 @@ protected:
         alone->drop();
         stacked->drop();
         preB992->drop();
+    }
+
+    // B1002 (#322): the translucent-over-opaque case. The measured blend alpha
+    // is 255 (window_flags.h), so with the measured value a translucent window
+    // still fully hides the lower one; to exercise the per-window BLEND path at
+    // a genuinely translucent value, translucentPanelAlphaOverride drives a
+    // translucent window to that value and this measures it from pixels.
+    //
+    // In the overlap of the upper window's own content with the lower one,
+    // stacked ~= blend*upper + (1-blend)*lower, so (stacked - upper) ~=
+    // (1-blend)*(lower - upper): at a lower TEXT pixel (bright over dark)
+    // that is (1-blend)*(lower - dark) ~= (1-blend)*lower -- the lower text
+    // PRESENT at the blend. maxDiff measures exactly that. Returns
+    // {maxDiff, pixels exceeding blendTol}; the caller names the window.
+    struct BlendResult { int maxDiff = 0; size_t over = 0; };
+    BlendResult measureBlend(irr::video::IImage* a, irr::video::IImage* b,
+                             const irr::core::rect<irr::s32>& region, int blendTol) {
+        BlendResult r;
+        for (irr::s32 y = region.UpperLeftCorner.Y; y < region.LowerRightCorner.Y; ++y) {
+            for (irr::s32 x = region.UpperLeftCorner.X; x < region.LowerRightCorner.X; ++x) {
+                const int d = diffInsidePixel(a, b, x, y);
+                r.maxDiff = std::max(r.maxDiff, d);
+                if (d > blendTol) ++r.over;
+            }
+        }
+        return r;
     }
 };
 
@@ -410,6 +449,148 @@ TEST_F(UiPanelZOrderTest, TwoCoveredBagsTextIsCoveredByTheNewestBag) {
         [&] { renderContainerWindows(ui_.layer(), layout_, three); },
         [&] { renderContainerWindows(ui_.layer(), layout_, forgeOnly); },
         ContainerLayout::windowRect(layout_));
+}
+
+// The overlap of two rects, or an empty rect when they do not meet.
+irr::core::rect<irr::s32> overlapRect(const irr::core::rect<irr::s32>& a,
+                                      const irr::core::rect<irr::s32>& b) {
+    const irr::s32 x0 = std::max(a.UpperLeftCorner.X, b.UpperLeftCorner.X);
+    const irr::s32 y0 = std::max(a.UpperLeftCorner.Y, b.UpperLeftCorner.Y);
+    const irr::s32 x1 = std::min(a.LowerRightCorner.X, b.LowerRightCorner.X);
+    const irr::s32 y1 = std::min(a.LowerRightCorner.Y, b.LowerRightCorner.Y);
+    return x0 < x1 && y0 < y1 ? irr::core::rect<irr::s32>(x0, y0, x1, y1)
+                              : irr::core::rect<irr::s32>(0, 0, 0, 0);
+}
+
+// B1002 (#322): the translucent-over-opaque case, named in the issue's
+// re-basing of B992's pixel test. The TRANSLUCENT window is the buff bar
+// (EQUI_BuffWindow, one of the 34); the OPAQUE one under it is a bag
+// (EQUI_Container, one of the 86). The buff bar's own panel is a uniform
+// fill, so its content (the buff slots) is identical in the upper-alone and
+// upper-over-lower frames, and inside the overlap only the bag's content
+// bleeding through the buff panel can differ. Two legs:
+//
+// 1. the MEASURED blend alpha (255, window_flags.h): the translucent window
+//    hides the lower window's content exactly like an opaque one -- ABSENT
+//    in the region it covers (the issue's re-based assertion: the lower
+//    window's text is absent, not dimmed to the panel's own passes).
+// 2. a GENUINELY translucent blend (180, through translucentPanelAlpha
+//    Override): the lower window's content is PRESENT at the measured blend.
+//    The panel lets (255-180)/255 = 30% of what is under it through, so a
+//    bright lower pixel (the bag's slot art, ~255) over the dark panel
+//    (15) is 0.30*240 = 72 above the opaque frame; the tolerance band
+//    50..150 brackets 30% with headroom for the upper content's own
+//    translucency.
+//
+// The negative control: the bag alone must show bright pixels inside the
+// overlap (its slot art / contents), or the geometry cannot detect the bleed
+// and the case fails loudly.
+TEST_F(UiPanelZOrderTest, TranslucentBuffBarOverTheOpaqueBag) {
+    ContainerWindowsState bags;
+    openBackpack(bags);
+    openForge(bags);
+    // Buff slots make the buff bar's own content non-empty (and identical in
+    // both compared frames).
+    buffs_.buffs[0].spellId = 288;
+    buffs_.buffs[1].spellId = 289;
+
+    const irr::core::rect<irr::s32> bag = ContainerLayout::windowRect(layout_);
+    UILayout moved = layout_;
+    // Position the 300x40 buff bar over the bag's FIRST slot row (bag-space
+    // y 84-124, ContainerLayout::SLOT_Y[0]=84) so the overlap carries the bag's
+    // bright slot art. The bag is 100 wide; the overlap is that width.
+    moved.buffBar =
+        overlapRect(bag,
+                    moved.clampOnScreen(
+                        bag.UpperLeftCorner.X, bag.UpperLeftCorner.Y + 84,
+                        300, 40));
+    const irr::core::rect<irr::s32> region = overlapRect(moved.buffBar, bag);
+    ASSERT_GT(region.getArea(), 0)
+        << "the relocated buff bar must overlap the bag";
+
+    const auto upperAlone = [&] { renderBuffBar(ui_.layer(), moved, buffs_); };
+    const auto buffOverBag = [&] {
+        renderContainerWindows(ui_.layer(), layout_, bags);
+        renderBuffBar(ui_.layer(), moved, buffs_);
+    };
+
+    // Negative control: the bag's content is visible in the overlap.
+    irr::video::IImage* lower = renderFrames(
+        [&] { renderContainerWindows(ui_.layer(), layout_, bags); });
+    ASSERT_NE(lower, nullptr);
+    int bright = 0;
+    for (irr::s32 y = region.UpperLeftCorner.Y; y < region.LowerRightCorner.Y; ++y)
+        for (irr::s32 x = region.UpperLeftCorner.X; x < region.LowerRightCorner.X; ++x) {
+            const irr::video::SColor p = lower->getPixel(x, y);
+            bright += (int(p.getRed() + p.getGreen() + p.getBlue()) / 3 > 96);
+        }
+    lower->drop();
+    std::printf("B1002 buff-over-bag: region %dx%d, bag pixels over 96: %d\n",
+                region.getWidth(), region.getHeight(), bright);
+    ASSERT_GT(bright, 20)
+        << "the bag must show content inside the overlap (only "
+        << bright << " bright pixels) -- the case cannot detect the bleed";
+
+    // The upper-alone frame: both compared frames show the buff bar's own
+    // content, so inside the overlap only the BLEED of the bag's content
+    // through the buff panel can differ between them.
+    irr::video::IImage* alone = renderFrames(upperAlone);
+    ASSERT_NE(alone, nullptr);
+
+    // Leg 1: the measured blend alpha (no override = kTranslucentPanelAlpha
+    // = 255): the lower window's content is ABSENT in the region it covers.
+    irr::video::IImage* opaque = renderFrames(buffOverBag);
+    ASSERT_NE(opaque, nullptr);
+    {
+        int maxDiff = 0;
+        size_t over = 0;
+        diffInside(alone, opaque, region, &maxDiff, &over);
+        std::printf("B1002 measured (%d) translucent-over-opaque: maxDiff=%d "
+                    "over(>%d)=%zu\n",
+                    int(kTranslucentPanelAlpha), maxDiff, kMaxThrough, over);
+        EXPECT_EQ(over, 0u)
+            << "at the measured blend alpha the translucent window fully hides "
+               "the lower window's content in the region it covers (max diff "
+            << maxDiff << ")";
+        // The residual diff is the UPPER window's OWN content: its buff
+        // decal (an ETC1 alpha-companion sprite, not baked 255) blends the
+        // backdrop under its translucent pixels -- the bag's dark slot
+        // background (alone: black). No lower TEXT/ART crosses the panel:
+        // `over` above is 0.
+        EXPECT_LE(maxDiff, 80)
+            << "a 255-alpha panel hides the lower window; the only residual "
+               "is the upper window's own (partly transparent) content (max "
+               "diff "
+            << maxDiff << ")";
+    }
+
+    // Leg 2: a genuinely translucent 180: the lower window's content is
+    // PRESENT at the measured blend (30% through). A bright lower pixel
+    // (bag slot art, ~255) over the dark panel (15) is 0.30*240 = 72 above
+    // the opaque frame; the tolerance band 50..150 brackets that with
+    // headroom for the upper content's own translucency on top.
+    translucentPanelAlphaOverride = 180;
+    irr::video::IImage* blended = renderFrames(buffOverBag);
+    translucentPanelAlphaOverride = 0;
+    ASSERT_NE(blended, nullptr);
+    const BlendResult r = measureBlend(alone, blended, region, 50);
+    std::printf("B1002 translucent 180 over opaque: maxDiff=%d over(>50)=%zu\n",
+                r.maxDiff, r.over);
+    EXPECT_GE(r.maxDiff, 50)
+        << "a 180-alpha translucent panel lets ~30% of the lower content "
+           "through; the blend must be visible (max diff "
+        << r.maxDiff << ")";
+    EXPECT_LE(r.maxDiff, 150)
+        << "a 180-alpha panel lets ~30% through, never ~60% or more "
+           "(max diff "
+        << r.maxDiff << ") -- the panel is missing or the blend is wrong";
+    EXPECT_GE(r.over, 20u)
+        << "the lower window's content must be PRESENT at the blend across "
+           "the overlap region (only "
+        << r.over << " pixels over the 50 tolerance)";
+    alone->drop();
+    opaque->drop();
+    blended->drop();
 }
 
 // Layering must not move a pixel where nothing overlaps: the HUD alone, every
@@ -470,22 +651,30 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
         // on the atlas path, +3 on fallback; the B1078 band-scaled inventory
         // keeps its one-group flush and bag-covering group counts below.
         // Re-taken on the merged 800x600 layout (chat=120).
-        {"hud", [] {}, {8, 8, 6, 1}, {62, 62, 6, 1}},
+        // B1002 (#322): the atlas pins are UNCHANGED (a panel fill is one
+        // textured atlas quad regardless of its tint alpha). The FALLBACK
+        // pins dropped by one draw per window: drawPanelFor fills the body at
+        // alpha 255 (the measured blend alpha; all 29 fable windows are
+        // opaque) instead of the shared panel_background baked at 180, so the
+        // body and the four border lines are now ONE opaque solid run at the
+        // flush instead of a 180-blend run plus an opaque run. Re-taken on
+        // the same x86 llvmpipe harness, base e849ba41.
+        {"hud", [] {}, {8, 8, 6, 1}, {55, 55, 6, 1}},
         // B1078 (GitLab #398): the inventory window moved to the band-anchored
         // 428x460 (one uniform factor), so its own flush is one group now
         // (was two) and every bag-covering scenario lost 1 group.
-        {"inventory", [&] { inv_.activePopup = PopupType::Inventory; }, {35, 35, 7, 1}, {85, 85, 7, 1}},
+        {"inventory", [&] { inv_.activePopup = PopupType::Inventory; }, {35, 35, 7, 1}, {75, 75, 7, 1}},
         // What B899's workaround drew for three open bags: the topmost only.
         // The Forge (350,100) also covers inventory text, so even one bag is a
         // real split (the shipped bleed was there too).
         {"inv+forge", [&] {
              inv_.activePopup = PopupType::Inventory;
              openForge(containers_);
-         }, {38, 42, 8, 2}, {95, 97, 8, 2}},
+         }, {38, 42, 8, 2}, {82, 86, 8, 2}},
         {"inv+3 bags", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
-         }, {51, 63, 10, 4}, {112, 118, 10, 4}},
+         }, {51, 63, 10, 4}, {93, 105, 10, 4}},
         {"full", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
@@ -496,7 +685,7 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
              cursor_.iconId = 1001;
              cursor_.mouseX = 560;
              cursor_.mouseY = 420;
-         }, {52, 64, 13, 4}, {128, 137, 13, 5}},
+         }, {52, 64, 13, 4}, {109, 123, 13, 5}},
     };
 
     for (bool fallback : {false, true}) {
