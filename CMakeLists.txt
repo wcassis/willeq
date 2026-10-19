@@ -347,6 +347,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/core/memory_ledger.cpp
     src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
     src/client/core/memory_ledger_trace.cpp
+    src/client/core/memory_ledger_gpu_driver_classifier_darwin.cpp  # B1062: the Darwin gpu_driver classifier (no-op off-Apple)
     src/client/core/gpu_buffer_census.cpp
     src/client/core/gl_driver_census.cpp  # B946 (GitLab #264): the [gldriver] line
     src/client/zone/zone_dispatch.cpp
@@ -2413,6 +2414,7 @@ IF(EQT_GRAPHICS)
         src/client/core/memory_ledger.cpp
         src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
+        src/client/core/memory_ledger_gpu_driver_classifier_darwin.cpp  # B1062: the Darwin gpu_driver classifier (no-op off-Apple)
         src/client/core/gpu_buffer_census.cpp
         src/client/core/gl_driver_census.cpp   # B1016: the gate's [gldriver] net
         tools/hwcaps/zone_bench_loadpoint_trace.cpp  # B928: per-load-point [memledger-trace] rows
@@ -2625,6 +2627,7 @@ IF(EQT_GRAPHICS)
         src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
         src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
+        src/client/core/memory_ledger_gpu_driver_classifier_darwin.cpp  # B1062: the Darwin gpu_driver classifier (no-op off-Apple)
         src/client/core/gpu_buffer_census.cpp
         src/client/core/gl_driver_census.cpp  # B1016: zone_bench_loader.cpp emits the [gldriver] line
         tools/hwcaps/zone_bench_loader.cpp
@@ -2750,6 +2753,7 @@ IF(EQT_GRAPHICS)
         src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
         src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
+        src/client/core/memory_ledger_gpu_driver_classifier_darwin.cpp  # B1062: the Darwin gpu_driver classifier (no-op off-Apple)
         src/client/core/gpu_buffer_census.cpp
         src/client/core/gl_driver_census.cpp  # B1016: zone_bench_loader.cpp emits the [gldriver] line
         tools/hwcaps/zone_bench_loader.cpp

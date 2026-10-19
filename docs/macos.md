@@ -230,7 +230,26 @@ GLES2 header rule, so Linux CI must verify that regression surface.
 
 - The memory ledger: malloc-zone allocation-class charges are ON (B1044);
   `[memarena]`'s mallinfo2 line remains Linux-only. The Darwin reading is
-  `phys_footprint` ("Memory on macOS" above).
+  `phys_footprint` ("Memory on macOS" above). The T504 `gpu_driver` caller
+  classifier (a block whose malloc/new return address lies inside a
+  GL/driver module -- Mesa on Linux, ANGLE/Apple GPU on Darwin) runs here
+  too, off the dyld image table: `dl_iterate_phdr` does not exist on
+  Darwin, so the classifier's table is filled from
+  `_dyld_image_count()`/`_dyld_get_image_header()` (the images' first
+  `LC_SEGMENT_64` ranges, slide applied; image 0, the main executable,
+  never a GPU image; the rest tested against the ANGLE dylibs `libEGL` /
+  `libGLESv2` and the frameworks Metal, IOSurface, CoreDisplay -- the same
+  `gpu_driver` category, so the row means the same thing on both
+  platforms). All of it lives in
+  `src/client/core/memory_ledger_gpu_driver_classifier_darwin.cpp` beside
+  the Linux classifier in `memory_ledger.cpp`, which keeps a one-line
+  `#elif defined(__APPLE__)` arm; the Linux preprocessed output is
+  unchanged. The hot path is the Linux arm's shape -- one atomic table load
+  + binary search, no `dladdr`, no `backtrace`, no lock. B1062 (#382)
+  measured the spec's cost A/B on the mini (per-call ns, the
+  `[classifier-cost]` line of `tests/test_gpu_driver_classifier.cpp`;
+  the measured figures are filled in from the mini run of that test
+  below):
 - The window: `CIrrDeviceFB_Cocoa.mm` defines the three "X11" members
   (`initEGLX11`, `pollX11Events`, `closeX11Window`) on Darwin, so
   `CIrrDeviceFB.cpp`'s run()/present()/destructor are unchanged; its state

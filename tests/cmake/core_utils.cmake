@@ -419,9 +419,12 @@ GTEST_DISCOVER_TESTS(test_config_key_reachability DISCOVERY_TIMEOUT 120)
 # (include/client/core/memory_ledger.h). Links the ledger TU directly -- it
 # REPLACES malloc/free/operator new for this whole binary, gtest included --
 # and exercises the hooks through the public allocation entry points.
-# B1039 (#359): the suite tests the allocator hooks (it asserts enabled()
-# first) and glibc's mallinfo2/malloc_info census, so it is built only where
-# the hooks exist: on macOS the ledger is its OFF shape (memory_ledger.h).
+# B1039 (#359): the suite asserts enabled() first and reads glibc's
+# mallinfo2/malloc_info census (the `#if defined(__linux__)` include block
+# at the ledger TU's top), so the SUITE is built only off-Apple. The
+# ledger itself is ON on macOS too (B1044: the malloc-zone shape,
+# memory_ledger_backend.h) -- test_gpu_driver_classifier below runs both
+# platform arms.
 IF(NOT APPLE)
     ADD_EXECUTABLE(test_memory_ledger
         test_memory_ledger.cpp
@@ -442,8 +445,29 @@ IF(NOT APPLE)
     ENDIF()
     GTEST_DISCOVER_TESTS(test_memory_ledger DISCOVERY_TIMEOUT 120)
 ELSE()
-    MESSAGE(STATUS "test_memory_ledger: not built on macOS (the ledger compiles to its OFF shape there)")
+    MESSAGE(STATUS "test_memory_ledger: not built on macOS (glibc-only census: mallinfo2/__libc_*)")
 ENDIF()
+
+# B1062 (#382): the gpu_driver caller classifier -- the two-platform test
+# (spec step 2): a known caller in a named image classifies, a caller in
+# the main executable does not, an address in no module never classifies
+# as the GL stack, and (Darwin) the dladdr-vs-backtrace cost A/B prints
+# its [classifier-cost] line. Built on BOTH platforms, unlike
+# test_memory_ledger (whose remaining cases read glibc's mallinfo2): it
+# links the ledger TU (the hooks are ON on both -- macOS is the
+# malloc-zone shape, B1044) plus, on Darwin, the new
+# memory_ledger_gpu_driver_classifier_darwin.cpp the host's
+# callerIsGlStack() arm calls.
+ADD_EXECUTABLE(test_gpu_driver_classifier
+    test_gpu_driver_classifier.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_gpu_driver_classifier_darwin.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
+)
+TARGET_LINK_LIBRARIES(test_gpu_driver_classifier GTest::gtest_main ${FMT_LIB} Threads::Threads)
+GTEST_DISCOVER_TESTS(test_gpu_driver_classifier DISCOVERY_TIMEOUT 120)
 
 # B946 (GitLab #264): the [gldriver] line -- which GL driver the process
 # really loaded (the mapped libgallium, the GL_RENDERER string, whether

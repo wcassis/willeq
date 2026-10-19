@@ -35,7 +35,8 @@
 #endif
 #include "memory_ledger_darwin.h"  // B1044: phys_footprint reading + log/JSON extras; no-op off-Darwin
 #if defined(__APPLE__)
-#include <unistd.h>                // _SC_PAGESIZE (valloc/pvalloc), readlink
+#include <unistd.h>  // _SC_PAGESIZE (valloc/pvalloc), readlink
+#include "memory_ledger_gpu_driver_classifier_darwin.h"  // B1062
 #endif
 
 #include "common/logging.h"
@@ -1204,20 +1205,17 @@ inline uint64_t chargedOf(void* user) {
 }
 
 // ---- T504: is the caller of this malloc/new inside the GL stack? -----------
-//
 // On llvmpipe the "GPU" is our own process: texture storage, vertex buffers and
 // the shader JIT are malloc'd by Mesa/LLVM from inside whatever MemoryScope made
 // the GL call, so every category that touches GL was contaminated by the
 // platform's rasteriser (MEASURED: textures_decoded read 12.7 MiB live at
 // startup with no CPU-side pixel buffer alive -- it was llvmpipe's copy of the
-// UI atlas and the two icon sheets). Classifying by RETURN ADDRESS gives that
-// memory its own row, `gpu_driver`, on every platform.
-//
-// Hook-safe by construction: no allocation (static tables, std::sort on a POD
-// array), no lock a caller can hold (a try-lock flag; a busy table just means
-// this one block is classified by scope, as before), and re-entry is cut by a
-// thread_local. dl_iterate_phdr takes the loader's recursive lock, so a malloc
-// made from inside dlopen() on this thread is fine.
+// UI atlas and the two icon sheets). Classifying by RETURN ADDRESS gives
+// that memory its own row, `gpu_driver`, on every platform (Darwin: the dyld
+// table in memory_ledger_gpu_driver_classifier_darwin.cpp). Hook-safe: no
+// allocation (static tables, std::sort on a POD array), no lock a caller can
+// hold (a try-lock flag; a busy table classifies by scope), re-entry cut by a
+// thread_local; dl_iterate_phdr's recursive lock lets dlopen()-time mallocs through.
 struct CodeRange {
     uintptr_t lo;
     uintptr_t hi;
@@ -1308,6 +1306,8 @@ inline bool callerIsGlStack(const void* caller) {
     r = lookupCaller(pc);
     if (r < 0) g_unknownAfterRebuild.fetch_add(1, std::memory_order_relaxed);
     return r == 1;
+#elif defined(__APPLE__)
+    return classify_detail::callerIsGlStackDarwin(caller);
 #else
     (void)caller;
     return false;
