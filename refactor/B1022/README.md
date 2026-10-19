@@ -1,5 +1,47 @@
 # B1022 oracle checkpoint — blocked before a swing-rate mapping
 
+## Decisive source finding (2026-10-19, run 1302) — the OP_Animation speed byte is a red herring
+
+The deployed lane-2 server (`eqemulator/eqemu-server`) **does** emit melee
+`OP_Animation` — already captured in its own zone logs, so no inference was
+needed:
+
+- `qeynos2_version_0_inst_id_0_port_7000_192.log` (10-14): 6 S->C `OP_Animation`, all body `06 00 0A 05`.
+- `qeynos2_version_0_inst_id_0_port_7000_196.log` (10-14): 13 entries, body `06 00 0A 05` and `AF 00 0A 08`.
+
+Wire layout (fable's own reader, `src/client/zone/zone_entry.cpp:808-821`):
+`[2-3]=spawn_id`, `[4]=animation_speed (uint8)`, `[5]=animation_id (uint8)`.
+So `06 00 | 0A | 05` = spawn 6, speed **10**, anim 5 (melee); `AF 00 | 0A | 08` =
+spawn 175, speed **10**, anim 8. **The speed byte is 10 (0x0A) for every swing,
+across both spawns and both anim ids** — constant, not per-weapon. This matches
+the source (`attack.cpp` `DoAnim`: `a->speed = animation_speed ? animation_speed
+: 10`; an ordinary swing passes 0, so 10). Conclusion for the card's
+measurement question: **the official client's swing period cannot come from the
+OP_Animation speed byte; it comes from the equipped weapon's item delay**
+(server `attack_timer` = `100 x delay` ms), which reaches the client via the
+equipment/appearance path. That is acceptance item (A)'s source answer.
+
+## Why the fable actor produced no swing on the arena dummy (corrected cause)
+
+Across heading seeds 0/90/180, position adjacent (no "too far away"), target
+id=3 set and confirmed (`OP_MobHealth` HP=100), and `auto_attack` on in both
+weapon windows (delay-45 axe then delay-20 axe), the deployed server emitted
+**zero** `OP_Animation` and zero swing/hit/miss lines for the actor in the
+**arena training dummy** — yet the same server emits melee `OP_Animation`
+freely in qeynos2 against real NPCs (spawns 6 / 175). The blocker is the
+**arena `a_training_dummy` (npc 77002) not resolving a server-side swing**,
+exactly the orchestrator's pre-warning, NOT facing cone / position / protocol.
+A GM-spawned/DB-seeded real NPC (`a_Lteth_Val_Gnoll`, npc 18113) was tried on
+the next run but the zone instance loaded before the spawn row landed, so its
+`/target` found nothing (`actor6/`). The actor's own `--record-session` is
+the instrument that will give the swing period: timestamps between consecutive
+`OP_Animation` for the same weapon = `100 x delay`.
+
+(The earlier mid-run worry that "the deployed image differs from the source
+read" is refuted by this: the deployed server's real `OP_Animation` speed=10
+matches `/mnt/projects/akk-stack/code`. Zone-log timestamps are TZ-shifted —
+log "04:11" is ~09:11 wall clock; the arena log was the correct one all along.)
+
 The prescribed two-client oracle was run on eqemu/oracle lane 2 on 2026-10-19.
 The official client observed as Testcaster; the headless fable client acted as
 Testbuddy. Both weapon phases used the **same actor**. The captured video and
