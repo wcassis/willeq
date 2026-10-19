@@ -17,7 +17,8 @@
 // loader's caches are per process).
 //
 //   model_fingerprint --zone <name> [--eq <client dir>] [--db <willeq.db>]
-//                     [--max-race <n>] [--out <file>]
+//                     [--max-race <n>] [--only-race <n>]
+//                     [--variant-first] [--out <file>]
 #include <irrlicht.h>
 
 #include <algorithm>
