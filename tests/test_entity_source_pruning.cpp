@@ -8,6 +8,7 @@
 // tests).
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -69,9 +70,59 @@ void runZone(const std::string& zone) {
     }
 }
 
+std::string fingerprintRow(const std::string& text, const std::string& prefix) {
+    std::istringstream rows(text);
+    std::string row;
+    while (std::getline(rows, row)) {
+        if (row.compare(0, prefix.size(), prefix) == 0) return row;
+    }
+    return {};
+}
+
+std::string animations(const std::string& row) {
+    const auto start = row.find(" anims=");
+    const auto end = row.find(" xf=", start);
+    if (start == std::string::npos || end == std::string::npos) return {};
+    return row.substr(start + 7, end - start - 7);
+}
+
 }  // namespace
 
 TEST(EntitySourcePruning, GfaydarkModelDataIsByteIdenticalToTheGolden) { runZone("gfaydark"); }
 TEST(EntitySourcePruning, DreadlandsModelDataIsByteIdenticalToTheGolden) { runZone("dreadlands"); }
 TEST(EntitySourcePruning, IcecladModelDataIsByteIdenticalToTheGolden) { runZone("iceclad"); }
 TEST(EntitySourcePruning, Qeynos2ModelDataIsByteIdenticalToTheGolden) { runZone("qeynos2"); }
+
+TEST(EntitySourcePruning, BaseAnimationsDoNotDependOnVariantBuildOrder) {
+    if (!fileExists(WILLEQ_DB_REAL_PATH)) GTEST_SKIP() << "no shipped db";
+    const std::string eq = clientPath();
+    if (!fileExists(eq + "global_chr.s3d") || !fileExists(eq + "gfaydark_chr.s3d"))
+        GTEST_SKIP() << "EQ client tree not at " << eq;
+
+    auto run = [&](bool variantFirst) {
+        const std::string out = std::string(P_tmpdir) + "/model_fingerprint_order_" +
+                                std::to_string(::getpid()) + (variantFirst ? "_first" : "_last") + ".txt";
+        const std::string cmd = std::string(MODEL_FINGERPRINT_BIN) + " --zone gfaydark --eq " + eq +
+                                " --db " + WILLEQ_DB_REAL_PATH + " --only-race 127 --max-race 127" +
+                                (variantFirst ? " --variant-first" : "") + " --out " + out + " >/dev/null 2>&1";
+        const int rc = std::system(cmd.c_str());
+        EXPECT_EQ(rc, 0) << cmd;
+        const std::string text = readAll(out);
+        std::remove(out.c_str());
+        return text;
+    };
+
+    const std::string baseFirst = run(false);
+    const std::string variantFirst = run(true);
+    const std::string prefix = "race=127 gender=0 variant=0,0 ";
+    const std::string baseRow = fingerprintRow(baseFirst, prefix);
+    const std::string afterVariantRow = fingerprintRow(variantFirst, prefix);
+    ASSERT_FALSE(baseRow.empty());
+    ASSERT_FALSE(afterVariantRow.empty());
+    EXPECT_EQ(baseRow, afterVariantRow);
+
+    const std::string merged = animations(fingerprintRow(baseFirst, "race=127 gender=0 variant=1,1 "));
+    ASSERT_FALSE(merged.empty());
+    EXPECT_EQ(animations(baseRow), merged);
+    EXPECT_EQ(static_cast<size_t>(43), 1 + std::count(merged.begin(), merged.end(), ','));
+}
