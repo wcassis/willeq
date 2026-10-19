@@ -235,14 +235,18 @@ GLES2 header rule, so Linux CI must verify that regression surface.
   GL/driver module -- Mesa on Linux, ANGLE/Apple GPU on Darwin) runs here
   too, off the dyld image table: `dl_iterate_phdr` does not exist on
   Darwin, so the classifier's table is filled from
-  `_dyld_image_count()`/`_dyld_get_image_header()`: every `LC_SEGMENT_64`
-  of every image (slide applied), EXCEPT `__PAGEZERO` (a virtual guard
-  range that contains no code; the first segment of every image, and it
-  would classify every small address as "that image" if recorded). The
-  table is built once at process start (a static initializer, after dyld
-  has loaded the initial image set -- ANGLE's dylibs are link-time images
-  of the client) and rebuilt, rate-limited, only when an unknown address
-  appears later (a dlopen'd image). Image 0 (the main executable) is
+  `_dyld_image_count()`/`_dyld_get_image_header()`: one range per image,
+  its `__TEXT` segment (slide applied; `__PAGEZERO` is a virtual guard
+  range with no code and is never recorded). Recording every non-`__PAGEZERO`
+  segment overflows the 1,024-range table on a full dyld image set -- the
+  benchmark loads ~380 images whose ~2,400 data segments (libswift*,
+  libobjc, libSystem, ...) would push the last images' `__TEXT` past the
+  end, which is exactly where the GPU stack's call sites land. The table
+  is populated by the first unknown-address rebuild (it fires within the
+  first few allocations: dyld has already loaded the initial image set,
+  ANGLE's dylibs are link-time images of the client) and rebuilt,
+  rate-limited, only when an unknown address appears later (a dlopen'd
+  image). Image 0 (the main executable) is
   never a GPU image; the rest are tested against the ANGLE dylibs
   `libEGL` / `libGLESv2` and the frameworks Metal, IOSurface,
   CoreDisplay -- the same `gpu_driver` category, so the row means the
@@ -257,15 +261,24 @@ GLES2 header rule, so Linux CI must verify that regression surface.
   the measured figures are quoted from the mini run of that test
   below):
   - **The measured A/B (M4 mini, macOS 15.7.4, 10,000 calls each,
-    `[classifier-cost]` line):** `dladdr(pc)` **1681.7 ns/call**
+    `[classifier-cost]` line):** `dladdr(pc)` **1987.6 ns/call**
     (10,000/10,000 resolved); `backtrace(8)` + `dladdr` per frame
-    **8963.2 ns/call** (80,000 frames resolved); the classifier's own
-    table binary search **2.71 ns/call** (10,000/10,000 in a known
-    image). The binary search is the hot path -- ~600x cheaper than
-    dladdr and ~3,300x cheaper than the backtrace path; dladdr and
+    **9275.4 ns/call** (80,000 frames resolved); the classifier's own
+    table binary search **1.73 ns/call** (10,000/10,000 in a known
+    image). The binary search is the hot path -- ~1,150x cheaper than
+    dladdr and ~5,375x cheaper than the backtrace path; dladdr and
     backtrace are the alternatives it does not take (the spec's "no
-    per-allocation backtrace" is met with the table, at ~3 ns per
+    per-allocation backtrace" is met with the table, at ~2 ns per
     allocation).
+  - **The effect on the gate's ratchet** (five-zone capture, the
+    `[ledger]` lines of `scripts/ci/visual_gate.py --platform mac`):
+    unowned falls from the B1044 red 1.038 % (qeynos2, 56,192 B) to
+    **qeynos2 0.098 %, gfaydark 0.057 %, befallen 0.067 %, iceclad
+    0.015 %, timorous 0.016 %** -- every zone under the 1 % bound, with
+    `gpu_driver` charged 327,024 B (4,357 allocations) on qeynos2.
+    `gpu_driver`'s own ledger-budget bound is still unconfigured
+    (`[ledger-budget] ... NO BUDGET CONFIGURED for ... gpu_driver`), so
+    the row is reported, not gated, until a budget exists (FOLLOW-UP).
 - The window: `CIrrDeviceFB_Cocoa.mm` defines the three "X11" members
   (`initEGLX11`, `pollX11Events`, `closeX11Window`) on Darwin, so
   `CIrrDeviceFB.cpp`'s run()/present()/destructor are unchanged; its state

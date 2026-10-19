@@ -25,8 +25,11 @@ namespace classify_detail {
 
 namespace {
 
-constexpr size_t kMaxCodeRanges = 768;  // the host's own capacity; a dyld
-                                        // image table is in the tens
+constexpr size_t kMaxCodeRanges = 1024;  // the Darwin walker records the
+                                        // __TEXT segment of every image:
+                                        // one range per image (379 in the
+                                        // mini's full dyld set), with
+                                        // headroom for later dlopen'd ones
 struct CodeRanges {
     CodeRange r[kMaxCodeRanges];
     size_t n;
@@ -40,20 +43,13 @@ thread_local bool t_inClassifier = false;          // rebuild re-entrancy guard
 
 void rebuildCodeRanges();  // defined below, below the image walker
 
-// The table is built ONCE at process start (static-initialization time,
-// after dyld has loaded the initial image set: the executable, libSystem,
-// the static library's own images, and the dylibs the executable links
-// against). ANGLE's dylibs are exactly such link-time images of this
-// binary, so the GPU stack is in the table before the first allocation --
-// the unknown-address rebuild then only ever matters for images that get
-// dlopen'd later (rate-limited below). Building at init keeps the hook
-// path a pure table read, and the classifier test (which classifies
-// addresses directly, without the allocator's first-touch rebuild in the
-// loop) sees a complete table.
-struct EagerBuild {
-    EagerBuild() { rebuildCodeRanges(); }
-};
-const EagerBuild kEagerBuild;
+// The table is populated by the first unknown-address rebuild (the hot path
+// below), which on a real run fires within the first few allocations: dyld
+// has already loaded the initial image set (the executable, libSystem and
+// the dylibs the binary links against -- ANGLE's dylibs are exactly such
+// link-time images of this binary), so that first rebuild already contains
+// the whole GPU stack. Later rebuilds (rate-limited below) only matter for
+// images dlopen'd after that.
 
 inline const char* imageBaseName(const char* name) {
     if (!name) return "";
@@ -82,12 +78,16 @@ void rebuildCodeRanges() {
             p += cmd->cmdsize;
             if (cmd->cmd != LC_SEGMENT_64) continue;
             const auto* seg = reinterpret_cast<const segment_command_64*>(cmd);
-            // __PAGEZERO is a virtual guard range (0 .. 47-bit) that contains
-            // no code and must NOT be a table entry: it would classify every
-            // small address as "this image". Every OTHER segment is a real
-            // mapped range (on the mini's 44-image set: 247 of them, within
-            // kMaxCodeRanges); an address in any of them came from this image.
-            if (std::strcmp(seg->segname, "__PAGEZERO") == 0) continue;
+            // One range PER IMAGE: its __TEXT segment (the code + read-only
+            // data, and the one every caller address lives in). Recording
+            // every non-__PAGEZERO segment (as an earlier revision did)
+            // overflows the table on a full dyld image set -- the mini's
+            // benchmark loads 379 images, and their ~2,400 data segments
+            // (libswift*, libobjc, libSystem, ...) pushed the last images'
+            // __TEXT past the end, which is exactly where the GPU stack's
+            // call sites land. __PAGEZERO stays excluded: a virtual guard
+            // range (0 .. 47-bit) with no code.
+            if (std::strcmp(seg->segname, "__TEXT") != 0) continue;
             if (t.n < kMaxCodeRanges) {
                 t.r[t.n++] = CodeRange{
                     slide + static_cast<uintptr_t>(seg->vmaddr),
