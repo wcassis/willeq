@@ -47,6 +47,7 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/position_frames.h"
 #include "client/bridge/irrlicht_bridge.h"
+#include "client/core/memory_ledger.h"  // B919: the gs.doors owner row
 #include "common/logging.h"
 #include "common/packet_structs.h"
 #ifdef WITH_AUDIO
@@ -141,6 +142,11 @@ void eqt::entities::EntitiesComponent::ZoneProcessMoveDoor(const EQ::Net::Packet
 
 	uint8_t door_id = p.GetUInt8(2);
 	uint8_t action = p.GetUInt8(3);
+
+	// B919 (#238): named `game_state` owner row (WILLEQ_LEDGER_OWNERS=game_state):
+	// the DoorStateManager's door table (doors_) and its pending-click set
+	// (pendingClicks_, T376) are gs.doors.
+	eqt::memory::StartupScope owner("gs.doors");
 
 	// Update door state in game state manager
 	const EQT::DoorState* door = ctx_.game_state.doors().getDoor(door_id);

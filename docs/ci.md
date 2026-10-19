@@ -559,6 +559,20 @@ every driver. With fdinfo skipped `decideGpuBuffers` falls through in order to
 the one Python definition of these figures, behind the `[rss-target]` line and
 the Pi summarizers.
 
+B1035 (2026-10-18, #354) names the lane-3 gap the issue's after-fix table left
+unexplained: the render node's resident figure is below the exclusive cgroup's
+shmem by the process's SCANOUT FRAMEBUFFERS -- shmem-backed DRM objects
+charged to the cgroup, published by panfrost as `drm-shared-memory`, but
+resident in NO node (the rockchip `card0` node's fdinfo carries no memory key
+at all). `decideGpuBuffers` therefore takes the shmem over the resident figure
+when the cgroup is exclusive and it is higher, and the `[memgpu]` line names
+the delta `fdinfo_scanout_gap=<B>` (after `memcg_kernel_seen=`, before the
+B978 `owned=` fields; `fdinfoScanoutGapBytes` in the JSON). The `scanout_fb=`
+pair carries the device's own tally of the same bytes; the mechanism, the
+four-source capture and the fixtures are in
+`docs/reference/rock4d_fdinfo_gap.md` (the Lima lanes are unaffected: they
+publish no `drm-*` key and take the shmem as the row already).
+
 ## Reading a pipeline (worker or human)
 
 A human: the pipeline list is linked from the project page, and every job page

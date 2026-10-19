@@ -298,6 +298,14 @@ ADD_EXECUTABLE(test_input_action_bridge
     # by slot content type. hotbar_model.cpp is dependency-light (event_bus +
     # an inline GameStateBridge::pushEvent, both already in the state set).
     ${CMAKE_SOURCE_DIR}/src/client/hotbar/hotbar_model.cpp
+    # B919 (#238): the test's recording bridge includes game_state_bridge.h,
+    # whose pushEvent() constructs a StartupScope inline, so the ledger's
+    # StartupScope ctor/dtor must be linked (willeq_core is not a dep here).
+    # Same four-TU set as every other ledger-dependent test target.
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
     ${ACTION_LAYER_STATE_SOURCES}
 )
 TARGET_LINK_LIBRARIES(test_input_action_bridge GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES})  # T174: hotbar_model.cpp reads/writes jsoncpp
@@ -344,6 +352,15 @@ GTEST_DISCOVER_TESTS(test_b534_output_camera_route DISCOVERY_TIMEOUT 120)
 ADD_EXECUTABLE(test_game_state_sync_bridge
     test_game_state_sync_bridge.cpp
     ${CMAKE_SOURCE_DIR}/src/client/bridge/game_state_sync_bridge.cpp
+    # B919 (#238): pushEvent() now constructs a StartupScope inline (the
+    # gs.event_queue owner row), so this header pulls the ledger's
+    # StartupScope ctor/dtor. willeq_core is not linked here, so the
+    # ledger's TU set is added directly (the same four every ledger-
+    # dependent test target carries).
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
 )
 TARGET_LINK_LIBRARIES(test_game_state_sync_bridge GTest::gtest_main fmt::fmt)
 GTEST_DISCOVER_TESTS(test_game_state_sync_bridge DISCOVERY_TIMEOUT 120)

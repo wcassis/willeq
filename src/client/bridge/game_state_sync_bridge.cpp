@@ -1,4 +1,5 @@
 #include "client/bridge/game_state_sync_bridge.h"
+#include "client/core/memory_ledger.h"  // B919: the gs.event_stage owner row
 
 namespace eqt {
 namespace bridge {
@@ -14,6 +15,12 @@ void GameStateSyncBridge::stagePendingEvents() {
     // Stage 1, GAME thread. drainEvents() is the base class's D24-coalescing
     // swap-drain of the queue EverQuest (and the loading thread, and the
     // renderer's own SystemMessage pushes) push onto.
+    // B919 (#238): named `game_state` owner row (WILLEQ_LEDGER_OWNERS=game_state):
+    // the game->render staging FIFO (m_forwardQueue) and the transient batch
+    // vector are gs.event_stage. The render thread's own copy is TRANSIENT
+    // (freed at the end of each forward), so the row's measured content at
+    // `ready` is the burst the renderer has not yet consumed.
+    eqt::memory::StartupScope owner("gs.event_stage");
     auto events = drainEvents();
     if (events.empty()) return;
     std::lock_guard<std::mutex> lock(m_forwardMutex);

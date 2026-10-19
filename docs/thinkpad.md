@@ -119,8 +119,16 @@ back.
 - **Source over NFS, build tree local.** hermes-ext exports
   `/home/user/src/willeq-wt` to this box only (`/etc/exports.d/willeq-wt.exports`,
   `all_squash` to uid/gid 1000, which is `user` on both hosts); the fstab mount
-  here uses the SAME path (NFSv4.2, `soft`, `actimeo=0` so ninja never sees a
-  stale mtime for a file a worker just edited, systemd automount). The build
+  here uses the SAME path (NFSv4.2, `soft`, `actimeo=1`, systemd automount). The
+  attribute cache was `actimeo=0` until 2026-10-19 (Will): every stat was a
+  GETATTR round trip to hermes-ext, and a worker build drove it to tens of
+  thousands a second (the Build Workflow & Contention dashboard, NFS panels).
+  With 1 s a stat can be up to a second stale; a compiler's open() still
+  revalidates (close-to-open), so only make's up-to-date check is exposed, and
+  the ssh round trip between a worker's edit and its rbuild already exceeds
+  that. Measure, do not quote: `nfsstat -c -4` on this box before and after a
+  no-op `cmake --build`. Changing it needs umount + automount restart: a
+  `mount -o remount` refuses the attribute options. The build
   tree is `/home/user/willeq-builds/<slug>/build` on the NVMe, never in the
   worktree. The patched Irrlicht is built once per
   `irrlicht_input_stamp.sh` digest into `/home/user/willeq-builds/_irrlicht/`.
