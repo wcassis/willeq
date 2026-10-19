@@ -44,11 +44,22 @@
 namespace EQT {
 namespace Graphics {
 
-// The measured translucent blend alpha (0..255). B1002: solved from the
-// oracle's rendered chat window over two backdrops -- see the header's
-// provenance note and refactor/B1002/README.md. B992's uniform 180 is
-// superseded; the opaque windows below are at 255, not at 180.
-constexpr uint8_t kTranslucentPanelAlpha = 180;  // MEASURED: see B1002 README
+// The measured translucent blend alpha (0..255). B1002: the official client's
+// per-window blend factor, measured from the oracle. It is 255, i.e. FULLY
+// OPAQUE: the official client's own UI ini (UI_<char>.ini, the file it loads
+// at zone-in) stores `Alpha=255` for EVERY window, including the
+// Style_Transparent-flagged ones (MainChat, ChatWindow, BuffWindow,
+// ShortDurationBuffWindow, InventoryWindow all = 255), and the rendered
+// pixel solve agrees -- the inventory window (EQUI_Inventory, one of the 34)
+// solved a = 255.000 over 19,867 body pixels with 0.00% below 0.98
+// (refactor/B1002/solve_alpha.py on oracle-alpha4 frames; the body rect
+// x 426-839 / y 341-799 over two camera-angle backdrops). So
+// Style_Transparent=true is the ENABLER for the per-window alpha mechanism,
+// not a fixed partial-alpha: the value is the ini's `Alpha`, which the
+// official client leaves at its 255 default for all shipped windows.
+// B992's uniform 180 is superseded; the translucent windows below therefore
+// draw at 255, exactly like the opaque ones.
+constexpr uint8_t kTranslucentPanelAlpha = 255;  // MEASURED 255: see B1002 README
 
 struct WindowFlagRow {
     const char* officialName;  // "EQUI_..." -- the file in the snapshot
