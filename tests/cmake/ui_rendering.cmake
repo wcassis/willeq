@@ -934,6 +934,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_static_ui_frame_cost DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1002 (#322): the committed window-flags table cannot drift from the
+# official client's Style_Transparent census. A text test over two committed
+# files (the snapshot + window_flags.h); no device needed.
+ADD_EXECUTABLE(test_ui_window_flags
+    test_ui_window_flags.cpp
+)
+TARGET_LINK_LIBRARIES(test_ui_window_flags GTest::gtest_main willeq_core)
+TARGET_COMPILE_DEFINITIONS(test_ui_window_flags PRIVATE "WILLEQ_SOURCE_DIR=WILLEQ_REPO_PATH(\"\")")
+GTEST_DISCOVER_TESTS(test_ui_window_flags DISCOVERY_TIMEOUT 60)
+
 # B992 (GitLab #312): static-UI text respects panel z-order -- a pixel
 # assertion over overlapping windows and the layered flush's draw-call pins.
 # Same headless GLES2 + willeq.eqe1 harness; self-skips without them.

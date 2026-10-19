@@ -57,35 +57,35 @@ struct WindowFlagRow {
 
 // Indexed by UIWindow, in the same order as kUILayoutTable.
 inline constexpr WindowFlagRow kFableWindowFlags[] = {
-    {EQUI_PlayerWindow,      false},  // PlayerStatus
-    {EQUI_TargetWindow,      false},  // Target
-    {EQUI_GroupWindow,       true },  // Group
-    {EQUI_PetInfoWindow,     false},  // Pet
-    {EQUI_BuffWindow,        true },  // Buffs
-    {EQUI_ChatWindow,        true },  // Chat
-    {EQUI_HotButtonWnd,      false},  // Hotbar
-    {EQUI_CastingWindow,     false},  // SpellGems
-    {EQUI_CastSpellWnd,      false},  // CastingBar
-    {EQUI_PlayerWindow,      false},  // XpBar (the XP line of the player frame)
-    {EQUI_CombatAbilityWnd,  false},  // CombatAbilities
-    {EQUI_Inventory,         true },  // Inventory (its ACP charm layer)
-    {EQUI_BookWindow,        true },  // Spellbook
-    {EQUI_SkillsWindow,      false},  // Skills
-    {EQUI_TradeskillWnd,     true },  // Tradeskill
-    {EQUI_MerchantWnd,       false},  // Merchant
-    {EQUI_LootWnd,           false},  // Loot
-    {EQUI_BankWnd,           false},  // Bank
-    {EQUI_TradeWnd,          false},  // Trade
-    {EQUI_GiveWnd,           false},  // Give
-    {EQUI_Container,         false},  // Container
-    {EQUI_ItemDisplay,       false},  // ItemDisplay
-    {EQUI_OptionsWindow,     false},  // Options
-    {EQUI_QuantityWnd,       false},  // Quantity
-    {EQUI_ConfirmationDialog,false},  // Confirmation
-    {EQUI_TrainWindow,       false},  // Trainer
-    {EQUI_TrackingWnd,       false},  // Tracking
-    {EQUI_TipWnd,            false},  // Tip
-    {EQUI_FriendsWnd,        false},  // Friends
+    {"EQUI_PlayerWindow",      false},  // PlayerStatus
+    {"EQUI_TargetWindow",      false},  // Target
+    {"EQUI_GroupWindow",       true },  // Group
+    {"EQUI_PetInfoWindow",     false},  // Pet
+    {"EQUI_BuffWindow",        true },  // Buffs
+    {"EQUI_ChatWindow",        true },  // Chat
+    {"EQUI_HotButtonWnd",      false},  // Hotbar
+    {"EQUI_CastingWindow",     false},  // SpellGems
+    {"EQUI_CastSpellWnd",      false},  // CastingBar
+    {"EQUI_PlayerWindow",      false},  // XpBar (the XP line of the player frame)
+    {"EQUI_CombatAbilityWnd",  false},  // CombatAbilities
+    {"EQUI_Inventory",         true },  // Inventory (its ACP charm layer)
+    {"EQUI_BookWindow",        true },  // Spellbook
+    {"EQUI_SkillsWindow",      false},  // Skills
+    {"EQUI_TradeskillWnd",     true },  // Tradeskill
+    {"EQUI_MerchantWnd",       false},  // Merchant
+    {"EQUI_LootWnd",           false},  // Loot
+    {"EQUI_BankWnd",           false},  // Bank
+    {"EQUI_TradeWnd",          false},  // Trade
+    {"EQUI_GiveWnd",           false},  // Give
+    {"EQUI_Container",         false},  // Container
+    {"EQUI_ItemDisplay",       false},  // ItemDisplay
+    {"EQUI_OptionsWindow",     false},  // Options
+    {"EQUI_QuantityWnd",       false},  // Quantity
+    {"EQUI_ConfirmationDialog",false},  // Confirmation
+    {"EQUI_TrainWindow",       false},  // Trainer
+    {"EQUI_TrackingWnd",       false},  // Tracking
+    {"EQUI_TipWnd",            false},  // Tip
+    {"EQUI_FriendsWnd",        false},  // Friends
 };
 
 static_assert(sizeof(kFableWindowFlags) / sizeof(kFableWindowFlags[0]) ==
