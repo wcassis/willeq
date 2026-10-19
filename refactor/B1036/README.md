@@ -14,7 +14,10 @@ are a claimed passing sweep: all three diagnostic rows failed the existing
 
 The aarch64 shim was compiled by `docker/Dockerfile.arm64-noble` from
 `scripts/pi/lima_bo_census.c` and shipped as `bin/lima_bo_census.so` with the
-`31dd7b6baeb32333bc79d527738afa2b433880cd` ARM build. The three-zone
+`31dd7b6baeb32333bc79d527738afa2b433880cd` ARM build. The merged head
+(`6573a1507393cba8928da866c3ec9830091c57fb`, MR !245's CI-run pipeline)
+rebuilds and republishes it at the merged sha; the capture evidence below is
+from the pre-merge head and does not change in the merge. The three-zone
 rendered client ran on lane 2 with `--constrained orangepi`, system Mesa
 25.2.8, an own cgroup, and the B962 `ready` and `steady_60s` points.
 `census_retry/sweep.log` records both locks, the staged binary checksum,
