@@ -80,3 +80,4 @@ Lima lanes (B1035).
 After-fix table: the fix leg re-measures the lane-3 `[memgpu]` steady line at
 the fix head once published (FOLLOW-UP on the job, not a gate), against the
 same table's run.
+ci.commit: 2026-10-19 solo pass -- MR !247 needs a CI-run pipeline at its head; the code head ce25b983 was pipeline 1800 SUCCESS; this head is a 5-line doc delta with check_doc_counts rc=0.
