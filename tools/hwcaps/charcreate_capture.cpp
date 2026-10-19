@@ -146,7 +146,7 @@ bool capture(CaptureCtx& c, const std::function<void(UIRenderer&)>& draw, const 
         std::fprintf(stderr, "ERROR: writeImageToFile failed for %s\n", path.c_str());
         return false;
     }
-    std::printf("%s\t%s\n", name, path.c_str());
+    std::printf("%s\t%s\n", name.c_str(), path.c_str());
     return ok;
 }
 

@@ -764,7 +764,8 @@ struct FrameTimer {
     EGLState& state;
     int numFrames;
 
-    double timeFrames(auto drawFunc) {
+    template <typename DrawFunc>
+    double timeFrames(DrawFunc drawFunc) {
         // Warmup
         for (int i = 0; i < 3; i++) { drawFunc(); glFinish(); }
         // Timed

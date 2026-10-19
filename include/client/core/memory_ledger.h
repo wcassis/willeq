@@ -64,16 +64,6 @@
 #define EQT_MEMORY_LEDGER 0
 #endif
 
-// B1039 (#359): the allocator hooks wrap glibc's __libc_* entry points, which
-// macOS libSystem does not have. On Darwin the ledger is ALWAYS its OFF shape
-// (no symbol replaced, empty MemoryScope, every category 0, enabled() false)
-// whatever the build asked for; CMakeLists.txt passes 0 there too, so no TU
-// can disagree about the layout. A malloc_zone backend is open (B1039 README).
-#if defined(__APPLE__) && EQT_MEMORY_LEDGER
-#undef EQT_MEMORY_LEDGER
-#define EQT_MEMORY_LEDGER 0
-#endif
-
 namespace eqt {
 namespace memory {
 
@@ -413,6 +403,16 @@ struct Snapshot {
     // (gpu_buffer_census.h has the sources and the decision). Since B978 it is
     // the second component of ownedBytes when it is outside RssAnon.
     GpuBufferCensus gpuBuffers;
+    // B1044 (#364), Will's 2026-10-14 ruling (option 1, platform-scoped
+    // memory figures): macOS has no RssAnon; its reading is the Mach
+    // task_vm_info.phys_footprint (task_info(TASK_VM_INFO): dirty + compressed
+    // + swapped process memory, the figure Activity Monitor calls "Memory",
+    // which includes Metal/IOSurface memory charged to the task). Read only on
+    // Darwin (0 elsewhere); rssAnonBytes stays 0 there, so no Linux bound
+    // reads it. ownedPhysFootprintBytes = max(0, phys_footprint - gpu_driver),
+    // the Darwin counterpart of ownedRssAnonBytes.
+    uint64_t physFootprintBytes = 0;
+    uint64_t ownedPhysFootprintBytes = 0;
 };
 
 // T491 addendum: the categories that would have to shrink to reach the 64 MB

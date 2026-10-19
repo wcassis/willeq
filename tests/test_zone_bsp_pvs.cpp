@@ -26,7 +26,11 @@
 #include <atomic>
 #include <cstdlib>
 #include <fstream>
+#ifdef __APPLE__
+#include <malloc/malloc.h>
+#else
 #include <malloc.h>
+#endif
 #include <memory>
 #include <new>
 #include <string>
@@ -46,8 +50,16 @@ namespace {
 std::atomic<size_t> g_heapCurrent{0};
 std::atomic<size_t> g_heapPeak{0};
 
+size_t allocationSize(void* p) {
+#ifdef __APPLE__
+    return malloc_size(p);
+#else
+    return malloc_usable_size(p);
+#endif
+}
+
 void trackAlloc(void* p) {
-    size_t n = malloc_usable_size(p);
+    size_t n = allocationSize(p);
     size_t cur = g_heapCurrent.fetch_add(n, std::memory_order_relaxed) + n;
     size_t peak = g_heapPeak.load(std::memory_order_relaxed);
     while (cur > peak && !g_heapPeak.compare_exchange_weak(peak, cur, std::memory_order_relaxed)) {}
@@ -55,7 +67,7 @@ void trackAlloc(void* p) {
 
 void trackFree(void* p) {
     if (!p) return;
-    g_heapCurrent.fetch_sub(malloc_usable_size(p), std::memory_order_relaxed);
+    g_heapCurrent.fetch_sub(allocationSize(p), std::memory_order_relaxed);
 }
 
 void resetPeak() { g_heapPeak.store(g_heapCurrent.load()); }
@@ -243,8 +255,18 @@ TEST(ZoneBspRegionPool, SlabsAreFewAndStayOnTheHeap) {
     BspRegionPool pool(n);
     std::vector<std::shared_ptr<BspRegion>> rs;
     for (size_t i = 0; i < n; ++i) rs.push_back(pool.next());
+    // B1044: a slab boundary is a change of OWNER (each handle aliases its
+    // slab's control block), not an address gap: macOS's malloc keeps no
+    // inline chunk header, so two consecutive 96 KiB slabs can sit back to
+    // back and an address test saw one slab where there were three.
+    auto sameSlab = [](const std::shared_ptr<BspRegion>& a, const std::shared_ptr<BspRegion>& b) {
+        return !a.owner_before(b) && !b.owner_before(a);
+    };
     size_t breaks = 0;
-    for (size_t i = 1; i < n; ++i) if (rs[i].get() != rs[i - 1].get() + 1) ++breaks;
+    for (size_t i = 1; i < n; ++i) {
+        if (!sameSlab(rs[i], rs[i - 1])) ++breaks;
+        else EXPECT_EQ(rs[i].get(), rs[i - 1].get() + 1) << "region " << i << " is not contiguous in its slab";
+    }
     EXPECT_EQ(breaks, 2u) << "2,500 regions are three slabs";
 }
 
@@ -333,9 +355,14 @@ protected:
         EXPECT_GT(withPvs, 0u);
         // B903: the parser takes every region from one exactly-sized block.
         EXPECT_EQ(tree->regions.capacity(), regions) << zone << ": region handle array has growth slack or an over-count";
+        // B1044: slab boundaries by owner, not address (see SlabsAreFew...).
         size_t breaks = 0;
-        for (size_t i = 1; i < regions; ++i)
-            if (tree->regions[i].get() != tree->regions[i - 1].get() + 1) ++breaks;
+        for (size_t i = 1; i < regions; ++i) {
+            const auto& a = tree->regions[i];
+            const auto& b = tree->regions[i - 1];
+            if (a.owner_before(b) || b.owner_before(a)) ++breaks;
+            else if (a.get() != b.get() + 1) ADD_FAILURE() << zone << ": region " << i << " is not contiguous in its slab";
+        }
         const size_t slabs = (regions + BspRegionPool::kSlabRegions - 1) / BspRegionPool::kSlabRegions;
         EXPECT_EQ(breaks + 1, slabs) << zone << ": regions are not in 1,024-region slabs (separate heap blocks again?)";
         const size_t denseBytes = regions * regions / 8;

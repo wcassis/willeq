@@ -1323,6 +1323,14 @@ EXEMPT_TESTS_GROUPS = {
     # is deleted with the test (T458's rule), not re-exempted.
     ("HotkeyManager", "isMovementKey"): "B605",
     ("HotkeyManager", "modeNameToEnum"): "B605",
+    # B1062 (#382): the spec's cost A/B (dladdr on the return address vs
+    # backtrace(8) + dladdr per frame), timed once and printed as the
+    # [classifier-cost] line. The production hot path is the table binary
+    # search (classifyCallerAddress), which never calls it; the only caller
+    # is tests/test_gpu_driver_classifier.cpp, which calls it once on the
+    # mini to produce the per-call figure quoted in docs/macos.md. A
+    # measurement seam like noteRenderedFrame in memory_ledger_b924.cpp.
+    ("(free)", "measureClassifierCostNs"): "seam",
     # B606 (#189) is executed: all sixteen rows here were deleted together
     # with their only (tests/) callers. B606 also exposed two functions whose
     # live caller was a deleted row -- eqt::parseFormattedMessage (chat runs

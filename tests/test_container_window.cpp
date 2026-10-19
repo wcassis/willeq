@@ -746,7 +746,10 @@ TEST(BagCommand, TheCloseIntentClosesTheBagAndLeavesTheWorldContainerAlone) {
     h.bridge.pushIntent(close);
     h.eq.Bridge().ProcessBridgeIntents();
 
-    const auto* c = findClosed(h.events());
+    // B1044: hold the drained events; a pointer into the temporary vector
+    // dangled (read-after-free, 0 on macOS's allocator, stale bytes on glibc).
+    const auto closedEvents = h.events();
+    const auto* c = findClosed(closedEvents);
     ASSERT_NE(c, nullptr);
     EXPECT_EQ(c->inventorySlot, g);
     EXPECT_FALSE(h.eq.Commands().IsBagOpen(g));
@@ -767,7 +770,10 @@ TEST(BagCommand, TheBagLeavingItsSlotClosesItsWindow) {
     // ...a change to the bag's own slot does.
     h.eq.Merchant().SyncInventorySlotToGameState(g, false);
     EXPECT_FALSE(h.eq.Commands().IsBagOpen(g));
-    const auto* c = findClosed(h.events());
+    // B1044: hold the drained events; a pointer into the temporary vector
+    // dangled (read-after-free, 0 on macOS's allocator, stale bytes on glibc).
+    const auto closedEvents = h.events();
+    const auto* c = findClosed(closedEvents);
     ASSERT_NE(c, nullptr);
     EXPECT_EQ(c->inventorySlot, g);
 }

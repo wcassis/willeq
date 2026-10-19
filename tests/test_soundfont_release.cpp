@@ -184,7 +184,15 @@ TEST(SoundFontRelease, SoundFontCustomScopeFirstCallIsTheSynthus2NameSet) {
     if (delta > 0) {
         // This call BUILT the static (the first call in the process): the
         // whole residual is its, and it must be exactly the census number.
-        EXPECT_EQ(delta, 2976u)
+        // B1044: the same 32 blocks cost 2,384 B on macOS: the ledger charges
+        // the allocator's own block size (glibc chunk vs malloc_size()'s
+        // 16-byte classes) and libc++'s hash-node/string layout differs.
+#if defined(__APPLE__)
+        constexpr uint64_t kSynthus2NameSetBytes = 2384u;
+#else
+        constexpr uint64_t kSynthus2NameSetBytes = 2976u;
+#endif
+        EXPECT_EQ(delta, kSynthus2NameSetBytes)
             << "the residual charged under au.soundfont_custom is the "
                "synthus2 name set's construction (31 names); a different "
                "size means a different allocation is now charged there";

@@ -26,6 +26,7 @@ struct Options {
     int height = 600;
     bool useDRM = false;
     bool forceX11 = false;
+    int holdSeconds = 0;  // B1044: --hold-seconds N (windowed runs only)
     // P49 (refactor/P49_drm_fail_loud.md): by default the benchmark REFUSES
     // to run when the achieved resolution (post device-creation
     // getScreenSize()) differs from --res -- see the check right after
