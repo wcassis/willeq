@@ -6,7 +6,9 @@
 // table of CodeRanges, filled with dl_iterate_phdr and rebuilt on a miss.
 // Darwin has no dl_iterate_phdr; this TU is the same mechanism for that
 // platform, filled from `_dyld_image_count()` / `_dyld_get_image_header()`
-// (mach-o/loader.h): image 0 (the main executable) is never a GPU image,
+// (mach-o/loader.h): every image's LC_SEGMENT_64 ranges, slide applied,
+// __PAGEZERO excluded (a virtual guard range, not code). Image 0 (the main
+// executable) is never a GPU image,
 // every other image is tested through gpuStackModuleDarwin() against the
 // ANGLE dylibs (libEGL, libGLESv2) and Apple's GPU frameworks (Metal,
 // IOSurface, CoreDisplay) -- the same `gpu_driver` category the Linux
@@ -39,7 +41,7 @@ namespace eqt {
 namespace memory {
 namespace classify_detail {
 
-// One dyld image's first (largest) LC_SEGMENT_64, slide applied: an
+// One dyld image's one non-__PAGEZERO LC_SEGMENT_64, slide applied: an
 // address in [lo, hi) came from this image. The host's
 // callerIsGlStack() never sees this type -- the table is TU-private.
 struct CodeRange {

@@ -235,12 +235,18 @@ GLES2 header rule, so Linux CI must verify that regression surface.
   GL/driver module -- Mesa on Linux, ANGLE/Apple GPU on Darwin) runs here
   too, off the dyld image table: `dl_iterate_phdr` does not exist on
   Darwin, so the classifier's table is filled from
-  `_dyld_image_count()`/`_dyld_get_image_header()` (the images' first
-  `LC_SEGMENT_64` ranges, slide applied; image 0, the main executable,
-  never a GPU image; the rest tested against the ANGLE dylibs `libEGL` /
-  `libGLESv2` and the frameworks Metal, IOSurface, CoreDisplay -- the same
-  `gpu_driver` category, so the row means the same thing on both
-  platforms). All of it lives in
+  `_dyld_image_count()`/`_dyld_get_image_header()`: every `LC_SEGMENT_64`
+  of every image (slide applied), EXCEPT `__PAGEZERO` (a virtual guard
+  range that contains no code; the first segment of every image, and it
+  would classify every small address as "that image" if recorded). The
+  table is built once at process start (a static initializer, after dyld
+  has loaded the initial image set -- ANGLE's dylibs are link-time images
+  of the client) and rebuilt, rate-limited, only when an unknown address
+  appears later (a dlopen'd image). Image 0 (the main executable) is
+  never a GPU image; the rest are tested against the ANGLE dylibs
+  `libEGL` / `libGLESv2` and the frameworks Metal, IOSurface,
+  CoreDisplay -- the same `gpu_driver` category, so the row means the
+  same thing on both platforms). All of it lives in
   `src/client/core/memory_ledger_gpu_driver_classifier_darwin.cpp` beside
   the Linux classifier in `memory_ledger.cpp`, which keeps a one-line
   `#elif defined(__APPLE__)` arm; the Linux preprocessed output is
@@ -251,13 +257,15 @@ GLES2 header rule, so Linux CI must verify that regression surface.
   the measured figures are quoted from the mini run of that test
   below):
   - **The measured A/B (M4 mini, macOS 15.7.4, 10,000 calls each,
-    `[classifier-cost]` line):** `dladdr(pc)` **1927.6 ns/call**
+    `[classifier-cost]` line):** `dladdr(pc)` **1681.7 ns/call**
     (10,000/10,000 resolved); `backtrace(8)` + `dladdr` per frame
-    **9112.2 ns/call** (80,000 frames resolved); the classifier's own
-    table binary search **1.82 ns/call**. The binary search is the hot
-    path -- one thousandth of dladdr, and dladdr and backtrace are the
-    alternatives it does not take (the spec's "no per-allocation
-    backtrace" is met with the table, at ~2 ns per allocation).
+    **8963.2 ns/call** (80,000 frames resolved); the classifier's own
+    table binary search **2.71 ns/call** (10,000/10,000 in a known
+    image). The binary search is the hot path -- ~600x cheaper than
+    dladdr and ~3,300x cheaper than the backtrace path; dladdr and
+    backtrace are the alternatives it does not take (the spec's "no
+    per-allocation backtrace" is met with the table, at ~3 ns per
+    allocation).
 - The window: `CIrrDeviceFB_Cocoa.mm` defines the three "X11" members
   (`initEGLX11`, `pollX11Events`, `closeX11Window`) on Darwin, so
   `CIrrDeviceFB.cpp`'s run()/present()/destructor are unchanged; its state

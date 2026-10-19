@@ -38,6 +38,23 @@ std::atomic<uint32_t> g_unknownAfterRebuild{0};
 std::atomic<uint32_t> g_unknownHits{0};
 thread_local bool t_inClassifier = false;          // rebuild re-entrancy guard
 
+void rebuildCodeRanges();  // defined below, below the image walker
+
+// The table is built ONCE at process start (static-initialization time,
+// after dyld has loaded the initial image set: the executable, libSystem,
+// the static library's own images, and the dylibs the executable links
+// against). ANGLE's dylibs are exactly such link-time images of this
+// binary, so the GPU stack is in the table before the first allocation --
+// the unknown-address rebuild then only ever matters for images that get
+// dlopen'd later (rate-limited below). Building at init keeps the hook
+// path a pure table read, and the classifier test (which classifies
+// addresses directly, without the allocator's first-touch rebuild in the
+// loop) sees a complete table.
+struct EagerBuild {
+    EagerBuild() { rebuildCodeRanges(); }
+};
+const EagerBuild kEagerBuild;
+
 inline const char* imageBaseName(const char* name) {
     if (!name) return "";
     const char* slash = strrchr(name, '/');
@@ -63,15 +80,19 @@ void rebuildCodeRanges() {
         for (uint32_t c = 0; c < ncmds; ++c) {
             const auto* cmd = reinterpret_cast<const struct load_command*>(p);
             p += cmd->cmdsize;
-            if (cmd->cmd == LC_SEGMENT_64) {
-                const auto* seg = reinterpret_cast<const segment_command_64*>(cmd);
-                if (t.n < kMaxCodeRanges) {
-                    t.r[t.n++] = CodeRange{
-                        slide + static_cast<uintptr_t>(seg->vmaddr),
-                        slide + static_cast<uintptr_t>(seg->vmaddr + seg->vmsize),
-                        gpu};
-                }
-                break;  // the first (largest) segment carries the mapped range
+            if (cmd->cmd != LC_SEGMENT_64) continue;
+            const auto* seg = reinterpret_cast<const segment_command_64*>(cmd);
+            // __PAGEZERO is a virtual guard range (0 .. 47-bit) that contains
+            // no code and must NOT be a table entry: it would classify every
+            // small address as "this image". Every OTHER segment is a real
+            // mapped range (on the mini's 44-image set: 247 of them, within
+            // kMaxCodeRanges); an address in any of them came from this image.
+            if (std::strcmp(seg->segname, "__PAGEZERO") == 0) continue;
+            if (t.n < kMaxCodeRanges) {
+                t.r[t.n++] = CodeRange{
+                    slide + static_cast<uintptr_t>(seg->vmaddr),
+                    slide + static_cast<uintptr_t>(seg->vmaddr + seg->vmsize),
+                    gpu};
             }
         }
     }
