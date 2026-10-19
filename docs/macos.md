@@ -21,12 +21,12 @@ graphics PROVE card (`review/B1043/README.md` has every command and log).
 | ANGLE (EGL 1.5 + GLES 3.0 over Metal) | **works**: built from source at a pinned commit; pbuffer GLES2 clear + triangle + `glReadPixels` PASS, shared context OK, ETC1 exposed | "ANGLE" below |
 | ANGLE window surface | **partial**: `eglCreateWindowSurface` on an NSView's `CALayer` + 120 swaps + readback PASS from an ssh session; no on-screen window there (no WindowServer session for the ssh user) | `review/B1043/egl_probe/` |
 | patched GLES2 Irrlicht | **works, headless**: `scripts/build-gles2-darwin.sh`, the x86 patch set + device with a Darwin pbuffer path; 0 errors | "Build (GLES2)" below |
-| Irrlicht Darwin window + input (the `--egl-x11` parallel) | **not written** (FIX card): Cocoa window/CAMetalLayer surface, Cocoa key/mouse input | #363 |
+| Irrlicht Darwin window + input (`--egl-window`, the `--egl-x11` parallel) | **works**: `CIrrDeviceFB_Cocoa.mm` (NSWindow + CAMetalLayer, ANGLE window surface, NSEvent keys/modifiers/mouse/wheel, resize, teardown). Proven at the console as `will` (B1044 run 4): a 1280x720 window, keys with Shift/Control, left and right (two-finger) clicks, wheel both ways, reaching the client's hotkeys (W = MoveForward); resize, Option and Command-Q are coded but were not exercised. From ssh it refuses cleanly ("no WindowServer session"). The window becomes key only on the first click (macOS 14+ cooperative activation from a Terminal launch) | "Run" below, `refactor/B1044/README.md` |
 | willeq GLES2 build (`willeq`, `gles2_zone_benchmark`) | **works**: both link against ANGLE | "Build (GLES2)" below |
 | `gles2_zone_benchmark` (qeynos2, headless) | **runs**: draws/state changes/polys equal the x86 manifest on all 3 frames; frames deterministic run to run | B1043 README |
-| visual gate | **not on the Mac yet**: the gate compares pixel-exact; Metal vs the x86 llvmpipe goldens differ in 14.7-40.8 % of pixels at MAE 0.07-0.18 (PSNR 50-55 dB). A `mac` platform with its own goldens is Will's bless | B1043 README |
-| memory ledger | **OFF shape** on Darwin (no glibc allocator entry points; no `malloc_zone` backend). `RssAnon` has no Darwin reading; the candidate is `phys_footprint` (peak 162-171 MiB on the qeynos2 benchmark run, `/usr/bin/time -l`) | B1039, B1043 |
-| the rest of the GLES2 tree (`model_viewer`, tools, graphics tests) | **not attempted** | FIX card |
+| visual gate | `--platform mac` is the third golden set (Will's 2026-10-14 ruling): `--capture DIR` stages the five zones + memory-coverage legs and `DIR/manifest_mac.json` (the Mac's own metrics and memory rows); x86 metric differences are reported, not gated. B1044's capture is staged in the evidence directory (goldens_mac/) for Will's bless; it is red on one ledger ratchet (qeynos2 unowned 1.04 % of the ledger, bound 1 %) | B1044 README |
+| memory ledger | malloc-zone backend ON; the Darwin reading is `phys_footprint` (Will's 2026-10-14 ruling, option 1: platform-scoped figures; "Memory on macOS" below). Every snapshot carries it (`[memledger] ... phys_footprint= owned_phys_footprint=`, JSON `physFootprintBytes`); the ledger is far below footprint, and reconciling the two is open | B1044 README |
+| the rest of the GLES2 tree (`model_viewer`, tools, graphics tests) | **builds; suite 5,631 of 5,633 pass** (168 skipped): `NameTagBatchTest.BatchIsPixelIdenticalToPerNodeTextSceneNodes` differs by 615 px in its densest pose, and `visual_gate` needs Pillow or ImageMagick, neither installed for the build user | B1044 README |
 
 ## One-time setup
 
@@ -103,10 +103,10 @@ for EGL/GLESv2 and the Lima shim.
 
 It builds the patched Irrlicht into `third_party/irrlicht-gles2-darwin/`, then
 configures `build-gles2/` with `-DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_DRM=OFF
--DEQT_GLES2_IRRLICHT_DIR=... -DEQT_ANGLE_DIR=... -DEQT_ANGLE_LIB_DIR=...
--DCMAKE_POLICY_VERSION_MINIMUM=3.5` (Homebrew's CMake 4 refuses the
-FetchContent'd etc2comp's old `cmake_minimum_required`) and builds `willeq`
-and `gles2_zone_benchmark`. Clean, on the M4: 236 s for all of it
+-DEQT_GLES2_IRRLICHT_DIR=... -DEQT_ANGLE_DIR=... -DEQT_ANGLE_LIB_DIR=...`
+(the fetched etc2comp minimum is patched locally for CMake 4, with no global
+policy override) and builds `willeq` and `gles2_zone_benchmark`, with graphics
+tests configured ON. B1043's clean baseline on the M4 was 236 s
 (`--irrlicht-only` for the library alone, about 1 min).
 
 ## Run
@@ -114,9 +114,36 @@ and `gles2_zone_benchmark`. Clean, on the M4: 236 s for all of it
     ./build/bin/willeq --no-graphics --help
     ./build/bin/willeq --no-graphics -c <config.json>
 
-The GLES2 `willeq` binary starts and parses options; on the Mac it has no
-window or input yet (the Darwin device is pbuffer-only), so a rendered
-interactive session is the FIX card's.
+Without a flag the GLES2 device takes the ANGLE/Metal pbuffer (headless; the
+benchmark, the visual gate and CI). `--egl-window` opens a Cocoa window
+instead (B1044, `docker/irrlicht-drm-x86/CIrrDeviceFB_Cocoa.mm`): an NSWindow
+whose content view hosts a `CAMetalLayer` with `contentsScale` 1, so the EGL
+window surface is exactly `-r W H` pixels (the compositor scales it on a
+Retina display), ANGLE's Metal display, and NSEvent input mapped to the same
+Irrlicht events the X11 device sends (`cocoa_keycode_map.h` is the key map,
+from the SDK's `kVK_*` codes; Option is Alt; Command-Q or the close button
+quits; the window is resizable and the driver gets `OnResize`). `--egl-x11`
+on macOS prints a one-line hint and means `--egl-window`.
+`gles2_zone_benchmark --egl-window` renders its frames into the same window.
+
+    ./build-gles2/bin/willeq --egl-window -r 1280 720 -c <config.json> \
+        --eqe1-path ~/projects/EverQuest_ETC1
+
+Started from Terminal, the window comes up behind it and takes keys only after
+the first click inside it (macOS 14+ cooperative activation; a bundled `.app`
+would activate on launch). A window needs the run user's WindowServer (Aqua) session: from ssh
+`launchctl managername` says `Background`, the device logs `EGL (Cocoa): no
+WindowServer session: run this at the console` and falls back to the pbuffer.
+Input tracing: `WILLEQ_INPUT_TRACE=1` prints one `[cocoa-input]` line per
+event the device delivers plus a `[cocoa-input] summary` line at teardown;
+`--log-module=INPUT:TRACE` prints the client's `[INPUT-EVENT]` line per event.
+
+For another user (the console user is not the build user on the mini),
+`scripts/macos/stage_window_bundle.sh` stages `bin/`, ANGLE's `lib/` (rpath
+`@executable_path/../lib`, ad-hoc re-signed), `config/`, `data/` and
+`scripts/macos/run_window_proof.sh` into `/Users/Shared/willeq-b1044`; that
+script runs the windowed benchmark and the windowed client, screenshots both
+and writes `out/summary.txt`.
 
 ## Benchmark
 
@@ -132,10 +159,15 @@ the manifest's benchmark block, `productionConfig.args`, the zone's
         --camera-pose -134.9,-238.9,6.0,0.0,-5.0 --camera-pose -202.9,-706.7,20.0,90.0,-5.0
 
 The device logs `DRM: not available on Darwin (B1043) - using the pbuffer EGL
-path`, then the surfaceless fallback's lines (their "llvmpipe, x86/Xvfb"
-wording is the x86 fork's), then `GLES2 Driver: ANGLE (Apple, ANGLE Metal
-Renderer: Apple M4, ...)`. Do not run `visual_gate.py` itself on the Mac and
-read its pixel failures as a regression: there are no Mac goldens.
+path`, then the ANGLE/Metal pbuffer fallback line (`EGL (pbuffer): Context created and made current (ANGLE/Metal)`), then `GLES2 Driver: ANGLE (Apple, ANGLE Metal
+Renderer: Apple M4, ...)`. `visual_gate.py --platform mac --capture <dir>`
+stages a Mac set (`manifest_mac.json` + frames) without using x86 pixels or
+x86 metrics as a threshold; it still fails on live memory budgets and the
+ledger invariants. Draw/state/poly counts equal x86's on 14 of the 15 frames;
+timorous frame 0 draws 7 fewer (579 vs 586): with `--no-occlusion-cull` both
+platforms give 766/14,875, so the difference is the CPU software occlusion
+culler hiding three more regions on arm64 (B1044 README). No Mac goldens are
+blessed yet.
 
 ## Test
 
@@ -148,11 +180,34 @@ read its pixel failures as a regression: there are no Mac goldens.
 `EQ_CLIENT_PATH` and `WILLEQ_EQE1_PATH` point the asset tests at the NAS
 mount (their default is the Linux `/mnt/projects/...` path); without them
 more asset tests SKIP, nothing fails. A green run on the Mac still skips
-more than Linux's headless tree: the ledger-dependent audio cases (the
-ledger is off), and the tests that hard-code a `/mnt/projects` path with no
-override, on top of Linux's own skips (absent `data/captures/` replays, the
-no-renderer gate tests, skip-by-design cases). `refactor/B1039/README.md`
-names every one. The GLES2 tree's tests are not built on the Mac yet.
+more than Linux's headless tree. B1039's headless run had the ledger OFF and
+its ledger-dependent audio cases skipped, plus tests hard-coding
+`/mnt/projects` and ordinary absent-capture/skip-by-design cases;
+`refactor/B1039/README.md` names them. B1044's full GLES2 suite on the M4 (`ctest -LE hygiene`): 2 failed of 5,633,
+168 skipped; the classification of every case that failed on the way is in
+`refactor/B1044/README.md`. `zone_content_sweep_smoke` SKIPs on macOS (a
+Linux rig: GNU `stdbuf`, `/proc` RssAnon).
+
+## Memory on macOS
+
+Will ruled on 2026-10-14 (#364, option 1): memory figures are
+platform-scoped. Each platform's manifest section carries its own rows
+(`textureCacheBytesLimit`, the Mac's `physFootprintBytes`), and the visual
+gate has a third golden set, `--platform mac` (`tests/goldens/mac/`,
+manifest `platforms.mac`), which Will blesses from a `--capture` staging.
+
+The Darwin figure that stands where Linux reads `RssAnon` is Mach's
+`task_vm_info.phys_footprint`: `task_info(mach_task_self(), TASK_VM_INFO,
+...)` (`src/client/core/memory_ledger_darwin.h`). It is the task's dirty,
+compressed and swapped memory, including IOSurface/Metal memory charged to
+the task (what Activity Monitor shows as "Memory"); `resident_size` from the
+same call is the `VmRSS` counterpart. On Darwin `rssAnonBytes` stays 0, so
+none of the Linux bounds (the 256 MiB ceiling, slack, `[heap]` coverage) read
+it; `owned_phys_footprint = phys_footprint - gpu_driver` is the counterpart of
+`owned_rss_anon`. The ledger (malloc-zone hooks, `memory_ledger_backend.h`)
+charges only what reaches the executable's allocator wrappers, so it sits far
+below the footprint (ANGLE/Metal and libSystem allocate around it); that gap
+is measured per zone in the B1044 README, not yet reconciled.
 
 ## Float results are not x86's bit for bit
 
@@ -169,12 +224,68 @@ on the Mac. Both suites look for the server maps at
 
 ## What differs on Darwin in the code
 
-Every difference is a `__linux__`/`__APPLE__` guard or a CMake condition;
-the Linux build compiles the same code it did before (B1043 checked the
-changed TUs' preprocessed output, base vs branch: identical).
+The B1043 differences were `__linux__`/`__APPLE__` guards or CMake conditions;
+its changed Linux TUs preprocessed identically. B1044 also changes the shared
+GLES2 header rule, so Linux CI must verify that regression surface.
 
-- The memory ledger: the OFF shape (above); `[memarena]`'s mallinfo2 line
-  is Linux-only, like its only caller.
+- The memory ledger: malloc-zone allocation-class charges are ON (B1044);
+  `[memarena]`'s mallinfo2 line remains Linux-only. The Darwin reading is
+  `phys_footprint` ("Memory on macOS" above). The T504 `gpu_driver` caller
+  classifier (a block whose malloc/new return address lies inside a
+  GL/driver module -- Mesa on Linux, ANGLE/Apple GPU on Darwin) runs here
+  too, off the dyld image table: `dl_iterate_phdr` does not exist on
+  Darwin, so the classifier's table is filled from
+  `_dyld_image_count()`/`_dyld_get_image_header()`: one range per image,
+  its `__TEXT` segment (slide applied; `__PAGEZERO` is a virtual guard
+  range with no code and is never recorded). Recording every non-`__PAGEZERO`
+  segment overflows the 1,024-range table on a full dyld image set -- the
+  benchmark loads ~380 images whose ~2,400 data segments (libswift*,
+  libobjc, libSystem, ...) would push the last images' `__TEXT` past the
+  end, which is exactly where the GPU stack's call sites land. The table
+  is populated by the first unknown-address rebuild (it fires within the
+  first few allocations: dyld has already loaded the initial image set,
+  ANGLE's dylibs are link-time images of the client) and rebuilt,
+  rate-limited, only when an unknown address appears later (a dlopen'd
+  image). Image 0 (the main executable) is
+  never a GPU image; the rest are tested against the ANGLE dylibs
+  `libEGL` / `libGLESv2` and the frameworks Metal, IOSurface,
+  CoreDisplay -- the same `gpu_driver` category, so the row means the
+  same thing on both platforms). All of it lives in
+  `src/client/core/memory_ledger_gpu_driver_classifier_darwin.cpp` beside
+  the Linux classifier in `memory_ledger.cpp`, which keeps a one-line
+  `#elif defined(__APPLE__)` arm; the Linux preprocessed output is
+  unchanged. The hot path is the Linux arm's shape -- one atomic table load
+  + binary search, no `dladdr`, no `backtrace`, no lock. B1062 (#382)
+  measured the spec's cost A/B on the mini (per-call ns, the
+  `[classifier-cost]` line of `tests/test_gpu_driver_classifier.cpp`;
+  the measured figures are quoted from the mini run of that test
+  below):
+  - **The measured A/B (M4 mini, macOS 15.7.4, 10,000 calls each,
+    `[classifier-cost]` line):** `dladdr(pc)` **1987.6 ns/call**
+    (10,000/10,000 resolved); `backtrace(8)` + `dladdr` per frame
+    **9275.4 ns/call** (80,000 frames resolved); the classifier's own
+    table binary search **1.73 ns/call** (10,000/10,000 in a known
+    image). The binary search is the hot path -- ~1,150x cheaper than
+    dladdr and ~5,375x cheaper than the backtrace path; dladdr and
+    backtrace are the alternatives it does not take (the spec's "no
+    per-allocation backtrace" is met with the table, at ~2 ns per
+    allocation).
+  - **The effect on the gate's ratchet** (five-zone capture, the
+    `[ledger]` lines of `scripts/ci/visual_gate.py --platform mac`):
+    unowned falls from the B1044 red 1.038 % (qeynos2, 56,192 B) to
+    **qeynos2 0.098 %, gfaydark 0.057 %, befallen 0.067 %, iceclad
+    0.015 %, timorous 0.016 %** -- every zone under the 1 % bound, with
+    `gpu_driver` charged 327,024 B (4,357 allocations) on qeynos2.
+    `gpu_driver`'s own ledger-budget bound is still unconfigured
+    (`[ledger-budget] ... NO BUDGET CONFIGURED for ... gpu_driver`), so
+    the row is reported, not gated, until a budget exists (FOLLOW-UP).
+- The window: `CIrrDeviceFB_Cocoa.mm` defines the three "X11" members
+  (`initEGLX11`, `pollX11Events`, `closeX11Window`) on Darwin, so
+  `CIrrDeviceFB.cpp`'s run()/present()/destructor are unchanged; its state
+  object lives in `x11Display_`. The frameworks it needs (Cocoa, QuartzCore,
+  CoreGraphics) ride on the Darwin `EGL` CMake target.
+- `PlacedObjectRecord` is 160 bytes, not 168: libc++'s `std::string` is 24
+  bytes (libstdc++'s is 32); `tests/test_placed_object_record.cpp` pins both.
 - Thread names: the T504 names go through `eqt::setCurrentThreadName`
   (`include/common/thread_name.h`), the one-argument `pthread_setname_np`
   on macOS. The tree has the 6 thread names set this way.
@@ -190,6 +301,6 @@ changed TUs' preprocessed output, base vs branch: identical).
   (`docker/irrlicht-drm-x86/CIrrDeviceFB*`) compiles its DRM/GBM/evdev/VT/X11
   code only off Darwin; `CIrrDeviceFB_Darwin.cpp` supplies the Darwin
   stubs, and `initEGLSurfaceless()` asks ANGLE for its Metal display.
-  `constrained_texture_cache*.cpp` include ANGLE's GLES2 headers (`gl2.h`,
-  `gl2ext.h`) on Darwin (Linux still includes Mesa's desktop `gl.h` there); `flock_controller.cpp` defines
+  `constrained_texture_cache*.cpp` include GLES2 headers (`gl2.h`,
+  `gl2ext.h`) on every platform; `flock_controller.cpp` defines
   `GLM_ENABLE_EXPERIMENTAL` for Homebrew's glm 1.x.

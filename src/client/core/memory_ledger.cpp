@@ -33,6 +33,11 @@
 #include "client/core/malloc_compat.h"  // mallinfo2 (+ shim for glibc < 2.33, B1056)
 #include <unistd.h>
 #endif
+#include "memory_ledger_darwin.h"  // B1044: phys_footprint reading + log/JSON extras; no-op off-Darwin
+#if defined(__APPLE__)
+#include <unistd.h>  // _SC_PAGESIZE (valloc/pvalloc), readlink
+#include "memory_ledger_gpu_driver_classifier_darwin.h"  // B1062
+#endif
 
 #include "common/logging.h"
 
@@ -380,10 +385,10 @@ Snapshot snapshot(const std::string& point, const std::string& zone) {
     // gpu_driver; the ceiling above stays on the whole RssAnon.
     s.gpuDriverBytes = s.categories[static_cast<size_t>(Category::GpuDriver)].liveBytes;
     s.gpuBuffers = readGpuBufferCensus();  // B955: GPU buffers outside RssAnon (Lima GEM)
+    readDarwinFootprint(s);  // B1044: no-op off-Darwin
     finishTargetGap(s);
     return s;
 }
-
 void finishTargetGap(Snapshot& s) {
     s.ownedRssAnonBytes = s.rssAnonBytes > s.gpuDriverBytes ? s.rssAnonBytes - s.gpuDriverBytes : 0;
     // B978: owned = RssAnon - gpu_driver + gpu_buffers (only when outside RssAnon).
@@ -461,6 +466,7 @@ std::string toLogLine(const Snapshot& s) {
     appendKV(out, "over_target_rss_anon", s.overTargetRssAnonBytes);
     appendKV(out, "ceiling", s.rssCeilingBytes);
     appendKV(out, "over_ceiling", s.overCeilingBytes);
+    out += darwinLogExtra(s);  // B1044: the phys_footprint keys (empty off-Darwin)
     appendKV(out, "allocs", s.allocCount);
     // B924: frames rendered since start -- the growth-vs-frames correlation.
     appendKV(out, "frames", s.renderedFrames);
@@ -614,6 +620,7 @@ std::string toJson(const Snapshot& s) {
     out += "\"gpuBuffers\":" + gpuBuffersToJson(s.gpuBuffers, s.ownedRssAnonBytes) + ",";
     out += "\"rssCeilingBytes\":" + std::to_string(s.rssCeilingBytes) + ",";
     out += "\"overCeilingBytes\":" + std::to_string(s.overCeilingBytes);
+    out += darwinJsonExtra(s);  // B1044: the physFootprint fields (empty off-Darwin)
     out += "}";
     return out;
 }
@@ -1149,16 +1156,18 @@ bool pollSteadyState() {
 // ============================================================================
 #if EQT_MEMORY_LEDGER
 
-#if !defined(__GLIBC__)
-#error "EQT_MEMORY_LEDGER=1 needs glibc's __libc_malloc family; configure with -DEQT_MEMORY_LEDGER=OFF"
+#if !defined(__GLIBC__) && !defined(__APPLE__)
+#error "EQT_MEMORY_LEDGER=1 needs glibc or macOS malloc zones"
 #endif
 
+#if defined(__GLIBC__)
 extern "C" {
 void* __libc_malloc(size_t);
 void __libc_free(void*);
 void* __libc_realloc(void*, size_t);
 void* __libc_memalign(size_t, size_t);
 }
+#endif
 
 namespace {
 
@@ -1182,15 +1191,7 @@ struct LedgerHeader {
 static_assert(sizeof(LedgerHeader) == 16, "header must be 16 bytes");
 constexpr size_t kHeader = sizeof(LedgerHeader);
 
-// glibc chunk accounting, exactly what its own malloc_usable_size() does:
-// the size word sits SIZE_SZ bytes before the returned block; low three bits
-// are flags (bit 1 = IS_MMAPPED). Usable = chunksize - SIZE_SZ, or minus
-// 2*SIZE_SZ for an mmapped chunk.
-inline uint64_t backendChunkBytes(void* mem) {
-    const size_t sz = reinterpret_cast<size_t*>(mem)[-1];
-    const size_t chunk = sz & ~static_cast<size_t>(7);
-    return chunk;  // the whole chunk, header included: what the arena really spent
-}
+#include "memory_ledger_backend.h"
 
 inline LedgerHeader* headerOf(void* user) {
     return reinterpret_cast<LedgerHeader*>(static_cast<char*>(user) - kHeader);
@@ -1204,20 +1205,17 @@ inline uint64_t chargedOf(void* user) {
 }
 
 // ---- T504: is the caller of this malloc/new inside the GL stack? -----------
-//
 // On llvmpipe the "GPU" is our own process: texture storage, vertex buffers and
 // the shader JIT are malloc'd by Mesa/LLVM from inside whatever MemoryScope made
 // the GL call, so every category that touches GL was contaminated by the
 // platform's rasteriser (MEASURED: textures_decoded read 12.7 MiB live at
 // startup with no CPU-side pixel buffer alive -- it was llvmpipe's copy of the
-// UI atlas and the two icon sheets). Classifying by RETURN ADDRESS gives that
-// memory its own row, `gpu_driver`, on every platform.
-//
-// Hook-safe by construction: no allocation (static tables, std::sort on a POD
-// array), no lock a caller can hold (a try-lock flag; a busy table just means
-// this one block is classified by scope, as before), and re-entry is cut by a
-// thread_local. dl_iterate_phdr takes the loader's recursive lock, so a malloc
-// made from inside dlopen() on this thread is fine.
+// UI atlas and the two icon sheets). Classifying by RETURN ADDRESS gives
+// that memory its own row, `gpu_driver`, on every platform (Darwin: the dyld
+// table in memory_ledger_gpu_driver_classifier_darwin.cpp). Hook-safe: no
+// allocation (static tables, std::sort on a POD array), no lock a caller can
+// hold (a try-lock flag; a busy table classifies by scope), re-entry cut by a
+// thread_local; dl_iterate_phdr's recursive lock lets dlopen()-time mallocs through.
 struct CodeRange {
     uintptr_t lo;
     uintptr_t hi;
@@ -1308,6 +1306,8 @@ inline bool callerIsGlStack(const void* caller) {
     r = lookupCaller(pc);
     if (r < 0) g_unknownAfterRebuild.fetch_add(1, std::memory_order_relaxed);
     return r == 1;
+#elif defined(__APPLE__)
+    return eqt::memory::classify_detail::callerIsGlStackDarwin(caller);
 #else
     (void)caller;
     return false;
@@ -1318,13 +1318,13 @@ void* ledgerAlloc(size_t size, size_t align, const void* caller) {
     void* base;
     uint32_t offset;
     if (align <= kHeader) {
-        base = __libc_malloc(size + kHeader);
+        base = backendMalloc(size + kHeader);
         offset = kHeader;
     } else {
         // Over-allocate one alignment unit so the user pointer can sit at
         // base + align with the header in the padding before it.
         if (align & (align - 1)) return nullptr;  // not a power of two
-        base = __libc_memalign(align, size + align);
+        base = backendMemalign(align, size + align);
         offset = static_cast<uint32_t>(align);
     }
     if (!base) return nullptr;
@@ -1356,7 +1356,7 @@ void ledgerFree(void* user) {
     eqt::memory::credit(eqt::memory::catOf(h->category), charged, h->requested,
                         eqt::memory::subOf(h->category));
     eqt::memory::trace_detail::traceCredit(h->category, charged);
-    __libc_free(static_cast<char*>(user) - h->offset);
+    backendFree(static_cast<char*>(user) - h->offset);
 }
 
 void* ledgerRealloc(void* user, size_t size, const void* caller) {
@@ -1371,7 +1371,7 @@ void* ledgerRealloc(void* user, size_t size, const void* caller) {
         const uint64_t oldCharged = chargedOf(user);
         const uint64_t oldRequested = h->requested;
         void* base = static_cast<char*>(user) - kHeader;
-        void* nbase = __libc_realloc(base, size + kHeader);
+        void* nbase = backendRealloc(base, size + kHeader);
         if (!nbase) return nullptr;
         void* nuser = static_cast<char*>(nbase) + kHeader;
         LedgerHeader* nh = headerOf(nuser);
@@ -1439,9 +1439,11 @@ int posix_memalign(void** out, size_t align, size_t size) {
     *out = p;
     return 0;
 }
+#if !defined(__APPLE__)
 void* valloc(size_t size) {
     return ledgerAlloc(size, static_cast<size_t>(sysconf(_SC_PAGESIZE)), __builtin_return_address(0));
 }
+#endif
 void* pvalloc(size_t size) {
     const size_t page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
     return ledgerAlloc((size + page - 1) & ~(page - 1), page, __builtin_return_address(0));
@@ -1454,8 +1456,12 @@ size_t malloc_usable_size(void* p) {
     // recomputed rather than cached in the header -- same number, no extra
     // header bytes.
     const uint64_t charged = chargedOf(p);
+#if defined(__APPLE__)
+    const uint64_t tail = charged > h->offset ? charged - h->offset : 0;
+#else
     const uint64_t tail = charged > h->offset + sizeof(size_t)
                               ? charged - h->offset - sizeof(size_t) : 0;
+#endif
     return static_cast<size_t>(tail);
 }
 

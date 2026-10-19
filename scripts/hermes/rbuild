@@ -192,6 +192,15 @@ EOF
         cp -R "$wt/docker/irrlicht-drm" "$wt/docker/irrlicht-drm-x86" "$wt/docker/irrlicht-drm-patch.py" "$m/docker/" || return 1
         cp -R "$wt/scripts/build-gles2-x86.sh" "$m/scripts/" || return 1
         cp -R "$wt/scripts/ci/irrlicht_input_stamp.sh" "$m/scripts/ci/" || return 1
+        # B1044-nf: the stamp now covers these too (irrlicht_input_stamp.sh);
+        # optional because pre-B1044 worktrees don't have them and their
+        # stamp files don't hash them.
+        if [ -f "$wt/scripts/build-gles2-darwin.sh" ]; then
+            cp -R "$wt/scripts/build-gles2-darwin.sh" "$m/scripts/" || return 1
+        fi
+        if [ -f "$wt/scripts/ci/irrlicht_gles2_files.sh" ]; then
+            cp -R "$wt/scripts/ci/irrlicht_gles2_files.sh" "$m/scripts/ci/" || return 1
+        fi
         bash "$m/scripts/ci/irrlicht_input_stamp.sh" write "$m/stamp.txt" >/dev/null || return 1
         d=$(tr -d '[:space:]' < "$m/stamp.txt"); d=${d:0:16}
         out="$broot/_irrlicht/$d"

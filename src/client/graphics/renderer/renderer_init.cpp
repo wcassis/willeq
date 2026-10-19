@@ -461,7 +461,11 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // Explicit opt-in only: never set based on $DISPLAY.
     if (config_.constrainedConfig.useEglX11) {
         setenv("WILLEQ_EGL_X11", "1", 1);
-        LOG_INFO(MOD_GRAPHICS, "[GL] Loading screen: X11-windowed EGL backend requested (--egl-x11)");
+#ifdef __APPLE__
+        LOG_INFO(MOD_GRAPHICS, "[GL] Loading screen: Cocoa-windowed EGL backend requested (--egl-window)");
+#else
+        LOG_INFO(MOD_GRAPHICS, "[GL] Loading screen: X11-windowed EGL backend requested (--egl-window)");
+#endif
     }
 #endif
 

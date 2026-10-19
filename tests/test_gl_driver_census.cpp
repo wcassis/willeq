@@ -476,6 +476,27 @@ TEST(GlDriverCensus, RealMapsAreConsistent) {
 #ifdef EQT_HAS_GRAPHICS
 namespace {
 
+// B1039 idiom (as in test_headless_shutdown.cpp): pipe2() is Linux-only;
+// macOS gets pipe() + FD_CLOEXEC.
+inline int pipeCloexec(int fds[2]) {
+#if defined(__linux__)
+    return ::pipe2(fds, O_CLOEXEC);
+#else
+    if (::pipe(fds) != 0) return -1;
+    ::fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+    ::fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+    return 0;
+#endif
+}
+// Linux keeps fable's exact diagnostic; the macOS arm names the call it made.
+inline const char* pipeErrPrefix() {
+#if defined(__linux__)
+    return "pipe2: ";
+#else
+    return "pipe: ";
+#endif
+}
+
 struct GlDriverRunChild {
     pid_t pid = -1;
     int outFd = -1;
@@ -497,9 +518,9 @@ struct GlDriverRunChild {
         std::signal(SIGPIPE, SIG_IGN);
         int inPipe[2];
         int outPipe[2];
-        if (::pipe2(inPipe, O_CLOEXEC) != 0 ||
-            ::pipe2(outPipe, O_CLOEXEC) != 0) {
-            error = std::string("pipe2: ") + std::strerror(errno);
+        if (pipeCloexec(inPipe) != 0 ||
+            pipeCloexec(outPipe) != 0) {
+            error = std::string(pipeErrPrefix()) + std::strerror(errno);
             return false;
         }
         pid = ::fork();

@@ -168,6 +168,13 @@ private:
     bool initEGLX11();
     void pollX11Events();
     void closeX11Window();
+#ifdef __APPLE__
+    // B1044 (#364): on Darwin the three members above are the Cocoa window
+    // backend (CIrrDeviceFB_Cocoa.mm, --egl-window); x11Display_ holds its
+    // retained state object and x11Window_ the NSWindow number.
+    void setCocoaWindowCaption(const char* utf8);
+    void pumpCocoaIfIdle();
+#endif
 
     // Keymap: Linux KEY_* -> Irrlicht EKEY_CODE
     void initKeyMap();

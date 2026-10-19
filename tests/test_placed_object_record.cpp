@@ -52,6 +52,7 @@
 #include <irrlicht.h>
 
 #include <cstddef>
+#include <string>
 #include <type_traits>
 
 using namespace EQT::Graphics;
@@ -62,8 +63,23 @@ namespace {
 // of this file, so a platform/standard drift (e.g. a -fshort-enables change
 // to vector3df's alignment, or a std::string ABI change) fails the test
 // loudly instead of letting the ledger's per-placement arithmetic go stale.
+//
+// B1044 (#364): the ONE member whose size differs between the two standard
+// libraries the tree builds with is `name`: libstdc++'s std::string is 32
+// bytes, libc++'s (Apple clang on macOS) is 24. Every other member lays out
+// identically (pointers, floats, size_t and bool have the same size and
+// alignment on x86-64 Linux and arm64 Darwin), so on libc++ `node` sits at
+// +152 and sizeof is 160. Both pins are explicit, per standard library,
+// rather than derived from sizeof(std::string), so a change on either side
+// still fails loudly.
+#if defined(_LIBCPP_VERSION)
+constexpr size_t kExpectedRecordSize = 160;
+constexpr size_t kExpectedNodeOffset = 152;
+static_assert(sizeof(std::string) == 24, "libc++ std::string is 24 bytes (B1044 layout note)");
+#else
 constexpr size_t kExpectedRecordSize = 168;
 constexpr size_t kExpectedNodeOffset = 160;
+#endif
 
 }  // namespace
 
