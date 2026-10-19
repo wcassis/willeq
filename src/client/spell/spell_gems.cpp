@@ -233,6 +233,20 @@ uint32_t SpellManager::getSpellbookSpell(uint16_t slot) const
     return m_spellbook[slot];
 }
 
+bool SpellManager::swapSpellbookSlots(uint16_t slot_a, uint16_t slot_b)
+{
+    if (slot_a >= MAX_SPELLBOOK_SLOTS || slot_b >= MAX_SPELLBOOK_SLOTS) {
+        return false;
+    }
+    const bool aEmpty = m_spellbook[slot_a] == SPELL_UNKNOWN || m_spellbook[slot_a] == 0;
+    const bool bEmpty = m_spellbook[slot_b] == SPELL_UNKNOWN || m_spellbook[slot_b] == 0;
+    if (aEmpty && bEmpty) {
+        return true;  // nothing to move; the gesture is still satisfied
+    }
+    std::swap(m_spellbook[slot_a], m_spellbook[slot_b]);
+    return true;
+}
+
 int32_t SpellManager::findFreeSpellbookSlot() const
 {
     for (uint16_t i = 0; i < MAX_SPELLBOOK_SLOTS; ++i) {

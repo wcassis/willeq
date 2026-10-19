@@ -148,6 +148,17 @@ public:
                        SpellIconAtlasLayout::SpellIconSheet sheet, uint32_t id);
 
     /**
+     * B1076 (GitLab #396): blit one tile of the composed spellbook backdrop
+     * (spellbook_layout.h's backdrop*Rect() is the `src` on the 512x363
+     * canvas). Same ordering contract as drawSpellIcon() -- a queued command
+     * carrying its OWN texture on the atlas path, immediate otherwise.
+     * Returns false when the backdrop was never loaded (headless) or there
+     * is no atlas.
+     */
+    bool drawSpellBookBackdrop(const irr::core::rect<irr::s32>& dest,
+                               const irr::core::rect<irr::s32>& src);
+
+    /**
      * B1077 (GitLab #397): the CW_SpellGemHolder piece (36x28 art inside its
      * 40x40 cell), drawn behind a gem icon at the caller's rect. Same
      * false-when-nothing contract as drawSpellIcon().

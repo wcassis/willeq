@@ -379,6 +379,17 @@ ADD_EXECUTABLE(test_data_path_routing
 TARGET_LINK_LIBRARIES(test_data_path_routing GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_data_path_routing DISCOVERY_TIMEOUT 120)
 
+# B919 (#238): the `game_state` owner-row census. A source reader over the
+# scoping sites (every MemoryScope(GameState) and the thread default) that
+# fails on one without its named owner row. No link deps on purpose: the sites
+# are network handlers and cannot be exercised in-process (same shape as
+# test_data_path_routing.cpp).
+ADD_EXECUTABLE(test_game_state_owners
+    test_game_state_owners.cpp
+)
+TARGET_LINK_LIBRARIES(test_game_state_owners GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_game_state_owners DISCOVERY_TIMEOUT 120)
+
 # T477 (board B571): the /tmp census. A source reader over tests/
 # (WILLEQ_REPO_ROOT, set globally in tests/CMakeLists.txt) that fails on a temp
 # path with no per-process component -- the name every slot and every

@@ -6,6 +6,48 @@ Newest entries first. Each entry: decision, rationale, implications.
 
 ---
 
+## 2026-10-17 — B1076: the spellbook is the oracle's own two-page book, and its gestures are the capture's, not the XML's (#396)
+
+Will's 2026-10-15 play session: "the spellbook in willeq does not match the
+official client". RULED (the unit is `refactor/B1076/README.md`, MR !223):
+
+1. **The window is the oracle's `EQUI_SpellBookWnd.xml`** — 510x360,
+   `Style_Sizable false`, drawn unscaled at the CentreSlot anchor (the
+   B1075/B1078 rules: content the oracle's, placement the table's). Its
+   geometry is `spellbook_layout.h`: sixteen 44x44 slot buttons in two 2x4
+   grids per SPREAD (irregular row Ys 24/97/169/242 — the row table is the
+   geometry, not a pitch), the 84x16 name under each, page numbers, the
+   18x32 edge arrows, the 100x8 gauge at (204,312), the 13x13 Done X at
+   (449,5). `SPELLS_PER_PAGE` is 16 — a "page" of the popup is the whole
+   two-page spread, so the old single-page-of-8 text list (and its "Page
+   N/M" description) is gone.
+2. **The book art is the client's own `default_spellbook01-05.tga`**,
+   tool-composed into one 512x363 pack entry (`tools/spellbook_backdrop_builder`,
+   fifth recipe in `build_textures.sh`; census-classified ETC1 + alpha
+   companion — the page art is a hard-edged cutout with exactly two alpha
+   levels). It loads eagerly and is protected, like the item-icon sheets:
+   `ConstrainedTextureCache::getOrLoad()` `std::exit(1)`s on a pack miss, so
+   first-use loading would turn a startup failure into a mid-session exit
+   the moment a player opens the book.
+3. **The gestures are what the official client does, measured on the lane-1
+   oracle session** (`refactor/B1076/plan4.tsv`, capture 4, 47 steps, 0 broken
+   refs): left click a slot = memorise; right click = the client-local spell
+   swap; the scribe is a TWO-CLICK scroll-then-slot (the oracle's own tip
+   window says exactly that — not a drag); the Done X closes; the edge
+   arrows page. Fable's `ScribeSpellFromScrollIntent` carries the two-click
+   gesture's spell id and scroll slot; the consumer resolves the destination
+   book slot (`SpellManager::findFreeSpellbookSlot()`, T276) and runs
+   `/scribe`'s exact wire sequence — one producer, one packet order. The
+   card's rule held throughout: the XML is the geometry, the ledger is the
+   behaviour; nothing was inferred from the XML.
+
+**Implications:** `scrollSpellId` now travels on `InventorySlotChangedData`
+(one new field, fed at the five publish sites) so the render thread can arm
+the two-click scribe from its own slot cache. The shipped BMP census moves
+71→72 and the 32-bit census 67→68 (`test_texture_alpha_census.cpp`), and the
+root CLAUDE.md's four count lines follow (orchestrator-applied, protected in
+headless runs) — the same cascade as B1077's four spell-icon sheets.
+
 ## 2026-10-16 — The zone-OUT audio teardown: silence at CleanupZone, counted for the lane (B1080, #400)
 
 **Decision:** leaving a zone silences its audio at the zone-OUT boundary, not

@@ -79,6 +79,47 @@ dev-u24's local lane -- two hosts, one file. The lease fixes both:
   takeover after expiry, 63 + the re-lease one-liner, re-acquire, reap dead-vs-live, dry-run,
   five-way take race (exactly one winner), corrupt record refused. Red-before is N/A (new helper).
 
+### The process-watcher zone exemption (B940, #258)
+
+The `eqemu-server` image's `process-watcher.pl` (bind-mounted at
+`assets/scripts/`) `kill -9`s any process whose
+lifetime-average CPU exceeds 30 % after 60 s unless its ps line matches an allowlist
+regex -- and the allowlist omits `zone`, so a freshly-respawned zone busy loading a
+client was killed mid-load (iceclad ~65-75 s, overthere ~38 s on the Pi; the client's
+`ECONNREFUSED` was the kill of its own zone pid; `refactor/B925/README.md`). The lanes'
+stacks carry the exemption in the stack's own configuration, provisioned persistently by
+`scripts/eqemu/watcher_provision.sh --lane N` (under the lease). A provision run with
+the container up kills every live watcher form and starts the replacement itself,
+with `PROCESS_WATCHER_EXCLUDE` passed explicitly (docker exec's env is not the
+entrypoint's) and re-reads its `/proc/<pid>/environ` as proof.
+
+- **the file**: `AKK_DIR/assets/scripts/process-watcher.pl`, patched by
+  `scripts/eqemu/b940_patch_watcher.pl` -- the allowlist regex becomes
+  `PROCESS_WATCHER_EXCLUDE`-driven, and the **upstream regex stays the default**, so a
+  stack without the env var behaves exactly as before (the patch is a literal splice,
+  `perl -c`s the patched text before it replaces the file, and refuses when the B940
+  marker is already present).
+- **the value**: the `eqemu-server` service's `environment:` gains one line
+  (`scripts/eqemu/b940_patch_compose.pl`):
+  `PROCESS_WATCHER_EXCLUDE=(bin|/bin)/zone`. The value is a bare regex body compiled
+  with `qr//` by the watcher -- no delimiters and no backslashes, because both are
+  eaten by the compose env -> shell -> `qr//` chain. It exempts exactly the zone
+  binary's argv wherever it sits on the ps line (`./bin/zone iceclad`,
+  `bin/zone overthere`, `/bin/zone`, `/home/eqemu/server/bin/zone qeynos2`); no
+  non-zone eqemu argv carries `bin/zone`, so the exemption cannot leak.
+- **verify**: `scripts/eqemu/watcher_selftest.sh --lane N` (read-only) fails if the
+  watcher lacks the B940 env-read, if the upstream allowlist is no longer the DEFAULT,
+  or if the compose file lacks the exact `PROCESS_WATCHER_EXCLUDE` line. The provision
+  run itself re-proves the surviving value on the lane host through the provisioned
+  code path (both directions: every zone argv exempt, every non-zone argv not) and,
+  with `--busy-zone` (~3 min), proves the exemption live both ways: a CPU burner
+  carrying the REAL `./bin/zone` argv (a `yes` copy installed as `bin/zone` in a
+  scratch dir) survives past the 60 s window under the provisioned watcher, and the
+  same burner is killed by a second watcher run with the env removed (the upstream
+  default) -- the kill line quoted from the watcher's own `process-kill.log`.
+- **proof it fixed the kill**: with the lane provisioned, iceclad's `zone_link_hold`
+  (330 s hold) exits 0 on lane 2 -- the B925 R1 case that dropped ~65-75 s in before.
+
 | | |
 | --- | --- |
 | GitLab | `https://gitlab.goldfarm.local`, project `willeq/willeq` (id 1) |
@@ -509,6 +550,20 @@ every driver. With fdinfo skipped `decideGpuBuffers` falls through in order to
 `source=drm_maps_lower_bound`. `scripts/ci/owned_memory.py` is
 the one Python definition of these figures, behind the `[rss-target]` line and
 the Pi summarizers.
+
+B1035 (2026-10-18, #354) names the lane-3 gap the issue's after-fix table left
+unexplained: the render node's resident figure is below the exclusive cgroup's
+shmem by the process's SCANOUT FRAMEBUFFERS -- shmem-backed DRM objects
+charged to the cgroup, published by panfrost as `drm-shared-memory`, but
+resident in NO node (the rockchip `card0` node's fdinfo carries no memory key
+at all). `decideGpuBuffers` therefore takes the shmem over the resident figure
+when the cgroup is exclusive and it is higher, and the `[memgpu]` line names
+the delta `fdinfo_scanout_gap=<B>` (after `memcg_kernel_seen=`, before the
+B978 `owned=` fields; `fdinfoScanoutGapBytes` in the JSON). The `scanout_fb=`
+pair carries the device's own tally of the same bytes; the mechanism, the
+four-source capture and the fixtures are in
+`docs/reference/rock4d_fdinfo_gap.md` (the Lima lanes are unaffected: they
+publish no `drm-*` key and take the shmem as the row already).
 
 ## Reading a pipeline (worker or human)
 

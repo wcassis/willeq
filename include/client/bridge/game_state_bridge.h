@@ -2,8 +2,10 @@
 
 #include "client/state/event_bus.h"
 #include "client/events/renderer_intents.h"
+#include "client/core/memory_ledger.h"  // B919: the gs.event_queue owner row
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <vector>
 #include <unordered_map>
 
@@ -34,6 +36,19 @@ public:
      * Thread-safe. Called from the game thread.
      */
     void pushEvent(state::GameEvent event) {
+        // B919 (#238): named `game_state` owner row (WILLEQ_LEDGER_OWNERS=game_state):
+        // every event's queue storage is gs.event_queue. The B945 halving rule
+        // (drainEvents) keeps ONE buffer at its burst peak until the queue
+        // drops under half of it, so the zone-in burst's buffer is the row's
+        // measured content at `ready` -- the "GameEvent staging buffer" B945
+        // traced to a call site; it has its name now. The scope opens only
+        // when an owner table is requested (this is a hot path: the label
+        // lookup is a per-event mutex round-trip, and a normal run has no
+        // table to fill). A target that compiles this header must link
+        // memory_ledger.cpp for StartupScope (the narrow bridge test does).
+        static const bool ownerRowsOn = eqt::memory::ownerRowsEnabled();
+        std::optional<eqt::memory::StartupScope> owner;
+        if (ownerRowsOn) owner.emplace("gs.event_queue");
         // UIGAP-live: the scenario lane's transcript tap. Empty in every
         // ordinary run (one branch); set once, from the game thread, which is
         // the thread that pushes events -- so the observer runs on it too.

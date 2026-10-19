@@ -46,6 +46,7 @@
 #include "common/logging.h"
 #include "common/packet_structs.h"
 #include "common/name_utils.h"
+#include "client/core/memory_ledger.h"  // B919: the gs.entities owner row
 
 // P28: entity_pose_state.h is game-state-owned (S2 decoupling comment in the
 // header), and inventory_manager.h/item_instance.h are the same
@@ -67,6 +68,13 @@
 
 void eqt::entities::EntitiesComponent::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 {
+	// B919 (#238): named `game_state` owner row (WILLEQ_LEDGER_OWNERS=game_state):
+	// every spawn parsed into ctx_.entities (the Entity map) and SyncEntityToGameState
+	// (the state::EntityManager's own per-entity store), plus this batch's
+	// bridge-event payloads, is gs.entities. The B941 rows (gs.navmesh,
+	// gs.collision_map, gs.zone_lines, gs.zone_sources) name the four zone loads;
+	// the per-spawn state the loads DO NOT cover gets its own row here.
+	eqt::memory::StartupScope owner("gs.entities");
 	ctx_.Bridge().SetLoadingPhase(LoadingPhase::ZONE_RECEIVING_SPAWNS);
 
 	// ZoneSpawns contains multiple Spawn_Struct entries
@@ -423,6 +431,10 @@ std::string eqt::entities::FormatDoorSpawnDump(uint32_t loopIndex, const uint8_t
 
 void eqt::entities::EntitiesComponent::ZoneProcessSpawnDoor(const EQ::Net::Packet &p)
 {
+	// B919 (#238): named `game_state` owner row (WILLEQ_LEDGER_OWNERS=game_state):
+	// the door spawn table (the DoorStateManager's doors_, reached through
+	// ctx_.game_state.doors()) and the DoorSpawned bridge events are gs.doors.
+	eqt::memory::StartupScope owner("gs.doors");
 	// Packet format: opcode(2) + array of Door_Struct(80)
 	// No count field - calculate from packet size
 	if (p.Length() < 2) {

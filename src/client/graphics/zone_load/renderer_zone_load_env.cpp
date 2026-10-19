@@ -1173,6 +1173,9 @@ void ZoneLoadComponent::loadZoneStep13_Cleanup(ZoneLoadContext& ctx) {
             LOG_INFO(MOD_GRAPHICS, "Sequential: released zone character data");
             if (rel.wldReleased) {
                 LOG_INFO(MOD_GRAPHICS, "Sequential: released WLD post-load data");
+                // B928: the pooled load freed the region geometry at the
+                // mesh build already (Step 4); this second release then
+                // reports 0 bytes for it, which is correct, not a leak.
                 LOG_INFO(MOD_GRAPHICS, "Sequential: released {} bytes of per-region source geometry",
                          rel.regionGeometryBytes);
             } else {

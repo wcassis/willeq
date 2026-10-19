@@ -226,6 +226,16 @@ bool UIRenderer::drawSpellIcon(const irr::core::rect<irr::s32>& rect,
     return blitExternalIcon(rect, srcRect, tex);
 }
 
+bool UIRenderer::drawSpellBookBackdrop(const irr::core::rect<irr::s32>& dest,
+                                       const irr::core::rect<irr::s32>& src) {
+    if (!driver_ || !atlas_) return false;
+
+    irr::video::ITexture* tex = atlas_->spellBookBackdrop().texture();
+    if (!tex) return false;
+
+    return blitExternalIcon(dest, src, tex);
+}
+
 bool UIRenderer::drawSpellGemHolder(const irr::core::rect<irr::s32>& rect) {
     if (!driver_ || !atlas_) return false;
 

@@ -1,0 +1,84 @@
+Internal ctest changing into directory: /home/user/willeq-builds/kb-b1076-red/build
+Test project /home/user/willeq-builds/kb-b1076-red/build
+    Start 295: RedTest.Finding1_ForwardArrowLandsOnSpreadOne
+    Start 296: RedTest.Finding2_ScribeCompletedClearsTheGauge
+    Start 297: RedTest.Finding3_CommittingSwapPushesAnIntent
+1/3 Test #295: RedTest.Finding1_ForwardArrowLandsOnSpreadOne ....***Failed    0.01 sec
+Note: Google Test filter = RedTest.Finding1_ForwardArrowLandsOnSpreadOne
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from RedTest
+[ RUN      ] RedTest.Finding1_ForwardArrowLandsOnSpreadOne
+../src/tests/test_spellbook_fix2_red.cpp:75: Failure
+Expected equality of these values:
+  spellbook.currentPage
+    Which is: 16
+  1
+one forward click on a 17-spread book must land on spread 1 (at 8dde4a4b it lands on spread 16)
+[  FAILED  ] RedTest.Finding1_ForwardArrowLandsOnSpreadOne (0 ms)
+[----------] 1 test from RedTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] RedTest.Finding1_ForwardArrowLandsOnSpreadOne
+
+ 1 FAILED TEST
+
+2/3 Test #296: RedTest.Finding2_ScribeCompletedClearsTheGauge ...***Failed    0.01 sec
+Note: Google Test filter = RedTest.Finding2_ScribeCompletedClearsTheGauge
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from RedTest
+[ RUN      ] RedTest.Finding2_ScribeCompletedClearsTheGauge
+../src/tests/test_spellbook_fix2_red.cpp:94: Failure
+Expected equality of these values:
+  book.scribeProgress
+    Which is: 1
+  0.0f
+    Which is: 0
+the completed attempt must empty the gauge (at 8dde4a4b it stays at 1)
+[  FAILED  ] RedTest.Finding2_ScribeCompletedClearsTheGauge (0 ms)
+[----------] 1 test from RedTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] RedTest.Finding2_ScribeCompletedClearsTheGauge
+
+ 1 FAILED TEST
+
+3/3 Test #297: RedTest.Finding3_CommittingSwapPushesAnIntent ....***Failed    0.01 sec
+Note: Google Test filter = RedTest.Finding3_CommittingSwapPushesAnIntent
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from RedTest
+[ RUN      ] RedTest.Finding3_CommittingSwapPushesAnIntent
+../src/tests/test_spellbook_fix2_red.cpp:160: Failure
+Value of: swapPushed
+  Actual: false
+Expected: true
+the committing click must tell the game thread (it sends OP_SwapSpell 0x2126); at 8dde4a4b it pushes NOTHING (a bare render-vector std::swap, "client-local") -- the server's book is never updated
+[  FAILED  ] RedTest.Finding3_CommittingSwapPushesAnIntent (0 ms)
+[----------] 1 test from RedTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] RedTest.Finding3_CommittingSwapPushesAnIntent
+
+ 1 FAILED TEST
+
+
+0% tests passed, 3 tests failed out of 3
+
+Total Test time (real) =   0.03 sec
+
+The following tests FAILED:
+	295 - RedTest.Finding1_ForwardArrowLandsOnSpreadOne (Failed)
+	296 - RedTest.Finding2_ScribeCompletedClearsTheGauge (Failed)
+	297 - RedTest.Finding3_CommittingSwapPushesAnIntent (Failed)
+Errors while running CTest

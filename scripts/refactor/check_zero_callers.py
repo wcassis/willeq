@@ -850,6 +850,12 @@ EXEMPT_TESTS_GROUPS = {
     # render body and hit test call; the reader is the co-open census
     # (test_ui_layout_coopen), which asserts the required sets over it.
     ("(free)", "windowRectFor"): "observer",
+    # B1076 (#396): the spellbook's first step exempted its twelve layout
+    # accessors as test-only observers. The render/input step drew and
+    # hit-tested from the same table (renderSpellbookPopup / the
+    # StaticUIInput spellbook arm), so all twelve moved to production and
+    # the exemptions were stale -- the table is not allowed to outlive its
+    # rows. The geometry they expose stays pinned by test_spellbook_layout.
     # B1069 (#389): the playback DEVICE rate. The production path is
     # main.cpp -> setConfiguredDeviceSampleRate -> AudioManager ->
     # MiniaudioBackend::setDeviceSampleRate -> init/start (whose INFO line
@@ -916,11 +922,8 @@ EXEMPT_TESTS_GROUPS = {
     # class; removing it would force the test back to a wall-time bound (the
     # very assumption that flaked).
     ("BackgroundWorkQueue", "isStopping"): "observer",
-    # T504: the ledger's stack-trace instrument is armed by an environment
-    # variable in a live run (WILLEQ_LEDGER_TRACE); the unit test needs the
-    # programmatic form of that switch and the report it prints.
-    # T504: the original client's LOAD order (globals first) as opposed to the
-    # loader's lookup order (resolverOrder); the era-sources test pins it.
+    # T504: the original client's LOAD order (globals first) as opposed to
+    # the loader's lookup order (resolverOrder); the era-sources test pins it.
     ("EraModelSources", "orderedArchives"): "observer",
     # B1019 (#340): the layout-equality net's core side -- the sizeof
     # of ZoneMeshBuilder as willeq_core's zone_geometry.cpp saw it. Its
@@ -928,8 +931,10 @@ EXEMPT_TESTS_GROUPS = {
     # observation window on the core's macro state (the public define's
     # whole point is that a consumer sees the same class the core built).
     ("ZoneMeshBuilder", "layoutSize"): "observer",
-    ("(free)", "traceConfigure"): "seam",
-    ("(free)", "traceReport"): "observer",
+    # B928 (#246) deleted the traceConfigure/traceReport rows: the benchmark's
+    # per-point trace instrument (tools/hwcaps/zone_bench_loadpoint_trace.cpp)
+    # now calls both, so they are no longer tests-only -- a real tools/ caller
+    # moved them bucket, and an exemption may not outlive its row.
     # T504: the entity-load callers moved to the instance form
     # (extractEquipmentModelCached, one open handle + one parsed WLD across
     # items); the static form is the held-item test's own-handle seam and

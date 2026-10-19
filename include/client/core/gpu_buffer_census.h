@@ -79,13 +79,24 @@ inline uint64_t depthStencilBytesFor(uint32_t width, uint32_t height, int depthB
 }
 
 // B961 (GitLab #279): the scanout framebuffers' bytes, the client-side
-// source. The GBM colour buffers live on the DISPLAY device (CMA on the
-// Orange Pi; imported into Lima by PRIME) -- not shmem, not in RssAnon,
-// not in the process's memcg -- so the gpu_buffers row and every
-// per-process kernel source are blind to them (the rigs read them as root
-// from /sys/kernel/debug/dri/display-engine/framebuffer). The DRM device
-// knows every gbm_bo it has locked (stride x height each, see
-// docker/irrlicht-drm/scanout_buffer_tally.h) and publishes the tally;
+// source. The GBM colour buffers live on the DISPLAY device and are
+// published by the device's own tally:
+//   - Orange Pi (Lima): the colour buffers are CMA and imported into Lima
+//     by PRIME -- not shmem, not in RssAnon, not in the process's memcg
+//     (the rigs read them as root from
+//     /sys/kernel/debug/dri/display-engine/framebuffer).
+//   - ROCK 4D (Panfrost, kernel 7.1, B1035/#354): they are shmem-backed
+//     framebuffers on the rockchip card node, charged to the process
+//     memcg's shmem and published by the panfrost render node as
+//     drm-shared-memory -- but not as drm-resident-memory, because the
+//     card node (rockchip) publishes NO memory key at all
+//     (tests/data/b955/rock4d_fdinfo_card0, raw fdinfo capture
+//     /home/user/kb-evidence/kb-b1035-lane3-fdinfo-gap/raw/). The
+//     gpu_buffers row therefore takes the memcg shmem figure over the
+//     fdinfo-resident one when the cgroup is exclusive (B1035); the
+//     scanout_fb row below names those bytes either way.
+// The DRM device knows every gbm_bo it has locked (stride x height each,
+// see docker/irrlicht-drm/scanout_buffer_tally.h) and publishes the tally;
 // these read it.
 //
 // Resolution: the B955 PUBLISH IDIOM (publishGpuLogicalTally /
@@ -235,13 +246,38 @@ struct GpuBufferCensus {
     uint64_t logicalBytes = 0;      // textures + buffers + depth/stencil (B962)
     int64_t residualBytes = 0;      // gpuBuffersBytes - logicalBytes (the named gap)
     bool cgroupExclusive = false;
+    // B1035 (#354): the row exceeded the fdinfo RESIDENT figure by this much
+    // because the cgroup's shmem was the higher figure -- the bytes the
+    // per-node fdinfo cannot see. On the ROCK 4D that is the scanout
+    // framebuffers (memcg shmem minus the panfrost render node's resident
+    // figure, within capture noise; the scanout_fb row names them), charged
+    // as shmem by the kernel but invisible to EVERY fdinfo: the rockchip
+    // card node publishes no memory key, and the render node counts them as
+    // shared, not resident. 0 when the row came from the fdinfo figure
+    // (or any non-shmem source).
+    uint64_t fdinfoScanoutGapBytes = 0;
 };
 
-// The decision, pure: fdinfo RESIDENT figure (drm-resident-* or the legacy
-// drm-memory-*) > exclusive memcg shmem > DRM maps (lower bound) > the logical
-// tally (in gpu_driver on a software rasteriser). An fdinfo with only
-// drm-total-* keys has no resident figure, so it falls through to the next
-// source rather than reporting 0 or its total (B1032 review).
+// The decision, pure:
+//   - a software rasteriser: the logical tally (inside gpu_driver);
+//   - fdinfo RESIDENT figure (drm-resident-* or the legacy drm-memory-*)
+//     (B1032) -- but B1035 (#354): when the process is EXCLUSIVE in its
+//     cgroup and that cgroup's shmem is HIGHER, the shmem wins, because
+//     the resident figure is a PER-NODE tally: on the ROCK 4D the three
+//     scanout framebuffers (~9 MB) are charged to the cgroup's shmem and
+//     published by the render node as drm-shared-memory, yet count as 0 in
+//     every node's drm-resident figure (the rockchip card node publishes
+//     no memory key at all). Taking max() keeps the fdinfo row on lanes
+//     whose shmem tracks the resident figure (Lima: shmem <= resident) and
+//     recovers the scanout bytes on the ROCK 4D; the delta is named
+//     fdinfoScanoutGapBytes and the scanout_fb row carries the device's
+//     own tally of them;
+//   - else the exclusive cgroup's shmem;
+//   - else the DRM-mapped lower bound;
+//   - else the logical tally.
+// An fdinfo with only drm-total-* keys has no resident figure, so it
+// falls through to the next source rather than reporting 0 or its total
+// (B1032 review).
 GpuBufferCensus decideGpuBuffers(const GpuBufferInputs& in);
 
 // Read every source for THIS process now and decide. Linux only; elsewhere
@@ -265,8 +301,13 @@ bool drmFdinfoIsSafe(const char* devPath);
 //  fdinfo_purgeable=<B>
 //  ... (B961, inserted after fdinfo_purgeable= and before the B978 owned
 //  fields, which must stay last: a pre-B961 parser of the line still finds
-//  every field it knew:)
+//  every field it knew:
 //  scanout_fb=<B> scanout_fb_bufs=<n> memcg_kernel_seen=<0|1>
+//  ... (B1035, inserted after memcg_kernel_seen=: the bytes the fdinfo
+//  RESIDENT figure could not see -- the row exceeded it because the
+//  exclusive cgroup's shmem was the higher figure; the scanout_fb pair
+//  above is the device's own tally of those bytes:
+//  fdinfo_scanout_gap=<B>
 //  owned_rss_anon=<B> owned=<B>`
 // B961: the two byte classes on no ledger row (refactor/B961/README.md): the
 // display device's GBM scanout buffers (CMA; the rigs' root read is the

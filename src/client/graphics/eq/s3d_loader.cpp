@@ -43,6 +43,22 @@ S3DZone::PostLoadRelease S3DZone::releaseSourceAfterLoad(bool releaseTexturePixe
     return r;
 }
 
+// B928 (#246): the early, geometry-only half of the end-of-load release.
+// Every CONSUMER of the per-region source geometry finishes in or before the
+// mesh-build step (bounding boxes, the region meshes themselves, the
+// occluder extraction, the animated-texture registration), and the only
+// post-build readers since T504 are the runtime rebuildRegionMesh() path --
+// which never runs while the zone pools are on (renderer_player_collision.cpp
+// gates on zonePoolsEnabled()) and the pooled zone never rebuilds a region
+// node. The frames, the PVS and the collision read the built meshes, the BSP
+// tree and the lights, never the source copy again. Dropping the copy here
+// instead of in Step 13 keeps ~20 MiB (iceclad) out of the objects/entities
+// build, where the whole-process RSS high-water is set (#246).
+size_t S3DZone::releaseRegionGeometryEarly() {
+    if (!wldLoader) return 0;
+    return wldLoader->releaseRegionGeometry();
+}
+
 bool S3DLoader::loadZone(const std::string& archivePath) {
     return loadZone(archivePath, S3DLoadOptions{});
 }
