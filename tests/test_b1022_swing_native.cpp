@@ -73,15 +73,9 @@ std::string ReadCodeOnly(const std::string& path) {
 // swing duration.
 std::vector<std::string> GraphicsSources() {
     std::vector<std::string> out;
-    std::string root;
-    // tests/ is built beside the checkout; the graphics tree is two up.
-    const char* env = std::getenv("REPO_ROOT");
-    if (env) root = env;
-    if (root.empty()) {
-        // Fall back to the source-relative path the CMake target compiles
-        // against (tests/ is one level under the repo root).
-        root = "../..";
-    }
+    // The source-tree root, resolved at run time (willeq_paths.txt in the
+    // build tree, or the checkout marker) -- absolute, no CWD assumption.
+    const std::string root = eqt::paths::RepoRoot();
     const char* dirs[] = {
         "src/client/graphics/entity_updates.cpp",
         "src/client/graphics/entity_combat_anim.cpp",
@@ -102,7 +96,9 @@ TEST(B1022SwingNative, NoDelayBasedSwingStretchInAnyProductionPath) {
     std::string offenders;
     int scanned = 0;
     for (const auto& p : files) {
-        if (p.rfind("/src/client/graphics/", 0) == std::string::npos) continue;
+        // The resolved path is relative to the build's tests/ dir (../../)
+        // or absolute (REPO_ROOT); match on the tail, not a leading slash.
+        if (p.find("src/client/graphics/") == std::string::npos) continue;
         const std::string src = ReadCodeOnly(p);
         if (src.empty()) continue;
         ++scanned;
