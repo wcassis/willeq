@@ -2,6 +2,24 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.14)
 
 PROJECT(willeq VERSION 1.0.0 LANGUAGES CXX C)
 
+# 2026-10-19 OOM on dev-u24: a tree configured with NO build type compiles with
+# neither -O nor -g, and the objects balloon with mangled template symbol names
+# (85 MB per TU; libwilleq_core.a 5.7 GB against 130 MB for Release). A full
+# `cmake --build -j12` of that tree then ran ten links at once, 38 GB on a
+# 32 GB box, and the kernel OOM killer took two sessions with it. An empty
+# build type therefore means Release; pass -DCMAKE_BUILD_TYPE explicitly for
+# anything else.
+IF(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    SET(CMAKE_BUILD_TYPE Release CACHE STRING
+        "Build type (empty defaulted to Release, see the 2026-10-19 note)" FORCE)
+ENDIF()
+
+# Cap concurrent link steps: each test binary links the whole core archive.
+# Ninja honours job pools; the Unix Makefiles generator ignores them, so on
+# make trees the Release default above is the only guard.
+SET_PROPERTY(GLOBAL PROPERTY JOB_POOLS link_pool=2)
+SET(CMAKE_JOB_POOL_LINK link_pool)
+
 # C++17 required
 SET(CMAKE_CXX_STANDARD 17)
 SET(CMAKE_CXX_STANDARD_REQUIRED ON)

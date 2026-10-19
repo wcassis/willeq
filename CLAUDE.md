@@ -164,6 +164,17 @@ specifically.
 value, e.g. `cmake --build build -j24`** (hermes-ext workers: 4 GiB cgroup, `-j3`, B1046). From a script
 (e.g. `scripts/build-arm-noble.sh`), `$(nproc)` works fine.
 
+**Always configure with `-DCMAKE_BUILD_TYPE=Release` (or RelWithDebInfo), and
+build NAMED targets on a shared box.** On 2026-10-19 an executor configured
+`wt/b1099/build` with no build type and ran `cmake --build build -j12` over the
+whole tree: no `-O`, no `-g`, 85 MB objects, a 5.7 GB `libwilleq_core.a`
+(Release: 130 MB), then ten simultaneous test links at 2-5 GB each = 38 GB on
+a 32 GB machine. The kernel OOM killer fired and systemd stopped the tmux pane
+scope, killing two Claude sessions. CMakeLists now defaults an empty build type
+to Release, but a `-DCMAKE_BUILD_TYPE=Debug` tree is still that large: never
+full-build one with tests on at more than `-j4`. Check `free -g` before any
+`-j12`+ build; the box also runs eqemu, mysql and the GitLab runner.
+
 **Desktop-GL Irrlicht support has been removed (P30,
 `refactor/desktop_gl_elimination_plan.md`).** `EQT_GRAPHICS=ON` (the default)
 requires a locally-built patched GLES2 Irrlicht — there is no
@@ -182,6 +193,7 @@ bash scripts/build-gles2-x86.sh --irrlicht-only
 # tree (tests on, full ctest suite). Since T392 (2026-09-05, board B215) the
 # suite has NO expected failures: a red test is a real red.
 mkdir -p build && cmake -S . -B build \
+    -DCMAKE_BUILD_TYPE=Release \
     -DEQT_GRAPHICS=ON \
     -DEQT_GLES2=ON \
     -DEQT_DRM=OFF \
