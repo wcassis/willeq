@@ -9,6 +9,7 @@
  */
 
 #include "client/graphics/ui/trade_panel.h"
+#include "client/graphics/ui/window_flags.h"  // B1002
 
 #include "client/graphics/text_batch.h"
 #include "client/graphics/ui/ui_atlas.h"
@@ -184,8 +185,8 @@ void drawButton(UIRenderer& ui, TextBatch* tb, const irr::core::rect<irr::s32>& 
 
 void drawChrome(UIRenderer& ui, TextBatch* tb, const irr::core::rect<irr::s32>& window,
                 const irr::core::rect<irr::s32>& title, const irr::core::rect<irr::s32>& close,
-                const char* text, bool closeHovered) {
-    ui.drawPanel(window);
+                const char* text, bool closeHovered, UIWindow w) {
+    ui.drawPanelFor(window, w);
     ui.drawRect(title, irr::video::SColor(200, 26, 26, 34));
     if (tb) {
         tb->addTextCentered(text, title, kTitle);
@@ -198,7 +199,7 @@ void drawChrome(UIRenderer& ui, TextBatch* tb, const irr::core::rect<irr::s32>& 
 void renderTrade(UIRenderer& ui, const UILayout& layout, const TradePanelState& s) {
     TextBatch* tb = ui.getTextBatch();
     drawChrome(ui, tb, TradeLayout::windowRect(layout), TradeLayout::titleRect(layout),
-               TradeLayout::closeBoxRect(layout), "Trade", s.closeHovered);
+               TradeLayout::closeBoxRect(layout), "Trade", s.closeHovered, UIWindow::Trade);
 
     // TRDW_HisName / TRDW_MyName, AlignCenter, red until that side accepts.
     if (tb) {
@@ -223,7 +224,7 @@ void renderTrade(UIRenderer& ui, const UILayout& layout, const TradePanelState& 
 void renderGive(UIRenderer& ui, const UILayout& layout, const TradePanelState& s) {
     TextBatch* tb = ui.getTextBatch();
     drawChrome(ui, tb, GiveLayout::windowRect(layout), GiveLayout::titleRect(layout),
-               GiveLayout::closeBoxRect(layout), "Give", s.closeHovered);
+               GiveLayout::closeBoxRect(layout), "Give", s.closeHovered, UIWindow::Give);
     if (tb) {
         tb->addTextCentered(s.partnerName, GiveLayout::nameRect(layout),
                             nameColor(tradePartnerNameColor(s)));

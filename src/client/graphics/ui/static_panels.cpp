@@ -8,6 +8,7 @@
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/ui/ui_layout.h"
+#include "client/graphics/ui/window_flags.h"   // B1002 (#322): per-window opacity
 #include "client/graphics/ui/inventory_layout.h"
 #include "client/graphics/ui/spell_gem_layout.h"   // B1077
 #include "client/graphics/ui/buff_layout.h"       // B1077
@@ -27,8 +28,8 @@ namespace Graphics {
 
 void renderPlayerStatus(UIRenderer& ui, const UILayout& layout,
                         const PlayerStatsData& stats) {
-    // Panel background
-    ui.drawPanel(layout.playerStatus);
+    // Panel background (B1002: the window's own opacity)
+    ui.drawPanelFor(layout.playerStatus, UIWindow::PlayerStatus);
 
     // Name + level
     if (auto* tb = ui.getTextBatch()) {
@@ -86,7 +87,7 @@ void renderTargetInfo(UIRenderer& ui, const UILayout& layout,
     if (target.spawnId == 0) return;  // No target
 
     // Panel background
-    ui.drawPanel(layout.targetInfo);
+    ui.drawPanelFor(layout.targetInfo, UIWindow::Target);
 
     // Name + level
     if (auto* tb = ui.getTextBatch()) {
@@ -128,7 +129,7 @@ void renderChatPanel(UIRenderer& ui, const UILayout& layout,
 
     // Panel background — visible when input is active or mouse hovers, otherwise transparent
     if (state.inputActive || state.mouseHover) {
-        ui.drawPanel(layout.chatPanel);
+        ui.drawPanelFor(layout.chatPanel, UIWindow::Chat);
     }
 
     // Process any pending messages from network thread
@@ -265,7 +266,7 @@ void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
     const auto& popup = InventoryLayout::windowRect(layout);
 
     // Panel background
-    ui.drawPanel(popup);
+    ui.drawPanelFor(popup, UIWindow::Inventory);
 
     // Title
     if (tb) {
@@ -461,7 +462,7 @@ void renderSpellGemPanel(UIRenderer& ui, const UILayout& layout,
     const auto& win = layout.spellGems;
 
     // Panel background
-    ui.drawSprite(win, static_cast<uint8_t>(UISprite::PanelBackground));
+    ui.drawPanelFor(win, UIWindow::SpellGems);
 
     // Gem state colors
     auto gemColor = [](uint8_t gemState) -> irr::video::SColor {
@@ -617,7 +618,7 @@ void renderBuffBar(UIRenderer& ui, const UILayout& layout,
     if (!buffBarIsVisible(state)) return;
 
     // Background
-    ui.drawSprite(layout.buffBar, static_cast<uint8_t>(UISprite::PanelBackground));
+    ui.drawPanelFor(layout.buffBar, UIWindow::Buffs);
 
     irr::s32 x = layout.buffBar.UpperLeftCorner.X + PAD;
     irr::s32 y = layout.buffBar.UpperLeftCorner.Y + PAD;
@@ -789,7 +790,7 @@ void renderGroupPanel(UIRenderer& ui, const UILayout& layout,
     constexpr irr::s32 BAR_H = UILayout::BAR_HEIGHT;
     constexpr irr::s32 PAD = UILayout::MARGIN;
 
-    ui.drawPanel(groupPanelFrameRect(layout, state));
+    ui.drawPanelFor(groupPanelFrameRect(layout, state), UIWindow::Group);
 
     if (tb) {
         tb->addText("Group", layout.groupPanel.UpperLeftCorner.X + 4,
@@ -849,7 +850,7 @@ void renderPetPanel(UIRenderer& ui, const UILayout& layout,
     auto* tb = ui.getTextBatch();
     constexpr irr::s32 BAR_H = UILayout::BAR_HEIGHT;
 
-    ui.drawPanel(layout.petPanel);
+    ui.drawPanelFor(layout.petPanel, UIWindow::Pet);
 
     irr::s32 x = layout.petPanel.UpperLeftCorner.X + 4;
     irr::s32 y = layout.petPanel.UpperLeftCorner.Y + 2;
@@ -925,7 +926,7 @@ void renderSpellbookPopup(UIRenderer& ui, const UILayout& layout,
         ui.drawSpellBookBackdrop(winRect(SB::backdropBottomStripRect()), SB::backdropBottomStripRect()) &&
         ui.drawSpellBookBackdrop(winRect(SB::backdropRightBottomRect()), SB::backdropRightBottomRect());
     if (!hasBackdrop) {
-        ui.drawPanel(popup);
+        ui.drawPanelFor(popup, UIWindow::Spellbook);
     }
 
     if (tb) {
@@ -1003,7 +1004,7 @@ void renderSkillsPopup(UIRenderer& ui, const UILayout& layout,
     auto* tb = ui.getTextBatch();
     const auto& popup = layout.centerPopup;
 
-    ui.drawPanel(popup);
+    ui.drawPanelFor(popup, UIWindow::Skills);
 
     if (tb) {
         tb->addText("Skills", popup.UpperLeftCorner.X + 8, popup.UpperLeftCorner.Y + 4,

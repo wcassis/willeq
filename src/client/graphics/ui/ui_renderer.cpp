@@ -5,6 +5,7 @@
 
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/ui_atlas.h"
+#include "client/graphics/ui/window_flags.h"
 #include "client/graphics/text_batch.h"
 #include "client/core/memory_ledger.h"
 
@@ -133,6 +134,27 @@ void UIRenderer::drawPanel(const irr::core::rect<irr::s32>& rect) {
     drawSprite(rect, static_cast<uint8_t>(UISprite::PanelBackground));
 
     // Border (1px lines around the panel)
+    drawFrame(rect, irr::video::SColor(255, 60, 60, 70));
+}
+
+void UIRenderer::drawPanelFor(const irr::core::rect<irr::s32>& rect, UIWindow w) {
+    // B1002: the window body at THIS window's opacity. The UI2D shader
+    // multiplies the sprite's baked alpha by the tint's, so a fill can only
+    // reach alpha <= its sprite's baked alpha. The shared pack's
+    // panel_background is baked at 180 (B992), so an OPAQUE window cannot get
+    // to 255 by tinting it. Instead the body is filled with the atlas's
+    // `white` sprite (baked 255 -- the same sprite drawRect already uses for
+    // solid fills) tinted to the panel colour {10,10,15} at the window's
+    // alpha: 255 for an opaque window (it now fully hides what is under it),
+    // the measured value for a translucent one. The pack is untouched.
+    const uint8_t a = windowPanelAlpha(w);
+    if (atlas_) {
+        drawSprite(rect, static_cast<uint8_t>(UISprite::White),
+                   irr::video::SColor(a, 10, 10, 15));
+    } else {
+        // Fallback (no atlas): a solid fill at the window's opacity.
+        drawRect(rect, irr::video::SColor(a, 20, 20, 25));
+    }
     drawFrame(rect, irr::video::SColor(255, 60, 60, 70));
 }
 

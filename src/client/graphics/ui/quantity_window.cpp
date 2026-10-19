@@ -5,6 +5,7 @@
  */
 
 #include "client/graphics/ui/quantity_window.h"
+#include "client/graphics/ui/window_flags.h"  // B1002
 
 #include "client/graphics/ui/quantity_layout.h"
 #include "client/graphics/ui/ui_renderer.h"
@@ -129,7 +130,7 @@ void renderQuantityWindow(UIRenderer& ui, const UILayout& layout,
     if (!state.isOpen) return;
     auto* tb = ui.getTextBatch();
 
-    ui.drawPanel(QuantityLayout::windowRect(layout));
+    ui.drawPanelFor(QuantityLayout::windowRect(layout), UIWindow::Quantity);
 
     // Style_Titlebar: <Text>Quantity</Text>.
     const auto title = QuantityLayout::titleRect(layout);

@@ -113,7 +113,7 @@ void renderConfirmationDialog(UIRenderer& ui, const UILayout& layout,
     if (!state.isOpen) return;
     auto* tb = ui.getTextBatch();
 
-    ui.drawPanel(ConfirmationLayout::windowRect(layout));
+    ui.drawPanelFor(ConfirmationLayout::windowRect(layout), UIWindow::Confirmation);
     // Style_Titlebar true with no <Text>: an empty bar (measured, G41).
     ui.drawRect(ConfirmationLayout::titleRect(layout), irr::video::SColor(200, 26, 26, 34));
 

@@ -69,7 +69,7 @@ void renderHotbar(UIRenderer& ui, const UILayout& layout,
     auto window = layout.hotbar;
 
     // WDT_RoundedNoTitle: the whole window, then the page-row strip.
-    ui.drawPanel(window);
+    ui.drawPanelFor(window, UIWindow::Hotbar);
     auto strip = window;
     strip.LowerRightCorner.Y = window.UpperLeftCorner.Y + HotbarLayout::kCloseBox;
     ui.drawRect(strip, irr::video::SColor(200, 20, 20, 28));

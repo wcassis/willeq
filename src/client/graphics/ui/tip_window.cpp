@@ -334,7 +334,7 @@ bool scrollTipWindow(TipWindowState& state, const UILayout& layout, int mx, int 
 void renderTipWindow(UIRenderer& ui, const UILayout& layout, const TipWindowState& state) {
     if (!state.isOpen) return;
     auto* tb = ui.getTextBatch();
-    ui.drawPanel(TipLayout::windowRect(layout));
+    ui.drawPanelFor(TipLayout::windowRect(layout), UIWindow::Tip);
 
     const auto title = TipLayout::titleRect(layout);
     ui.drawRect(title, irr::video::SColor(200, 26, 26, 34));

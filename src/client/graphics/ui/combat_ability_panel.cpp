@@ -84,7 +84,7 @@ void renderCombatAbilityPanel(UIRenderer& ui, const UILayout& layout,
     auto* tb = ui.getTextBatch();
     const auto win = CombatAbilityLayout::windowRect(layout);
 
-    ui.drawPanel(win);
+    ui.drawPanelFor(win, UIWindow::CombatAbilities);
 
     // The window title — the oracle's <Text>Combat Abilities</Text>.
     if (tb) {

@@ -145,7 +145,7 @@ void renderTrainerWindow(UIRenderer& ui, const UILayout& layout,
     if (!state.isOpen) return;
 
     auto* tb = ui.getTextBatch();
-    ui.drawPanel(TrainLayout::windowRect(layout));
+    ui.drawPanelFor(TrainLayout::windowRect(layout), UIWindow::Trainer);
 
     // --- Style_Titlebar: <Text>Training Window</Text> ---
     const auto title = TrainLayout::titleRect(layout);
