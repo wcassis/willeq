@@ -141,3 +141,108 @@ what remains. NO lane-2 goldens, NO bound change.
   the pipeline's visual gate is x86 (unaffected -- the Pi lane is not in CI,
   so the lane-1 evidence here is the proof); `capture.log` + both tables
   linked from the MR.
+
+## Results
+
+**Published sha (quoted everywhere): `c03c44a03712fcf7efee72207a3dc14451d48867`**
+(>= the card's floor `c03c44a0`). Lane 1 ran
+`gles2_zone_benchmark-nollvm` (shipped LLVM-less Mesa 25.2.8 prefix, the
+gate's own maps proof per zone); lane 2 ran `gles2_zone_benchmark`
+(system Mesa, no -nollvm binary in the aarch64 publish). Both runs used the
+worktree's manifest (poses from its OWN platforms.pi section; the runner's
+self-check verified every pose word against each logged command line).
+
+### Lane 1 BEFORE table (run 1 vs the committed pre-B976 goldens; the gate's own compare_images_exact + metrics rule)
+
+| zone | frame | pixels vs OLD golden | metrics |
+|---|---|---|---|
+| qeynos2 | f0 | differs (134,492 px) | bit-exact |
+| qeynos2 | f1 | IDENTICAL | bit-exact |
+| qeynos2 | f2 | differs (290 px) | bit-exact |
+| gfaydark | f0 | differs (36 px) | bit-exact |
+| gfaydark | f1 | differs (565 px) | bit-exact |
+| gfaydark | f2 | differs (693 px) | bit-exact |
+| befallen | f0 | differs (37 px) | bit-exact |
+| befallen | f1 | IDENTICAL | bit-exact |
+| befallen | f2 | IDENTICAL | bit-exact |
+| iceclad | f0 | differs (1,231 px) | bit-exact |
+| iceclad | f1 | differs (51,940 px) | bit-exact |
+| iceclad | f2 | differs (13,619 px) | bit-exact |
+| timorous | f0 | differs (114,732 px) | bit-exact |
+| timorous | f1 | differs (1,218 px) | bit-exact |
+| timorous | f2 | differs (143,514 px) | bit-exact |
+
+**Acceptance B MET**: 3 identical (qeynos2 f1, befallen f1, befallen f2) and
+the 12 differing frames carry exactly B1037's pre-fix lane-2 pixel counts
+(refactor/B1037/README.md, the lane-2 table) -- 134,492 / 290 / 36 / 565 /
+693 / 37 / 1,231 / 51,940 / 13,619 / 114,732 / 1,218 / 143,514 -- with metrics
+bit-exact in all 15. `compare_before.txt` in the evidence.
+
+### Lane 1 determinism (runs 1 vs 2 vs 3, decoded pixels, the gate's rule)
+
+15/15 IDENTICAL for run1-vs-run2 AND run1-vs-run3. **Acceptance C MET.**
+Tables: `lane1_run1/run1/compare_determinism.txt` (run 1 vs run 2) and
+`lane1_run3/compare_determinism.txt` (run 1 vs run 3), under the evidence dir.
+
+Note: qeynos2's `s3dZoneSourceBytes` is 501081 in ALL THREE runs (the
+committed section had 501079 from the 55ec17b3-era bless); the only fields
+that move run-to-run are the two report-only ones
+(`processRssBytes`/`untrackedBytes`), which the gate prints and never
+asserts. So the new section's exact-baselined fields are stable by
+measurement, not hope.
+
+### The bless
+
+Run-1's 15 frames are the new `tests/goldens/pi/`; the new `platforms.pi`
+section is the gate's own section-builder output over run 1's artifacts
+(see `b1097_bless.py`, which stages run 1 exactly the way `capture_pi()`
+lays out its run and reuses the gate's `extract_gl_version` /
+`_pi_memory_fields` / CSV metrics code). Commit `996df5fe`
+("B1097: re-bless Pi goldens post-B976 (Will 2026-10-19, #417)") lists all 15
+sha256s and every manifest field change with its reason (its body is
+`commit_msg_bless.txt` in the evidence). `blessedUnder` is unchanged
+("OpenGL ES 2.0 Mesa 25.2.8" both sides). `rbuild hygiene` green at the
+commit.
+
+### Lane 2 table (run 1, Rock64/Mali-450/Lima/system Mesa 25.2.8, vs the NEW goldens; REPORT ONLY)
+
+| zone | frame | pixels vs NEW golden | B1037 pre-fix lane-2 px | metrics |
+|---|---|---|---|---|
+| qeynos2 | f0 | IDENTICAL | 134,492 | bit-exact |
+| qeynos2 | f1 | IDENTICAL | 0 (already) | bit-exact |
+| qeynos2 | f2 | IDENTICAL | 290 | bit-exact |
+| gfaydark | f0 | IDENTICAL | 36 | bit-exact |
+| gfaydark | f1 | IDENTICAL | 565 | bit-exact |
+| gfaydark | f2 | IDENTICAL | 693 | bit-exact |
+| befallen | f0 | IDENTICAL | 37 | bit-exact |
+| befallen | f1 | IDENTICAL | 0 (already) | bit-exact |
+| befallen | f2 | IDENTICAL | 0 (already) | bit-exact |
+| iceclad | f0 | IDENTICAL | 1,231 | bit-exact |
+| iceclad | f1 | IDENTICAL | 51,940 | bit-exact |
+| iceclad | f2 | IDENTICAL | 13,619 | bit-exact |
+| timorous | f0 | IDENTICAL | 114,732 | bit-exact |
+| timorous | f1 | IDENTICAL | 1,218 | bit-exact |
+| timorous | f2 | IDENTICAL | 143,514 | bit-exact |
+
+**15/15 IDENTICAL, metrics bit-exact in all 15** (`compare_lane2.txt`). The
+ruling's expectation holds exactly: the floor locus now matches -- the new
+goldens ARE the Lima D24 image and lane 2 is the Pi's Lima D24 twin (both
+`EGL: Config depth=24`, confirmed in the lane-2 zone logs), so what remained
+is NOTHING: every frame is pixel-identical, not just 1-LSB-close. No lane-2
+goldens were written, no bound changed -- report only, per the ruling.
+(Lane 2's maps show system Mesa with libLLVM, as expected for the aarch64
+publish; the gate's maps proof is lane-1-only, the -nollvm one.)
+
+### Finish state
+
+- `docs/ci.md` one sentence added (the Pi-goldens line in "Two golden sets").
+- `rbuild <wt> hygiene` green (45/45, at the golden commit; re-run after the
+  docs commit).
+- Push WITH CI + `glab mr create` ("Closes #417") pending here.
+- Acceptance G: lane 1 leftover check clean (bracket-trick pgrep empty, lock
+  released, HDMI connected as found, never rebooted); lane 2 the same.
+- Evidence: `capture.log` (lane 1 run 1, the five zone logs in manifest
+  order), `compare_before.txt`, `compare_determinism.txt` x2,
+  `compare_lane2.txt`, the maps proofs, and the per-run dirs, all under
+  `/home/user/kb-evidence/kb-b1097-pi-rebless/`.
+
