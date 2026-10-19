@@ -418,14 +418,14 @@ void EntityRenderer::setEntityWeaponSkills(uint16_t spawnId, uint8_t primaryWeap
               spawnId, primaryWeaponSkill, secondaryWeaponSkill);
 }
 
-void EntityRenderer::setEntityWeaponDelay(uint16_t spawnId, float delayMs) {
-    auto it = entities_.find(spawnId);
-    if (it == entities_.end()) {
-        return;
-    }
-    it->second.weaponDelayMs = delayMs;
-    LOG_DEBUG(MOD_ENTITY, "Set weapon delay for spawn {}: {}ms", spawnId, delayMs);
-}
+// B1022 (#342): setEntityWeaponDelay() deleted. It was the only writer of
+// weaponDelayMs (a dead member, B494 zero-caller census) and had no callers.
+// The swing plays at the model's native animation length (speed byte 10 =
+// 1.0x, constant for every swing); the swing RATE is the server's
+// OP_Animation cadence (100 x item delay ms), which never reaches the
+// renderer through a per-entity weapon delay. Re-introducing delay-based
+// swing timing would source the delay from the equipped item's inventory
+// row, never from a render-site lookup.
 
 void EntityRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
     auto it = entities_.find(spawnId);

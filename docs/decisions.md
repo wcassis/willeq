@@ -6,6 +6,54 @@ Newest entries first. Each entry: decision, rationale, implications.
 
 ---
 
+## 2026-10-19 — B1022: the swing plays at the model's NATIVE animation length (1.0×); the swing RATE is the server's packet cadence (100 × item delay ms) (#342)
+
+The melee `OP_Animation` the server sends carries the animation's speed as a
+byte, and fable used a per-entity `weaponDelayMs` to stretch the swing
+animation to `weaponDelayMs × 0.5` (1.5 s at the 3000 ms default) — a fixed
+1.5 s regardless of the model's real animation length or the weapon held.
+The oracle settles what the per-swing duration IS:
+
+1. **The per-swing speed is constant 10 (1.0×), so the per-swing duration is
+   the model's own animation length.** Two independent sources agree. The
+   deployed lane-2 server's own zone logs (run 1302) show every melee
+   `OP_Animation` body as `06 00 0A 05` / `AF 00 0A 08` — speed byte 10 for
+   every swing, across both spawns and both anim ids. The official client as
+   ACTOR (run 1326, `oracle-final2/`, lane 2) re-confirms it with 50 real
+   packets: **50/50 carry speed byte 10**, constant across both spawns and
+   all four anim ids (5/8/1/7). `0x0A` = 1.0 per the server's own
+   convention (`attack.cpp` `DoAnim`: `a->speed = animation_speed ?
+   animation_speed : 10`). A constant speed byte cannot carry the weapon
+   delay — so the per-swing duration is whatever the model plays at 1.0×:
+   its native animation length (c06 1H slash 1000 ms, c03 2H slash 1300 ms,
+   c07 bash 1800 ms, …; `tools/b1022_anim_probe`).
+2. **The swing RATE is the server's attack timer (100 × item delay ms)** —
+   the spacing between consecutive `OP_Animation` packets — and it never
+   reaches the renderer through a per-entity weapon delay. The target's
+   sustained swing in the same capture arrives at a ~3.0 s period (its own
+   weapon), independent of any per-swing speed byte.
+3. **The fix DELETES the delay-based stretch**: `weaponDelayMs`, its dead
+   writer `setEntityWeaponDelay` (B494 zero-caller census — the row goes
+   with them, acceptance item (D) the other way), and the stretch sites in
+   `entity_updates.cpp` (anims 5/6 `setTargetDuration(weaponDelayMs * 0.5)`)
+   and `entity_combat_anim.cpp`. The swing animator runs at native 1.0×; the
+   server re-triggers it at its own cadence.
+4. **Pinned** by `tests/test_b1022_swing_native.cpp`: the source half scans
+   the three production TUs for the stretch (RED on the parent — the census
+   names `entity_updates.cpp` — GREEN at the head); the behavioral half
+   drives the real animation-5 update path over an EDT_NULL device and
+   asserts the animator's playback speed is the native 1.0 (RED on the
+   parent at 0.6667 = 1000 ms native / 1500 ms stretched, GREEN at the head).
+   `refactor/B1022/README.md` has the speed-byte census, the native-length
+   table, the ruling, and the honest "not verified" list (the actor's own
+   sustained period in the pcap and the two-weapon video comparison — the
+   target was invulnerable, so the actor's attacks resolved as misses and the
+   second equip did not take; the speed-byte census still proves the
+   per-swing speed is constant, which is the measurement the card's
+   branching question asked for).
+
+---
+
 ## 2026-10-17 — B1076: the spellbook is the oracle's own two-page book, and its gestures are the capture's, not the XML's (#396)
 
 Will's 2026-10-15 play session: "the spellbook in willeq does not match the

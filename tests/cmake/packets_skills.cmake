@@ -196,6 +196,24 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_corpse_death_pose DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1022 (GitLab #342): the swing plays at the model's native animation length;
+# the swing rate is the server's OP_Animation cadence (100 x item delay ms).
+# The source half (no device) asserts the delay-based stretch is gone from the
+# production paths; the behavioral half (EDT_NULL + willeq_core, the same gate
+# as test_corpse_death_pose) skips without the db or the client tree.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_b1022_swing_native
+        test_b1022_swing_native.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_b1022_swing_native PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_b1022_swing_native GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_b1022_swing_native PRIVATE
+        "WILLEQ_REPO_ROOT=WILLEQ_REPO_PATH(\"\")"
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")"
+        "EQ_CLIENT_DATA_PATH=WILLEQ_REPO_PATH(\"data/eq_client\")")
+    GTEST_DISCOVER_TESTS(test_b1022_swing_native DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B973 (GitLab #291): post-load entity build scheduling -- guaranteed progress
 # in every governor state, bounded per-frame work, and B966's create unit
 # promoting materials before the node's first draw. Part 1 is device-free; the

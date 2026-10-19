@@ -215,61 +215,37 @@ void EntityRenderer::processCombatAnimationBufferForEntity(uint16_t sourceId, ui
     LOG_DEBUG(MOD_COMBAT, "Processing combat buffer: source={} packets={} mainHand={} offHand={} dualWield={}",
               sourceId, source.pendingCombatAnims.size(), mainHandCount, offHandCount, isDualWield);
 
-    // Determine animation speeds based on attack count
-    // Double attack (2 hits) = 2x speed, Triple attack (3 hits) = 3x speed
-    float mainHandSpeed = 1.0f;
-    if (mainHandCount == 2) {
-        mainHandSpeed = 2.0f;  // Double attack
-    } else if (mainHandCount >= 3) {
-        mainHandSpeed = 3.0f;  // Triple attack
-    }
-
-    float offHandSpeed = 1.0f;
-    if (offHandCount == 2) {
-        offHandSpeed = 2.0f;  // Dual wield can double attack
-    }
-
-    // Get weapon delay for animation timing
-    float baseDelayMs = source.weaponDelayMs > 0 ? source.weaponDelayMs : 3000.0f;
+    // B1022 (#342): the swing rate is the server's OP_Animation / combat-burst
+    // cadence (100 x item delay ms); each swing plays at the model's NATIVE
+    // animation length (speed byte 10 = 1.0x). There is no per-entity weapon
+    // delay to stretch to anymore -- see the tombstone on
+    // setEntityWeaponDelay in entity_renderer.cpp. A double/triple burst plays
+    // its queued swings back to back at native (playThrough), so nothing here
+    // recomputes a duration from a delay.
 
     // Play attack animations on source
     if (source.isAnimated && source.animatedNode) {
         // Determine animation code based on primary weapon skill
         const char* attackAnim = EQ::getWeaponAttackAnimation(primarySkill, false, false);
 
-        // Calculate target duration for attack animations
-        // Single: full duration (weaponDelay * 0.5)
-        // Double: half duration (fits 2 attacks in same window)
-        // Triple: third duration (fits 3 attacks in same window)
-        float mainHandDuration = (baseDelayMs * 0.5f) / mainHandSpeed;
-
         // Queue main hand attack(s)
         for (int i = 0; i < mainHandCount; i++) {
             // First animation plays immediately, subsequent ones queue
             bool playThrough = true;
             if (setEntityAnimation(sourceId, attackAnim, false, playThrough)) {
-                // Set animation speed to match attack timing
-                if (source.animatedNode) {
-                    source.animatedNode->getAnimator().setTargetDuration(mainHandDuration);
-                }
-                LOG_DEBUG(MOD_COMBAT, "Playing main hand attack '{}' #{}/{} duration={:.0f}ms on source={}",
-                          attackAnim, i + 1, mainHandCount, mainHandDuration, sourceId);
+                LOG_DEBUG(MOD_COMBAT, "Playing main hand attack '{}' #{}/{} (native duration) on source={}",
+                          attackAnim, i + 1, mainHandCount, sourceId);
             }
         }
 
         // Queue offhand attacks if dual wielding
         if (isDualWield && offHandCount > 0) {
             const char* offhandAnim = EQ::getWeaponAttackAnimation(secondarySkill, true, false);
-            float offHandDuration = (baseDelayMs * 0.5f) / offHandSpeed;
 
             for (int i = 0; i < offHandCount; i++) {
                 if (setEntityAnimation(sourceId, offhandAnim, false, true)) {
-                    // Set offhand animation speed
-                    if (source.animatedNode) {
-                        source.animatedNode->getAnimator().setTargetDuration(offHandDuration);
-                    }
-                    LOG_DEBUG(MOD_COMBAT, "Playing offhand attack '{}' #{}/{} duration={:.0f}ms on source={}",
-                              offhandAnim, i + 1, offHandCount, offHandDuration, sourceId);
+                    LOG_DEBUG(MOD_COMBAT, "Playing offhand attack '{}' #{}/{} (native duration) on source={}",
+                              offhandAnim, i + 1, offHandCount, sourceId);
                 }
             }
         }

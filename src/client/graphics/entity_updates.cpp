@@ -535,14 +535,15 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
                 targetAnim = EQ::getWeaponAttackAnimation(visual.primaryWeaponSkill, false, false);
                 playThrough = true;
                 loopAnim = false;
-
-                // Phase 6.2: Match attack animation speed to weapon delay (if available)
-                // Default weapon delay is ~30 (3.0 seconds), adjust animation to match
-                // Note: weaponDelay in EQ is 10ths of a second, so delay 30 = 3000ms
-                if (visual.animatedNode) {
-                    float weaponDelayMs = visual.weaponDelayMs > 0 ? visual.weaponDelayMs : 3000.0f;
-                    // We'll set duration after animation starts
-                }
+                // B1022 (#342): the swing plays at the model's NATIVE animation
+                // length (speed byte 10 = 1.0x -- constant for every swing, the
+                // deployed server's zone logs show body `06 00 0A 05` across all
+                // weapons/spawns). The swing RATE is the server's OP_Animation
+                // cadence (100 x item delay ms); it never reaches the renderer
+                // through a per-entity weapon-delay. The old stretch to
+                // weaponDelayMs * 0.5 (1.5 s at the 3000 ms default) is gone
+                // -- see the tombstone on setEntityWeaponDelay in
+                // entity_renderer.cpp.
             } else if (animation == 6 || animation == 7) {
                 // Swimming animations: 6 = swim idle (treading), 7 = swimming forward
                 targetAnim = "l09";  // l09 = Swim Treading
@@ -607,11 +608,6 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
             if (visual.animatedNode->hasAnimation(targetAnim)) {
                 if (visual.animatedNode->playAnimation(targetAnim, loopAnim, playThrough)) {
                     visual.currentAnimation = targetAnim;
-
-                    // Phase 6.2: Set attack animation speed to match weapon delay
-                    if ((animation == 5 || animation == 6) && visual.weaponDelayMs > 0) {
-                        visual.animatedNode->getAnimator().setTargetDuration(visual.weaponDelayMs * 0.5f);
-                    }
                 }
             } else {
                 // Animation not found - try fallback
