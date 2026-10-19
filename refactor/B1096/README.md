@@ -127,9 +127,54 @@ via rbuild) both are present.
 `test_entity_model_sharing` and `test_eqe1_source_archive` are untouched and run
 in the full suite; the fix adds a resolver before them, never removes one.
 
+## Live leg on the XU4 (the exact regression scenario, on the published armhf build)
+
+`ci-arm/cc61d067a2f637818ef8f5542878f4ac30697c83` (this branch's head, built by
+the MR's `build-arm` job), run through a copy of `~/willeq/play.sh`
+(`~/willeq/play-b1096.sh`; the binary staged as `~/willeq/willeq-b1096` with
+`setcap`, so Will's `play.sh`/`willeq`/`update.sh`/`willeq.json` are untouched),
+logging in to the local akk-stack (10.0.30.23). `willeq.json` names the
+character (Testchar), and the FATAL fires at zone-in — no extra flag needed.
+Full log: `~/willeq/logs/play-b1096-20261019T064517Z.log` (kept at
+`/home/user/kb-evidence/kb-b1096-prezone-eqe1/xu4_play_b1096.log`, 78,308 lines).
+
+Result: **no FATAL** (`grep -c FATAL` = 0), the client zoned in and held the
+zone for the full 220 s hold. The exact pre-zone sequence that used to exit:
+
+```
+[02:45:19.200] [INFO ] [GRAPHICS] EQE1Loader: mmap'd ...                  <- 1 pack open (willeq, startup)
+[02:45:19.522] [DEBUG] [GRAPHICS] EQE1: early name->archive resolution installed (pre-zone); the index answers a miss with at most one open
+[02:45:23.466] [INFO ] [MAIN] [LOADING][Phase 4/15] (15%) Loading characters...
+...
+[02:45:34.509] [DEBUG] [GRAPHICS]   [CONSTRAINED] ETC1 texture 'daffa0001.bmp' uploaded (32x64, 7 mips, 2768 bytes, +alpha)
+[02:45:34.959] [INFO ] [GRAPHICS] BoidsManager: Entering zone 'qeynos2' biome=7
+```
+
+`daffa0001.bmp` — the name that FATALed at `play-20261019T01*.log` — uploads
+from the pack the early resolver opened on demand, in the pre-zone player-model
+window (`Sequential: preload race=6 gender=1` at line 7595 = DAF male, then
+`RaceModelLoader: promoted preloaded model key=1537 to main cache`, then the
+upload at line 7603, all before `Entering zone 'qeynos2'` at line 8117).
+`EQE1Loader: mmap'd` count: 1 before the model build (the startup willeq.eqe1,
+at 02:45:19), 8 total by zone-entry — the extra opens are the index-driven
+per-name archive opens the resolver performs, not a bulk pre-open of every
+pack. (The driver's `EQE1Loader: mmap'd` line prints its format string
+unexpanded — `'%s' (v%u, ...)` — a pre-existing `common/logging.h` issue,
+follow-up below.)
+
 ## No new FATAL sites, no budget/golden/preset/third_party change
 
 `git grep 'LOG_FATAL' -- <new files>` is empty for the new TU; the only behavioral
 change is registering a resolver earlier. `tests/goldens/*`, any `manifest.json`,
 baselines, ratchets, `config/constrained_presets.json` and `third_party/` are
 untouched (empty grep).
+
+## Follow-up (outside this unit's scope)
+
+`EQE1Loader: mmap'd '%s' (v%u, %d textures, %d alpha, %d raw, %zu bytes)`
+(`eqe1_loader.cpp:269`) prints its format string UNEXPANDED in the client's
+logs — the `LOG_INFO(MOD_GRAPHICS, ...)` path is not consuming the va-args — so
+the pack name/version is never visible. Cosmetic (the numbers are useless, the
+line still proves an open happened), pre-existing, and affects every `EQE1_LOG_*`
+site in that file; a unit against `common/logging.h` should pin a
+format-args round-trip test.
