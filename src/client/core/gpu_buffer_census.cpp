@@ -15,6 +15,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 #endif
+#if defined(__APPLE__)
+#include <unistd.h>  // B1044-nf: readlink (drmFdinfoIsSafe's /sys probe is dead
+                     // on macOS but the top-level function still compiles)
+#endif
 
 namespace eqt {
 namespace memory {

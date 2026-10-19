@@ -61,8 +61,8 @@
 #          steady_60s -- a --tour longer than that needs a later point, or
 #          a name that never comes, so the tour's own /q ends the run)
 #          [--bo-census SHIM.so]   (B962: run the client under the GEM owner
-#          census shim, scripts/pi/lima_bo_census.c, built for armhf: an UNCAPPED
-#          copy -- a setcap binary ignores LD_PRELOAD -- with net.core.rmem_max
+#          census shim, scripts/pi/lima_bo_census.c, built for the lane's arch:
+#          an UNCAPPED copy -- a setcap binary ignores LD_PRELOAD -- with net.core.rmem_max
 #          raised to the 1 MiB the client asks for, so its SO_RCVBUF fallback gets
 #          what SO_RCVBUFFORCE would have (B751), restored at cleanup; the dump
 #          lands in the zone's dir as gem_owners.tsv, the create/close event

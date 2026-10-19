@@ -19,6 +19,13 @@ REPO="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 ZONES="${B852_SWEEP_ZONES:-qeynos2,sebilis,iceclad}"
 
+# B1044: the sweep is a Linux rig (GNU stdbuf/timeout, /proc RssAnon peaks);
+# on macOS it is a loud SKIP, not three rc=127 rows.
+if [ "$(uname -s)" = Darwin ]; then
+    echo "SKIP (B852 smoke): Linux-only rig (stdbuf, /proc RssAnon); not ported to macOS" >&2
+    exit 125
+fi
+
 # Loud skip, ctest convention (see visual_gate above in tests/cmake/eqe1.cmake):
 # 125 -> SKIP, with a line on stderr saying exactly what is missing.
 bench_bin="$REPO/build/bin/gles2_zone_benchmark"

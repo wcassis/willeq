@@ -1,0 +1,17 @@
+zone | frame | pixels vs Pi golden | metrics vs Pi (draws/state/polys)
+-----|-------|--------------------|-------------------------------------
+qeynos2 | f0 | differs (134,492 px) | bit-exact
+qeynos2 | f1 | IDENTICAL | bit-exact
+qeynos2 | f2 | differs (290 px) | bit-exact
+gfaydark | f0 | differs (36 px) | bit-exact
+gfaydark | f1 | differs (565 px) | bit-exact
+gfaydark | f2 | differs (693 px) | bit-exact
+befallen | f0 | differs (37 px) | bit-exact
+befallen | f1 | IDENTICAL | bit-exact
+befallen | f2 | IDENTICAL | bit-exact
+iceclad | f0 | differs (1,231 px) | bit-exact
+iceclad | f1 | differs (51,940 px) | bit-exact
+iceclad | f2 | differs (13,619 px) | bit-exact
+timorous | f0 | differs (114,732 px) | bit-exact
+timorous | f1 | differs (1,218 px) | bit-exact
+timorous | f2 | differs (143,514 px) | bit-exact

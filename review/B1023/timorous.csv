@@ -1,0 +1,4 @@
+frame,pos_x,pos_y,pos_z,heading,pitch,cpu_ms,gpu_ms,total_ms,draws,state_changes,polys,regions_vis,regions_drawn,regions_occluded,anim_cpu_ms,alpha_test_draws,solid_draws,light_radius,regions_demoted_radius,collect_cull_ms,sort_ms,submission_ms,other_ms,swap_ms,entities_visible,tex_binds,tex_param_calls,actual_width,actual_height,gpu_zone_ns,gpu_entity_ns,gpu_particles_ui_ns,gpu_swap_ns,swap_buffers_ms,flip_wait_ms,finish_readpixels_ms,cpu_proc_ms
+0,-686.6,2431.5,4.2,0.0,-5.0,60.585,40.567,101.154,586,20,11258,145,145,56,0.000,0,0,0.000,0,0.000,0.000,0.000,0.000,0.000,0,0,0,800,600,-1,-1,-1,-1,0.000,0.000,0.000,60.503
+1,-512.7,2406.5,1.5,0.0,-5.0,40.909,69.601,110.513,432,20,7624,121,121,66,0.000,0,0,0.000,0,0.000,0.000,0.000,0.000,0.000,0,0,0,800,600,-1,-1,-1,-1,0.000,0.000,0.000,40.818
+2,-9479.7,-5678.7,25.9,90.0,-5.0,21.055,67.290,88.347,197,7,6802,110,110,16,0.000,0,0,0.000,0,0.000,0.000,0.000,0.000,0.000,0,0,0,800,600,-1,-1,-1,-1,0.000,0.000,0.000,20.961

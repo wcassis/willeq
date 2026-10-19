@@ -182,7 +182,14 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             }
         } else if (arg == "--drm") {
             config.useDRM = true;
-        } else if (arg == "--egl-x11") {
+        } else if (arg == "--egl-window" || arg == "--egl-x11") {
+            // B1044 (#364): --egl-window is the platform-neutral spelling of
+            // P25's --egl-x11 (an X11 window on Linux, a Cocoa window on
+            // macOS); --egl-x11 stays an alias.
+#ifdef __APPLE__
+            if (arg == "--egl-x11")
+                std::cerr << "--egl-x11: macOS has no X11; opening a Cocoa window (use --egl-window)\n";
+#endif
             config.useEglX11 = true;
         } else if (arg == "--rdp" || arg == "--enable-rdp") {
             config.rdpEnabled = true;
@@ -381,7 +388,8 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --eqe1-path <dir>        Directory containing .eqe1 ETC1 texture files\n";
             std::cout << "  --composite-entities <dir>  Directory containing composite entity texture sheets\n";
             std::cout << "  --drm                    Use DRM/KMS display (no X11 required)\n";
-            std::cout << "  --egl-x11                Use X11-windowed EGL surface (x86 GLES2 dev builds; opt-in, never auto-detected)\n";
+            std::cout << "  --egl-window             Render in an on-screen window (X11 on Linux, Cocoa on macOS; opt-in,\n"
+                         "                           never auto-detected). --egl-x11 is an alias\n";
             std::cout << "  --threads <N>            Background thread pool size (default: from preset)\n";
             std::cout << "  --zone-load <mode>       Zone loading mode: manual (all at load) or automatic (progressive)\n";
             std::cout << "  --frame-timing, --ft     Enable frame timing profiler (logs every ~2s)\n";

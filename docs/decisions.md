@@ -2560,3 +2560,43 @@ CLOSED, not owed; the `status` column (UNMEASURED / COUNT-MEASURED /
 COUNT-MEASURED+SAMPLED) stays as provenance, which is the truth, not a defect.
 Rejected: random-origin sampling (30-40 creations per pair) and reading the
 server source -- available if a visible mismatch ever appears in play.
+
+
+## 2026-10-19 — The EQE1 name→archive resolution is installed at startup, before the pre-zone model build (B1096, #416)
+
+Every ETC1 run of the `fable` tip FATALed at zone-in with
+`Texture 'daffa0001.bmp' not found in any EQE1 flat pack` (Will's XU4 play
+test 2026-10-19, `xu4:~/willeq/logs/play-20261019T01*.log`) because the
+player's race model — the paperdoll, and the pre-zone character view — is
+built on the render thread BEFORE `loadZoneStep0_EQE1` opens the zone's
+packs and registers the archive resolver. With only willeq.eqe1 open, a
+variant texture whose owner is a global pack (daffa0001 → global_chr per
+the index) missed every open pack, and `ConstrainedTextureCache::getOrLoad`'s
+all-or-nothing rule — gated on ANY loader being open, never on the data —
+exited the client.
+
+1. **The resolver is installed in `initLoadingScreen`, right after willeq.eqe1
+   opens (U02) and before the pre-zone UI (U03)** —
+   `initializeEQE1EarlyResolution()`
+   (`src/client/graphics/eqe1/eqe1_early_resolution.cpp`). It loads
+   `data/eqe1_texture_index.json` once and registers
+   `setEQE1ArchiveResolver(name -> openArchiveContaining(name))`; the index
+   answers a miss with at most one open, so the pre-zone build resolves
+   exactly as the in-zone build does. `loadZoneStep0_EQE1` keeps its
+   registration (a no-op from then on), and a genuine asset gap (a name in no
+   archive) still resolves to nothing and stays fatal under the standing
+   all-or-nothing decision — no new FATAL sites.
+2. **"Keep the S3D bytes" (the card's preferred Option B) is rejected as the
+   fix**: the all-or-nothing FATAL gate is `!snapshotEQE1Loaders().empty()` —
+   *any* loader open — and `getOrLoad` never reads the data before taking
+   that branch, so keeping the bytes cannot stop the exit. Making the name
+   resolvable (registering the resolver early) is what removes the miss.
+   B1051's own fix is left intact: the per-NPC variant series still resolves
+   from EQE1 once the zone's packs are open, and now resolves pre-zone too.
+3. **Pinned** by `test_pre_zone_eqe1_resolution_order` (source scan — the
+   parent's RED, since the behavioral test names the new seam) and
+   `test_pre_zone_eqe1_resolution` (the death test — the exact branch, forked
+   so the exit never takes the test binary — plus the same configuration with
+   the early resolution installed, which resolves daffa0001 → global_chr by
+   opening it on demand). `refactor/B1096/README.md` has the call order, the
+   mechanism, and the red/green.
