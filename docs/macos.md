@@ -248,8 +248,16 @@ GLES2 header rule, so Linux CI must verify that regression surface.
   + binary search, no `dladdr`, no `backtrace`, no lock. B1062 (#382)
   measured the spec's cost A/B on the mini (per-call ns, the
   `[classifier-cost]` line of `tests/test_gpu_driver_classifier.cpp`;
-  the measured figures are filled in from the mini run of that test
+  the measured figures are quoted from the mini run of that test
   below):
+  - **The measured A/B (M4 mini, macOS 15.7.4, 10,000 calls each,
+    `[classifier-cost]` line):** `dladdr(pc)` **1927.6 ns/call**
+    (10,000/10,000 resolved); `backtrace(8)` + `dladdr` per frame
+    **9112.2 ns/call** (80,000 frames resolved); the classifier's own
+    table binary search **1.82 ns/call**. The binary search is the hot
+    path -- one thousandth of dladdr, and dladdr and backtrace are the
+    alternatives it does not take (the spec's "no per-allocation
+    backtrace" is met with the table, at ~2 ns per allocation).
 - The window: `CIrrDeviceFB_Cocoa.mm` defines the three "X11" members
   (`initEGLX11`, `pollX11Events`, `closeX11Window`) on Darwin, so
   `CIrrDeviceFB.cpp`'s run()/present()/destructor are unchanged; its state

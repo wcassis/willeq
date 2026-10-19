@@ -37,8 +37,14 @@ namespace {
 
 // A call site guaranteed to live in the main executable's code: a real
 // function of THIS test binary (image 0 on macOS, the zeroed-name
-// dl_iterate_phdr entry on Linux).
-void probeCallSite() {}
+// dl_iterate_phdr entry on Linux). A volatile store keeps the function BODY
+// alive: an empty one is a dead-code candidate (a __unrecognized_sel stub on
+// macOS, no address in any image) and the "main executable caller" case
+// would then measure a stub, not executable code.
+void probeCallSite() {
+    static volatile char keep = 0;
+    keep ^= 1;
+}
 
 // A pointer into probeCallSite's CODE (the function's return-address
 // target). dladdr/backtrace take exactly this shape on both glibc and

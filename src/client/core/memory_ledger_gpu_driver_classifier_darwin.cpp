@@ -103,7 +103,7 @@ bool gpuStackModuleDarwin(const char* name) {
     static const char* const kNeedles[] = {
         "libEGL",      // ANGLE: libEGL.dylib
         "libGLESv2",   // ANGLE: libGLESv2.dylib
-        "libMetal",    // Apple Metal framework (ANGLE's backend)
+        "Metal",       // Apple Metal framework (ANGLE's backend)
         "IOSurface",   // Apple: IOSurface backing store
         "CoreDisplay", // Apple: display command stream
     };
