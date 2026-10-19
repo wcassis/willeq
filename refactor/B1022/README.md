@@ -33,6 +33,14 @@ animation_speed ? animation_speed : 10`), so **the per-swing animation plays
 at the model's native length — 1.0× means no speed change**. A constant speed
 byte cannot carry the weapon delay.
 
+_Evidence note: the decoded packet TSV (`oracle-final2.app2-preserved.tsv`
+in the evidence root — 1333 rows, all 50 OP_Animation with hex bodies) is
+the surviving record of the capture; the raw `capture.pcap`, the per-step
+TSVs, and the video were lost when a killed stray re-run wiped the
+evidence directory (its teardown never ran). The census above and the
+`anim-analysis.txt` numbers were computed from the surviving TSV before the
+wipe._
+
 **The sustained ~3.0 s cadence is the TARGET's swing, not the actor's.**
 SwingMob's sustained swing (anim 8) arrived at min=3.001 / med=3.023 /
 max=6.046 s (n=36); the actor's own attack resolved as a **miss** against the
