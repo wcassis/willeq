@@ -954,7 +954,7 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
                 IFS=, read -r px py <<<"$p"
                 xdotool mousemove "$px" "$py"; sleep 0.15
             done
-            IFS=, read -r px py <<<"${pts[${#pts[@]}-1]}"
+            IFS=, read -r px py <<<"${pts[$((${#pts[@]}-1))]}"
             xdotool mousemove "$px" "$py"  # the release lands on the last waypoint
             sleep "$(awk -v ms="$hold_ms" 'BEGIN {printf "%.3f",ms/1000}')"
             xdotool mouseup 1 ;;
@@ -976,7 +976,7 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
                 IFS=, read -r px py <<<"$p"
                 xdotool mousemove "$px" "$py"; sleep 0.15
             done
-            IFS=, read -r px py <<<"${pts[${#pts[@]}-1]}"
+            IFS=, read -r px py <<<"${pts[$((${#pts[@]}-1))]}"
             xdotool mousemove "$px" "$py"  # the release lands on the last waypoint
             sleep "$(awk -v ms="$hold_ms" 'BEGIN {printf "%.3f",ms/1000}')"
             xdotool mouseup 3 ;;

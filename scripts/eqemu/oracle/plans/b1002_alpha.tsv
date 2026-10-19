@@ -2,31 +2,43 @@
 # B1002 (#322): measure the official client's Style_Transparent blend alpha
 # with the two-known-backdrops method.
 #
-# The inventory window (EQUI_Inventory.xml, one of the 34 Style_Transparent
-# files) is toggled with the 'i' hotkey. The body sits over the 3D scene
-# (bottom-left in the oracle). Four frames, two camera positions:
-#   c1_closed  -- camera 1, inventory CLOSED  -> backdrop B1 at each body pixel
-#   o1_open    -- camera 1, inventory OPEN    -> composite o1 = a*f+(1-a)*B1
-#   ldrag      -- left-drag rotates the camera (UI stays screen-fixed)
-#   c2_closed  -- camera 2, inventory CLOSED  -> backdrop B2
-#   o2_open    -- camera 2, inventory OPEN    -> composite o2 = a*f+(1-a)*B2
-# Per body pixel (same screen location all four frames, window content
-# unchanged):  (o2-o1) = (1-a)*(B2-B1)   =>   a = 1 - (o2-o1)/(B2-B1)
+# v3 -- the CHAT window. v2 measured the inventory, but its visible body is
+# OPAQUE: EQUI_Inventory.xml's single Style_Transparent=true (line 2642) is on
+# the hidden "Shroud Progression" sub-page, not the default page, and the
+# v2 frames solved a = 255.000 over 19,867 pixels. Chat is the clean subject:
+# EQUI_ChatWindow.xml has BOTH its output (CWChatOutput) and input
+# (CWChatInput) elements Style_Transparent=true, the default page, and the
+# v2/03_noon frame shows the grass through the dark fill. The chat is ALWAYS
+# open in-world (no toggle needed), so the four frames are:
+#   c1_closed  -- camera 1, chat as-is (its content is static across the
+#                 run: the same zone-entry lines, no new messages) -> B1
+#   o1_open    -- camera 1, +0.5 s settle (nothing changed)         -> o1
+#   camera turn-- RIGHT-ARROW x6: the arrow keys turn the camera
+#                  (mouse-while-held is the item drag); the chat window
+#                  stays screen-fixed while the backdrop turns
+#   c2_closed  -- camera 2, chat as-is                              -> B2
+#   o2_open    -- camera 2, +0.5 s settle                           -> o2
+# Per body pixel (same screen location all frames, chat content unchanged):
+#   (o2-o1) = (1-a)*(B2-B1)   =>   a = 1 - (o2-o1)/(B2-B1)
 # The fill f cancels; B2-B1 is measured from the two CLOSED frames, so no
 # assumption about the fill or the absolute backdrop. Solver:
 # refactor/B1002/solve_alpha.py (per-channel alpha + spread over >= 50 px).
 login	Testcaster	0	char_select
 zone	qeynos2	0	in_world
-command	#set time 14 0	0	noon
 wait	12000	0	settle
-still	c1_closed	0	c1_closed
-press	i	0	i_open
-wait	2500	0	o1_open
-press	i	0	i_close
-wait	2000	0	c1b_closed
-ldrag	520,320 980,320	3000	cam_turn
-wait	4000	0	c2_settle
-still	c2_closed	0	c2_closed
-press	i	0	i_open2
-wait	2500	0	o2_open
+wait	2000	0	c1_closed
+wait	2000	0	o1_open
+press	Right	0	turn1
+wait	1500	0	t1
+press	Right	0	turn2
+wait	1500	0	t2
+press	Right	0	turn3
+wait	1500	0	t3
+press	Right	0	turn4
+wait	1500	0	t4
+press	Right	0	turn5
+wait	1500	0	t5
+press	Right	0	turn6
+wait	4000	0	c2_closed
+wait	2000	0	o2_open
 command	/q	0	quit
