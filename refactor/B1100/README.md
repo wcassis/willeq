@@ -24,8 +24,8 @@ The requested 0..20 slider step remains persisted as set. The apply arm asks
 the renderer for its effective render distance after `setRenderDistance()` and
 feeds that into `OptionsPanelState` for the value label. The label prints the
 effective world-unit distance with ` (max)` only when it is below the
-requested distance. The renderer logs a clamp once when the requested/capped
-pair or cap source changes, naming `preset` or `zone`.
+requested distance. The renderer logs a clamp once when the requested or
+effective value changes, naming `preset` or `zone`.
 
 ## Not verified
 

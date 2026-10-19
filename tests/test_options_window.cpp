@@ -460,6 +460,92 @@ TEST(OptionsWindowT434, DraggingASliderMovesItsSettingAndNamesIt) {
     }
 }
 
+TEST(OptionsWindowB1100, HeldClipDragAppliesEachNewStep) {
+    const auto l = layout800();
+    StaticUIInput input;
+    OptionsPanelState s;
+    s.isOpen = true;
+    const int i = controlIndex("ODP_ClipPlaneSlider");
+    ASSERT_GE(i, 0);
+    s.activeTab = static_cast<int>(OL::kControls[i].tab);
+    auto knob = OL::sliderKnobRect(l, i, s.clipPlane);
+    const int y = centre(knob).Y;
+    OL::Setting changed = OL::Setting::None;
+    EXPECT_TRUE(input.processOptionsInput(centre(knob).X, y, true, l, s, changed, true));
+    EXPECT_EQ(changed, OL::Setting::None);
+
+    // No new press edge: production must still report each crossed step to
+    // the same applyOptionsSetting path as an ordinary click.
+    for (int step : {6, 7}) {
+        knob = OL::sliderKnobRect(l, i, step);
+        changed = OL::Setting::None;
+        EXPECT_TRUE(input.processOptionsInput(centre(knob).X, y, false, l, s, changed, true));
+        EXPECT_EQ(s.clipPlane, step);
+        EXPECT_EQ(changed, OL::Setting::ClipPlane);
+        changed = OL::Setting::None;
+        input.processOptionsInput(centre(knob).X, y, false, l, s, changed, true);
+        EXPECT_EQ(changed, OL::Setting::None);
+    }
+    // Ownership follows the original press, not the hover rectangle.
+    const int outsideX = OL::windowRect(l).LowerRightCorner.X + 20;
+    input.processOptionsInput(outsideX, y, false, l, s, changed, true);
+    EXPECT_EQ(s.clipPlane, OL::SLIDER_STEPS);
+    EXPECT_EQ(changed, OL::Setting::ClipPlane);
+    // A release disarms the drag; later pointer motion cannot change it.
+    input.processOptionsInput(outsideX, y, false, l, s, changed, false);
+    knob = OL::sliderKnobRect(l, i, 8);
+    input.processOptionsInput(centre(knob).X, y, false, l, s, changed, false);
+    EXPECT_EQ(s.clipPlane, OL::SLIDER_STEPS);
+    EXPECT_EQ(changed, OL::Setting::None);
+}
+
+TEST(OptionsWindowB1100, MusicAndSoundDragAndTrackClickStillJumps) {
+    const auto l = layout800();
+    StaticUIInput input;
+    OptionsPanelState s;
+    s.isOpen = true;
+    struct Case { const char* item; OL::Setting setting; };
+    const Case cases[] = {
+        {"OGP_MusicVolumeSlider", OL::Setting::MusicVolume},
+        {"OGP_SoundVolumeSlider", OL::Setting::SoundVolume},
+    };
+    for (const auto& c : cases) {
+        const int i = controlIndex(c.item);
+        ASSERT_GE(i, 0);
+        s.activeTab = static_cast<int>(OL::kControls[i].tab);
+        setOptionsSettingStep(s, c.setting, 5);
+        OL::Setting changed = OL::Setting::None;
+        auto knob = OL::sliderKnobRect(l, i, 5);
+        EXPECT_TRUE(input.processOptionsInput(centre(knob).X, centre(knob).Y,
+                                              true, l, s, changed, true));
+        EXPECT_EQ(changed, OL::Setting::None);
+        knob = OL::sliderKnobRect(l, i, 6);
+        input.processOptionsInput(centre(knob).X, centre(knob).Y,
+                                  false, l, s, changed, true);
+        EXPECT_EQ(optionsSettingStep(s, c.setting), 6);
+        EXPECT_EQ(changed, c.setting);
+        input.processOptionsInput(centre(knob).X, centre(knob).Y,
+                                  false, l, s, changed, false);
+        const auto track = OL::controlRect(l, i);
+        input.processOptionsInput(track.UpperLeftCorner.X + 1, centre(track).Y,
+                                  true, l, s, changed, true);
+        EXPECT_EQ(optionsSettingStep(s, c.setting), 0);
+        EXPECT_EQ(changed, c.setting);
+        input.processOptionsInput(track.UpperLeftCorner.X + 1, centre(track).Y,
+                                  false, l, s, changed, false);
+    }
+}
+
+TEST(OptionsWindowB1100, ClipLabelShowsEffectiveCapWithoutChangingSliderStep) {
+    OptionsPanelState s;
+    s.clipPlane = 20;
+    s.appliedClipPlane = 300.0f;
+    EXPECT_EQ(optionsSettingText(s, OL::Setting::ClipPlane), "300 (max)");
+    EXPECT_EQ(s.clipPlane, 20);
+    s.appliedClipPlane = 1050.0f;
+    EXPECT_EQ(optionsSettingText(s, OL::Setting::ClipPlane), "1050");
+}
+
 TEST(OptionsWindowT434, TheKnobTracksTheStepAndTheClickRoundTrips) {
     const auto l = layout800();
     const int i = controlIndex("OGP_MusicVolumeSlider");

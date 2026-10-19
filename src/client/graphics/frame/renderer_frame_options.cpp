@@ -87,6 +87,7 @@ void FrameComponent::applyOptionsSetting(OptionsLayout::Setting setting) {
             // max clip -- all of which is its business, not this call's.
             const float dist = optionsClipPlaneDistance(optionsState_.clipPlane);
             owner_.setRenderDistance(dist);
+            optionsState_.appliedClipPlane = owner_.getRenderDistance();
             LOG_INFO(MOD_GRAPHICS, "Options: far clip plane {:.0f}", dist);
             return;
         }
