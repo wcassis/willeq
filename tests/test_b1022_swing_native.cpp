@@ -242,4 +242,5 @@ TEST_F(B1022SwingBehavior, MeleeSwingPlaysAtNativeLength) {
            "cadence (100 x delay ms), not a per-entity weapon-delay stretch.";
 }
 
-}  // EQT_HAS_GRAPHICS
+}  // namespace
+#endif  // EQT_HAS_GRAPHICS
