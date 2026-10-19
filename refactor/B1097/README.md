@@ -236,9 +236,14 @@ publish; the gate's maps proof is lane-1-only, the -nollvm one.)
 ### Finish state
 
 - `docs/ci.md` one sentence added (the Pi-goldens line in "Two golden sets").
-- `rbuild <wt> hygiene` green (45/45, at the golden commit; re-run after the
-  docs commit).
-- Push WITH CI + `glab mr create` ("Closes #417") pending here.
+- `rbuild <wt> hygiene` green (45/45, at the golden commit AND again at the
+  final head).
+- Push WITH CI: head `3b46169c` (includes a merge of origin/fable e849ba41,
+  the B1044 mac bless, which the clean merge kept disjoint from platforms.pi;
+  the diff vs the new fable tip touches ONLY the four allowed paths).
+  `glab mr create`: **MR !262** ("Closes #417"). Pipeline **1913: success**
+  (hygiene, build-test, build-headless, gate, zone-budget-census all ran and
+  passed; build-arm/build-arm64/client-ledger-live are manual by design).
 - Acceptance G: lane 1 leftover check clean (bracket-trick pgrep empty, lock
   released, HDMI connected as found, never rebooted); lane 2 the same.
 - Evidence: `capture.log` (lane 1 run 1, the five zone logs in manifest
