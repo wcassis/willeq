@@ -1,0 +1,742 @@
+[2026-10-19 14:22:57.639] [INFO ] [MAIN] Starting WillEQ with debug level 0, config file: /tmp/b1051xu4x3_cfg.json, pathfinding: enabled
+
+[2026-10-19 14:22:57.649] [INFO ] [MAIN] Config: host=172.16.200.99, server=WillEQ, character=Testchar
+
+[2026-10-19 14:22:57.653] [INFO ] [MAIN] WilleqDatabase: opened /mnt/projects/fable/ci-arm/by-branch/fable/data/willeq.db (version 7)
+
+DRM: Opened /dev/dri/card0 (fd=4) driver=exynos
+
+EGL: Version 1.5
+
+EGL: Using OpenGL ES API
+
+EGL: Config depth=24 stencil=0
+
+EGL: Context created and made current
+
+GLES2: GL_EXT_multisampled_render_to_texture (max 8 samples)
+
+GLES2: GL_EXT_discard_framebuffer
+
+GLES2: GL_OES_standard_derivatives
+
+GLES2: GL_OES_get_program_binary (1 formats)
+
+GLES2: Shader binary cache enabled (/tmp/willeq-cache/shader_cache)
+
+GLES2: Shader loaded from cache (/tmp/willeq-cache/shader_cache/5cea886a.bin)
+
+GLES2: Color2D shader compiled
+
+GLES2: Shader loaded from cache (/tmp/willeq-cache/shader_cache/86790e24.bin)
+
+GLES2: UI2D shader compiled
+
+GLES2: Shader loaded from cache (/tmp/willeq-cache/shader_cache/bb7d77fd.bin)
+
+GLES2: Solid3D shader compiled
+
+GLES2: Shader loaded from cache (/tmp/willeq-cache/shader_cache/0b2a297c.bin)
+
+GLES2: AlphaTest3D shader compiled
+
+GLES2: Shader loaded from cache (/tmp/willeq-cache/shader_cache/1b38cd83.bin)
+
+GLES2: AtlasSolid3D shader compiled
+
+GLES2: Shader loaded from cache (/tmp/willeq-cache/shader_cache/247b3c54.bin)
+
+GLES2: AtlasAlpha3D shader compiled
+
+[2026-10-19 14:23:02.545] [DEBUG] [ENTITY] Loaded spawn 1: Artisan_Vor_Westrider000 (ID: 184) Level 65 Race 7 Size 6.00 at (53.00, 190.00, 2.75)
+
+[2026-10-19 14:23:02.545] [DEBUG] [ENTITY] Loaded spawn 2: Artisan_Tar_Cordell000 (ID: 183) Level 65 Race 1 Size 7.00 at (243.00, 395.00, 4.38)
+
+[2026-10-19 14:23:02.545] [DEBUG] [ENTITY] Loaded spawn 3: Drun_Vorwig000 (ID: 182) Level 50 Race 1 Size 6.00 at (280.00, 90.00, 4.12)
+
+[2026-10-19 14:23:02.545] [DEBUG] [ENTITY] Loaded spawn 4: a_large_rat006 (ID: 181) Level 1 Race 36 Size 7.00 at (106.38, 189.38, 18.50)
+
+[2026-10-19 14:23:02.545] [DEBUG] [ENTITY] Loaded spawn 5: a_large_rat005 (ID: 180) Level 1 Race 36 Size 7.00 at (94.00, 199.50, 18.50)
+
+[2026-10-19 14:23:02.545] [DEBUG] [ENTITY] Loaded spawn 6: a_large_rat004 (ID: 179) Level 1 Race 36 Size 7.00 at (115.00, 270.12, 18.50)
+
+[2026-10-19 14:23:02.546] [DEBUG] [ENTITY] Loaded spawn 7: Faldor_Hendrys000 (ID: 178) Level 18 Race 7 Size 5.50 at (-84.00, -133.75, 3.12)
+
+[2026-10-19 14:23:02.546] [DEBUG] [ENTITY] Loaded spawn 8: Puzzle_Trigger000 (ID: 177) Level 50 Race 240 Size 6.00 at (210.00, 470.00, 3.75)
+
+[2026-10-19 14:23:02.546] [DEBUG] [ENTITY] Loaded spawn 9: Guard_Simkin000 (ID: 176) Level 5 Race 71 Size 6.00 at (233.00, 377.00, 4.00)
+
+[2026-10-19 14:23:02.546] [DEBUG] [ENTITY] Loaded spawn 10: Guard_Furithane000 (ID: 174) Level 8 Race 71 Size 6.00 at (250.88, 65.00, 3.75)
+
+[2026-10-19 14:23:02.546] [DEBUG] [ENTITY] Loaded spawn 11: a_decaying_skeleton008 (ID: 159) Level 2 Race 367 Size 6.00 at (616.00, -268.00, 9.00)
+
+[2026-10-19 14:23:02.546] [DEBUG] [ENTITY] Loaded spawn 12: a_decaying_skeleton005 (ID: 156) Level 2 Race 367 Size 6.00 at (460.00, 686.00, 9.00)
+
+[2026-10-19 14:23:02.546] [DEBUG] [ENTITY] Loaded spawn 13: Exterminator_Wintloag000 (ID: 149) Level 30 Race 1 Size 6.00 at (202.00, 135.00, 3.75)
+
+[2026-10-19 14:23:02.546] [DEBUG] [ENTITY] Loaded spawn 14: Connie_Link000 (ID: 148) Level 45 Race 1 Size 6.00 at (-23.12, 23.88, 3.75)
+
+[2026-10-19 14:23:02.546] [DEBUG] [ENTITY] Loaded spawn 15: Aenia_Ghenson000 (ID: 146) Level 13 Race 1 Size 6.00 at (-89.00, -68.00, 3.75)
+
+[2026-10-19 14:23:02.546] [DEBUG] [ENTITY] Loaded spawn 16: Dranom_Ghenson000 (ID: 145) Level 42 Race 71 Size 6.00 at (-88.00, -74.00, 3.75)
+
+[2026-10-19 14:23:02.546] [DEBUG] [ENTITY] Loaded spawn 17: Guard_Hezlan000 (ID: 144) Level 50 Race 71 Size 6.00 at (310.00, 101.00, 3.75)
+
+[2026-10-19 14:23:02.546] [DEBUG] [ENTITY] Loaded spawn 18: Guard_Gehnus000 (ID: 143) Level 50 Race 71 Size 6.00 at (312.00, 130.00, 3.12)
+
+[2026-10-19 14:23:02.546] [DEBUG] [ENTITY] Loaded spawn 19: Flynn_Merrington000 (ID: 141) Level 15 Race 11 Size 3.50 at (39.00, 332.88, 2.12)
+
+[2026-10-19 14:23:02.546] [DEBUG] [ENTITY] Loaded spawn 20: Togahn_Sorast000 (ID: 137) Level 61 Race 1 Size 6.00 at (289.88, 392.88, 3.75)
+
+[2026-10-19 14:23:02.547] [DEBUG] [ENTITY] Loaded spawn 21: Seta_Bakindo000 (ID: 136) Level 61 Race 1 Size 6.00 at (257.00, 313.00, 17.75)
+
+[2026-10-19 14:23:02.547] [DEBUG] [ENTITY] Loaded spawn 22: Zannsin_Resdinet000 (ID: 135) Level 61 Race 1 Size 6.00 at (144.00, 163.00, -29.00)
+
+[2026-10-19 14:23:02.547] [DEBUG] [ENTITY] Loaded spawn 23: Ghil_Starn000 (ID: 134) Level 37 Race 71 Size 6.00 at (157.00, 195.88, -29.00)
+
+[2026-10-19 14:23:02.547] [DEBUG] [ENTITY] Loaded spawn 24: Sabnie_Blagard000 (ID: 133) Level 10 Race 71 Size 6.00 at (81.88, 368.00, 3.75)
+
+[2026-10-19 14:23:02.547] [DEBUG] [ENTITY] Loaded spawn 25: Ania_Klephia000 (ID: 132) Level 45 Race 71 Size 6.00 at (115.00, 359.00, 3.75)
+
+[2026-10-19 14:23:02.547] [DEBUG] [ENTITY] Loaded spawn 26: Segran_Rajhar000 (ID: 131) Level 35 Race 1 Size 6.00 at (118.00, 314.00, 3.75)
+
+[2026-10-19 14:23:02.547] [DEBUG] [ENTITY] Loaded spawn 27: Guard_Elron000 (ID: 130) Level 35 Race 71 Size 6.00 at (290.00, 56.00, 47.62)
+
+[2026-10-19 14:23:02.547] [DEBUG] [ENTITY] Loaded spawn 28: Guard_Weleth000 (ID: 129) Level 13 Race 71 Size 6.00 at (217.00, 206.88, 3.75)
+
+[2026-10-19 14:23:02.547] [DEBUG] [ENTITY] Loaded spawn 29: Lieutenant_Dagarok000 (ID: 35) Level 50 Race 71 Size 6.00 at (164.00, 245.00, 2.75)
+
+[2026-10-19 14:23:02.547] [DEBUG] [ENTITY] Loaded spawn 30: a_rodent019 (ID: 34) Level 1 Race 36 Size 2.00 at (292.38, 128.00, 45.12)
+
+[2026-10-19 14:23:02.547] [DEBUG] [ENTITY] Loaded spawn 31: a_rodent018 (ID: 33) Level 1 Race 36 Size 2.00 at (108.88, 20.88, 1.38)
+
+[2026-10-19 14:23:02.547] [DEBUG] [ENTITY] Loaded spawn 32: a_rodent017 (ID: 32) Level 1 Race 36 Size 2.00 at (89.88, 286.38, 1.38)
+
+[2026-10-19 14:23:02.547] [DEBUG] [ENTITY] Loaded spawn 33: a_rodent016 (ID: 31) Level 1 Race 36 Size 2.00 at (454.00, -52.00, 3.00)
+
+[2026-10-19 14:23:02.548] [DEBUG] [ENTITY] Loaded spawn 34: a_rodent015 (ID: 30) Level 1 Race 36 Size 2.00 at (294.00, 49.00, 47.00)
+
+[2026-10-19 14:23:02.548] [DEBUG] [ENTITY] Loaded spawn 35: a_klicnik_noble000 (ID: 13) Level 7 Race 22 Size 3.00 at (774.00, 370.88, 2.00)
+
+[2026-10-19 14:23:02.548] [DEBUG] [ENTITY] Loaded spawn 36: Guard_Buce000 (ID: 12) Level 10 Race 71 Size 6.00 at (154.88, 303.88, 2.88)
+
+[2026-10-19 14:23:02.548] [DEBUG] [ENTITY] Loaded spawn 37: Guard_Drath000 (ID: 10) Level 15 Race 71 Size 6.00 at (309.00, 165.00, 47.62)
+
+[2026-10-19 14:23:02.548] [DEBUG] [ENTITY] Loaded spawn 38: Guard_Deregan000 (ID: 9) Level 10 Race 71 Size 6.00 at (-83.00, 37.00, 3.75)
+
+[2026-10-19 14:23:02.548] [DEBUG] [ENTITY] Loaded spawn 39: Guard_Aerryn000 (ID: 8) Level 5 Race 71 Size 6.00 at (-127.88, -35.88, 2.88)
+
+[2026-10-19 14:23:02.548] [DEBUG] [ENTITY] Loaded spawn 40: Guard_Shorm000 (ID: 7) Level 10 Race 71 Size 6.00 at (216.88, 136.88, 3.75)
+
+[2026-10-19 14:23:02.548] [DEBUG] [ENTITY] Loaded spawn 41: Guard_Liben000 (ID: 6) Level 5 Race 71 Size 6.00 at (363.88, 199.88, 2.88)
+
+[2026-10-19 14:23:02.548] [DEBUG] [ENTITY] Loaded spawn 42: Guard_Treitan000 (ID: 5) Level 35 Race 71 Size 6.00 at (270.00, 202.00, 3.75)
+
+[2026-10-19 14:23:02.548] [DEBUG] [ENTITY] Loaded spawn 43: Tyokan_Mekase000 (ID: 2) Level 25 Race 71 Size 6.00 at (-161.00, -146.00, 3.75)
+
+[2026-10-19 14:23:02.548] [DEBUG] [ENTITY] Loaded spawn 44: a_rodent000 (ID: 15) Level 1 Race 36 Size 2.00 at (177.00, 118.62, 0.38)
+
+[2026-10-19 14:23:02.548] [DEBUG] [ENTITY] Loaded spawn 45: a_rodent001 (ID: 16) Level 1 Race 36 Size 2.00 at (231.62, 343.00, 1.38)
+
+[2026-10-19 14:23:02.548] [DEBUG] [ENTITY] Loaded spawn 46: a_rodent002 (ID: 17) Level 1 Race 36 Size 2.00 at (328.50, 17.88, 0.38)
+
+[2026-10-19 14:23:02.548] [DEBUG] [ENTITY] Loaded spawn 47: a_rodent003 (ID: 18) Level 1 Race 36 Size 2.00 at (-120.62, -33.12, 0.38)
+
+[2026-10-19 14:23:02.549] [DEBUG] [ENTITY] Loaded spawn 48: a_rodent004 (ID: 19) Level 1 Race 36 Size 2.00 at (244.88, 91.50, 1.25)
+
+[2026-10-19 14:23:02.549] [DEBUG] [ENTITY] Loaded spawn 49: a_rodent005 (ID: 20) Level 1 Race 36 Size 2.00 at (148.00, 160.75, 1.25)
+
+[2026-10-19 14:23:02.549] [DEBUG] [ENTITY] Loaded spawn 50: a_rodent006 (ID: 21) Level 1 Race 36 Size 2.00 at (259.00, 166.50, 1.25)
+
+[2026-10-19 14:23:02.549] [DEBUG] [ENTITY] Loaded spawn 51: a_rodent007 (ID: 22) Level 1 Race 36 Size 2.00 at (283.25, 300.12, 15.25)
+
+[2026-10-19 14:23:02.549] [DEBUG] [ENTITY] Loaded spawn 52: a_rodent008 (ID: 23) Level 1 Race 36 Size 2.00 at (-162.25, -132.88, 1.38)
+
+[2026-10-19 14:23:02.549] [DEBUG] [ENTITY] Loaded spawn 53: a_rodent009 (ID: 24) Level 1 Race 36 Size 2.00 at (8.75, 384.38, 1.38)
+
+[2026-10-19 14:23:02.549] [DEBUG] [ENTITY] Loaded spawn 54: a_rodent011 (ID: 26) Level 1 Race 36 Size 2.00 at (89.88, 243.38, 1.38)
+
+[2026-10-19 14:23:02.549] [DEBUG] [ENTITY] Loaded spawn 55: a_rodent012 (ID: 27) Level 1 Race 36 Size 2.00 at (-21.00, 398.75, 0.25)
+
+[2026-10-19 14:23:02.549] [DEBUG] [ENTITY] Loaded spawn 56: a_rodent013 (ID: 28) Level 1 Race 36 Size 2.00 at (47.50, 101.50, -32.50)
+
+[2026-10-19 14:23:02.549] [DEBUG] [ENTITY] Loaded spawn 57: a_rodent014 (ID: 29) Level 1 Race 36 Size 2.00 at (272.75, 161.12, 45.12)
+
+[2026-10-19 14:23:02.549] [DEBUG] [ENTITY] Loaded spawn 58: Quinon_Hulleaf000 (ID: 66) Level 21 Race 1 Size 6.00 at (304.00, 127.00, 47.62)
+
+[2026-10-19 14:23:02.549] [DEBUG] [ENTITY] Loaded spawn 59: a_whiskered_bat001 (ID: 67) Level 4 Race 34 Size 3.00 at (700.00, 196.00, 2.00)
+
+[2026-10-19 14:23:02.549] [DEBUG] [ENTITY] Loaded spawn 60: a_klicnik_warrior001 (ID: 73) Level 6 Race 22 Size 3.00 at (766.00, 236.88, 2.00)
+
+[2026-10-19 14:23:02.550] [DEBUG] [ENTITY] Loaded spawn 61: a_klicnik_worker006 (ID: 76) Level 3 Race 22 Size 3.00 at (726.00, 484.88, 2.00)
+
+[2026-10-19 14:23:02.550] [DEBUG] [ENTITY] Loaded spawn 62: Lashun_Novashine000 (ID: 82) Level 5 Race 1 Size 6.00 at (243.00, 313.88, 17.75)
+
+[2026-10-19 14:23:02.550] [DEBUG] [ENTITY] Loaded spawn 63: Renux_Herkanor000 (ID: 83) Level 61 Race 1 Size 6.00 at (16.00, 187.00, -30.00)
+
+[2026-10-19 14:23:02.550] [DEBUG] [ENTITY] Loaded spawn 64: Priest_of_Discord000 (ID: 84) Level 50 Race 1 Size 6.00 at (6.00, 235.00, 2.75)
+
+[2026-10-19 14:23:02.550] [DEBUG] [ENTITY] Loaded spawn 65: Grennet_Stormhand000 (ID: 85) Level 12 Race 1 Size 6.00 at (439.00, -163.00, 3.75)
+
+[2026-10-19 14:23:02.550] [DEBUG] [ENTITY] Loaded spawn 66: Nerissa_Clothspinner000 (ID: 86) Level 15 Race 71 Size 6.00 at (83.00, 346.88, 3.88)
+
+[2026-10-19 14:23:02.550] [DEBUG] [ENTITY] Loaded spawn 67: Rolon_Banari000 (ID: 87) Level 12 Race 1 Size 6.00 at (354.00, -131.00, 3.75)
+
+[2026-10-19 14:23:02.550] [DEBUG] [ENTITY] Loaded spawn 68: Hurrieta_Ironforge000 (ID: 88) Level 5 Race 71 Size 6.00 at (129.88, -92.88, 2.75)
+
+[2026-10-19 14:23:02.550] [DEBUG] [ENTITY] Loaded spawn 69: Moodoro_Finharn000 (ID: 90) Level 13 Race 3 Size 6.00 at (164.88, 338.00, 2.75)
+
+[2026-10-19 14:23:02.550] [DEBUG] [ENTITY] Loaded spawn 70: Rineval_Talyas000 (ID: 91) Level 39 Race 1 Size 6.00 at (160.00, -347.00, 3.75)
+
+[2026-10-19 14:23:02.550] [DEBUG] [ENTITY] Loaded spawn 71: Mellisa_Purgor000 (ID: 97) Level 45 Race 71 Size 6.00 at (-161.00, -131.00, 3.75)
+
+[2026-10-19 14:23:02.550] [DEBUG] [ENTITY] Loaded spawn 72: Kragie_Rolana000 (ID: 98) Level 45 Race 71 Size 6.00 at (-144.00, -125.00, 3.75)
+
+[2026-10-19 14:23:02.550] [DEBUG] [ENTITY] Loaded spawn 73: Gibson_Galliway000 (ID: 100) Level 40 Race 1 Size 6.00 at (143.00, 270.00, 3.75)
+
+[2026-10-19 14:23:02.551] [DEBUG] [ENTITY] Loaded spawn 74: Vegalys_Keldrane000 (ID: 101) Level 60 Race 1 Size 6.00 at (310.00, 200.00, 47.62)
+
+[2026-10-19 14:23:02.551] [DEBUG] [ENTITY] Loaded spawn 75: Jaylia_the_Faithful000 (ID: 103) Level 61 Race 1 Size 6.00 at (106.25, 416.88, 2.75)
+
+[2026-10-19 14:23:02.551] [DEBUG] [ENTITY] Loaded spawn 76: Henlom_Visrek000 (ID: 104) Level 34 Race 71 Size 6.00 at (-137.00, -121.00, 3.75)
+
+[2026-10-19 14:23:02.551] [DEBUG] [ENTITY] Loaded spawn 77: Berane_Constarg000 (ID: 105) Level 38 Race 71 Size 6.00 at (-161.00, -161.00, 3.75)
+
+[2026-10-19 14:23:02.551] [DEBUG] [ENTITY] Loaded spawn 78: Reldin_Harkolis000 (ID: 106) Level 61 Race 1 Size 6.00 at (140.00, 206.00, -29.00)
+
+[2026-10-19 14:23:02.551] [DEBUG] [ENTITY] Loaded spawn 79: Brohan_Ironforge000 (ID: 107) Level 29 Race 71 Size 6.00 at (107.00, -4.00, 19.75)
+
+[2026-10-19 14:23:02.551] [DEBUG] [ENTITY] Loaded spawn 80: Roesager_Thusten000 (ID: 109) Level 61 Race 1 Size 6.00 at (-128.00, -116.00, 3.75)
+
+[2026-10-19 14:23:02.551] [DEBUG] [ENTITY] Loaded spawn 81: Felodius_Sworddancer000 (ID: 110) Level 55 Race 7 Size 5.50 at (-106.00, -255.88, 2.38)
+
+[2026-10-19 14:23:02.551] [DEBUG] [ENTITY] Loaded spawn 82: Nax_Ghruna000 (ID: 111) Level 20 Race 1 Size 6.00 at (76.75, 267.25, -16.00)
+
+[2026-10-19 14:23:02.551] [DEBUG] [ENTITY] Loaded spawn 83: Tubal_Weaver000 (ID: 112) Level 14 Race 71 Size 6.00 at (216.88, 94.00, 3.75)
+
+[2026-10-19 14:23:02.551] [DEBUG] [ENTITY] Loaded spawn 84: Crow000 (ID: 113) Level 47 Race 71 Size 6.00 at (91.00, 358.00, 3.75)
+
+[2026-10-19 14:23:02.551] [DEBUG] [ENTITY] Loaded spawn 85: Rodgar_the_Tall000 (ID: 114) Level 45 Race 71 Size 6.00 at (-89.00, -7.00, 17.75)
+
+[2026-10-19 14:23:02.551] [DEBUG] [ENTITY] Loaded spawn 86: Gerault_Takenmaul000 (ID: 115) Level 45 Race 71 Size 6.00 at (-64.00, 19.00, 3.75)
+
+[2026-10-19 14:23:02.552] [DEBUG] [ENTITY] Loaded spawn 87: Tanlyn_Galliway000 (ID: 116) Level 45 Race 71 Size 6.00 at (125.00, 204.00, 3.75)
+
+[2026-10-19 14:23:02.552] [DEBUG] [ENTITY] Loaded spawn 88: Sneed_Galliway000 (ID: 117) Level 45 Race 71 Size 6.00 at (132.00, 243.00, 3.75)
+
+[2026-10-19 14:23:02.552] [DEBUG] [ENTITY] Loaded spawn 89: Svena_Ironforge000 (ID: 118) Level 18 Race 71 Size 6.00 at (60.00, 34.00, 3.75)
+
+[2026-10-19 14:23:02.552] [DEBUG] [ENTITY] Loaded spawn 90: Ziska_Ironforge000 (ID: 119) Level 7 Race 71 Size 6.00 at (53.75, 60.00, 3.75)
+
+[2026-10-19 14:23:02.552] [DEBUG] [ENTITY] Loaded spawn 91: Dren_Ironforge000 (ID: 120) Level 11 Race 71 Size 6.00 at (20.00, 50.00, 3.75)
+
+[2026-10-19 14:23:02.552] [DEBUG] [ENTITY] Loaded spawn 92: Rendallen_Ironforge000 (ID: 121) Level 25 Race 71 Size 6.00 at (50.00, 86.00, 3.75)
+
+[2026-10-19 14:23:02.552] [DEBUG] [ENTITY] Loaded spawn 93: Knargon_Lanenda000 (ID: 122) Level 61 Race 1 Size 6.00 at (72.88, 185.00, -29.00)
+
+[2026-10-19 14:23:02.552] [DEBUG] [ENTITY] Loaded spawn 94: Pelshia_Thuxpire000 (ID: 123) Level 23 Race 71 Size 6.00 at (69.00, 160.00, -29.00)
+
+[2026-10-19 14:23:02.552] [DEBUG] [ENTITY] Loaded spawn 95: Hanns_Krieghor000 (ID: 124) Level 61 Race 1 Size 6.00 at (31.00, 149.00, -27.00)
+
+[2026-10-19 14:23:02.552] [DEBUG] [ENTITY] Loaded spawn 96: Phin_Esrinap000 (ID: 125) Level 61 Race 1 Size 6.00 at (300.00, 329.88, 17.75)
+
+[2026-10-19 14:23:02.552] [DEBUG] [ENTITY] Loaded spawn 97: Shenro_Kazpur000 (ID: 126) Level 27 Race 71 Size 6.00 at (257.00, 302.00, 17.75)
+
+[2026-10-19 14:23:02.552] [DEBUG] [ENTITY] Loaded spawn 98: LuSun000 (ID: 127) Level 61 Race 1 Size 6.00 at (342.00, 301.00, 3.75)
+
+[2026-10-19 14:23:07.874] [INFO ] [GRAPHICS] RaceModelLoader::preloadVariantModel: Loaded 15 characters from commons_chr.s3d
+
+[2026-10-19 14:23:07.892] [WARN ] [GRAPHICS] RaceModelLoader::preloadVariantModel: Animation source ELM not found for race 71
+
+[2026-10-19 14:23:07.892] [INFO ] [GRAPHICS] RaceModelLoader::preloadVariantModel: race=71 (QCM) variant (head=1, body=0) loaded (739 verts, 0 anims)
+
+[2026-10-19 14:23:07.894] [DEBUG] [GRAPHICS] SEQ Step8b: entity 5 (Guard_Treitan000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:07.894] [DEBUG] [GRAPHICS] SEQ Step8c: entity 5 (Guard_Treitan000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:07.895] [DEBUG] [GRAPHICS] SEQ Step8c: entity 5 (Guard_Treitan000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:07.992] [DEBUG] [GRAPHICS] RaceModelLoader: No animation data for race 71 variant (head=1, body=0) - falling back to default
+
+[2026-10-19 14:23:07.992] [DEBUG] [GRAPHICS] createAnimatedNodeWithEquipment: Head variant 1 not found for race 71, falling back to head variant 0
+
+[2026-10-19 14:23:08.005] [DEBUG] [GRAPHICS] RaceModelLoader: Variant QCM final animation count: 43
+
+[2026-10-19 14:23:08.005] [DEBUG] [GRAPHICS] RaceModelLoader: Loaded race 71 (QCM) variant (head=0, body=0) for animation (2 parts, 758 vertices)
+
+[2026-10-19 14:23:08.006] [DEBUG] [GRAPHICS] RaceModelLoader: Created variant animated mesh for race 71 (head=0, body=0, texture=1) with 43 animations
+
+[2026-10-19 14:23:08.083] [DEBUG] [GRAPHICS] SEQ Step8b: entity 6 (Guard_Liben000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:08.083] [DEBUG] [GRAPHICS] SEQ Step8c: entity 6 (Guard_Liben000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:08.084] [DEBUG] [GRAPHICS] SEQ Step8c: entity 6 (Guard_Liben000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:08.119] [DEBUG] [GRAPHICS] createAnimatedNodeWithEquipment: Head variant 1 not found for race 71, falling back to head variant 0
+
+[2026-10-19 14:23:08.121] [DEBUG] [GRAPHICS] SEQ Step8b: entity 7 (Guard_Shorm000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:08.121] [DEBUG] [GRAPHICS] SEQ Step8c: entity 7 (Guard_Shorm000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:08.122] [DEBUG] [GRAPHICS] SEQ Step8c: entity 7 (Guard_Shorm000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:08.123] [DEBUG] [GRAPHICS] createAnimatedNodeWithEquipment: Head variant 1 not found for race 71, falling back to head variant 0
+
+[2026-10-19 14:23:08.148] [DEBUG] [GRAPHICS] SEQ Step8b: entity 9 (Guard_Deregan000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:08.148] [DEBUG] [GRAPHICS] SEQ Step8c: entity 9 (Guard_Deregan000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:08.149] [DEBUG] [GRAPHICS] SEQ Step8c: entity 9 (Guard_Deregan000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:08.150] [DEBUG] [GRAPHICS] createAnimatedNodeWithEquipment: Head variant 1 not found for race 71, falling back to head variant 0
+
+[2026-10-19 14:23:08.165] [DEBUG] [GRAPHICS] SEQ Step8b: entity 10 (Guard_Drath000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:08.165] [DEBUG] [GRAPHICS] SEQ Step8c: entity 10 (Guard_Drath000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:08.166] [DEBUG] [GRAPHICS] SEQ Step8c: entity 10 (Guard_Drath000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:08.166] [DEBUG] [GRAPHICS] createAnimatedNodeWithEquipment: Head variant 1 not found for race 71, falling back to head variant 0
+
+[2026-10-19 14:23:08.198] [DEBUG] [GRAPHICS] SEQ Step8b: entity 12 (Guard_Buce000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:08.198] [DEBUG] [GRAPHICS] SEQ Step8c: entity 12 (Guard_Buce000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:08.199] [DEBUG] [GRAPHICS] SEQ Step8c: entity 12 (Guard_Buce000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:08.200] [DEBUG] [GRAPHICS] createAnimatedNodeWithEquipment: Head variant 1 not found for race 71, falling back to head variant 0
+
+[2026-10-19 14:23:08.255] [DEBUG] [GRAPHICS] SEQ Step8c: entity 15 (a_rodent000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.255] [DEBUG] [GRAPHICS] SEQ Step8c: entity 15 (a_rodent000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.269] [DEBUG] [GRAPHICS] SEQ Step8c: entity 16 (a_rodent001) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.269] [DEBUG] [GRAPHICS] SEQ Step8c: entity 16 (a_rodent001) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.281] [DEBUG] [GRAPHICS] SEQ Step8c: entity 17 (a_rodent002) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.282] [DEBUG] [GRAPHICS] SEQ Step8c: entity 17 (a_rodent002) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.315] [DEBUG] [GRAPHICS] SEQ Step8c: entity 19 (a_rodent004) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.315] [DEBUG] [GRAPHICS] SEQ Step8c: entity 19 (a_rodent004) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.331] [DEBUG] [GRAPHICS] SEQ Step8c: entity 20 (a_rodent005) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.331] [DEBUG] [GRAPHICS] SEQ Step8c: entity 20 (a_rodent005) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.348] [DEBUG] [GRAPHICS] SEQ Step8c: entity 21 (a_rodent006) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.348] [DEBUG] [GRAPHICS] SEQ Step8c: entity 21 (a_rodent006) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.365] [DEBUG] [GRAPHICS] SEQ Step8c: entity 22 (a_rodent007) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.365] [DEBUG] [GRAPHICS] SEQ Step8c: entity 22 (a_rodent007) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.398] [DEBUG] [GRAPHICS] SEQ Step8c: entity 24 (a_rodent009) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.398] [DEBUG] [GRAPHICS] SEQ Step8c: entity 24 (a_rodent009) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.431] [DEBUG] [GRAPHICS] SEQ Step8c: entity 26 (a_rodent011) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.431] [DEBUG] [GRAPHICS] SEQ Step8c: entity 26 (a_rodent011) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.448] [DEBUG] [GRAPHICS] SEQ Step8c: entity 27 (a_rodent012) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.448] [DEBUG] [GRAPHICS] SEQ Step8c: entity 27 (a_rodent012) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.465] [DEBUG] [GRAPHICS] SEQ Step8c: entity 28 (a_rodent013) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.465] [DEBUG] [GRAPHICS] SEQ Step8c: entity 28 (a_rodent013) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.481] [DEBUG] [GRAPHICS] SEQ Step8c: entity 29 (a_rodent014) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.481] [DEBUG] [GRAPHICS] SEQ Step8c: entity 29 (a_rodent014) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.498] [DEBUG] [GRAPHICS] SEQ Step8c: entity 30 (a_rodent015) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.498] [DEBUG] [GRAPHICS] SEQ Step8c: entity 30 (a_rodent015) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.515] [DEBUG] [GRAPHICS] SEQ Step8c: entity 31 (a_rodent016) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.515] [DEBUG] [GRAPHICS] SEQ Step8c: entity 31 (a_rodent016) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.531] [DEBUG] [GRAPHICS] SEQ Step8c: entity 32 (a_rodent017) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.532] [DEBUG] [GRAPHICS] SEQ Step8c: entity 32 (a_rodent017) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.548] [DEBUG] [GRAPHICS] SEQ Step8c: entity 33 (a_rodent018) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.548] [DEBUG] [GRAPHICS] SEQ Step8c: entity 33 (a_rodent018) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.568] [DEBUG] [GRAPHICS] SEQ Step8c: entity 34 (a_rodent019) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:08.568] [DEBUG] [GRAPHICS] SEQ Step8c: entity 34 (a_rodent019) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:08.584] [DEBUG] [GRAPHICS] SEQ Step8b: entity 35 (Lieutenant_Dagarok000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:08.584] [DEBUG] [GRAPHICS] SEQ Step8c: entity 35 (Lieutenant_Dagarok000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:08.591] [DEBUG] [GRAPHICS] SEQ Step8c: entity 35 (Lieutenant_Dagarok000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:08.591] [DEBUG] [GRAPHICS] createAnimatedNodeWithEquipment: Head variant 1 not found for race 71, falling back to head variant 0
+
+[2026-10-19 14:23:09.190] [DEBUG] [GRAPHICS] SEQ Step8c: entity 66 (Quinon_Hulleaf000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:09.190] [DEBUG] [GRAPHICS] SEQ Step8c: entity 66 (Quinon_Hulleaf000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:09.465] [DEBUG] [GRAPHICS] SEQ Step8c: entity 82 (Lashun_Novashine000) appearance.texture=2 helm=0 modelData=true
+
+[2026-10-19 14:23:09.466] [DEBUG] [GRAPHICS] SEQ Step8c: entity 82 (Lashun_Novashine000) loaded 11 variant textures via cache
+
+[2026-10-19 14:23:09.480] [DEBUG] [GRAPHICS] RaceModelLoader: Searching global characters (11 models) for HUM variant (body=HUM_DMSPRITEDEF, head=HUMHE00_DMSPRITEDEF)
+
+[2026-10-19 14:23:09.490] [DEBUG] [GRAPHICS] RaceModelLoader: Loaded race 1 (HUM) variant from global (2 parts)
+
+[2026-10-19 14:23:09.491] [DEBUG] [GRAPHICS] RaceModelLoader: Created variant animated mesh for race 1 (head=0, body=0, texture=2) with 43 animations
+
+[2026-10-19 14:23:09.506] [DEBUG] [GRAPHICS] SEQ Step8c: entity 83 (Renux_Herkanor000) appearance.texture=1 helm=0 modelData=true
+
+[2026-10-19 14:23:09.507] [DEBUG] [GRAPHICS] SEQ Step8c: entity 83 (Renux_Herkanor000) loaded 11 variant textures via cache
+
+[2026-10-19 14:23:09.540] [DEBUG] [GRAPHICS] RaceModelLoader: Searching global characters (11 models) for HUF variant (body=HUF_DMSPRITEDEF, head=HUFHE00_DMSPRITEDEF)
+
+[2026-10-19 14:23:09.541] [DEBUG] [GRAPHICS] RaceModelLoader: Loaded race 1 (HUF) variant from global (2 parts)
+
+[2026-10-19 14:23:09.559] [DEBUG] [GRAPHICS] RaceModelLoader: Created variant animated mesh for race 1 (head=0, body=0, texture=1) with 42 animations
+
+[2026-10-19 14:23:09.566] [DEBUG] [GRAPHICS] RaceModelLoader::preloadVariantModel: Merged 0 animations from ELM (global) to HUM
+
+[2026-10-19 14:23:09.566] [INFO ] [GRAPHICS] RaceModelLoader::preloadVariantModel: race=1 (HUM) variant (head=0, body=1) loaded (699 verts, 43 anims)
+
+[2026-10-19 14:23:09.567] [DEBUG] [GRAPHICS] SEQ Step8b: entity 84 (Priest_of_Discord000) preloadVariantModel head=0 body=1
+
+[2026-10-19 14:23:09.567] [DEBUG] [GRAPHICS] SEQ Step8c: entity 84 (Priest_of_Discord000) appearance.texture=11 helm=0 modelData=true
+
+[2026-10-19 14:23:09.568] [DEBUG] [GRAPHICS] SEQ Step8c: entity 84 (Priest_of_Discord000) loaded 6 variant textures via cache
+
+[2026-10-19 14:23:09.626] [DEBUG] [GRAPHICS] createAnimatedNodeWithEquipment: Robe detected (texture=11, chest=11), using body variant 01, textureVariant=11
+
+[2026-10-19 14:23:09.627] [DEBUG] [GRAPHICS] RaceModelLoader: Created variant animated mesh for race 1 (head=0, body=1, texture=11) with 43 animations
+
+[2026-10-19 14:23:09.660] [DEBUG] [GRAPHICS] RaceModelLoader::preloadVariantModel: Merged 42 animations from ELF (global) to QCF
+
+[2026-10-19 14:23:09.661] [INFO ] [GRAPHICS] RaceModelLoader::preloadVariantModel: race=71 (QCF) variant (head=1, body=1) loaded (802 verts, 42 anims)
+
+[2026-10-19 14:23:09.662] [DEBUG] [GRAPHICS] SEQ Step8b: entity 86 (Nerissa_Clothspinner000) preloadVariantModel head=1 body=1
+
+[2026-10-19 14:23:09.662] [DEBUG] [GRAPHICS] SEQ Step8c: entity 86 (Nerissa_Clothspinner000) appearance.texture=15 helm=1 modelData=true
+
+[2026-10-19 14:23:09.663] [DEBUG] [GRAPHICS] SEQ Step8c: entity 86 (Nerissa_Clothspinner000) loaded 8 variant textures via cache
+
+[2026-10-19 14:23:09.694] [DEBUG] [GRAPHICS] createAnimatedNodeWithEquipment: Robe detected (texture=15, chest=15), using body variant 01, textureVariant=15
+
+[2026-10-19 14:23:09.696] [DEBUG] [GRAPHICS] RaceModelLoader: Created variant animated mesh for race 71 (head=1, body=1, texture=15) with 42 animations
+
+[2026-10-19 14:23:09.697] [DEBUG] [GRAPHICS] SEQ Step8c: entity 87 (Rolon_Banari000) appearance.texture=3 helm=0 modelData=true
+
+[2026-10-19 14:23:09.699] [DEBUG] [GRAPHICS] SEQ Step8c: entity 87 (Rolon_Banari000) loaded 11 variant textures via cache
+
+[2026-10-19 14:23:09.725] [DEBUG] [GRAPHICS] RaceModelLoader: Created variant animated mesh for race 1 (head=0, body=0, texture=3) with 43 animations
+
+[2026-10-19 14:23:09.734] [DEBUG] [GRAPHICS] RaceModelLoader::preloadVariantModel: Merged 0 animations from ELF (global) to QCF
+
+[2026-10-19 14:23:09.734] [INFO ] [GRAPHICS] RaceModelLoader::preloadVariantModel: race=71 (QCF) variant (head=1, body=0) loaded (802 verts, 42 anims)
+
+[2026-10-19 14:23:09.735] [DEBUG] [GRAPHICS] SEQ Step8b: entity 88 (Hurrieta_Ironforge000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:09.735] [DEBUG] [GRAPHICS] SEQ Step8c: entity 88 (Hurrieta_Ironforge000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:09.736] [DEBUG] [GRAPHICS] SEQ Step8c: entity 88 (Hurrieta_Ironforge000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:09.762] [DEBUG] [GRAPHICS] RaceModelLoader: Created variant animated mesh for race 71 (head=1, body=0, texture=1) with 42 animations
+
+[2026-10-19 14:23:09.796] [DEBUG] [GRAPHICS] SEQ Step8c: entity 90 (Moodoro_Finharn000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:09.796] [DEBUG] [GRAPHICS] SEQ Step8c: entity 90 (Moodoro_Finharn000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:09.965] [DEBUG] [GRAPHICS] SEQ Step8c: entity 100 (Gibson_Galliway000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:09.965] [DEBUG] [GRAPHICS] SEQ Step8c: entity 100 (Gibson_Galliway000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:09.982] [DEBUG] [GRAPHICS] SEQ Step8c: entity 101 (Vegalys_Keldrane000) appearance.texture=3 helm=0 modelData=true
+
+[2026-10-19 14:23:09.983] [DEBUG] [GRAPHICS] SEQ Step8c: entity 101 (Vegalys_Keldrane000) loaded 11 variant textures via cache
+
+[2026-10-19 14:23:10.015] [DEBUG] [GRAPHICS] SEQ Step8c: entity 103 (Jaylia_the_Faithful000) appearance.texture=3 helm=0 modelData=true
+
+[2026-10-19 14:23:10.016] [DEBUG] [GRAPHICS] SEQ Step8c: entity 103 (Jaylia_the_Faithful000) loaded 11 variant textures via cache
+
+[2026-10-19 14:23:10.042] [DEBUG] [GRAPHICS] RaceModelLoader: Created variant animated mesh for race 1 (head=0, body=0, texture=3) with 42 animations
+
+[2026-10-19 14:23:10.065] [DEBUG] [GRAPHICS] SEQ Step8c: entity 106 (Reldin_Harkolis000) appearance.texture=1 helm=0 modelData=true
+
+[2026-10-19 14:23:10.066] [DEBUG] [GRAPHICS] SEQ Step8c: entity 106 (Reldin_Harkolis000) loaded 11 variant textures via cache
+
+[2026-10-19 14:23:10.072] [DEBUG] [GRAPHICS] RaceModelLoader: Created variant animated mesh for race 1 (head=0, body=0, texture=1) with 43 animations
+
+[2026-10-19 14:23:10.082] [DEBUG] [GRAPHICS] SEQ Step8c: entity 107 (Brohan_Ironforge000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.082] [DEBUG] [GRAPHICS] SEQ Step8c: entity 107 (Brohan_Ironforge000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.148] [DEBUG] [GRAPHICS] SEQ Step8c: entity 111 (Nax_Ghruna000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.148] [DEBUG] [GRAPHICS] SEQ Step8c: entity 111 (Nax_Ghruna000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.165] [DEBUG] [GRAPHICS] SEQ Step8c: entity 112 (Tubal_Weaver000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.165] [DEBUG] [GRAPHICS] SEQ Step8c: entity 112 (Tubal_Weaver000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.182] [DEBUG] [GRAPHICS] SEQ Step8c: entity 113 (Crow000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.182] [DEBUG] [GRAPHICS] SEQ Step8c: entity 113 (Crow000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.215] [DEBUG] [GRAPHICS] SEQ Step8c: entity 115 (Gerault_Takenmaul000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.215] [DEBUG] [GRAPHICS] SEQ Step8c: entity 115 (Gerault_Takenmaul000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.231] [DEBUG] [GRAPHICS] SEQ Step8c: entity 116 (Tanlyn_Galliway000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.231] [DEBUG] [GRAPHICS] SEQ Step8c: entity 116 (Tanlyn_Galliway000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.248] [DEBUG] [GRAPHICS] SEQ Step8c: entity 117 (Sneed_Galliway000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.248] [DEBUG] [GRAPHICS] SEQ Step8c: entity 117 (Sneed_Galliway000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.265] [DEBUG] [GRAPHICS] SEQ Step8b: entity 118 (Svena_Ironforge000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:10.265] [DEBUG] [GRAPHICS] SEQ Step8c: entity 118 (Svena_Ironforge000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:10.266] [DEBUG] [GRAPHICS] SEQ Step8c: entity 118 (Svena_Ironforge000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:10.282] [DEBUG] [GRAPHICS] SEQ Step8b: entity 119 (Ziska_Ironforge000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:10.282] [DEBUG] [GRAPHICS] SEQ Step8c: entity 119 (Ziska_Ironforge000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:10.283] [DEBUG] [GRAPHICS] SEQ Step8c: entity 119 (Ziska_Ironforge000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:10.298] [DEBUG] [GRAPHICS] SEQ Step8c: entity 120 (Dren_Ironforge000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.298] [DEBUG] [GRAPHICS] SEQ Step8c: entity 120 (Dren_Ironforge000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.315] [DEBUG] [GRAPHICS] SEQ Step8c: entity 121 (Rendallen_Ironforge000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.315] [DEBUG] [GRAPHICS] SEQ Step8c: entity 121 (Rendallen_Ironforge000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.331] [DEBUG] [GRAPHICS] SEQ Step8c: entity 122 (Knargon_Lanenda000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.331] [DEBUG] [GRAPHICS] SEQ Step8c: entity 122 (Knargon_Lanenda000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.348] [DEBUG] [GRAPHICS] SEQ Step8c: entity 123 (Pelshia_Thuxpire000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.348] [DEBUG] [GRAPHICS] SEQ Step8c: entity 123 (Pelshia_Thuxpire000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.365] [DEBUG] [GRAPHICS] SEQ Step8c: entity 124 (Hanns_Krieghor000) appearance.texture=1 helm=0 modelData=true
+
+[2026-10-19 14:23:10.366] [DEBUG] [GRAPHICS] SEQ Step8c: entity 124 (Hanns_Krieghor000) loaded 11 variant textures via cache
+
+[2026-10-19 14:23:10.382] [DEBUG] [GRAPHICS] SEQ Step8c: entity 125 (Phin_Esrinap000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.382] [DEBUG] [GRAPHICS] SEQ Step8c: entity 125 (Phin_Esrinap000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.384] [DEBUG] [GRAPHICS]     -> variant texture: humch0401.bmp
+
+[2026-10-19 14:23:10.387] [DEBUG] [GRAPHICS]     -> variant texture: humch0402.bmp
+
+[2026-10-19 14:23:10.398] [DEBUG] [GRAPHICS] SEQ Step8c: entity 126 (Shenro_Kazpur000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.398] [DEBUG] [GRAPHICS] SEQ Step8c: entity 126 (Shenro_Kazpur000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.418] [DEBUG] [GRAPHICS] SEQ Step8c: entity 127 (LuSun000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.418] [DEBUG] [GRAPHICS] SEQ Step8c: entity 127 (LuSun000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.451] [DEBUG] [GRAPHICS] SEQ Step8b: entity 129 (Guard_Weleth000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:10.451] [DEBUG] [GRAPHICS] SEQ Step8c: entity 129 (Guard_Weleth000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:10.458] [DEBUG] [GRAPHICS] SEQ Step8c: entity 129 (Guard_Weleth000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:10.535] [DEBUG] [GRAPHICS] createAnimatedNodeWithEquipment: Head variant 1 not found for race 71, falling back to head variant 0
+
+[2026-10-19 14:23:10.536] [DEBUG] [GRAPHICS] SEQ Step8b: entity 130 (Guard_Elron000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:10.536] [DEBUG] [GRAPHICS] SEQ Step8c: entity 130 (Guard_Elron000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:10.538] [DEBUG] [GRAPHICS] SEQ Step8c: entity 130 (Guard_Elron000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:10.538] [DEBUG] [GRAPHICS] createAnimatedNodeWithEquipment: Head variant 1 not found for race 71, falling back to head variant 0
+
+[2026-10-19 14:23:10.548] [DEBUG] [GRAPHICS] SEQ Step8c: entity 131 (Segran_Rajhar000) appearance.texture=1 helm=0 modelData=true
+
+[2026-10-19 14:23:10.550] [DEBUG] [GRAPHICS] SEQ Step8c: entity 131 (Segran_Rajhar000) loaded 11 variant textures via cache
+
+[2026-10-19 14:23:10.565] [DEBUG] [GRAPHICS] SEQ Step8b: entity 132 (Ania_Klephia000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:10.565] [DEBUG] [GRAPHICS] SEQ Step8c: entity 132 (Ania_Klephia000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:10.566] [DEBUG] [GRAPHICS] SEQ Step8c: entity 132 (Ania_Klephia000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:10.582] [DEBUG] [GRAPHICS] SEQ Step8b: entity 133 (Sabnie_Blagard000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:10.582] [DEBUG] [GRAPHICS] SEQ Step8c: entity 133 (Sabnie_Blagard000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:10.583] [DEBUG] [GRAPHICS] SEQ Step8c: entity 133 (Sabnie_Blagard000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:10.598] [DEBUG] [GRAPHICS] SEQ Step8c: entity 134 (Ghil_Starn000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.598] [DEBUG] [GRAPHICS] SEQ Step8c: entity 134 (Ghil_Starn000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.615] [DEBUG] [GRAPHICS] SEQ Step8c: entity 135 (Zannsin_Resdinet000) appearance.texture=1 helm=0 modelData=true
+
+[2026-10-19 14:23:10.616] [DEBUG] [GRAPHICS] SEQ Step8c: entity 135 (Zannsin_Resdinet000) loaded 11 variant textures via cache
+
+[2026-10-19 14:23:10.663] [DEBUG] [GRAPHICS] SEQ Step8c: entity 136 (Seta_Bakindo000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.663] [DEBUG] [GRAPHICS] SEQ Step8c: entity 136 (Seta_Bakindo000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.666] [DEBUG] [GRAPHICS]     -> variant texture: hufch0401.bmp
+
+[2026-10-19 14:23:10.669] [DEBUG] [GRAPHICS]     -> variant texture: hufch0402.bmp
+
+[2026-10-19 14:23:10.682] [DEBUG] [GRAPHICS] SEQ Step8c: entity 137 (Togahn_Sorast000) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:10.682] [DEBUG] [GRAPHICS] SEQ Step8c: entity 137 (Togahn_Sorast000) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:10.762] [DEBUG] [GRAPHICS] SEQ Step8c: entity 141 (Flynn_Merrington000) appearance.texture=1 helm=0 modelData=true
+
+[2026-10-19 14:23:10.764] [DEBUG] [GRAPHICS] SEQ Step8c: entity 141 (Flynn_Merrington000) loaded 11 variant textures via cache
+
+[2026-10-19 14:23:10.817] [DEBUG] [GRAPHICS] RaceModelLoader: Searching global characters (11 models) for HOM variant (body=HOM_DMSPRITEDEF, head=HOMHE00_DMSPRITEDEF)
+
+[2026-10-19 14:23:10.817] [DEBUG] [GRAPHICS] RaceModelLoader: Loaded race 11 (HOM) variant from global (2 parts)
+
+[2026-10-19 14:23:10.819] [DEBUG] [GRAPHICS] RaceModelLoader: Created variant animated mesh for race 11 (head=0, body=0, texture=1) with 38 animations
+
+[2026-10-19 14:23:10.832] [DEBUG] [GRAPHICS] SEQ Step8b: entity 143 (Guard_Gehnus000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:10.832] [DEBUG] [GRAPHICS] SEQ Step8c: entity 143 (Guard_Gehnus000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:10.833] [DEBUG] [GRAPHICS] SEQ Step8c: entity 143 (Guard_Gehnus000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:10.912] [DEBUG] [GRAPHICS] createAnimatedNodeWithEquipment: Head variant 1 not found for race 71, falling back to head variant 0
+
+[2026-10-19 14:23:10.914] [DEBUG] [GRAPHICS] SEQ Step8b: entity 144 (Guard_Hezlan000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:10.914] [DEBUG] [GRAPHICS] SEQ Step8c: entity 144 (Guard_Hezlan000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:10.915] [DEBUG] [GRAPHICS] SEQ Step8c: entity 144 (Guard_Hezlan000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:10.994] [DEBUG] [GRAPHICS] createAnimatedNodeWithEquipment: Head variant 1 not found for race 71, falling back to head variant 0
+
+[2026-10-19 14:23:11.038] [DEBUG] [GRAPHICS] RaceModelLoader::preloadVariantModel: Merged 0 animations from ELF (global) to HUF
+
+[2026-10-19 14:23:11.038] [INFO ] [GRAPHICS] RaceModelLoader::preloadVariantModel: race=1 (HUF) variant (head=0, body=1) loaded (707 verts, 42 anims)
+
+[2026-10-19 14:23:11.039] [DEBUG] [GRAPHICS] SEQ Step8b: entity 148 (Connie_Link000) preloadVariantModel head=0 body=1
+
+[2026-10-19 14:23:11.039] [DEBUG] [GRAPHICS] SEQ Step8c: entity 148 (Connie_Link000) appearance.texture=15 helm=0 modelData=true
+
+[2026-10-19 14:23:11.041] [DEBUG] [GRAPHICS] SEQ Step8c: entity 148 (Connie_Link000) loaded 6 variant textures via cache
+
+[2026-10-19 14:23:11.041] [DEBUG] [GRAPHICS] createAnimatedNodeWithEquipment: Robe detected (texture=15, chest=15), using body variant 01, textureVariant=15
+
+[2026-10-19 14:23:11.042] [DEBUG] [GRAPHICS] RaceModelLoader: Created variant animated mesh for race 1 (head=0, body=1, texture=15) with 42 animations
+
+[2026-10-19 14:23:11.048] [DEBUG] [GRAPHICS] SEQ Step8c: entity 149 (Exterminator_Wintloag000) appearance.texture=1 helm=0 modelData=true
+
+[2026-10-19 14:23:11.050] [DEBUG] [GRAPHICS] SEQ Step8c: entity 149 (Exterminator_Wintloag000) loaded 11 variant textures via cache
+
+[2026-10-19 14:23:11.465] [DEBUG] [GRAPHICS] SEQ Step8b: entity 174 (Guard_Furithane000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:11.465] [DEBUG] [GRAPHICS] SEQ Step8c: entity 174 (Guard_Furithane000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:11.466] [DEBUG] [GRAPHICS] SEQ Step8c: entity 174 (Guard_Furithane000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:11.513] [DEBUG] [GRAPHICS] createAnimatedNodeWithEquipment: Head variant 1 not found for race 71, falling back to head variant 0
+
+[2026-10-19 14:23:11.531] [DEBUG] [GRAPHICS] SEQ Step8b: entity 176 (Guard_Simkin000) preloadVariantModel head=1 body=0
+
+[2026-10-19 14:23:11.531] [DEBUG] [GRAPHICS] SEQ Step8c: entity 176 (Guard_Simkin000) appearance.texture=1 helm=1 modelData=true
+
+[2026-10-19 14:23:11.533] [DEBUG] [GRAPHICS] SEQ Step8c: entity 176 (Guard_Simkin000) loaded 13 variant textures via cache
+
+[2026-10-19 14:23:11.533] [DEBUG] [GRAPHICS] createAnimatedNodeWithEquipment: Head variant 1 not found for race 71, falling back to head variant 0
+
+[2026-10-19 14:23:11.565] [DEBUG] [GRAPHICS] SEQ Step8c: entity 179 (a_large_rat004) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:11.565] [DEBUG] [GRAPHICS] SEQ Step8c: entity 179 (a_large_rat004) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:11.581] [DEBUG] [GRAPHICS] SEQ Step8c: entity 180 (a_large_rat005) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:11.581] [DEBUG] [GRAPHICS] SEQ Step8c: entity 180 (a_large_rat005) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:11.598] [DEBUG] [GRAPHICS] SEQ Step8c: entity 181 (a_large_rat006) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:11.598] [DEBUG] [GRAPHICS] SEQ Step8c: entity 181 (a_large_rat006) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:11.615] [DEBUG] [GRAPHICS] SEQ Step8c: entity 182 (Drun_Vorwig000) appearance.texture=2 helm=0 modelData=true
+
+[2026-10-19 14:23:11.616] [DEBUG] [GRAPHICS] SEQ Step8c: entity 182 (Drun_Vorwig000) loaded 11 variant textures via cache
+
+[2026-10-19 14:23:11.632] [DEBUG] [GRAPHICS] SEQ Step8c: entity 183 (Artisan_Tar_Cordell000) appearance.texture=3 helm=0 modelData=true
+
+[2026-10-19 14:23:11.633] [DEBUG] [GRAPHICS] SEQ Step8c: entity 183 (Artisan_Tar_Cordell000) loaded 11 variant textures via cache
+
+[2026-10-19 14:23:11.662] [DEBUG] [GRAPHICS] SEQ Step8c: entity 184 (Artisan_Vor_Westrider000) appearance.texture=2 helm=0 modelData=true
+
+[2026-10-19 14:23:11.664] [DEBUG] [GRAPHICS] SEQ Step8c: entity 184 (Artisan_Vor_Westrider000) loaded 11 variant textures via cache
+
+[2026-10-19 14:23:11.721] [DEBUG] [GRAPHICS] RaceModelLoader: Searching global characters (11 models) for HAM variant (body=HAM_DMSPRITEDEF, head=HAMHE00_DMSPRITEDEF)
+
+[2026-10-19 14:23:11.721] [DEBUG] [GRAPHICS] RaceModelLoader: Loaded race 7 (HAM) variant from global (2 parts)
+
+[2026-10-19 14:23:11.723] [DEBUG] [GRAPHICS] RaceModelLoader: Created variant animated mesh for race 7 (head=0, body=0, texture=2) with 43 animations
+
+[2026-10-19 14:23:11.725] [DEBUG] [GRAPHICS] SEQ Step8c: entity 259 (Testchar) appearance.texture=0 helm=0 modelData=true
+
+[2026-10-19 14:23:11.725] [DEBUG] [GRAPHICS] SEQ Step8c: entity 259 (Testchar) loaded 0 variant textures via cache
+
+[2026-10-19 14:23:11.776] [INFO ] [GRAPHICS] T209 Step8 split (ms): 8a_base=529.2 8b_variant=143.3 8c_vtex=58.2 8d_equip=523.0 8e_distribute=0.8 8f_mesh=245.3 promote=0.1 upload=320.6 | 68 of 76 entities were a repeat race/gender (8 distinct pairs)
+
+[90m[14:23:12] [0m[93m[System] Turned to heading 88.0 degrees[0m
+
+CMD outcome=applied registry=action recognized=true cmd="/turn 88"
+
+[2026-10-19 14:23:12.004] [INFO ] [MAIN] Script: executing '/turn 88' (step 4/8)
+
+CMD outcome=applied registry=action recognized=true cmd="/loc"
+
+[2026-10-19 14:23:12.004] [INFO ] [MAIN] Turned to heading 88.0 degrees
+
+[2026-10-19 14:23:12.021] [INFO ] [MAIN] Script: executing '/loc' (step 5/8)
+
+[2026-10-19 14:23:12.021] [INFO ] [MAIN] Your location is 255.0, 210.0, 3.8
+
+[2026-10-19 14:23:12.185] [DEBUG] [GRAPHICS]     -> variant texture: hufch0401.bmp
+
+[2026-10-19 14:23:12.185] [DEBUG] [GRAPHICS]     -> variant texture: hufch0402.bmp
+
+[2026-10-19 14:23:12.226] [DEBUG] [GRAPHICS]     -> variant texture: humch0401.bmp
+
+[2026-10-19 14:23:12.227] [DEBUG] [GRAPHICS]     -> variant texture: humch0402.bmp
+
+[2026-10-19 14:23:12.288] [DEBUG] [GRAPHICS] EntityVis: spawn=5 SHOWN pos=(270.0,202.0,3.8) dist=17
+
+[2026-10-19 14:23:12.653] [INFO ] [GRAPHICS] EntityPrepWorker: spawn=80 total prep took 403ms (variants=0, equip=1)
+
+CMD outcome=applied registry=action recognized=true cmd="/loc"
+
+[2026-10-19 14:23:42.056] [INFO ] [MAIN] Script: executing '/loc' (step 7/8)
+
+[2026-10-19 14:23:42.056] [INFO ] [MAIN] Your location is 255.0, 210.0, 3.1
+
+[2026-10-19 14:23:12.001] [DEBUG] [GRAPHICS] EntityVis: 1/183 visible (noState=0, maxCap=0, dist=115, frustum=58, pvs=9, occl=0)
+
+[2026-10-19 14:23:12.288] [DEBUG] [GRAPHICS] EntityVis: 2/183 visible (noState=0, maxCap=0, dist=115, frustum=65, pvs=1, occl=0)
+
+[2026-10-19 14:23:41.795] [DEBUG] [GRAPHICS] EntityVis: 2/183 visible (noState=0, maxCap=0, dist=114, frustum=66, pvs=1, occl=0)
+
+[2026-10-19 14:23:41.812] [DEBUG] [GRAPHICS] EntityVis: 2/183 visible (noState=0, maxCap=0, dist=114, frustum=66, pvs=1, occl=0)
+

@@ -59,6 +59,12 @@ tests/*_tests.cmake
 *.jpeg
 *.ppm
 
+# B1051 verify leg: the three-way oracle|x86|xu4 evidence stills and the
+# pose-line log excerpts are deliverables (refactor/B1051/VERIFY.md), not
+# debug dumps -- the H02 tests/goldens negation above is the same precedent.
+!refactor/B1051/evidence/**/*.jpg
+!refactor/B1051/evidence/**/*.log
+
 # H02: golden-frame PNGs are intentionally committed (tests/goldens/manifest.json
 # records what they were blessed under; scripts/ci/visual_gate.sh compares against them)
 !tests/goldens/*.png

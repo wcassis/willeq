@@ -48,9 +48,9 @@ def crop_metrics(path):
     order = np.argsort(-counts)
     top5 = float(counts[order[:5]].sum()/codes.size)
     # 4-level-per-channel histogram for the distance (16^3 cells)
-    q4 = a//40  # 64 levels total per channel is too big; 40 -> 6^3=216 cells
-    hcodes = q4[...,0]*36 + q4[...,1]*6 + q4[...,2]
-    hist = np.bincount(hcodes, minlength=216).astype(np.float64)
+    q4 = a//52  # 5 levels per channel -> 5^3=125 cells
+    hcodes = (q4[...,0]*25 + q4[...,1]*5 + q4[...,2]).ravel()
+    hist = np.bincount(hcodes, minlength=125).astype(np.float64)
     hist /= hist.sum()
     return box, uniq, gold, red, top5, hist
 
@@ -60,7 +60,7 @@ def l1(h1, h2):
 def main():
     official = sys.argv[1]
     others = sys.argv[2:]
-    ob,ou,og,or_,ot5,oh = crop_metrics(official)
+    _,ou,og,or_,ot5,oh = crop_metrics(official)
     print(f"{'client':28s} {'coarse':>7s} {'gold':>7s} {'red':>7s} {'top5':>7s} {'hist_dist':>10s}")
     print(f"{'OFFICIAL='+official.split('/')[-1]:28s} {ou:>10} {og:7.4f} {or_:7.4f} {ot5:7.3f} {'—':>10s}")
     for p in others:
