@@ -44,7 +44,7 @@ cull/clip already work; the open question is **where the GPU time goes**. The
 hypothesis to TEST (not assume) is fragment fill: the slow zones cover the whole
 framebuffer with sky + terrain + water/snow, and Mali re-walks the tile buffer
 per render job (lima cost sheet fact 5/7). Secondary CPU finding to name:
-thurgadinb's constant **10.3 ms/entity-build slice for 432+ consecutive frames**.
+thurgadinb's constant **10.3 ms/entity-build slice for 476 consecutive frames**.
 
 ## Tooling facts that shape the recipe (read before judging the tables)
 
@@ -184,13 +184,16 @@ All medians are post-warmup (frame index >= 5 of 60; `--warmup 5`), over 55
 measured frames per cell. `gpu_ms` is the `glFinish()` duration — on Lima there
 are no timer queries (lima cost sheet fact 8), so the CPU-blocked-on-GPU finish
 IS the measured GPU frame time; it equals `finish_readpixels_ms` here because
-the loop's `glReadPixels` (dump frames) runs inside the same blocked span.
-`flip_wait_ms` is ~0 in the BENCHMARK because its page flip is non-blocking
-(the GPU is still busy when the flip is queued) — the same flip, waited on by
-the client at the START of the next frame, is the B854 "unaccounted 24-39 ms".
-The 65-draw cobaltscar cell is the benchmark's pre-merge draw count; the B854
-client's `unmerged_would_be_draws=38` is post-merge (the client's merge budget
-is on in both).
+the loop's `glReadPixels` (frame dumps) runs inside the same blocked span
+(`gles2_zone_benchmark.cpp` P52: the timed finish, then `endGpuSync()`).
+`flip_wait_ms` (the endScene page-flip wait) is ~0.04 ms in the HI cells (the
+GPU is still busy, so the flip queues non-blocking) and 2.8-3.1 ms in the LO
+cells (the GPU finishes before the flip, so the flip waits for vblank) — so it
+is NOT the GPU time in either case; the GPU time is `gpu_ms`. The client's
+"unaccounted 24-39 ms" (B854) is the same GPU work paid as the flip wait at
+the start of the next frame, because the client's swap waits where the
+benchmark's does not. The 65-draw cobaltscar cell is the benchmark's pre-merge
+draw count; the B854 client's `unmerged_would_be_draws=38` is post-merge.
 
 ### Table 1 — resolution A/B (fill vs vertex/CPU bound), Clip 300, per-zone B854 pose
 
@@ -224,17 +227,35 @@ Cross-check: thurgadinb at 1024x768 = 37.8 ms here vs B854's 50 ms at
 
 ### Table 2 — Clip 300 vs 150
 
-Not runnable on the published benchmark (no clip knob; fact 1). Answered
-indirectly, and the indirect answer is decisive in the OTHER direction: the
-per-pass census (below) shows the pose view is 100% covered by scene layers in
-thurgadinb and chardok (0.0% of the framebuffer is the uncovered clear), with
-the far field already fogged into the clear colour — i.e. at Clip 300 the
-clip already does not admit more fill, and the resolution A/B shows total time
-scales with PIXELS, not with admitted geometry (draws/polys do not change with
-resolution, and a 150 clip would remove only the fog-covered far sliver the
-census proves is already invisible). The B854 log agrees: at Clip 300,
-thurgadinb is still 20 fps. The direct test a clip knob would enable is
-`--far-clip 150` at the same pose/resolution, re-running Table 1's hi cell.
+**NOT RUN** — the published benchmark has no clip flag (fact 1: `farClip` is
+hardcoded at 300.0f in `zone_bench_frame.cpp:264`, and the fog range is
+derived from the same constant at `:142`, so there is no CLI/env override;
+this card is measurement-only and cannot rebuild the binary). It is answered
+INDIRECTLY, and both indirect lines point the same way:
+
+1. **Geometry is not the variable.** In Table 1, draws and polys are IDENTICAL
+   at both resolutions (154/1857, 65/1441, 28/918 — ratio 1.0) while the GPU
+   time moves with pixel count (0.43-0.47x). If admitted geometry were the
+   bound, a 150 clip (which removes the far sliver) would have shown up in
+   draws/polys as resolution did not.
+2. **The frame is already 100% full-frame fill at Clip 300.** The fill
+   census (below) shows 100.0% of thurgadinb's and chardok's frame is scene
+   (opaque or alpha layers, INCLUDING fog-coloured pixels — the fog colour is
+   153/166/178, not the clear colour) in every band, with only cobaltscar's
+   pose showing 59% clear. A 150 clip removes the far vertices (and their
+   fog-coloured pixels), but the far field is ALREADY covered by nearer
+   terrain in the census — so the removed pixels were overdraw, not coverage:
+   the tile pass still walks the full framebuffer either way (fogged and
+   overdrawn pixels are rasterised at Clip 300 too; the clip would skip
+   vertices, and Table 1 shows vertices are not the bound).
+3. **The B854 client log agrees.** At Clip 300 (the running config),
+   thurgadinb holds 20 fps with 42 draws / 9,373 polys — the culling and the
+   clip both work; the 20 fps is the fill, not the distance.
+
+So: CLIP IS NOT THE LEVER. The direct measurement a clip flag would enable is
+`--far-clip 150` at the same pose/resolution, re-running Table 1's hi cells
+(frame time + draws + polys per the card's Step 2 table 2); that needs a
+benchmark change, which this card must not make.
 
 ### Table 3 — GPU time per frame + per-frame Lima job count (high cells)
 
@@ -255,13 +276,18 @@ columns are -1 (Lima has no timer queries, fact 8) and are not used.
 
 ### Per-pass fill estimate (acceptance C)
 
-Method: pixel count from the dumped hi-res frame per layer, as the card allows.
-The benchmark clears the scene to `SColor(255,40,40,60)` = R40/G40/B60
-(`gles2_zone_benchmark.cpp` moving-loop `beginScene`); a frame's uncovered
-pixels read exactly that colour (verified against cobaltscar's top strip:
-18,792 of 20,480 top-strip samples ARE the clear colour). So "sky" = pixels
-that read the clear colour (tolerance +/-8/channel), "scene" = everything the
-opaque layers wrote. Bands: top/middle/bottom thirds of the frame.
+Method: pixel count from the dumped hi-res frame (one frame per zone, frame
+20 of the measured window), two classes as the benchmark can report: "sky" =
+pixels reading the clear colour, "scene" = everything else. The benchmark
+clears the scene to `SColor(255,40,40,60)` = R40/G40/B60 (the moving-loop
+`beginScene` in `gles2_zone_benchmark.cpp`); verified against cobaltscar's top
+strip, where 18,792 of 20,480 samples ARE exactly the clear colour. Tolerance
++/-8/channel. Bands: top/middle/bottom thirds. NOTE: this is NOT a per-layer
+sky/terrain/water/alpha split — the published benchmark has no per-pass
+coverage dump (only whole-frame PNGs and a draw-composition histogram,
+`zone_bench_options.h:204-213`), so "scene" is the union of every opaque +
+alpha layer that wrote the pixel; the card's per-layer ask is answered at this
+coarser grain, and the layer identity is argued, not measured.
 
 | zone | sky % | scene % | scene by band (top/mid/bottom) |
 |---|---|---|---|
@@ -270,13 +296,16 @@ opaque layers wrote. Bands: top/middle/bottom thirds of the frame.
 | chardok | 0.0 | 100.0 | 33.3 / 33.3 / 33.3 |
 
 Every pixel in thurgadinb's and chardok's frame is covered by scene layers at
-the B854 pose (terrain to the horizon plus the fog layer that fades the far
-field into the clear colour) — the fill is FULL-FRAME, in all three bands, not
-a localised island. cobaltscar's pose faces the sky (59% of the frame is the
-uncovered clear, the scene concentrated in the bottom third). This is the
+the B854 pose — the fill is FULL-FRAME, in all three bands, not a localised
+island. (The fog does NOT fade the distance into the clear: the fog colour is
+`setFog(..., 0.6, 0.65, 0.7, 1.0)` = ~153/166/178, `zone_bench_frame.cpp:142-145`
+— a mid-grey-blue that is scene pixels in this census, so the 100% figure is
+even more conservative than it looks: fog-covered pixels count as SCENE.)
+cobaltscar's pose faces the sky (59% of the frame is the uncovered clear, the
+scene concentrated in the bottom third). This is the
 geometry behind Table 1's 35.8 vs 20.3 ns/px: thurgadinb pays a full tile walk
-per full-frame layer (terrain, water/snow, fog) for a framebuffer cobaltscar
-only fills 41% of, with far fewer full-frame layers.
+per full-frame layer for a framebuffer cobaltscar only fills 41% of, with far
+fewer full-frame layers.
 
 ### The entity-build slice (acceptance D)
 
@@ -286,10 +315,11 @@ From the B854 thurgadinb log + the B973 code:
   not zone-mesh loading (`renderer_frame.cpp:176`: the B973 branch charges
   `runEntityBuildSlice()` to `frameTimings_.meshLoading`; the zone meshes were
   complete at `zone_load_complete`, before this window).
-- The 10.3 ms value runs for **exactly 432 consecutive SPIKE frames**
-  (log lines 1409-3140, 04:01:14.766 -> 04:02:00.657, a 45.9 s window), then
-  drops to 4.3 ms for the final 143 frames of the sweep (counts: 432 x 10.3,
-  143 x 4.3 — `grep | uniq -c` over the log).
+- The 10.3 ms value runs for **476 consecutive SPIKE frames**
+  (log lines 1409-3310, 04:01:14.766 -> 04:02:05.152, a 50.4 s window), then
+  drops to 4.3 ms for the final 158 frames of the sweep (counts: 476 x 10.3,
+  158 x 4.3 — `b1041_logcheck.py` over the log; `meshLoading` appears in no
+  other value).
 - What it is building: entities deferred by the T109 load-distance gate
   (radius 400: "27 in-radius, 62 deferred", 94 entities total) — the
   background `EntityPrepWorker` feeds the slice prep results
@@ -324,17 +354,18 @@ side is slightly SUPER-linear per unit pixel (0.47x for 0.391x pixels, i.e.
 ~1.05-1.19x the naive fill-rate prediction), consistent with the tile pass
 re-walking its neighbours, not fewer walks. FILL IS THE BOUND.
 
-**Clip.** Fact: the scene's far field is fog-blended into the clear colour
-(measured: 100% of the framebuffer is layer-covered in thurgadinb/chardok;
-the fog layer is what turns the distance into the clear colour, so a 150 clip
-removes only already-invisible fragments). Prediction: clip 300->150 removes
-no measurable fill or vertices. Measurement: the clip knob is absent from the
-published binary, but the two axes that WOULD expose it are both out —
-resolution (pixels) moves time and draws/polys (geometry admitted) do not, and
-the B854 log shows 20 fps AT Clip 300 with the same census. CLIP IS NOT THE
-LEVER (and the card's hypothesis of "wrong view/render-distance processing"
-is refuted: the clip is applied — 300 — and culling works: 154/65/28 draws
-and 1857/1441/918 polys at 20/20/60-fps scenes).
+**Clip.** Fact: the frame is 100% layer-covered at Clip 300 in thurgadinb and
+chardok (measured, fill census), and the far field is fog-coloured, not
+clear-coloured (the fog is 153/166/178, `zone_bench_frame.cpp:142-145`) — so
+a 150 clip removes only overdrawn far fragments whose pixels nearer terrain
+already owns in the census. Prediction: clip 300->150 removes no measurable
+fill or vertices. Measurement: the clip knob is absent from the published
+binary (Table 2, NOT RUN), but the two axes that WOULD expose it are both out
+— resolution (pixels) moves time and draws/polys (geometry admitted) do not,
+and the B854 log shows 20 fps AT Clip 300 with the same census. CLIP IS NOT
+THE LEVER (and the card's hypothesis of "wrong view/render-distance
+processing" is refuted: the clip is applied — 300 — and culling works:
+154/65/28 draws and 1857/1441/918 polys at 20/20/60-fps scenes).
 
 **GPU time.** Fact: fact 8 — no timer queries on Lima; fact 7 — one GP + one
 PP job per frame unless a buffer write splits it. Prediction: a fill-bound
@@ -358,11 +389,13 @@ tables above.
    (softening) -> ruling request below.
 2. **Full-frame layer reduction (fewer tile walks):** thurgadinb's 35.8 ns/px
    vs cobaltscar's 20.3 ns/px at equal pixel count is ~15.5 ns/px of
-   EXTRA per-pixel cost = full-frame layers (terrain + water/snow + fog).
-   Merging or dropping ONE full-frame pass at 786k px predicts ~5-8 ms/frame
-   (one walk at ~6-10 ns/px); dropping the far-field fog pass (already
-   invisible per the census) is look-neutral. This is the only lever that
-   keeps the resolution.
+   EXTRA per-pixel cost = full-frame layers. Merging or dropping ONE
+   full-frame pass at 786k px predicts ~5-8 ms/frame (one walk at ~6-10
+   ns/px); dropping the far-field fog blending (the fog is 180..285 units,
+   `zone_bench_frame.cpp:142-145` — near terrain already covers those pixels
+   in the census, so the far field is fog-coloured OVERDRAW, not coverage)
+   saves the blend without losing coverage. This is the only lever that keeps
+   the resolution.
 3. **Frame-governor work reduction below target fps:** the B854 log shows the
    governor holding Green (33.3 ms budget) while frames run 50 ms — a
    Red-state work cut (entities off, one fewer alpha pass) at the same
@@ -370,12 +403,13 @@ tables above.
    how much the scene actually spends above the budget (thurgadinb's
    50-33.3 = ~17 ms of over-run, of which ~10 ms is the build slice).
    Will's ruling: a frame governor is a wanted, period-free technique.
-4. **Clip 300 -> 150: predicts ~0 ms** (census: no uncovered geometry beyond
-   the fog; Table 1: geometry is not the variable). Not a lever.
+4. **Clip 300 -> 150: predicts ~0 ms** (Table 1: geometry is not the variable;
+   census: the far field is overdrawn fog, not unique coverage; Table 2: NOT
+   RUN on the published binary). Not a lever.
 5. **Entity-build slice (the 10.3 ms):** already bounded by B973 (6.67 ms
    budget + one guaranteed unit); it is CPU-side and does not touch the GPU
    fill. Predicted saving of capping the unit at the slice: ~3-4 ms/frame in
-   the build window only (45 s of zone-in), and it trades build time for a
+   the build window only (50.4 s of zone-in), and it trades build time for a
    longer entity pop-in. Low priority for the 20 fps steady state, which ends
    when the slice completes.
 
@@ -391,7 +425,8 @@ thurgadinb/chardok). The largest single saving is render-resolution scaling
 (~13-16 ms/frame at a 720p->480p step on thurgadinb). May the frame governor
 drop resolution in the 20 fps zones (and by how much), or must the resolution
 hold and the savings come from full-frame layer merging (lever 2, ~5-8 ms per
-full-frame pass, fog pass look-neutral)?"
+full-frame pass, far-field fog blending look-neutral since near terrain already
+covers those pixels)?"
 
 ## Scripts + raw evidence (all under /home/user/kb-evidence/kb-b1041-pi-gpu-bound/)
 
@@ -401,8 +436,9 @@ full-frame pass, fog pass look-neutral)?"
   `b1041_fill.py` (the per-pass fill census), `b1041_clear.py` (the clear-colour
   detection). Every table number is one of their outputs.
 - `b854_logs/{thurgadinb,cobaltscar,chardok}.client.log` — the B854 rendered
-  sweep logs (the pose, the 20/20/42 fps, the 10.3 ms x 432 build-slice
+  sweep logs (the pose, the 20/20/60 fps, the 10.3 ms x 476 build-slice
   window, the Clip 300 census — source of record for D and Table 2).
+  `b1041_logcheck.py` re-derives the slice window and value counts from it.
 - `lane2/b1041/` — raw lane-2 outputs: `<cell>.csv` (the frame CSVs),
   `<cell>.log` (full stdout incl. the `[memledger]`/`[memgpu]`/`[memmap]`
   lines and the `owned=` figures), `<Z>_gem.tsv` (the census dumps),
