@@ -30,7 +30,7 @@
 #include "client/core/memory_ledger.h"
 
 #if defined(__APPLE__)
-#include "memory_ledger_gpu_driver_classifier_darwin.h"
+#include "client/core/memory_ledger_gpu_driver_classifier_darwin.h"
 #endif
 
 namespace {

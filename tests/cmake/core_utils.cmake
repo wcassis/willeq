@@ -467,6 +467,12 @@ ADD_EXECUTABLE(test_gpu_driver_classifier
     ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
 )
 TARGET_LINK_LIBRARIES(test_gpu_driver_classifier GTest::gtest_main ${FMT_LIB} Threads::Threads)
+# The Darwin classifier's header is a private header under src/client/core/
+# (memory_ledger.h lives in include/); the host TU includes it relatively,
+# the test through the source root.
+IF(APPLE)
+    TARGET_INCLUDE_DIRECTORIES(test_gpu_driver_classifier PRIVATE ${CMAKE_SOURCE_DIR}/src)
+ENDIF()
 GTEST_DISCOVER_TESTS(test_gpu_driver_classifier DISCOVERY_TIMEOUT 120)
 
 # B946 (GitLab #264): the [gldriver] line -- which GL driver the process
