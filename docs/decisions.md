@@ -2600,3 +2600,32 @@ exited the client.
    the early resolution installed, which resolves daffa0001 → global_chr by
    opening it on demand). `refactor/B1096/README.md` has the call order, the
    mechanism, and the red/green.
+
+
+## 2026-10-19 — an empty CMAKE_BUILD_TYPE means Release; never full-build a tests-on tree at high -j on a shared box
+
+Will (2026-10-19, "do 1 through 4"), after the 12:19Z OOM on dev-u24 (32 GB +
+8 GB swap) killed two Claude sessions. An opus executor configured
+`wt/b1099/build` with NO build type and ran `cmake --build build -j12` over the
+whole tree. With neither `-O` nor `-g` the objects balloon with mangled
+template symbol names (`.strtab` + `.shstrtab` are 80 of an 88 MB TU);
+`libwilleq_core.a` came out at 5.7 GB against 130 MB for a Release tree and
+3.4 GB for RelWithDebInfo. After the archive rebuilt, make relinked the ~200
+test binaries with no link cap: ten `ld` at once, 1.4-5.2 GB each, 38.6 GB
+resident. The kernel OOM killer took one `ld`, the user dbus daemon and the
+GitLab runner. systemd's default `OOMPolicy=stop` then stopped the tmux pane
+scope that held the executor: SIGTERM ended session one, Will restarted
+claude in the same pane, and the stop job's 90 s timeout SIGKILLed session
+two. Decisions:
+
+1. **CMakeLists defaults an empty build type to Release** (single-config
+   generators) and declares a Ninja link pool of 2. Unix Makefiles ignores
+   job pools, so on make trees the Release default is the only guard.
+2. **Executor rule:** every configure passes `-DCMAKE_BUILD_TYPE=Release`
+   (RelWithDebInfo when a debugger is needed); build named targets; check
+   `free -g` before any `-j12`+ build; a Debug tree is still 5 GB+ of
+   archive and is never full-built above `-j4`.
+3. **dev-u24 user systemd:** `~/.config/systemd/user/tmux-spawn-.scope.d/
+   10-oom-continue.conf` sets `OOMPolicy=continue`, so an OOM-killed build
+   child no longer takes the Claude pane with it (verified on a test scope).
+4. The untyped `wt/b1099/build` (14 GB) was deleted and reconfigured Release.
