@@ -546,10 +546,13 @@ TEST(OptionsWindowB1100, ClipLabelShowsEffectiveCapWithoutChangingSliderStep) {
     OptionsPanelState s;
     s.clipPlane = 20;
     s.appliedClipPlane = 300.0f;
-    EXPECT_EQ(optionsSettingText(s, OL::Setting::ClipPlane), "300 (max)");
+    EXPECT_EQ(optionsSettingText(s, OL::Setting::ClipPlane), "100 % (max)");
     EXPECT_EQ(s.clipPlane, 20);
     s.appliedClipPlane = 1050.0f;
-    EXPECT_EQ(optionsSettingText(s, OL::Setting::ClipPlane), "1050");
+    EXPECT_EQ(optionsSettingText(s, OL::Setting::ClipPlane), "100 %");
+    s.clipPlane = 5;
+    s.appliedClipPlane = 300.0f;
+    EXPECT_EQ(optionsSettingText(s, OL::Setting::ClipPlane), "25 %");
 }
 
 TEST(OptionsWindowT434, TheKnobTracksTheStepAndTheClickRoundTrips) {

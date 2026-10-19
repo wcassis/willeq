@@ -23,10 +23,11 @@ state is added.
 
 The requested 0..20 slider step remains persisted as set. The apply path asks
 the renderer for its effective render distance each UI frame and after
-`setRenderDistance()`, feeding `OptionsPanelState` for the value label. It prints the
-effective world-unit distance with ` (max)` only when it is below the
-requested distance. The renderer logs a clamp once when the requested or
-effective value changes, naming `preset` or `zone`.
+`setRenderDistance()`, feeding `OptionsPanelState` for the value label. The
+readout stays the oracle's slider percentage (`step × 5 %`) and appends
+` (max)` only when the applied distance is below the requested distance;
+the world-unit numbers remain in the clamp log. The renderer logs a clamp once
+when the requested or effective value changes, naming `preset` or `zone`.
 
 ## Not verified
 
@@ -55,6 +56,6 @@ the verification bar.
 
 ## CLAUDE.md EDITS
 
-The card's protected-file rule forbids editing any `CLAUDE.md`; the proposed
-Options paragraph sentence is: "The Music, Sound and Clip Plane sliders drag
-while held; a capped clip plane shows its effective distance as `300 (max)`."
+The card explicitly allows the one Options paragraph sentence added to
+`include/client/graphics/ui/CLAUDE.md`: it records held dragging and the
+oracle percentage readout with ` (max)` for a capped clip plane.

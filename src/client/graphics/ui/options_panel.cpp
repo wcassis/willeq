@@ -89,8 +89,7 @@ std::string optionsSettingText(const OptionsPanelState& state, Setting setting) 
     if (setting == Setting::ClipPlane) {
         const float requested = optionsClipPlaneDistance(state.clipPlane);
         const bool capped = state.appliedClipPlane < requested;
-        const float shown = capped ? state.appliedClipPlane : requested;
-        return std::to_string(static_cast<int>(std::lround(shown))) +
+        return std::to_string(optionsSettingStep(state, setting) * 5) + " %" +
                (capped ? " (max)" : "");
     }
     // The oracle's own readout: the stored 0..20 integer times five, as a
