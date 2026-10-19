@@ -11,35 +11,70 @@ Measured from the official client's own UI definitions on the oracle package
 renders). `grep -l "Style_Transparent>true"` gives 34 of 120; the table is
 ported per window, not guessed:
 
-- `include/client/graphics/ui/official_window_flags.tsv` — one row per window
-  fable renders (the 29 fable windows, 34 of the 120 flagged translucent in
-  the official client), `official_name,transparent`.
+- `include/client/graphics/ui/official_window_flags.tsv` — one row per official
+  window (all 120 `EQUI_*.xml`), 34 translucent, 86 opaque.
 - `scripts/ui_flags/gen_window_flags.py` — regenerates the header from the TSV.
 - `include/client/graphics/ui/window_flags.h` — `windowIsTranslucent(w)` and
   `windowPanelAlpha(w)`; pinned by `tests/test_ui_window_flags.cpp`
   (`TheSnapshotCarriesTheOfficialCensus`, `EveryFableWindowNamesAnOfficialWindow
   WithItsFlag`, `ThePanelAlphaIsOneOfTheTwoWindowKinds`).
 
+Fable renders 29 windows (the 29 rows of `kFableWindowFlags`, 28 unique
+official names — `EQUI_PlayerWindow` maps two of them), 6 of them
+translucent-flagged. The other 92 of the 120 official windows are **not
+implemented in fable** (the header's accounting side):
+
+EQUI_AAWindow, EQUI_ActionsWindow, EQUI_AdvancedDisplayOptionsWnd,
+EQUI_AdventureLeaderboardWnd, EQUI_AdventureRequestWnd, EQUI_AdventureStatsWnd,
+EQUI_AlarmWnd, EQUI_AltStorageWnd, EQUI_Animations,
+EQUI_AudioTriggersWindow, EQUI_BandolierWnd, EQUI_BarterMerchantWnd,
+EQUI_BarterSearchWnd, EQUI_BarterWnd, EQUI_BazaarSearchWnd, EQUI_BazaarWnd,
+EQUI_Beta, EQUI_BigBankWnd, EQUI_BodyTintWnd, EQUI_BreathWindow,
+EQUI_BugReportWnd, EQUI_CharacterCreate, EQUI_CharacterSelect,
+EQUI_ColorPickerWnd, EQUI_CombatSkillsSelectWindow, EQUI_CompassWnd,
+EQUI_CursorAttachment, EQUI_DynamicZoneWnd, EQUI_EditLabelWnd, EQUI_EQMainWnd,
+EQUI_FacePick, EQUI_FeedbackWnd, EQUI_FileSelectionWnd, EQUI_FindLocationWnd,
+EQUI_GemsGameWnd, EQUI_GMAttentionTextWnd, EQUI_GroupSearchWnd,
+EQUI_GuildBankWnd, EQUI_GuildManagementWnd, EQUI_GuildTributeMasterWnd,
+EQUI_HelpWnd, EQUI_InspectWnd, EQUI_ItemExpTransferWnd, EQUI_JournalCatWnd,
+EQUI_JournalNPCWnd, EQUI_JournalTextWnd, EQUI_LargeDialogWnd,
+EQUI_LeadershipWnd, EQUI_LFGuildWnd, EQUI_LoadskinWnd,
+EQUI_MailAddressBookWindow, EQUI_MailCompositionWindow, EQUI_MailWindow,
+EQUI_MapToolbarWnd, EQUI_MapViewWnd, EQUI_MeleeBuffWindow, EQUI_MIZoneSelectWnd,
+EQUI_MusicPlayerWnd, EQUI_NewUserWalkthroughWnd, EQUI_NoteWindow,
+EQUI_PlayerNotesWindow, EQUI_PointMerchantWnd, EQUI_PotionBeltWnd,
+EQUI_ProgressionSelectionWnd, EQUI_PvPLeaderBoardWnd, EQUI_PvPStatsWnd,
+EQUI_RaidOptionsWindow, EQUI_RaidWindow, EQUI_RespawnWnd, EQUI_Screens,
+EQUI_SelectorWnd, EQUI_ServerListWnd, EQUI_ShortDurationBuffWindow,
+EQUI_SkillsSelectWindow, EQUI_SocialEditWnd, EQUI_SpellBookWnd, EQUI_StoryWnd,
+EQUI_SystemInfoWnd, EQUI_TargetOfTargetWindow, EQUI_TaskSelectWnd,
+EQUI_TaskTemplateSelectWnd, EQUI_TaskWnd, EQUI_Templates, EQUI_TextEntryWnd,
+EQUI_TextMessageWindow, EQUI_TicketCommentWindow, EQUI_TicketWindow,
+EQUI_TitleWnd, EQUI_TributeBenefitWnd, EQUI_TributeMasterWnd,
+EQUI_VideoModesWnd, EQUI_VoiceMacroWnd
+
+
 ## The alpha measurement (the issue's open decision)
 
 The issue asks for the blend factor as a render-measurement, with a BLESS
 ruling on which of the 34 translucent windows fable should render translucent
-and at what alpha. The capture plan is in
-`scripts/eqemu/oracle/plans/b1002_alpha*.tsv` (v4: two-backdrop per-pixel
-solve over the chat window — the only fable window the oracle shows with
-`Style_Transparent=true` visible; v3's closed-frame approach failed because
-the chat cannot be hidden and the night ground gave no signal).
+and at what alpha. Capture plans: `scripts/eqemu/oracle/plans/b1002_alpha*.tsv`.
+The v4 inventory capture (`oracle-alpha4/` in the evidence directory) is the
+decisive one: the **inventory window** (`EQUI_Inventory`, one of the 34
+`Style_Transparent=true` windows) is opened and closed over two DIFFERENT
+backdrops (camera turns), then solved per pixel. Two backdrops are required
+because a single frame cannot separate the panel's own colour `f` from its
+blend factor `a`; with `O1 = a*f + (1-a)*B1` and `O2 = a*f + (1-a)*B2`
+(subtracting eliminates `f`):
 
-The oracle capture (lane 5, ThinkPad, `oracle-alpha4/` in the evidence
-directory) takes two frames with the window open over backdrop B1 (camera 1)
-and two over B2 (camera 2, a time-of-day change, not a camera turn — v4's
-finding), then solves per pixel:
-
-    O[p] = a*f + (1-a)*B[p]    =>    a = 1 - (O2-O1)/(B2-B1)
+    a = 1 - (O2-O1)/(B2-B1)
 
 inside the window rect (located by `locate2.py`: the pixels that differ from
-the closed frame in BOTH open frames). The solver (`solve_alpha.py`, evidence
-directory) and its output (`solve_alpha_rerun.out`):
+the closed frame in BOTH open frames). Backdrop check on the frames:
+`|B2-B1|` inside the rect has 19,867 pixels over delta 20 (p95=112) — a real
+backdrop change, not a uniform field; the open frame shows 148,184 window
+pixels. The solver (`scripts/ui_flags/solve_alpha.py`, committed) and its
+output (`solve_alpha_rerun.out`):
 
     solve pixels (|B2-B1| max-channel > 20 inside window): 19867
     ch0: weighted a= 255.00/255  median= 255.00  p5= 255.0 p95= 255.0  n=19867
