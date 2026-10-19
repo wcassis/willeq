@@ -33,6 +33,17 @@ No live SBC/device gesture or visual appearance is claimed by this offline
 card. Device-free input and label tests, remote builds, hygiene, and CI are
 the verification bar.
 
+## Verification
+
+- The new `OptionsWindowB1100.HeldClipDragAppliesEachNewStep` failed before
+  the input change: the clip step remained 5 on held motion to steps 6 and 7,
+  and `changed` remained `None`. The actual remote-test output is retained at
+  `/home/user/kb-evidence/kb-b1100-options-slider-drag/negative-drag.log`.
+- The rebuilt `test_options_window` target passed `rbuild ... test -R 'Options'`,
+  including the new release, outside-window drag, music/sound and
+  cap-label checks.
+- `rbuild ... hygiene` passed; its environment skips are retained as skips.
+
 ## CLAUDE.md EDITS
 
 The card's protected-file rule forbids editing any `CLAUDE.md`; the proposed
