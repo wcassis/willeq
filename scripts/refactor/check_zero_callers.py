@@ -671,7 +671,6 @@ EXEMPT_GROUPS = {
     ("EntityRenderer", "isPlayerInFirstPersonMode"): "B494",
     ("EntityRenderer", "loadNumberedGlobals"): "B494",
     ("EntityRenderer", "resetOffsets"): "B494",
-    ("EntityRenderer", "setEntityWeaponDelay"): "B494",
     ("EntityRenderer", "setGlobalAnimationSpeed"): "B494",
     ("EntityRenderer", "setNameTagDistance"): "B494",
     ("EntityRenderer", "setOcclusionCuller"): "B494",

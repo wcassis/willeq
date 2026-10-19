@@ -273,7 +273,11 @@ struct EntityVisual {
     // Weapon skill types for combat animations (255 = unknown/none, 7 = hand-to-hand)
     uint8_t primaryWeaponSkill = 255;    // Weapon skill type of primary weapon
     uint8_t secondaryWeaponSkill = 255;  // Weapon skill type of secondary weapon
-    float weaponDelayMs = 3000.0f;       // Primary weapon delay in ms (for attack animation speed)
+    // B1022 (#342): the `weaponDelayMs` field is deleted. The swing plays at
+    // the model's native animation length (speed byte 10 = 1.0x, constant for
+    // every swing); the swing RATE is the server's OP_Animation cadence
+    // (100 x item delay ms), which never reaches the renderer through a
+    // per-entity delay. See the tombstone on setEntityWeaponDelay below.
 
     // Casting state (for other entities - shows casting bar above head)
     // BSP region cache - avoids tree traversal every frame
@@ -494,9 +498,14 @@ public:
     uint8_t getEntityPrimaryWeaponSkill(uint16_t spawnId) const;
     uint8_t getEntitySecondaryWeaponSkill(uint16_t spawnId) const;
 
-    // Set weapon delay for attack animation speed matching (Phase 6.2)
-    // delayMs: weapon delay in milliseconds (EQ delay * 100, e.g., delay 30 = 3000ms)
-    void setEntityWeaponDelay(uint16_t spawnId, float delayMs);
+    // B1022 (#342): setEntityWeaponDelay() is deleted. It was the only writer
+    // of the (now-removed) weaponDelayMs field, and it had zero callers (B494
+    // census). The swing plays at the model's native animation length; the
+    // swing RATE is the server's OP_Animation cadence (100 x item delay ms),
+    // which never reaches the renderer through a per-entity weapon delay. If a
+    // future unit re-introduces delay-based swing timing, it must source the
+    // delay from the equipped item (the inventory row carries `delay`), never
+    // from a render-site lookup.
 
     // Combat animation buffering (for double/triple attack and dual wield detection)
     // Call this for each damage packet received - buffers packets within 50ms window

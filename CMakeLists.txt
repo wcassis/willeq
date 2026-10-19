@@ -1521,6 +1521,66 @@ IF(EQT_GRAPHICS)
     # IRRLICHT_LIBRARY is set (refactor/desktop_gl_elimination_plan.md §6
     # Phase 3).
 
+    # B1022: native per-attack-animation duration probe (S3D archive in, the
+    # model's own animation times out). Same loadZone() source set as
+    # s3d_dump; no device needed.
+    ADD_EXECUTABLE(b1022_anim_probe
+        tools/b1022_anim_probe.cpp
+        src/client/graphics/eq/pfs.cpp
+        src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/wld_fragments_material.cpp
+        src/client/graphics/eq/wld_fragments_mesh.cpp
+        src/client/graphics/eq/wld_fragments_actor.cpp
+        src/client/graphics/eq/wld_fragments_skeleton.cpp
+        src/client/graphics/eq/wld_fragments_light.cpp
+        src/client/graphics/eq/wld_fragments_bsp.cpp
+        src/client/zone_bsp.cpp
+        src/client/graphics/eq/s3d_loader.cpp
+        src/client/core/memory_ledger.cpp
+        src/client/core/memory_ledger_b924.cpp
+        src/client/core/memory_ledger_trace.cpp
+        src/client/core/gpu_buffer_census.cpp
+        src/client/graphics/eq/s3d_loader_textures.cpp
+        src/client/graphics/eq/s3d_loader_objects.cpp
+        src/client/graphics/eq/equipment_actor_geometry.cpp
+        src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/era_model_sources.cpp
+        src/client/graphics/eq/s3d_loader_skinning.cpp
+        src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/dds_decoder.cpp
+        src/client/graphics/constrained_renderer_config.cpp
+        src/client/graphics/constrained_texture_cache.cpp
+        src/client/graphics/constrained_texture_cache_upload_queue.cpp
+        src/client/graphics/constrained_texture_cache_eviction.cpp
+        src/client/graphics/constrained_texture_cache_compressed.cpp
+        src/client/graphics/constrained_texture_cache_residency.cpp
+        src/client/graphics/archive_texture_source.cpp
+        src/client/graphics/texture_upload_ledger.cpp
+        src/client/graphics/eqe1_loader.cpp
+        src/client/graphics/background_thread_pool.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+    )
+    IF(EQT_GLES2)
+        TARGET_SOURCES(b1022_anim_probe PRIVATE src/client/graphics/gpu_upload_thread.cpp)
+    ENDIF()
+    TARGET_INCLUDE_DIRECTORIES(b1022_anim_probe PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    TARGET_LINK_LIBRARIES(b1022_anim_probe
+        ${ZLIB_LIBRARIES}
+        ${IRRLICHT_LIBRARY}
+        ${JSONCPP_LIBRARIES}
+        fmt::fmt
+    )
+    IF(EQT_DRM OR EQT_GLES2)
+        TARGET_LINK_LIBRARIES(b1022_anim_probe EGL GLESv2 drm gbm)
+        IF(NOT EQT_DRM)
+            TARGET_LINK_LIBRARIES(b1022_anim_probe X11)
+        ENDIF()
+    ENDIF()
+
     # uv_analysis tool RETIRED per Will's decision (2026-07-28, P26): no live
     # usage found beyond a prior bug report (§3 tools table,
     # refactor/desktop_gl_elimination_plan.md). Source moved to
