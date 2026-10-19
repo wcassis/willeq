@@ -358,7 +358,8 @@ matters.
 
 Four of these are also committed in this repo under `refactor/B1037/scripts/`
 (bit-identical to their evidence copies): `framefrac.py`, `fulllocus.py`,
-`offlocus.py`, `offlocus_mag.py` — the ones the tables above cite.
+`offlocus.py` and `offlocus_mag.py`; the first and last are the ones the
+tables above cite by name.
 
 | script | role |
 |---|---|
@@ -368,7 +369,8 @@ Four of these are also committed in this repo under `refactor/B1037/scripts/`
 | `cross_compare.py` / `lane_vs_x86.py` | lane vs Pi-vs-x86-blessed (the B976 separation) |
 | `threeway.py` | per-pixel set membership: lane-diff pixels in/out of the fix locus, and which value they equal |
 | `definitive_census.py` | the authoritative per-pixel A/B/C census over the fix locus (`definitive_census.txt`) |
-
+| `offlocus_mag.py` | the off-locus diff magnitude (what each lane changes where the goldens agree) — lane 3's frame-wide 1-LSB proof |
+| `framefrac.py` | per-frame diff fraction: % of the frame at exactly 1 LSB (the frame-wide offset, on- and off-locus) |
 | `mag_hist.py` | magnitude histogram of the lane-vs-x86 residual (the 1-LSB proof) |
 | `char_diff.py` / `band_stats.py` / `residual_char.py` | edge signature, per-band tint, brightness-bin shift |
 | `floor_sample.py` | **coarse 2×8 px grid sample** over qeynos2 f0's floor — used only to eyeball limb values, NOT the per-pixel census |
