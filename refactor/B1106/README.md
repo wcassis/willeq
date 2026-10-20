@@ -127,9 +127,21 @@ runs, surfaceless llvmpipe x86, `--dump-frames-dir --dump-every 1`,
 
 | | PRE-FIX (`~/willeq-prefix-bin` = 3ff4bcec, origin/fable) | POST-FIX (HEAD) |
 |---|---|---|
-| steady-state frame delta | 117 slow frames, all 1487-1536 ms | **0 frames > 1000 ms** |
+| steady-state frame delta | 117 slow-frame warnings, 19 of them > 1000 ms (all 1487-1536 ms); all 3 cast windows inside that > 1000 ms band | render loop unchanged: 66 warnings, all 1443-1735 ms (11 in the cast window) |
+| what the sim worker does on those slow frames | early-return (pre-fix `sim_particles.cpp:45-49`): the drained command is **dropped** | clamped physics delta (1.0 s) + **command queue still executed** |
 | player (spawn 258) "SimWorker: Created spell effect" | **0** | **6** |
 | player impact + spellComplete (93/54/253) | enqueued (SpellAction) but never created | created, one pair per cast |
+
+QA note (t_4ba84f88): the earlier "**0 frames > 1000 ms**" cell was wrong —
+the fix never touches the render loop, and the render-loop's own PERF
+warnings (the same metric the pre-fix cell uses) show 66 frames
+1443-1735 ms post-fix, 11 of them inside the cast window. What the fix
+changes is what the SIM WORKER does on those frames: the physics delta is
+clamped to [0, 1] s and the command queue is still executed instead of
+discarded. The rig's persistently slow frames are exactly what makes the
+0 → 6 creation receipts the discriminator: post-fix the effects are created
+on 1.5 s frames, whereas pre-fix a `CreateSpellEffect` is created only when
+its draining frame happens to land under 1.0 s.
 
 Post-fix receipts: `SpellComplete id=3 caster=258` + `Impact id=4 target=258`
 at 07:52:57.632 (cast 93 @ 07:52:56.589), the same pair for 54 @ 07:53:03.668
