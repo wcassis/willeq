@@ -99,8 +99,9 @@ the fill either.
   atlas `white` sprite tinted to the panel colour `{10,10,15}` at
   `windowPanelAlpha(w)` (a tint multiplies the sprite's baked alpha, so the
   pack's alpha-180 `panel_background` cannot be tinted up to 255; the pack is
-  untouched). Every static window routes through it (17 call sites across
-  `static_panels.cpp` and the per-window panel TUs).
+  untouched). Every static window routes through it (26 call sites across
+  `static_panels.cpp` and the per-window panel TUs -- 25 named windows plus
+  trade_panel's `drawChrome(window, w)`, which serves both Trade and Give).
 - `tests/test_ui_panel_z_order.cpp`:
   - **`TranslucentBuffBarOverTheOpaqueBag`** — the issue's re-based case,
     named. The buff bar (`EQUI_BuffWindow`, one of the 34) over a bag
