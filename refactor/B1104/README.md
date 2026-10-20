@@ -112,8 +112,10 @@ channel over the particle pixels, population is a peak-count estimate.
 oracle on the paired oracle VM under Wine, GM `Testcaster`, qeynos2,
 `#set time 11 0`, `#weather 0`, third-person camera, fixed pose
 (-74, 428, 3.75)). Oracle: `oracle_all2/video.mp4`, x11grab **10 fps**
-(calibrated, `video.calibration.tsv`), per-spell windows extracted at
-1 frame / 3 video frames. Fable: x86 Release GLES2 build of this branch
+(4687 frames; `video.calibration.tsv`), per-spell windows extracted at
+1 frame / 3 video frames; the table's vf indices below are the ones
+re-derived from this video's `steps.tsv` + `video.calibration.tsv`
+(`vf = (epoch - calibrated_t0) x 10`). Fable: x86 Release GLES2 build of this branch
 (llvmpipe, surfaceless EGL, 1024x768, `--renderer gles2 --no-audio`),
 `--dump-frames-dir` every 2 frames (119 frames, fps measured from PNG
 mtimes by `encode_capture.sh` — a capture artifact, never a perf number),
@@ -121,22 +123,25 @@ same GM cast set, `/hideui` + chase camera so the player model fills the
 frame like the oracle's third-person framing. Both clients logged in as
 the same server character, so the scribed set is identical.
 
-**Measured rows (7 of the 93-set; the set is dominated by teleport/focus
-spells whose sections are named in §6):**
+**Measured rows (7 GM-castable spells; 4 of them — 54/38/458/656 — are in
+the 93-set, 3 — 93/41/253 — are outside it and were GM-cast on the
+character anyway; the set is dominated by teleport/focus spells whose
+sections are named in §6):**
 
 | id | name | oracle (vision, sheet-quoted) | fable (log + frames) | DIVERGENCE |
 |---|---|---|---|---|
-| 93 | Burst of Flame | cast glow (yellow-orange, body/hands) vf1497-1520; projectile orb vf~1590; impact burst (spherical, at target) vf~1650 — full 3 stages | **no FX**: `SpellAction` 93 effect_flag 0+4 received (05:32:00.025), no cast glow, no impact, no complete, no projectile; frames 05:31:54-05:32:00 show the model unadorned (spell_93_sheet.png) | full 3-stage + projectile missing |
-| 41 | Weaken | green diffuse particle cloud around the caster (source/complete), vf1842-1890, ~4-5 s | **no FX**: `SpellAction` 41 effect_flag 0+4 received (05:32:07.047); nothing drawn (spell_41_sheet.png) | caster aura missing |
-| 253 | Whirling Wind | blue vortex around the caster (ground-to-head column) vf3170-3270 + chest orb | **no FX**: `SpellAction` 253 effect_flag 0+4 received (05:32:14.098); nothing drawn (spell_253_sheet.png) | caster aura missing |
-| 54 | Frost Bolt | caster glow vf3447; bluish-white projectile vf3495; impact burst vf3504 — full 3 stages | **no FX**: `SpellAction` 54 effect_flag 0+4 received (05:32:23.153); nothing drawn (spell_54_sheet.png) | full 3-stage + projectile missing |
-| 38 | Lightning Bolt | caster glow vf3738; spark burst vf3801; bolt streak vf3850 | **no FX**: `SpellAction` 38 effect_flag 0+4 received (05:32:30.169); nothing drawn (spell_38_sheet.png) | full 3-stage + projectile missing |
-| 458 | Fire Spiral of Al'Kabor | blue-white swirling column around the caster, vf4150-4320, ~10-15 s (spell duration) | **no FX**: `SpellAction` 458 effect_flag 0+4 received (05:32:37.178/185; also a target=18 copy — the server queued the AOE to a bystander) | sustained caster column missing |
-| 656 | Shock of Ice | chest glow vf4416-4452; blue-purple vortex burst vf4482; glow persists | **no FX**: `SpellAction` 656 effect_flag 0 received (05:32:46.168; the effect_flag 4 repeat landed after the tour ended) | caster glow + burst missing |
+| 93 | Burst of Flame | cast glow (body/hands) vf2473-2499 (cast) + vf2511-2531 (fx start); projectile orb (purple-pink) vf~2570; impact burst (spherical, at target) vf~2650 — full 3 stages | **no FX**: `SpellAction` 93 effect_flag 0+4 received (05:32:00.025), no cast glow, no impact, no complete, no projectile; frames 05:31:59-05:32:04 show the model unadorned (spell_93_sheet.png) | full 3-stage + projectile missing |
+| 41 | Weaken | green diffuse particle cloud around the caster (source/complete), vf2834-2984 window, cloud active early in it | **no FX**: `SpellAction` 41 effect_flag 0+4 received (05:32:07.047); nothing drawn (spell_41_sheet.png) | caster aura missing |
+| 253 | Whirling Wind | blue vortex around the caster (ground-to-head column) vf3156-3306 window | **no FX**: `SpellAction` 253 effect_flag 0+4 received (05:32:14.098); nothing drawn (spell_253_sheet.png) | caster aura missing |
+| 54 | Frost Bolt | caster glow vf3442-3468 (cast) + vf3480-3510; bluish-white projectile vf~3560; impact burst vf~3600 — full 3 stages | **no FX**: `SpellAction` 54 effect_flag 0+4 received (05:32:23.153); nothing drawn (spell_54_sheet.png) | full 3-stage + projectile missing |
+| 38 | Lightning Bolt | caster glow vf3769-3795 (cast) + vf3806-3846; spark burst vf3890; bolt streak vf3930 | **no FX**: `SpellAction` 38 effect_flag 0+4 received (05:32:30.169); nothing drawn (spell_38_sheet.png) | full 3-stage + projectile missing |
+| 458 | Fire Spiral of Al'Kabor | caster-side particle burst (pink-purple, torso-localized at vf4220) vf4140-4311 window, sustained most of the spell duration (~15 s fx window) | **no FX**: `SpellAction` 458 effect_flag 0+4 received (05:32:37.178/185; also a target=18 copy — the server queued the AOE to a bystander) | sustained caster FX missing |
+| 656 | Shock of Ice | chest glow vf4447-4490; blue-purple vortex burst vf4510; glow persists | **no FX**: `SpellAction` 656 effect_flag 0 received (05:32:46.168; the effect_flag 4 repeat landed after the tour ended) | caster glow + burst missing |
 
 **What the oracle shows in one line:** every spell renders at minimum the
 Source stage (cast glow / caster aura) and, for the 93/38/54/656 projectile
-spells, the Target impact burst; 458 and 253 are sustained caster columns;
+spells, the Target impact burst; 253 is a sustained ground-to-head caster
+column and 458 a sustained caster-side particle burst;
 41 is a caster-side cloud. **What fable shows for the same 7 casts:
 nothing** — the character is unadorned in every frame of every window.
 
@@ -157,8 +162,8 @@ Every divergence below is the same root split: **fable draws a spell's visual
 from two different packets the oracle draws from one.**
 
 - **Source stage (cast glow / caster aura) — ALL 7 spells.** The oracle draws
-  the caster-side effect (glow for 93/54/38/656, the sustained columns for
-  41/253/458) from the cast-ANIMATION `OP_Action` (effect_flag 0). Fable draws
+  the caster-side effect (glow for 93/54/38/656, the sustained cloud/column
+  for 41/253, the sustained caster-side burst for 458) from the cast-ANIMATION `OP_Action` (effect_flag 0). Fable draws
   its caster-side effect — `createCastGlow` — from `SpellCastVisualStarted`,
   which is published ONLY from `OP_BeginCast` (`spell_packet_handlers.cpp:62`
   self-case, `:103` NPC-case). A GM `#castspell <id>` self-cast generates NO
@@ -194,7 +199,7 @@ Per spell (oracle stage → fable outcome):
 | 253 | caster vortex column (sustained) | nothing | A |
 | 458 | caster column (sustained ~10-15 s) | nothing | A |
 
-**The 86 unmeasured ids** of the 93-set (`set_of_93.tsv`) are dominated by
+**The 89 unmeasured ids** of the 93-set (`set_of_93.tsv`) are dominated by
 teleport/gate (SpellAffectIndex 9/40) and focus/appraisal (88/14/4) spells —
 sections that resolve to the plain style (no override, no measured art), so
 they fall under the SAME two mechanisms (their Source stage is gated on
