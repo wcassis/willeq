@@ -126,7 +126,7 @@ void renderOptionsWindow(UIRenderer& ui, const UILayout& layout,
     auto* tb = ui.getTextBatch();
     const auto win = OptionsLayout::windowRect(layout);
 
-    ui.drawPanel(win);
+    ui.drawPanelFor(win, UIWindow::Options);
 
     // <Text>Options</Text>, in fable's title band.
     if (tb) {

@@ -104,7 +104,7 @@ void renderFriendsWindow(UIRenderer& ui, const UILayout& layout,
     auto* tb = ui.getTextBatch();
     const int page = clampInt(state.activePage, 0, FriendsPanelState::PAGE_COUNT - 1);
 
-    ui.drawPanel(FriendsLayout::windowRect(layout));
+    ui.drawPanelFor(FriendsLayout::windowRect(layout), UIWindow::Friends);
 
     // --- Style_Titlebar: <Text>Friends Window</Text> ---
     const auto title = FriendsLayout::titleRect(layout);

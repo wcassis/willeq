@@ -121,7 +121,7 @@ void renderMerchantPopup(UIRenderer& ui, const UILayout& layout,
     if (!state.isOpen) return;
 
     auto* tb = ui.getTextBatch();
-    ui.drawPanel(MerchantLayout::windowRect(layout));
+    ui.drawPanelFor(MerchantLayout::windowRect(layout), UIWindow::Merchant);
 
     // --- MW_MerchantName ---
     // A <Label> paints no background; the quoted rect is 452 tall and the

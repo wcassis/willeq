@@ -26,7 +26,14 @@
 # changed these bytes with identical inputs and no pin was possible. That row
 # is now metadata.input_digest, a path-independent digest of the inputs.
 #
+# B1103 (GitLab #423) moved the sha WITHOUT moving the input digest: the
+# input set is unchanged (eight inputs, same contents), only the LOADER
+# changed -- spells.spell_icon now carries field 144 (NEW_ICON, the client's
+# spell icon) instead of field 143 (ai_pt_bonus, 0 on every row), so the
+# spellbook's icon column is the client's own instead of the all-zero
+# phantom. The gem_icon column (also field 144) is byte-identical to before.
+#
 # Pinned here so an input drift, or a hand-edit of the database, is a ctest
 # FAIL (DbReproducible). Update this line in the SAME commit that changes an
 # input -- exactly like data/willeq.eqe1.sha256 and data/textures.sha256.
-5d4e49e5e6a042a0fc14900cc056147b37d3cd84c8ae12b2a38633d898e731e5  willeq.db
+ff3de5263cad0ed40c43ef5a9174cd20c66b6941e926869f4ea65b4ba8a170f5  willeq.db

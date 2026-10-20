@@ -17,6 +17,7 @@
 
 #include "client/graphics/ui/ui_quad_batch.h"
 #include "client/graphics/ui/spell_icon_atlas.h"
+#include "client/graphics/ui/window_flags.h"  // B1002: drawPanelFor(UIWindow)
 
 namespace EQT {
 namespace Graphics {
@@ -46,6 +47,10 @@ public:
     /**
      * Draw a UI atlas sprite stretched to fill the rect.
      * Falls back to drawRect with a default color if atlas is unavailable.
+     *
+     * B1002 (#322): tint multiplies the sprite's baked alpha (a white tint
+     * is a no-op). The panel-background draws use it to reach the per-window
+     * opacity; see drawPanelFor() and window_flags.h.
      */
     void drawSprite(const irr::core::rect<irr::s32>& rect, uint8_t spriteId,
                     irr::video::SColor tint = irr::video::SColor(255, 255, 255, 255));
@@ -90,6 +95,16 @@ public:
      * Draw a bordered panel background.
      */
     void drawPanel(const irr::core::rect<irr::s32>& rect);
+
+    /**
+     * B1002 (#322): draw the panel background of window `w` at ITS opacity --
+     * the measured translucent alpha (window_flags.h) or full 255 for an
+     * opaque window, which is what makes an opaque window fully hide what is
+     * under it. The tint is a draw-time alpha: the atlas's panel_background
+     * stays as shipped and the pack is untouched. B992's layer mechanism is
+     * unchanged.
+     */
+    void drawPanelFor(const irr::core::rect<irr::s32>& rect, UIWindow w);
 
     /**
      * Draw an arbitrary external texture (e.g. a render-to-texture target)

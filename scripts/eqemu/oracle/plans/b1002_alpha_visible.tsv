@@ -1,0 +1,22 @@
+# action	target	hold_ms	still_name
+# B1002 (#322) -- the COMPOSITE leg: chat VISIBLE (HideChatWin=FALSE, the
+# rig default -- forced via ini-set so the leg is reproducible even if a
+# prior run left the key), the SAME time path as b1002_alpha_hidden.tsv
+# (identical spawn + camera, only the time-of-day changes the backdrop).
+# Frames 04 (day) and 08 (night) are O1, O2: the chat over the scene at
+# the same screen locations as the hidden leg's c1_closed / c2_closed.
+# Solve per body pixel: a = 1 - (O2-O1)/(B2-B1) -- the fill f cancels.
+# The chat's TEXT (combat log) differs between the frames, so the solver
+# takes the MEDIAN per pixel-channel over the body (text is a minority of
+# the window area; the fill dominates). Solver:
+# solve_chat_twoleg.py in the evidence dir.
+# ini-set=Defaults.HideChatWin=FALSE
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+command	#set time 14 0	0	noon
+wait	12000	0	settle
+wait	2000	0	o1_open
+command	#set time 0 0	0	midnight
+wait	8000	0	settle_night
+wait	2000	0	o2_open
+command	/q	0	quit

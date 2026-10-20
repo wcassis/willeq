@@ -1,0 +1,45 @@
+# action	target	hold_ms	still_name
+# B1002 (#322) v4: the chat window's Style_Transparent alpha, two-backdrop
+# per-pixel solve, NO chat-free frame needed.
+#
+# Why v3 failed: the chat is ALWAYS open (no hotkey; HideChatWin=FALSE lives
+# in eqclient.ini's [Defaults], which the ini-seeder does not edit), so
+# v3's "closed" frames were composites; and at night the ground under the
+# chat is uniform (B2-B1 < 1, horizon dy=0) -- no signal.
+#
+# Why v4 works: with the chat OPEN the whole time, per body pixel p:
+#   O1[p] = a*f + (1-a)*B1[p]   (camera 1, two frames -> least squares)
+#   O2[p] = a*f + (1-a)*B2[p]   (camera 2, two frames -> least squares)
+# Two equations, two unknowns (a and f):
+#   a = (m1 - m2) / (B1 - B2) ,  f = (m1 - B1*(1-a)) / a
+# where m1, m2 are the per-pixel means of the two same-camera frames (the
+# chat TEXT differs between frames -> outliers; the FILL is the robust
+# median over pixels). NO closed backdrop is required.
+#
+# Contrast: at NOON the horizon (bright sky + tree silhouettes) sits at the
+# chat's TOP edge (chat box y ~595-790 of 800), so the yaw turn changes the
+# backdrop under a large part of the body. Solver: refactor/B1002/solve_v4.py.
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+command	#set time 14 0	0	noon
+wait	12000	0	settle
+wait	2500	0	o1
+wait	2500	0	o2
+press	Right	0	turn1
+wait	2000	0	t1
+press	Right	0	turn2
+wait	2000	0	t2
+press	Right	0	turn3
+wait	2000	0	t3
+press	Right	0	turn4
+wait	2000	0	t4
+press	Right	0	turn5
+wait	2000	0	t5
+press	Right	0	turn6
+wait	2000	0	t6
+press	Right	0	turn7
+wait	2000	0	t7
+press	Right	0	turn8
+wait	4500	0	o6
+wait	2500	0	o7
+command	/q	0	quit

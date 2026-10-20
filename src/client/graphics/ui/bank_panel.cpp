@@ -75,7 +75,7 @@ void renderBankWindow(UIRenderer& ui, const UILayout& layout,
     if (!state.isOpen) return;
 
     auto* tb = ui.getTextBatch();
-    ui.drawPanel(BankLayout::windowRect(layout));
+    ui.drawPanelFor(BankLayout::windowRect(layout), UIWindow::Bank);
 
     // --- Style_Titlebar: <Text>Bank</Text> ---
     const auto title = BankLayout::titleRect(layout);

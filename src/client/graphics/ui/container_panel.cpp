@@ -161,7 +161,7 @@ namespace {
 
 void renderOne(UIRenderer& ui, const UILayout& layout, const ContainerWindow& w) {
     auto* tb = ui.getTextBatch();
-    ui.drawPanel(ContainerLayout::windowRect(layout));
+    ui.drawPanelFor(ContainerLayout::windowRect(layout), UIWindow::Container);
 
     // --- Style_Titlebar: the Screen's <Text>Container</Text> ---
     const auto title = ContainerLayout::titleRect(layout);
