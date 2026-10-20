@@ -6,6 +6,8 @@
 #include <sstream>
 #include <unistd.h>
 
+#include "scoped_temp_dir.h"
+
 using namespace eqt::input;
 
 // Each Hotkey fixture below needs its own scratch directory for a config
@@ -1221,7 +1223,10 @@ TEST(HotkeyShippedFileTest, B582_TheOfficialKeymapIsBound) {
 // ToggleAllUI and carries the old volume rows: it must load without crashing
 // and every surviving binding in it must still load.
 TEST(HotkeyShippedFileTest, B582_APreB582UserFileStillLoads) {
-    const std::string path = ::testing::TempDir() + "b582_old_user_hotkeys.json";
+    // B1101 (#421): per-process mkdtemp dir (B1098's recipe); the fixed name
+    // under gtest's TempDir() (/tmp) collided across uids on shared boxes.
+    static willeq_test::ScopedTempDir dir{"hotkey_manager"};
+    const std::string path = (dir / "b582_old_user_hotkeys.json").string();
     {
         std::ofstream out(path);
         out << R"({"version":1,"bindings":{"global":{"Screenshot":"F12","ToggleAllUI":"F11"},)";

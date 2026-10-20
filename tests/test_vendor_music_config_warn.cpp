@@ -53,6 +53,7 @@
 
 #include "client/application.h"
 #include "common/logging.h"
+#include "scoped_temp_dir.h"
 #include "zone_stream_test_utils.h"
 
 namespace {
@@ -168,7 +169,10 @@ bool RunFullPath(const StdoutCapture& cap, const std::string& configPath,
 }  // namespace
 
 TEST_F(VendorMusicWarnTest, NoVendorMusicKeyNoParsedButIgnoredWarn) {
-    const std::string path = ::testing::TempDir() + "b1018_vendor_absent.json";
+    // B1101 (#421): per-process mkdtemp dir (B1098's recipe); the fixed name
+    // under gtest's TempDir() (/tmp) collided across uids on shared boxes.
+    willeq_test::ScopedTempDir dir{"vendor_music_absent"};
+    const std::string path = (dir / "b1018_vendor_absent.json").string();
     WriteConfig(path, "");
     std::string out;
     ASSERT_TRUE(RunFullPath(cap, path, out));
@@ -180,7 +184,8 @@ TEST_F(VendorMusicWarnTest, NoVendorMusicKeyNoParsedButIgnoredWarn) {
 }
 
 TEST_F(VendorMusicWarnTest, VendorMusicKeyLogsExactlyOneWarn) {
-    const std::string path = ::testing::TempDir() + "b1018_vendor_present.json";
+    willeq_test::ScopedTempDir dir{"vendor_music_present"};
+    const std::string path = (dir / "b1018_vendor_present.json").string();
     WriteConfig(path, "my_music.xmi");
     std::string out;
     ASSERT_TRUE(RunFullPath(cap, path, out));

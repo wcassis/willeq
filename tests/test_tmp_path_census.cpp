@@ -13,7 +13,11 @@
 //
 // This file re-takes the census on every run. It reads every C++ source under
 // tests/, strips comments, and finds every temp path: a string literal that
-// begins with /tmp, or a call to std::filesystem::temp_directory_path(). The
+// begins with /tmp, a call to std::filesystem::temp_directory_path(), or --
+// since B1101 (#421) -- a join onto gtest's ::testing::TempDir() (a third
+// shared /tmp the first two needles cannot see: B1098's TempPath() moved off
+// it, and MR !263's build-test measured the collision on the ThinkPad, where
+// rbuild runs as one uid and CI as another, over one fixed name each). The
 // C++ statement holding it must also carry a per-process component -- a
 // getpid() suffix, a mkdtemp()/mkstemp() template (XXXXXX), or a
 // willeq_test::ScopedTempDir (tests/scoped_temp_dir.h) -- or the site must be
@@ -42,6 +46,15 @@ const std::string kRoot = std::string(WILLEQ_REPO_ROOT) + "/";
 // source text of this file contains neither needle.
 const std::string kTmpLiteral = std::string("\"/") + "tmp";         // "/tmp
 const std::string kTempDirCall = std::string("temp_directory_") + "path";
+// B1101 (#421): the gtest TempDir() join with a LITERAL right operand --
+// `TempDir() + "..."`, the shape the six #421 sites are in (issue #421's
+// census is exactly this grep). A join onto a VARIABLE operand is a
+// different shape (one site in tests/test_audio_device_rate.cpp:53, flagged
+// in B1101's follow-up), and the `TempDir()) +` and `TempDir() /` casts keep
+// their own per-process components (mkdtemp templates) -- so the needle is
+// the literal join alone. Built from pieces as the others: the assembled
+// string is "TempDir() + \"" (quote included).
+const std::string kGtestTempDirJoin = std::string("TempDir() ") + "+ \"";
 
 const char* const kUniqueComponents[] = {
     "getpid",         // a pid suffix
@@ -171,7 +184,8 @@ std::string EnclosingStatement(const std::string& code, size_t pos) {
 std::vector<Site> FindTempSites(const std::string& code) {
     std::vector<Site> sites;
     std::vector<size_t> hits;
-    for (const std::string& needle : {kTmpLiteral, kTempDirCall}) {
+    for (const std::string& needle :
+         {kTmpLiteral, kTempDirCall, kGtestTempDirJoin}) {
         for (size_t p = code.find(needle); p != std::string::npos; p = code.find(needle, p + 1)) {
             if (needle == kTmpLiteral) {
                 // "/tmp followed by / or the closing quote: not "/tmpfoo".
@@ -186,7 +200,7 @@ std::vector<Site> FindTempSites(const std::string& code) {
         Site s;
         s.line = static_cast<size_t>(std::count(code.begin(), code.begin() + p, '\n')) + 1;
         s.statement = EnclosingStatement(code, p);
-        if (!sites.empty() && sites.back().statement == s.statement) continue;  // two needles, one site
+        if (!sites.empty() && sites.back().statement == s.statement) continue;  // several needles, one site
         sites.push_back(std::move(s));
     }
     return sites;
@@ -308,4 +322,31 @@ TEST(TmpPathCensus, TheClassifierMatchesTheSitesT477Fixed) {
     // Comments are not code; and "/tmpfoo" is not /tmp.
     EXPECT_TRUE(FindTempSites(StripCppComments("int a; // " + tmpLit + "x\"\n/* " + tdp + " */ int b;")).empty());
     EXPECT_TRUE(FindTempSites(std::string("auto s = \"/") + "tmpfoo\";").empty());
+}
+
+// B1101 (#421): the gtest TempDir() join with a literal right operand -- the
+// third shared /tmp, which the first two needles cannot see. The six pre-fix
+// sites are this shape; the B1098 helper shape is clean. Snippets are built
+// from pieces for the same reason as the needles.
+TEST(TmpPathCensus, TheClassifierCatchesAGtestTempDirJoin) {
+    const std::string gtd = std::string("::testing::") + "TempDir()";
+    // The B1101 shape, verbatim: a fixed literal joined onto gtest's TempDir().
+    const std::string fixedLiteral =
+        "const std::string path = " + gtd + " + \"b905_retired_hotkeys.json\";\n";
+    const auto sites = FindTempSites(StripCppComments(fixedLiteral));
+    ASSERT_EQ(sites.size(), 1u) << fixedLiteral;
+    EXPECT_FALSE(HasUniqueComponent(sites[0].statement)) << sites[0].statement;
+    // The out-of-shape joins: a VARIABLE operand (flagged in B1101's
+    // follow-up) and the two casts whose components make them unique.
+    const std::string byVar = "const std::string path = " + gtd + " + name;\n";
+    const std::string castLit = "const std::string d = (std::string(" + gtd + ")) + \"b1083_packs\";\n";
+    const std::string castMk = "std::string t = (fs::path(" + gtd + ") / \"b834_client_XXXXXX\").string();\n";
+    for (const std::string& src : {byVar, castLit, castMk}) {
+        EXPECT_TRUE(FindTempSites(StripCppComments(src)).empty()) << src;
+    }
+    // The accepted B1098 helper shape names no temp path at all.
+    const std::string helper =
+        "willeq_test::ScopedTempDir dir(\"x\");\n"
+        "const std::string path = (dir / \"b433_hotkeys.json\").string();\n";
+    EXPECT_TRUE(FindTempSites(StripCppComments(helper)).empty()) << helper;
 }
