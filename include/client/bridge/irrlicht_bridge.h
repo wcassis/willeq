@@ -1,6 +1,7 @@
 #pragma once
 
 #include "client/bridge/game_state_bridge.h"
+#include "client/bridge/cast_glow_route.h"
 
 namespace EQT {
 namespace Graphics {
@@ -37,6 +38,7 @@ public:
 
 private:
     EQT::Graphics::IrrlichtRenderer* renderer_ = nullptr;
+    CastGlowRoute castGlowRoute_;
 };
 
 } // namespace bridge

@@ -58,6 +58,7 @@
 #include <gtest/gtest.h>
 
 #include "client/bridge/game_state_bridge.h"
+#include "client/bridge/cast_glow_route.h"
 #include "client/eq.h"
 #include "client/spell/spell_manager.h"
 #include "client/state/event_bus.h"
@@ -65,6 +66,8 @@
 
 #include <cmath>
 #include <cstdint>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -146,6 +149,131 @@ struct ObserverHarness {
                                  kSpellEffectAction, effectFlag));
     }
 };
+
+// Drive the production event-routing gate with events from real packet
+// dispatch; no Irrlicht device or renderer is needed.
+struct GlowRouteProbe {
+    eqt::bridge::CastGlowRoute route;
+    int creates = 0;
+    int removes = 0;
+
+    void Apply(const std::vector<eqt::state::GameEvent>& events) {
+        for (const auto& event : events) {
+            if (event.type == eqt::state::GameEventType::SpellCastVisualStarted) {
+                const auto& d = std::get<eqt::state::SpellCastVisualStartedData>(event.data);
+                if (route.onBeginCast(d.casterId, d.spellId, d.castTimeMs)) ++creates;
+            } else if (event.type == eqt::state::GameEventType::SpellCastVisualComplete) {
+                const auto& d = std::get<eqt::state::SpellCastVisualCompleteData>(event.data);
+                const auto decision = route.onComplete(d.casterId, d.spellId,
+                                                       d.isCastAnimation, d.isSuccess);
+                if (decision.remove) ++removes;
+                if (decision.create) ++creates;
+            }
+        }
+    }
+};
+
+TEST(SpellImpactVisualProducer, ActionOnlyLocalCastCreatesOneSourceGlow) {
+    ObserverHarness h;
+    ASSERT_TRUE(h.Ready());
+    ReplayZone(h.eq, HC_OP_Action,
+               ActionPayload(kMySpawn, kMySpawn, 50,
+                             static_cast<uint16_t>(kBurstOfFlame),
+                             kSpellEffectAction, kAnimationPacket));
+    GlowRouteProbe probe;
+    probe.Apply(h.bridge.drainEvents());
+    EXPECT_EQ(probe.creates, 1);
+    EXPECT_EQ(probe.removes, 1);  // pre-existing completion removal point
+
+    ReplayZone(h.eq, HC_OP_Action,
+               ActionPayload(kMySpawn, kMySpawn, 50,
+                             static_cast<uint16_t>(kBurstOfFlame),
+                             kSpellEffectAction, kLandedPacket));
+    probe.Apply(h.bridge.drainEvents());
+    EXPECT_EQ(probe.creates, 1);
+    EXPECT_EQ(probe.removes, 1);  // the success repeat leaves the new glow alive
+}
+
+TEST(SpellImpactVisualProducer, BeginCastThenActionCreatesOneSourceGlow) {
+    ObserverHarness h;
+    ASSERT_TRUE(h.Ready());
+    h.eq.GetSpellManager()->handleBeginCast(kMySpawn, kBurstOfFlame, 2500);
+    ReplayZone(h.eq, HC_OP_Action,
+               ActionPayload(kMySpawn, kMySpawn, 50,
+                             static_cast<uint16_t>(kBurstOfFlame),
+                             kSpellEffectAction, kAnimationPacket));
+    GlowRouteProbe probe;
+    probe.Apply(h.bridge.drainEvents());
+    EXPECT_EQ(probe.creates, 1);
+    EXPECT_EQ(probe.removes, 1);  // BeginCast glow still ends on action
+}
+
+TEST(SpellImpactVisualProducer, SuccessOnlyDoesNotCreateSourceGlow) {
+    ObserverHarness h;
+    ASSERT_TRUE(h.Ready());
+    ReplayZone(h.eq, HC_OP_Action,
+               ActionPayload(kMySpawn, kMySpawn, 50,
+                             static_cast<uint16_t>(kBurstOfFlame),
+                             kSpellEffectAction, kLandedPacket));
+    GlowRouteProbe probe;
+    probe.Apply(h.bridge.drainEvents());
+    EXPECT_EQ(probe.creates, 0);
+}
+
+TEST(SpellImpactVisualProducer, NpcBeginCastPathStillCreatesOnce) {
+    ObserverHarness h;
+    ASSERT_TRUE(h.Ready());
+    h.eq.GetSpellManager()->handleBeginCast(kRemoteCaster, kBurstOfFlame, 2500);
+    h.Deliver(kAnimationPacket);
+    GlowRouteProbe probe;
+    probe.Apply(h.bridge.drainEvents());
+    EXPECT_EQ(probe.creates, 1);
+    EXPECT_EQ(probe.removes, 1);
+}
+
+TEST(SpellImpactVisualProducer, RepeatedAnimationForSameCastDoesNotRecreateGlow) {
+    ObserverHarness h;
+    ASSERT_TRUE(h.Ready());
+    h.Deliver(kAnimationPacket);
+    h.Deliver(kAnimationPacket);
+    GlowRouteProbe probe;
+    probe.Apply(h.bridge.drainEvents());
+    EXPECT_EQ(probe.creates, 1);
+    EXPECT_EQ(probe.removes, 1);
+    h.Deliver(kLandedPacket);
+    h.Deliver(kAnimationPacket);  // another target copy after success
+    probe.Apply(h.bridge.drainEvents());
+    EXPECT_EQ(probe.creates, 1);
+    h.eq.GetSpellManager()->handleBeginCast(kRemoteCaster, kBurstOfFlame, 2500);
+    probe.Apply(h.bridge.drainEvents());
+    EXPECT_EQ(probe.creates, 2);
+}
+
+// B1105 RED: an action-only local cast reaches the Complete arm, not Started.
+// Until that arm calls the Source-stage entry point, the packet cannot draw
+// the glow even though it carries the cast-animation flag and vocabulary.
+TEST(SpellImpactVisualProducer, LocalActionOnlyHasSourceStageRoute) {
+    ObserverHarness h;
+    ASSERT_TRUE(h.Ready());
+    ReplayZone(h.eq, HC_OP_Action,
+               ActionPayload(kMySpawn, kMySpawn, 50,
+                             static_cast<uint16_t>(kBurstOfFlame),
+                             kSpellEffectAction, kAnimationPacket));
+    auto events = h.Complete();
+    ASSERT_EQ(events.size(), 1u);
+    ASSERT_TRUE(events[0].isCastAnimation);
+    ASSERT_TRUE(events[0].isPlayerCast);
+
+    std::ifstream source(std::string(WILLEQ_REPO_ROOT) +
+                         "/src/client/bridge/irrlicht_bridge.cpp");
+    ASSERT_TRUE(source.good());
+    const std::string body(std::istreambuf_iterator<char>{source}, {});
+    const auto begin = body.find("case state::GameEventType::SpellCastVisualComplete:");
+    const auto end = body.find("case state::GameEventType::SpellCastVisualInterrupted:", begin);
+    ASSERT_NE(begin, std::string::npos);
+    ASSERT_NE(end, std::string::npos);
+    EXPECT_NE(body.substr(begin, end - begin).find("createCastGlow("), std::string::npos);
+}
 
 // The packet EVERY client in range receives must be the one that arms the
 // impact visual. Pre-fix isCastAnimation is always false, so the bridge arm

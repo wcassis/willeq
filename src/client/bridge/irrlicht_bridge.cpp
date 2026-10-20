@@ -1085,8 +1085,10 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::SpellCastVisualStarted:
         if (renderer_) {
             auto& d = std::get<state::SpellCastVisualStartedData>(event.data);
+            const bool createGlow = castGlowRoute_.onBeginCast(d.casterId, d.spellId,
+                                                               d.castTimeMs);
             // Create cast glow effect
-            if (renderer_->getSpellVisualFX()) {
+            if (createGlow && renderer_->getSpellVisualFX()) {
                 // T381 (B160): teach the FX layer this spell's resist type,
                 // school and spell_affect_index BEFORE creating anything --
                 // createCastGlow() reads all three back out (colour, spray
@@ -1116,13 +1118,21 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::SpellCastVisualComplete:
         if (renderer_) {
             auto& d = std::get<state::SpellCastVisualCompleteData>(event.data);
+            const auto glow = castGlowRoute_.onComplete(d.casterId, d.spellId,
+                                                        d.isCastAnimation, d.isSuccess);
             // Remove cast glow from caster
             if (renderer_->getSpellVisualFX()) {
                 // T381 (B160): a cast can land without this client having
                 // seen its BeginCast (zoned in mid-cast, out of range), so
                 // the completion payload carries the vocabulary too.
                 renderer_->getSpellVisualFX()->noteSpellVocabulary(d.spellId, d.spellVisual);
-                renderer_->getSpellVisualFX()->removeCastGlow(d.casterId);
+                if (glow.remove) renderer_->getSpellVisualFX()->removeCastGlow(d.casterId);
+                // B1105: action-only casts have no BeginCast. Keep the old
+                // removal point, then arm Source through the same FX body.
+                if (glow.create) {
+                    renderer_->getSpellVisualFX()->createCastGlow(
+                        d.casterId, d.spellId, CastGlowRoute::kActionGlowMs);
+                }
             }
             // Complete entity casting bar
             if (renderer_->getEntityRenderer()) {
@@ -1153,6 +1163,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::SpellCastVisualInterrupted:
         if (renderer_) {
             auto& d = std::get<state::SpellCastVisualInterruptedData>(event.data);
+            castGlowRoute_.onInterrupt(d.casterId);
             // Remove cast glow
             if (renderer_->getSpellVisualFX()) {
                 renderer_->getSpellVisualFX()->removeCastGlow(d.casterId);
