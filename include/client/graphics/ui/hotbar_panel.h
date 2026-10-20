@@ -10,11 +10,10 @@
  * THE WINDOW. The stock client cannot show Hotbars 2-4 (the oracle gives
  * HotButtonWnd2..4 zero size; H-O measured them invisible even forced on),
  * so this is ONE window, ten pages, ten buttons -- the model's own shape
- * (1x10x10). The oracle shows the window by default and offers no UI to
- * hide it (the stock ini files carry no [HotButtonWnd] Show=), so isOpen
- * defaults to true and is NOT one of the per-character preferences (only
- * user-changeable things are persisted, T432); the close box toggles the
- * in-session flag.
+ * (1x10x10). The oracle shows the window by default (the stock ini files
+ * carry no [HotButtonWnd] Show=), so isOpen defaults to true and is NOT one
+ * of the per-character preferences (T432). Alt+H toggles the in-session
+ * flag; B1102 removed the close box by Will's 2026-10-20 ruling.
  *
  * SLOT ART, per kind (H-O's looks):
  *  - Item: the dragitem sheets' own icon when the slot carries a valid icon
@@ -57,7 +56,6 @@ enum class HotbarHit {
     Slot,
     PageLeft,
     PageRight,
-    Close,
     // Over the window's frame (the 2x5 grid's gaps, the page row's dead
     // space): the point is consumed, nothing happens.
     Window,
@@ -73,8 +71,8 @@ HotbarHit hitTestHotbar(const UILayout& layout, HotbarPanelState& state,
 
 /**
  * Render the hotbar window: frame, page row (left / label / right), the 2x5
- * grid of ten 40x40 slots with per-kind art and the cooldown overlay, and the
- * close box. No-op while the window is closed.
+ * grid of ten 40x40 slots with per-kind art and the cooldown overlay.
+ * No-op while the window is closed.
  */
 void renderHotbar(UIRenderer& ui, const UILayout& layout,
                   const HotbarPanelState& state);

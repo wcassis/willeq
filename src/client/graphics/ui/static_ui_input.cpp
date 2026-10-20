@@ -204,11 +204,6 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                             hotbar.currentPage + 1});
                     }
                     break;
-                case HotbarHit::Close:
-                    // In-session toggle; nothing user-changeable is persisted
-                    // (T432), so the flag lives on the panel state.
-                    hotbar.isOpen = false;
-                    break;
                 case HotbarHit::None:
                     break;
                 }
