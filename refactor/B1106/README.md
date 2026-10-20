@@ -116,3 +116,70 @@ moment the `CreateSpellEffect` command was drained into the next
 - (F) final pipeline green.
 
 ## 6. Evidence (filled in as the unit runs)
+
+All raw evidence: `/home/user/kb-evidence/kb-b1106-impact-dropped/`
+(`analysis_prefix.md`, `analysis_postfix.md`, both client logs, both frame
+sets, the three post-fix sheets `lane1_postfix/spell_{93,54,253}_sheet.png`).
+
+**(A) Deciding trace — the drop, at the worker level (lane 1, same rig both
+runs, surfaceless llvmpipe x86, `--dump-frames-dir --dump-every 1`,
+`SPELL:DEBUG,GRAPHICS:DEBUG`):**
+
+| | PRE-FIX (`~/willeq-prefix-bin` = 3ff4bcec, origin/fable) | POST-FIX (HEAD) |
+|---|---|---|
+| steady-state frame delta | 117 slow frames, all 1487-1536 ms | **0 frames > 1000 ms** |
+| player (spawn 258) "SimWorker: Created spell effect" | **0** | **6** |
+| player impact + spellComplete (93/54/253) | enqueued (SpellAction) but never created | created, one pair per cast |
+
+Post-fix receipts: `SpellComplete id=3 caster=258` + `Impact id=4 target=258`
+at 07:52:57.632 (cast 93 @ 07:52:56.589), the same pair for 54 @ 07:53:03.668
+and 253 @ 07:53:11.243. The only effects the PRE-FIX run created were 4
+`CastSpray` for a zone-in NPC (caster=87) landing on the rare <1 s frames —
+the frame-timing dependence made explicit. Hypothesis **(b) is PROVEN**;
+(a) is ruled out for the render path by `test_spell_impact_visual` (worker
+spawns on-target particles at normal deltas) + T386/T395.
+
+**(B) Fix** — `sim_particles.cpp:45-59`: the `deltaTime` guard now clamps the
+PHYSICS delta to [0,1] and falls through to the command loop instead of
+returning. One function touched; the command queue it carries is executed.
+
+**(C) Device-free test** `SlowFrameCommandTest` (3 cases;
+`tests/test_b1106_slow_frame_commands.cpp`, real `SpellVisualFX` +
+`ParticleManager` + `SimulationWorker`, the `test_caster_own_landing` seam):
+- RED pre-fix (origin/fable): `test_prefix_red.md` —
+  `Expected LiveEffectEntities().count(kTarget) == 1, is: 0` for the
+  deltaTime=2.0f pump.
+- GREEN post-fix: `test_postfix_green.log` — `100% tests passed, 0 tests
+  failed out of 3` (Impact/SpellComplete slow-frame + zero-delta case).
+
+**(D) After-sheets** attached: `spell_93/54/253_sheet.png` (post-fix, 4 frames
+per cast). Note the rig's own capture cadence is ~1.5 s (glReadPixels+PNG
+encode on surfaceless llvmpipe; B1104 measured the same), so the sheets
+sample at -0.47 s / +1.04 s / +2.56 s around each cast and do not land inside
+the 1.6-2.0 s effect's peak window — they are evidence that the world is
+stable and unchanged, NOT the discriminator; the worker creation receipts
+above are. A burst captured at this cadence is equally "invisible" pre-fix
+and post-fix.
+
+**(E) No golden/preset/manifest/`spell_effects.json` changes** —
+`git diff origin/fable..HEAD --stat`: `sim_particles.cpp`,
+`tests/test_b1106_slow_frame_commands.cpp`, `tests/cmake/spells.cmake`,
+`refactor/B1106/README.md` only. No temporary counter was added (the existing
+`SimWorker: Created spell effect` DEBUG receipt at `sim_particles.cpp:210`
+served as the drop/created discriminator).
+
+**(castGlow, per the operator's mid-run note):** `#castspell N` is an instant
+cast, so no BeginCast event arms the player's castGlow stage in these runs
+(it fires only for the zone-in NPC, and created fine in both). The player's
+instant casts ride impact (effect_flag 0) + spellComplete (effect_flag 4),
+both on the SAME `particleInput.commands` queue the castGlow command joins —
+so B1105's dropped castGlow is the same mechanism and this fix covers it.
+
+**(F) Regression net:** `SlowFrameCommandTest` 3/3 pass (above); `hygiene`
+label passes 45/48 — the 3 failures are pre-existing rbuild-mirror
+environment gaps (`generate_textures` / `willeq_db_builder` / pack not built
+in the mirror tree), not touched by this change and not on the changed TUs.
+The graphics-gated sim/particle nets (`test_spell_impact_visual`,
+`test_caster_own_landing`, `test_sim_bridge_component`, ...) register as
+`NOT_BUILT` in the mirror's tree and will run on CI's `EQT_GRAPHICS=ON`
+build (acceptance F's pipeline is the authority).
