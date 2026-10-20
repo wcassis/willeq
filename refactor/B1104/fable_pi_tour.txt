@@ -1,0 +1,24 @@
+wait 80
+/say #set time 11 0
+wait 2
+/say #weather 0
+wait 2
+/camera chase
+wait 2
+/hideui
+wait 1
+/say #castspell 93
+wait 7
+/say #castspell 41
+wait 7
+/say #castspell 253
+wait 9
+/say #castspell 54
+wait 7
+/say #castspell 38
+wait 7
+/say #castspell 458
+wait 9
+/say #castspell 656
+wait 9
+/q
