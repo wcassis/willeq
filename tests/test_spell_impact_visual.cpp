@@ -65,6 +65,8 @@
 
 #include <cmath>
 #include <cstdint>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -146,6 +148,32 @@ struct ObserverHarness {
                                  kSpellEffectAction, effectFlag));
     }
 };
+
+// B1105 RED: an action-only local cast reaches the Complete arm, not Started.
+// Until that arm calls the Source-stage entry point, the packet cannot draw
+// the glow even though it carries the cast-animation flag and vocabulary.
+TEST(SpellImpactVisualProducer, LocalActionOnlyHasSourceStageRoute) {
+    ObserverHarness h;
+    ASSERT_TRUE(h.Ready());
+    ReplayZone(h.eq, HC_OP_Action,
+               ActionPayload(kMySpawn, kMySpawn, 50,
+                             static_cast<uint16_t>(kBurstOfFlame),
+                             kSpellEffectAction, kAnimationPacket));
+    auto events = h.Complete();
+    ASSERT_EQ(events.size(), 1u);
+    ASSERT_TRUE(events[0].isCastAnimation);
+    ASSERT_TRUE(events[0].isPlayerCast);
+
+    std::ifstream source(std::string(WILLEQ_REPO_ROOT) +
+                         "/src/client/bridge/irrlicht_bridge.cpp");
+    ASSERT_TRUE(source.good());
+    const std::string body(std::istreambuf_iterator<char>{source}, {});
+    const auto begin = body.find("case state::GameEventType::SpellCastVisualComplete:");
+    const auto end = body.find("case state::GameEventType::SpellCastVisualInterrupted:", begin);
+    ASSERT_NE(begin, std::string::npos);
+    ASSERT_NE(end, std::string::npos);
+    EXPECT_NE(body.substr(begin, end - begin).find("createCastGlow("), std::string::npos);
+}
 
 // The packet EVERY client in range receives must be the one that arms the
 // impact visual. Pre-fix isCastAnimation is always false, so the bridge arm
