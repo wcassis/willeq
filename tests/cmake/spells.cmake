@@ -258,6 +258,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_caster_own_landing DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1106 (#426, from B1104 #424 F2): a spell landing's command must not be
+# DROPPED because the frame it rides on was slow. Same seam as
+# test_caster_own_landing (real SpellVisualFX -> ParticleManager ->
+# SimulationWorker). The card's acceptance test: enqueue a CreateSpellEffect,
+# tick the worker with deltaTime 2.0 then 0.016, assert the effect exists and
+# spawned. Fails pre-fix (the 2.0 s tick early-returns before the command
+# loop); passes post-fix (the command is executed on the slow frame, physics
+# stepped with a clamped delta).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_b1106_slow_frame_commands
+        test_b1106_slow_frame_commands.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_b1106_slow_frame_commands PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_b1106_slow_frame_commands GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_b1106_slow_frame_commands DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B293 (#124): the entity-direction callback was installed by two callers and
 # invoked by none. The fix adds the renderer's direction-resolution arm
 # (SimBridgeComponent::applySimulationOutput, mirroring the position arm) and
