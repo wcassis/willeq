@@ -239,9 +239,12 @@ TEST(SpellImpactVisualProducer, RepeatedAnimationForSameCastDoesNotRecreateGlow)
     GlowRouteProbe probe;
     probe.Apply(h.bridge.drainEvents());
     EXPECT_EQ(probe.creates, 1);
-    EXPECT_EQ(probe.removes, 2);
+    EXPECT_EQ(probe.removes, 1);
     h.Deliver(kLandedPacket);
-    h.Deliver(kAnimationPacket);  // next cast of the same spell
+    h.Deliver(kAnimationPacket);  // another target copy after success
+    probe.Apply(h.bridge.drainEvents());
+    EXPECT_EQ(probe.creates, 1);
+    h.eq.GetSpellManager()->handleBeginCast(kRemoteCaster, kBurstOfFlame, 2500);
     probe.Apply(h.bridge.drainEvents());
     EXPECT_EQ(probe.creates, 2);
 }

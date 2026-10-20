@@ -22,10 +22,11 @@ public:
     bool onBeginCast(uint16_t caster, uint32_t spell, uint32_t castTimeMs) {
         const auto now = Clock::now();
         auto it = active_.find(caster);
-        if (it != active_.end() && it->second.spell == spell && now < it->second.until)
+        if (it != active_.end() && it->second.spell == spell &&
+            now < it->second.until && !it->second.successSeen)
             return false;
         const auto windowMs = std::min(castTimeMs, 60000u) + kActionGlowMs;
-        active_[caster] = {spell, now + std::chrono::milliseconds(windowMs), false};
+        active_[caster] = {spell, now + std::chrono::milliseconds(windowMs), false, false};
         return true;
     }
 
@@ -36,15 +37,18 @@ public:
         const bool same = it != active_.end() && it->second.spell == spell &&
                           now < it->second.until;
         if (isCastAnimation) {
-            if (same) return {};
-            active_[caster] = {spell, now + std::chrono::milliseconds(kActionGlowMs), true};
+            if (same) return {!it->second.actionOnly, false};
+            active_[caster] = {spell, now + std::chrono::milliseconds(kActionGlowMs), true, false};
             return {true, true};
         }
         // An action-only glow was made AFTER the animation packet's existing
         // removal. The flag-4 repeat may follow within milliseconds; let the
         // bounded emitter live long enough to reach a rendered frame.
         const bool keepActionGlow = isSuccess && same && it->second.actionOnly;
-        if (isSuccess && same) active_.erase(it);
+        // Keep the pair through the short action window: an AoE's remaining
+        // target copies may arrive AFTER the caster's flag-4 repeat. A later
+        // BeginCast is unambiguous and starts a new cast even in that window.
+        if (isSuccess && same) it->second.successSeen = true;
         return {!keepActionGlow, false};
     }
 
@@ -56,6 +60,7 @@ private:
         uint32_t spell;
         Clock::time_point until;
         bool actionOnly;
+        bool successSeen;
     };
     std::unordered_map<uint16_t, Active> active_;
 };
