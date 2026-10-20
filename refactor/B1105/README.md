@@ -95,11 +95,11 @@ released.
 | acceptance | result | evidence |
 |---|---|---|
 | A, design before code | PASS | first B1105 commit; Design above |
-| B, one Source route per cast | PASS at routing/creation, **not pixels** | `CastGlowRoute`, live `SpellAction` and `createCastGlow` lines |
+| B, one Source route per cast | PASS at routing/creation and visible particles after B1106 | `CastGlowRoute`, live `SpellAction` and `createCastGlow` lines; fourth capture |
 | C, local/no Begin; both; flag 4; NPC | PASS | `test_spell_impact_visual`, `prefix_red.log` |
 | D, 93 and 253 after-sheets visibly show Source | PASS for the existing glow primitive after B1106; sustained 253 vortex remains a FOLLOW-UP | `after_b1106_93_detail.png`, `after_b1106_253_detail.png`, full-resolution frames 120/125 |
 | E, no blessed assets/overrides | PASS | changed-path audit |
-| F, green CI | CHECK AT MR HEAD | CI result is recorded on the MR; not a substitute for failed row D |
+| F, green CI | CHECK AT MR HEAD | CI result is recorded on the MR; separate from the lane-1 visual proof |
 
 The three pre-B1106 failed visual runs above remain failed evidence. B1106's
 command-drain fix makes the newly armed Source glow visible in the fourth
