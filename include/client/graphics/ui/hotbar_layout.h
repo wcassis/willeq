@@ -3,7 +3,7 @@
  * Source: /mnt/projects/EverQuestP1999/uifiles/default/EQUI_HotButtonWnd.xml.
  *
  * HotButtonWnd: Location (0,230), Size 96x260, rounded/no title,
- * close box enabled. HB_PageLeftButton: (8,3) 22x12;
+ * HB_PageLeftButton: (8,3) 22x12;
  * HB_CurrentPageLabel: (30,3) 25x16; HB_PageRightButton: (58,3) 22x12.
  * HB_Button1..10, HB_InvSlot1..10, and HB_SpellGem1..10 all occupy the
  * same 40x40 cells: columns x=2,46; rows y=20,64,108,152,196.
@@ -55,12 +55,10 @@ constexpr int kSlotStepX = 44;
 constexpr int kSlotStepY = 44;
 constexpr int kSpellIconOffsetX = 2;
 constexpr int kSpellIconOffsetY = 6;
-// WDT_RoundedNoTitle's close box: the oracle carries Style_Closebox true on
-// a title-less rounded template; every fable window draws its close box as a
-// square at the top-right of its own top strip. This window's strip is the
-// page row (buttons at y=3, 12px tall), so the box is 12px, matching the
-// strip's height.
-constexpr int kCloseBox = 12;
+// B1102 (Will 2026-10-20): despite Style_Closebox true on the oracle's
+// title-less template, this hotbar must have no close box. Keep the existing
+// 12px strip height for the page row's 12px-tall left/right buttons.
+constexpr int kPageRowH = 12;
 
 // defaults.ini's [HotButtonWnd] XPos/YPos rule: the window's top sits at
 // screenHeight - 30 - 260 (the stock client's bottom-anchored gap), X at the
@@ -111,11 +109,6 @@ inline Rect pageLabelRect(const Rect& window) {
 inline Rect pageRightRect(const Rect& window) {
     return {window.UpperLeftCorner.X + 58, window.UpperLeftCorner.Y + 3,
             window.UpperLeftCorner.X + 80, window.UpperLeftCorner.Y + 15};
-}
-
-inline Rect closeBoxRect(const Rect& window) {
-    return {window.LowerRightCorner.X - kCloseBox, window.UpperLeftCorner.Y,
-            window.LowerRightCorner.X, window.UpperLeftCorner.Y + kCloseBox};
 }
 
 // The Button, InvSlot and SpellGem pieces for one index share this rect.

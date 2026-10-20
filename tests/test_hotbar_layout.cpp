@@ -78,4 +78,13 @@ TEST(HotbarLayout, StockTitaniumRects) {
     EXPECT_EQ(HL::slotRect(window, HL::kSlotCount).getWidth(), 0);
 }
 
+TEST(HotbarLayout, PageRowStripKeepsButtonHeightWithoutCloseBox) {
+    // B1102: the former 12px close-box dimension is now named for the
+    // page-row buttons; no close-box rect belongs to this layout.
+    const auto window = HL::windowRect();
+    EXPECT_EQ(HL::kPageRowH, 12);
+    EXPECT_EQ(HL::pageLeftRect(window).getHeight(), HL::kPageRowH);
+    EXPECT_EQ(HL::pageRightRect(window).getHeight(), HL::kPageRowH);
+}
+
 } // namespace

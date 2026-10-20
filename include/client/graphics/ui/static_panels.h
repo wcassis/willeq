@@ -261,12 +261,10 @@ struct HotbarPanelState {
     HotbarSlotState slots[10];
     int currentPage = 0;
     int hoveredSlot = -1;
-    // B1025-H2: the window's open/closed state and its close-box hover. The
-    // oracle's HotButtonWnd is shown by default (no [HotButtonWnd] Show= in
-    // the stock inis), so the default is open; the close box toggles the flag
-    // in-session (nothing user-changeable is persisted, T432).
+    // The oracle's HotButtonWnd is shown by default (no [HotButtonWnd] Show=
+    // in the stock inis). Alt+H toggles the flag in-session; it is not
+    // persisted (T432). B1102 removed the close box.
     bool isOpen = true;
-    bool closeHovered = false;
 };
 
 /**
