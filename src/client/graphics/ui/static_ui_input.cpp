@@ -1031,10 +1031,19 @@ bool StaticUIInput::processOptionsInput(int mouseX, int mouseY, bool leftClicked
                                         OptionsPanelState& options,
                                         OptionsLayout::Setting& changed) {
     changed = OptionsLayout::Setting::None;
+    if (!options.leftHeld) options.draggedSlider = -1;
     if (!optionsWindowIsVisible(options)) {
+        options.draggedSlider = -1;
         options.hoveredTab = -1;
         options.hoveredControl = -1;
         return false;
+    }
+    if (options.leftHeld && options.draggedSlider >= 0 && !leftClicked) {
+        // The initial press, not the current hover, owns this slider. A drag
+        // continues beyond the track/window and reports only new steps.
+        changed = resolveOptionsClick(layout, options, options.draggedSlider,
+                                      mouseX, mouseY);
+        return true;
     }
     // B993: the colour picker is drawn above the window, so it is asked first.
     if (colorPickerContains(layout, options.colorPicker, mouseX, mouseY)) {
@@ -1065,6 +1074,9 @@ bool StaticUIInput::processOptionsInput(int mouseX, int mouseY, bool leftClicked
         // through the one body in options_lists.cpp.
         changed = resolveOptionsClick(layout, options, options.hoveredControl,
                                       mouseX, mouseY);
+        options.draggedSlider =
+            OptionsLayout::kControls[options.hoveredControl].kind == OptionsLayout::Kind::Slider
+                ? options.hoveredControl : -1;
     }
 
     // The whole window consumes the position either way, so a click on a

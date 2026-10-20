@@ -964,13 +964,28 @@ void IrrlichtRenderer::setFrameTimingEnabled(bool enabled) {
 // ZoneLifecycleComponent reads, so it lives beside setClipDistance() here.
 void IrrlichtRenderer::setRenderDistance(float distance) {
     if (isLoading()) return;
+    const float requested = distance;
+    const float previousRequested = ZoneLifecycle().userRenderDistance();
+    const float previousEffective = renderDistance_;
     ZoneLifecycle().userRenderDistance() = distance;
+    const char* capSource = nullptr;
     // Cap effective render distance by constrained preset's clip distance
-    if (config_.constrainedConfig.clipDistance > 0.0f) {
+    if (config_.constrainedConfig.clipDistance > 0.0f &&
+        config_.constrainedConfig.clipDistance < distance) {
         distance = std::min(distance, config_.constrainedConfig.clipDistance);
+        capSource = "preset";
     }
     // Cap effective render distance by server-provided zone max clip plane
-    renderDistance_ = (ZoneLifecycle().zoneMaxClip() > 0.0f) ? std::min(distance, ZoneLifecycle().zoneMaxClip()) : distance;
+    if (ZoneLifecycle().zoneMaxClip() > 0.0f &&
+        ZoneLifecycle().zoneMaxClip() < distance) {
+        distance = ZoneLifecycle().zoneMaxClip();
+        capSource = "zone";
+    }
+    renderDistance_ = distance;
+    if (capSource && (requested != previousRequested || renderDistance_ != previousEffective)) {
+        LOG_INFO(MOD_GRAPHICS, "Options: far clip plane {:.0f} capped to {:.0f} by {}",
+                 requested, renderDistance_, capSource);
+    }
     // Sync camera far plane to render distance (must be at least render distance)
     if (camera_) {
         camera_->setFarValue(std::max(renderDistance_, SKY_FAR_PLANE));
