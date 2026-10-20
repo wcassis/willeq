@@ -74,26 +74,42 @@ capture rate; that rate is a capture artifact, not client performance.
 The third snapshot was also restored byte-identically with world down; lane 1
 was released and `eqemu_stack_ready` read NO afterwards.
 
+### B1106 merged-head repeat
+
+After merging B1106's `sim_particles.cpp` command-drain fix from `fable`, the
+ThinkPad Release GLES2 `willeq` and `test_spell_impact_visual` targets rebuilt
+and the nine focused tests passed. A fourth lane-1 GM tour used the same
+`#castspell 93` / `#castspell 253` recipe and a fresh snapshot. The client log
+shows effect_flag 0 and 4 for each spell and exactly one local-caster
+`createCastGlow` for each (`after_b1106/client.log`, caster 258). The new
+full-resolution frames show orange Source particles beside/above the caster
+for 93 (`frame_000120.png`) and blue-white particles beside/above the caster
+for 253 (`frame_000125.png`), absent in the preceding pre-cast frames. The
+reviewable 2x2 sheets are `after_b1106_93_detail.png` and
+`after_b1106_253_detail.png`; the old 320x180-per-frame sheets hid these
+small particles. The 253 particles are **not** the oracle's sustained
+ground-to-head vortex: that remains the FOLLOW-UP below. The fourth snapshot
+restored byte-identically with the world DOWN; the stack and lane lease were
+released.
+
 | acceptance | result | evidence |
 |---|---|---|
 | A, design before code | PASS | first B1105 commit; Design above |
 | B, one Source route per cast | PASS at routing/creation, **not pixels** | `CastGlowRoute`, live `SpellAction` and `createCastGlow` lines |
 | C, local/no Begin; both; flag 4; NPC | PASS | `test_spell_impact_visual`, `prefix_red.log` |
-| D, 93 and 253 after-sheets visibly show Source | **FAIL** | three after-sheet pairs; third `after_93.png`, `after_253.png` |
+| D, 93 and 253 after-sheets visibly show Source | PASS for the existing glow primitive after B1106; sustained 253 vortex remains a FOLLOW-UP | `after_b1106_93_detail.png`, `after_b1106_253_detail.png`, full-resolution frames 120/125 |
 | E, no blessed assets/overrides | PASS | changed-path audit |
 | F, green CI | CHECK AT MR HEAD | CI result is recorded on the MR; not a substitute for failed row D |
 
-The failed visual row blocks a claim that issue #425 is fixed. The action
-route is reached, so a downstream particle-command/render-path investigation
-is required; the `deltaTime` gate is a concrete candidate, **not a proven
-cause** without command-level tracing. No golden, preset, manifest or
-`config/spell_effects.json` override was changed to mask it.
+The three pre-B1106 failed visual runs above remain failed evidence. B1106's
+command-drain fix makes the newly armed Source glow visible in the fourth
+run; the appearance is still limited by the existing glow primitive. No
+golden, preset, manifest or `config/spell_effects.json` override was changed
+to mask the distinction.
 
 ## FOLLOW-UP
 
 The sustained aura/column for 41/253/458 needs a separately measured
 primitive and lifetime. Do not approximate it with an invented spell override.
-The visible-Source proof for 93/253 remains open: trace the
-`CreateSpellEffect` command through `SimulationWorker::computeParticles()`
-on a cast frame and determine whether the early return drops it before
-altering that separate pipeline.
+The effect's small apparent size from the chase camera is a separate visual
+quality question, not evidence that the Source route is still missing.
