@@ -168,7 +168,18 @@ int loadSpells(sqlite3* db, const std::string& filepath) {
         sqlite3_bind_int(stmt, 18, safeInt(99));                            // BaseDifficulty (resist diff)
         sqlite3_bind_int(stmt, 19, safeInt(100));                           // CastingSkill
         sqlite3_bind_int(stmt, 20, safeInt(83));                            // GoodEffect (is_beneficial)
-        sqlite3_bind_int(stmt, 21, safeInt(143));                           // SpellIcon
+        // B1103 (GitLab #423): the spellbook's icon column is the client's
+        // NEW_ICON -- field 144, eqemu spdat.h:1662: "Spell icon used by the
+        // client in uifiles/default/spells??.tga, both for spell gems & buff
+        // window". The pre-fix bind read field 143, which spdat.h:1661 calls
+        // ai_pt_bonus, "always set to 0, client doesn't save this": 0 on all
+        // 8,066 rows of the Titanium export, so every spellbook slot (and
+        // every buff, and every shift-click spell display) addressed cell 0
+        // of its family while the gem bar -- fed from field 144 -- drew
+        // per-spell art. Field 144 now feeds BOTH columns; the gem reader
+        // (gem_icon) is untouched, and the duplication is deliberate until a
+        // ruling drops one (refactor/B1103/README.md).
+        sqlite3_bind_int(stmt, 21, safeInt(144));                           // NewIcon (spell_icon) -- B1103 rebind, was 143
         sqlite3_bind_int(stmt, 22, safeInt(144));                           // NewIcon (gem_icon)
         sqlite3_bind_int(stmt, 23, safeInt(120));                           // CastAnim
         sqlite3_bind_int(stmt, 24, safeInt(101));                           // ZoneType

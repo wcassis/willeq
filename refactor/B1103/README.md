@@ -93,7 +93,46 @@ code, no golden, no preset, no manifest changes.
   cell for id 35 is not the cell for id 138).
 
 Against the pre-fix DB this FAILS (both entries carry iconId 0 = one and the
-same cell); against the rebind it PASSES. The negative run is logged.
+same cell); against the rebind it PASSES.
+
+## The runs (real, logged — never synthesized)
+
+NEGATIVE (commit cd28b06d, pre-fix DB 5d4e49e5…, test + README only):
+
+```
+[ RUN      ] B1103SpellbookIconSource.PublishedEntriesCarryTheDbIconId
+test_spellbook_icon_source.cpp:148: Failure
+Expected: (icons[0]) != (icons[1]), actual: 0 vs 0
+all-the-same: both entries carry iconId 0
+test_spellbook_icon_source.cpp:153: Failure
+Expected: ...indexForId(Spells, icons[0]) != ...indexForId(Spells, icons[1]),
+actual: 0 vs 0
+[ RUN      ] B1103SpellbookIconSource.TheDbColumnIsNotTheAllZeroPhantom
+test_spellbook_icon_source.cpp:176: Failure
+the DB's spell_icon is still 0 on every sampled row -- the phantom column,
+not the client's NEW_ICON
+0% tests passed, 2 tests failed out of 2
+```
+
+The proof line is `actual: 0 vs 0` — the published spellbook entries carry
+the phantom column's value, one and the same, exactly the observation.
+
+POSITIVE (post-rebind, DB ff3de526…):
+
+```
+1/2 Test #96: B1103SpellbookIconSource.TheDbColumnIsNotTheAllZeroPhantom ...   Passed
+2/2 Test #95: B1103SpellbookIconSource.PublishedEntriesCarryTheDbIconId ....   Passed
+100% tests passed, 0 tests failed out of 2
+```
+
+Regressions after the DB change: the spell/buff/DbReproducible set
+(124 tests) green; `rbuild hygiene` (45 tests) green;
+`TexturesReproducible` + `PackReproducible` green (the rebind touches no
+texture input, but both pins were re-run to prove it). The full suite runs
+in CI's build-test job.
+
+Full logs: /home/user/kb-evidence/kb-b1103-spellbook-icons/negative_run_prefix.log
+and positive_run_postfix.log (attached to the task).
 
 ## BLESS NEEDED
 
