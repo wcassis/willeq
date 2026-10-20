@@ -37,6 +37,7 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/eq.h"
 #include "client/graphics/ui/spell_icon_atlas.h"
+#include "client/spell/spell_manager.h"
 #include "client/state/event_bus.h"
 #include "client/willeq_database.h"
 #include "zone_stream_test_utils.h"
@@ -98,7 +99,7 @@ TEST(B1103SpellbookIconSource, PublishedEntriesCarryTheDbIconId) {
     // against each other, not against a re-typed constant.
     std::unordered_map<uint32_t, int> dbIcon;
     for (uint32_t id : kBookSpells) {
-        EQT::WilleqDatabase::SpellInfo info = g_willeq_db.getSpell(id);
+        EQT::SpellInfo info = g_willeq_db.getSpell(id);
         EXPECT_EQ(info.id, id) << "the DB lost spell " << id;
         dbIcon[id] = static_cast<int>(info.spellIcon);
         // Precondition, the fix's whole premise: the DB carries a real
@@ -166,7 +167,7 @@ TEST(B1103SpellbookIconSource, TheDbColumnIsNotTheAllZeroPhantom) {
     if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
     bool allZero = true;
     for (uint32_t id = 1; id <= 100; ++id) {
-        EQT::WilleqDatabase::SpellInfo info = g_willeq_db.getSpell(id);
+        EQT::SpellInfo info = g_willeq_db.getSpell(id);
         if (info.spellIcon != 0) {
             allZero = false;
             break;
