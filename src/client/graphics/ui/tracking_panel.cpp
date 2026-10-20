@@ -7,6 +7,7 @@
  */
 
 #include "client/graphics/ui/tracking_panel.h"
+#include "client/graphics/ui/window_flags.h"  // B1002
 
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
@@ -122,7 +123,7 @@ void renderTrackingWindow(UIRenderer& ui, const UILayout& layout,
                           const TrackingPanelState& state) {
     if (!state.isOpen) return;
     auto* tb = ui.getTextBatch();
-    ui.drawPanel(TrackingLayout::windowRect(layout));
+    ui.drawPanelFor(TrackingLayout::windowRect(layout), UIWindow::Tracking);
 
     // --- Style_Titlebar / Style_Closebox ---
     const auto title = TrackingLayout::titleRect(layout);

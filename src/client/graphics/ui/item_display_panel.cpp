@@ -81,7 +81,7 @@ void renderItemDisplayPopup(UIRenderer& ui, const UILayout& layout,
     auto* tb = ui.getTextBatch();
 
     // The frame. WDT_Filigree in the oracle; fable's one panel chrome here.
-    ui.drawPanel(ItemDisplayLayout::windowRect(layout));
+    ui.drawPanelFor(ItemDisplayLayout::windowRect(layout), UIWindow::ItemDisplay);
 
     // --- Style_Titlebar: the item's name ---
     const auto title = ItemDisplayLayout::titleRect(layout);

@@ -496,9 +496,14 @@ TEST_F(StaticUiFrameCostTest, TheOpenInventoryFlushIssuesAtMostTwoDrawsPerTextur
     // entry (its label): 159 -> 164 and 49 -> 50.
     // B1025-H2: the stock HotButtonWnd adds its page row and ten framed slots.
     // B1077: the always-on spell gem bar adds seven commands on every frame.
+    // B1002 (#322): +4 on EVERY frame -- the spell gem window's fill went
+    // from a bare drawSprite(PanelBackground) (no border) to drawPanelFor(),
+    // which adds the window's 4-edge frame. Same +4 in both frames, text
+    // entries unchanged.
     // B1102: removing the hotbar close box removes one command and one text
     // entry from both the inventory-open and inventory-closed frames.
-    EXPECT_EQ(s.commands, 216u);
+    // Merged: 217+4-1=220 commands, 54-1=53 text entries.
+    EXPECT_EQ(s.commands, 220u);
     EXPECT_EQ(s.textEntries, 53u);
     ASSERT_GT(s.textureRuns, 0u);
     EXPECT_LT(s.textureRuns, s.commands / 4)
@@ -510,7 +515,9 @@ TEST_F(StaticUiFrameCostTest, TheOpenInventoryFlushIssuesAtMostTwoDrawsPerTextur
     inv_.activePopup = PopupType::None;
     img = renderFrames([&] { submitStaticUI(); }, &s);
     if (img) img->drop();
-    EXPECT_EQ(s.commands, 113u);
+    // B1002's +4 and B1102's -1 apply here too: 114+4-1=117 commands, 29-1=28
+    // text entries.
+    EXPECT_EQ(s.commands, 117u);
     EXPECT_EQ(s.textEntries, 28u);
     EXPECT_LE(s.driverDraws, 2 * s.textureRuns);
 }

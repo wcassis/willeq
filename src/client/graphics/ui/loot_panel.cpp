@@ -101,7 +101,7 @@ void renderLootPopup(UIRenderer& ui, const UILayout& layout,
     auto* tb = ui.getTextBatch();
     const auto& popup = layout.partnerPopup;
 
-    ui.drawPanel(popup);
+    ui.drawPanelFor(popup, UIWindow::Loot);
 
     // Title: the corpse's own name, as the old window's setTitle() did.
     if (tb) {

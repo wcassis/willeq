@@ -105,7 +105,7 @@ void renderTradeskillPopup(UIRenderer& ui, const UILayout& layout,
     auto* tb = ui.getTextBatch();
     const auto& popup = TradeskillLayout::windowRect(layout);
 
-    ui.drawPanel(popup);
+    ui.drawPanelFor(popup, UIWindow::Tradeskill);
 
     // COMBW_ContainerName — the title is the container's own name.
     if (tb) {
