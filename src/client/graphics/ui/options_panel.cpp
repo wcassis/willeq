@@ -13,6 +13,7 @@
 #include "client/audio/volume_steps.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 #include "client/graphics/ui/ui_atlas.h"
@@ -85,6 +86,12 @@ void setOptionsSettingStep(OptionsPanelState& state, Setting setting, int step) 
 
 std::string optionsSettingText(const OptionsPanelState& state, Setting setting) {
     if (setting == Setting::None) return "0 %";
+    if (setting == Setting::ClipPlane) {
+        const float requested = optionsClipPlaneDistance(state.clipPlane);
+        const bool capped = state.appliedClipPlane < requested;
+        return std::to_string(optionsSettingStep(state, setting) * 5) + " %" +
+               (capped ? " (max)" : "");
+    }
     // The oracle's own readout: the stored 0..20 integer times five, as a
     // percentage. See the measurement in options_panel.h.
     return std::to_string(optionsSettingStep(state, setting) * 5) + " %";

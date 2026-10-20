@@ -87,6 +87,12 @@ struct OptionsPanelState {
     int musicVolume = 14;
     int soundVolume = 20;
     int clipPlane = 5;
+    // Effective renderer distance, not a persisted slider step. The frame
+    // refreshes it after applying settings and when a zone cap changes.
+    float appliedClipPlane = 300.0f;
+    // B1100: the slider whose press this window owns until release.
+    int draggedSlider = -1;
+    bool leftHeld = false;  // Physical button state sampled before UI rendering.
 
     // --- B430/B433: every other wired setting, indexed by Setting ---
     // Renderer-owned values are persisted; Game-owned ones mirror what the

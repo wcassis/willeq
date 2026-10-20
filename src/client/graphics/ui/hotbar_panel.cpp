@@ -44,13 +44,8 @@ HotbarHit hitTestHotbar(const UILayout& layout, HotbarPanelState& state,
     HotbarHit hit = HotbarHit::None;
     if (!state.isOpen) return hit;
     const auto window = layout.hotbar;
-    if (!inside(window, x, y)) {
-        state.closeHovered = false;
-        return hit;
-    }
+    if (!inside(window, x, y)) return hit;
 
-    state.closeHovered = inside(HotbarLayout::closeBoxRect(window), x, y);
-    if (state.closeHovered) return HotbarHit::Close;
     if (inside(HotbarLayout::pageLeftRect(window), x, y)) return HotbarHit::PageLeft;
     if (inside(HotbarLayout::pageRightRect(window), x, y)) return HotbarHit::PageRight;
     for (int i = 0; i < HotbarPanelState::SLOT_COUNT; ++i) {
@@ -71,7 +66,7 @@ void renderHotbar(UIRenderer& ui, const UILayout& layout,
     // WDT_RoundedNoTitle: the whole window, then the page-row strip.
     ui.drawPanelFor(window, UIWindow::Hotbar);
     auto strip = window;
-    strip.LowerRightCorner.Y = window.UpperLeftCorner.Y + HotbarLayout::kCloseBox;
+    strip.LowerRightCorner.Y = window.UpperLeftCorner.Y + HotbarLayout::kPageRowH;
     ui.drawRect(strip, irr::video::SColor(200, 20, 20, 28));
 
     // HB_PageLeftButton / HB_CurrentPageLabel / HB_PageRightButton. The label
@@ -82,11 +77,6 @@ void renderHotbar(UIRenderer& ui, const UILayout& layout,
                             HotbarLayout::pageLabelRect(window), kText);
     }
     drawPageButton(ui, tb, HotbarLayout::pageRightRect(window), ">");
-
-    const auto close = HotbarLayout::closeBoxRect(window);
-    ui.drawRect(close, state.closeHovered ? irr::video::SColor(220, 120, 60, 60)
-                                          : irr::video::SColor(200, 60, 60, 72));
-    if (tb) tb->addTextCentered("X", close, kText);
 
     static const char* keyLabels[HotbarPanelState::SLOT_COUNT] = {
         "1", "2", "3", "4", "5", "6", "7", "8", "9", "0"};

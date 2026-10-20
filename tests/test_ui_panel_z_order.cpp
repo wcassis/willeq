@@ -643,22 +643,23 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
     };
     const std::vector<Row> rows = {
         // B1025-H2: the fallback (no-atlas, Will's Pi recipe) pins re-taken
-        // for the stock HotButtonWnd -- its page row, close box and the ten
-        // per-slot frames are solid draws there, so the HUD rose from 18 to
-        // 59 draws. The atlas pins are unchanged: every one of those is one
-        // atlas quad plus the shared panel texture.
+        // for the stock HotButtonWnd -- its page row and ten per-slot frames
+        // are solid draws there. B1102 removed the close box, lowering every
+        // fallback draw pin by one; the atlas draw pins are unchanged because
+        // the remaining quads still share its texture runs.
         // B1077 adds the always-on gem bar to every fixture frame: +4 draws
         // on the atlas path, +3 on fallback; the B1078 band-scaled inventory
         // keeps its one-group flush and bag-covering group counts below.
         // Re-taken on the merged 800x600 layout (chat=120).
         // B1002 (#322): the atlas pins are UNCHANGED (a panel fill is one
         // textured atlas quad regardless of its tint alpha). The FALLBACK
-        // pins dropped by one draw per window: drawPanelFor fills the body at
-        // alpha 255 (the measured blend alpha; all 29 fable windows are
-        // opaque) instead of the shared panel_background baked at 180, so the
-        // body and the four border lines are now ONE opaque solid run at the
-        // flush instead of a 180-blend run plus an opaque run. Re-taken on
-        // the same x86 llvmpipe harness, base e849ba41.
+        // pins drop: drawPanelFor fills the body at alpha 255 (the measured
+        // blend alpha; all 29 fable windows are opaque) instead of the shared
+        // panel_background baked at 180, so the body and the four border
+        // lines are now ONE opaque solid run at the flush instead of a
+        // 180-blend run plus an opaque run. B1102 removed the hotbar close
+        // box (one fewer fallback draw per window); the atlas draw pins are
+        // unchanged because the remaining quads still share its texture runs.
         {"hud", [] {}, {8, 8, 6, 1}, {55, 55, 6, 1}},
         // B1078 (GitLab #398): the inventory window moved to the band-anchored
         // 428x460 (one uniform factor), so its own flush is one group now
@@ -670,11 +671,11 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
         {"inv+forge", [&] {
              inv_.activePopup = PopupType::Inventory;
              openForge(containers_);
-         }, {38, 42, 8, 2}, {82, 86, 8, 2}},
+        }, {38, 42, 8, 2}, {94, 96, 8, 2}},
         {"inv+3 bags", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
-         }, {51, 63, 10, 4}, {93, 105, 10, 4}},
+         }, {51, 63, 10, 4}, {111, 117, 10, 4}},
         {"full", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
@@ -685,7 +686,7 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
              cursor_.iconId = 1001;
              cursor_.mouseX = 560;
              cursor_.mouseY = 420;
-         }, {52, 64, 13, 4}, {109, 123, 13, 5}},
+         }, {52, 64, 13, 4}, {127, 136, 13, 5}},
     };
 
     for (bool fallback : {false, true}) {

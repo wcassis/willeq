@@ -33,6 +33,8 @@
 #include <set>
 #include <string>
 
+#include "scoped_temp_dir.h"
+
 using namespace EQT::Graphics;
 namespace OL = EQT::Graphics::OptionsLayout;
 
@@ -645,10 +647,13 @@ TEST(OptionsKeys, TheSavedCopyRoundTripsThroughTheLoader) {
     using HA = eqt::input::HotkeyAction;
     auto& mgr = eqt::input::HotkeyManager::instance();
     ASSERT_TRUE(mgr.setBinding(HA::Hail, 0, irr::KEY_KEY_J, eqt::input::ModifierFlags::Alt));
-    const std::string path = ::testing::TempDir() + "b433_hotkeys.json";
+    // B1101 (#421): per-process mkdtemp dir (B1098's recipe); the fixed name
+    // under gtest's TempDir() (/tmp) collided across uids on shared boxes.
+    willeq_test::ScopedTempDir dir{"options_wiring"};
+    const std::string path = (dir / "b433_hotkeys.json").string();
     ASSERT_TRUE(mgr.saveToFile(path));
     mgr.resetToDefaults();
     ASSERT_TRUE(mgr.loadFromFile(path));
     EXPECT_EQ(OptionsKeys::bindingText(HA::Hail, 0), "Alt+J");
-    std::remove(path.c_str());
+    // The dir (and the file in it) goes with the scope above.
 }

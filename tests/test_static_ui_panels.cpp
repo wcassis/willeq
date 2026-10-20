@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 
 #include "client/graphics/ui/static_ui_input.h"
+#include "client/graphics/ui/hotbar_panel.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/tradeskill_panel.h"
@@ -181,7 +182,7 @@ TEST_F(StaticUIInputTest, HotbarClickWithoutInitDoesNotCrash) {
     EXPECT_EQ(hotbar.hoveredSlot, 0);
 }
 
-// --- B1025-H2: the page buttons and the close box ---
+// --- B1025-H2: the page buttons (B1102 removed the close box) ---
 
 TEST_F(StaticUIInputTest, HotbarPageRightPushesNextPageIntent) {
     // The page-right button (366,489,388,501), center (377, 495).
@@ -220,34 +221,22 @@ TEST_F(StaticUIInputTest, HotbarPageLeftPushesPreviousPageIntent) {
     EXPECT_EQ(std::get<eqt::events::HotbarPageChangedIntent>(intents[0]).page, 4);
 }
 
-TEST_F(StaticUIInputTest, HotbarCloseBoxClosesWindow) {
-    // The close box (744,486,756,498), center (750, 492).
+TEST_F(StaticUIInputTest, HotbarOldCloseBoxIsInertFrame) {
+    // The former close box (744,486,756,498), center (750,492), is now
+    // ordinary page-row frame: no close hit, no state change, no intent.
     TestBridge bridge;
     input.init(&bridge);
     ASSERT_TRUE(hotbar.isOpen);
+    EXPECT_EQ(hitTestHotbar(layout, hotbar, 750, 492), HotbarHit::Window);
     bool consumed = input.processInput(750, 492, /*leftClicked=*/true, layout,
                                         hotbar, gems, inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
-    EXPECT_FALSE(hotbar.isOpen);
+    EXPECT_TRUE(hotbar.isOpen);
     EXPECT_TRUE(bridge.drainIntents().empty());
-    // A closed window hits nothing: the same point no longer consumes.
-    bool again = input.processInput(330, 526, false, layout, hotbar, gems,
-                                     inventory, spellbook, skills, buffs, loot);
-    EXPECT_FALSE(again);
-    EXPECT_EQ(hotbar.hoveredSlot, -1);
-}
-
-TEST_F(StaticUIInputTest, HotbarCloseHoverFlagsBoxOnly) {
-    TestBridge bridge;
-    input.init(&bridge);
-    // Hovering the close box flags it and consumes the point...
-    EXPECT_TRUE(input.processInput(750, 492, false, layout, hotbar, gems,
+    // The window remains interactable after that click.
+    EXPECT_TRUE(input.processInput(330, 526, false, layout, hotbar, gems,
                                    inventory, spellbook, skills, buffs, loot));
-    EXPECT_TRUE(hotbar.closeHovered);
-    // ...and moving onto a slot clears it (the slot row is checked first).
-    input.processInput(330, 526, false, layout, hotbar, gems,
-                       inventory, spellbook, skills, buffs, loot);
-    EXPECT_FALSE(hotbar.closeHovered);
+    EXPECT_EQ(hotbar.hoveredSlot, 0);
 }
 
 // --- Spell gems ---

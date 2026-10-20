@@ -52,6 +52,7 @@
 
 #include "client/graphics/renderer_event_receiver.h"
 #include "client/input/hotkey_manager.h"
+#include "scoped_temp_dir.h"
 
 #ifndef WILLEQ_REPO_ROOT
 #error "WILLEQ_REPO_ROOT must be defined (tests/CMakeLists.txt)"
@@ -226,7 +227,12 @@ TEST(HotkeyDispatchCensus, TabCyclesTargetsAndReturnOpensChat) {
 // A user copy saved before B905 still names the deleted actions: they load
 // as nothing, and every other binding in the file still loads.
 TEST(HotkeyDispatchCensus, ARetiredActionNameInASavedFileIsIgnored) {
-    const std::string path = ::testing::TempDir() + "b905_retired_hotkeys.json";
+    // B1101 (#421): a per-process mkdtemp dir (B1098's recipe) -- the fixed
+    // name under gtest's TempDir() (/tmp) was owned by whichever uid ran
+    // first on a shared box (the ThinkPad: rbuild as user, CI as
+    // gitlab-runner).
+    static willeq_test::ScopedTempDir dir{"hotkey_census"};
+    const std::string path = (dir / "b905_retired_hotkeys.json").string();
     {
         std::ofstream out(path);
         out << R"({"version":1,"bindings":{"global":{"ChatAutocomplete":"Tab",)"
@@ -267,7 +273,8 @@ TEST(HotkeyDispatchCensus, AUserFileBindingTheDefaultlessActionsStillDispatches)
     ASSERT_TRUE(mgr.setBinding(HotkeyAction::EffectsVolumeUp, 0, irr::KEY_PERIOD, ModifierFlags::None));
     ASSERT_TRUE(mgr.setBinding(HotkeyAction::EffectsVolumeDown, 0, irr::KEY_OEM_7, ModifierFlags::None));
     ASSERT_TRUE(mgr.setBinding(HotkeyAction::CycleObjectLights, 0, irr::KEY_KEY_L, ModifierFlags::None));
-    const std::string path = ::testing::TempDir() + "b1019_defaultless_user_hotkeys.json";
+    static willeq_test::ScopedTempDir dir{"hotkey_census_defaultless"};
+    const std::string path = (dir / "b1019_defaultless_user_hotkeys.json").string();
     ASSERT_TRUE(mgr.saveToFile(path));
     ASSERT_TRUE(mgr.loadFromFile(path));  // loadFromFile replaces: the file IS the table
     // The five are actually bound the way the save asked (the two most

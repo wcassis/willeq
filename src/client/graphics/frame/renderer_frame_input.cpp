@@ -104,6 +104,7 @@ void FrameComponent::processFrameInput(float deltaTime) {
     int clickY = ctx_.eventReceiver->getClickMouseY();
     pendingUIClick_ = hadClick;  // Preserved for UI input processing in render phase
     pendingUIRelease_ = hadRelease;  // B442b: the motionless world click's release
+    optionsState_.leftHeld = ctx_.eventReceiver->isLeftButtonHeld();
 
     // Update chat panel mouse hover state
     {
@@ -388,11 +389,10 @@ bool FrameComponent::toggleCombatAbilityWindow() {
     return combatAbilityState_.isOpen;
 }
 
-// B1025-H4 (#345): the hotbar window's own show/hide toggle -- the key's
-// arm. The panel's close box does exactly this flip on its own click
-// (static_ui_input.cpp), so the key and the box share the one flag,
-// hotbarState_.isOpen; the renderer no-ops while it is closed, and the
-// window is not in the ESC stack either way (it is not a centre popup).
+// B1025-H4 (#345): the hotbar window's own Alt+H show/hide toggle.
+// B1102 removed its close box, leaving this as the only in-session toggle.
+// The renderer no-ops while it is closed; the window is not in the ESC stack
+// (it is not a centre popup).
 bool FrameComponent::toggleHotbar1Window() {
     hotbarState_.isOpen = !hotbarState_.isOpen;
     LOG_INFO(MOD_GRAPHICS, "Hotbar window {}",

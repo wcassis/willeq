@@ -56,6 +56,9 @@ bool FrameComponent::toggleOptionsWindow() {
 }
 
 void FrameComponent::applyOptionsSetting(OptionsLayout::Setting setting) {
+    // Runs once per UI frame even when no setting changed: zone/preset caps
+    // can change independently of a slider gesture.
+    optionsState_.appliedClipPlane = owner_.getRenderDistance();
     switch (setting) {
         case OptionsLayout::Setting::None:
             return;
@@ -87,6 +90,7 @@ void FrameComponent::applyOptionsSetting(OptionsLayout::Setting setting) {
             // max clip -- all of which is its business, not this call's.
             const float dist = optionsClipPlaneDistance(optionsState_.clipPlane);
             owner_.setRenderDistance(dist);
+            optionsState_.appliedClipPlane = owner_.getRenderDistance();
             LOG_INFO(MOD_GRAPHICS, "Options: far clip plane {:.0f}", dist);
             return;
         }
