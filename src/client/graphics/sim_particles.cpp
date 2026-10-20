@@ -43,9 +43,19 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
     const auto& pi = input.particleInput;
     float deltaTime = pi.deltaTime;
     if (deltaTime <= 0.0f || deltaTime > 1.0f) {
-        output.particleOutput.valid = true;
-        output.particleOutput.activeCount = particleActiveCount_;
-        return;
+        // B1106 (#426): this guard protects the PHYSICS, not the commands.
+        // A frame delta outside (0, 1] s (a zone-in hitch, or the
+        // surfaceless-dump rig whose own frames ran 1.4-1.5 s) must not be
+        // stepped through the physics as-is -- but the command queue it
+        // carries must still be EXECUTED: it is drained once per frame
+        // (renderer_sim_bridge.cpp:447), so returning here discards it
+        // forever. Measured in B1104's capture: the cast's CreateSpellEffect
+        // was enqueued (GRAPHICS DEBUG) and never created (no SimWorker
+        // receipt), on a tour whose frames all ran > 1.0 s. The command loop
+        // below is idempotent and position-only (no time); the phases that
+        // advance with time use a clamped delta, so a 14 s hitch ages an
+        // emitter by at most 1 s instead of by 14.
+        deltaTime = std::min(std::max(deltaTime, 0.0f), 1.0f);
     }
 
     // ---- Command processing ----
