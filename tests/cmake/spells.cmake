@@ -39,6 +39,28 @@ ENDIF()
 # discovery calls in this file now behave identically.
 GTEST_DISCOVER_TESTS(test_spell_manager DISCOVERY_TIMEOUT 120)
 
+# B1103 (GitLab #423): the spellbook's icon SOURCE. The shipped DB bound
+# spells_us.txt field 143 (ai_pt_bonus, 0 on all 8,066 rows -- not an icon
+# column in the Titanium export) to spells.spell_icon, which the spellbook
+# (and the buff bar, and the shift-click spell display) read -- so every
+# book slot drew cell 0 of the Spells family while the gem bar, fed from
+# field 144 (NEW_ICON, gem_icon), was right. This test drives the real
+# PublishFullStateSnapshot() with the real shipped DB: a published book
+# entry carries the DB's icon id for its spell, two spells' entries
+# DIFFER (no all-the-same), and the Spells-sheet cells differ. Device-free:
+# no renderer, no pack, no display; self-skips without willeq.db (the
+# test_spell_manager precedent). refactor/B1103/README.md has the full
+# mechanism, the field-level proof and the negative (pre-fix) run.
+ADD_EXECUTABLE(test_spellbook_icon_source
+    test_spellbook_icon_source.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_spellbook_icon_source PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
+TARGET_LINK_LIBRARIES(test_spellbook_icon_source GTest::gtest willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spellbook_icon_source PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spellbook_icon_source DISCOVERY_TIMEOUT 120)
+
 # T314: the two hand-rolled body-type tables in src/client/spell/ are gone --
 # creature-restricted spells go through one shared predicate. Headless (no DB,
 # no graphics, no eqemu): the tests replay OP_NewSpawn into a live EverQuest
