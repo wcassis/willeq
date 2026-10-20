@@ -658,24 +658,26 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
         // panel_background baked at 180, so the body and the four border
         // lines are now ONE opaque solid run at the flush instead of a
         // 180-blend run plus an opaque run. B1102 removed the hotbar close
-        // box (one fewer fallback draw per window); the atlas draw pins are
+        // box (one fewer fallback draw per frame); the atlas draw pins are
         // unchanged because the remaining quads still share its texture runs.
-        {"hud", [] {}, {8, 8, 6, 1}, {55, 55, 6, 1}},
+        // Merged fallback pins re-taken on the same x86 llvmpipe harness:
+        // each is B1002's re-taken pin minus one (B1102's removed close box).
+        {"hud", [] {}, {8, 8, 6, 1}, {54, 54, 6, 1}},
         // B1078 (GitLab #398): the inventory window moved to the band-anchored
         // 428x460 (one uniform factor), so its own flush is one group now
         // (was two) and every bag-covering scenario lost 1 group.
-        {"inventory", [&] { inv_.activePopup = PopupType::Inventory; }, {35, 35, 7, 1}, {75, 75, 7, 1}},
+        {"inventory", [&] { inv_.activePopup = PopupType::Inventory; }, {35, 35, 7, 1}, {74, 74, 7, 1}},
         // What B899's workaround drew for three open bags: the topmost only.
         // The Forge (350,100) also covers inventory text, so even one bag is a
         // real split (the shipped bleed was there too).
         {"inv+forge", [&] {
              inv_.activePopup = PopupType::Inventory;
              openForge(containers_);
-        }, {38, 42, 8, 2}, {94, 96, 8, 2}},
+        }, {38, 42, 8, 2}, {81, 85, 8, 2}},
         {"inv+3 bags", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
-         }, {51, 63, 10, 4}, {111, 117, 10, 4}},
+         }, {51, 63, 10, 4}, {92, 104, 10, 4}},
         {"full", [&] {
              inv_.activePopup = PopupType::Inventory;
              threeBags();
@@ -686,7 +688,7 @@ TEST_F(UiPanelZOrderTest, TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText) {
              cursor_.iconId = 1001;
              cursor_.mouseX = 560;
              cursor_.mouseY = 420;
-         }, {52, 64, 13, 4}, {127, 136, 13, 5}},
+         }, {52, 64, 13, 4}, {108, 122, 13, 5}},
     };
 
     for (bool fallback : {false, true}) {
