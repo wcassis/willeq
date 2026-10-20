@@ -65,13 +65,25 @@ the `--dump-frames-dir --dump-every 2` surfaceless-llvmpipe run. The 119
 frame PNGs' own mtimes (B1104 evidence dir) show **110 of 118 gaps > 0.5 s,
 56 of 118 > 1.0 s, max 14.0 s** (median 1.0 s) — i.e. in that rig almost
 every post-cast frame had `deltaTime > 1.0f`, and the command queue is
-drained on the frame AFTER the cast packet, which in that run was almost
+drained on the frame AFTER the cast, which in that run was almost
 certainly a >1 s frame. (a) has no such rig-specific reason: the same Target
 stage rendered fine for observer clients in T386's live run after T395's
 origin-burst fix (the test `test_spell_impact_visual.cpp` proves the worker
 spawns on-target particles with normal 1/60 s deltas). PROVE FIRST: the
 device-free test and the live trace decide; if the trace says (a), this card
 fixes (a) and not the cheap one.
+
+The B1104 client log names the frame times directly. `renderer_frame.cpp:85`
+warns on every frame slower than 100 ms, and `fable_x86/fable_x86.log`
+carries **89 such warnings, 88 of them 1462-1544 ms** (the run's steady
+state: the script-paced tour's 1 s waits land mid-frame on this rig, so the
+render loop's real delta was ~1.47 s on essentially every frame). The cast
+93 packet is in the log at 05:32:00.025 (the `SpellAction` DEBUG receipt),
+and the frames bracketing it (frame_000051 at 05:31:59.595,
+frame_000052 at 05:32:01.110) show the ~1.5 s cadence around the exact
+moment the `CreateSpellEffect` command was drained into the next
+`postSimulationInput()`. A delta of ~1.47 s is inside the
+`deltaTime > 1.0f` band — the one the early-return fires on.
 
 ## 4. Plan
 
