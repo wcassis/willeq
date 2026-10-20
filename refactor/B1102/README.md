@@ -30,6 +30,12 @@ paths. There is no `/hotbar` slash-command toggle.
   initial run FAILED in two count-pin cases because the removed X lowered
   command/text counts by one; the assertions and comments were updated.
   Rebuilt rerun PASS, 8/8 (one timing case skipped by its own guard).
+- MR !266 pipeline 1940 `build-test` FAILED in
+  `UiPanelZOrderTest.TheLayeredFlushCostsDrawsOnlyWhereAWindowCoversText`:
+  all five no-atlas fallback draw pins were one too high after the close-box
+  removal (the atlas pins still matched). `tests/test_ui_panel_z_order.cpp`
+  was updated from the CI trace's observed values. Rebuilt ThinkPad rerun:
+  `rbuild <worktree> test -R 'UiPanelZOrderTest'` PASS, 5/5.
 - `rbuild <worktree> hygiene`: PASS, 45/45 (three environment/scope skips).
 
 ## Golden impact
