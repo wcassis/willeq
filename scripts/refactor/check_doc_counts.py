@@ -566,6 +566,10 @@ NAMED_COMMAND = [
      "B1031: the macOS probe's registered-test totals depend on which gtest "
      "binaries linked on the mini; the README quotes them from its logs and "
      "must keep naming the command that re-measures them"),
+    ("CLAUDE.md", "b1120_measure.sh <leg> <out>",
+     "B1121: the spell landing's END is measured on a lane-5 capture, not "
+     "summed from the config; the T422 1.6-2.0 s band read as a duration was "
+     "the defect -- do not restore a duration number here"),
 ]
 
 

@@ -394,13 +394,13 @@ so that mapping IS the animation; a fixed cells-per-second clock would strand a
 short-lived particle in the faint fade-in frames.
 
 The playback rate is therefore `16 / lifetime`, set by
-`config/spell_effects.json`. T422 settled those lifetimes against the official
-client (boards B226/B356/B370): `impact` and `spellComplete` run 1.6-2.0 s. The
-lifetime is MEASURED; the implied 8-10 cells/s is DERIVED, because at the
-official client's 4.4-5.8 renders/s a direct animation-rate measurement is below
-Nyquist. **Do not quote 8-10 cells/s as a measurement**, and do not re-derive
-T420's "below ~3 cells/s" bound — it does not survive (`review/T422/README.md`).
-`tests/test_spell_burst_oracle_match.cpp` fails if an edit leaves the band.
+`config/spell_effects.json`. That lifetime is per PARTICLE, not the landing's
+duration: a landing is FED (`spawnWindow`, then `sustainRate` to
+`emitterLifetime`, B1121), so lengthen emission, never life. Its end is
+measured, not summed: `review/B1121/scripts/b1120_measure.sh <leg> <out>`
+(`LANDING ... end`). No cells/s rate is a measurement (oracle capture below
+Nyquist, `review/T422/README.md`). `tests/test_spell_burst_oracle_match.cpp`
+pins both.
 
 **A SPELL'S COLOUR IS ITS SPRITE, and there is no colour field anywhere in the
 chain** (T441, boards B397/B398). `spells_us.txt` field 123 SPELLAFFECTINDEX

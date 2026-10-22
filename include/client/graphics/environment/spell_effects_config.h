@@ -61,6 +61,11 @@ public:
         float spawnRate = 0.0f;           bool hasSpawnRate = false;
         int burstCount = 0;               bool hasBurstCount = false;
         float emitterLifetime = 0.0f;     bool hasEmitterLifetime = false;
+        // B1121: EmitterConfig's two-phase emission (spawnRate's window, then a
+        // sustain that feeds the landing to the oracle's measured end).
+        float spawnWindow = 0.0f;         bool hasSpawnWindow = false;
+        float sustainRate = 0.0f;         bool hasSustainRate = false;
+        float sustainFrom = 0.0f;         bool hasSustainFrom = false;
 
         std::string spawnShape;           bool hasSpawnShape = false;
         glm::vec3 spawnExtents{0.0f};     bool hasSpawnExtents = false;

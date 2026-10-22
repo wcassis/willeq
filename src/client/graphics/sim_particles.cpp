@@ -419,9 +419,15 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
                 emitter.isBurstSpawned = true;
             }
 
-            // Spawn-rate spawning
-            if (emitter.config.spawnRate > 0.0f) {
-                emitter.spawnAccumulator += emitter.config.spawnRate *
+            // Spawn-rate spawning.  B1121: spawnRate holds for its spawnWindow
+            // (0 = the whole emitter life), then sustainRate feeds the emitter
+            // from sustainFrom to emitterLifetime (EmitterConfig).
+            const auto& ec = emitter.config;
+            float rate = 0.0f;
+            if (ec.spawnWindow <= 0.0f || emitter.emitterAge < ec.spawnWindow) rate += ec.spawnRate;
+            if (ec.sustainRate > 0.0f && emitter.emitterAge >= ec.sustainFrom) rate += ec.sustainRate;
+            if (rate > 0.0f) {
+                emitter.spawnAccumulator += rate *
                                             std::min(1.0f, std::max(0.0f, density)) * deltaTime;
                 int toSpawn = static_cast<int>(emitter.spawnAccumulator);
                 emitter.spawnAccumulator -= static_cast<float>(toSpawn);

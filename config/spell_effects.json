@@ -66,7 +66,7 @@
         "spellComplete": {
             "spawnRate": 1800.0,
             "burstCount": 0,
-            "emitterLifetime": 0.6,
+            "emitterLifetime": 2.85,
             "spawnShape": "BOX",
             "spawnExtents": [5.525, 0.325, 5.525],
             "motionType": "LINEAR",
@@ -85,12 +85,15 @@
             "blendMode": "ADDITIVE",
             "textureRegions": ["SpellSparkle", "StarShape"],
             "positionOffset": [0.0, -3.275, 0.0],
-            "triggerDelay": 0.33
+            "triggerDelay": 0.33,
+            "spawnWindow": 0.6,
+            "sustainRate": 186.2,
+            "sustainFrom": 1.6
         },
         "impact": {
             "spawnRate": 1100.0,
             "burstCount": 0,
-            "emitterLifetime": 0.6,
+            "emitterLifetime": 2.85,
             "spawnShape": "SPHERE",
             "spawnExtents": [1.95, 0.0, 0.0],
             "motionType": "BURST",
@@ -109,7 +112,10 @@
             "blendMode": "ADDITIVE",
             "textureRegions": ["SoftCircle", "Ember"],
             "positionOffset": [0.0, 2.25, 0.0],
-            "triggerDelay": 0.33
+            "triggerDelay": 0.33,
+            "spawnWindow": 0.6,
+            "sustainRate": 113.8,
+            "sustainFrom": 1.6
         },
         "buffAura": {
             "spawnRate": 9.0,
@@ -267,7 +273,9 @@
                 "gravity": [0.0, 0.0, 0.0],
                 "drag": 2.5,
                 "positionOffset": [0.0, -1.0, 0.0],
-                "spawnRate": 1000.0
+                "spawnRate": 1000.0,
+                "sustainRate": 333.2,
+                "emitterLifetime": 3.0
             },
             "spellComplete": {
                 "sizeStartMin": 0.314,
@@ -284,7 +292,9 @@
                 "gravity": [0.0, 0.0, 0.0],
                 "drag": 0.0,
                 "positionOffset": [0.0, 1.6, 0.0],
-                "spawnRate": 1500.0
+                "spawnRate": 1500.0,
+                "sustainRate": 499.8,
+                "emitterLifetime": 3.0
             },
             "castGlow": {
                 "sizeStartMin": 0.36,
@@ -311,7 +321,9 @@
                 "gravity": [0.0, 0.0, 0.0],
                 "drag": 0.0,
                 "positionOffset": [0.0, 1.6, 0.0],
-                "spawnRate": 1500.0
+                "spawnRate": 1500.0,
+                "sustainRate": 499.8,
+                "emitterLifetime": 3.0
             },
             "impact": {
                 "spawnShape": "SPHERE",
@@ -323,7 +335,9 @@
                 "gravity": [0.0, 0.0, 0.0],
                 "drag": 2.5,
                 "positionOffset": [0.0, -1.0, 0.0],
-                "spawnRate": 1000.0
+                "spawnRate": 1000.0,
+                "sustainRate": 333.2,
+                "emitterLifetime": 3.0
             }
         },
         "458": {
@@ -342,7 +356,9 @@
                 "gravity": [0.0, -7.8, 0.0],
                 "drag": 0.0,
                 "positionOffset": [0.0, 1.6, 0.0],
-                "spawnRate": 500.0
+                "spawnRate": 500.0,
+                "sustainRate": 166.5,
+                "emitterLifetime": 2.9
             },
             "impact": {
                 "spawnShape": "BOX",
@@ -353,7 +369,9 @@
                 "gravity": [0.0, 0.0, 0.0],
                 "drag": 0.0,
                 "positionOffset": [0.0, 2.25, 0.0],
-                "spawnRate": 500.0
+                "spawnRate": 500.0,
+                "sustainRate": 166.5,
+                "emitterLifetime": 2.9
             }
         },
         "41": {
@@ -370,7 +388,9 @@
                 "velocitySpread": [0.52, 4.55, 0.52],
                 "gravity": [0.0, 0.0, 0.0],
                 "drag": 0.0,
-                "positionOffset": [0.0, -3.275, 0.0]
+                "positionOffset": [0.0, -3.275, 0.0],
+                "sustainRate": 317.9,
+                "emitterLifetime": 4.15
             },
             "spellComplete": {
                 "spawnRate": 1557.0,
@@ -386,13 +406,15 @@
                 "velocitySpread": [5.2, 3.25, 5.2],
                 "gravity": [0.0, -3.9, 0.0],
                 "drag": 1.4,
-                "positionOffset": [0.0, 1.6, 0.0]
+                "positionOffset": [0.0, 1.6, 0.0],
+                "sustainRate": 519.1,
+                "emitterLifetime": 4.15
             }
         },
         "253": {
             "impact": {
                 "spawnRate": 600.0,
-                "emitterLifetime": 3.6,
+                "emitterLifetime": 4.35,
                 "spawnShape": "BOX",
                 "spawnExtents": [14.95, 8.125, 6.5],
                 "motionType": "LINEAR",
@@ -400,11 +422,13 @@
                 "velocitySpread": [1.625, 1.625, 1.625],
                 "gravity": [0.0, 0.0, 0.0],
                 "drag": 0.0,
-                "positionOffset": [0.0, 5.175, 0.0]
+                "positionOffset": [0.0, 5.175, 0.0],
+                "spawnWindow": 0.0,
+                "sustainRate": 0.0
             },
             "spellComplete": {
                 "spawnRate": 600.0,
-                "emitterLifetime": 3.6,
+                "emitterLifetime": 4.35,
                 "spawnShape": "BOX",
                 "spawnExtents": [14.95, 8.125, 6.5],
                 "motionType": "LINEAR",
@@ -412,7 +436,9 @@
                 "velocitySpread": [1.625, 1.625, 1.625],
                 "gravity": [0.0, 0.0, 0.0],
                 "drag": 0.0,
-                "positionOffset": [0.0, 5.175, 0.0]
+                "positionOffset": [0.0, 5.175, 0.0],
+                "spawnWindow": 0.0,
+                "sustainRate": 0.0
             }
         }
     }

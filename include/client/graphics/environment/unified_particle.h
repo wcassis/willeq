@@ -106,6 +106,12 @@ struct EmitterConfig {
     float spawnRate = 10.0f;         // Particles per second (0 = burst mode)
     int burstCount = 0;              // For burst mode: how many at once
     float emitterLifetime = 0.0f;    // 0 = permanent (torches), >0 = temporary (spells)
+    // B1121: a two-phase emission for a landing that outlasts its peak. spawnRate
+    // runs while emitterAge < spawnWindow (0 = the whole emitterLifetime);
+    // sustainRate runs from emitterAge >= sustainFrom until emitterLifetime.
+    float spawnWindow = 0.0f;
+    float sustainRate = 0.0f;
+    float sustainFrom = 0.0f;
 
     // Spawn volume
     SpawnShape spawnShape = SpawnShape::POINT;

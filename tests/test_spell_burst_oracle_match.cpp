@@ -47,8 +47,12 @@
 //    population of ~30 fed at ~22 sprites/s is L ~ 1.4 s.  1.6-2.0 s is the
 //    band all three admit.  fable shipped 0.4-0.8 s.
 //
-//  * DURATION.  emitterLifetime + lifetime must equal the oracle's 2.33-2.6 s
-//    total, which with L = 1.8 s puts the emission window at ~0.6 s.
+//  * DURATION.  [Superseded by B1121 (#441).]  T422 read a 2.33-2.6 s total
+//    and set a 0.6 s window.  B1118 measured the landing at real frame rate:
+//    it ENDS at Act+4.85-6.52 s, and its base stays lit to the end (FED, not
+//    long-lived sprites; refactor/B1121/README.md sec. 2).  So the 1.6-2.0 s
+//    band is a per-PARTICLE life only; the 0.6 s window is now the PEAK phase
+//    (spawnWindow) and a SUSTAIN phase feeds the landing to its measured end.
 //
 //  * ANIMATION RATE (B370).  T420 tied one 16-frame sprite playthrough to a
 //    particle's lifetime, so the rate is 16/lifetime and is NOT a free knob.
@@ -106,6 +110,7 @@
 #include "client/graphics/simulation_worker.h"
 #include <glm/glm.hpp>
 #include <unordered_set>
+#include "spell_landing_population.h"
 #endif
 
 namespace {
@@ -138,11 +143,12 @@ protected:
         return def.emitters.at(0).config;
     }
 
-    // Peak population of a rectangular emission of `emitterLifetime` seconds
-    // at `spawnRate`/s whose particles outlive the window: everything emitted
-    // is still alive when emission stops.
-    static float PeakPopulation(const EQT::Graphics::Environment::EmitterConfig& c) {
-        return c.spawnRate * c.emitterLifetime + static_cast<float>(c.burstCount);
+    // B1121: one landing's expected peak LIVE count (both halves, peak +
+    // sustain phases; tests/spell_landing_population.h), and the peak
+    // phase's cohort -- what T422 compared with its blob count.
+    static float PeakLive() { return spell_landing_population::PeakLive({Impact(), Complete()}); }
+    static float PeakCohort(const EQT::Graphics::Environment::EmitterConfig& c) {
+        return spell_landing_population::PeakCohort(c);
     }
     static float MeanLifetime(const EQT::Graphics::Environment::EmitterConfig& c) {
         return 0.5f * (c.lifetimeMin + c.lifetimeMax);
@@ -157,16 +163,17 @@ TEST_F(SpellBurstOracleMatch, ImpactEmitsOverAWindowRatherThanInOneFrame) {
         << "the oracle's population rises over 1.96 s with no deaths; a "
            "burstCount puts the whole effect on screen in a single frame";
     EXPECT_GT(c.spawnRate, 0.0f);
-    EXPECT_GE(c.emitterLifetime, 0.5f);
-    EXPECT_LE(c.emitterLifetime, 0.8f);
+    // B1121: T422's 0.5-0.8 s window is the PEAK phase now (spawnWindow).
+    EXPECT_GE(c.spawnWindow, 0.5f);
+    EXPECT_LE(c.spawnWindow, 0.8f);
 }
 
 TEST_F(SpellBurstOracleMatch, SpellCompleteEmitsOverAWindowRatherThanInOneFrame) {
     const auto c = Complete();
     EXPECT_EQ(c.burstCount, 0);
     EXPECT_GT(c.spawnRate, 0.0f);
-    EXPECT_GE(c.emitterLifetime, 0.5f);
-    EXPECT_LE(c.emitterLifetime, 0.8f);
+    EXPECT_GE(c.spawnWindow, 0.5f);
+    EXPECT_LE(c.spawnWindow, 0.8f);
 }
 
 // The headline B226 number: one landing must put the oracle's order of
@@ -177,34 +184,58 @@ TEST_F(SpellBurstOracleMatch, SpellCompleteEmitsOverAWindowRatherThanInOneFrame)
 // heights^2 for 93) and the population rose with it; the ceiling is the pool:
 // two overlapping record-0 landings must fit `global.maxParticles` (below).
 TEST_F(SpellBurstOracleMatch, OneLandingReachesTheOraclesPeakSpriteCount) {
-    const float total = PeakPopulation(Impact()) + PeakPopulation(Complete());
+    const float total = PeakCohort(Impact()) + PeakCohort(Complete());
     EXPECT_GE(total, 715.0f)
         << "one landing paints " << total << " sprites; T422 counted at least "
            "715 blobs on the official client (Burst of Flame)";
-    EXPECT_LE(total, 0.5f * static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles))
-        << "one landing paints " << total << " sprites; two must fit the pool";
+    const float live = PeakLive();
+    EXPECT_LE(live, 0.5f * static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles))
+        << "one landing holds up to " << live << " live sprites; two must fit the pool";
 }
 
 // The lifetime is bounded BELOW by the oracle's death-free rise (1.46 s for
-// Weaken, 1.96 s for Burst of Flame) and ABOVE by the total duration.
+// Weaken, 1.96 s for Burst of Flame).  It is a per-PARTICLE life (the sheet
+// plays once over it, below), NOT the landing's duration (B1121).
 TEST_F(SpellBurstOracleMatch, ParticleLifetimeMatchesTheOraclesDeathFreeRise) {
     for (const auto& c : {Impact(), Complete()}) {
         EXPECT_GE(c.lifetimeMin, 1.4f)
             << "the oracle's population rises for 1.46-1.96 s without a single "
                "death, so no particle may die before 1.4 s";
         EXPECT_LE(c.lifetimeMax, 2.4f)
-            << "a lifetime past 2.4 s cannot fit the oracle's 2.33-2.6 s total "
-               "duration alongside the emission window";
+            << "B1121 lengthened the landing by FEEDING it; a longer life would "
+               "slow the sheet animation instead (16/lifetime)";
     }
 }
 
-// Total on-screen duration = emission window + particle lifetime.  Oracle:
-// 2.33 s (Burst of Flame) to 2.6 s (Weaken).
-TEST_F(SpellBurstOracleMatch, TheEffectLastsAsLongAsTheOracles) {
+// B1121 (#441).  The landing's END after OP_Action, per measured spell, is the
+// official client's (B1118 sec. 4, fx_measure.py `LANDING ... end`).  The end is
+// MEASURED on a lane-5 capture, never summed: `review/B1121/scripts/
+// b1120_measure.sh <leg> <out>` (refactor/B1121/README.md).  What a config can
+// pin is the sim's last possible death, triggerDelay + emitterLifetime +
+// lifetimeMax: the last lit frame falls 0.2-0.6 s before it once the sustain
+// thins below the visibility threshold, so it must sit in [end, end + 0.8].
+TEST_F(SpellBurstOracleMatch, EveryMeasuredLandingEndsWhereTheOraclesDoes) {
+    const struct { uint32_t id; float oracleEnd; } kEnds[] = {
+        {93, 4.87f}, {38, 4.85f}, {54, 5.10f}, {656, 5.00f},
+        {41, 6.22f}, {253, 6.52f}, {458, 4.94f}};
+    const glm::vec4 col(1.0f);
+    for (const auto& e : kEnds) {
+        for (const auto& def : {SpellPresets::Impact(col, e.id), SpellPresets::SpellComplete(col, e.id)}) {
+            const auto& ed = def.emitters.at(0);
+            const float lastDeath = ed.triggerDelay + ed.config.emitterLifetime + ed.config.lifetimeMax;
+            EXPECT_GE(lastDeath, e.oracleEnd) << "spell " << e.id << " " << def.name;
+            EXPECT_LE(lastDeath, e.oracleEnd + 0.8f) << "spell " << e.id << " " << def.name;
+        }
+    }
+}
+
+// The landing is FED to its end: the sustain phase runs past the peak window
+// up to emitterLifetime, so the column's base is still being spawned late.
+TEST_F(SpellBurstOracleMatch, TheLandingIsFedPastItsPeakWindow) {
     for (const auto& c : {Impact(), Complete()}) {
-        const float duration = c.emitterLifetime + c.lifetimeMax;
-        EXPECT_GE(duration, 2.1f) << "duration " << duration << " s";
-        EXPECT_LE(duration, 3.0f) << "duration " << duration << " s";
+        EXPECT_GT(c.sustainRate, 0.0f);
+        EXPECT_GE(c.sustainFrom, c.spawnWindow);
+        EXPECT_GT(c.emitterLifetime, c.sustainFrom + 1.0f);
     }
 }
 
@@ -256,7 +287,7 @@ TEST_F(SpellBurstOracleMatch, SpriteSizeAndExpandSpeedAreTheMeasuredOnes) {
 // equal the shipped value.  With one landing now ~650 sprites, two landings
 // overlapping exceed 1024 and would be silently clipped.
 TEST_F(SpellBurstOracleMatch, TheConfiguredPoolHoldsTwoOverlappingLandings) {
-    const float perLanding = PeakPopulation(Impact()) + PeakPopulation(Complete());
+    const float perLanding = PeakLive();
     EXPECT_GE(static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles),
               2.0f * perLanding)
         << "one landing is " << perLanding << " sprites and two can overlap; "
@@ -324,7 +355,8 @@ protected:
 // the worker runs out of pool and clips; at the configured pool it does not.
 TEST_F(SpellBurstPoolSizing, TheOldHardcodedPoolClipsAndTheConfiguredOneDoesNot) {
     const int configured = SpellEffectsConfig::instance().getGlobal().maxParticles;
-    // 60 frames = 1.0 s, past the 0.6 s emission window, before anything dies.
+    // 60 frames = 1.0 s: past the 0.33 s delay and the 0.6 s peak window,
+    // before anything dies (the sustain starts later, B1121).
     const size_t atOldDefault = PeakBuffer(1024, 60, 4);
     const size_t atConfigured = PeakBuffer(configured, 60, 4);
     EXPECT_LE(atOldDefault, 1024u);

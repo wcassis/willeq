@@ -39,6 +39,9 @@ static void applyStyle(const SpellEffectsConfig::StyleSettings& s, EmitterConfig
     if (s.hasSpawnRate) c.spawnRate = s.spawnRate * density;
     if (s.hasBurstCount) c.burstCount = static_cast<int>(s.burstCount * density);
     if (s.hasEmitterLifetime) c.emitterLifetime = s.emitterLifetime;
+    if (s.hasSpawnWindow) c.spawnWindow = s.spawnWindow;
+    if (s.hasSustainRate) c.sustainRate = s.sustainRate * density;
+    if (s.hasSustainFrom) c.sustainFrom = s.sustainFrom;
 
     if (s.hasSpawnShape) c.spawnShape = parseSpawnShape(s.spawnShape);
     if (s.hasSpawnExtents) c.spawnExtents = s.spawnExtents;

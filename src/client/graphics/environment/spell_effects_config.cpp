@@ -251,6 +251,9 @@ void SpellEffectsConfig::loadStyle(const Json::Value& json, const std::string& n
 
     if (json.isMember("positionOffset")) { s.positionOffset = readVec3(json["positionOffset"]); s.hasPositionOffset = true; }
     if (json.isMember("triggerDelay")) { s.triggerDelay = json["triggerDelay"].asFloat(); s.hasTriggerDelay = true; }
+    if (json.isMember("spawnWindow")) { s.spawnWindow = json["spawnWindow"].asFloat(); s.hasSpawnWindow = true; }
+    if (json.isMember("sustainRate")) { s.sustainRate = json["sustainRate"].asFloat(); s.hasSustainRate = true; }
+    if (json.isMember("sustainFrom")) { s.sustainFrom = json["sustainFrom"].asFloat(); s.hasSustainFrom = true; }
 
     LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: Loaded style '{}'", name);
 }
@@ -304,6 +307,9 @@ SpellEffectsConfig::StyleSettings SpellEffectsConfig::mergeOverrides(
     if (over.hasExpandSpeed) { result.expandSpeed = over.expandSpeed; result.hasExpandSpeed = true; }
     if (over.hasPositionOffset) { result.positionOffset = over.positionOffset; result.hasPositionOffset = true; }
     if (over.hasTriggerDelay) { result.triggerDelay = over.triggerDelay; result.hasTriggerDelay = true; }
+    if (over.hasSpawnWindow) { result.spawnWindow = over.spawnWindow; result.hasSpawnWindow = true; }
+    if (over.hasSustainRate) { result.sustainRate = over.sustainRate; result.hasSustainRate = true; }
+    if (over.hasSustainFrom) { result.sustainFrom = over.sustainFrom; result.hasSustainFrom = true; }
 
     return result;
 }
