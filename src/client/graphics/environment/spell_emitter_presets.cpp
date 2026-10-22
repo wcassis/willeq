@@ -76,6 +76,15 @@ static void applyStyle(const SpellEffectsConfig::StyleSettings& s, EmitterConfig
     if (s.hasExpandSpeed) c.expandSpeed = s.expandSpeed;
 }
 
+// B1120: a style's `triggerDelay` turns an IMMEDIATE emitter into a DELAYED
+// one (the sim's SpellTrigger::DELAYED arm, effect.age >= triggerDelay).
+static void applyTrigger(const SpellEffectsConfig::StyleSettings& s, SpellEmitterDef& ed) {
+    if (s.hasTriggerDelay && s.triggerDelay > 0.0f && ed.trigger == SpellTrigger::IMMEDIATE) {
+        ed.trigger = SpellTrigger::DELAYED;
+        ed.triggerDelay = s.triggerDelay;
+    }
+}
+
 // === Preset Functions ===
 
 SpellEffectDef CastSpray(glm::vec4 color, uint32_t spellId) {
@@ -124,6 +133,7 @@ SpellEffectDef SpellComplete(glm::vec4 color, uint32_t spellId) {
     ed.positionOffset = s.hasPositionOffset ? s.positionOffset : glm::vec3(0.0f);
 
     applyStyle(s, ed.config, color);
+    applyTrigger(s, ed);
 
     def.emitters.push_back(ed);
     return def;
@@ -141,6 +151,7 @@ SpellEffectDef Impact(glm::vec4 color, uint32_t spellId) {
     ed.positionOffset = s.hasPositionOffset ? s.positionOffset : glm::vec3(0.0f, 1.0f, 0.0f);
 
     applyStyle(s, ed.config, color);
+    applyTrigger(s, ed);
 
     def.emitters.push_back(ed);
     return def;

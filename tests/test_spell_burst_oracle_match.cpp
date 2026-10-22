@@ -77,7 +77,11 @@
 //    predicted 4-6 px and would have left this alone; the measurement is
 //    what moved it.
 //
-//  * EXTENT is NOT changed, and has its probe.  The oracle's burst spreads
+//  * EXTENT.  [Superseded by B1120 (#440): B1118 measured the oracle's
+//    landing as a VOLUME -- columns, domes, swirls, a star field -- and the
+//    830 px below was crop-limited.  B1120 reshaped both styles; the shapes are
+//    pinned in tests/test_spell_landing_volume.cpp.  The T422 text is history.]
+//    EXTENT was NOT changed by T422, and had its probe.  The oracle's burst spreads
 //    830 px across at ~135 px per character height, i.e. ~8.3 world units in
 //    ~2 s = ~4.2 units/s, against fable's shipped `expandSpeed` 4.0.  It was
 //    left alone BECAUSE it measured right: the whole extent error was the
@@ -166,16 +170,19 @@ TEST_F(SpellBurstOracleMatch, SpellCompleteEmitsOverAWindowRatherThanInOneFrame)
 }
 
 // The headline B226 number: one landing must put the oracle's order of
-// sprites on screen, not 81.  Measured band 561 (Weaken) to 715 (Burst of
-// Flame); allow +-25% for the split between the two stages.
+// sprites on screen, not 81.  T422 measured 561 (Weaken) to 715 (Burst of
+// Flame) 8-connected blobs -- a LOWER bound (B1118 sec. 3: overlapping
+// sprites merge).  B1120 (#440) filled the oracle's volume (a column >= 2
+// caster heights + a spark shell ~3.4 wide, B1118 coverage 5.85 caster
+// heights^2 for 93) and the population rose with it; the ceiling is the pool:
+// two overlapping record-0 landings must fit `global.maxParticles` (below).
 TEST_F(SpellBurstOracleMatch, OneLandingReachesTheOraclesPeakSpriteCount) {
     const float total = PeakPopulation(Impact()) + PeakPopulation(Complete());
-    EXPECT_GE(total, 420.0f)
-        << "one landing paints " << total << " sprites; the oracle paints "
-           "561 (Weaken) to 715 (Burst of Flame)";
-    EXPECT_LE(total, 900.0f)
-        << "one landing paints " << total << " sprites, well over the oracle's "
-           "715 -- overshooting is as wrong as undershooting";
+    EXPECT_GE(total, 715.0f)
+        << "one landing paints " << total << " sprites; T422 counted at least "
+           "715 blobs on the official client (Burst of Flame)";
+    EXPECT_LE(total, 0.5f * static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles))
+        << "one landing paints " << total << " sprites; two must fit the pool";
 }
 
 // The lifetime is bounded BELOW by the oracle's death-free rise (1.46 s for
@@ -224,7 +231,8 @@ TEST_F(SpellBurstOracleMatch, SheetPlaybackRateFollowsFromTheMeasuredLifetime) {
 // both landing styles x2.8, calibrated on a sprite-separable ThinkPad lane-5
 // capture (refactor/B1119/README.md).  The expand speed is the one that
 // MEASURED RIGHT and was deliberately not touched.  Pin both so a later unit
-// does not move either off a desk argument.
+// does not move either off a desk argument.  (B1120 replaced the expand
+// speed with the measured spark-shell speed; see the last assertion.)
 TEST_F(SpellBurstOracleMatch, SpriteSizeAndExpandSpeedAreTheMeasuredOnes) {
     const auto c = Impact();
     EXPECT_FLOAT_EQ(c.sizeStartMin, 0.224f);
@@ -236,8 +244,11 @@ TEST_F(SpellBurstOracleMatch, SpriteSizeAndExpandSpeedAreTheMeasuredOnes) {
     EXPECT_FLOAT_EQ(sc.sizeStartMax, 0.44f);
     EXPECT_FLOAT_EQ(sc.sizeEndMin, 0.532f);
     EXPECT_FLOAT_EQ(sc.sizeEndMax, 0.784f);
-    EXPECT_FLOAT_EQ(c.expandSpeed, 4.0f)
-        << "the oracle's burst spreads ~8.3 world units in ~2 s = ~4.2 units/s";
+    // B1120 (#440): the impact style is no longer RADIAL_EXPAND at 4.0; it is
+    // the oracle's 93/38 spark shell, a BURST at 1.6 caster heights/s
+    // horizontal (6.5-unit caster, refactor/B1120/README.md sec. 3-4).
+    EXPECT_EQ(c.motionType, EQT::Graphics::Environment::MotionType::BURST);
+    EXPECT_NEAR(c.velocityBase.x, 1.6f * 6.5f, 0.05f);
 }
 
 // B375.  `global.maxParticles` had no consumer at all: the renderer sent

@@ -149,7 +149,7 @@ namespace SpellPresets = EQT::Graphics::Environment::SpellPresets;
 // client, whose population rises over ~2 s rather than appearing in one frame,
 // so the shipped style is now a `spawnRate` emitter and its burstCount is 0 --
 // which used to be the "no config was applied at all" value. `spawnRate` reads
-// 480 shipped / 0 built-in (setDefaults() still describes the pre-T422
+// 1100 shipped (B1120; 480 at T422) / 0 built-in (setDefaults() still describes the pre-T422
 // one-shot) / 10 never-configured (EmitterConfig's own default, board B221's
 // "permanent 10/s emitter").
 //
@@ -160,7 +160,10 @@ namespace SpellPresets = EQT::Graphics::Environment::SpellPresets;
 // SpellEffectsConfig::getStyleSettings() documents as "no per-spell lookup".
 // Asking for 93 would have made this test track a per-spell tuning number and
 // go red every time a future unit measured that spell again.
-constexpr float kShippedImpactSpawnRate = 480.0f;
+//
+// B1120 (#440) raised the impact STYLE's population with the landing volume
+// (480 -> 1100/s); the three-way discriminator (shipped / 0 / 10) is intact.
+constexpr float kShippedImpactSpawnRate = 1100.0f;
 constexpr float kBuiltInImpactSpawnRate = 0.0f;
 
 // PRE-FIX RED. From a CWD with no config/ tree, the production string opens

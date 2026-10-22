@@ -86,6 +86,19 @@
 // The EMISSION SHAPE is deliberately not touched here: the oracle's rate
 // itself ramps and is then cut off, which a rectangular window cannot
 // express, and that is board B396.
+//
+// B1120 (#440) SUPERSEDES THE ABSOLUTE COUNTS ABOVE, not the ratios.  T422's
+// 715/561/25-36 are 8-connected blob counts, which B1118 sec. 3 shows are
+// LOWER bounds (overlapping sprites merge), and B1118 measured the oracle's
+// landing as a VOLUME several caster heights across (peak coverage 1.2-7.3
+// caster heights^2 against fable's 0.12-0.26).  B1120 reshaped both landing
+// styles into that volume (tests/test_spell_landing_volume.cpp) and raised
+// the style populations with it -- spellComplete 1800/s + impact 1100/s over
+// the same 0.6 s window = 1740 -- keeping T422's per-spell RATIOS to the
+// style (93 x1.1034, 41 x0.8657).  253's T422 trickle cannot draw the
+// oracle's frame-filling star field at any size; its rate is now capped by
+// the pool instead (one 253 field + one record-0 landing <= 4096).  The
+// per-spell population TARGETS are B1123's, which re-measures them.
 
 #include <gtest/gtest.h>
 
@@ -391,18 +404,22 @@ protected:
 };
 
 // RED before T441: spellOverrides was `{}` and all three read the style's 648.
+// B1120: the absolute count rose with the volume; T422's RATIO to the style
+// (715:648) is what the override still carries.
 TEST_F(SpellStyleOverrides, BurstOfFlameReachesItsOwnMeasuredPopulation) {
     const float total = peak(impact(93)) + peak(complete(93));
-    EXPECT_NEAR(total, 715.0f, 25.0f)
-        << "T422 measured 715 sprites on the official client; fable paints "
-        << total;
+    const float style = peak(impact(1)) + peak(complete(1));
+    EXPECT_NEAR(total / style, 715.0f / 648.0f, 0.01f)
+        << "T422 measured 715 sprites against the style's 648; fable paints "
+        << total << " against " << style;
 }
 
 TEST_F(SpellStyleOverrides, WeakenReachesItsOwnMeasuredPopulation) {
     const float total = peak(impact(41)) + peak(complete(41));
-    EXPECT_NEAR(total, 561.0f, 25.0f)
-        << "T422 measured 561 sprites on the official client; fable paints "
-        << total;
+    const float style = peak(impact(1)) + peak(complete(1));
+    EXPECT_NEAR(total / style, 561.0f / 648.0f, 0.01f)
+        << "T422 measured 561 sprites against the style's 648; fable paints "
+        << total << " against " << style;
 }
 
 // And the two must actually DIFFER -- 715 vs 561 is the whole point of B397.
@@ -414,11 +431,18 @@ TEST_F(SpellStyleOverrides, TheTwoWideBurstsAreNoLongerTheSameSize) {
            "serve both";
 }
 
-// Whirling Wind is a continuous 25-36, not a 648-sprite burst.
-TEST_F(SpellStyleOverrides, WhirlingWindIsASteadyTrickleNotAWideBurst) {
+// Whirling Wind is a continuous field, not a 0.6 s burst -- and since B1120
+// a FRAME-FILLING one (B1118: oracle 253 Landing coverage 7.28 caster
+// heights^2; T422's 25-36 trickle measured max 0.033).  Its steady population
+// is bounded by the pool: one 253 field plus one record-0 landing must fit.
+TEST_F(SpellStyleOverrides, WhirlingWindIsASteadyFrameFillingField) {
     const float total = steady(impact(253)) + steady(complete(253));
-    EXPECT_GE(total, 25.0f) << "T422 measured a steady 25-36; fable holds " << total;
-    EXPECT_LE(total, 36.0f) << "T422 measured a steady 25-36; fable holds " << total;
+    const float largest = peak(impact(93)) + peak(complete(93));
+    const float pool = static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles);
+    EXPECT_GE(total, 1500.0f) << "a field, not a trickle; fable holds " << total;
+    EXPECT_LE(total + largest, pool)
+        << "253's field (" << total << ") plus a record-0 landing (" << largest
+        << ") must fit the pool (" << pool << ")";
 }
 
 // B1119 (#439): T422 gave 253 sprites 1.673x the burst styles'.  B1118's
@@ -445,14 +469,14 @@ TEST_F(SpellStyleOverrides, WhirlingWindLastsAsLongAsTheOracles) {
 }
 
 // An UNMEASURED spell still resolves to the plain style -- no override may be
-// invented for a spell whose oracle numbers nobody has taken. 285 and 1 are
-// the worked cases; 656 Shock of Ice has a measured Source size (B1119) but its
-// Landing p90 sits in the style band, so its impact must stay the style's.
+// invented for a spell whose oracle numbers nobody has taken. 285, 1 and 2
+// are the worked cases. (656 Shock of Ice was one until B1120 measured its
+// landing SHAPE -- the record-23 swirl + glints -- and gave it an override.)
 // (54 Frost Bolt used to be the example; B1118 measured it and B1119 gave it a
 // Landing size override.)
 TEST_F(SpellStyleOverrides, AnUnmeasuredSpellStillResolvesToTheStyle) {
     const EmitterConfig style = impact(0);
-    for (uint32_t spellId : {656u, 285u, 1u}) {
+    for (uint32_t spellId : {285u, 1u, 2u}) {
         const EmitterConfig c = impact(spellId);
         EXPECT_FLOAT_EQ(c.spawnRate, style.spawnRate) << "spell " << spellId;
         EXPECT_FLOAT_EQ(c.emitterLifetime, style.emitterLifetime) << "spell " << spellId;

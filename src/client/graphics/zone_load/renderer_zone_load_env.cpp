@@ -16,6 +16,7 @@
 #include "client/graphics/light_source.h"
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/environment/zone_biome.h"
+#include "client/graphics/environment/spell_effects_config.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
@@ -1056,6 +1057,13 @@ void ZoneLoadComponent::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
             pi.fireEnabled = ctx_.particleManager->isUnifiedFireEnabled();
             pi.commands = ctx_.particleManager->drainCommands();
             pi.unifiedRendererInitialized = true;
+            // B1120: the worker sizes its pool ONCE, on the first input that
+            // says the renderer is initialized -- and that is this zone-load
+            // input, not SimBridgeComponent's.  Without this line the struct
+            // default (1024) won and `global.maxParticles` (B375) was inert in
+            // every live run (lane-5 logs: "pool initialized (size=1024)").
+            pi.poolSize = EQT::Graphics::Environment::SpellEffectsConfig::instance()
+                              .getGlobal().maxParticles;
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: particleInput assembled: fireEnabled={}, "
                       "unifiedRendererInitialized={}, commands={}, windStrength={:.2f}",
                       pi.fireEnabled, pi.unifiedRendererInitialized,

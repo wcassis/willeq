@@ -220,6 +220,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_burst_oracle_match DISCOVERY_TIMEOUT 120)
 
+# B1120 (#440): the landing VOLUME -- column, spark shell, pillar + dome,
+# swirl + glints, star field, ball burst -- measured off the official client
+# (refactor/B1120/README.md), plus the landing onset delay and the pool-size
+# wiring.  Drives SimulationWorker::computeOnce() with the shipped presets, so
+# it needs the Irrlicht headers when graphics are on.
+ADD_EXECUTABLE(test_spell_landing_volume
+    test_spell_landing_volume.cpp
+)
+TARGET_LINK_LIBRARIES(test_spell_landing_volume GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_landing_volume PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_landing_volume DISCOVERY_TIMEOUT 120)
+
 # T395 Leg B (board B205): eqemu say-links in server chat text. The helper
 # plus the two consumers that print server-authored lines (OP_SpecialMesg and
 # OP_ChannelMessage).

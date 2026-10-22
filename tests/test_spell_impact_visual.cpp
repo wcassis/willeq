@@ -416,6 +416,18 @@ protected:
         requested_ = output_.particleOutput.positionRequestEntities;
     }
 
+    // B1120 (#440): the impact style waits `triggerDelay` (the oracle's landing
+    // onset) before its emitter exists, so "the first spawn frame" is the first
+    // frame past that delay, not the second worker frame.  Run the command
+    // frame, then every frame up to and including the first one past it.
+    void FramesThroughTheFirstSpawn(bool frustum) {
+        const float delay = EQT::Graphics::Environment::SpellPresets::Impact(
+            glm::vec4(1.0f), 93).emitters.at(0).triggerDelay;
+        Frame(/*withCommand=*/true, 1.0f / 60.0f, frustum);
+        const int more = 1 + static_cast<int>(std::ceil(delay * 60.0f));
+        for (int i = 0; i < more; ++i) Frame(/*withCommand=*/false, 1.0f / 60.0f, frustum);
+    }
+
     std::unordered_set<uint16_t> requested_;
     EQT::Graphics::SimulationWorker worker_;
     EQT::Graphics::SimulationOutput output_;
@@ -427,8 +439,7 @@ protected:
 // refreshes an attached emitter's position, fires the whole one-shot burst
 // there and latches isBurstSpawned. Nothing ever appears on the target.
 TEST_F(ImpactParticleTest, TheBurstSpawnsOnTheTargetNotAtTheWorldOrigin) {
-    Frame(/*withCommand=*/true, 1.0f / 60.0f, /*frustum=*/false);
-    Frame(/*withCommand=*/false, 1.0f / 60.0f, /*frustum=*/false);
+    FramesThroughTheFirstSpawn(/*frustum=*/false);
 
     ASSERT_TRUE(output_.particleOutput.valid);
     const auto& buf = output_.particleOutput.renderBuffer;
@@ -439,7 +450,10 @@ TEST_F(ImpactParticleTest, TheBurstSpawnsOnTheTargetNotAtTheWorldOrigin) {
         const float dy = p.position.y - kTargetPos.y;
         const float dz = p.position.z - kTargetPos.z;
         const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-        EXPECT_LT(dist, 4.0f)
+        // B1120: the impact is now a volume (a spark shell spawned in a
+        // 0.3-caster-height sphere 0.9 caster heights above the feet, i.e.
+        // up to ~4.3 units from the anchor). The world origin is ~1000 away.
+        EXPECT_LT(dist, 8.0f)
             << "a particle spawned " << dist << " units from the target at ("
             << p.position.x << "," << p.position.y << "," << p.position.z
             << ") -- the emitter burst before its attach position was resolved";
@@ -453,8 +467,7 @@ TEST_F(ImpactParticleTest, TheBurstSpawnsOnTheTargetNotAtTheWorldOrigin) {
 // of the effect -- and below ~20 fps the emitter is dead before its position
 // is ever applied.
 TEST_F(ImpactParticleTest, TheBurstIsNotCulledAtTheWorldOrigin) {
-    Frame(/*withCommand=*/true, 1.0f / 60.0f, /*frustum=*/true);
-    Frame(/*withCommand=*/false, 1.0f / 60.0f, /*frustum=*/true);
+    FramesThroughTheFirstSpawn(/*frustum=*/true);
 
     ASSERT_TRUE(output_.particleOutput.valid);
     EXPECT_FALSE(output_.particleOutput.renderBuffer.empty())
