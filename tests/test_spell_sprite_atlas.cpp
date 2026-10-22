@@ -3,11 +3,16 @@
  * the official client's own art, cell for cell, ALL SIXTEEN FRAMES of it.
  *
  * T417 shipped one still frame per sprite (the peak-alpha frame). T420 ships
- * the whole animation: 33 sprites x 16 frames = 528 of the 1024 cells, in the
- * source sheet's own display order, so a particle can walk them over its
+ * the whole animation: 33 sprites x 16 reserved cells = 528 of the 1024, in
+ * the source sheet's own display order, so a particle can walk them over its
  * lifetime. The assertion below is correspondingly stronger and simpler --
  * there is no frame-selection rule left to re-derive, every cell must equal
  * its frame.
+ *
+ * B1124 (#444, B1118 M8): seven of the 33 files are not grids but ONE 64x64
+ * picture each (spelc3, spelc4, ...). Those are packed WHOLE into their
+ * sprite's first cell and the other fifteen stay transparent; the census that
+ * says which is re-derived here from the TGAs, independently of the builder.
  *
  * Will ruled 2026-09-06: draw the REAL sprites, "as close to the original as
  * possible". This asserts the shipped BMP against its inputs directly --
@@ -181,6 +186,36 @@ uint64_t cellAlpha(const Bitmap& bmp, int cell) {
     return total;
 }
 
+// B1124's census, re-derived from the source rather than shared with the
+// builder: additive mass (max(R,G,B) * alpha) inside a band of cell/8 texels
+// either side of the 4x4 sheet's internal seams, as a share of the total,
+// over the band's share of the area. A grid pads each frame inside its own
+// cell (near 0); one centred picture lies across the seams (above 1).
+double seamRatio(const EQT::ToolTGA::Image& img) {
+    const int cell = img.width / SpellSpriteAtlas::kSheetGrid;
+    const int band = std::max(1, cell / 8);
+    auto inBand = [&](int v) {
+        for (int k = 1; k < SpellSpriteAtlas::kSheetGrid; ++k) {
+            if (v >= k * cell - band && v < k * cell + band) return true;
+        }
+        return false;
+    };
+    double total = 0, seam = 0, seamArea = 0;
+    for (int y = 0; y < img.height; ++y) {
+        for (int x = 0; x < img.width; ++x) {
+            const uint8_t* t = &img.rgba[(static_cast<size_t>(y) * img.width + x) * 4];
+            const double w = std::max({t[0], t[1], t[2]}) * static_cast<double>(t[3]);
+            total += w;
+            if (inBand(x) || inBand(y)) {
+                seam += w;
+                seamArea += 1;
+            }
+        }
+    }
+    if (total <= 0) return 0.0;
+    return (seam / total) / (seamArea / (static_cast<double>(img.width) * img.height));
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -209,40 +244,100 @@ TEST(SpellSpriteAtlasFile, EverySpriteHasVisibleFramesAndReachesAPeak) {
     for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
         uint64_t peak = 0;
         int visibleFrames = 0;
-        for (int f = 0; f < SpellSpriteAtlas::kFramesPerSprite; ++f) {
+        const int frames = SpellSpriteAtlas::framesFor(sprite);
+        for (int f = 0; f < frames; ++f) {
             const uint64_t a = cellAlpha(bmp, SpellSpriteAtlas::cellFor(sprite, f));
             if (a > 0) ++visibleFrames;
             if (a > peak) peak = a;
         }
         EXPECT_GT(peak, 0u) << SpellSpriteAtlas::kFiles[sprite]
-                            << ": every one of its sixteen cells is transparent";
-        EXPECT_GT(visibleFrames, 1) << SpellSpriteAtlas::kFiles[sprite]
-                                    << ": only " << visibleFrames
-                                    << " of sixteen frames carry any alpha";
+                            << ": every one of its cells is transparent";
+        if (frames > 1) {
+            EXPECT_GT(visibleFrames, 1) << SpellSpriteAtlas::kFiles[sprite]
+                                        << ": only " << visibleFrames
+                                        << " of sixteen frames carry any alpha";
+        }
     }
 }
 
-TEST(SpellSpriteAtlasFile, TheBlankFirstFramesAreShippedAsBlank) {
-    // The six files T420 MEASURED as having a completely empty frame 0
-    // (spely4 is a seventh at 256 of 11,418 alpha -- near-blank, not blank,
-    // so it is deliberately not asserted here).
-    // Shipping them blank is the point: the animation starts from nothing.
-    // If this ever goes red the frame ORDER has been disturbed.
+TEST(SpellSpriteAtlasFile, TheSingleImageSheetsArePackedWholeInTheirFirstCell) {
+    // B1124 (#444). T420 asserted these six files' frame 0 was BLANK -- it
+    // was: frame 0 was the empty top-left corner of ONE centred picture, and
+    // the sheet drew 16x16 fragments of the star as "frames". The picture now
+    // occupies the first cell whole, lit nearly as much as the brightest
+    // grid frames, and the fifteen cells after it are transparent. RED on the
+    // pre-B1124 sheet (frame 0 alpha 0, fragments in cells 1..15).
     const Bitmap bmp = loadBmp(atlasPath());
     ASSERT_TRUE(bmp.ok);
 
-    for (const char* file : {"spelb3.tga", "spelb4.tga", "spelc3.tga",
-                             "spelc4.tga", "speld4.tga", "spely3.tga"}) {
+    for (const char* file : {"spelb3.tga", "spelb4.tga", "spelc3.tga", "spelc4.tga",
+                             "speld4.tga", "spely3.tga", "spely4.tga"}) {
         const int sprite = SpellSpriteAtlas::slotForFile(file);
         ASSERT_GE(sprite, 0) << file;
-        EXPECT_EQ(cellAlpha(bmp, SpellSpriteAtlas::cellFor(sprite, 0)), 0u)
-            << file << " frame 0 is no longer blank -- the frame order moved";
-        uint64_t peak = 0;
-        for (int f = 0; f < SpellSpriteAtlas::kFramesPerSprite; ++f) {
-            peak = std::max(peak, cellAlpha(bmp, SpellSpriteAtlas::cellFor(sprite, f)));
+        EXPECT_EQ(SpellSpriteAtlas::framesFor(sprite), 1) << file;
+        EXPECT_GT(cellAlpha(bmp, SpellSpriteAtlas::cellFor(sprite, 0)), 0u)
+            << file << ": the whole picture is not in the first cell";
+        for (int f = 1; f < SpellSpriteAtlas::kFramesPerSprite; ++f) {
+            EXPECT_EQ(cellAlpha(bmp, SpellSpriteAtlas::cellFor(sprite, f)), 0u)
+                << file << " reserved cell " << f
+                << " carries texels -- a fragment of the picture is still packed";
         }
-        EXPECT_GT(peak, 0u) << file << " never becomes visible at all";
     }
+}
+
+TEST(SpellSpriteAtlasFile, TheCentreOfASingleImageIsTheCentreOfItsCell) {
+    // The positive form of "packed whole": spelc3's star is centred on its
+    // sheet, so its alpha-weighted centroid must sit at the CELL centre
+    // (16,16), not in a corner as every 16x16 fragment's did.
+    const Bitmap bmp = loadBmp(atlasPath());
+    ASSERT_TRUE(bmp.ok);
+    for (const char* file : {"spelc3.tga", "spelc4.tga"}) {
+        const int sprite = SpellSpriteAtlas::slotForFile(file);
+        ASSERT_GE(sprite, 0);
+        int ox = 0, oy = 0;
+        SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::cellFor(sprite, 0), ox, oy);
+        double m = 0, mx = 0, my = 0;
+        for (int y = 0; y < SpellSpriteAtlas::kCellSize; ++y) {
+            for (int x = 0; x < SpellSpriteAtlas::kCellSize; ++x) {
+                const double a = bmp.at(ox + x, oy + y)[3];
+                m += a;
+                mx += a * (x + 0.5);
+                my += a * (y + 0.5);
+            }
+        }
+        ASSERT_GT(m, 0.0) << file << ": first cell is empty";
+        EXPECT_NEAR(mx / m, SpellSpriteAtlas::kCellSize / 2.0, 2.0) << file;
+        EXPECT_NEAR(my / m, SpellSpriteAtlas::kCellSize / 2.0, 2.0) << file;
+    }
+}
+
+TEST(SpellSpriteAtlasFile, TheGridOrSingleCensusMatchesTheHeader) {
+    // B1124's census over the 33 shipped files, re-measured from the TGAs.
+    // The measured gap is wide (grids <= 0.30, single images >= 1.33), so the
+    // 1.0 split is not a tuned threshold. Also pins the dimension rule the
+    // census found across all 67 spel*.tga: every 64x64 file is one picture.
+    if (!sourcesAvailable()) {
+        GTEST_SKIP() << "EQ client tree not mounted at " << kSourceDir;
+    }
+    int singles = 0;
+    for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
+        const std::string src =
+            std::string(kSourceDir) + "/" + SpellSpriteAtlas::kFiles[sprite];
+        EQT::ToolTGA::Image img;
+        std::string error;
+        ASSERT_TRUE(EQT::ToolTGA::load(src, img, error)) << error;
+        const double r = seamRatio(img);
+        const bool single = r >= 1.0;
+        if (single) ++singles;
+        EXPECT_EQ(SpellSpriteAtlas::framesFor(sprite), single ? 1 : 16)
+            << SpellSpriteAtlas::kFiles[sprite] << " " << img.width << "x" << img.height
+            << " seam ratio " << r;
+        EXPECT_EQ(single, img.width == 64) << SpellSpriteAtlas::kFiles[sprite];
+        EXPECT_TRUE(r <= 0.35 || r >= 1.2)
+            << SpellSpriteAtlas::kFiles[sprite] << " seam ratio " << r
+            << " fell into the census gap -- classify it by eye before shipping";
+    }
+    EXPECT_EQ(singles, 7);
 }
 
 TEST(SpellSpriteAtlasFile, UnusedCellsAreFullyTransparent) {
@@ -301,14 +396,23 @@ TEST(SpellSpriteAtlasFile, EveryCellEqualsItsSourceFrame) {
         ASSERT_EQ(img.width, img.height) << src;
         ASSERT_EQ(img.width % SpellSpriteAtlas::kSheetGrid, 0) << src;
 
-        const int frameSize = img.width / SpellSpriteAtlas::kSheetGrid;
+        // B1124: a single image is ONE frame, the whole sheet; the other
+        // reserved cells must be all-zero.
+        const int frames = SpellSpriteAtlas::framesFor(sprite);
+        const int frameSize =
+            frames == 1 ? img.width : img.width / SpellSpriteAtlas::kSheetGrid;
 
         for (int f = 0; f < SpellSpriteAtlas::kFramesPerSprite; ++f) {
             const int fx = (f % SpellSpriteAtlas::kSheetGrid) * frameSize;
             const int fy = (f / SpellSpriteAtlas::kSheetGrid) * frameSize;
-            const std::vector<uint8_t> want = expectedCell(
-                img.rgba.data() + (static_cast<size_t>(fy) * img.width + fx) * 4,
-                img.width, frameSize);
+            const std::vector<uint8_t> want =
+                f < frames
+                    ? expectedCell(
+                          img.rgba.data() + (static_cast<size_t>(fy) * img.width + fx) * 4,
+                          img.width, frameSize)
+                    : std::vector<uint8_t>(static_cast<size_t>(SpellSpriteAtlas::kCellSize) *
+                                               SpellSpriteAtlas::kCellSize * 4,
+                                           0);
 
             int ox = 0, oy = 0;
             SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::cellFor(sprite, f), ox, oy);
@@ -329,7 +433,7 @@ TEST(SpellSpriteAtlasFile, EveryCellEqualsItsSourceFrame) {
 }
 
 TEST(SpellSpriteAtlasFile, TheSixteenFramesOfASpriteAreNotAllTheSame) {
-    // T409 recorded these sheets as one repeated frame; T417 measured 5 to 16
+    // Grid sheets only (B1124). T409 recorded these sheets as one repeated frame; T417 measured 5 to 16
     // DISTINCT frames in every one. If this goes red the builder has stopped
     // walking the source grid and is packing the same frame sixteen times --
     // which would leave the sheet 16x larger and still a still.
@@ -337,6 +441,7 @@ TEST(SpellSpriteAtlasFile, TheSixteenFramesOfASpriteAreNotAllTheSame) {
     ASSERT_TRUE(bmp.ok);
 
     for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
+        if (SpellSpriteAtlas::framesFor(sprite) == 1) continue;  // B1124: one picture
         bool differs = false;
         int ax = 0, ay = 0;
         SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::cellFor(sprite, 0), ax, ay);

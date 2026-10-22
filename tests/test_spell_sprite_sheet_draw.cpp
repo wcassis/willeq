@@ -294,9 +294,10 @@ TEST_F(SpellSpriteSheetDrawTest, EveryFrameOfASpriteIsReachableByAge) {
 
 TEST_F(SpellSpriteSheetDrawTest, AnOverrunParticleHoldsTheLastFrameRatherThanWrapping) {
     // A particle drawn on the tick after its lifetime expires must not wrap
-    // round to frame 0 -- for the six sheets whose frame 0 is BLANK that would
-    // be a one-frame disappearance at the end of every particle's life.
-    const int sprite = slotOf("spelb3.tga");  // one of the blank-frame-0 six
+    // round to frame 0 -- for a sheet whose frame 0 is faint that would be a
+    // one-frame dip at the end of every particle's life. (B1124: was spelb3,
+    // which is a single image, not a grid.)
+    const int sprite = slotOf("spelg1.tga");
     ASSERT_GE(sprite, 0);
     const uint16_t index = static_cast<uint16_t>(SpellSpriteAtlas::kBase + sprite);
 
@@ -321,12 +322,30 @@ TEST_F(SpellSpriteSheetDrawTest, EveryShippedSpriteDrawsItsOwnPixels) {
         const uint16_t index =
             static_cast<uint16_t>(SpellSpriteAtlas::kBase + sprite);
         for (float age : {0.0f, 0.5f, 0.999f}) {
-            const int want = SpellSpriteAtlas::cellFor(sprite, frameAt(age));
+            const int want = SpellSpriteAtlas::cellFor(
+                sprite, SpellSpriteAtlas::framesFor(sprite) == 1 ? 0 : frameAt(age));
             const irr::video::SColor c = drawOne(index, age);
             EXPECT_EQ(identifyCell(c), want)
                 << "sprite " << sprite << " (" << SpellSpriteAtlas::kFiles[sprite]
                 << ") at age " << age << " read back " << c.getRed() << ","
                 << c.getGreen() << "," << c.getBlue();
+        }
+    }
+}
+
+TEST_F(SpellSpriteSheetDrawTest, ASingleImageSpriteDrawsItsOnePictureForItsWholeLife) {
+    // B1124 (#444, B1118 M8): spelc3 / spelc4 are ONE 64x64 picture each
+    // (record 0 = spells 93 / 38). The renderer must sample the sprite's
+    // first cell at every age -- before B1124 it walked fifteen more cells,
+    // which held 16x16 fragments of the star and now hold nothing.
+    for (const char* file : {"spelc3.tga", "spelc4.tga"}) {
+        const int sprite = slotOf(file);
+        ASSERT_GE(sprite, 0);
+        const uint16_t index = static_cast<uint16_t>(SpellSpriteAtlas::kBase + sprite);
+        const int first = SpellSpriteAtlas::cellFor(sprite, 0);
+        for (float age : {0.0f, 0.3f, 0.5f, 0.999f, 3.7f}) {
+            EXPECT_EQ(identifyCell(drawOne(index, age)), first)
+                << file << " at age " << age << " did not hold its one picture";
         }
     }
 }

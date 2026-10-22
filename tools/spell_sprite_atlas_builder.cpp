@@ -13,8 +13,20 @@
 // both include it, so the sheet and the client's addressing of it cannot
 // drift.
 //
-// FRAME EXTRACTION -- and a MEASURED correction to T409. Every `spel*.tga`
-// is a 4x4 sheet. T409 recorded that the sixteen frames are one repeated
+// GRID OR SINGLE IMAGE (B1124, #444, B1118 M8). The 256x256 and 128x128
+// files are 4x4 frame grids; the 64x64 ones are ONE picture each (spelc3 a
+// yellow-white star, spelc4 an orange flare), which T420 cut into sixteen
+// 16x16 fragments and played as an "animation". The header's `kSheetFrames`
+// declares which is which (16 or 1); this tool RE-MEASURES it with
+// `seamRatio()` -- additive mass on the 4x4 seams over their share of the
+// area: a grid pads every frame inside its own cell (<= 0.30 on the 33
+// shipped files), one centred picture puts its body across the seams
+// (>= 1.33) -- and refuses (exit 1) when the two disagree. A single image is
+// packed WHOLE into its sprite's first cell; its other fifteen reserved
+// cells stay transparent.
+//
+// FRAME EXTRACTION -- and a MEASURED correction to T409. Every GRID
+// `spel*.tga` is a 4x4 sheet. T409 recorded that the sixteen frames are one repeated
 // frame; they are NOT. T417 hashed all sixteen frames of all 67 files and
 // found 5 to 16 DISTINCT frames in every one: these are animations. `spelg1`
 // is a sword rotating through sixteen headings; `speln1` is a mottled disc
@@ -29,8 +41,8 @@
 // get wrong. Duplicate frames within a sheet are packed as duplicates: they
 // are the animation holding, and dropping them would retime it.
 //
-// SCALING. The source sheets are 256x256 (64x64 frames), 128x128 (32x32) and
-// 64x64 (16x16). Cells are 32x32 (see the header for why the cell shrank when
+// SCALING. The grid sheets are 256x256 (64x64 frames) and 128x128 (32x32);
+// a single image is packed at its own 64x64. Cells are 32x32 (see the header for why the cell shrank when
 // the frame count went up), so each frame is resampled by an exact integer
 // factor:
 //   * 16x16 -> 32x32: magnified 2x by NEAREST-neighbour replication.
@@ -46,8 +58,8 @@
 // level (board B268's rule; a shipped asset that depends on
 // CMAKE_BUILD_TYPE makes `TexturesReproducible` a coin toss).
 //
-// ALL-OR-NOTHING. A file that cannot be read or is not a 4x4 sheet of the
-// expected size is a hard exit 1, never a silently degraded sheet (Will's
+// ALL-OR-NOTHING. A file that cannot be read, is not a square sheet of the
+// expected size, or contradicts its kSheetFrames declaration is a hard exit 1, never a silently degraded sheet (Will's
 // standing EQE1 rule, and `ui_atlas_builder`'s precedent).
 
 #include <cstdio>
@@ -126,6 +138,44 @@ void blitCell(int cell, const uint8_t* src, int stride, int frameSize) {
     }
 }
 
+// B1124: is this sheet ONE picture rather than a 4x4 grid? Additive mass
+// (max(R,G,B) * alpha -- what an additive blend paints) inside a band of
+// `cell/8` texels either side of the three internal grid lines in each
+// direction, as a share of the sheet's total mass, over the band's share of
+// the sheet's area. 1.0 is a uniform texture; a grid's frames are each padded
+// inside their own cell, so it reads near 0; one centred picture's body
+// crosses the seams, so it reads above 1. Integer arithmetic only (B268).
+bool measuresAsSingleImage(const EQT::ToolTGA::Image& img) {
+    const int cell = img.width / Atlas::kSheetGrid;
+    const int band = cell / 8 > 0 ? cell / 8 : 1;
+    auto inBand = [&](int v) {
+        for (int k = 1; k < Atlas::kSheetGrid; ++k) {
+            const int seam = k * cell;
+            if (v >= seam - band && v < seam + band) return true;
+        }
+        return false;
+    };
+    uint64_t total = 0, seamMass = 0, seamArea = 0;
+    for (int y = 0; y < img.height; ++y) {
+        const bool rowBand = inBand(y);
+        for (int x = 0; x < img.width; ++x) {
+            const uint8_t* t = &img.rgba[(static_cast<size_t>(y) * img.width + x) * 4];
+            uint32_t m = t[0];
+            if (t[1] > m) m = t[1];
+            if (t[2] > m) m = t[2];
+            const uint64_t w = static_cast<uint64_t>(m) * t[3];
+            total += w;
+            if (rowBand || inBand(x)) {
+                seamMass += w;
+                ++seamArea;
+            }
+        }
+    }
+    const uint64_t area = static_cast<uint64_t>(img.width) * img.height;
+    // seamMass/total >= seamArea/area, cross-multiplied.
+    return total > 0 && seamMass * area >= total * seamArea;
+}
+
 bool packOneFile(const std::string& spellEffectsDir, int sprite) {
     const std::string path = spellEffectsDir + "/" + Atlas::kFiles[sprite];
 
@@ -142,7 +192,23 @@ bool packOneFile(const std::string& spellEffectsDir, int sprite) {
         return false;
     }
 
-    const int frameSize = img.width / Atlas::kSheetGrid;
+    // B1124: the header's declaration and this file's own pixels must agree.
+    const int frames = Atlas::framesFor(sprite);
+    const bool single = measuresAsSingleImage(img);
+    if (single != (frames == Atlas::kSingleImage)) {
+        fprintf(stderr,
+                "Error: %s measures as a %s but spell_sprite_atlas.h kSheetFrames "
+                "declares %d frame(s)\n",
+                path.c_str(), single ? "SINGLE IMAGE" : "4x4 GRID", frames);
+        return false;
+    }
+    if (frames != Atlas::kSingleImage && frames != Atlas::kFramesPerSprite) {
+        fprintf(stderr, "Error: %s declares %d frames; a sheet is 1 or %d\n",
+                path.c_str(), frames, Atlas::kFramesPerSprite);
+        return false;
+    }
+
+    const int frameSize = single ? img.width : img.width / Atlas::kSheetGrid;
     const bool integerUp =
         frameSize > 0 && frameSize <= Atlas::kCellSize &&
         Atlas::kCellSize % frameSize == 0;
@@ -161,7 +227,7 @@ bool packOneFile(const std::string& spellEffectsDir, int sprite) {
     // is in display order whether the TGA is bottom-left (0x08) or top-left
     // (0x28) origin -- both appear among these files.
     uint64_t sheetAlpha = 0;
-    for (int f = 0; f < Atlas::kFramesPerSprite; ++f) {
+    for (int f = 0; f < frames; ++f) {
         const int fx = (f % Atlas::kSheetGrid) * frameSize;
         const int fy = (f / Atlas::kSheetGrid) * frameSize;
         const uint8_t* src =
@@ -176,9 +242,7 @@ bool packOneFile(const std::string& spellEffectsDir, int sprite) {
     }
 
     // A sheet with no alpha anywhere is a decode failure wearing a sprite's
-    // name, not an animation. (Individual frames MAY be blank -- seven of
-    // these files have a completely empty frame 0, which is the fade-in
-    // starting from nothing.)
+    // name, not an animation. (Individual grid frames MAY be blank.)
     if (sheetAlpha == 0) {
         fprintf(stderr, "Error: every frame of %s is fully transparent\n",
                 path.c_str());
@@ -236,9 +300,15 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    printf("Wrote %s (%dx%d, %d sprites x %d frames = %d of %d cells, from %s)\n",
+    int singles = 0, drawn = 0;
+    for (int sprite = 0; sprite < Atlas::kFileCount; ++sprite) {
+        drawn += Atlas::framesFor(sprite);
+        if (Atlas::framesFor(sprite) == Atlas::kSingleImage) ++singles;
+    }
+    printf("Wrote %s (%dx%d, %d sprites: %d 4x4 grids + %d single images = %d "
+           "drawn cells in %d reserved of %d, from %s)\n",
            outPath.c_str(), Atlas::kWidth, Atlas::kHeight, Atlas::kFileCount,
-           Atlas::kFramesPerSprite, Atlas::kUsedCells, Atlas::kCapacity,
-           spellEffectsDir.c_str());
+           Atlas::kFileCount - singles, singles, drawn, Atlas::kUsedCells,
+           Atlas::kCapacity, spellEffectsDir.c_str());
     return 0;
 }

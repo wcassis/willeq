@@ -346,10 +346,15 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
             // client's do. No shader change was needed; the offset was
             // already computed on the CPU and handed over as a vertex
             // attribute.
+            //
+            // B1124 (#444): only a GRID sheet animates. A single-image sheet
+            // (spelc3, spelc4, ... -- `SpellSpriteAtlas::kSheetFrames`) is one
+            // picture packed whole into its first cell and held for the
+            // particle's whole life; stepping it would walk fifteen
+            // transparent cells.
             const int sprite = p.textureIndex - SpellSpriteAtlas::kBase;
-            const int frame =
-                SpellSpriteAtlas::frameForNormalizedAge(p.getNormalizedAge());
-            const int cell = SpellSpriteAtlas::cellFor(sprite, frame);
+            const int cell =
+                SpellSpriteAtlas::cellForAge(sprite, p.getNormalizedAge());
             atlasU = (cell % SpellSpriteAtlas::kColumns) *
                      (1.0f / SpellSpriteAtlas::kColumns);
             atlasV = (cell / SpellSpriteAtlas::kColumns) *

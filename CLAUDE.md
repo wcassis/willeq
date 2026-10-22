@@ -385,22 +385,21 @@ and `SpellEffectsConfig` both include, so the sheet and the client's addressing
 of it cannot drift. A particle's `textureIndex` below `SpellSpriteAtlas::kBase`
 (64) is a procedural atlas tile; at or above it, a **sprite ordinal, not a
 cell** — because `EmitterConfig::textureRegions[]` is a `uint8_t[4]` and 528
-cells do not fit in one. **Those sheets animate** (1024x1024, 32x32 cells, all
-sixteen frames of all 33 sprites, 528 used): the CELL is derived per particle
-per frame in `UnifiedParticleRenderer::render()` from
-`SpellSpriteAtlas::frameForNormalizedAge()`, so the sheet plays through exactly
-once over a particle's lifetime. These sheets are fade-in/peak/fade-out cycles,
-so that mapping IS the animation (a fixed cells/s clock strands a short life in
-the faint fade-in frames).
+cells do not fit in one. **The 26 4x4 GRID sheets animate** (1024x1024, 32x32
+cells, 16 reserved per sprite, 528): `UnifiedParticleRenderer::render()` takes
+the CELL from `SpellSpriteAtlas::cellForAge()`, so a grid plays exactly once
+per particle life.
+**The seven 64x64 files (spelc3, spelc4, ...) are ONE picture, not a grid**
+(B1124): `kSheetFrames` says 1, the builder packs them whole (and exits 1 if
+its seam census disagrees) and the particle holds that cell all life.
 
-The playback rate is therefore `16 / lifetime`, set by
+A grid's playback rate is therefore `16 / lifetime`, set by
 `config/spell_effects.json`. That lifetime is per PARTICLE, not the landing's
 duration: a landing is FED (`spawnWindow`, then `sustainRate` to
 `emitterLifetime`, B1121), so lengthen emission, never life. Its end is
 measured, not summed: `review/B1121/scripts/b1120_measure.sh <leg> <out>`
-(`LANDING ... end`). No cells/s rate is a measurement (oracle capture below
-Nyquist, `review/T422/README.md`). `tests/test_spell_burst_oracle_match.cpp`
-pins both.
+(`LANDING ... end`). No cells/s rate is measured (below Nyquist,
+`review/T422/README.md`). `tests/test_spell_burst_oracle_match.cpp` pins both.
 
 **A SPELL'S COLOUR IS ITS SPRITE, and there is no colour field anywhere in the
 chain** (T441, boards B397/B398). `spells_us.txt` field 123 SPELLAFFECTINDEX
