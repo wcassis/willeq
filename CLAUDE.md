@@ -414,8 +414,10 @@ is fable tinting the oracle's own art**. `config/spell_effects.json`'s
 `resistColors` and `SpellVisualFX::colorForVocabulary()` survive only for the
 ~946 spells with no usable `spells.eff` record. All three stages route their
 names: Source → cast glow and spellComplete, Middle → projectile trail, Target →
-impact. `spellOverrides` holds measured values only (T422 populations, B1119
-sizes: `refactor/B1119/README.md`); **an unmeasured spell resolves to the
+impact. The landing is a VOLUME, not a disc (B1120,
+`tests/test_spell_landing_volume.cpp`). `spellOverrides` holds measured values
+only (T422 population ratios, B1119 sizes, B1120 shapes:
+`refactor/B1120/README.md`); **an unmeasured spell resolves to the
 plain style — an invented override is the guess Will's ruling forbids.**
 `tests/test_spell_colour_and_overrides.cpp` pins both halves and the negatives.
 
@@ -837,8 +839,7 @@ cooldowns, memorization). The only path a player reaches: gem click / `/cast` �
 `beginCastFromGem()` → `validateCast()`. Its bodies live in six TUs; see
 `docs/module_map.md`, and the header banners name the defining TU.
 `SpellTypeProcessor` (T324) and `SpellEffects` (T327, Will's ruling) were
-DELETED — both had zero callers, all 49 per-effect handlers were logging stubs,
-and the value-scaling table was wrong against the server. **Do not rebuild
+DELETED (zero callers, stub handlers; the tombstone says why). **Do not rebuild
 either**; the server is authoritative and reports every landing per target. Both
 deletions share one tombstone in `src/client/core/everquest.cpp`.
 

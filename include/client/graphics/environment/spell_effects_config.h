@@ -90,6 +90,12 @@ public:
         float expandSpeed = 0.0f;        bool hasExpandSpeed = false;
 
         glm::vec3 positionOffset{0.0f};  bool hasPositionOffset = false;
+
+        // B1120: seconds between the effect's creation and its emitter starting
+        // (SpellTrigger::DELAYED). The official client's landing becomes visible
+        // Act+0.40-0.80 s after OP_Action (B1118 sec. 4); a volume emitter that
+        // starts at once crosses the visibility threshold ~0.1 s after it.
+        float triggerDelay = 0.0f;       bool hasTriggerDelay = false;
     };
 
     /**

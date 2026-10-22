@@ -64,15 +64,15 @@
             "positionOffset": [0.0, 0.5, 0.0]
         },
         "spellComplete": {
-            "spawnRate": 600.0,
+            "spawnRate": 1800.0,
             "burstCount": 0,
             "emitterLifetime": 0.6,
-            "spawnShape": "RING",
-            "spawnExtents": [0.5, 0.0, 0.0],
-            "motionType": "BURST",
-            "velocityBase": [3.0, 1.5, 0.0],
-            "velocitySpread": [1.0, 0.5, 1.0],
-            "gravity": [0.0, -2.0, 0.0],
+            "spawnShape": "BOX",
+            "spawnExtents": [5.525, 0.325, 5.525],
+            "motionType": "LINEAR",
+            "velocityBase": [0.0, 6.012, 0.0],
+            "velocitySpread": [0.52, 5.038, 0.52],
+            "gravity": [0.0, 0.0, 0.0],
             "drag": 0.0,
             "colorStartAlpha": 0.9,
             "colorEndAlpha": 0.0,
@@ -84,19 +84,20 @@
             "lifetimeMax": 2.0,
             "blendMode": "ADDITIVE",
             "textureRegions": ["SpellSparkle", "StarShape"],
-            "positionOffset": [0.0, 0.0, 0.0]
+            "positionOffset": [0.0, -3.275, 0.0],
+            "triggerDelay": 0.33
         },
         "impact": {
-            "spawnRate": 480.0,
+            "spawnRate": 1100.0,
             "burstCount": 0,
             "emitterLifetime": 0.6,
-            "spawnShape": "POINT",
-            "spawnExtents": [0.0, 0.0, 0.0],
-            "motionType": "RADIAL_EXPAND",
-            "velocityBase": [0.0, 1.0, 0.0],
-            "velocitySpread": [0.5, 0.5, 0.5],
-            "gravity": [0.0, -2.0, 0.0],
-            "drag": 0.0,
+            "spawnShape": "SPHERE",
+            "spawnExtents": [1.95, 0.0, 0.0],
+            "motionType": "BURST",
+            "velocityBase": [10.4, 3.25, 0.0],
+            "velocitySpread": [3.25, 4.55, 3.25],
+            "gravity": [0.0, 0.0, 0.0],
+            "drag": 0.5,
             "colorStartAlpha": 0.8,
             "colorEndAlpha": 0.0,
             "sizeStartMin": 0.224,
@@ -107,8 +108,8 @@
             "lifetimeMax": 2.0,
             "blendMode": "ADDITIVE",
             "textureRegions": ["SoftCircle", "Ember"],
-            "expandSpeed": 4.0,
-            "positionOffset": [0.0, 1.0, 0.0]
+            "positionOffset": [0.0, 2.25, 0.0],
+            "triggerDelay": 0.33
         },
         "buffAura": {
             "spawnRate": 9.0,
@@ -230,36 +231,188 @@
     },
     "spellOverrides": {
         "93": {
-            "impact":        { "spawnRate": 530.0 },
-            "spellComplete": { "spawnRate": 662.0 }
+            "impact": {
+                "spawnRate": 1214.6
+            },
+            "spellComplete": {
+                "spawnRate": 1986.0
+            }
         },
         "38": {
-            "impact":        { "sizeStartMin": 0.166, "sizeStartMax": 0.259, "sizeEndMin": 0.325, "sizeEndMax": 0.486 },
-            "spellComplete": { "sizeStartMin": 0.197, "sizeStartMax": 0.325, "sizeEndMin": 0.393, "sizeEndMax": 0.58 }
+            "impact": {
+                "sizeStartMin": 0.166,
+                "sizeStartMax": 0.259,
+                "sizeEndMin": 0.325,
+                "sizeEndMax": 0.486
+            },
+            "spellComplete": {
+                "sizeStartMin": 0.197,
+                "sizeStartMax": 0.325,
+                "sizeEndMin": 0.393,
+                "sizeEndMax": 0.58
+            }
         },
         "54": {
-            "impact":        { "sizeStartMin": 0.264, "sizeStartMax": 0.413, "sizeEndMin": 0.518, "sizeEndMax": 0.776 },
-            "spellComplete": { "sizeStartMin": 0.314, "sizeStartMax": 0.518, "sizeEndMin": 0.627, "sizeEndMax": 0.924 },
-            "castGlow":      { "sizeStartMin": 0.36, "sizeStartMax": 0.54, "sizeEndMin": 0.18, "sizeEndMax": 0.27 }
+            "impact": {
+                "sizeStartMin": 0.264,
+                "sizeStartMax": 0.413,
+                "sizeEndMin": 0.518,
+                "sizeEndMax": 0.776,
+                "spawnShape": "SPHERE",
+                "spawnExtents": [0.65, 0.0, 0.0],
+                "motionType": "RADIAL_EXPAND",
+                "expandSpeed": 39.0,
+                "velocityBase": [0.0, 0.65, 0.0],
+                "velocitySpread": [9.75, 2.6, 9.75],
+                "gravity": [0.0, 0.0, 0.0],
+                "drag": 2.5,
+                "positionOffset": [0.0, -1.0, 0.0],
+                "spawnRate": 1000.0
+            },
+            "spellComplete": {
+                "sizeStartMin": 0.314,
+                "sizeStartMax": 0.518,
+                "sizeEndMin": 0.627,
+                "sizeEndMax": 0.924,
+                "spawnShape": "BOX",
+                "spawnExtents": [0.0, 4.225, 0.0],
+                "motionType": "ORBITAL",
+                "orbitalRadius": 5.525,
+                "orbitalAngularVelocity": 3.0,
+                "velocityBase": [0.0, 0.65, 0.0],
+                "velocitySpread": [0.0, 0.0, 0.0],
+                "gravity": [0.0, 0.0, 0.0],
+                "drag": 0.0,
+                "positionOffset": [0.0, 1.6, 0.0],
+                "spawnRate": 1500.0
+            },
+            "castGlow": {
+                "sizeStartMin": 0.36,
+                "sizeStartMax": 0.54,
+                "sizeEndMin": 0.18,
+                "sizeEndMax": 0.27
+            }
         },
         "656": {
-            "castGlow":      { "sizeStartMin": 0.36, "sizeStartMax": 0.54, "sizeEndMin": 0.18, "sizeEndMax": 0.27 }
+            "castGlow": {
+                "sizeStartMin": 0.36,
+                "sizeStartMax": 0.54,
+                "sizeEndMin": 0.18,
+                "sizeEndMax": 0.27
+            },
+            "spellComplete": {
+                "spawnShape": "BOX",
+                "spawnExtents": [0.0, 4.225, 0.0],
+                "motionType": "ORBITAL",
+                "orbitalRadius": 5.525,
+                "orbitalAngularVelocity": 3.0,
+                "velocityBase": [0.0, 0.65, 0.0],
+                "velocitySpread": [0.0, 0.0, 0.0],
+                "gravity": [0.0, 0.0, 0.0],
+                "drag": 0.0,
+                "positionOffset": [0.0, 1.6, 0.0],
+                "spawnRate": 1500.0
+            },
+            "impact": {
+                "spawnShape": "SPHERE",
+                "spawnExtents": [0.65, 0.0, 0.0],
+                "motionType": "RADIAL_EXPAND",
+                "expandSpeed": 39.0,
+                "velocityBase": [0.0, 0.65, 0.0],
+                "velocitySpread": [9.75, 2.6, 9.75],
+                "gravity": [0.0, 0.0, 0.0],
+                "drag": 2.5,
+                "positionOffset": [0.0, -1.0, 0.0],
+                "spawnRate": 1000.0
+            }
         },
         "458": {
-            "castGlow":      { "sizeStartMin": 0.44, "sizeStartMax": 0.66, "sizeEndMin": 0.22, "sizeEndMax": 0.33 }
+            "castGlow": {
+                "sizeStartMin": 0.44,
+                "sizeStartMax": 0.66,
+                "sizeEndMin": 0.22,
+                "sizeEndMax": 0.33
+            },
+            "spellComplete": {
+                "spawnShape": "SPHERE",
+                "spawnExtents": [1.3, 0.0, 0.0],
+                "motionType": "BURST",
+                "velocityBase": [3.9, 6.5, 0.0],
+                "velocitySpread": [1.95, 3.25, 1.95],
+                "gravity": [0.0, -7.8, 0.0],
+                "drag": 0.0,
+                "positionOffset": [0.0, 1.6, 0.0],
+                "spawnRate": 500.0
+            },
+            "impact": {
+                "spawnShape": "BOX",
+                "spawnExtents": [5.2, 4.55, 5.2],
+                "motionType": "LINEAR",
+                "velocityBase": [0.0, 0.0, 0.0],
+                "velocitySpread": [1.3, 1.3, 1.3],
+                "gravity": [0.0, 0.0, 0.0],
+                "drag": 0.0,
+                "positionOffset": [0.0, 2.25, 0.0],
+                "spawnRate": 500.0
+            }
         },
         "41": {
-            "impact":        { "spawnRate": 416.0, "sizeStartMin": 0.338, "sizeStartMax": 0.529, "sizeEndMin": 0.664, "sizeEndMax": 0.994 },
-            "spellComplete": { "spawnRate": 519.0, "sizeStartMin": 0.402, "sizeStartMax": 0.664, "sizeEndMin": 0.804, "sizeEndMax": 1.184 }
+            "impact": {
+                "spawnRate": 953.3,
+                "sizeStartMin": 0.338,
+                "sizeStartMax": 0.529,
+                "sizeEndMin": 0.664,
+                "sizeEndMax": 0.994,
+                "spawnShape": "BOX",
+                "spawnExtents": [2.275, 0.325, 2.275],
+                "motionType": "LINEAR",
+                "velocityBase": [0.0, 5.85, 0.0],
+                "velocitySpread": [0.52, 4.55, 0.52],
+                "gravity": [0.0, 0.0, 0.0],
+                "drag": 0.0,
+                "positionOffset": [0.0, -3.275, 0.0]
+            },
+            "spellComplete": {
+                "spawnRate": 1557.0,
+                "sizeStartMin": 0.402,
+                "sizeStartMax": 0.664,
+                "sizeEndMin": 0.804,
+                "sizeEndMax": 1.184,
+                "spawnShape": "SPHERE",
+                "spawnExtents": [2.6, 0.0, 0.0],
+                "motionType": "RADIAL_EXPAND",
+                "expandSpeed": 19.5,
+                "velocityBase": [0.0, 1.625, 0.0],
+                "velocitySpread": [5.2, 3.25, 5.2],
+                "gravity": [0.0, -3.9, 0.0],
+                "drag": 1.4,
+                "positionOffset": [0.0, 1.6, 0.0]
+            }
         },
         "253": {
             "impact": {
-                "spawnRate": 7.4,
-                "emitterLifetime": 3.6
+                "spawnRate": 600.0,
+                "emitterLifetime": 3.6,
+                "spawnShape": "BOX",
+                "spawnExtents": [14.95, 8.125, 6.5],
+                "motionType": "LINEAR",
+                "velocityBase": [0.0, 0.0, 0.0],
+                "velocitySpread": [1.625, 1.625, 1.625],
+                "gravity": [0.0, 0.0, 0.0],
+                "drag": 0.0,
+                "positionOffset": [0.0, 5.175, 0.0]
             },
             "spellComplete": {
-                "spawnRate": 9.3,
-                "emitterLifetime": 3.6
+                "spawnRate": 600.0,
+                "emitterLifetime": 3.6,
+                "spawnShape": "BOX",
+                "spawnExtents": [14.95, 8.125, 6.5],
+                "motionType": "LINEAR",
+                "velocityBase": [0.0, 0.0, 0.0],
+                "velocitySpread": [1.625, 1.625, 1.625],
+                "gravity": [0.0, 0.0, 0.0],
+                "drag": 0.0,
+                "positionOffset": [0.0, 5.175, 0.0]
             }
         }
     }

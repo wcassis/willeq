@@ -250,6 +250,7 @@ void SpellEffectsConfig::loadStyle(const Json::Value& json, const std::string& n
     if (json.isMember("expandSpeed")) { s.expandSpeed = json["expandSpeed"].asFloat(); s.hasExpandSpeed = true; }
 
     if (json.isMember("positionOffset")) { s.positionOffset = readVec3(json["positionOffset"]); s.hasPositionOffset = true; }
+    if (json.isMember("triggerDelay")) { s.triggerDelay = json["triggerDelay"].asFloat(); s.hasTriggerDelay = true; }
 
     LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: Loaded style '{}'", name);
 }
@@ -302,6 +303,7 @@ SpellEffectsConfig::StyleSettings SpellEffectsConfig::mergeOverrides(
     if (over.hasOrbitalAngularVelocity) { result.orbitalAngularVelocity = over.orbitalAngularVelocity; result.hasOrbitalAngularVelocity = true; }
     if (over.hasExpandSpeed) { result.expandSpeed = over.expandSpeed; result.hasExpandSpeed = true; }
     if (over.hasPositionOffset) { result.positionOffset = over.positionOffset; result.hasPositionOffset = true; }
+    if (over.hasTriggerDelay) { result.triggerDelay = over.triggerDelay; result.hasTriggerDelay = true; }
 
     return result;
 }

@@ -185,7 +185,10 @@ TEST_F(SlowFrameCommandTest, AZeroDeltaFrameStillExecutesTheCommand) {
     fx_->createImpact(kTarget, kBurstOfFlame);
     PumpFrame(0.0f);  // the <= 0 arm of the same guard
 
-    PumpFrame(0.016f);
+    // B1120 (#440): the impact style now waits its `triggerDelay` (the
+    // oracle's landing onset, ~0.33 s) before emitting, so pump normal frames
+    // through it; one 16 ms frame no longer reaches the first spawn.
+    for (int i = 0; i < 30; ++i) PumpFrame(0.016f);
     ASSERT_TRUE(output_.particleOutput.valid);
     EXPECT_EQ(LiveEffectEntities().count(kTarget), 1u)
         << "a zero-delta frame discarded the queued command";
