@@ -86,8 +86,8 @@ protected:
                                                   device_->getVideoDriver(),
                                                   std::string());
         fx_->setParticleManager(pm_.get());
-        // Every entity resolves, including the hand bones, so createCastGlow
-        // takes its normal two-hand path.
+        // Every entity resolves, including the hand bones, so a hand-anchored
+        // style would take its two-hand path (B1122's body cloud does not).
         fx_->setEntityPositionCallback(
             [](uint16_t, irr::core::vector3df& out) -> bool {
                 out = irr::core::vector3df(10.0f, 5.0f, 20.0f);
@@ -163,8 +163,8 @@ TEST_F(CasterOwnLandingTest, SelfCastLandingSurvivesTheSuccessRepeatTeardown) {
 TEST_F(CasterOwnLandingTest, TheCastGlowItselfIsStillRemoved) {
     fx_->createCastGlow(kSelfCaster, kBurstOfFlame, kCastTimeMs);
     PumpFrame();
-    // The glow is created on the hand-bone pseudo-entities when the position
-    // callback resolves them, so assert on the population rather than on one id.
+    // Assert on the population rather than on one id (the glow sat on the
+    // hand-bone pseudo-entities until B1122 put it on the caster's body).
     ASSERT_FALSE(LiveEffectEntities().empty())
         << "createCastGlow() did not reach the worker at all";
 
@@ -173,6 +173,60 @@ TEST_F(CasterOwnLandingTest, TheCastGlowItselfIsStillRemoved) {
 
     EXPECT_TRUE(LiveEffectEntities().empty())
         << "removeCastGlow() stopped removing the cast glow";
+}
+
+// B1122 (#442, B1118 M4): the Source is ONE body-wide cloud on the caster's
+// own entity, not a pinpoint at each hand bone, and an interrupt's teardown
+// (removeCastGlow) takes its live sprites down at once. RED on the B1121
+// code + config: the glow was created on the two hand-bone pseudo-entities.
+TEST_F(CasterOwnLandingTest, TheSourceIsOneBodyCloudThatAnInterruptFrees) {
+    fx_->createCastGlow(kSelfCaster, kBurstOfFlame, kCastTimeMs);
+    PumpFrame();
+    EXPECT_EQ(LiveEffectEntities().count(kSelfCaster), 1u) << "no Source on the caster";
+    EXPECT_EQ(LiveEffectEntities().count(EQ::SpellVisualFX::rightHandEntityId(kSelfCaster)), 0u)
+        << "the Source is still pinned to the right hand";
+    EXPECT_EQ(LiveEffectEntities().count(EQ::SpellVisualFX::leftHandEntityId(kSelfCaster)), 0u)
+        << "the Source is still pinned to the left hand";
+    for (int f = 0; f < 60; ++f) PumpFrame();  // 1 s: past the onset delay
+    EXPECT_GT(output_.particleOutput.renderBuffer.size(), 20u) << "the cloud never filled";
+
+    fx_->removeCastGlow(kSelfCaster);  // SpellCastVisualInterrupted
+    PumpFrame();
+    EXPECT_TRUE(output_.particleOutput.renderBuffer.empty())
+        << output_.particleOutput.renderBuffer.size() << " Source sprites outlived the interrupt";
+}
+
+// B1122, the coordinator's ruling on the measured oracle: the official client
+// does NOT drop its cast cloud at OP_Action. B1118's lit series holds it at its
+// level through the post-Action gap (93: 0.41 caster heights^2 at Act-0.1, 0.42
+// at Act+0.3; 41: 1.16 -> 1.30) until the landing takes over at ~Act+0.4. So
+// OP_Action RELEASES the Source (releaseCastGlow): it keeps emitting for the
+// style's releaseDelay -- the landing's own triggerDelay -- and its sprites
+// then finish their life. RED on the stop-at-OP_Action behaviour (B1122's
+// first commit freed every sprite on the action packet).
+TEST_F(CasterOwnLandingTest, TheSourceHoldsPastTheActionUntilTheLandingTakesOver) {
+    fx_->createCastGlow(kSelfCaster, kBurstOfFlame, kCastTimeMs);
+    for (int f = 0; f < 90; ++f) PumpFrame();  // 1.5 s into the cast
+    const size_t atAction = output_.particleOutput.renderBuffer.size();
+    ASSERT_GT(atAction, 40u);
+
+    fx_->releaseCastGlow(kSelfCaster, kBurstOfFlame);  // OP_Action
+    fx_->createSpellComplete(kSelfCaster, kBurstOfFlame);
+    fx_->createImpact(kSelfCaster, kBurstOfFlame);
+    for (int f = 0; f < 18; ++f) PumpFrame();  // Act+0.3, before the landing triggers
+    EXPECT_GE(output_.particleOutput.renderBuffer.size(), atAction * 3 / 4)
+        << "the cloud went dark at OP_Action; the oracle holds it until the landing";
+
+    // Then it stops feeding and dies out by Act + releaseDelay + the longest life.
+    const float release = EQT::Graphics::Environment::SpellPresets::CastGlow(
+        glm::vec4(1.0f), kBurstOfFlame).releaseDelay;
+    EXPECT_GE(release, 0.25f);
+    EXPECT_LE(release, 0.45f);
+    for (int f = 0; f < 120; ++f) PumpFrame();  // Act+2.3
+    size_t young = 0;
+    for (const auto& p : output_.particleOutput.renderBuffer)
+        if (p.maxLifetime <= 1.2f + 1e-3f && p.age < 0.5f) ++young;  // Source life 0.8-1.2
+    EXPECT_EQ(young, 0u) << "the Source kept spawning after its release";
 }
 
 // And the other styles on the same entity are untouched by a glow teardown,

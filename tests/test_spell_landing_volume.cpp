@@ -46,6 +46,7 @@
 #include "client/graphics/simulation_worker.h"
 #include <glm/glm.hpp>
 #include <algorithm>
+#include <utility>
 #include <cmath>
 #include <unordered_set>
 #include <vector>
@@ -315,11 +316,180 @@ TEST_F(SpellLandingVolume, OneFedLandingFitsHalfThePool) {
     EXPECT_LE(peak, static_cast<size_t>(pool / 2)) << "one landing peaked at " << peak << " live sprites";
 }
 
-// A style with no triggerDelay keeps the IMMEDIATE trigger (the cast glow is
-// the worked case: it is created at BeginCast and must not wait).
+// A style with no triggerDelay keeps the IMMEDIATE trigger (the buff aura is
+// the worked case; the cast glow was until B1122 gave the Source its onset).
 TEST_F(SpellLandingVolume, AStyleWithoutADelayStaysImmediate) {
-    const auto glow = SpellPresets::CastGlow(glm::vec4(1.0f), 285);
-    EXPECT_EQ(glow.emitters.at(0).trigger, SpellTrigger::IMMEDIATE);
+    const auto aura = SpellPresets::BuffAura(glm::vec4(1.0f), 285);
+    EXPECT_EQ(aura.emitters.at(0).trigger, SpellTrigger::IMMEDIATE);
+}
+
+// ---------------------------------------------------------------------------
+// B1122 (#442): the SOURCE (cast) stage is a BODY-WIDE cloud (B1118 M4).
+//
+// Until B1122 createCastGlow() pinned the Source to the two hand bones with a
+// 0.4-unit orbit at 24/s per hand: 5-15 dots of 1-2 px. The official client
+// draws a cloud round the whole body from BeginCast + ~0.4 s until OP_Action.
+// review/B1122/scripts/source_all.py measures it on the B1118 videos (lit
+// mask over the pre-cast second, the oracle's Casting Time window and gem
+// tooltip excluded; refactor/B1122/README.md sec. 2), in caster heights:
+//   spell        93    38    54    656   41    253   458
+//   extent       2.92  2.24  1.60  1.45  2.68  3.70  0.75   (x p2..p98)
+//   centroid     0.89  0.95  0.82  0.61  0.87  1.11  0.53   (above the feet)
+// The bands below are on the PARTICLE positions (no sprite size), so they sit
+// a little inside the lit-pixel extents.
+// ---------------------------------------------------------------------------
+
+struct SourceCase {
+    uint32_t id;
+    bool spray;       // 41 Weaken is Alteration: SpellVisualFX picks castSpray
+    float castSec;    // the server-confirmed cast time (B1118 sec. 2)
+    float wMin, wMax; // horizontal width, caster heights
+    float cMin, cMax; // mean height above the feet, caster heights
+};
+const SourceCase kSourceCases[] = {
+    {93, false, 1.5f, 1.8f, 3.0f, 0.70f, 1.15f},
+    {38, false, 2.5f, 1.8f, 3.0f, 0.70f, 1.15f},
+    {54, false, 1.0f, 1.1f, 1.7f, 0.50f, 0.95f},
+    {656, false, 2.0f, 1.1f, 1.7f, 0.50f, 0.95f},
+    {41, true, 1.5f, 1.9f, 2.8f, 0.75f, 1.25f},  // particle mean ~1.05; the lit centroid read 0.92
+    {253, false, 1.5f, 3.0f, 4.0f, 0.90f, 1.35f},
+    {458, false, 3.6f, 0.45f, 0.90f, 0.33f, 0.75f},
+};
+
+SpellEffectDef SourceDef(const SourceCase& c) {
+    return c.spray ? SpellPresets::CastSpray(glm::vec4(1.0f), c.id)
+                   : SpellPresets::CastGlow(glm::vec4(1.0f), c.id);
+}
+
+// RED on the B1121 config + code: no Source style was body-anchored and the
+// hand-bone emitters were a POINT spawn (castSpray) or a 1.5-unit orbit
+// that createCastGlow() then squeezed to 0.4 units at each hand.
+TEST_F(SpellLandingVolume, TheSourceIsABodyWideCloudShapedLikeTheOracles) {
+    for (const auto& c : kSourceCases) {
+        const SpellEffectDef def = SourceDef(c);
+        EXPECT_TRUE(def.bodyAnchored) << c.id << ": the Source must sit on the caster's body";
+        const auto ps = Run(def, std::min(c.castSec, 1.4f));
+        ASSERT_GT(ps.size(), 20u) << c.id;
+        std::vector<float> xs;
+        float ySum = 0.0f;
+        for (const auto& p : ps) {
+            xs.push_back((p.position.x - kPos.x) / kH);
+            ySum += (p.position.y - (kPos.y - kA)) / kH;
+        }
+        std::sort(xs.begin(), xs.end());
+        const float width = xs[xs.size() * 98 / 100] - xs[xs.size() * 2 / 100];
+        const float centroid = ySum / static_cast<float>(ps.size());
+        EXPECT_GE(width, c.wMin) << c.id;
+        EXPECT_LE(width, c.wMax) << c.id;
+        EXPECT_GE(centroid, c.cMin) << c.id;
+        EXPECT_LE(centroid, c.cMax) << c.id;
+    }
+}
+
+// The Source starts BeginCast + ~0.4 s on the oracle (B1118 table: 0.20-0.45
+// by the fx_timing threshold, 0.47-0.62 at a quarter of its peak); a dense
+// cloud crosses the threshold ~0.1-0.2 s after it starts, so both Source
+// styles carry a delay -- and nothing is drawn before it.
+TEST_F(SpellLandingVolume, TheSourceWaitsForTheOraclesOnset) {
+    for (const auto& def : {SpellPresets::CastGlow(glm::vec4(1.0f), 285),
+                            SpellPresets::CastSpray(glm::vec4(1.0f), 285)}) {
+        const auto& ed = def.emitters.at(0);
+        EXPECT_EQ(ed.trigger, SpellTrigger::DELAYED) << def.name;
+        EXPECT_GE(ed.triggerDelay, 0.2f) << def.name;
+        EXPECT_LE(ed.triggerDelay, 0.35f) << def.name;
+        float first = -1.0f;
+        Run(def, 0.8f, &first);
+        EXPECT_GE(first, ed.triggerDelay) << def.name;
+        EXPECT_LE(first, ed.triggerDelay + 0.1f) << def.name;
+    }
+}
+
+// B1122 (coordinator's ruling): the Source now holds past OP_Action for its
+// releaseDelay and its sprites finish their life, so it DOES overlap its own
+// landing. Drive the real worker through one whole cast per spell -- Source for
+// the cast time, OP_Action = release + the landing (both halves) -- and bound
+// the peak of Source + own landing by half the pool, so the previous cast's
+// landing (<= half, OneFedLandingFitsHalfThePool) still fits and the landing is
+// never starved. Measured peaks are in refactor/B1122/README.md sec. 7.
+TEST_F(SpellLandingVolume, ASourceAndItsOwnLandingFitHalfThePool) {
+    const int pool = SpellEffectsConfig::instance().getGlobal().maxParticles;
+    for (const auto& c : kSourceCases) {
+        EQT::Graphics::SimulationWorker worker;
+        EQT::Graphics::SimulationOutput output;
+        std::unordered_set<uint16_t> requested;
+        const SpellEffectDef src = SourceDef(c);
+        const int actFrame = static_cast<int>(std::lround(c.castSec * 60.0f));
+        size_t peak = 0, landingAlone = 0;
+        for (int f = 0; f < actFrame + 60 * 7; ++f) {
+            EQT::Graphics::SimulationInput input;
+            auto& pi = input.particleInput;
+            pi.deltaTime = 1.0f / 60.0f;
+            pi.unifiedRendererInitialized = true;
+            pi.poolSize = pool;
+            for (uint16_t id : requested)
+                if (id == kCaster) pi.entityPositions[kCaster] = kPos;
+            auto push = [&](const SpellEffectDef& def, float dur, uint32_t eid) {
+                EQT::Graphics::ParticleCommandData cmd;
+                cmd.type = EQT::Graphics::ParticleCommand::CreateSpellEffect;
+                cmd.spellDef = def;
+                cmd.casterID = kCaster;
+                cmd.targetID = kCaster;
+                cmd.duration = dur;
+                cmd.preAssignedEffectID = eid;
+                pi.commands.push_back(cmd);
+            };
+            if (f == 0) {
+                SpellEffectDef d = src;  // as createCastGlow() makes it
+                for (auto& e : d.emitters) e.config.emitterLifetime = 0.0f;
+                push(d, c.castSec + d.releaseDelay, 1);
+            }
+            if (f == actFrame) {
+                EQT::Graphics::ParticleCommandData rel;
+                rel.type = EQT::Graphics::ParticleCommand::ReleaseSpellEffectsEntity;
+                rel.entityID = kCaster;
+                rel.styleFilter = {"CastGlow", "CastSpray"};
+                rel.duration = src.releaseDelay;
+                pi.commands.push_back(rel);
+                push(Complete(c.id), 0.0f, 2);
+                push(Impact(c.id), 0.0f, 3);
+            }
+            worker.computeOnce(input, output);
+            requested = output.particleOutput.positionRequestEntities;
+            if (!output.particleOutput.valid) continue;
+            peak = std::max(peak, output.particleOutput.renderBuffer.size());
+            if (f > actFrame + 60 * 2) landingAlone = std::max(landingAlone, output.particleOutput.renderBuffer.size());
+        }
+        EXPECT_GT(src.releaseDelay, 0.0f) << c.id;
+        // 253's landing is a steady 2160-sprite field (B1120/B1121: 253 + a
+        // record-0 landing = 4085 <= 4096); its Source is dead (Act+1.5) long
+        // before the field peaks, so it may add NOTHING to that peak. Every
+        // other spell's Source + landing stays inside half the pool.
+        const size_t bound = std::max<size_t>(pool / 2, landingAlone + landingAlone / 50);
+        EXPECT_LE(peak, bound) << c.id << ": Source + own landing peaked at " << peak
+                               << " (landing alone " << landingAlone << ")";
+        EXPECT_GE(peak, landingAlone) << c.id;
+    }
+}
+
+// The pool (4096, not raised: #440) holds a Source cloud beside a landing.
+// A Source never overlaps its OWN landing (removeCastGlow() at OP_Action
+// frees it; the landing waits triggerDelay), but it can overlap the previous
+// cast's landing, which OneFedLandingFitsHalfThePool bounds at half the
+// pool -- so every Source cloud must fit the other half. 253's own landing
+// (2160) cannot be live under a new 253 Source: its recast is 12 s.
+// The lower bounds are the live counts that measured >= 80 % of the oracle's
+// Source coverage on the B1122 gate (refactor/B1122/README.md sec. 5).
+TEST_F(SpellLandingVolume, EverySourceCloudFitsBesideALanding) {
+    const int pool = SpellEffectsConfig::instance().getGlobal().maxParticles;
+    const std::pair<uint32_t, size_t> kMinLive[] = {
+        {93, 70}, {38, 70}, {54, 670}, {656, 900}, {41, 150}, {253, 1640}, {458, 54}};
+    for (const auto& c : kSourceCases) {
+        const auto ps = Run(SourceDef(c), c.castSec);
+        size_t want = 0;
+        for (const auto& [id, n] : kMinLive) if (id == c.id) want = n;
+        EXPECT_GE(ps.size(), want) << c.id << ": a thinner cloud measured below 80 % of the oracle";
+        EXPECT_LE(ps.size(), static_cast<size_t>(pool / 2)) << c.id;
+    }
 }
 
 #endif  // EQT_HAS_GRAPHICS && EQT_HAS_GLES2

@@ -61,6 +61,9 @@ enum class ParticleCommand : uint8_t {
     // removeBuffAura / removeAllForEntity) actually asks for. Recover with:
     // git show 8382268d:include/client/graphics/simulation_worker.h
     RemoveSpellEffectsEntity,  // by entityID
+    // B1122: stop the matching effects' emission `duration` seconds from now
+    // and let their live sprites finish their life (no instant free).
+    ReleaseSpellEffectsEntity,
     ClearAllSpellEffects,
     ToggleFire,
     SetZoneEnter,              // zone name + biome

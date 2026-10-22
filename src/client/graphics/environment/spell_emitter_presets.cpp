@@ -81,6 +81,7 @@ static void applyStyle(const SpellEffectsConfig::StyleSettings& s, EmitterConfig
 
 // B1120: a style's `triggerDelay` turns an IMMEDIATE emitter into a DELAYED
 // one (the sim's SpellTrigger::DELAYED arm, effect.age >= triggerDelay).
+// B1122: the Source styles read it too (castGlow/castSpray).
 static void applyTrigger(const SpellEffectsConfig::StyleSettings& s, SpellEmitterDef& ed) {
     if (s.hasTriggerDelay && s.triggerDelay > 0.0f && ed.trigger == SpellTrigger::IMMEDIATE) {
         ed.trigger = SpellTrigger::DELAYED;
@@ -95,6 +96,8 @@ SpellEffectDef CastSpray(glm::vec4 color, uint32_t spellId) {
 
     SpellEffectDef def;
     def.name = "CastSpray";
+    def.bodyAnchored = s.hasAnchor && s.anchor == "body";  // B1122
+    def.releaseDelay = s.hasReleaseDelay ? s.releaseDelay : 0.0f;  // B1122
 
     SpellEmitterDef ed;
     ed.trigger = SpellTrigger::IMMEDIATE;
@@ -102,6 +105,7 @@ SpellEffectDef CastSpray(glm::vec4 color, uint32_t spellId) {
     ed.positionOffset = s.hasPositionOffset ? s.positionOffset : glm::vec3(0.0f);
 
     applyStyle(s, ed.config, color);
+    applyTrigger(s, ed);  // B1122: the Source onset (BeginCast + 0.4 s on the oracle)
 
     def.emitters.push_back(ed);
     return def;
@@ -112,6 +116,8 @@ SpellEffectDef CastGlow(glm::vec4 color, uint32_t spellId) {
 
     SpellEffectDef def;
     def.name = "CastGlow";
+    def.bodyAnchored = s.hasAnchor && s.anchor == "body";  // B1122
+    def.releaseDelay = s.hasReleaseDelay ? s.releaseDelay : 0.0f;  // B1122
 
     SpellEmitterDef ed;
     ed.trigger = SpellTrigger::IMMEDIATE;
@@ -119,6 +125,7 @@ SpellEffectDef CastGlow(glm::vec4 color, uint32_t spellId) {
     ed.positionOffset = s.hasPositionOffset ? s.positionOffset : glm::vec3(0.0f, 0.5f, 0.0f);
 
     applyStyle(s, ed.config, color);
+    applyTrigger(s, ed);  // B1122: the Source onset (BeginCast + 0.4 s on the oracle)
 
     def.emitters.push_back(ed);
     return def;

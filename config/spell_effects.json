@@ -16,16 +16,16 @@
     },
     "styles": {
         "castSpray": {
-            "spawnRate": 45.0,
+            "spawnRate": 80,
             "burstCount": 0,
             "emitterLifetime": 0.0,
-            "spawnShape": "POINT",
-            "spawnExtents": [0.0, 0.0, 0.0],
+            "spawnShape": "BOX",
+            "spawnExtents": [8.45, 3.575, 4.225],
             "motionType": "LINEAR",
-            "velocityBase": [4.0, 0.0, 0.0],
-            "velocitySpread": [0.8, 0.8, 0.8],
-            "gravity": [0.0, -3.0, 0.0],
-            "drag": 0.3,
+            "velocityBase": [0.0, 2.275, 0.0],
+            "velocitySpread": [0.325, 1.3, 0.325],
+            "gravity": [0.0, 0.0, 0.0],
+            "drag": 0.0,
             "colorStartAlpha": 0.8,
             "colorEndAlpha": 0.0,
             "sizeStartMin": 0.904,
@@ -36,17 +36,20 @@
             "lifetimeMax": 0.7,
             "blendMode": "ADDITIVE",
             "textureRegions": ["SoftCircle", "Ember"],
-            "positionOffset": [0.0, 0.0, 0.0]
+            "positionOffset": [0.0, 1.795, 0.0],
+            "triggerDelay": 0.25,
+            "anchor": "body",
+            "releaseDelay": 0.33
         },
         "castGlow": {
-            "spawnRate": 24.0,
+            "spawnRate": 80,
             "burstCount": 0,
             "emitterLifetime": 0.0,
-            "spawnShape": "POINT",
-            "spawnExtents": [0.0, 0.0, 0.0],
-            "motionType": "ORBITAL",
-            "velocityBase": [0.0, 2.0, 0.0],
-            "velocitySpread": [0.0, 0.0, 0.0],
+            "spawnShape": "BOX",
+            "spawnExtents": [8.45, 3.575, 4.225],
+            "motionType": "LINEAR",
+            "velocityBase": [0.0, 2.275, 0.0],
+            "velocitySpread": [0.325, 1.3, 0.325],
             "gravity": [0.0, 0.0, 0.0],
             "drag": 0.0,
             "colorStartAlpha": 0.7,
@@ -59,9 +62,10 @@
             "lifetimeMax": 1.2,
             "blendMode": "ADDITIVE",
             "textureRegions": ["SpellSparkle", "StarShape"],
-            "orbitalRadius": 1.5,
-            "orbitalAngularVelocity": 4.0,
-            "positionOffset": [0.0, 0.5, 0.0]
+            "positionOffset": [0.0, 1.795, 0.0],
+            "triggerDelay": 0.25,
+            "anchor": "body",
+            "releaseDelay": 0.33
         },
         "spellComplete": {
             "spawnRate": 1800.0,
@@ -300,7 +304,18 @@
                 "sizeStartMin": 0.36,
                 "sizeStartMax": 0.54,
                 "sizeEndMin": 0.18,
-                "sizeEndMax": 0.27
+                "sizeEndMax": 0.27,
+                "spawnShape": "BOX",
+                "spawnExtents": [0.0, 3.575, 0.0],
+                "motionType": "ORBITAL",
+                "orbitalRadius": 4.875,
+                "orbitalAngularVelocity": 3.0,
+                "velocityBase": [0.0, 0.0, 0.0],
+                "velocitySpread": [0.0, 0.0, 0.0],
+                "gravity": [0.0, 0.0, 0.0],
+                "drag": 0.0,
+                "positionOffset": [0.0, 1.6, 0.0],
+                "spawnRate": 1050
             }
         },
         "656": {
@@ -308,7 +323,18 @@
                 "sizeStartMin": 0.36,
                 "sizeStartMax": 0.54,
                 "sizeEndMin": 0.18,
-                "sizeEndMax": 0.27
+                "sizeEndMax": 0.27,
+                "spawnShape": "BOX",
+                "spawnExtents": [0.0, 3.575, 0.0],
+                "motionType": "ORBITAL",
+                "orbitalRadius": 4.875,
+                "orbitalAngularVelocity": 3.0,
+                "velocityBase": [0.0, 0.0, 0.0],
+                "velocitySpread": [0.0, 0.0, 0.0],
+                "gravity": [0.0, 0.0, 0.0],
+                "drag": 0.0,
+                "positionOffset": [0.0, 1.6, 0.0],
+                "spawnRate": 1050
             },
             "spellComplete": {
                 "spawnShape": "BOX",
@@ -345,7 +371,16 @@
                 "sizeStartMin": 0.44,
                 "sizeStartMax": 0.66,
                 "sizeEndMin": 0.22,
-                "sizeEndMax": 0.33
+                "sizeEndMax": 0.33,
+                "spawnShape": "BOX",
+                "spawnExtents": [2.34, 2.925, 2.34],
+                "motionType": "LINEAR",
+                "velocityBase": [0.0, 0.65, 0.0],
+                "velocitySpread": [0.0, 0.65, 0.0],
+                "gravity": [0.0, 0.0, 0.0],
+                "drag": 0.0,
+                "positionOffset": [0.0, 0.3, 0.0],
+                "spawnRate": 65
             },
             "spellComplete": {
                 "spawnShape": "SPHERE",
@@ -409,6 +444,17 @@
                 "positionOffset": [0.0, 1.6, 0.0],
                 "sustainRate": 519.1,
                 "emitterLifetime": 4.15
+            },
+            "castSpray": {
+                "spawnShape": "BOX",
+                "spawnExtents": [7.475, 5.2, 7.475],
+                "motionType": "LINEAR",
+                "velocityBase": [0.0, 0.0, 0.0],
+                "velocitySpread": [0.975, 0.975, 0.975],
+                "gravity": [0.0, 0.0, 0.0],
+                "drag": 0.0,
+                "positionOffset": [0.0, 3.225, 0.0],
+                "spawnRate": 330
             }
         },
         "253": {
@@ -439,6 +485,17 @@
                 "positionOffset": [0.0, 5.175, 0.0],
                 "spawnWindow": 0.0,
                 "sustainRate": 0.0
+            },
+            "castGlow": {
+                "spawnShape": "BOX",
+                "spawnExtents": [12.35, 7.215, 6.5],
+                "motionType": "LINEAR",
+                "velocityBase": [0.0, 0.0, 0.0],
+                "velocitySpread": [1.625, 1.625, 1.625],
+                "gravity": [0.0, 0.0, 0.0],
+                "drag": 0.0,
+                "positionOffset": [0.0, 4.915, 0.0],
+                "spawnRate": 1950
             }
         }
     }

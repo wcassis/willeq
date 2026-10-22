@@ -185,6 +185,8 @@ public:
 
     // Remove casting glow (when cast ends)
     void removeCastGlow(uint16_t caster_id);
+    // B1122: OP_Action's end of the Source (style `releaseDelay`), see the TU.
+    void releaseCastGlow(uint16_t caster_id, uint32_t spell_id);
 
     // Remove buff aura (when buff fades).
     // ZERO CALLERS anywhere (T388 census: src/ include/ tests/ tools/

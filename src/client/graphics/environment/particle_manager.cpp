@@ -1027,6 +1027,17 @@ void ParticleManager::removeSpellEffectsForEntity(uint16_t entityID,
     pendingCommands_.push_back(std::move(cmd));
 }
 
+void ParticleManager::releaseSpellEffectsForEntity(uint16_t entityID,
+                                                   std::vector<std::string> styles,
+                                                   float seconds) {
+    ParticleCommandData cmd;
+    cmd.type = ParticleCommand::ReleaseSpellEffectsEntity;
+    cmd.entityID = entityID;
+    cmd.styleFilter = std::move(styles);
+    cmd.duration = seconds;
+    pendingCommands_.push_back(std::move(cmd));
+}
+
 void ParticleManager::clearAllSpellEffects() {
     ParticleCommandData cmd;
     cmd.type = ParticleCommand::ClearAllSpellEffects;

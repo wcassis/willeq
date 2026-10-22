@@ -553,6 +553,37 @@ EmitterConfig castSprayFor(uint32_t spellId) {
 float startMid(const EmitterConfig& c) { return 0.5f * (c.sizeStartMin + c.sizeStartMax); }
 }  // namespace
 
+// B1122 (#442): the Source cloud's GEOMETRY follows the spells.eff record, the
+// same rule B1120 applied to the landing: 93/38 (record 0) are the style, 54
+// and 656 (record 23) share one swirl, 41 (record 20) and 253/458 (records
+// 35/33) carry their own measured shape, and an unmeasured spell is the style
+// (an invented override is the guess Will's ruling forbids).
+TEST_F(SpellStyleOverrides, B1122SourceShapesFollowTheSpellsEffRecord) {
+    using EQT::Graphics::Environment::MotionType;
+    using EQT::Graphics::Environment::SpawnShape;
+    const EmitterConfig style = castGlowFor(0);
+    EXPECT_EQ(style.spawnShape, SpawnShape::BOX);
+    for (uint32_t id : {93u, 38u, 285u, 1u, 2u}) {
+        const EmitterConfig c = castGlowFor(id);
+        EXPECT_EQ(c.spawnShape, style.spawnShape) << id;
+        EXPECT_EQ(c.spawnExtents, style.spawnExtents) << id;
+        EXPECT_FLOAT_EQ(c.spawnRate, style.spawnRate) << id;
+    }
+    for (uint32_t id : {285u, 1u, 2u}) {
+        EXPECT_EQ(castSprayFor(id).spawnExtents, castSprayFor(0).spawnExtents) << id;
+        EXPECT_FLOAT_EQ(castSprayFor(id).spawnRate, castSprayFor(0).spawnRate) << id;
+    }
+    const EmitterConfig s54 = castGlowFor(54), s656 = castGlowFor(656);
+    EXPECT_EQ(s54.motionType, MotionType::ORBITAL);
+    EXPECT_FLOAT_EQ(s54.orbitalRadius, s656.orbitalRadius);
+    EXPECT_FLOAT_EQ(s54.spawnRate, s656.spawnRate);
+    EXPECT_NE(castSprayFor(41).spawnExtents, castSprayFor(0).spawnExtents);
+    EXPECT_NE(castGlowFor(253).spawnExtents, style.spawnExtents);
+    EXPECT_NE(castGlowFor(458).spawnExtents, style.spawnExtents);
+    // The B1119 Source SIZES are untouched (B1119SourceSizesFollowTheOracleTable).
+    EXPECT_FLOAT_EQ(startMid(castGlowFor(253)), startMid(style));
+}
+
 TEST_F(SpellStyleOverrides, B1119LandingStylesAreTwoPointEightTimesT422) {
     EXPECT_NEAR(startMid(impact(0)) / 0.1025f, 2.8f, 0.03f);    // T422 impact 0.08-0.125
     EXPECT_NEAR(startMid(complete(0)) / 0.126f, 2.8f, 0.03f);   // T422 spellComplete 0.095-0.157

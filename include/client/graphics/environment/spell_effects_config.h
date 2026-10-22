@@ -101,6 +101,15 @@ public:
         // Act+0.40-0.80 s after OP_Action (B1118 sec. 4); a volume emitter that
         // starts at once crosses the visibility threshold ~0.1 s after it.
         float triggerDelay = 0.0f;       bool hasTriggerDelay = false;
+
+        // B1122: where a Source (castGlow/castSpray) effect sits: "body" = one
+        // cloud on the caster's entity (the official client's body-wide cast
+        // cloud, B1118 M4), anything else = the legacy hand-bone pinpoint.
+        std::string anchor;              bool hasAnchor = false;
+        // B1122: seconds a Source keeps emitting after OP_Action before its
+        // sprites are left to die (0 = freed at OP_Action, the old stop). The
+        // official client holds its cast cloud until the landing takes over.
+        float releaseDelay = 0.0f;       bool hasReleaseDelay = false;
     };
 
     /**
