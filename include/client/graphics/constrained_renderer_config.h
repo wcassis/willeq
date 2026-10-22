@@ -405,6 +405,28 @@ struct ConstrainedRendererConfig {
     // System RAM budget (0 = no constraint)
     size_t totalMemoryBudgetBytes = 0;
 
+    // B1123 (#443, Will 2026-10-22, pool option (b)): the spell particle pool
+    // (SimulationWorker's UnifiedParticle pool and its render-buffer copy).
+    // The ONLY home of the number is the preset key `spellParticlePool` in
+    // config/constrained_presets.json, one value per platform:
+    //   "sbc"     -- an EQT_DRM build (Orange Pi and the other SBC lanes),
+    //   "desktop" -- every other build (x86, macOS).
+    // loadJsonOverrides() picks this build's value (spellParticlePlatformKey());
+    // a preset that does not name the key takes the `orangepi` preset's (every
+    // build runs orangepi unless told otherwise). 0 = no preset file read.
+    // SpellEffectsConfig::applyPool() derives every landing population from it
+    // (one rule; spell_effects_config.cpp). PROVISIONAL: sized from 7 spells;
+    // the B1130 (#450) 98-record survey re-sizes it.
+    int spellParticlePool = 0;
+    // "sbc" on an EQT_DRM build, "desktop" otherwise.
+    static const char* spellParticlePlatformKey();
+    // The `spellParticlePool` value one preset of a presets file gives one
+    // platform ("sbc" / "desktop"), with the orangepi fallback above; 0 when
+    // the file, the preset or the key is missing. Tests read the shipped pool
+    // through this, so no test carries a copy of the number.
+    static int readSpellParticlePool(const std::string& jsonPath, const std::string& presetName,
+                                     const std::string& platformKey);
+
     // Derived limits (computed by calculateMemoryLimits())
     // meshMemoryBytes (region mesh cache budget) removed T67 — it fed
     // ConstrainedMeshCache, which was never constructed in any shipped

@@ -113,11 +113,20 @@
 //       record-0 STYLE is at the bound (peak live 1927).
 //   41  keeps its measured shape and sizes; its population is the bound
 //       (x1.232 of B1120's, peak live 1925), not T422's x0.8657.
-//   253 keeps the pool-capped field; its landing sprites are the style x1.12,
-//       toward the oracle's ROI p90 0.093 (B1120 sec. 7) but held inside
-//       B1119's band (0.059 +-15 %, ROI <= 0.068).
+//   253 keeps the pool-capped field; its landing sprites were the style x1.12.
+//
+// B1123 COMPLETION (Will 2026-10-22).  The pool is one preset key per platform
+// (config/constrained_presets.json `spellParticlePool`, PROVISIONAL: B1130
+// re-sizes it) and NO number above is a population any more: every landing
+// is derived from the pool by one rule (SpellEffectsConfig::applyPool -- a
+// landing plus its own held Source peaks at half the pool; an oracle
+// exception, `landingPopulation.exceptions`, caps the landing alone).  The
+// pool-accounting cases (SpellPoolRule) run at EVERY platform's pool.  Sizes
+// are judged on the caster-ROI instrument (roi_oracle.txt), not B1118's
+// whole-frame p90: 253 is the style x1.3, the ROI band top.
 
 #include <gtest/gtest.h>
+#include <json/json.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -132,6 +141,7 @@
 #include "client/graphics/environment/spell_sprite_atlas.h"
 #include "client/spell/spells_eff_reader.h"
 #include "spell_landing_population.h"
+#include "spell_pool.h"
 
 using namespace EQT::Graphics::Environment;
 
@@ -404,8 +414,12 @@ TEST(SpellColourChain, TheMeasuredStagesAreWhatSpellsEffActuallyHolds) {
 
 class SpellStyleOverrides : public ::testing::Test {
 protected:
+    // B1123: at this build's platform pool (spell_pool.h); the pool rule's
+    // cases run at every platform's pool (SpellPoolRule).
     void SetUp() override {
-        if (!SpellEffectsConfig::instance().load(repoRoot() + "/config/spell_effects.json")) {
+        const int pool = spell_pool::Shipped(spell_pool::ThisBuildPlatform());
+        ASSERT_GT(pool, 0) << "config/constrained_presets.json names no spellParticlePool for this platform";
+        if (!spell_pool::LoadAt(pool)) {
             GTEST_SKIP() << "no config/spell_effects.json";
         }
     }
@@ -431,16 +445,6 @@ protected:
     }
 };
 
-// B1123: the pool bound the landings are held to -- the largest live peak that
-// fits beside one 253 field (the steady field is the largest single landing).
-static float PoolBoundBesideAField() {
-    const float pool = static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles);
-    const EmitterConfig i = SpellPresets::Impact(glm::vec4(1.0f), 253).emitters.at(0).config;
-    const EmitterConfig c = SpellPresets::SpellComplete(glm::vec4(1.0f), 253).emitters.at(0).config;
-    return pool - (i.spawnRate * 0.5f * (i.lifetimeMin + i.lifetimeMax) +
-                   c.spawnRate * 0.5f * (c.lifetimeMin + c.lifetimeMax));
-}
-
 // B1123 (RED on the B1122 config, which carried 93's T422 x1.1034 override):
 // Burst of Flame is record 0, the same spells.eff record and picture as
 // Lightning Bolt, so it resolves to the record-0 style in every key -- no
@@ -459,18 +463,107 @@ TEST_F(SpellStyleOverrides, BurstOfFlameIsTheRecordZeroStyle) {
     EXPECT_FLOAT_EQ(impact(38).spawnRate, impact(93).spawnRate);
 }
 
-// B1123 (RED on the B1122 config: the style peaked at 1747, 41 at 1562).  The
-// oracle's landings need more sprites than the pool holds (the B1123 sweep), so
-// every measured fed landing sits AT the pool bound: within 2 % of
-// 4096 - (253's field), never over it.
-TEST_F(SpellStyleOverrides, EveryFedLandingTakesThePoolBoundBesideAField) {
-    const float bound = PoolBoundBesideAField();
-    for (uint32_t id : {0u, 93u, 41u}) {
-        const float l = live(id);
-        EXPECT_LE(l, bound) << "spell " << id << " peaks at " << l << " live; one 253 field leaves " << bound;
-        EXPECT_GE(l, 0.98f * bound) << "spell " << id << " peaks at " << l
-                                    << " live; the oracle needs more than the pool holds, so the bound ("
-                                    << bound << ") is the target";
+// B1123 completion (#443; Will 2026-10-22): THE POOL RULE, at every
+// platform's shipped pool.  The pool is one preset key per platform and the
+// populations are derived from it (SpellEffectsConfig::applyPool), so no
+// number below is a population: each is read from the config files.
+class SpellPoolRule : public SpellStyleOverrides,
+                      public ::testing::WithParamInterface<const char*> {
+protected:
+    void SetUp() override {
+        const int pool = spell_pool::Shipped(GetParam());
+        ASSERT_GT(pool, 0) << "config/constrained_presets.json names no spellParticlePool for this platform";
+        if (!spell_pool::LoadAt(pool)) {
+            GTEST_SKIP() << "no config/spell_effects.json";
+        }
+    }
+    static float pool() {
+        return static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles);
+    }
+    // `landingPopulation.exceptions.<id>.peakLive` (0 = none): a landing the
+    // oracle fills with fewer sprites than half the pool.
+    static float exception(uint32_t id) {
+        std::ifstream f(repoRoot() + "/config/spell_effects.json");
+        Json::Value root;
+        Json::CharReaderBuilder b;
+        std::string errs;
+        if (!Json::parseFromStream(b, f, &root, &errs)) return 0.0f;
+        return root["landingPopulation"]["exceptions"][std::to_string(id)]["peakLive"].asFloat();
+    }
+};
+INSTANTIATE_TEST_SUITE_P(Platforms, SpellPoolRule, ::testing::ValuesIn(spell_pool::kPlatforms));
+
+// The sbc pool is the memory-bound one: never above the desktop pool.
+TEST(SpellPoolPlatforms, TheSbcPoolIsTheSmallerOne) {
+    const int sbc = spell_pool::Shipped("sbc"), desktop = spell_pool::Shipped("desktop");
+    ASSERT_GT(sbc, 0);
+    ASSERT_GT(desktop, 0);
+    EXPECT_LE(sbc, desktop) << "sbc " << sbc << " desktop " << desktop;
+}
+
+// Every measured landing peaks at the rule for this pool: the landing plus its
+// own held Source (B1122) at half the pool -- so two overlapping landings, or
+// 253's field beside one, fit -- or, for an oracle exception, the landing alone
+// at min(peakLive, that).  Computed through the shipped presets (what the
+// worker is handed), not the config structs.  RED on the pre-rule tree
+// (populations were hand-typed for one pool).
+TEST_P(SpellPoolRule, EveryLandingPeaksAtTheRuleForThisPool) {
+    namespace sp = EQT::Graphics::Environment::spell_population;
+    const float bound = 0.5f * pool();
+    for (uint32_t id : {0u, 93u, 38u, 54u, 656u, 41u, 253u, 458u, 285u}) {
+        const auto imp = SpellPresets::Impact(glm::vec4(1.0f), id);
+        const auto com = SpellPresets::SpellComplete(glm::vec4(1.0f), id);
+        const std::vector<sp::Schedule> halves = {
+            spell_landing_population::ScheduleOf(imp.emitters.at(0).config),
+            spell_landing_population::ScheduleOf(com.emitters.at(0).config)};
+        float withSource = 0.0f;
+        for (const auto& src : {SpellPresets::CastGlow(glm::vec4(1.0f), id),
+                                SpellPresets::CastSpray(glm::vec4(1.0f), id)}) {
+            const auto o = sp::OverlapOf(halves, imp.emitters.at(0).triggerDelay,
+                                         spell_landing_population::ScheduleOf(src.emitters.at(0).config),
+                                         src.releaseDelay);
+            withSource = std::max(withSource, o.PeakAt(1.0f));
+        }
+        const float ex = exception(id);
+        const float alone = live(id);
+        if (ex > 0.0f && ex <= alone * 1.002f) {
+            EXPECT_NEAR(alone, ex, 0.002f * ex) << "spell " << id << " (oracle exception)";
+            EXPECT_LE(withSource, bound * 1.002f) << "spell " << id;
+        } else {
+            EXPECT_NEAR(withSource, bound, 0.002f * bound)
+                << "spell " << id << " at pool " << pool() << ": landing " << alone << " + held Source";
+        }
+    }
+}
+
+// The hand-set exceptions are the landings the oracle fills with FEWER sprites
+// than the pool bound -- each with its measured reason -- and the bound-limited
+// landings (record 0 = 93/38, 253's field) are NOT exceptions: they re-flow
+// with the pool.  RED on the B1123 config (no landingPopulation block).
+TEST(SpellPoolExceptions, OnlyTheOracleLimitedLandingsAreExceptions) {
+    std::ifstream f(repoRoot() + "/config/spell_effects.json");
+    Json::Value root;
+    Json::CharReaderBuilder b;
+    std::string errs;
+    ASSERT_TRUE(Json::parseFromStream(b, f, &root, &errs)) << errs;
+    const Json::Value& ex = root["landingPopulation"]["exceptions"];
+    ASSERT_TRUE(ex.isObject()) << "config/spell_effects.json has no landingPopulation.exceptions";
+    for (const char* id : {"41", "54", "656", "458"}) {
+        EXPECT_GT(ex[id]["peakLive"].asFloat(), 0.0f) << id;
+        EXPECT_GT(ex[id]["why"].asString().size(), 20u) << id << ": an exception says why";
+    }
+    for (const char* id : {"0", "93", "38", "253"}) EXPECT_FALSE(ex.isMember(id)) << id;
+}
+
+// The rule scales a landing's rates, never its schedule: the peak:sustain and
+// impact:spellComplete ratios are the file's.
+TEST_P(SpellPoolRule, TheRuleKeepsEachLandingsSchedule) {
+    for (uint32_t id : {0u, 41u, 54u, 253u}) {
+        const EmitterConfig i = impact(id), c = complete(id);
+        if (i.sustainRate > 0.0f) {
+            EXPECT_NEAR(i.spawnRate / i.sustainRate, c.spawnRate / c.sustainRate, 0.02f) << id;
+        }
+        EXPECT_GT(i.spawnRate, 0.0f) << id;
     }
 }
 
@@ -478,29 +571,31 @@ TEST_F(SpellStyleOverrides, EveryFedLandingTakesThePoolBoundBesideAField) {
 // a FRAME-FILLING one (B1118: oracle 253 Landing coverage 7.28 caster
 // heights^2; T422's 25-36 trickle measured max 0.033).  Its steady population
 // is bounded by the pool: one 253 field plus one record-0 landing must fit.
-TEST_F(SpellStyleOverrides, WhirlingWindIsASteadyFrameFillingField) {
+TEST_P(SpellPoolRule, WhirlingWindIsASteadyFrameFillingField) {
     const float total = steady(impact(253)) + steady(complete(253));
     const float largest = live(93);
-    const float pool = static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles);
     EXPECT_GE(total, 1500.0f) << "a field, not a trickle; fable holds " << total;
-    EXPECT_LE(total + largest, pool)
+    EXPECT_LE(total + largest, pool() * 1.002f)
         << "253's field (" << total << ") plus a record-0 landing (" << largest
-        << ") must fit the pool (" << pool << ")";
+        << ") must fit the pool (" << pool() << ")";
 }
 
-// B1119 (#439) retired T422's 253 size override: B1118's whole-frame oracle
-// Landing p90 (0.059 caster heights) landed on the B1119 style.  B1123: on the
-// ROI instrument the oracle's 253 Landing sprite is 0.093 (B1120 sec. 7) and
-// fable's style read 0.054-0.057, so 253's landing sprites are raised -- but only
-// to B1119's band top (0.068): x1.12 of the style (lane 5: x1.12 read 0.067,
-// x1.2 read 0.072).  RED on the B1122 config (x1.0).
-TEST_F(SpellStyleOverrides, WhirlingWindSpritesAreTheStyleRaisedToTheB1119BandTop) {
+// B1123 completion (#443; Will 2026-10-22: sprite SIZES are judged on the
+// caster-ROI instrument, review/B1119/scripts/fx_sprite_roi.py, against the
+// oracle's ROI p90 in review/B1120/measure_oracle/roi_oracle.txt).  The
+// oracle's 253 Landing sprite there is 0.093 caster heights (band +-15 %:
+// 0.079-0.107).  B1123 had held 253 to B1119's whole-frame band top (x1.12 of
+// the style, ROI 0.084 at 8192); on the lane-5 8192 capture x1.3 reads at the
+// ROI band top and x1.45 reads 0.130, over it (refactor/B1123/README.md
+// "Completion leg").  The linear-law x1.63 B1123 quoted would read ~0.137.
+// RED on the B1123 config (x1.12).
+TEST_F(SpellStyleOverrides, WhirlingWindSpritesAreTheStyleRaisedToTheRoiBandTop) {
     for (const auto& pair : {std::make_pair(impact(253), impact(0)),
                              std::make_pair(complete(253), complete(0))}) {
-        EXPECT_NEAR(pair.first.sizeStartMin / pair.second.sizeStartMin, 1.12f, 0.005f);
-        EXPECT_NEAR(pair.first.sizeStartMax / pair.second.sizeStartMax, 1.12f, 0.005f);
-        EXPECT_NEAR(pair.first.sizeEndMin / pair.second.sizeEndMin, 1.12f, 0.005f);
-        EXPECT_NEAR(pair.first.sizeEndMax / pair.second.sizeEndMax, 1.12f, 0.005f);
+        EXPECT_NEAR(pair.first.sizeStartMin / pair.second.sizeStartMin, 1.3f, 0.005f);
+        EXPECT_NEAR(pair.first.sizeStartMax / pair.second.sizeStartMax, 1.3f, 0.005f);
+        EXPECT_NEAR(pair.first.sizeEndMin / pair.second.sizeEndMin, 1.3f, 0.005f);
+        EXPECT_NEAR(pair.first.sizeEndMax / pair.second.sizeEndMax, 1.3f, 0.005f);
     }
 }
 
@@ -557,11 +652,10 @@ TEST_F(SpellStyleOverrides, AnOverrideOnlyMovesWhatItNames) {
 
 // The pool must still hold two of the LARGEST fed landing. B395 wired
 // `global.maxParticles`; since B1123 93 and 41 both sit at the pool bound.
-TEST_F(SpellStyleOverrides, ThePoolStillHoldsTwoOfTheLargestLanding) {
+TEST_P(SpellPoolRule, ThePoolStillHoldsTwoOfTheLargestLanding) {
     float largest = 0.0f;
     for (uint32_t id : {0u, 93u, 38u, 54u, 656u, 41u, 458u}) largest = std::max(largest, live(id));
-    EXPECT_GE(static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles),
-              2.0f * largest)
+    EXPECT_GE(pool() * 1.002f, 2.0f * largest)
         << "largest landing " << largest << ", pool "
         << SpellEffectsConfig::instance().getGlobal().maxParticles;
 }
@@ -576,9 +670,26 @@ TEST_F(SpellStyleOverrides, ThePoolStillHoldsTwoOfTheLargestLanding) {
 // landing sizes and ~0.0071 per x1 of the pre-B1119 castGlow sizes.
 //   Landing  style x2.8 (93 656 458 253); 38 x2.07, 54 x3.3, 41 x4.23
 //   Source   castGlow x10.3 (93 38 253); 54/656 x4.5, 458 x5.5; castSpray x22.6 (41)
-// Every per-spell size override below is forced by the oracle table: the
-// style cannot hold 0.058 (38) and 0.074 (93) on the same record-0 sprites,
-// nor 0.031 (656) and 0.075 (253) at the Source.
+// B1119's per-spell size overrides below were forced by B1118's WHOLE-FRAME
+// table.  Will (2026-10-22) re-based every size band on the caster-ROI
+// instrument (review/B1119/scripts/fx_sprite_roi.py; oracle p90s in
+// review/B1120/measure_oracle/roi_oracle.txt, band +-15 %).  The bands, and the
+// B1123-completion lane-5 8192 gate reading of each (refactor/B1123/README.md
+// "Completion leg", gate_table.tsv):
+//   Landing  oracle ROI   band          gate     verdict
+//     93     0.075        0.064-0.086   0.094    over   (held: see README)
+//     38     0.069        0.059-0.079   0.077    in
+//     54     0.044        0.037-0.051   0.069    over   (held)
+//     656    0.035        0.030-0.040   0.062    over   (held)
+//     41     0.101        0.086-0.116   0.156    over   (held)
+//     253    0.093        0.079-0.107   0.107    in     (style x1.3, below)
+//     458    0.101        0.086-0.116   ROI458   (style x1.3, below)
+//   Source   93 0.084, 38 0.074, 54 0.027, 656 0.028, 41 0.113, 253 0.178,
+//            458 0.043 (gate: 0.135 0.130 0.065 0.065 0.181 0.173 0.051).
+// "held" = the size did not move: shrinking it toward the band costs landing
+// coverage the card's coverage rows need, and on a thinned (sprite-separable)
+// capture 38/41 read in band -- the over-read is merged blobs at density.  The
+// trade is Will's (README FOLLOW-UP).
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -636,7 +747,9 @@ TEST_F(SpellStyleOverrides, B1119LandingOverridesFollowTheOracleTable) {
     EXPECT_NEAR(startMid(impact(41)) / style, 4.23f / 2.8f, 0.02f);
     EXPECT_NEAR(startMid(complete(41)) / startMid(complete(0)), 4.23f / 2.8f, 0.02f);
     EXPECT_FLOAT_EQ(startMid(impact(93)), style) << "93 is the style's own band";
-    EXPECT_FLOAT_EQ(startMid(impact(458)), style) << "458 is the style's own band";
+    // B1123 completion: 458 left the style on the ROI instrument (below).
+    EXPECT_NEAR(startMid(impact(458)) / style, 1.3f, 0.005f);
+    EXPECT_NEAR(startMid(complete(458)) / startMid(complete(0)), 1.3f, 0.005f);
 }
 
 TEST_F(SpellStyleOverrides, B1119SourceSizesFollowTheOracleTable) {

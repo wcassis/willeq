@@ -84,6 +84,10 @@
       "totalMemoryBudgetBytes": 134217728,
       "occlusionBufferWidth": 64,
       "occlusionBufferHeight": 32,
+      "spellParticlePool": {
+        "sbc": 4096,
+        "desktop": 8192
+      },
       "memoryLedgerBudgets": {
         "unattributed": 1048576,
         "archives": 3145728,

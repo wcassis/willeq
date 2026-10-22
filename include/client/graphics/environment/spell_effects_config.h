@@ -40,6 +40,17 @@ public:
     bool reload();
 
     /**
+     * B1123 (#443): set the spell particle pool (the platform's preset value,
+     * ConstrainedRendererConfig::spellParticlePool) and derive every landing
+     * population from it by the one pool rule (spell_effects_config.cpp,
+     * applyPopulationRule): each landing peaks at half the pool -- two
+     * overlapping landings, or 253's field beside one, fit -- unless
+     * `landingPopulation.exceptions` names a smaller, oracle-measured peak.
+     * Re-reads the loaded file, so it may be called again (a re-sized pool).
+     */
+    void applyPool(int pool);
+
+    /**
      * Get the path to the config file.
      */
     const std::string& getConfigPath() const { return configPath_; }
@@ -49,7 +60,11 @@ public:
      */
     struct GlobalSettings {
         bool enabled = true;
-        int maxParticles = 1024;
+        // B1123 (#443): the spell particle pool IN EFFECT -- written only by
+        // applyPool() from the platform's preset key `spellParticlePool`
+        // (config/constrained_presets.json). spell_effects.json no longer
+        // carries a pool; 0 = no pool applied yet (the worker then falls back).
+        int maxParticles = 0;
         float densityMultiplier = 1.0f;
     };
 
@@ -163,9 +178,11 @@ private:
     void loadSpellOverrides(const Json::Value& root);
     static StyleSettings mergeOverrides(const StyleSettings& base, const StyleSettings& over);
     void buildTextureNameMap();
+    void applyPopulationRule(const Json::Value& root);
 
     std::string configPath_;
     bool loaded_ = false;
+    int pool_ = 0;  // B1123: the platform pool, kept across reload()
 
     GlobalSettings global_;
     std::unordered_map<std::string, StyleSettings> styles_;

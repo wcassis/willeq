@@ -855,6 +855,53 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesMemor
 #endif
 }
 
+// B1123 (#443, Will 2026-10-22): the spell particle pool is ONE preset key with
+// a value per platform ("sbc" = an EQT_DRM build, "desktop" = x86 / macOS).
+// Fixture numbers here are deliberately not the shipped ones: the shipped pool
+// is PROVISIONAL (B1130 re-sizes it) and no test carries a copy of it.
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_SpellParticlePoolPicksThisBuildsPlatform) {
+    const std::string testJsonPath = tmpPath("test_constrained_presets_spellpool.json");
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({ "presets": {
+                    "orangepi": { "spellParticlePool": { "sbc": 1111, "desktop": 2222 } },
+                    "custom":   { "maxTextureDimension": 128 } } })";
+    }
+    const bool drm = std::string(ConstrainedRendererConfig::spellParticlePlatformKey()) == "sbc";
+    ConstrainedRendererConfig config;
+    EXPECT_TRUE(config.loadJsonOverrides("orangepi", testJsonPath));
+    EXPECT_EQ(config.spellParticlePool, drm ? 1111 : 2222);
+    // A preset that does not name the key takes the orangepi preset's.
+    ConstrainedRendererConfig other;
+    EXPECT_TRUE(other.loadJsonOverrides("custom", testJsonPath));
+    EXPECT_EQ(other.spellParticlePool, drm ? 1111 : 2222);
+    // The explicit-platform reader the tests use agrees, for both platforms.
+    EXPECT_EQ(ConstrainedRendererConfig::readSpellParticlePool(testJsonPath, "orangepi", "sbc"), 1111);
+    EXPECT_EQ(ConstrainedRendererConfig::readSpellParticlePool(testJsonPath, "custom", "desktop"), 2222);
+    std::remove(testJsonPath.c_str());
+}
+
+// Selecting the shipped orangepi preset yields this build's platform pool, and
+// the sbc (Orange Pi) pool is the smaller, memory-bound one.
+TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_CarriesThePlatformSpellParticlePool) {
+#ifdef WILLEQ_CONSTRAINED_PRESETS_JSON
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+    ASSERT_TRUE(config.loadJsonOverrides("orangepi", WILLEQ_CONSTRAINED_PRESETS_JSON));
+    const int sbc = ConstrainedRendererConfig::readSpellParticlePool(WILLEQ_CONSTRAINED_PRESETS_JSON, "orangepi", "sbc");
+    const int desktop = ConstrainedRendererConfig::readSpellParticlePool(WILLEQ_CONSTRAINED_PRESETS_JSON, "orangepi", "desktop");
+    EXPECT_GT(sbc, 0);
+    EXPECT_GT(desktop, 0);
+    EXPECT_LE(sbc, desktop) << "the Orange Pi is the memory-bound platform";
+    EXPECT_EQ(config.spellParticlePool,
+              ConstrainedRendererConfig::readSpellParticlePool(
+                  WILLEQ_CONSTRAINED_PRESETS_JSON, "orangepi", ConstrainedRendererConfig::spellParticlePlatformKey()))
+        << "platform " << ConstrainedRendererConfig::spellParticlePlatformKey() << ": sbc " << sbc
+        << ", desktop " << desktop;
+#else
+    GTEST_SKIP() << "WILLEQ_CONSTRAINED_PRESETS_JSON not defined by build";
+#endif
+}
+
 // T109: entity load distance gate. entityLoadRadius must be at least
 // entityRenderDistance (you cannot draw what you did not load) — validate()
 // enforces that. The gate mechanism itself SHIPS INERT (see the field's

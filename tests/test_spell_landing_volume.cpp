@@ -44,6 +44,7 @@
 #include "client/graphics/environment/spell_particle_types.h"
 #include "client/graphics/environment/unified_particle.h"
 #include "client/graphics/simulation_worker.h"
+#include "spell_pool.h"
 #include <glm/glm.hpp>
 #include <algorithm>
 #include <utility>
@@ -85,10 +86,13 @@ struct Shape {
 
 class SpellLandingVolume : public ::testing::Test {
 protected:
+    // B1123: at this build's platform pool; the pool-accounting cases run at
+    // every platform's pool (SpellLandingPool, spell_pool.h).
     void SetUp() override {
-        const std::string cfg = std::string(WILLEQ_REPO_ROOT) + "/config/spell_effects.json";
-        if (!SpellEffectsConfig::instance().load(cfg)) {
-            GTEST_SKIP() << "no " << cfg;
+        const int pool = spell_pool::Shipped(spell_pool::ThisBuildPlatform());
+        ASSERT_GT(pool, 0) << "config/constrained_presets.json names no spellParticlePool for this platform";
+        if (!spell_pool::LoadAt(pool)) {
+            GTEST_SKIP() << "no config/spell_effects.json";
         }
     }
 
@@ -279,9 +283,23 @@ TEST_F(SpellLandingVolume, TheColumnIsFedAtTheFeetUntilItsWindowCloses) {
     EXPECT_TRUE(Run(def, lastDeath + 0.1f).empty()) << "nothing outlives delay + window + life";
 }
 
+// B1123 (#443): the pool-accounting cases, at EVERY platform's shipped pool.
+class SpellLandingPool : public SpellLandingVolume,
+                         public ::testing::WithParamInterface<const char*> {
+protected:
+    void SetUp() override {
+        const int pool = spell_pool::Shipped(GetParam());
+        ASSERT_GT(pool, 0) << "config/constrained_presets.json names no spellParticlePool for this platform";
+        if (!spell_pool::LoadAt(pool)) {
+            GTEST_SKIP() << "no config/spell_effects.json";
+        }
+    }
+};
+INSTANTIATE_TEST_SUITE_P(Platforms, SpellLandingPool, ::testing::ValuesIn(spell_pool::kPlatforms));
+
 // One record-0 landing (93's population, both halves) through the real worker
 // never holds more than half the pool: two can overlap (B375).
-TEST_F(SpellLandingVolume, OneFedLandingFitsHalfThePool) {
+TEST_P(SpellLandingPool, OneFedLandingFitsHalfThePool) {
     EQT::Graphics::SimulationWorker worker;
     EQT::Graphics::SimulationOutput output;
     std::unordered_set<uint16_t> requested;
@@ -411,7 +429,7 @@ TEST_F(SpellLandingVolume, TheSourceWaitsForTheOraclesOnset) {
 // the peak of Source + own landing by half the pool, so the previous cast's
 // landing (<= half, OneFedLandingFitsHalfThePool) still fits and the landing is
 // never starved. Measured peaks are in refactor/B1122/README.md sec. 7.
-TEST_F(SpellLandingVolume, ASourceAndItsOwnLandingFitHalfThePool) {
+TEST_P(SpellLandingPool, ASourceAndItsOwnLandingFitHalfThePool) {
     const int pool = SpellEffectsConfig::instance().getGlobal().maxParticles;
     for (const auto& c : kSourceCases) {
         EQT::Graphics::SimulationWorker worker;
@@ -479,7 +497,7 @@ TEST_F(SpellLandingVolume, ASourceAndItsOwnLandingFitHalfThePool) {
 // (2160) cannot be live under a new 253 Source: its recast is 12 s.
 // The lower bounds are the live counts that measured >= 80 % of the oracle's
 // Source coverage on the B1122 gate (refactor/B1122/README.md sec. 5).
-TEST_F(SpellLandingVolume, EverySourceCloudFitsBesideALanding) {
+TEST_P(SpellLandingPool, EverySourceCloudFitsBesideALanding) {
     const int pool = SpellEffectsConfig::instance().getGlobal().maxParticles;
     const std::pair<uint32_t, size_t> kMinLive[] = {
         {93, 70}, {38, 70}, {54, 670}, {656, 900}, {41, 150}, {253, 1640}, {458, 54}};

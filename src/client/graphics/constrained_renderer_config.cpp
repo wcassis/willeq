@@ -888,7 +888,51 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
     if (preset.isMember("occlusionBufferHeight"))
         occlusionBufferHeight = preset["occlusionBufferHeight"].asInt();
 
+    // B1123 (#443): the spell particle pool, one value per platform (header).
+    // A preset that does not name it takes the orangepi preset's: the pool is
+    // a platform number, and every build runs orangepi unless told otherwise.
+    {
+        const char* platform = spellParticlePlatformKey();
+        const int pool = readSpellParticlePool(resolved, presetName, platform);
+        if (pool > 0) spellParticlePool = pool;
+        LOG_INFO(MOD_GRAPHICS, "Preset '{}': spellParticlePool={} (platform '{}'{})", presetName,
+                 spellParticlePool, platform, pool > 0 ? "" : ", NOT SET in the presets file");
+    }
+
     return true;
+}
+
+const char* ConstrainedRendererConfig::spellParticlePlatformKey() {
+#ifdef EQT_HAS_DRM
+    return "sbc";
+#else
+    return "desktop";
+#endif
+}
+
+int ConstrainedRendererConfig::readSpellParticlePool(const std::string& jsonPath,
+                                                     const std::string& presetName,
+                                                     const std::string& platformKey) {
+    std::ifstream file(eqt::ResolveDataPath(jsonPath));
+    if (!file.is_open()) return 0;
+    Json::Value root;
+    Json::CharReaderBuilder builder;
+    std::string errors;
+    if (!Json::parseFromStream(builder, file, &root, &errors) || !root["presets"].isObject()) return 0;
+    const Json::Value& presets = root["presets"];
+    auto lower = [](std::string v) {
+        std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) { return std::tolower(c); });
+        return v;
+    };
+    const Json::Value* chosen = nullptr;
+    const Json::Value* orangepi = nullptr;
+    for (const auto& key : presets.getMemberNames()) {
+        if (lower(key) == lower(presetName)) chosen = &presets[key];
+        if (lower(key) == "orangepi") orangepi = &presets[key];
+    }
+    const Json::Value* src = (chosen && chosen->isMember("spellParticlePool")) ? chosen : orangepi;
+    if (!src || !(*src)["spellParticlePool"].isMember(platformKey)) return 0;
+    return (*src)["spellParticlePool"][platformKey].asInt();
 }
 
 bool ConstrainedRendererConfig::loadDebugOverrides(const std::string& jsonPath) {
