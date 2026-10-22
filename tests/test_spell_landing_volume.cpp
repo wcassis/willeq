@@ -256,6 +256,65 @@ TEST_F(SpellLandingVolume, TheLandingWaitsForTheOraclesOnset) {
     }
 }
 
+// B1121 (#441): the landing is FED to the official client's measured end.
+// B1118's oracle keeps its column BASE lit to the end (93: the 0-0.5 caster
+// height band holds 0.74-1.32 caster heights^2 from Act+1.2 to Act+4.55,
+// review/B1121/feed/), so the sustain phase must still be spawning at the
+// feet just before emitterLifetime, and nothing may outlive the last death.
+TEST_F(SpellLandingVolume, TheColumnIsFedAtTheFeetUntilItsWindowCloses) {
+    const auto def = Complete(285);
+    const auto& ed = def.emitters.at(0);
+    const float close = ed.triggerDelay + ed.config.emitterLifetime;
+    std::vector<UnifiedParticle> late = Run(def, close - 0.05f);
+    ASSERT_GT(late.size(), 100u) << "the column must still be there as emission closes";
+    size_t young = 0, atFeet = 0;
+    for (const auto& p : late) {
+        if (p.age < 0.5f) ++young;
+        if (p.age < 0.5f && (p.position.y - (kPos.y - kA)) / kH < 0.6f) ++atFeet;
+    }
+    EXPECT_GT(young, 50u) << "sprites born in the last 0.5 s: the emitter is still feeding";
+    EXPECT_GT(atFeet, 25u) << "and they rise from the feet, as the oracle's base band does";
+    const float lastDeath = close + ed.config.lifetimeMax;
+    EXPECT_TRUE(Run(def, lastDeath + 0.1f).empty()) << "nothing outlives delay + window + life";
+}
+
+// One record-0 landing (93's population, both halves) through the real worker
+// never holds more than half the pool: two can overlap (B375).
+TEST_F(SpellLandingVolume, OneFedLandingFitsHalfThePool) {
+    EQT::Graphics::SimulationWorker worker;
+    EQT::Graphics::SimulationOutput output;
+    std::unordered_set<uint16_t> requested;
+    const int pool = SpellEffectsConfig::instance().getGlobal().maxParticles;
+    size_t peak = 0;
+    for (int f = 0; f < 60 * 6; ++f) {
+        EQT::Graphics::SimulationInput input;
+        auto& pi = input.particleInput;
+        pi.deltaTime = 1.0f / 60.0f;
+        pi.unifiedRendererInitialized = true;
+        pi.poolSize = pool;
+        for (uint16_t id : requested)
+            if (id == kCaster) pi.entityPositions[kCaster] = kPos;
+        if (f == 0) {
+            uint16_t eid = 1;
+            for (const auto& def : {Complete(93), Impact(93)}) {
+                EQT::Graphics::ParticleCommandData cmd;
+                cmd.type = EQT::Graphics::ParticleCommand::CreateSpellEffect;
+                cmd.spellDef = def;
+                cmd.casterID = kCaster;
+                cmd.targetID = kCaster;
+                cmd.duration = 0.0f;
+                cmd.preAssignedEffectID = eid++;
+                pi.commands.push_back(cmd);
+            }
+        }
+        worker.computeOnce(input, output);
+        requested = output.particleOutput.positionRequestEntities;
+        if (output.particleOutput.valid) peak = std::max(peak, output.particleOutput.renderBuffer.size());
+    }
+    EXPECT_GT(peak, 1500u) << "the peak cohort is B1120's (~1920)";
+    EXPECT_LE(peak, static_cast<size_t>(pool / 2)) << "one landing peaked at " << peak << " live sprites";
+}
+
 // A style with no triggerDelay keeps the IMMEDIATE trigger (the cast glow is
 // the worked case: it is created at BeginCast and must not wait).
 TEST_F(SpellLandingVolume, AStyleWithoutADelayStaysImmediate) {

@@ -114,6 +114,7 @@
 #include "client/graphics/environment/spell_particle_types.h"
 #include "client/graphics/environment/spell_sprite_atlas.h"
 #include "client/spell/spells_eff_reader.h"
+#include "spell_landing_population.h"
 
 using namespace EQT::Graphics::Environment;
 
@@ -393,9 +394,15 @@ protected:
     static EmitterConfig complete(uint32_t spellId) {
         return SpellPresets::SpellComplete(glm::vec4(1.0f), spellId).emitters.at(0).config;
     }
-    // Peak of a rectangular emission whose particles outlive the window.
+    // The PEAK phase's cohort (spawnRate over spawnWindow): the population
+    // T422's ratios are about.  B1121 added a sustain phase after it.
     static float peak(const EmitterConfig& c) {
-        return c.spawnRate * c.emitterLifetime + static_cast<float>(c.burstCount);
+        return spell_landing_population::PeakCohort(c);
+    }
+    // B1121: the expected peak LIVE count of one landing (both halves, peak +
+    // sustain) -- what the pool has to hold.
+    static float live(uint32_t spellId) {
+        return spell_landing_population::PeakLive({impact(spellId), complete(spellId)});
     }
     // Steady population of a continuous emission: rate x mean lifetime.
     static float steady(const EmitterConfig& c) {
@@ -437,7 +444,7 @@ TEST_F(SpellStyleOverrides, TheTwoWideBurstsAreNoLongerTheSameSize) {
 // is bounded by the pool: one 253 field plus one record-0 landing must fit.
 TEST_F(SpellStyleOverrides, WhirlingWindIsASteadyFrameFillingField) {
     const float total = steady(impact(253)) + steady(complete(253));
-    const float largest = peak(impact(93)) + peak(complete(93));
+    const float largest = live(93);
     const float pool = static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles);
     EXPECT_GE(total, 1500.0f) << "a field, not a trickle; fable holds " << total;
     EXPECT_LE(total + largest, pool)
@@ -460,11 +467,19 @@ TEST_F(SpellStyleOverrides, WhirlingWindSpritesComeFromTheB1119Style) {
     }
 }
 
-// And it lasts 5.6 s, not 2.6 s.
+// And it lasts as long as the oracle's: B1118 measured its landing END at
+// Act+6.52 s (T422's 5.6 s total was an llvmpipe-era read).  The sim's last
+// death (delay + emitterLifetime + lifetimeMax) must not fall before it; the
+// measured end is the lane-5 capture's (refactor/B1121/README.md).
 TEST_F(SpellStyleOverrides, WhirlingWindLastsAsLongAsTheOracles) {
-    for (const auto& c : {impact(253), complete(253)}) {
-        const float duration = c.emitterLifetime + c.lifetimeMax;
-        EXPECT_NEAR(duration, 5.6f, 0.3f) << "duration " << duration << " s";
+    const glm::vec4 col(1.0f);
+    for (const auto& def : {SpellPresets::Impact(col, 253), SpellPresets::SpellComplete(col, 253)}) {
+        const auto& ed = def.emitters.at(0);
+        const float lastDeath = ed.triggerDelay + ed.config.emitterLifetime + ed.config.lifetimeMax;
+        EXPECT_GE(lastDeath, 6.52f) << "last death " << lastDeath << " s";
+        EXPECT_LE(lastDeath, 7.32f) << "last death " << lastDeath << " s";
+        EXPECT_FLOAT_EQ(ed.config.sustainRate, 0.0f) << "a continuous field, not a peak + sustain";
+        EXPECT_FLOAT_EQ(ed.config.spawnWindow, 0.0f);
     }
 }
 
@@ -505,7 +520,7 @@ TEST_F(SpellStyleOverrides, AnOverrideOnlyMovesWhatItNames) {
 // not 648. B395 wired `global.maxParticles`; this is the number it has to
 // cover after B397 raised the biggest spell.
 TEST_F(SpellStyleOverrides, ThePoolStillHoldsTwoOfTheLargestLanding) {
-    const float largest = peak(impact(93)) + peak(complete(93));
+    const float largest = live(93);
     EXPECT_GE(static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles),
               2.0f * largest)
         << "largest landing " << largest << ", pool "
