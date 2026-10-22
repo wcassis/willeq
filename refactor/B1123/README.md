@@ -318,3 +318,205 @@ That is Will's call (#440).
    the first cast would avoid it. The sky/time-of-day cause is unexplained.
 6. **458's landing** reads 123 % of the oracle on gate leg A and 69 % on the cal tour
    (0.85-0.89): the tour changes it by 1.8x. Not touched.
+
+## Completion leg (Will's rulings 2026-10-22: pool option (b); sizes on the ROI instrument)
+
+Evidence: `/mnt/projects/fable/review/B1123/leg2/` (index: its `README.md`). Gate: ThinkPad lane 5,
+2026-10-22 13:10-14:00 UTC, tree = this commit (synced, `build-gles2` Release), pack sha 8199a8a2
+mapped on every leg (`pack.sha256`, `pack.mapped`), atlas identical to B1124's (`tree.sha256`).
+
+### C0. Result
+
+| card row (caster heights^2) | target | oracle | B1124 (pool 4096) | **completion gate (pool 8192)** | met? |
+|---|---|---|---|---|---|
+| 253 Source | >= 3.1 | 3.884 | 3.271 | **3.375** | yes |
+| 41 Landing | >= 3.3 | 4.154 | 3.700 | **4.062** (98 % of the oracle) | yes |
+| 93 Landing | >= 4.7 | 5.847 | 2.921 | **4.762** | yes (cal tour 4.78 / 4.69) |
+| 253 Landing | >= 5.8 | 7.281 | 1.865 | **4.032** | **no** (69 %): the ROI size band caps the sprite, the pool caps the count (C4) |
+
+- **Three of four met.** 253 Landing more than doubled but misses: at 8192 the field takes half the pool
+  (4096 live) and its sprite sits at the ROI band top (C4).
+- **The pool is one preset key per platform** and every landing population is derived from it by one rule
+  (C1, C2). Nothing in code, config or tests carries a second copy of 8192 or 4096.
+- **Non-regression holds** except where noted in C5 (38 ROI reads 0.077 / 0.087 on two identical-config legs).
+
+### C1. The pool: one preset key, per platform (Will 2026-10-22, PROVISIONAL until B1130 #450)
+
+- `config/constrained_presets.json`, orangepi preset: `"spellParticlePool": {"sbc": 4096, "desktop": 8192}`.
+  - **Platform = the build:** `sbc` on an `EQT_DRM` build (Orange Pi and the other SBC lanes, XU4 included),
+    `desktop` otherwise (x86, macOS). `ConstrainedRendererConfig::spellParticlePlatformKey()`.
+  - **Why not "the preset"?** Every build runs the orangepi preset unless told otherwise
+    (`application.cpp` defaults to it, and `max`/`none` map to it), so a preset value alone would have given x86 4096.
+  - A preset that does not name the key (`128x32x10`, a memory spec) takes the orangepi preset's.
+- `loadJsonOverrides()` reads it (via `readSpellParticlePool()`, the same reader the tests use) into
+  `ConstrainedRendererConfig::spellParticlePool`; `renderer_init.cpp` hands it to
+  `SpellEffectsConfig::applyPool()` right after the particle manager loads the spell config.
+- **`spell_effects.json` no longer carries a pool.** `global.maxParticles` is gone; if a file still has it the
+  loader logs a WARN and ignores it. `getGlobal().maxParticles` is now the pool IN EFFECT (written only by
+  `applyPool`), and the two worker wiring sites (B1120) are unchanged.
+- **Log lines (x86, every gate leg):** `Preset 'orangepi': spellParticlePool=8192 (platform 'desktop')`,
+  `spell particle pool 8192 -> a landing and its held Source peak at <= 4096 (style landing 1927 -> 4079; ...)`,
+  `SimulationWorker: Particle pool initialized (size=8192)`.
+- **Orange Pi:** `sbc` = 4096, unchanged; its populations come from the same rule (C2 table).
+
+### C2. Populations: ONE rule, derived from the pool
+
+**Rule** (`SpellEffectsConfig::applyPopulationRule`, model in `include/client/graphics/environment/spell_population_model.h`):
+
+> every landing (impact + spellComplete; the style and every spell that overrides either) is scaled so that
+> **the landing plus its own held Source peaks at half the pool**. A landing the oracle fills with FEWER
+> sprites is a hand-set exception (`landingPopulation.exceptions.<id>.peakLive`, with its `why`): its landing
+> peaks at min(that, the rule).
+
+- **Why half the pool.** It is B1121/B1123's rule restated per pool: two overlapping fed landings fit, and so
+  does 253's field beside one. Every bound-limited landing measured needs more than half the pool
+  (B1123 sweep: 93 7.2 k, 253 15 k), so for them the bound IS the target.
+- **Why the held Source.** B1122 holds the Source past OP_Action; the real-worker test
+  `ASourceAndItsOwnLandingFitHalfThePool` failed at 4096 for 54/656 (2341 > 2048) under a landing-only rule.
+  The larger of castGlow / castSpray counts (which one a spell draws is decided at cast time).
+- **The JSON rates are the SCHEDULE** (peak vs sustain, impact vs spellComplete); the rule scales spawnRate and
+  sustainRate together. A re-sized pool re-flows every population with no config edit.
+- **Why one rule, not two config sets.** B1123's 4096 set is the rule's result to within 0-9 % for the
+  bound-limited landings; two sets would drift and B1130 re-sizes the pool again.
+
+| landing | how set | desktop 8192 peak live | sbc 4096 peak live | B1123 (4096) |
+|---|---|---|---|---|
+| record 0 (93, 38, every unmeasured spell) | rule | 4079 | 2024 | 1927 |
+| 253 field | rule | 4096 | 2048 | 2160 |
+| 41 | exception 2492: B1123 sweep, oracle 4.154 at the shipped sizes | 2492 | 2048 (rule binds) | 1925 |
+| 54, 656 (record 23) | exception 3517: 54 reads 2.459 vs the oracle's 2.461 (cal `m_k1`); 656 shares the record's population | 3517 | 1704 (rule binds) | 1556 |
+| 458 | exception 373 (C3) | 373 | 373 | 622 |
+
+`review/B1123/leg2/scripts/rule.py <config> <pool>` is the Python twin (prints this table for any pool).
+
+**Orange Pi deltas** (not measured on a Pi): record-0 +5 %, 41 +6 %, 54/656 +9 %, 253 field -5 %, 458 -40 %
+(but its sprites are x1.3, so its fill is ~x1.0). The 4096 pool and its bytes are unchanged.
+
+### C3. Sprite sizes on the ROI instrument
+
+**Instrument:** `fx_sprite_roi.py` p90 (Landing Act+1.2..1.8, Source BC+0.3..Act-0.05, pooled), against
+`review/B1120/measure_oracle/roi_oracle.txt`, band +-15 %. Read on the GATE capture (the oracle was read on
+its own natural-density capture, so this is the like-for-like reading).
+
+| row | B1118 whole-frame band (retired) | ROI band | B1124 gate | completion gate | thinned (separable) | action |
+|---|---|---|---|---|---|---|
+| 93 L | 0.063-0.085 | 0.064-0.086 | 0.098 | 0.094 | 0.089 | held (over) |
+| 38 L | 0.049-0.067 | 0.059-0.079 | 0.092 | 0.077 / 0.087 | 0.061 | none (in on leg 1, over on leg 2; same config) |
+| 54 L | 0.054-0.074 | 0.037-0.051 | 0.086 | 0.074 | 0.078 | held (over) |
+| 656 L | 0.048-0.064 | 0.030-0.040 | 0.075 | 0.063 | 0.061 | held (over) |
+| 41 L | 0.094-0.127 | 0.086-0.116 | 0.155 | 0.156 | 0.110 | held (over at density, in band separable) |
+| **253 L** | 0.050-0.068 | 0.079-0.107 | 0.066 | **0.107** | 0.060 | **style x1.12 -> x1.3** |
+| **458 L** | 0.057-0.077 | 0.086-0.116 | 0.076 | **0.110** (0.079 at the style size) | 0.060 | **style -> x1.3**, population 622 -> 373 |
+| Sources (93 38 54 656 41 253 458) | - | 0.084 0.074 0.027 0.028 0.113 0.178 0.043 | 0.128 0.131 0.068 0.063 0.178 0.170 0.051 | 0.135 0.130 0.066 0.066 0.181 0.173 0.051 | 0.035 0.065 0.047 0.043 0.110 0.094 0.039 | held (253 in band) |
+
+- **253.** On the gate capture x1.3 reads 0.107 (band top) and x1.45 reads 0.130 (cal `m_k2`); B1123's
+  linear-law x1.63 would read ~0.137. So **x1.3 is the largest size the ROI band admits**, and the
+  B1123 prediction ("6.4 k at the oracle's ROI size") does not hold: it used the linear law, not the ROI reading.
+- **458** read 0.079 at the style size (short). x1.3 reads 0.110 (in band). The population moved to 0.6 x
+  B1123's on the cal tour's evidence (`m_k2`: 0.71 of the coverage). On the gate tour its coverage did not move
+  (1.559 -> 1.572, 127 % of the oracle): 458's coverage is tour-sensitive (B1123 FOLLOW-UP 6).
+- **Over-band rows are HELD, not shrunk** (93/54/656/41 Landing, five Sources). Shrinking them to the band
+  costs landing coverage the card's coverage rows need: 93 at the ROI-matched size needs a pool > 18.8 k for
+  4.7 (B1123 `m_s1`/`m_ps*`). The thinned leg (`cal/m_t1`, every population x0.1) shows part of it is merged
+  blobs at density (41 L 0.156 -> 0.110, in band), part is real size (54/656 L stay ~1.8x over even separable).
+  **This trade is Will's** (FOLLOW-UP 1).
+- **The instrument depends on density.** 253 reads 0.060 separable vs 0.107 at the gate density. The band is
+  judged at the gate density above; a separable reading would have put 253 at x1.55.
+
+### C4. What bounds 253's landing now
+
+- **Count:** the rule gives the field half the pool (4096 live, N 1.90 of B1123's 2160).
+- **Size:** x1.3 is the ROI band top (C3).
+- At these, 253 reads 4.03 (gate) / 4.07 (cal `m_k1`); 5.8 needs either ~1.8x more sprites at x1.3
+  (B1123's sweep adds ~2.1 per doubling: a ~15 k pool under the half-pool rule) or sprites the ROI band does not admit.
+- The oracle's ribbons (B1120 FOLLOW-UP 4) remain unreproduced (`strips/strip_253.png`).
+
+### C5. Non-regression (`gate_table.tsv`, `gap_table.tsv`)
+
+- **Landing ends** within +0.14 s of the oracle on every spell (93 +0.14, 38 +0.01, 54 +0.02, 656 +0.13,
+  41 +0.12, 253 +0.02, 458 +0.05; band +-0.4). **Rowtop** unchanged (2.57 / 1.54 / 1.80).
+- **Landing coverage** rose toward the oracle on every pool-bound spell: 38 1.93 -> 3.32 (oracle 3.89),
+  54 1.60 -> 2.48 (2.46), 656 1.27 -> 2.08 (2.49). 458 1.58 -> 1.57.
+- **Hue:** landing 93 34 -> 41 (oracle 46), 38 32 -> 35 (47), 41 70 -> 68 (72), 253 202 -> 200, 54/656 within
+  2-4; Source hues unchanged.
+- **Source** (`source_all.py`): coverage 93 0.377, 38 0.386, 54 0.531, 656 0.609, 41 1.137, 253 3.375, 458 0.069
+  (B1124 0.413 0.429 0.546 0.597 1.133 3.271 0.065); extent / centroid within the B1123 same-config spread
+  (93 extent 2.27, inside B1123's 2.18-2.62).
+- **Hold (Act-0.1..+0.5):** unchanged to Act+0.4; Act+0.5 rises earlier on 93/38/54 (the denser landing).
+- **93/38 whole sprites (B1124):** atlas and pack identical (sha), unchanged.
+
+### C6. Frame time (NVIDIA, `gate/frame_summary.txt`; windows of 60 frames from the first /cast)
+
+| leg | B1124 window means / worst | completion | notes |
+|---|---|---|---|
+| A (38 54 656 458) | 0.96-1.15 / 2.2 ms | shipped: 1.11-1.46 / 2.4 ms, repeat 0.97-1.19 / 1.9 ms; 458 at the style size 0.91-1.15 / 1.9 ms | the 1.11-1.46 run is +0.27 ms from its FIRST cast (38, config unchanged) and did not repeat (`gate/repeat/`): run noise |
+| B (253 93) | 0.78-1.00 / 1.4 ms | 0.86-1.19 / 1.5 ms | +0.19 ms at worst: the doubled field |
+| C (41) | 0.88-1.01 / n/a | 0.82-0.97 / 1.1 ms | - |
+
+0 `slow!` on every leg. Leg C's 53.8 ms whole-leg worst is the zone-in hitch before any cast (as at B1123).
+**iGPU / XU4 estimate (not measured):** an XU4 is an `EQT_DRM` build, so it keeps the sbc pool (4096); the
+desktop pool reaches x86 iGPUs and macOS only. There the worst landing fill grows x2.1 (93: 1927 -> 4079 sprites)
+and x2.5 (253: x1.9 sprites at x1.35 area); on the NVIDIA box that is +0.2 ms, so an iGPU at ~5-10x lower
+blend rate would see roughly +1-2 ms in a 253 field. Measure it before B1130 grows the pool further.
+
+### C7. Memory (per 1024 particles, so a re-size is arithmetic)
+
+`sizeof(UnifiedParticle)` = 120 B; free list `uint16_t` = 2 B; `SimulationOutput` is double-buffered
+(`output_[2]`, each `renderBuffer` keeps its capacity); the GLES2 renderer stages 44 B per drawn sprite twice
+(`packedVerts_` + its category vector).
+
+| item | bytes per 1024 | when |
+|---|---|---|
+| pool + free list | 124,928 | allocated at init (fixed) |
+| render copies (2 x 120 B) | 245,760 | at full occupancy |
+| draw staging (2 x 44 B) | 90,112 | at full occupancy |
+| **total** | **460,800 (450 KiB)** | |
+
+- **x86 delta 4096 -> 8192:** +499,712 B fixed (pool), up to +1,843,200 B (1.76 MiB) at full occupancy
+  (pool + render copies alone: +1,482,752 B).
+- **Orange Pi:** pool unchanged (4096): 0 B fixed; occupancy changes by the C2 deltas only.
+- **Hard ceiling:** the free list is `uint16_t`, so a pool above 65,536 needs a wider index (B1130 note).
+
+### C8. Tests
+
+- **New / re-banded (every pool number is read from the presets file; each pool-accounting case runs at
+  BOTH platforms' pools):**
+  - `tests/spell_pool.h` (helper): `Shipped(platform)`, `LoadAt(pool)`.
+  - `SpellPoolRule.{EveryLandingPeaksAtTheRuleForThisPool, TheRuleKeepsEachLandingsSchedule,
+    WhirlingWindIsASteadyFrameFillingField, ThePoolStillHoldsTwoOfTheLargestLanding}` x {desktop, sbc};
+    `SpellPoolPlatforms.TheSbcPoolIsTheSmallerOne`; `SpellPoolExceptions.OnlyTheOracleLimitedLandingsAreExceptions`.
+  - `SpellBurstPool.{OneLandingReachesTheOraclesPeakSpriteCount, TheConfiguredPoolHoldsTwoOverlappingLandings}`,
+    `SpellBurstPoolSizing.TheOldHardcodedPoolClipsAndTheConfiguredOneDoesNot` x {desktop, sbc}.
+  - `SpellLandingPool.{OneFedLandingFitsHalfThePool, ASourceAndItsOwnLandingFitHalfThePool,
+    EverySourceCloudFitsBesideALanding}` x {desktop, sbc} (real worker).
+  - `ConstrainedRendererConfigTest.{JsonOverride_SpellParticlePoolPicksThisBuildsPlatform,
+    ShippedOrangePiPreset_CarriesThePlatformSpellParticlePool}`.
+  - `WhirlingWindSpritesAreTheStyleRaisedToTheRoiBandTop` (x1.3) and the 458 x1.3 pin; the B1119 size block's
+    comment table is now the ROI table (C3).
+  - `test_config_key_reachability`: `landingPopulation.exceptions` is a data-keyed map.
+- **RED on the pre-fix tree** (`review/B1123/leg2/tests/red_prefix_*.txt`): with fable a0fdc62d's
+  `constrained_presets.json` (no key) every pool-accounting case fails (`ASSERT_GT(pool, 0)` in each fixture); with its
+  `spell_effects.json` the ROI 253 pin fails.
+- **Runs** (Release, named targets, -j8; `review/B1123/leg2/tests/`):
+  `ctest -R "Spell|Sim|Particle|Landing|DataPath|ConfigKey|B1106|CasterOwn|Atlas|Sprite|Preset|Constrained"`
+  579 tests, 578 pass, 32 of them skipped (EQ client files), 1 fails (below); `ctest -L hygiene` 48/48.
+  `CwdElsewhere.ConstrainedPresetOverridesLoadFromAnyDirectory` fails in a build tree outside the repo and
+  equally with B1124's binary; it passes from a repo-shaped root (environment limit, as B1123 noted).
+- **CLAUDE.md:** "The spell sprite atlas" names the ROI instrument as the size authority and the pool key
+  (8192 / 4096, PROVISIONAL, B1130); two narrative sentences were tightened to stay under 60,000 bytes.
+
+### C9. FOLLOW-UP (orchestrator; workers do not cut cards)
+
+1. **Over-band sizes (Will).** 93/54/656/41 Landing and 93/38/54/656/41/458 Source read over their ROI band at
+   gate density. Shrinking costs coverage (93 4.7 would need > 18.8 k). Rule which wins, or whether the band is
+   read on a thinned capture (where 38/41 are in band and 253/458 short).
+2. **253 Landing 5.8** needs ~15 k under the half-pool rule at the ROI-band size, or the ribbon emitter
+   (B1120 FOLLOW-UP 4). Feed into B1130's re-size.
+3. **iGPU frame time** of the desktop pool is estimated, not measured (C6); measure it on an x86 iGPU before
+   B1130 grows the pool.
+4. **Rig defect fixed here:** the B1118-B1124 `class_run.sh` changed char 67's class BEFORE taking the lane
+   lock. At 12:55Z, with B1130's oracle session holding lane 5, it set class 6 then 14 for ~13 s each before
+   failing on the lock (class 12 restored). The leg2 rig changes the class only inside the lock; B1130's
+   rig should be checked for the same order.
+5. **458's coverage** is tour-sensitive (125 % on the gate tour at both populations, 73-103 % on the cal tour).
+6. **uint16 free list** caps the pool at 65,536 (C7).

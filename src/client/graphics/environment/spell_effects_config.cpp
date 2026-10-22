@@ -1,11 +1,13 @@
 #include "client/graphics/environment/spell_effects_config.h"
 #include "client/graphics/environment/particle_types.h"
 #include "client/graphics/environment/spell_sprite_atlas.h"
+#include "client/graphics/environment/spell_population_model.h"
 #include "client/spell/spells_eff_reader.h"
 #include "client/data_paths.h"
 #include "common/logging.h"
 #include <json/json.h>
 #include <fstream>
+#include <limits>
 
 namespace EQT {
 namespace Graphics {
@@ -150,7 +152,12 @@ bool SpellEffectsConfig::load(const std::string& path) {
     if (root.isMember("global")) {
         const Json::Value& g = root["global"];
         if (g.isMember("enabled")) global_.enabled = g["enabled"].asBool();
-        if (g.isMember("maxParticles")) global_.maxParticles = g["maxParticles"].asInt();
+        // B1123 (#443): the pool is the platform preset's `spellParticlePool`
+        // (applyPool); a second copy here would drift, so it is refused.
+        if (g.isMember("maxParticles"))
+            LOG_WARN(MOD_GRAPHICS, "SpellEffectsConfig: '{}' global.maxParticles ({}) is IGNORED -- "
+                     "the spell particle pool is config/constrained_presets.json's spellParticlePool",
+                     resolved, g["maxParticles"].asInt());
         if (g.isMember("densityMultiplier")) global_.densityMultiplier = g["densityMultiplier"].asFloat();
     }
 
@@ -182,6 +189,10 @@ bool SpellEffectsConfig::load(const std::string& path) {
         loadSpellOverrides(root["spellOverrides"]);
     }
 
+    // B1123: landing populations follow the platform pool (applyPool).
+    global_.maxParticles = pool_;
+    if (pool_ > 0) applyPopulationRule(root);
+
     loaded_ = true;
     LOG_INFO(MOD_GRAPHICS, "SpellEffectsConfig: Loaded settings from '{}'", resolved);
     return true;
@@ -201,6 +212,144 @@ bool SpellEffectsConfig::reload() {
     }
 
     return result;
+}
+
+// ---------------------------------------------------------------------------
+// B1123 (#443): THE POOL RULE.  Will ruled the pool per platform (8192 desktop,
+// 4096 sbc; PROVISIONAL, B1130 re-sizes it) and that populations follow it by
+// ONE rule, so a re-sized pool re-flows them without a config rewrite:
+//
+//   every landing (impact + spellComplete, the style and every spell that
+//   overrides either) PLUS its own held Source peaks at HALF THE POOL.
+//
+// Half the pool is B1121/B1123's bound: two overlapping fed landings fit, and
+// so does 253's steady field beside one (it is a landing too).  The B1123 sweep
+// measured every oracle landing it gated as needing MORE sprites than that
+// (93 7.2 k, 253 15 k at the shipped sizes), so the bound IS the target for
+// them.  A landing the oracle fills with FEWER sprites is a hand-set exception
+// (`landingPopulation.exceptions.<id>.peakLive`, each with its `why`): its
+// peak is min(that, half the pool).
+//
+// The JSON rates give each landing's SCHEDULE (peak vs sustain, impact vs
+// spellComplete); this rule scales spawnRate and sustainRate together so the
+// expected peak (spell_population_model.h) is the target.
+// ---------------------------------------------------------------------------
+static spell_population::Schedule scheduleOf(const SpellEffectsConfig::StyleSettings& s) {
+    spell_population::Schedule c;
+    c.spawnRate = s.spawnRate;
+    c.burstCount = s.burstCount;
+    c.spawnWindow = s.spawnWindow;
+    c.sustainRate = s.sustainRate;
+    c.sustainFrom = s.sustainFrom;
+    c.emitterLifetime = s.emitterLifetime;
+    c.lifetimeMin = s.lifetimeMin;
+    c.lifetimeMax = s.lifetimeMax;
+    return c;
+}
+
+void SpellEffectsConfig::applyPool(int pool) {
+    if (pool <= 0) {
+        LOG_ERROR(MOD_GRAPHICS, "SpellEffectsConfig: no spell particle pool (preset key "
+                  "spellParticlePool missing) -- landing populations stay the file's schedule rates");
+        return;
+    }
+    pool_ = pool;
+    if (!configPath_.empty()) {
+        load(configPath_);
+    } else {
+        global_.maxParticles = pool_;
+    }
+}
+
+void SpellEffectsConfig::applyPopulationRule(const Json::Value& root) {
+    static const char* kHalves[2] = {"impact", "spellComplete"};
+    auto styleIt0 = styles_.find(kHalves[0]);
+    auto styleIt1 = styles_.find(kHalves[1]);
+    if (styleIt0 == styles_.end() || styleIt1 == styles_.end()) return;
+    const StyleSettings base[2] = {styleIt0->second, styleIt1->second};
+    const float bound = 0.5f * static_cast<float>(pool_);
+
+    // The exceptions: spell id -> its oracle-measured peak.
+    std::unordered_map<uint32_t, float> exceptions;
+    const Json::Value& lp = root["landingPopulation"];
+    if (lp.isObject() && lp.isMember("rule"))
+        LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: landing population rule: {}", lp["rule"].asString());
+    if (lp.isObject() && lp["exceptions"].isObject()) {
+        const Json::Value& ex = lp["exceptions"];
+        for (const auto& id : ex.getMemberNames()) {
+            const float peak = ex[id]["peakLive"].asFloat();
+            if (peak > 0.0f) exceptions[static_cast<uint32_t>(std::stoul(id))] = peak;
+            LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: landing exception {} peakLive {} ({})",
+                      id, peak, ex[id]["why"].asString());
+        }
+    }
+
+    auto scaleInto = [](StyleSettings& out, const StyleSettings& resolved, float k) {
+        out.spawnRate = resolved.spawnRate * k;   out.hasSpawnRate = true;
+        out.sustainRate = resolved.sustainRate * k; out.hasSustainRate = true;
+    };
+
+    // The bound: one landing PLUS its own held Source (B1122: the Source keeps
+    // emitting releaseDelay past OP_Action, then its sprites finish their
+    // life) peaks at half the pool.  Which Source a spell draws (castGlow or
+    // castSpray) is decided at cast time, so the larger overlap of the two
+    // counts.  Computed from the UNSCALED style each spell merges over.
+    auto resolve = [&](uint32_t id, const char* style) {
+        auto st = styles_.find(style);
+        StyleSettings r = st != styles_.end() ? st->second : StyleSettings{};
+        auto sp = spellOverrides_.find(id);
+        if (id != 0 && sp != spellOverrides_.end()) {
+            auto it = sp->second.find(style);
+            if (it != sp->second.end()) r = mergeOverrides(r, it->second);
+        }
+        return r;
+    };
+    auto factor = [&](uint32_t id, const StyleSettings landing[2], float* peakOut, float* targetOut) {
+        const std::vector<spell_population::Schedule> halves = {scheduleOf(landing[0]), scheduleOf(landing[1])};
+        const float alone = spell_population::PeakLive(halves);
+        float k = std::numeric_limits<float>::max();
+        for (const char* src : {"castGlow", "castSpray"}) {
+            const StyleSettings s = resolve(id, src);
+            const auto o = spell_population::OverlapOf(halves, landing[0].triggerDelay, scheduleOf(s), s.releaseDelay);
+            k = std::min(k, spell_population::ScaleToFit(o, bound));
+        }
+        auto ex = exceptions.find(id);
+        if (ex != exceptions.end() && alone > 0.0f) k = std::min(k, ex->second / alone);
+        *peakOut = alone;
+        *targetOut = alone * k;
+        return k;
+    };
+
+    std::vector<uint32_t> ids;
+    for (const auto& kv : spellOverrides_) {
+        if (kv.second.count(kHalves[0]) || kv.second.count(kHalves[1])) ids.push_back(kv.first);
+    }
+    for (const auto& kv : exceptions) {
+        if (std::find(ids.begin(), ids.end(), kv.first) == ids.end()) ids.push_back(kv.first);
+    }
+    struct Scaled { uint32_t id; StyleSettings resolved[2]; float k; };
+    std::vector<Scaled> scaled;
+    for (uint32_t id : ids) {
+        Scaled sc{id, {resolve(id, kHalves[0]), resolve(id, kHalves[1])}, 1.0f};
+        float alone = 0.0f, target = 0.0f;
+        sc.k = factor(id, sc.resolved, &alone, &target);
+        if (alone <= 0.0f) continue;
+        scaled.push_back(sc);
+        LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: pool {} -> spell {} landing peak {:.0f} -> {:.0f} (x{:.3f}{})",
+                  pool_, id, alone, target, sc.k, exceptions.count(id) ? ", exception" : "");
+    }
+    float styleAlone = 0.0f, styleTarget = 0.0f;
+    const float kStyle = factor(0, base, &styleAlone, &styleTarget);
+
+    for (auto& sc : scaled)
+        for (int h = 0; h < 2; ++h) scaleInto(spellOverrides_[sc.id][kHalves[h]], sc.resolved[h], sc.k);
+    if (styleAlone > 0.0f) {
+        scaleInto(styleIt0->second, base[0], kStyle);
+        scaleInto(styleIt1->second, base[1], kStyle);
+    }
+    LOG_INFO(MOD_GRAPHICS, "SpellEffectsConfig: spell particle pool {} -> a landing and its held Source peak at "
+             "<= {:.0f} (style landing {:.0f} -> {:.0f}; {} spells resolved, {} oracle exceptions)",
+             pool_, bound, styleAlone, styleTarget, scaled.size(), exceptions.size());
 }
 
 static glm::vec3 readVec3(const Json::Value& arr) {
@@ -393,7 +542,7 @@ static void markAllPresent(SpellEffectsConfig::StyleSettings& s) {
 
 void SpellEffectsConfig::setDefaults() {
     global_.enabled = true;
-    global_.maxParticles = 1024;
+    global_.maxParticles = pool_;
     global_.densityMultiplier = 1.0f;
 
     // Resist colors

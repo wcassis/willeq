@@ -12,48 +12,34 @@
 #include <algorithm>
 #include <initializer_list>
 
+#include "client/graphics/environment/spell_population_model.h"
 #include "client/graphics/environment/unified_particle.h"
+#include <vector>
 
 namespace spell_landing_population {
 
 using EQT::Graphics::Environment::EmitterConfig;
 
-inline float RateAt(const EmitterConfig& c, float age) {
-    if (c.emitterLifetime > 0.0f && age >= c.emitterLifetime) return 0.0f;
-    float r = 0.0f;
-    if (c.spawnWindow <= 0.0f || age < c.spawnWindow) r += c.spawnRate;
-    if (c.sustainRate > 0.0f && age >= c.sustainFrom) r += c.sustainRate;
-    return r;
-}
-
-inline float Survives(const EmitterConfig& c, float age) {
-    if (age < c.lifetimeMin) return 1.0f;
-    if (age >= c.lifetimeMax || c.lifetimeMax <= c.lifetimeMin) return 0.0f;
-    return (c.lifetimeMax - age) / (c.lifetimeMax - c.lifetimeMin);
-}
-
-inline float LiveAt(const EmitterConfig& c, float t) {
-    constexpr int kSteps = 2000;  // midpoint rule over the births in [0, t]
-    const float dt = t / static_cast<float>(kSteps);
-    float n = static_cast<float>(c.burstCount) * Survives(c, t);
-    for (int i = 0; i < kSteps; ++i) {
-        const float b = (static_cast<float>(i) + 0.5f) * dt;
-        n += RateAt(c, b) * Survives(c, t - b) * dt;
-    }
-    return n;
+// B1123: the model itself is production code now (the pool rule uses it):
+// include/client/graphics/environment/spell_population_model.h.
+inline EQT::Graphics::Environment::spell_population::Schedule ScheduleOf(const EmitterConfig& c) {
+    EQT::Graphics::Environment::spell_population::Schedule s;
+    s.spawnRate = c.spawnRate;
+    s.burstCount = c.burstCount;
+    s.spawnWindow = c.spawnWindow;
+    s.sustainRate = c.sustainRate;
+    s.sustainFrom = c.sustainFrom;
+    s.emitterLifetime = c.emitterLifetime;
+    s.lifetimeMin = c.lifetimeMin;
+    s.lifetimeMax = c.lifetimeMax;
+    return s;
 }
 
 // The largest expected live count of the given emitters (one landing's halves).
 inline float PeakLive(std::initializer_list<EmitterConfig> halves) {
-    float horizon = 0.0f;
-    for (const auto& c : halves) horizon = std::max(horizon, c.emitterLifetime + c.lifetimeMax);
-    float peak = 0.0f;
-    for (float t = 0.0f; t <= horizon; t += 0.02f) {
-        float n = 0.0f;
-        for (const auto& c : halves) n += LiveAt(c, t);
-        peak = std::max(peak, n);
-    }
-    return peak;
+    std::vector<EQT::Graphics::Environment::spell_population::Schedule> s;
+    for (const auto& c : halves) s.push_back(ScheduleOf(c));
+    return EQT::Graphics::Environment::spell_population::PeakLive(s);
 }
 
 // The PEAK phase's cohort: what B1120 / T422 called a landing's population.

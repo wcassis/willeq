@@ -282,8 +282,7 @@ fails on a bare `"config/…"` / `"data/…"` literal that does not.
 checkout** (T402, board B248), through `eqt::ResolveCachePathForRead()` /
 `ResolveCachePathForWrite()` (same header), which pick the first writable of
 `$WILLEQ_CACHE_DIR`, `$WILLEQ_DATA_ROOT/cache`, `<exe dir>/cache` and `cache/`.
-A cache miss costs only a rescan (~0.4 s for the 17 sound archives, ~30 ms
-for the 378 character archives). The GLES2 driver's shader-binary cache
+The GLES2 driver's shader-binary cache
 (`<hash>.bin`, `<cache dir>/shader_cache/`) is one too (B959): the host calls
 `eqt::ConfigureGles2ShaderCache()` before creating its device and the driver, which
 sits below the client, only ever receives the directory; none set means cache off,
@@ -416,9 +415,14 @@ names: Source → cast glow and spellComplete, Middle → projectile trail, Targ
 impact. The landing is a VOLUME, not a disc (B1120); the Source a body cloud
 from BeginCast+0.25 s held past OP_Action until the landing starts, not a hand
 pinpoint (B1122; `tests/test_spell_landing_volume.cpp`). `spellOverrides` holds measured values
-only (B1119 sizes, B1120/B1122 shapes; every population is the pool's
-bound, B1123: `refactor/B112{0,2,3}/README.md`); **an unmeasured spell resolves to the
+only (B1120/B1122 shapes; **sizes are judged on the caster-ROI instrument**,
+`review/B1119/scripts/fx_sprite_roi.py` against
+`review/B1120/measure_oracle/roi_oracle.txt`, Will 2026-10-22); **an unmeasured spell resolves to the
 plain style — an invented override is the guess Will's ruling forbids.**
+**The particle pool is ONE preset key**, `spellParticlePool` in
+`config/constrained_presets.json` (desktop 8192, sbc 4096: PROVISIONAL, B1130
+#450 re-sizes it); every landing population derives from it by one rule
+(`SpellEffectsConfig::applyPool`, B1123).
 `tests/test_spell_colour_and_overrides.cpp` pins both halves and the negatives.
 
 #### Texture alpha
@@ -597,8 +601,7 @@ a `--log-level` cannot silence the verdict.
 
 ### Video capture (temporal evidence — attack swings, casting, zoning, particles)
 
-Stills can't show a temporal sequence. When the thing under review is temporal,
-record video instead of burst-capturing screenshots and hoping a frame lands.
+A temporal sequence needs video, not burst-captured screenshots.
 
 ```bash
 # Dump numbered PNG frames while connected/zoned (render-thread hook, off by
@@ -623,8 +626,7 @@ bash scripts/ci/encode_capture.sh /tmp/capture <UNIT_ID> [output_dir]
   video with the measured fps/frame-count/real-time span; keep that file with
   the video.
 - **Capture fps is an artifact of the capture mechanism, not a performance
-  measurement** (per-frame `glReadPixels` + PNG encode; P12 measured ~4-7.6
-  effective fps on llvmpipe). **Never draw a performance conclusion from a
+  measurement** (P12: ~4-7.6 fps on llvmpipe). **Never draw a performance conclusion from a
   capture video.**
 - Verify frames are real images before encoding — `saveScreenshot()` has
   returned garbage under the surfaceless path before (P10, P20; `review/T64/`).
@@ -640,11 +642,9 @@ sudo setcap cap_net_raw,cap_net_admin+ep ./build/bin/willeq
 - `CAP_NET_ADMIN`: `SO_RCVBUFFORCE`, to set the UDP receive buffer above the
   kernel limit.
 
-During zone loading the server sends a burst of 40+ packets at nearly the same
-instant; the default socket buffer (~425 KB) can overflow, causing packet loss
-and a zone load that hangs at 40%. The client requests 1 MB via
-`SO_RCVBUFFORCE`; without `CAP_NET_ADMIN` it falls back to `net.core.rmem_max`
-(typically 212 KB) and failures become intermittent.
+Zone-in bursts 40+ packets, which can overflow the default socket buffer and
+hang the load at 40%. The client asks for 1 MB via `SO_RCVBUFFORCE`; without
+`CAP_NET_ADMIN` it gets `net.core.rmem_max` (~212 KB) and fails intermittently.
 
 On the Pi: the CI-published binary (NFS) carries no capability, and `setcap`
 does not stick on NFS or on the Pi's `/tmp` (tmpfs, `nosuid`). Copy it to the

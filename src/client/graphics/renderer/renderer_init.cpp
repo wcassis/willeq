@@ -784,6 +784,11 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         if (!particleManager_->init(config_.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize particle manager");
         }
+        // B1123 (#443): the spell particle pool is the platform's preset key
+        // (constrained_presets.json `spellParticlePool`); every landing
+        // population is derived from it (SpellEffectsConfig::applyPool).
+        Environment::SpellEffectsConfig::instance().applyPool(
+            config_.constrainedConfig.spellParticlePool);
         // Compile the point sprite shader program now (during init, under the loading
         // screen) rather than during deferred init where the ~260ms Mali 400 shader
         // compilation spikes the governor into Red. The shader has zero zone data

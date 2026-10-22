@@ -1,8 +1,16 @@
 {
     "global": {
         "enabled": true,
-        "maxParticles": 4096,
         "densityMultiplier": 1.0
+    },
+    "landingPopulation": {
+        "rule": "B1123 (#443): every landing (impact + spellComplete) peaks at half the platform pool (constrained_presets.json spellParticlePool), so two overlapping landings, or 253's field beside one, fit; the rates below give each landing's schedule and SpellEffectsConfig::applyPool scales them to the peak. An exception is a landing the oracle fills with FEWER sprites: its peak is min(peakLive, half the pool).",
+        "exceptions": {
+            "41": {"peakLive": 2492, "why": "B1123 sweep (review/B1123/pool_fit.tsv): 2492 live reaches the oracle's 4.154 landing coverage at the shipped sizes"},
+            "54": {"peakLive": 3517, "why": "B1123 completion lane-5 calibration (review/B1123/leg2/cal/m_k1): 3517 live reads 2.459 against the oracle's 2.461 landing coverage"},
+            "656": {"peakLive": 3517, "why": "spells.eff record 23, one population with 54 (B1122's per-record rule); reads 2.13 of the oracle's 2.49 at it (review/B1123/leg2/cal/m_k1)"},
+            "458": {"peakLive": 373, "why": "the oracle draws FEWER, LARGER sprites: at the style size it read 125 % of the oracle's 1.242 landing coverage with ROI p90 0.079 (band 0.086-0.116); lane-5 calibration (review/B1123/leg2/cal/m_k2) puts x1.3 sprites at ROI 0.104 and 0.6 of B1123's 622 at 0.71 of the coverage"}
+        }
     },
     "resistColors": {
         "none": [0.59, 0.71, 1.0, 1.0],
@@ -385,7 +393,11 @@
                 "positionOffset": [0.0, 1.6, 0.0],
                 "spawnRate": 500.0,
                 "sustainRate": 166.5,
-                "emitterLifetime": 2.9
+                "emitterLifetime": 2.9,
+                "sizeStartMin": 0.346,
+                "sizeStartMax": 0.572,
+                "sizeEndMin": 0.692,
+                "sizeEndMax": 1.019
             },
             "impact": {
                 "spawnShape": "BOX",
@@ -398,7 +410,11 @@
                 "positionOffset": [0.0, 2.25, 0.0],
                 "spawnRate": 500.0,
                 "sustainRate": 166.5,
-                "emitterLifetime": 2.9
+                "emitterLifetime": 2.9,
+                "sizeStartMin": 0.291,
+                "sizeStartMax": 0.455,
+                "sizeEndMin": 0.572,
+                "sizeEndMax": 0.855
             }
         },
         "41": {
@@ -463,10 +479,10 @@
                 "positionOffset": [0.0, 5.175, 0.0],
                 "spawnWindow": 0.0,
                 "sustainRate": 0.0,
-                "sizeStartMin": 0.251,
-                "sizeStartMax": 0.392,
-                "sizeEndMin": 0.493,
-                "sizeEndMax": 0.737
+                "sizeStartMin": 0.291,
+                "sizeStartMax": 0.455,
+                "sizeEndMin": 0.572,
+                "sizeEndMax": 0.855
             },
             "spellComplete": {
                 "spawnRate": 600.0,
@@ -481,10 +497,10 @@
                 "positionOffset": [0.0, 5.175, 0.0],
                 "spawnWindow": 0.0,
                 "sustainRate": 0.0,
-                "sizeStartMin": 0.298,
-                "sizeStartMax": 0.493,
-                "sizeEndMin": 0.596,
-                "sizeEndMax": 0.878
+                "sizeStartMin": 0.346,
+                "sizeStartMax": 0.572,
+                "sizeEndMin": 0.692,
+                "sizeEndMax": 1.019
             },
             "castGlow": {
                 "spawnShape": "BOX",

@@ -111,6 +111,7 @@
 #include <glm/glm.hpp>
 #include <unordered_set>
 #include "spell_landing_population.h"
+#include "spell_pool.h"
 #endif
 
 namespace {
@@ -122,11 +123,13 @@ namespace SpellPresets = EQT::Graphics::Environment::SpellPresets;
 
 class SpellBurstOracleMatch : public ::testing::Test {
 protected:
+    // B1123: at this build's platform pool (spell_pool.h); the pool-accounting
+    // cases below run at every platform's pool (SpellBurstPool).
     void SetUp() override {
-        const std::string cfg =
-            std::string(WILLEQ_REPO_ROOT) + "/config/spell_effects.json";
-        if (!SpellEffectsConfig::instance().load(cfg)) {
-            GTEST_SKIP() << "no " << cfg;
+        const int pool = spell_pool::Shipped(spell_pool::ThisBuildPlatform());
+        ASSERT_GT(pool, 0) << "config/constrained_presets.json names no spellParticlePool for this platform";
+        if (!spell_pool::LoadAt(pool)) {
+            GTEST_SKIP() << "no config/spell_effects.json";
         }
     }
 
@@ -183,14 +186,38 @@ TEST_F(SpellBurstOracleMatch, SpellCompleteEmitsOverAWindowRatherThanInOneFrame)
 // caster heights + a spark shell ~3.4 wide, B1118 coverage 5.85 caster
 // heights^2 for 93) and the population rose with it; the ceiling is the pool:
 // two overlapping record-0 landings must fit `global.maxParticles` (below).
-TEST_F(SpellBurstOracleMatch, OneLandingReachesTheOraclesPeakSpriteCount) {
+// B1123: run at every platform's shipped pool (spell_pool.h).
+class SpellBurstPool : public SpellBurstOracleMatch,
+                       public ::testing::WithParamInterface<const char*> {
+protected:
+    void SetUp() override {
+        const int pool = spell_pool::Shipped(GetParam());
+        ASSERT_GT(pool, 0) << "config/constrained_presets.json names no spellParticlePool for this platform";
+        if (!spell_pool::LoadAt(pool)) {
+            GTEST_SKIP() << "no config/spell_effects.json";
+        }
+    }
+    static float Pool() {
+        return static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles);
+    }
+};
+INSTANTIATE_TEST_SUITE_P(Platforms, SpellBurstPool, ::testing::ValuesIn(spell_pool::kPlatforms));
+
+TEST_P(SpellBurstPool, OneLandingReachesTheOraclesPeakSpriteCount) {
     const float total = PeakCohort(Impact()) + PeakCohort(Complete());
     EXPECT_GE(total, 715.0f)
         << "one landing paints " << total << " sprites; T422 counted at least "
            "715 blobs on the official client (Burst of Flame)";
+    // B1123: the pool rule puts the record-0 landing plus its own held Source
+    // AT half the pool (the oracle needs more sprites, B1123 sweep), so the
+    // landing is pinned just under the bound: its 80/s Source is nearly dead
+    // when it peaks (the exact rule is EveryLandingPeaksAtTheRuleForThisPool).
     const float live = PeakLive();
-    EXPECT_LE(live, 0.5f * static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles))
-        << "one landing holds up to " << live << " live sprites; two must fit the pool";
+    EXPECT_LE(live, 0.5f * Pool() * 1.001f)
+        << "one landing holds up to " << live << " live sprites; two must fit the pool " << Pool();
+    EXPECT_GE(live, 0.5f * Pool() * 0.98f)
+        << "the record-0 landing (" << live << ") is not at half the pool " << Pool()
+        << ": the pool rule (SpellEffectsConfig::applyPool) did not run";
 }
 
 // The lifetime is bounded BELOW by the oracle's death-free rise (1.46 s for
@@ -264,6 +291,11 @@ TEST_F(SpellBurstOracleMatch, SheetPlaybackRateFollowsFromTheMeasuredLifetime) {
 // MEASURED RIGHT and was deliberately not touched.  Pin both so a later unit
 // does not move either off a desk argument.  (B1120 replaced the expand
 // speed with the measured spark-shell speed; see the last assertion.)
+// B1123 completion (Will 2026-10-22): sizes are judged on the caster-ROI
+// instrument against review/B1120/measure_oracle/roi_oracle.txt (record 0:
+// 93 0.075, 38 0.069), not B1118's whole-frame p90 above; the record-0 style
+// is unchanged by it (93 reads over that band at 8192, 38 in it -- held,
+// tests/test_spell_colour_and_overrides.cpp's ROI table).
 TEST_F(SpellBurstOracleMatch, SpriteSizeAndExpandSpeedAreTheMeasuredOnes) {
     const auto c = Impact();
     EXPECT_FLOAT_EQ(c.sizeStartMin, 0.224f);
@@ -313,10 +345,9 @@ TEST_F(SpellBurstOracleMatch, TheSourceCloudRatesAreTheCalibratedOnes) {
 // poolSize 0 and the worker's own arm was a hardcoded 1024 that happened to
 // equal the shipped value.  With one landing now ~650 sprites, two landings
 // overlapping exceed 1024 and would be silently clipped.
-TEST_F(SpellBurstOracleMatch, TheConfiguredPoolHoldsTwoOverlappingLandings) {
+TEST_P(SpellBurstPool, TheConfiguredPoolHoldsTwoOverlappingLandings) {
     const float perLanding = PeakLive();
-    EXPECT_GE(static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles),
-              2.0f * perLanding)
+    EXPECT_GE(Pool() * 1.001f, 2.0f * perLanding)
         << "one landing is " << perLanding << " sprites and two can overlap; "
            "the pool is "
         << SpellEffectsConfig::instance().getGlobal().maxParticles;
@@ -326,13 +357,13 @@ TEST_F(SpellBurstOracleMatch, TheConfiguredPoolHoldsTwoOverlappingLandings) {
 // with the shipped impact preset at the OLD hardcoded pool and at the
 // configured one, and show the population differs.  This is what makes the
 // one-line wiring in renderer_sim_bridge.cpp a fact rather than a comment.
-class SpellBurstPoolSizing : public ::testing::Test {
+class SpellBurstPoolSizing : public ::testing::TestWithParam<const char*> {
 protected:
     void SetUp() override {
-        const std::string cfg =
-            std::string(WILLEQ_REPO_ROOT) + "/config/spell_effects.json";
-        if (!SpellEffectsConfig::instance().load(cfg)) {
-            GTEST_SKIP() << "no " << cfg;
+        const int pool = spell_pool::Shipped(GetParam());
+        ASSERT_GT(pool, 0) << "config/constrained_presets.json names no spellParticlePool for this platform";
+        if (!spell_pool::LoadAt(pool)) {
+            GTEST_SKIP() << "no config/spell_effects.json";
         }
     }
 
@@ -380,7 +411,9 @@ protected:
 
 // Four simultaneous impacts are ~1,150 sprites.  At the old hardcoded 1,024
 // the worker runs out of pool and clips; at the configured pool it does not.
-TEST_F(SpellBurstPoolSizing, TheOldHardcodedPoolClipsAndTheConfiguredOneDoesNot) {
+INSTANTIATE_TEST_SUITE_P(Platforms, SpellBurstPoolSizing, ::testing::ValuesIn(spell_pool::kPlatforms));
+
+TEST_P(SpellBurstPoolSizing, TheOldHardcodedPoolClipsAndTheConfiguredOneDoesNot) {
     const int configured = SpellEffectsConfig::instance().getGlobal().maxParticles;
     // 60 frames = 1.0 s: past the 0.33 s delay and the 0.6 s peak window,
     // before anything dies (the sustain starts later, B1121).
