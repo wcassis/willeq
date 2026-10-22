@@ -390,8 +390,8 @@ sixteen frames of all 33 sprites, 528 used): the CELL is derived per particle
 per frame in `UnifiedParticleRenderer::render()` from
 `SpellSpriteAtlas::frameForNormalizedAge()`, so the sheet plays through exactly
 once over a particle's lifetime. These sheets are fade-in/peak/fade-out cycles,
-so that mapping IS the animation; a fixed cells-per-second clock would strand a
-short-lived particle in the faint fade-in frames.
+so that mapping IS the animation (a fixed cells/s clock strands a short life in
+the faint fade-in frames).
 
 The playback rate is therefore `16 / lifetime`, set by
 `config/spell_effects.json`. That lifetime is per PARTICLE, not the landing's
@@ -417,8 +417,8 @@ names: Source → cast glow and spellComplete, Middle → projectile trail, Targ
 impact. The landing is a VOLUME, not a disc (B1120); the Source a body cloud
 from BeginCast+0.25 s held past OP_Action until the landing starts, not a hand
 pinpoint (B1122; `tests/test_spell_landing_volume.cpp`). `spellOverrides` holds measured values
-only (T422 population ratios, B1119 sizes, B1120/B1122 shapes:
-`refactor/B112{0,2}/README.md`); **an unmeasured spell resolves to the
+only (B1119 sizes, B1120/B1122 shapes; every population is the pool's
+bound, B1123: `refactor/B112{0,2,3}/README.md`); **an unmeasured spell resolves to the
 plain style — an invented override is the guess Will's ruling forbids.**
 `tests/test_spell_colour_and_overrides.cpp` pins both halves and the negatives.
 

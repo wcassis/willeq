@@ -149,12 +149,12 @@ namespace SpellPresets = EQT::Graphics::Environment::SpellPresets;
 // client, whose population rises over ~2 s rather than appearing in one frame,
 // so the shipped style is now a `spawnRate` emitter and its burstCount is 0 --
 // which used to be the "no config was applied at all" value. `spawnRate` reads
-// 1100 shipped (B1120; 480 at T422) / 0 built-in (setDefaults() still describes the pre-T422
+// 1214.6 shipped (B1123; 1100 at B1120, 480 at T422) / 0 built-in (setDefaults() still describes the pre-T422
 // one-shot) / 10 never-configured (EmitterConfig's own default, board B221's
 // "permanent 10/s emitter").
 //
 // T441 (board B397) made the SPELL ID matter: `spellOverrides` is no longer
-// empty, and 93 Burst of Flame now carries its own measured spawnRate of 530.
+// empty (93 Burst of Flame carried its own spawnRate from T441 to B1122).
 // The discriminator here is about which FILE was read, not about any one
 // spell, so it asks for the STYLE -- spell id 0, which
 // SpellEffectsConfig::getStyleSettings() documents as "no per-spell lookup".
@@ -162,8 +162,9 @@ namespace SpellPresets = EQT::Graphics::Environment::SpellPresets;
 // go red every time a future unit measured that spell again.
 //
 // B1120 (#440) raised the impact STYLE's population with the landing volume
-// (480 -> 1100/s); the three-way discriminator (shipped / 0 / 10) is intact.
-constexpr float kShippedImpactSpawnRate = 1100.0f;
+// (480 -> 1100/s), and B1123 (#443) to the pool bound (1214.6/s); the
+// three-way discriminator (shipped / 0 / 10) is intact.
+constexpr float kShippedImpactSpawnRate = 1214.6f;
 constexpr float kBuiltInImpactSpawnRate = 0.0f;
 
 // PRE-FIX RED. From a CWD with no config/ tree, the production string opens
