@@ -415,13 +415,14 @@ names: Source → cast glow and spellComplete, Middle → projectile trail, Targ
 impact. The landing is a VOLUME, not a disc (B1120); the Source a body cloud
 from BeginCast+0.25 s held past OP_Action until the landing starts, not a hand
 pinpoint (B1122; `tests/test_spell_landing_volume.cpp`). `spellOverrides` holds measured values
-only (B1120/B1122 shapes; **sizes are judged on the caster-ROI instrument**,
+only (B1120/B1122 shapes; **sizes match the oracle FIRST**: the caster-ROI p90 of
 `review/B1119/scripts/fx_sprite_roi.py` against
-`review/B1120/measure_oracle/roi_oracle.txt`, Will 2026-10-22); **an unmeasured spell resolves to the
+`review/B1120/measure_oracle/roi_oracle.txt`, and coverage follows from the pool, never
+from size, #443 note 7118); **an unmeasured spell resolves to the
 plain style — an invented override is the guess Will's ruling forbids.**
 **The particle pool is ONE preset key**, `spellParticlePool` in
-`config/constrained_presets.json` (desktop 8192, sbc 4096: PROVISIONAL, B1130
-#450 re-sizes it); every landing population derives from it by one rule
+`config/constrained_presets.json` (desktop 8192, sbc 4096; B1130's survey demand
+fits both); every landing population derives from it by one rule
 (`SpellEffectsConfig::applyPool`, B1123).
 `tests/test_spell_colour_and_overrides.cpp` pins both halves and the negatives.
 
