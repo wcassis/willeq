@@ -64,7 +64,10 @@
 //    is DERIVED from a directly measured lifetime rather than measured.  Said
 //    out loud so the next unit does not read it as a measurement.
 //
-//  * SIZE.  Probed live, not argued.  With the count and lifetime already
+//  * SIZE.  [Superseded by B1119 (#439): the numbers below are T422's, kept as
+//    history; B1118 re-measured at real frame rate and B1119 re-sized both
+//    styles x2.8 -- see SpriteSizeAndExpandSpeedAreTheMeasuredOnes.]
+//    Probed live, not argued.  With the count and lifetime already
 //    fixed, fable's Weaken burst measured a MEDIAN SPRITE DIAMETER of
 //    3.2-3.7 px through the same pipeline that read 4.4-6.7 px off the
 //    oracle's -- 1.57x too small -- so every size in both styles is scaled by
@@ -214,15 +217,25 @@ TEST_F(SpellBurstOracleMatch, SheetPlaybackRateFollowsFromTheMeasuredLifetime) {
     }
 }
 
-// The sizes are the 1.57x-scaled ones the live probe demanded; the expand
-// speed is the one that MEASURED RIGHT and was deliberately not touched.  Pin
-// both so a later unit does not move either off a desk argument.
+// The sizes are B1119's (#439): T422's 1.57x-scaled sizes (0.08/0.125/0.157/
+// 0.235 here) were probed on an llvmpipe-era 4-6 fps capture and B1118 measured
+// them 2-4x too small at real frame rate (fable Landing p90 sprite diameter
+// 0.022-0.040 caster heights against the oracle's 0.056-0.110).  B1119 scaled
+// both landing styles x2.8, calibrated on a sprite-separable ThinkPad lane-5
+// capture (refactor/B1119/README.md).  The expand speed is the one that
+// MEASURED RIGHT and was deliberately not touched.  Pin both so a later unit
+// does not move either off a desk argument.
 TEST_F(SpellBurstOracleMatch, SpriteSizeAndExpandSpeedAreTheMeasuredOnes) {
     const auto c = Impact();
-    EXPECT_FLOAT_EQ(c.sizeStartMin, 0.08f);
-    EXPECT_FLOAT_EQ(c.sizeStartMax, 0.125f);
-    EXPECT_FLOAT_EQ(c.sizeEndMin, 0.157f);
-    EXPECT_FLOAT_EQ(c.sizeEndMax, 0.235f);
+    EXPECT_FLOAT_EQ(c.sizeStartMin, 0.224f);
+    EXPECT_FLOAT_EQ(c.sizeStartMax, 0.35f);
+    EXPECT_FLOAT_EQ(c.sizeEndMin, 0.44f);
+    EXPECT_FLOAT_EQ(c.sizeEndMax, 0.658f);
+    const auto sc = Complete();
+    EXPECT_FLOAT_EQ(sc.sizeStartMin, 0.266f);
+    EXPECT_FLOAT_EQ(sc.sizeStartMax, 0.44f);
+    EXPECT_FLOAT_EQ(sc.sizeEndMin, 0.532f);
+    EXPECT_FLOAT_EQ(sc.sizeEndMax, 0.784f);
     EXPECT_FLOAT_EQ(c.expandSpeed, 4.0f)
         << "the oracle's burst spreads ~8.3 world units in ~2 s = ~4.2 units/s";
 }

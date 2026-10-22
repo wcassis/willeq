@@ -28,10 +28,10 @@
             "drag": 0.3,
             "colorStartAlpha": 0.8,
             "colorEndAlpha": 0.0,
-            "sizeStartMin": 0.04,
-            "sizeStartMax": 0.08,
-            "sizeEndMin": 0.02,
-            "sizeEndMax": 0.04,
+            "sizeStartMin": 0.904,
+            "sizeStartMax": 1.808,
+            "sizeEndMin": 0.452,
+            "sizeEndMax": 0.904,
             "lifetimeMin": 0.4,
             "lifetimeMax": 0.7,
             "blendMode": "ADDITIVE",
@@ -51,10 +51,10 @@
             "drag": 0.0,
             "colorStartAlpha": 0.7,
             "colorEndAlpha": 0.0,
-            "sizeStartMin": 0.08,
-            "sizeStartMax": 0.12,
-            "sizeEndMin": 0.04,
-            "sizeEndMax": 0.06,
+            "sizeStartMin": 0.824,
+            "sizeStartMax": 1.236,
+            "sizeEndMin": 0.412,
+            "sizeEndMax": 0.618,
             "lifetimeMin": 0.8,
             "lifetimeMax": 1.2,
             "blendMode": "ADDITIVE",
@@ -76,10 +76,10 @@
             "drag": 0.0,
             "colorStartAlpha": 0.9,
             "colorEndAlpha": 0.0,
-            "sizeStartMin": 0.095,
-            "sizeStartMax": 0.157,
-            "sizeEndMin": 0.19,
-            "sizeEndMax": 0.28,
+            "sizeStartMin": 0.266,
+            "sizeStartMax": 0.44,
+            "sizeEndMin": 0.532,
+            "sizeEndMax": 0.784,
             "lifetimeMin": 1.6,
             "lifetimeMax": 2.0,
             "blendMode": "ADDITIVE",
@@ -99,10 +99,10 @@
             "drag": 0.0,
             "colorStartAlpha": 0.8,
             "colorEndAlpha": 0.0,
-            "sizeStartMin": 0.08,
-            "sizeStartMax": 0.125,
-            "sizeEndMin": 0.157,
-            "sizeEndMax": 0.235,
+            "sizeStartMin": 0.224,
+            "sizeStartMax": 0.35,
+            "sizeEndMin": 0.44,
+            "sizeEndMax": 0.658,
             "lifetimeMin": 1.6,
             "lifetimeMax": 2.0,
             "blendMode": "ADDITIVE",
@@ -233,26 +233,33 @@
             "impact":        { "spawnRate": 530.0 },
             "spellComplete": { "spawnRate": 662.0 }
         },
+        "38": {
+            "impact":        { "sizeStartMin": 0.166, "sizeStartMax": 0.259, "sizeEndMin": 0.325, "sizeEndMax": 0.486 },
+            "spellComplete": { "sizeStartMin": 0.197, "sizeStartMax": 0.325, "sizeEndMin": 0.393, "sizeEndMax": 0.58 }
+        },
+        "54": {
+            "impact":        { "sizeStartMin": 0.264, "sizeStartMax": 0.413, "sizeEndMin": 0.518, "sizeEndMax": 0.776 },
+            "spellComplete": { "sizeStartMin": 0.314, "sizeStartMax": 0.518, "sizeEndMin": 0.627, "sizeEndMax": 0.924 },
+            "castGlow":      { "sizeStartMin": 0.36, "sizeStartMax": 0.54, "sizeEndMin": 0.18, "sizeEndMax": 0.27 }
+        },
+        "656": {
+            "castGlow":      { "sizeStartMin": 0.36, "sizeStartMax": 0.54, "sizeEndMin": 0.18, "sizeEndMax": 0.27 }
+        },
+        "458": {
+            "castGlow":      { "sizeStartMin": 0.44, "sizeStartMax": 0.66, "sizeEndMin": 0.22, "sizeEndMax": 0.33 }
+        },
         "41": {
-            "impact":        { "spawnRate": 416.0 },
-            "spellComplete": { "spawnRate": 519.0 }
+            "impact":        { "spawnRate": 416.0, "sizeStartMin": 0.338, "sizeStartMax": 0.529, "sizeEndMin": 0.664, "sizeEndMax": 0.994 },
+            "spellComplete": { "spawnRate": 519.0, "sizeStartMin": 0.402, "sizeStartMax": 0.664, "sizeEndMin": 0.804, "sizeEndMax": 1.184 }
         },
         "253": {
             "impact": {
                 "spawnRate": 7.4,
-                "emitterLifetime": 3.6,
-                "sizeStartMin": 0.134,
-                "sizeStartMax": 0.209,
-                "sizeEndMin": 0.263,
-                "sizeEndMax": 0.393
+                "emitterLifetime": 3.6
             },
             "spellComplete": {
                 "spawnRate": 9.3,
-                "emitterLifetime": 3.6,
-                "sizeStartMin": 0.159,
-                "sizeStartMax": 0.263,
-                "sizeEndMin": 0.318,
-                "sizeEndMax": 0.468
+                "emitterLifetime": 3.6
             }
         }
     }

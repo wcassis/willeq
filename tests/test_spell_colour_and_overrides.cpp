@@ -89,6 +89,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -420,14 +421,19 @@ TEST_F(SpellStyleOverrides, WhirlingWindIsASteadyTrickleNotAWideBurst) {
     EXPECT_LE(total, 36.0f) << "T422 measured a steady 25-36; fable holds " << total;
 }
 
-// Its sprites are ~1.67x the burst styles' -- 8.0-10.5 px against 4.4-6.9.
-TEST_F(SpellStyleOverrides, WhirlingWindSpritesAreTheLargerMeasuredOnes) {
-    const EmitterConfig c = impact(253);
-    const EmitterConfig style = impact(0);
-    EXPECT_NEAR(c.sizeStartMin / style.sizeStartMin, 1.673f, 0.02f);
-    EXPECT_NEAR(c.sizeStartMax / style.sizeStartMax, 1.673f, 0.02f);
-    EXPECT_NEAR(c.sizeEndMin / style.sizeEndMin, 1.673f, 0.02f);
-    EXPECT_NEAR(c.sizeEndMax / style.sizeEndMax, 1.673f, 0.02f);
+// B1119 (#439): T422 gave 253 sprites 1.673x the burst styles'.  B1118's
+// real-frame-rate oracle Landing p90 for 253 is 0.059 caster heights, which the
+// B1119 style sizes (x2.8) already reach -- 1.67x the T422 override, i.e. the
+// override's own size factor again -- so the size override is retired and 253
+// resolves its sizes from the style, keeping only its population/duration.
+TEST_F(SpellStyleOverrides, WhirlingWindSpritesComeFromTheB1119Style) {
+    for (const auto& pair : {std::make_pair(impact(253), impact(0)),
+                             std::make_pair(complete(253), complete(0))}) {
+        EXPECT_FLOAT_EQ(pair.first.sizeStartMin, pair.second.sizeStartMin);
+        EXPECT_FLOAT_EQ(pair.first.sizeStartMax, pair.second.sizeStartMax);
+        EXPECT_FLOAT_EQ(pair.first.sizeEndMin, pair.second.sizeEndMin);
+        EXPECT_FLOAT_EQ(pair.first.sizeEndMax, pair.second.sizeEndMax);
+    }
 }
 
 // And it lasts 5.6 s, not 2.6 s.
@@ -439,11 +445,14 @@ TEST_F(SpellStyleOverrides, WhirlingWindLastsAsLongAsTheOracles) {
 }
 
 // An UNMEASURED spell still resolves to the plain style -- no override may be
-// invented for a spell whose oracle numbers nobody has taken. 54 Frost Bolt is
-// the worked case: T422 could not separate its merged ribbon into components.
+// invented for a spell whose oracle numbers nobody has taken. 285 and 1 are
+// the worked cases; 656 Shock of Ice has a measured Source size (B1119) but its
+// Landing p90 sits in the style band, so its impact must stay the style's.
+// (54 Frost Bolt used to be the example; B1118 measured it and B1119 gave it a
+// Landing size override.)
 TEST_F(SpellStyleOverrides, AnUnmeasuredSpellStillResolvesToTheStyle) {
     const EmitterConfig style = impact(0);
-    for (uint32_t spellId : {54u, 285u, 1u}) {
+    for (uint32_t spellId : {656u, 285u, 1u}) {
         const EmitterConfig c = impact(spellId);
         EXPECT_FLOAT_EQ(c.spawnRate, style.spawnRate) << "spell " << spellId;
         EXPECT_FLOAT_EQ(c.emitterLifetime, style.emitterLifetime) << "spell " << spellId;
@@ -480,3 +489,68 @@ TEST_F(SpellStyleOverrides, ThePoolStillHoldsTwoOfTheLargestLanding) {
 }
 
 }  // namespace
+
+// ---------------------------------------------------------------------------
+// B1119 (#439) -- sprite SIZE per stage, against B1118's real-frame-rate oracle
+// p90 sprite diameters (caster heights).  Calibrated on a sprite-separable
+// lane-5 capture (refactor/B1119/README.md): an isolated sprite's lit p90
+// diameter is linear in its size, ~0.028 caster heights per x1 of the T422
+// landing sizes and ~0.0071 per x1 of the pre-B1119 castGlow sizes.
+//   Landing  style x2.8 (93 656 458 253); 38 x2.07, 54 x3.3, 41 x4.23
+//   Source   castGlow x10.3 (93 38 253); 54/656 x4.5, 458 x5.5; castSpray x22.6 (41)
+// Every per-spell size override below is forced by the oracle table: the
+// style cannot hold 0.058 (38) and 0.074 (93) on the same record-0 sprites,
+// nor 0.031 (656) and 0.075 (253) at the Source.
+// ---------------------------------------------------------------------------
+
+namespace {
+EmitterConfig castGlowFor(uint32_t spellId) {
+    return SpellPresets::CastGlow(glm::vec4(1.0f), spellId).emitters.at(0).config;
+}
+EmitterConfig castSprayFor(uint32_t spellId) {
+    return SpellPresets::CastSpray(glm::vec4(1.0f), spellId).emitters.at(0).config;
+}
+// Midpoint of the start range: what the factor tables above are written in.
+float startMid(const EmitterConfig& c) { return 0.5f * (c.sizeStartMin + c.sizeStartMax); }
+}  // namespace
+
+TEST_F(SpellStyleOverrides, B1119LandingStylesAreTwoPointEightTimesT422) {
+    EXPECT_NEAR(startMid(impact(0)) / 0.1025f, 2.8f, 0.03f);    // T422 impact 0.08-0.125
+    EXPECT_NEAR(startMid(complete(0)) / 0.126f, 2.8f, 0.03f);   // T422 spellComplete 0.095-0.157
+}
+
+TEST_F(SpellStyleOverrides, B1119LandingOverridesFollowTheOracleTable) {
+    // 38 0.058 < 93 0.074 < 54 0.064-at-a-smaller-texture-response < 41 0.110.
+    const float style = startMid(impact(0));
+    EXPECT_NEAR(startMid(impact(38)) / style, 2.07f / 2.8f, 0.02f);
+    EXPECT_NEAR(startMid(impact(54)) / style, 3.3f / 2.8f, 0.02f);
+    EXPECT_NEAR(startMid(impact(41)) / style, 4.23f / 2.8f, 0.02f);
+    EXPECT_NEAR(startMid(complete(41)) / startMid(complete(0)), 4.23f / 2.8f, 0.02f);
+    EXPECT_FLOAT_EQ(startMid(impact(93)), style) << "93 is the style's own band";
+    EXPECT_FLOAT_EQ(startMid(impact(458)), style) << "458 is the style's own band";
+}
+
+TEST_F(SpellStyleOverrides, B1119SourceSizesFollowTheOracleTable) {
+    const float glow = startMid(castGlowFor(0));
+    EXPECT_NEAR(glow / 0.10f, 10.3f, 0.1f);                     // pre-B1119 castGlow 0.08-0.12
+    EXPECT_NEAR(startMid(castSprayFor(0)) / 0.06f, 22.6f, 0.2f); // pre-B1119 castSpray 0.04-0.08
+    EXPECT_FLOAT_EQ(startMid(castGlowFor(93)), glow);
+    EXPECT_FLOAT_EQ(startMid(castGlowFor(38)), glow);
+    EXPECT_FLOAT_EQ(startMid(castGlowFor(253)), glow);
+    EXPECT_NEAR(startMid(castGlowFor(54)) / glow, 4.5f / 10.3f, 0.01f);
+    EXPECT_NEAR(startMid(castGlowFor(656)) / glow, 4.5f / 10.3f, 0.01f);
+    EXPECT_NEAR(startMid(castGlowFor(458)) / glow, 5.5f / 10.3f, 0.01f);
+}
+
+// The point-sprite clamp (POINT_SPRITE_VS: 1..100 px, size * screenH / clip.w)
+// must not bind at the B1118 chase camera (clip.w >= ~20 world units) at
+// 1280x800, nor at the Orange Pi's 800x600: the largest B1119 size there.
+TEST_F(SpellStyleOverrides, B1119SizesDoNotHitThePointClampAtTheChaseCamera) {
+    float largest = 0.0f;
+    for (uint32_t id : {0u, 93u, 38u, 54u, 656u, 41u, 253u, 458u}) {
+        for (const auto& c : {impact(id), complete(id), castGlowFor(id), castSprayFor(id)}) {
+            largest = std::max({largest, c.sizeStartMax, c.sizeEndMax});
+        }
+    }
+    EXPECT_LT(largest * 800.0f / 20.0f, 100.0f) << "largest size " << largest;
+}

@@ -414,9 +414,9 @@ is fable tinting the oracle's own art**. `config/spell_effects.json`'s
 `resistColors` and `SpellVisualFX::colorForVocabulary()` survive only for the
 ~946 spells with no usable `spells.eff` record. All three stages route their
 names: Source → cast glow and spellComplete, Middle → projectile trail, Target →
-impact. `spellOverrides` carries 93, 41 and 253, whose populations/sizes/duration
-T422 measured live; **a spell whose oracle numbers nobody has taken resolves to
-the plain style — an invented override is the guess Will's ruling forbids.**
+impact. `spellOverrides` holds measured values only (T422 populations, B1119
+sizes: `refactor/B1119/README.md`); **an unmeasured spell resolves to the
+plain style — an invented override is the guess Will's ruling forbids.**
 `tests/test_spell_colour_and_overrides.cpp` pins both halves and the negatives.
 
 #### Texture alpha
