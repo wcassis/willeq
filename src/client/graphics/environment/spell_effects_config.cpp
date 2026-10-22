@@ -254,6 +254,8 @@ void SpellEffectsConfig::loadStyle(const Json::Value& json, const std::string& n
     if (json.isMember("spawnWindow")) { s.spawnWindow = json["spawnWindow"].asFloat(); s.hasSpawnWindow = true; }
     if (json.isMember("sustainRate")) { s.sustainRate = json["sustainRate"].asFloat(); s.hasSustainRate = true; }
     if (json.isMember("sustainFrom")) { s.sustainFrom = json["sustainFrom"].asFloat(); s.hasSustainFrom = true; }
+    if (json.isMember("anchor")) { s.anchor = json["anchor"].asString(); s.hasAnchor = true; }
+    if (json.isMember("releaseDelay")) { s.releaseDelay = json["releaseDelay"].asFloat(); s.hasReleaseDelay = true; }
 
     LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: Loaded style '{}'", name);
 }
@@ -310,6 +312,8 @@ SpellEffectsConfig::StyleSettings SpellEffectsConfig::mergeOverrides(
     if (over.hasSpawnWindow) { result.spawnWindow = over.spawnWindow; result.hasSpawnWindow = true; }
     if (over.hasSustainRate) { result.sustainRate = over.sustainRate; result.hasSustainRate = true; }
     if (over.hasSustainFrom) { result.sustainFrom = over.sustainFrom; result.hasSustainFrom = true; }
+    if (over.hasAnchor) { result.anchor = over.anchor; result.hasAnchor = true; }
+    if (over.hasReleaseDelay) { result.releaseDelay = over.releaseDelay; result.hasReleaseDelay = true; }
 
     return result;
 }

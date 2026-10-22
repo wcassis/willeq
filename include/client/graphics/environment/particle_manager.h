@@ -387,6 +387,14 @@ public:
                                      std::vector<std::string> styles);
 
     /**
+     * B1122: RELEASE the named styles attached to an entity: their emitters
+     * stop `seconds` from now and their live sprites finish their life,
+     * where removeSpellEffectsForEntity() frees them at once.
+     */
+    void releaseSpellEffectsForEntity(uint16_t entityID,
+                                      std::vector<std::string> styles, float seconds);
+
+    /**
      * Clear all active spell effects.
      */
     void clearAllSpellEffects();

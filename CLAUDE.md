@@ -282,8 +282,8 @@ fails on a bare `"config/…"` / `"data/…"` literal that does not.
 checkout** (T402, board B248), through `eqt::ResolveCachePathForRead()` /
 `ResolveCachePathForWrite()` (same header), which pick the first writable of
 `$WILLEQ_CACHE_DIR`, `$WILLEQ_DATA_ROOT/cache`, `<exe dir>/cache` and `cache/`.
-A cache miss is not an error — it costs a rescan, measured at
-~0.4 s for the 17 sound archives and ~30 ms for the 378 character archives. The GLES2 driver's shader-binary cache
+A cache miss costs only a rescan (~0.4 s for the 17 sound archives, ~30 ms
+for the 378 character archives). The GLES2 driver's shader-binary cache
 (`<hash>.bin`, `<cache dir>/shader_cache/`) is one too (B959): the host calls
 `eqt::ConfigureGles2ShaderCache()` before creating its device and the driver, which
 sits below the client, only ever receives the directory; none set means cache off,
@@ -414,10 +414,11 @@ is fable tinting the oracle's own art**. `config/spell_effects.json`'s
 `resistColors` and `SpellVisualFX::colorForVocabulary()` survive only for the
 ~946 spells with no usable `spells.eff` record. All three stages route their
 names: Source → cast glow and spellComplete, Middle → projectile trail, Target →
-impact. The landing is a VOLUME, not a disc (B1120,
-`tests/test_spell_landing_volume.cpp`). `spellOverrides` holds measured values
-only (T422 population ratios, B1119 sizes, B1120 shapes:
-`refactor/B1120/README.md`); **an unmeasured spell resolves to the
+impact. The landing is a VOLUME, not a disc (B1120); the Source a body cloud
+from BeginCast+0.25 s held past OP_Action until the landing starts, not a hand
+pinpoint (B1122; `tests/test_spell_landing_volume.cpp`). `spellOverrides` holds measured values
+only (T422 population ratios, B1119 sizes, B1120/B1122 shapes:
+`refactor/B112{0,2}/README.md`); **an unmeasured spell resolves to the
 plain style — an invented override is the guess Will's ruling forbids.**
 `tests/test_spell_colour_and_overrides.cpp` pins both halves and the negatives.
 

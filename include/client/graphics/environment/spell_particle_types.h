@@ -34,6 +34,13 @@ struct SpellEmitterDef {
 struct SpellEffectDef {
     std::string name;                        // Debug name
     std::vector<SpellEmitterDef> emitters;   // Up to 8
+    // B1122: a Source (cast) effect whose style says "anchor": "body" is ONE
+    // cloud on the caster's own entity with the style's geometry; otherwise
+    // SpellVisualFX::createCastGlow() pins it to the two hand bones.
+    bool bodyAnchored = false;
+    // B1122: seconds a Source keeps emitting past OP_Action (style
+    // `releaseDelay`; 0 = freed at OP_Action). See SpellVisualFX::releaseCastGlow.
+    float releaseDelay = 0.0f;
 };
 
 struct SpellEffectInstance {

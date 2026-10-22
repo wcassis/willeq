@@ -417,8 +417,28 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         float durSec = duration_ms / 1000.0f;
         for (auto& e : def.emitters) {
             e.config.emitterLifetime = durSec;
+            if (def.bodyAnchored) continue;  // B1122: the style's own geometry
             if (!spray) e.config.orbitalRadius = 0.4f;  // Tight orbit for hand bones
             e.positionOffset = glm::vec3(0.0f);
+        }
+
+        // B1122 (B1118 M4): the official client draws its Source stage as a
+        // body-wide cloud from BeginCast + ~0.4 s until OP_Action, not a
+        // pinpoint at the hands. A body-anchored style is ONE emitter on the
+        // caster's own entity, placed and shaped by config/spell_effects.json
+        // (caster heights converted at the B1120 scale); removeCastGlow() at
+        // OP_Action takes it and its live particles down.
+        if (def.bodyAnchored) {
+            LOG_INFO(MOD_SPELL, "createCastGlow: caster={} spell={} spray={} body cloud",
+                     caster_id, spell_id, spray);
+            // A released Source (releaseDelay > 0) is cut by the effect's
+            // maxDuration, which releaseCastGlow() moves to OP_Action +
+            // releaseDelay; until then the emitter must not stop on its own.
+            if (def.releaseDelay > 0.0f)
+                for (auto& e : def.emitters) e.config.emitterLifetime = 0.0f;
+            m_particle_manager->createSpellEffect(def, caster_id, 0, durSec + def.releaseDelay,
+                                                  false);
+            return 1;
         }
 
         // Try hand bones first — create effect at each hand

@@ -282,6 +282,33 @@ TEST_F(SpellBurstOracleMatch, SpriteSizeAndExpandSpeedAreTheMeasuredOnes) {
     EXPECT_NEAR(c.velocityBase.x, 1.6f * 6.5f, 0.05f);
 }
 
+// B1122 (#442): the Source cloud's POPULATION. B1118 measured the official
+// client's Source peak coverage (caster heights^2) at 93 0.38, 38 0.38, 54 0.48,
+// 656 0.63, 41 1.23, 253 3.92, 458 0.08; the rates below are the ones whose
+// live count measured >= 80 % of each on the lane-5 gate
+// (`review/B1122/scripts/source_all.py fable <measure_root> <out>`, the
+// PEAK line; refactor/B1122/README.md sec. 5). They are per-record, like the
+// landing's (54/656 share record 23), and they run from the Source delay
+// (BeginCast + 0.25 s) to OP_Action -- removeCastGlow() then frees them.
+TEST_F(SpellBurstOracleMatch, TheSourceCloudRatesAreTheCalibratedOnes) {
+    auto glow = [](uint32_t id) { return SpellPresets::CastGlow(glm::vec4(1.0f), id).emitters.at(0); };
+    auto spray = [](uint32_t id) { return SpellPresets::CastSpray(glm::vec4(1.0f), id).emitters.at(0); };
+    EXPECT_FLOAT_EQ(glow(93).config.spawnRate, 80.0f);    // record 0 = the style
+    EXPECT_FLOAT_EQ(glow(38).config.spawnRate, 80.0f);
+    EXPECT_FLOAT_EQ(glow(54).config.spawnRate, 1050.0f);  // record 23
+    EXPECT_FLOAT_EQ(glow(656).config.spawnRate, 1050.0f);
+    EXPECT_FLOAT_EQ(spray(41).config.spawnRate, 330.0f);  // record 20
+    EXPECT_FLOAT_EQ(glow(253).config.spawnRate, 1950.0f); // record 35
+    EXPECT_FLOAT_EQ(glow(458).config.spawnRate, 65.0f);   // record 33
+    for (uint32_t id : {93u, 54u, 253u, 458u}) {
+        EXPECT_FLOAT_EQ(glow(id).triggerDelay, 0.25f) << id;
+        // The Source keeps its B1119 per-particle life: the sheet plays once
+        // per life, so a denser cloud is more sprites, never longer ones.
+        EXPECT_FLOAT_EQ(glow(id).config.lifetimeMin, 0.8f) << id;
+        EXPECT_FLOAT_EQ(glow(id).config.lifetimeMax, 1.2f) << id;
+    }
+}
+
 // B375.  `global.maxParticles` had no consumer at all: the renderer sent
 // poolSize 0 and the worker's own arm was a hardcoded 1024 that happened to
 // equal the shipped value.  With one landing now ~650 sprites, two landings

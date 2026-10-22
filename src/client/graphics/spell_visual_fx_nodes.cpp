@@ -19,6 +19,7 @@
 #ifdef EQT_HAS_GLES2
 #include "client/graphics/environment/particle_manager.h"
 #include "client/graphics/environment/spell_particle_types.h"
+#include "client/graphics/environment/spell_effects_config.h"
 #endif
 #include <algorithm>
 #include <fstream>
@@ -70,6 +71,29 @@ void SpellVisualFX::removeCastGlow(uint16_t caster_id)
             ++i;
         }
     }
+}
+
+// B1122: the OP_Action end of a Source. The official client does not drop its
+// cast cloud at the action packet: B1118's videos hold it at its level until
+// the landing takes over (~Act+0.4 s, refactor/B1122/README.md sec. 6). A style
+// with `releaseDelay` keeps emitting that long and then lets its sprites finish
+// their life; without one this is removeCastGlow() (the old instant stop).
+// Interrupts still go through removeCastGlow().
+void SpellVisualFX::releaseCastGlow(uint16_t caster_id, uint32_t spell_id)
+{
+#ifdef EQT_HAS_GLES2
+    if (m_particle_manager) {
+        const bool spray = isSprayCastStyle(spell_id);
+        const auto s = EQT::Graphics::Environment::SpellEffectsConfig::instance().getStyleSettings(
+            spray ? "castSpray" : "castGlow", spell_id);
+        if (s.hasReleaseDelay && s.releaseDelay > 0.0f) {
+            m_particle_manager->releaseSpellEffectsForEntity(caster_id, kCastStageStyles,
+                                                             s.releaseDelay);
+            return;
+        }
+    }
+#endif
+    removeCastGlow(caster_id);
 }
 
 void SpellVisualFX::removeBuffAura(uint16_t entity_id, uint32_t spell_id)

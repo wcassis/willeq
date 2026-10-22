@@ -274,6 +274,23 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
                 }
                 break;
             }
+            case ParticleCommand::ReleaseSpellEffectsEntity: {
+                // B1122: same match as the Remove arm, but the effect's
+                // maxDuration (the lifecycle phase's emission cut-off) moves to
+                // `duration` seconds from now and nothing is freed: the effect
+                // is erased once its last sprite dies.
+                for (auto& fx : particleSpellEffects_) {
+                    const bool styleMatches =
+                        cmd.styleFilter.empty() ||
+                        std::find(cmd.styleFilter.begin(), cmd.styleFilter.end(),
+                                  fx.def.name) != cmd.styleFilter.end();
+                    if (styleMatches &&
+                        (fx.casterEntityID == cmd.entityID || fx.targetEntityID == cmd.entityID)) {
+                        fx.maxDuration = fx.age + std::max(cmd.duration, 1e-4f);
+                    }
+                }
+                break;
+            }
             case ParticleCommand::ClearAllSpellEffects: {
                 for (auto& effect : particleSpellEffects_) {
                     for (auto& es : effect.emitterStates) {
