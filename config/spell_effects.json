@@ -68,7 +68,7 @@
             "releaseDelay": 0.33
         },
         "spellComplete": {
-            "spawnRate": 1800.0,
+            "spawnRate": 1986.0,
             "burstCount": 0,
             "emitterLifetime": 2.85,
             "spawnShape": "BOX",
@@ -95,7 +95,7 @@
             "sustainFrom": 1.6
         },
         "impact": {
-            "spawnRate": 1100.0,
+            "spawnRate": 1214.6,
             "burstCount": 0,
             "emitterLifetime": 2.85,
             "spawnShape": "SPHERE",
@@ -240,14 +240,6 @@
         }
     },
     "spellOverrides": {
-        "93": {
-            "impact": {
-                "spawnRate": 1214.6
-            },
-            "spellComplete": {
-                "spawnRate": 1986.0
-            }
-        },
         "38": {
             "impact": {
                 "sizeStartMin": 0.166,
@@ -411,7 +403,7 @@
         },
         "41": {
             "impact": {
-                "spawnRate": 953.3,
+                "spawnRate": 1174.5,
                 "sizeStartMin": 0.338,
                 "sizeStartMax": 0.529,
                 "sizeEndMin": 0.664,
@@ -424,11 +416,11 @@
                 "gravity": [0.0, 0.0, 0.0],
                 "drag": 0.0,
                 "positionOffset": [0.0, -3.275, 0.0],
-                "sustainRate": 317.9,
+                "sustainRate": 391.7,
                 "emitterLifetime": 4.15
             },
             "spellComplete": {
-                "spawnRate": 1557.0,
+                "spawnRate": 1918.2,
                 "sizeStartMin": 0.402,
                 "sizeStartMax": 0.664,
                 "sizeEndMin": 0.804,
@@ -442,7 +434,7 @@
                 "gravity": [0.0, -3.9, 0.0],
                 "drag": 1.4,
                 "positionOffset": [0.0, 1.6, 0.0],
-                "sustainRate": 519.1,
+                "sustainRate": 639.5,
                 "emitterLifetime": 4.15
             },
             "castSpray": {
@@ -470,7 +462,11 @@
                 "drag": 0.0,
                 "positionOffset": [0.0, 5.175, 0.0],
                 "spawnWindow": 0.0,
-                "sustainRate": 0.0
+                "sustainRate": 0.0,
+                "sizeStartMin": 0.251,
+                "sizeStartMax": 0.392,
+                "sizeEndMin": 0.493,
+                "sizeEndMax": 0.737
             },
             "spellComplete": {
                 "spawnRate": 600.0,
@@ -484,7 +480,11 @@
                 "drag": 0.0,
                 "positionOffset": [0.0, 5.175, 0.0],
                 "spawnWindow": 0.0,
-                "sustainRate": 0.0
+                "sustainRate": 0.0,
+                "sizeStartMin": 0.298,
+                "sizeStartMax": 0.493,
+                "sizeEndMin": 0.596,
+                "sizeEndMax": 0.878
             },
             "castGlow": {
                 "spawnShape": "BOX",

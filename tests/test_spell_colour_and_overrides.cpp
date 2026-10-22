@@ -97,8 +97,25 @@
 // the same 0.6 s window = 1740 -- keeping T422's per-spell RATIOS to the
 // style (93 x1.1034, 41 x0.8657).  253's T422 trickle cannot draw the
 // oracle's frame-filling star field at any size; its rate is now capped by
-// the pool instead (one 253 field + one record-0 landing <= 4096).  The
-// per-spell population TARGETS are B1123's, which re-measures them.
+// the pool instead (one 253 field + one record-0 landing <= 4096).
+//
+// B1123 (#443) RETIRES THE T422 RATIOS TOO.  They were blob counts from an
+// llvmpipe capture (4.4-5.8 renders/s); B1118 measured the oracle's landing
+// coverage at real frame rate (93 5.85, 38 3.89, 41 4.15, 253 7.28 caster
+// heights^2), and B1123's lane-5 pool sweep (review/B1123/cal/, pool raised for
+// calibration only) shows every one of them needs MORE sprites than the 4096
+// pool holds: 93 reaches 4.7 at ~2.2x its peak, 41 its 4.15 at ~1.56x, 253
+// its 5.8 at ~5.7x.  So each landing now takes the pool's own bound -- the
+// largest live peak that fits beside a 253 field (4096 - 2160 = 1936) -- and:
+//   93  has NO override: 93 and 38 are one spells.eff record (0) and draw one
+//       picture; the oracle's 93:38 coverage ratio (1.50) is their sprite-size
+//       ratio (B1119's 38 size override), not a population difference.  The
+//       record-0 STYLE is at the bound (peak live 1927).
+//   41  keeps its measured shape and sizes; its population is the bound
+//       (x1.232 of B1120's, peak live 1925), not T422's x0.8657.
+//   253 keeps the pool-capped field; its landing sprites are the style x1.12,
+//       toward the oracle's ROI p90 0.093 (B1120 sec. 7) but held inside
+//       B1119's band (0.059 +-15 %, ROI <= 0.068).
 
 #include <gtest/gtest.h>
 
@@ -410,32 +427,47 @@ protected:
     }
 };
 
-// RED before T441: spellOverrides was `{}` and all three read the style's 648.
-// B1120: the absolute count rose with the volume; T422's RATIO to the style
-// (715:648) is what the override still carries.
-TEST_F(SpellStyleOverrides, BurstOfFlameReachesItsOwnMeasuredPopulation) {
-    const float total = peak(impact(93)) + peak(complete(93));
-    const float style = peak(impact(1)) + peak(complete(1));
-    EXPECT_NEAR(total / style, 715.0f / 648.0f, 0.01f)
-        << "T422 measured 715 sprites against the style's 648; fable paints "
-        << total << " against " << style;
+// B1123: the pool bound the landings are held to -- the largest live peak that
+// fits beside one 253 field (the steady field is the largest single landing).
+static float PoolBoundBesideAField() {
+    const float pool = static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles);
+    const EmitterConfig i = SpellPresets::Impact(glm::vec4(1.0f), 253).emitters.at(0).config;
+    const EmitterConfig c = SpellPresets::SpellComplete(glm::vec4(1.0f), 253).emitters.at(0).config;
+    return pool - (i.spawnRate * 0.5f * (i.lifetimeMin + i.lifetimeMax) +
+                   c.spawnRate * 0.5f * (c.lifetimeMin + c.lifetimeMax));
 }
 
-TEST_F(SpellStyleOverrides, WeakenReachesItsOwnMeasuredPopulation) {
-    const float total = peak(impact(41)) + peak(complete(41));
-    const float style = peak(impact(1)) + peak(complete(1));
-    EXPECT_NEAR(total / style, 561.0f / 648.0f, 0.01f)
-        << "T422 measured 561 sprites against the style's 648; fable paints "
-        << total << " against " << style;
+// B1123 (RED on the B1122 config, which carried 93's T422 x1.1034 override):
+// Burst of Flame is record 0, the same spells.eff record and picture as
+// Lightning Bolt, so it resolves to the record-0 style in every key -- no
+// per-spell population.  The oracle's 93:38 coverage ratio is B1119's size
+// ratio (38's size override), which this leaves alone.
+TEST_F(SpellStyleOverrides, BurstOfFlameIsTheRecordZeroStyle) {
+    for (const auto& pair : {std::make_pair(impact(93), impact(0)),
+                             std::make_pair(complete(93), complete(0))}) {
+        EXPECT_FLOAT_EQ(pair.first.spawnRate, pair.second.spawnRate)
+            << "93 carries its own population again; the T422 ratio was retired by B1123";
+        EXPECT_FLOAT_EQ(pair.first.sustainRate, pair.second.sustainRate);
+        EXPECT_FLOAT_EQ(pair.first.sizeStartMin, pair.second.sizeStartMin);
+        EXPECT_FLOAT_EQ(pair.first.emitterLifetime, pair.second.emitterLifetime);
+    }
+    EXPECT_FLOAT_EQ(complete(38).spawnRate, complete(93).spawnRate) << "one record, one population";
+    EXPECT_FLOAT_EQ(impact(38).spawnRate, impact(93).spawnRate);
 }
 
-// And the two must actually DIFFER -- 715 vs 561 is the whole point of B397.
-TEST_F(SpellStyleOverrides, TheTwoWideBurstsAreNoLongerTheSameSize) {
-    const float flame = peak(impact(93)) + peak(complete(93));
-    const float weaken = peak(impact(41)) + peak(complete(41));
-    EXPECT_GT(flame, weaken)
-        << "the oracle paints 715 for 93 and 561 for 41; one style cannot "
-           "serve both";
+// B1123 (RED on the B1122 config: the style peaked at 1747, 41 at 1562).  The
+// oracle's landings need more sprites than the pool holds (the B1123 sweep), so
+// every measured fed landing sits AT the pool bound: within 2 % of
+// 4096 - (253's field), never over it.
+TEST_F(SpellStyleOverrides, EveryFedLandingTakesThePoolBoundBesideAField) {
+    const float bound = PoolBoundBesideAField();
+    for (uint32_t id : {0u, 93u, 41u}) {
+        const float l = live(id);
+        EXPECT_LE(l, bound) << "spell " << id << " peaks at " << l << " live; one 253 field leaves " << bound;
+        EXPECT_GE(l, 0.98f * bound) << "spell " << id << " peaks at " << l
+                                    << " live; the oracle needs more than the pool holds, so the bound ("
+                                    << bound << ") is the target";
+    }
 }
 
 // Whirling Wind is a continuous field, not a 0.6 s burst -- and since B1120
@@ -452,18 +484,19 @@ TEST_F(SpellStyleOverrides, WhirlingWindIsASteadyFrameFillingField) {
         << ") must fit the pool (" << pool << ")";
 }
 
-// B1119 (#439): T422 gave 253 sprites 1.673x the burst styles'.  B1118's
-// real-frame-rate oracle Landing p90 for 253 is 0.059 caster heights, which the
-// B1119 style sizes (x2.8) already reach -- 1.67x the T422 override, i.e. the
-// override's own size factor again -- so the size override is retired and 253
-// resolves its sizes from the style, keeping only its population/duration.
-TEST_F(SpellStyleOverrides, WhirlingWindSpritesComeFromTheB1119Style) {
+// B1119 (#439) retired T422's 253 size override: B1118's whole-frame oracle
+// Landing p90 (0.059 caster heights) landed on the B1119 style.  B1123: on the
+// ROI instrument the oracle's 253 Landing sprite is 0.093 (B1120 sec. 7) and
+// fable's style read 0.054-0.057, so 253's landing sprites are raised -- but only
+// to B1119's band top (0.068): x1.12 of the style (lane 5: x1.12 read 0.067,
+// x1.2 read 0.072).  RED on the B1122 config (x1.0).
+TEST_F(SpellStyleOverrides, WhirlingWindSpritesAreTheStyleRaisedToTheB1119BandTop) {
     for (const auto& pair : {std::make_pair(impact(253), impact(0)),
                              std::make_pair(complete(253), complete(0))}) {
-        EXPECT_FLOAT_EQ(pair.first.sizeStartMin, pair.second.sizeStartMin);
-        EXPECT_FLOAT_EQ(pair.first.sizeStartMax, pair.second.sizeStartMax);
-        EXPECT_FLOAT_EQ(pair.first.sizeEndMin, pair.second.sizeEndMin);
-        EXPECT_FLOAT_EQ(pair.first.sizeEndMax, pair.second.sizeEndMax);
+        EXPECT_NEAR(pair.first.sizeStartMin / pair.second.sizeStartMin, 1.12f, 0.005f);
+        EXPECT_NEAR(pair.first.sizeStartMax / pair.second.sizeStartMax, 1.12f, 0.005f);
+        EXPECT_NEAR(pair.first.sizeEndMin / pair.second.sizeEndMin, 1.12f, 0.005f);
+        EXPECT_NEAR(pair.first.sizeEndMax / pair.second.sizeEndMax, 1.12f, 0.005f);
     }
 }
 
@@ -500,27 +533,29 @@ TEST_F(SpellStyleOverrides, AnUnmeasuredSpellStillResolvesToTheStyle) {
     }
 }
 
-// An override is PARTIAL: 93 sets only spawnRate, so everything else it does
-// not name must still come from the style. That is the three-tier hierarchy's
-// contract and the reason a population override does not silently reset the
-// measured sizes and lifetimes.
+// An override is PARTIAL: 38 sets only its B1119 sizes, so everything else it
+// does not name must still come from the style. That is the three-tier
+// hierarchy's contract and the reason a size override does not silently reset
+// the measured population, lifetimes and shape.  (93 was the example until
+// B1123 deleted its population override.)
 TEST_F(SpellStyleOverrides, AnOverrideOnlyMovesWhatItNames) {
     const EmitterConfig style = impact(0);
-    const EmitterConfig c = impact(93);
-    EXPECT_NE(c.spawnRate, style.spawnRate);
+    const EmitterConfig c = impact(38);
+    EXPECT_NE(c.sizeStartMin, style.sizeStartMin);
+    EXPECT_FLOAT_EQ(c.spawnRate, style.spawnRate);
+    EXPECT_FLOAT_EQ(c.sustainRate, style.sustainRate);
     EXPECT_FLOAT_EQ(c.emitterLifetime, style.emitterLifetime);
     EXPECT_FLOAT_EQ(c.lifetimeMin, style.lifetimeMin);
     EXPECT_FLOAT_EQ(c.lifetimeMax, style.lifetimeMax);
-    EXPECT_FLOAT_EQ(c.sizeStartMin, style.sizeStartMin);
     EXPECT_FLOAT_EQ(c.expandSpeed, style.expandSpeed);
     EXPECT_EQ(c.textureRegionCount, style.textureRegionCount);
 }
 
-// The pool must still hold two of the LARGEST landing, which is now 715 and
-// not 648. B395 wired `global.maxParticles`; this is the number it has to
-// cover after B397 raised the biggest spell.
+// The pool must still hold two of the LARGEST fed landing. B395 wired
+// `global.maxParticles`; since B1123 93 and 41 both sit at the pool bound.
 TEST_F(SpellStyleOverrides, ThePoolStillHoldsTwoOfTheLargestLanding) {
-    const float largest = live(93);
+    float largest = 0.0f;
+    for (uint32_t id : {0u, 93u, 38u, 54u, 656u, 41u, 458u}) largest = std::max(largest, live(id));
     EXPECT_GE(static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles),
               2.0f * largest)
         << "largest landing " << largest << ", pool "
