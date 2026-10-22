@@ -5,7 +5,7 @@
 # empty since T427 closed board B265 by regenerating detail_atlas.bmp:
 #   * 64 procedural, tools/generate_textures
 #   * spell_sprite_atlas.bmp, tools/spell_sprite_atlas_builder -- the official
-#     client's own SpellEffects/spel*.tga (T417, board B300)
+#     client's own SpellEffects/spel*.tga (T417, board B300; B1124: 7 single images whole)
 #   * item_icons0.bmp + item_icons1.bmp, tools/item_icon_atlas_builder -- the
 #     official client's own uifiles/default/dragitem*.tga (T430, board B376)
 #
@@ -51,7 +51,7 @@ eba72fa05c8e3c92b52c2ddd6406242d706c5b6d8997d5e712dc6baae6090d45  software_curso
 8f3d7e11571ac67e36125e9c3bf20d5e12fd959710b6454316bb861d6289aa76  spell_icons_gems.bmp
 d64c17e325ee10c39525e043ad8551464cf7cfded04982ea009b26a086eb11ae  spell_icons_spells.bmp
 b1e30f490c72e54f72b23a32ae301032e75e1d45e9baeb4b16b57ac3f9e7fd8d  spell_particle_fallback.bmp
-2b2eeb774035974df232d17b0dceedeab65360412102e5a9cea3c31f8b17a7f7  spell_sprite_atlas.bmp
+febf9ca9a12cb38c478ed3e2bbc5a9c44ba8983c072d0e8b641571bd00922b6f  spell_sprite_atlas.bmp
 1cf266a1c114f301d6bba788a43b2256bd2957fab827fcda4972dd2647ad4b85  storm_cloud_blend_0.bmp
 501600a9909e695654d5b97439a9372f84defca7a9e1f11a656eff30b813868b  storm_cloud_blend_10.bmp
 a50dee2f38debc6a5d32a626fe5e244fd7473364c1f57e3c03523b2c05ff8bca  storm_cloud_blend_11.bmp

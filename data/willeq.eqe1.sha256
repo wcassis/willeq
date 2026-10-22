@@ -2,7 +2,7 @@
 # pack. Rebuilt by scripts/build_willeq_pack.sh from tools/ui_atlas_builder
 # (procedural) plus the 71 BMPs in data/textures/ -- 64 procedural, T417's
 # spell_sprite_atlas.bmp (the official client's SpellEffects/*.tga, all sixteen
-# animation frames of each of its 33 sprites, 1024x1024), T430's
+# frames of its 26 grid sprites + its 7 single images whole, 1024x1024), T430's
 # item_icons0.bmp + item_icons1.bmp (the official client's
 # uifiles/default/dragitem1..34.tga, all 1224 40x40 item icons on two
 # 1024x1024 sheets, board B376), and B1077's spell_icons{gems,spells,buff}.bmp
@@ -15,8 +15,9 @@
 # 14,173,156 bytes, +249,504 (one ETC1 512x363 page pair with mips + its ETC1
 # _alpha companion), and every zone's eqe1MappedBytes rises by exactly that.
 # The B1077 fix leg re-cut the holder piece (CW_SpellGemHolder, 36x28) --
-# same pack size, new bytes.
+# same pack size, new bytes. B1124 (#444) packs the seven single-image
+# spel*.tga whole in spell_sprite_atlas.bmp -- same pack size, new bytes.
 # Pinned here so a drift in
 # either input, or a hand-edit of the shared pack, is a ctest FAIL
 # (PackReproducible). Update this line in the SAME commit that changes an input.
-3844461fd50d469e712b05f1c9742adf020c7a0a41735e20ae99a9e5a2530bae  willeq.eqe1
+8199a8a2b179edf96e93ebd29434eead26fcb784d1a5d12b9362aefe112de4ea  willeq.eqe1

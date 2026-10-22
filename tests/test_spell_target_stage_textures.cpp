@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -361,4 +362,56 @@ TEST(SpellSpriteAtlasLayout, AnUnknownFileHasNoCell) {
     EXPECT_EQ(SpellSpriteAtlas::slotForFile("spelzz9.tga"), -1);
     EXPECT_EQ(SpellSpriteAtlas::slotForFile(""), -1);
     EXPECT_EQ(SpellSpriteAtlas::slotForFile(nullptr), -1);
+}
+
+// ---------------------------------------------------------------------------
+// B1124 (#444, B1118 M8) -- a SINGLE-IMAGE sheet is one frame for the whole
+// life. spelc3 / spelc4 (record 0's Target and Source art, spells 93 / 38)
+// and five more are 64x64 single pictures, not 4x4 grids. Before B1124 every
+// sprite stepped through sixteen cells, so these drew sixteen fragments of
+// one star in turn.
+// ---------------------------------------------------------------------------
+
+TEST(SpellSpriteAtlasLayout, ExactlyTheSevenCensusedSingleImagesAreOneFrame) {
+    const std::vector<std::string> singles = {"spelb3.tga", "spelb4.tga", "spelc3.tga",
+                                              "spelc4.tga", "speld4.tga", "spely3.tga",
+                                              "spely4.tga"};
+    for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
+        const std::string file = SpellSpriteAtlas::kFiles[sprite];
+        const bool single =
+            std::find(singles.begin(), singles.end(), file) != singles.end();
+        EXPECT_EQ(SpellSpriteAtlas::framesFor(sprite),
+                  single ? 1 : SpellSpriteAtlas::kFramesPerSprite)
+            << file;
+    }
+    // Out of range draws the slot's first cell only, never a neighbour's.
+    EXPECT_EQ(SpellSpriteAtlas::framesFor(-1), 1);
+    EXPECT_EQ(SpellSpriteAtlas::framesFor(SpellSpriteAtlas::kFileCount), 1);
+}
+
+TEST(SpellSpriteAnimation, ASingleImageHoldsItsOnlyFrameForTheWholeLife) {
+    for (const char* file : {"spelc3.tga", "spelc4.tga"}) {
+        const int sprite = SpellSpriteAtlas::slotForFile(file);
+        ASSERT_GE(sprite, 0);
+        const int first = SpellSpriteAtlas::cellFor(sprite, 0);
+        for (float age : {-1.0f, 0.0f, 0.1f, 0.5f, 0.75f, 0.999f, 1.0f, 3.7f}) {
+            EXPECT_EQ(SpellSpriteAtlas::cellForAge(sprite, age), first)
+                << file << " at normalized age " << age
+                << " stepped off its one picture";
+        }
+    }
+    EXPECT_EQ(SpellSpriteAtlas::frameForNormalizedAge(0.5f, 1), 0);
+    EXPECT_EQ(SpellSpriteAtlas::frameForNormalizedAge(0.999f, 1), 0);
+}
+
+TEST(SpellSpriteAnimation, AGridSpriteStillWalksAllSixteenCells) {
+    // The negative: the B1124 rule must not freeze the 26 grid sheets.
+    const int sprite = SpellSpriteAtlas::slotForFile("spelc2.tga");
+    ASSERT_GE(sprite, 0);
+    for (int f = 0; f < SpellSpriteAtlas::kFramesPerSprite; ++f) {
+        const float mid =
+            (static_cast<float>(f) + 0.5f) / SpellSpriteAtlas::kFramesPerSprite;
+        EXPECT_EQ(SpellSpriteAtlas::cellForAge(sprite, mid),
+                  SpellSpriteAtlas::cellFor(sprite, f));
+    }
 }

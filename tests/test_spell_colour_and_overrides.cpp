@@ -200,7 +200,7 @@ Sheet loadSheet() {
     return s;
 }
 
-// Alpha-weighted mean RGB over every frame of every sprite an emitter's
+// Alpha-weighted mean RGB over every frame (time-weighted) of every sprite an emitter's
 // textureRegions[] address, normalised to sum 1. This models what an
 // additive point-sprite batch adds to the framebuffer, up to the per-particle
 // alpha ramp, which is common to all channels and drops out of a normalised
@@ -214,14 +214,18 @@ Rgb spriteArtColour(const Sheet& sheet, const EmitterConfig& cfg,
         const int ordinal = cfg.textureRegions[i];
         if (ordinal < SpellSpriteAtlas::kBase) continue;  // procedural tile
         const int sprite = ordinal - SpellSpriteAtlas::kBase;
-        for (int frame = 0; frame < SpellSpriteAtlas::kFramesPerSprite; ++frame) {
+        // B1124: a single image's one frame is on screen for the whole life,
+        // i.e. sixteen grid frames' worth of time.
+        const int frames = SpellSpriteAtlas::framesFor(sprite);
+        const double hold = static_cast<double>(SpellSpriteAtlas::kFramesPerSprite) / frames;
+        for (int frame = 0; frame < frames; ++frame) {
             int cx = 0, cy = 0;
             SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::cellFor(sprite, frame), cx, cy);
             for (int y = cy; y < cy + SpellSpriteAtlas::kCellSize; ++y) {
                 for (int x = cx; x < cx + SpellSpriteAtlas::kCellSize; ++x) {
                     int r = 0, g = 0, b = 0, a = 0;
                     sheet.texel(x, y, r, g, b, a);
-                    const double w = a / 255.0;
+                    const double w = hold * a / 255.0;
                     sum.r += r * w;
                     sum.g += g * w;
                     sum.b += b * w;
