@@ -60,8 +60,9 @@ tells it to delete, nothing more and nothing less.
 
 - Headless Release tree: `test_delete_spawn_zero`, `test_bridge_component`, `test_zone_entities`
   green; `ctest -L hygiene` 47/47.
-- One whole-tree Release build with the CI flags (`-j 4 -- -k`); result in
-  `review/B1133/tests/ci_flags_build.log`.
+- One whole-tree Release build with the CI flags (`-j 4 -- -k`): BUILD_EXIT=0. In that tree the
+  DeleteSpawn/Corpse/Loot/BridgeComponent/ZoneEntities subset is 237/237, the order/coverage
+  goldens 25/25 and `ctest -L hygiene` 50/50 (logs in `review/B1133/tests/`).
 
 ## 4. Not covered
 
