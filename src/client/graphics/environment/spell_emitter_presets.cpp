@@ -308,6 +308,121 @@ SpellEffectDef SourceForSpell(glm::vec4 color, uint32_t spellId, int record, boo
     return SourceForRecord(style, rowForSpell(spellId, record, spray), anchorAboveFeet, share * k);
 }
 
+// B1132 (#452): one landing half for its spells.eff record's Target row
+// (B1130 survey, config `targetRecords`, target heights above the target's
+// feet). Body and Caster rows are the style's B1120 volume unchanged (its
+// geometry, sizes, lifetimes and the B1123 population); the caller only
+// chooses the entity. The shaped rows keep the style's sprite sizes,
+// lifetimes, alphas, onset delay and emission schedule (sizes-first) and set
+// WHERE the sprites are born and how they move:
+//   Head       the impact half is a glow AT the head bone (the face, where the
+//              oracle's landing starts, e5 f8233); the spellComplete half a
+//              cloud over lo..hi x +-halfWidth round head and shoulders.
+//   FeetGround the impact half swirls as a ring of radius halfWidth at lo (the
+//              rings on the ground round the target); the spellComplete half
+//              is a ring at lo rising to hi over one life (climbing the legs).
+//   Column     the spellComplete half falls from hi to lo over +-halfWidth
+//              (the sheet that sweeps down over the target); the impact half
+//              fills lo..hi (the wash).
+// Both halves of a shaped row carry `population` of the style's rates.
+SpellEffectDef TargetForRecord(const SpellEffectDef& style,
+                               const SpellEffectsConfig::TargetRecord& rec,
+                               float anchorAboveFeet, bool complete) {
+    using T = SpellEffectsConfig::TargetAnchor;
+    SpellEffectDef def = style;
+    if (!rec.hasShape || def.emitters.empty()) return def;
+    const auto& sc = SpellEffectsConfig::instance().sourceScale();
+    const float H = sc.casterHeight;
+    auto& ed = def.emitters[0];
+    auto& c = ed.config;
+    c.spawnRate *= rec.population;
+    c.sustainRate *= rec.population;
+    c.burstCount = static_cast<int>(static_cast<float>(c.burstCount) * rec.population);
+    const float life = 0.5f * (c.lifetimeMin + c.lifetimeMax);
+    const float w = rec.halfWidth * H;
+    const float span = (rec.hi - rec.lo) * H;
+    // A head row is placed relative to the head bone alone (boneAt = the height
+    // the bone stands for), so the target's own feet and size do not move it.
+    const float followed = (rec.anchor == T::Head && rec.boneAt > 0.0f) ? rec.boneAt * H : anchorAboveFeet;
+    auto at = [&](float h) { return h * H - followed; };
+    c.gravity = glm::vec3(0.0f);
+    c.drag = 0.0f;
+    c.expandSpeed = 0.0f;
+    c.velocitySpread = glm::vec3(0.0f);
+    switch (rec.anchor) {
+        case T::Head:
+            c.motionType = MotionType::LINEAR;
+            c.velocityBase = glm::vec3(0.0f);
+            if (complete) {
+                c.spawnShape = SpawnShape::BOX;
+                c.spawnExtents = glm::vec3(w, 0.5f * span, w);
+                ed.positionOffset = glm::vec3(0.0f, at(0.5f * (rec.lo + rec.hi)), 0.0f);
+            } else {  // the face: a small glow at the head bone itself
+                c.spawnShape = SpawnShape::SPHERE;
+                c.spawnExtents = glm::vec3(0.06f * H, 0.0f, 0.0f);
+                ed.positionOffset = glm::vec3(0.0f);
+            }
+            break;
+        case T::FeetGround:
+            if (complete) {
+                c.motionType = MotionType::LINEAR;
+                c.spawnShape = SpawnShape::RING;
+                c.spawnExtents = glm::vec3(w, 0.0f, 0.0f);
+                c.velocityBase = glm::vec3(0.0f, span / life, 0.0f);
+            } else {
+                c.motionType = MotionType::ORBITAL;
+                c.spawnShape = SpawnShape::BOX;
+                c.spawnExtents = glm::vec3(0.0f);
+                c.orbitalRadius = w;
+                c.orbitalAngularVelocity = sc.orbitAngularVelocity;
+                c.velocityBase = glm::vec3(0.0f);
+            }
+            ed.positionOffset = glm::vec3(0.0f, at(rec.lo), 0.0f);
+            break;
+        case T::Column:
+            c.motionType = MotionType::LINEAR;
+            c.spawnShape = SpawnShape::BOX;
+            if (complete) {
+                c.spawnExtents = glm::vec3(w, 0.0f, w);
+                c.velocityBase = glm::vec3(0.0f, -span / life, 0.0f);
+                ed.positionOffset = glm::vec3(0.0f, at(rec.hi), 0.0f);
+            } else {
+                c.spawnExtents = glm::vec3(w, 0.5f * span, w);
+                c.velocityBase = glm::vec3(0.0f);
+                ed.positionOffset = glm::vec3(0.0f, at(0.5f * (rec.lo + rec.hi)), 0.0f);
+            }
+            break;
+        default:
+            break;
+    }
+    return def;
+}
+
+static SpellEffectsConfig::TargetRecord targetRowForSpell(uint32_t spellId, int record) {
+    const auto& cfg = SpellEffectsConfig::instance();
+    SpellEffectsConfig::TargetRecord rec = cfg.targetRecord(record);
+    // B1120/B1122's measured landing overrides (54/656/41/253/458) keep their
+    // geometry: none of their records (23, 20, 35, 33) is a shaped row.
+    if (cfg.hasSourceShapeOverride(spellId, "impact") ||
+        cfg.hasSourceShapeOverride(spellId, "spellComplete"))
+        rec.hasShape = false;
+    return rec;
+}
+
+SpellEffectsConfig::TargetAnchor TargetAnchorForSpell(uint32_t spellId, int record) {
+    const auto rec = targetRowForSpell(spellId, record);
+    using T = SpellEffectsConfig::TargetAnchor;
+    if (rec.anchor == T::Caster) return T::Caster;
+    return rec.hasShape ? rec.anchor : T::Body;
+}
+
+SpellEffectDef TargetForSpell(glm::vec4 color, uint32_t spellId, int record, bool complete,
+                              float anchorAboveFeet) {
+    const SpellEffectDef style = complete ? SpellComplete(color, spellId, record)
+                                          : Impact(color, spellId, record);
+    return TargetForRecord(style, targetRowForSpell(spellId, record), anchorAboveFeet, complete);
+}
+
 void applyStageSpriteNames(SpellEffectDef& def,
                            const std::vector<std::string>& spriteNames,
                            uint32_t spellId) {

@@ -182,6 +182,39 @@ public:
     size_t sourceRecordCount() const { return sourceRecords_.size(); }
 
     /**
+     * B1132 (#452): the Target (landing) stage of one spells.eff record,
+     * measured on the official client by the B1130 survey (config
+     * `targetRecords`; review/B1132/scripts/gen_target_records.py). Heights
+     * and widths are in TARGET heights above the target's feet (the same
+     * B1120 scale, sourceScale()). Body is the style's B1120 volume on the
+     * target; Caster the same volume round the caster whatever the target
+     * (record 27's PB-AE, and the self-only records); Head a cloud at the
+     * target's head bone; FeetGround rings on the ground at the target's
+     * feet; Column a sheet falling over the target from above its head.
+     */
+    enum class TargetAnchor : uint8_t { Body, Caster, Head, FeetGround, Column };
+    struct TargetRecord {
+        TargetAnchor anchor = TargetAnchor::Body;
+        bool hasShape = false;      // true: Head / FeetGround / Column draw lo..hi x halfWidth
+        float lo = 0.0f, hi = 0.0f; // landing run p5..p95 height, target heights above the feet
+        float halfWidth = 0.0f;     // lateral half-span (p5..p95 / 2), target heights
+        float centroid = 0.0f;      // landing run centroid, target heights
+        float coverage = 0.0f;      // the oracle's landing coverage
+        float onset = 0.0f;         // Act+ s the oracle's landing rises (RISE rule)
+        float faceOnset = 0.0f;     // Head: Act+ s the glow lights the face (0 = none)
+        float end = 0.0f;           // Act+ s the oracle's landing ends
+        float population = 1.0f;    // share of the style landing (shaped rows)
+        float boneAt = 0.0f;        // Head: the height the head bone stands for (target heights)
+        bool unmeasured = false;    // 40/51: the default row stands in
+        int record = -1;            // -1 = the default row
+    };
+    /** The record's landing row, or the default row (the style volume on the target). */
+    const TargetRecord& targetRecord(int record) const;
+    size_t targetRecordCount() const { return targetRecords_.size(); }
+    /** The record-0 landing coverage the shaped rows' population is relative to. */
+    float targetReferenceCoverage() const { return targetReferenceCoverage_; }
+
+    /**
      * Get global settings.
      */
     const GlobalSettings& getGlobal() const { return global_; }
@@ -228,6 +261,7 @@ private:
     void buildTextureNameMap();
     void applyPopulationRule(const Json::Value& root);
     void loadSourceRecords(const Json::Value& root);
+    void loadTargetRecords(const Json::Value& root);
 
     std::string configPath_;
     bool loaded_ = false;
@@ -248,6 +282,10 @@ private:
     std::unordered_map<int, float> recordLandingScale_;
     std::unordered_map<int, float> recordSourceScale_;      // -1 = the default row
     std::unordered_map<uint32_t, float> spellSourceScale_;  // spells with a landing override
+    // B1132: per-record Target (landing) rows.
+    std::unordered_map<int, TargetRecord> targetRecords_;
+    TargetRecord targetDefault_;
+    float targetReferenceCoverage_ = 0.0f;
 
     ReloadCallback reloadCallback_;
 };

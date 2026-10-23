@@ -1148,8 +1148,9 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             // isSuccess meant no observing client ever drew an impact -- and
             // the caster, which receives both, would have drawn it twice.
             if (d.isCastAnimation && renderer_->getSpellVisualFX()) {
-                renderer_->getSpellVisualFX()->createSpellComplete(d.casterId, d.spellId);
-                renderer_->getSpellVisualFX()->createImpact(d.targetId, d.spellId);
+                // B1132 (#452): the whole landing on the record's Target anchor
+                // (the target; the caster only for a caster-anchored record).
+                renderer_->getSpellVisualFX()->createLanding(d.casterId, d.targetId, d.spellId);
             }
             // Play completion animation on NPC casters
             if (!d.completionAnim.empty()) {

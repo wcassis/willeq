@@ -720,6 +720,66 @@ void SpellVisualFX::createImpactAtPosition(const irr::core::vector3df& pos, uint
     m_effects.push_back(effect);
 }
 
+uint16_t SpellVisualFX::createLanding(uint16_t caster_id, uint16_t target_id, uint32_t spell_id)
+{
+#ifdef EQT_HAS_GLES2
+    if (m_particle_manager) {
+        namespace Presets = EQT::Graphics::Environment::SpellPresets;
+        using Cfg = EQT::Graphics::Environment::SpellEffectsConfig;
+        using Anchor = Cfg::TargetAnchor;
+        const int record = sourceRecordOf(spell_id);
+        const Anchor anchor = Presets::TargetAnchorForSpell(spell_id, record);
+        const uint16_t entity = (anchor == Anchor::Caster || target_id == 0) ? caster_id : target_id;
+        const auto& cfg = Cfg::instance();
+        const float A = cfg.sourceScale().anchorAboveFeet;
+        uint16_t follow = entity;
+        float anchorAboveFeet = A;
+        if (anchor == Anchor::Head) {
+            // The target's head bone (the pseudo-entity B1131 made for the
+            // caster's halo resolves any animated entity's head).
+            glm::vec3 center(0.0f), head(0.0f);
+            if (m_particle_manager->resolveEntityPosition(headEntityId(entity), head) &&
+                m_particle_manager->resolveEntityPosition(entity, center)) {
+                follow = headEntityId(entity);
+                anchorAboveFeet = head.y - (center.y - A);
+            }
+        }
+        auto scolor = getSpellColor(spell_id);
+        glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
+                     scolor.getBlue() / 255.0f, 1.0f);
+        SpellVisualResolution visual = resolveVisual(spell_id);
+        // spellComplete half: no stage gate (T441), the Source stage's art.
+        auto complete = Presets::TargetForSpell(c, spell_id, record, true, anchorAboveFeet);
+        if (visual.hasSourceStage())
+            Presets::applyStageSpriteNames(
+                complete,
+                std::vector<std::string>(visual.source_stage.sprite_names.begin(),
+                                         visual.source_stage.sprite_names.end()),
+                spell_id);
+        m_particle_manager->createSpellEffect(complete, follow, 0);
+        // impact half: T72's Target-stage gate, the Target stage's art (T389).
+        if (visual.isFallback() || visual.hasTargetStage()) {
+            auto impact = Presets::TargetForSpell(c, spell_id, record, false, anchorAboveFeet);
+            if (visual.hasTargetStage())
+                Presets::applyStageSpriteNames(
+                    impact,
+                    std::vector<std::string>(visual.target_stage.sprite_names.begin(),
+                                             visual.target_stage.sprite_names.end()),
+                    spell_id);
+            m_particle_manager->createSpellEffect(impact, 0, follow);
+        }
+        LOG_INFO(MOD_SPELL, "createLanding: caster={} target={} spell={} record={} anchor={} on={}",
+                 caster_id, target_id, spell_id, record, static_cast<int>(anchor), follow);
+        return follow;
+    }
+#endif
+    // The legacy scene-node path: no per-record rows, the landing on the target.
+    const uint16_t entity = target_id != 0 ? target_id : caster_id;
+    createSpellComplete(entity, spell_id);
+    createImpact(entity, spell_id);
+    return entity;
+}
+
 void SpellVisualFX::createSpellComplete(uint16_t caster_id, uint32_t spell_id)
 {
 #ifdef EQT_HAS_GLES2

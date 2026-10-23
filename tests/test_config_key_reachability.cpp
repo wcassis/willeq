@@ -85,6 +85,9 @@ const MapNode kDataKeyedMaps[] = {
     {"spell_effects.json", "sourceRecords.overrideRecords",
      "B1131 (#451): SPELL IDS; SpellEffectsConfig::loadSourceRecords enumerates "
      "overrideRecords.getMemberNames() and std::stoul's each one"},
+    {"spell_effects.json", "targetRecords.records",
+     "B1132 (#452): spells.eff RECORD numbers; SpellEffectsConfig::loadTargetRecords "
+     "enumerates records.getMemberNames() and std::stoi's each one"},
 };
 
 // Whole files that are DATA TABLES, not settings: every key below the root is
