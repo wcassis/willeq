@@ -16,19 +16,23 @@
  *           int32 sound              (spells.eff block +0x21C carries the
  *                                     same 103..112 values; NOT used)
  *           4 x { int32 emitter      spellsnew.edd index, 0 = empty slot
- *                 int32 b            0/24/39/1/2, NOT proven, not used
- *                 int32 actor        1 caster / 3 target (record 113 =
- *                                    B1130 record 27 lands on the caster);
- *                                    exposed raw, not used here
- *                 int32 d }          1..12, NOT proven, not used
+ *                 int32 b            minimum caster level (NPC caster = 1)
+ *                 int32 actor        0 world pos / 1 caster / 2 missile /
+ *                                    3 target; exposed raw, not used here
+ *                 int32 d }          attach point (4 LHAND, 5 RHAND, ...);
+ *                                    not used here
+ *           (meanings proven from eqgame.exe 0x495cc3 by B1141 (#461):
+ *           docs/spellsnew_format.md)
  * spellsnew.edd ("EDD\0" "110\0", then 416-byte entries):
  *   +0    char name[64]
- *   +64   char texture[64]   file under SpellEffects/ (any case; one entry
- *                            pads it with '.', trimmed here)
+ *   +64   char texture[32]   file under SpellEffects/ (any case; one entry
+ *                            pads it with '.', trimmed here); +0x60 on
+ *                            are flag words
  *   +0x130 int32 frames      16 / 4 / 1 -- agrees with every texture's
  *                            layout (4x4, 2x2, one picture)
- *   everything else          NOT decoded (colours at +0xD4.., rates,
- *                            velocities): unproven fields are not used.
+ *   everything else          decoded from the client's code by B1141
+ *                            (docs/spellsnew_format.md) but NOT used by
+ *                            fable yet.
  */
 
 #ifndef EQT_SPELLS_NEW_EFF_READER_H

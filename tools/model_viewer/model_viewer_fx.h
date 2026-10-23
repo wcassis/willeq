@@ -83,8 +83,9 @@ public:
         m_leftHandBoneIndex = animNode->findLeftHandBoneIndex();
 
         std::cout << "Using emitter: " << emitter.name << " (texture: " << emitter.texture << ")" << std::endl;
-        std::cout << "  Particles: " << emitter.particleCount1 << "-" << emitter.particleCount2
-                  << ", Radius: " << emitter.emitRadius << ", Velocity: " << emitter.velocity << std::endl;
+        std::cout << "  Particles: burst " << emitter.burstCount << ", " << emitter.perEmission
+                  << " x " << emitter.emissionRate << "/s, shape " << emitter.shape
+                  << " radius " << emitter.shapeRadiusX << ", up speed " << emitter.upSpeedMax << std::endl;
 
         // Get initial hand positions
         irr::core::vector3df rightPos, leftPos;
@@ -252,12 +253,13 @@ private:
         irr::video::SColor color = emitter.getColor();
 
         // Use emitter parameters with sensible defaults
-        int minRate = std::max(10u, emitter.particleCount1 / 4);
-        int maxRate = std::max(20u, emitter.particleCount2 / 4);
-        float velocity = std::max(0.02f, emitter.velocity * 0.01f);
-        int lifetime = static_cast<int>(std::max(200.0f, emitter.lifetime * 200.0f));
-        float sizeMin = std::max(0.3f, emitter.sizeStart * 0.5f);
-        float sizeMax = std::max(0.6f, emitter.sizeEnd * 0.5f);
+        // Approximate viewer mapping of the B1141 code-proven fields (not the client's simulation).
+        int minRate = std::max(10u, emitter.burstCount / 4);
+        int maxRate = std::max(20u, emitter.perEmission / 4);
+        float velocity = std::max(0.02f, emitter.upSpeedMax * 0.01f);
+        int lifetime = static_cast<int>(std::max(200.0f, emitter.particleLifetime * 1000.0f));
+        float sizeMin = std::max(0.3f, emitter.spriteWidth * 0.5f);
+        float sizeMax = std::max(0.6f, emitter.spriteWidthMax * 0.5f);
 
         // Point emitter at hand
         irr::scene::IParticleEmitter* em = ps->createPointEmitter(
@@ -299,12 +301,12 @@ private:
         irr::video::SColor color = emitter.getColor();
 
         // Use emitter parameters
-        int minRate = std::max(15u, emitter.particleCount1 / 3);
-        int maxRate = std::max(30u, emitter.particleCount2 / 3);
-        float radius = std::max(1.5f, emitter.emitRadius * 0.1f);
-        int lifetime = static_cast<int>(std::max(400.0f, emitter.lifetime * 300.0f));
-        float sizeMin = std::max(0.5f, emitter.sizeStart * 0.4f);
-        float sizeMax = std::max(1.0f, emitter.sizeEnd * 0.4f);
+        int minRate = std::max(15u, emitter.burstCount / 3);
+        int maxRate = std::max(30u, emitter.perEmission / 3);
+        float radius = std::max(1.5f, emitter.shapeRadiusX);
+        int lifetime = static_cast<int>(std::max(400.0f, emitter.particleLifetime * 1000.0f));
+        float sizeMin = std::max(0.5f, emitter.spriteWidth * 0.4f);
+        float sizeMax = std::max(1.0f, emitter.spriteWidthMax * 0.4f);
 
         irr::scene::IParticleEmitter* em = ps->createBoxEmitter(
             irr::core::aabbox3df(-radius, -2.0f, -radius, radius, 2.0f, radius),

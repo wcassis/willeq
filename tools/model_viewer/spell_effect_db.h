@@ -14,6 +14,7 @@
 #include <string>
 #include <functional>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <cmath>
 #include <unordered_map>
@@ -80,35 +81,39 @@ enum class SpellCategory : uint8_t {
 
 // ============================================================================
 // EDD Parser - Parse EverQuest particle emitter definitions
-// File format: spellsnew.edd
+// File format: spellsnew.edd ("EDD\0" "110\0", then 416-byte entries).
+// B1141 (#461): the field names below come from the official client's code
+// (EQGraphicsDX9.dll CEmitterDef::CreateEmitter 0x1005a430 and
+// CParticleSystem::Render 0x100605b0); docs/spellsnew_format.md has the
+// whole table with addresses. Offsets are from the start of the 416-byte
+// entry. REFUTED by that code and removed: min/max particles per second at
+// +0x80/+0x84, emit radius +0x88, velocity +0x94, lifetime +0xA0, six ARGB
+// colours at +0xD4, gravity +0x140, size start/end +0x160/+0x164.
 // ============================================================================
 struct EmitterDefinition {
-    std::string name;           // Emitter name (e.g., "Healing", "FireBolt01")
-    std::string texture;        // Texture filename (e.g., "spelab.tga")
+    std::string name;           // +0x00 char[64] emitter name
+    std::string texture;        // +0x40 char[32] texture file name
 
-    // Particle properties (extracted from 288-byte property block)
-    uint32_t particleCount1 = 0;    // Min particles per second
-    uint32_t particleCount2 = 0;    // Max particles per second
-    float emitRadius = 0.0f;        // Emission radius
-    float velocity = 0.0f;          // Particle velocity
-    float lifetime = 0.0f;          // Particle lifetime in seconds
-    float sizeStart = 1.0f;         // Starting particle size
-    float sizeEnd = 1.0f;           // Ending particle size
-    float gravity = 0.0f;           // Gravity effect on particles
+    float duration = 0.0f;        // +0x78 s; < 0 fixed |d|, >= 0 caller may override
+    float particleLifetime = 0.0f;// +0x7C s; < 0 = lives for the emitter duration
+    uint32_t burstCount = 0;      // +0x80 particles emitted on the first frame
+    uint32_t perEmission = 0;     // +0x84 particles per emission tick
+    float emissionRate = 0.0f;    // +0x88 emission ticks per second
+    int32_t shape = 0;            // +0xA8 spawn shape (0 point .. 9 random ring)
+    float shapeRadiusX = 0.0f;    // +0xAC shape radius / half-extent X
+    float upSpeedMax = 0.0f;      // +0xF0 speed along the emitter axis (up), max
+    float spriteWidth = 1.0f;     // +0xCC sprite width (min of the +0x184 range)
+    float spriteWidthMax = 1.0f;  // +0x184
+    float worldGravity = 0.0f;    // +0x128 downward acceleration in world units/s^2
 
-    // Colors (6 ARGB values for gradient)
-    uint32_t colors[6] = {0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
-                          0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF};
+    // +0xD4..+0xDC start R,G,B and +0xE0..+0xE8 end R,G,B (ints 0..255);
+    // the client interpolates them linearly over the particle's age.
+    uint8_t startRGB[3] = {255, 255, 255};
+    uint8_t endRGB[3] = {255, 255, 255};
 
-    // Convert first color to Irrlicht SColor
+    // The start colour (alpha 255) as an Irrlicht SColor
     irr::video::SColor getColor() const {
-        uint32_t c = colors[0];
-        return irr::video::SColor(
-            (c >> 24) & 0xFF,  // A
-            (c >> 16) & 0xFF,  // R
-            (c >> 8) & 0xFF,   // G
-            c & 0xFF           // B
-        );
+        return irr::video::SColor(255, startRGB[0], startRGB[1], startRGB[2]);
     }
 };
 
@@ -152,29 +157,30 @@ public:
                 continue;
             }
 
-            // Texture: bytes 64-128
-            emitter.texture = std::string(buffer + 64, 64);
+            // Texture: bytes 64-96 (char[32]; +0x60 starts the flag words)
+            emitter.texture = std::string(buffer + 64, 32);
             nullPos = emitter.texture.find('\0');
             if (nullPos != std::string::npos) {
                 emitter.texture = emitter.texture.substr(0, nullPos);
             }
 
-            // Properties start at byte 128
-            const char* props = buffer + 128;
-
-            // Parse key properties (based on reverse engineering)
-            emitter.particleCount1 = *reinterpret_cast<const uint32_t*>(props + 0);
-            emitter.particleCount2 = *reinterpret_cast<const uint32_t*>(props + 4);
-            emitter.emitRadius = *reinterpret_cast<const float*>(props + 8);
-            emitter.velocity = *reinterpret_cast<const float*>(props + 20);  // At offset 148
-            emitter.lifetime = *reinterpret_cast<const float*>(props + 32);  // At offset 160
-            emitter.sizeStart = *reinterpret_cast<const float*>(props + 224); // At offset 352
-            emitter.sizeEnd = *reinterpret_cast<const float*>(props + 228);   // At offset 356
-            emitter.gravity = *reinterpret_cast<const float*>(props + 192);   // At offset 320
-
-            // Colors at offset 212-236 (6 uint32 ARGB values)
-            for (int i = 0; i < 6; ++i) {
-                emitter.colors[i] = *reinterpret_cast<const uint32_t*>(props + 84 + i * 4);
+            // Words at their code-proven entry offsets (B1141).
+            auto f32 = [&](size_t off) { float v; std::memcpy(&v, buffer + off, 4); return v; };
+            auto i32 = [&](size_t off) { int32_t v; std::memcpy(&v, buffer + off, 4); return v; };
+            emitter.duration = f32(0x78);
+            emitter.particleLifetime = f32(0x7C);
+            emitter.burstCount = static_cast<uint32_t>(i32(0x80));
+            emitter.perEmission = static_cast<uint32_t>(i32(0x84));
+            emitter.emissionRate = f32(0x88);
+            emitter.shape = i32(0xA8);
+            emitter.shapeRadiusX = f32(0xAC);
+            emitter.upSpeedMax = f32(0xF0);
+            emitter.spriteWidth = f32(0xCC);
+            emitter.spriteWidthMax = f32(0x184);
+            emitter.worldGravity = f32(0x128);
+            for (int i = 0; i < 3; ++i) {
+                emitter.startRGB[i] = static_cast<uint8_t>(i32(0xD4 + i * 4));
+                emitter.endRGB[i] = static_cast<uint8_t>(i32(0xE0 + i * 4));
             }
 
             m_emitters[emitter.name] = emitter;
@@ -306,14 +312,17 @@ public:
             SpellEffectEntry spell;
             spell.name = name;
 
-            // Parse emitter indices from byte 128 to the end of the entry
-            // These appear to be uint32 values referencing EDD entries
-            for (size_t i = 128; i + 16 <= ENTRY_SIZE; i += 16) {
-                uint32_t emitterIdx = *reinterpret_cast<const uint32_t*>(entry + i);
-                // Valid emitter indices are typically in range 0-2105
-                if (emitterIdx > 0 && emitterIdx < 3000) {
-                    // Store index as string for now (we'll resolve to names later)
-                    spell.emitters.push_back(std::to_string(emitterIdx));
+            // Emitter indices: three 68-byte stages (Source, Middle, Target)
+            // at +0x40, each an int sound then four 16-byte slots
+            // {emitter, min caster level, anchor actor, attach point}
+            // (eqgame.exe 0x495cc3; B1141). 0 = empty slot.
+            for (size_t stage = 0; stage < 3; ++stage) {
+                for (size_t slot = 0; slot < 4; ++slot) {
+                    int32_t emitterIdx;
+                    std::memcpy(&emitterIdx, entry + 0x44 + stage * 0x44 + slot * 16, 4);
+                    if (emitterIdx > 0) {
+                        spell.emitters.push_back(std::to_string(emitterIdx));
+                    }
                 }
             }
 

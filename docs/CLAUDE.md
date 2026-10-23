@@ -24,6 +24,7 @@
 
 - **`docs/macos.md`** - macOS headless dev platform (B1039): brew deps, configure/ctest recipe, the NAS mount, what is unsupported
 - **`docs/thinkpad.md`** - The ThinkPad (B1055): eqemu lane 5 and the x86 hardware-GL box (Intel iris for willeq `--drm`, NVIDIA + headless Xorg for the Wine oracle), what was set up and the rules
+- **`docs/spellsnew_format.md`** - spellsnew.eff / spellsnew.edd: the meaning of every word, read from the official client's code (B1141), with addresses
 - **`docs/plans/`** - Historical feature implementation plans and investigations
   - Implementation plans for detail system, trees, particles, weather, environment, surface maps
   - Bug investigations (spawn544, zone ClientUpdate)
