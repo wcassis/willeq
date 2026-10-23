@@ -64,13 +64,15 @@ namespace {
 //   15   Greater Healing resist None(0), Alteration (the spray cast style)
 //   3    Summon Corpse   spell_affect_index 4  -> Source + Target, NO Middle
 //   6    Ignite Blood    spell_affect_index 20 -> Source + Middle + Target
-//   6594 GM Cleansing    spell_affect_index -1 (the NoAffectIndex population)
+//   6594 GM Cleansing    spell_affect_index -1, but field 145 = 102 (B1127: Resolved)
+//   523  Tail Lashings   spell_affect_index -1 and field 145 = 0 (NoAffectIndex)
 constexpr uint32_t kFrostBolt     = 54;
 constexpr uint32_t kBurstOfFlame  = 93;
 constexpr uint32_t kGreaterHealing = 15;
 constexpr uint32_t kSummonCorpse  = 3;
-constexpr uint32_t kIgniteBlood   = 6;
 constexpr uint32_t kGmCleansing   = 6594;
+// B1127: no spells.eff record AND no spellsnew.eff record (field 145 = 0).
+constexpr uint32_t kTailLashings  = 523;
 
 const irr::video::SColor kPreT381DefaultColour(255, 150, 180, 255);
 
@@ -278,9 +280,13 @@ TEST_F(SpellVisualVocabularyTest, ASpellWithAnAffectIndexReachesResolved) {
     EXPECT_TRUE(res.hasSourceStage());
     EXPECT_TRUE(res.hasTargetStage());
 
-    // And the -1 population still lands on the NoAffectIndex fallback.
+    // And a spell with neither record lands on the NoAffectIndex fallback.
+    castThroughTheBridge(kTailLashings);
+    EXPECT_EQ(fx_->resolveVisual(kTailLashings).source, SpellVisualSource::NoAffectIndex);
+    // B1127 (#447): a -1 spells.eff index with a field-145 record IS drawn by
+    // the oracle (1899 Imbue Fire Opal, review/B1127/README.md), so it resolves.
     castThroughTheBridge(kGmCleansing);
-    EXPECT_EQ(fx_->resolveVisual(kGmCleansing).source, SpellVisualSource::NoAffectIndex);
+    EXPECT_EQ(fx_->resolveVisual(kGmCleansing).source, SpellVisualSource::Resolved);
 }
 
 #ifdef EQT_HAS_GLES2
@@ -310,16 +316,19 @@ TEST_F(SpellVisualVocabularyTest, TravelStageGateFiresForARecordWithNoMiddleStag
             return true;
         });
 
-    castThroughTheBridge(kSummonCorpse);  // record 4: Source + Target, no Middle
-    castThroughTheBridge(kIgniteBlood);   // record 20: all three stages
+    // B1127: the stages are field 145's (spellsnew.eff). Summon Corpse's
+    // record 83 has no Middle emitter; Burst of Flame's record 80 has one
+    // (Ignite Blood's record 89 has none, so it no longer serves here).
+    castThroughTheBridge(kSummonCorpse);
+    castThroughTheBridge(kBurstOfFlame);
     ASSERT_EQ(fx_->resolveVisual(kSummonCorpse).source, SpellVisualSource::Resolved);
     ASSERT_FALSE(fx_->resolveVisual(kSummonCorpse).hasTravelStage());
-    ASSERT_TRUE(fx_->resolveVisual(kIgniteBlood).hasTravelStage());
+    ASSERT_TRUE(fx_->resolveVisual(kBurstOfFlame).hasTravelStage());
 
     fx_->createProjectile(1, 2, kSummonCorpse);
     EXPECT_EQ(positionLookups, 0) << "the travel-stage gate did not suppress";
 
-    fx_->createProjectile(1, 2, kIgniteBlood);
+    fx_->createProjectile(1, 2, kBurstOfFlame);
     EXPECT_GT(positionLookups, 0) << "a record WITH a Middle stage must not be gated";
 
     fx_->setParticleManager(nullptr);

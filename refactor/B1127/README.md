@@ -38,6 +38,8 @@ Fire Opal, which has no spells.eff record and draws field 145's green stars.
   60 sprites = the non-DDS spellsnew.edd textures of every player spell + the spells.eff files only
   field-145-less spells reach; 2x2 grids (the 128x128 flares) and PNG / 8-bit BMP / colour-mapped TGA decode;
   case-insensitive file lookup. 960 of 1024 cells. Same pack size, new bytes.
+- Sizes (35e949f0): 54/656/253/458 re-fitted to the SAME oracle ROI p90 bands by B1123's sizes-first rule
+  (their new sprites fill the quad differently); size keys only, three lane-5 iterations.
 - Data in one commit: `spell_sprite_atlas.bmp`, `data/textures.sha256`, `data/willeq.eqe1.sha256`,
   `data/willeq.db` + `.sha256`. **The pack is NOT installed** (`build_willeq_pack.sh` install owed at merge).
 
@@ -52,6 +54,9 @@ Fire Opal, which has no spells.eff record and draws field 145's green stars.
 ## 3. Not done
 
 - DDS textures (NPC and discipline records, 128 files) are not packed: those emitters draw the procedural circle.
-- No spellsnew.edd timing / size / count / colour field is decoded or used; sizes stay the B1123 sizes-first
-  values. The 18 player spells with field 123 = -1 now resolve (their sprites draw with the plain style).
+- No spellsnew.edd timing / size / count / colour field is decoded or used. The 18 player spells with field
+  123 = -1 now resolve (their sprites draw with the plain style).
+- Card saturation gates not met (54/656 landing sat 0.21/0.20 < 0.40, 458 0.42 < 0.45); hues met (244/243,
+  200). Background-removed, fable adds the oracle's hue at lower saturation (review README sec. 5; leads: scene
+  background, ETC1's luminance-only modifiers). 253's Source ROI fell short (point clamp).
 - `plans/legB2_mag.tsv` (1770 Rage of Zomm, a fourth A/B) not run.
