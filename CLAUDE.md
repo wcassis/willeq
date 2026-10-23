@@ -412,14 +412,15 @@ is fable tinting the oracle's own art**. `config/spell_effects.json`'s
 `resistColors` and `SpellVisualFX::colorForVocabulary()` survive only for the
 ~946 spells with no usable `spells.eff` record. All three stages route their
 names: Source → cast glow and spellComplete, Middle → projectile trail, Target →
-impact. The landing is a VOLUME, not a disc (B1120); the Source a body cloud
-from BeginCast+0.25 s held past OP_Action until the landing starts, not a hand
-pinpoint (B1122; `tests/test_spell_landing_volume.cpp`). `spellOverrides` holds measured values
-only (B1120/B1122 shapes; **sizes match the oracle FIRST**: the caster-ROI p90 of
-`review/B1119/scripts/fx_sprite_roi.py` against
-`review/B1120/measure_oracle/roi_oracle.txt`, and coverage follows from the pool, never
-from size, #443 note 7118); **an unmeasured spell resolves to the
-plain style — an invented override is the guess Will's ruling forbids.**
+impact. The landing is a VOLUME, not a disc (B1120); the Source is drawn PER
+spells.eff RECORD (B1131 `sourceRecords`: hands/feet-ring/orbit/body/head disc,
+onset ~BC+0.4 s, held past OP_Action up to 5.5 s when the target is someone
+else; `tests/test_spell_source_anchors.cpp`). `spellOverrides` holds
+measured values only (B1120/B1122 shapes; **sizes match the oracle FIRST**:
+caster-ROI p90, `review/B1119/scripts/fx_sprite_roi.py` vs
+`review/B1120/measure_oracle/roi_oracle.txt`; coverage follows from the pool,
+#443 note 7118); **an unmeasured spell resolves to the plain style: an
+invented override is the guess Will forbids.**
 **The particle pool is ONE preset key**, `spellParticlePool` in
 `config/constrained_presets.json` (desktop 8192, sbc 4096; B1130's survey demand
 fits both); every landing population derives from it by one rule

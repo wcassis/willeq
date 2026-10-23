@@ -66,6 +66,8 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_skinning.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_bones.cpp
+        # B1131: findHeadBoneIndexForFx() (animated_mesh_bones.cpp) uses its head-bone rule.
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/first_person_eye.cpp
         ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache.cpp
@@ -176,6 +178,8 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_skinning.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_bones.cpp
+        # B1131: findHeadBoneIndexForFx() (animated_mesh_bones.cpp) uses its head-bone rule.
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/first_person_eye.cpp
         ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache.cpp

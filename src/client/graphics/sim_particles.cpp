@@ -873,6 +873,13 @@ void SimulationWorker::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emi
         float angle = particleRandomFloat(0.0f, 6.28318f);
         p.position.x += cfg.spawnExtents.x * std::cos(angle);
         p.position.z += cfg.spawnExtents.x * std::sin(angle);
+    } else if (cfg.spawnShape == SpawnShape::DISC) {
+        // B1131: record 22's halo -- uniform over the disc's area.
+        float angle = particleRandomFloat(0.0f, 6.28318f);
+        float r = cfg.spawnExtents.x * std::sqrt(particleRandomFloat(0.0f, 1.0f));
+        p.position.x += r * std::cos(angle);
+        p.position.z += r * std::sin(angle);
+        p.position.y += particleRandomFloat(-cfg.spawnExtents.y, cfg.spawnExtents.y);
     }
 
     if (dynamicDir) {

@@ -357,6 +357,11 @@ TEST_F(SpellLandingVolume, AStyleWithoutADelayStaysImmediate) {
 // a little inside the lit-pixel extents.
 // ---------------------------------------------------------------------------
 
+// B1131 (#451): 93 and 38 are spells.eff record 0, whose Source the B1130
+// survey measured at the HANDS (hand flames + spark cloud), so they are no
+// longer a body cloud; their anchor, shape, onset and hold are
+// tests/test_spell_source_anchors.cpp's. The other five keep B1122's measured
+// per-spell geometry (spellOverrides) on the caster's entity.
 struct SourceCase {
     uint32_t id;
     bool spray;       // 41 Weaken is Alteration: SpellVisualFX picks castSpray
@@ -374,9 +379,15 @@ const SourceCase kSourceCases[] = {
     {458, false, 3.6f, 0.45f, 0.90f, 0.33f, 0.75f},
 };
 
+// The Source as SpellVisualFX::createCastGlow() builds it for the caster's
+// entity (B1131: the spell's override + its spells.eff record's row).
+int RecordOf(uint32_t id) { return SpellEffectsConfig::instance().overrideRecord(id); }
 SpellEffectDef SourceDef(const SourceCase& c) {
-    return c.spray ? SpellPresets::CastSpray(glm::vec4(1.0f), c.id)
-                   : SpellPresets::CastGlow(glm::vec4(1.0f), c.id);
+    return SpellPresets::SourceForSpell(glm::vec4(1.0f), c.id, RecordOf(c.id), c.spray, kA, 1.0f);
+}
+bool IsBodyCloud(const SourceCase& c) {
+    return SpellPresets::SourceAnchorForSpell(c.id, RecordOf(c.id), c.spray) ==
+           SpellEffectsConfig::SourceAnchor::Body;
 }
 
 // RED on the B1121 config + code: no Source style was body-anchored and the
@@ -384,9 +395,13 @@ SpellEffectDef SourceDef(const SourceCase& c) {
 // that createCastGlow() then squeezed to 0.4 units at each hand.
 TEST_F(SpellLandingVolume, TheSourceIsABodyWideCloudShapedLikeTheOracles) {
     for (const auto& c : kSourceCases) {
+        if (c.id == 93 || c.id == 38) {
+            EXPECT_FALSE(IsBodyCloud(c)) << c.id << ": record 0's Source is at the hands (B1130)";
+            continue;
+        }
+        EXPECT_TRUE(IsBodyCloud(c)) << c.id << ": the Source must sit on the caster's body";
         const SpellEffectDef def = SourceDef(c);
-        EXPECT_TRUE(def.bodyAnchored) << c.id << ": the Source must sit on the caster's body";
-        const auto ps = Run(def, std::min(c.castSec, 1.4f));
+        const auto ps = Run(def, std::min(c.castSec, 1.4f) + def.emitters.at(0).triggerDelay);
         ASSERT_GT(ps.size(), 20u) << c.id;
         std::vector<float> xs;
         float ySum = 0.0f;
@@ -404,31 +419,33 @@ TEST_F(SpellLandingVolume, TheSourceIsABodyWideCloudShapedLikeTheOracles) {
     }
 }
 
-// The Source starts BeginCast + ~0.4 s on the oracle (B1118 table: 0.20-0.45
-// by the fx_timing threshold, 0.47-0.62 at a quarter of its peak); a dense
-// cloud crosses the threshold ~0.1-0.2 s after it starts, so both Source
-// styles carry a delay -- and nothing is drawn before it.
+// The Source starts at its spells.eff record's onset: BC+0.37-0.50 on 38 of
+// the 40 records the B1130 survey measured (median 0.41; B1122's single 0.25
+// was the defect). Every one of the seven, castGlow or castSpray, waits for it
+// -- and nothing is drawn before it.
 TEST_F(SpellLandingVolume, TheSourceWaitsForTheOraclesOnset) {
-    for (const auto& def : {SpellPresets::CastGlow(glm::vec4(1.0f), 285),
-                            SpellPresets::CastSpray(glm::vec4(1.0f), 285)}) {
+    for (const auto& c : kSourceCases) {
+        const SpellEffectDef def = SourceDef(c);
         const auto& ed = def.emitters.at(0);
-        EXPECT_EQ(ed.trigger, SpellTrigger::DELAYED) << def.name;
-        EXPECT_GE(ed.triggerDelay, 0.2f) << def.name;
-        EXPECT_LE(ed.triggerDelay, 0.35f) << def.name;
+        EXPECT_EQ(ed.trigger, SpellTrigger::DELAYED) << c.id;
+        EXPECT_FLOAT_EQ(ed.triggerDelay, SpellEffectsConfig::instance().sourceRecord(RecordOf(c.id)).onset) << c.id;
+        EXPECT_GE(ed.triggerDelay, 0.37f) << c.id;
+        EXPECT_LE(ed.triggerDelay, 0.50f) << c.id;
         float first = -1.0f;
         Run(def, 0.8f, &first);
-        EXPECT_GE(first, ed.triggerDelay) << def.name;
-        EXPECT_LE(first, ed.triggerDelay + 0.1f) << def.name;
+        EXPECT_GE(first, ed.triggerDelay) << c.id;
+        EXPECT_LE(first, ed.triggerDelay + 0.1f) << c.id;
     }
 }
 
-// B1122 (coordinator's ruling): the Source now holds past OP_Action for its
-// releaseDelay and its sprites finish their life, so it DOES overlap its own
-// landing. Drive the real worker through one whole cast per spell -- Source for
-// the cast time, OP_Action = release + the landing (both halves) -- and bound
-// the peak of Source + own landing by half the pool, so the previous cast's
-// landing (<= half, OneFedLandingFitsHalfThePool) still fits and the landing is
-// never starved. Measured peaks are in refactor/B1122/README.md sec. 7.
+// B1122 held the Source past OP_Action; B1131 holds it for its spells.eff
+// record's measured time (up to 6 s with another target, B1130), so it
+// overlaps its own landing for most of the landing's life. Drive the real
+// worker through one whole cast per spell -- Source for the cast time,
+// OP_Action = release (the record's longer hold) + the landing (both halves)
+// -- and bound the peak of Source + own landing by half the pool (the rule,
+// applyPool), so the previous cast's landing (<= half,
+// OneFedLandingFitsHalfThePool) still fits.
 TEST_P(SpellLandingPool, ASourceAndItsOwnLandingFitHalfThePool) {
     const int pool = SpellEffectsConfig::instance().getGlobal().maxParticles;
     for (const auto& c : kSourceCases) {
@@ -436,9 +453,10 @@ TEST_P(SpellLandingPool, ASourceAndItsOwnLandingFitHalfThePool) {
         EQT::Graphics::SimulationOutput output;
         std::unordered_set<uint16_t> requested;
         const SpellEffectDef src = SourceDef(c);
+        const float hold = SpellEffectsConfig::instance().sourceRecord(RecordOf(c.id)).maxHold();
         const int actFrame = static_cast<int>(std::lround(c.castSec * 60.0f));
-        size_t peak = 0, landingAlone = 0;
-        for (int f = 0; f < actFrame + 60 * 7; ++f) {
+        size_t peak = 0;
+        for (int f = 0; f < actFrame + 60 * 8; ++f) {
             EQT::Graphics::SimulationInput input;
             auto& pi = input.particleInput;
             pi.deltaTime = 1.0f / 60.0f;
@@ -456,36 +474,28 @@ TEST_P(SpellLandingPool, ASourceAndItsOwnLandingFitHalfThePool) {
                 cmd.preAssignedEffectID = eid;
                 pi.commands.push_back(cmd);
             };
-            if (f == 0) {
-                SpellEffectDef d = src;  // as createCastGlow() makes it
-                for (auto& e : d.emitters) e.config.emitterLifetime = 0.0f;
-                push(d, c.castSec + d.releaseDelay, 1);
-            }
+            if (f == 0) push(src, c.castSec + hold, 1);  // as createCastGlow() makes it
             if (f == actFrame) {
                 EQT::Graphics::ParticleCommandData rel;
                 rel.type = EQT::Graphics::ParticleCommand::ReleaseSpellEffectsEntity;
                 rel.entityID = kCaster;
                 rel.styleFilter = {"CastGlow", "CastSpray"};
-                rel.duration = src.releaseDelay;
+                rel.duration = hold;
                 pi.commands.push_back(rel);
-                push(Complete(c.id), 0.0f, 2);
-                push(Impact(c.id), 0.0f, 3);
+                push(SpellPresets::SpellComplete(glm::vec4(1.0f), c.id, RecordOf(c.id)), 0.0f, 2);
+                push(SpellPresets::Impact(glm::vec4(1.0f), c.id, RecordOf(c.id)), 0.0f, 3);
             }
             worker.computeOnce(input, output);
             requested = output.particleOutput.positionRequestEntities;
             if (!output.particleOutput.valid) continue;
             peak = std::max(peak, output.particleOutput.renderBuffer.size());
-            if (f > actFrame + 60 * 2) landingAlone = std::max(landingAlone, output.particleOutput.renderBuffer.size());
         }
-        EXPECT_GT(src.releaseDelay, 0.0f) << c.id;
-        // 253's landing is a steady 2160-sprite field (B1120/B1121: 253 + a
-        // record-0 landing = 4085 <= 4096); its Source is dead (Act+1.5) long
-        // before the field peaks, so it may add NOTHING to that peak. Every
-        // other spell's Source + landing stays inside half the pool.
-        const size_t bound = std::max<size_t>(pool / 2, landingAlone + landingAlone / 50);
-        EXPECT_LE(peak, bound) << c.id << ": Source + own landing peaked at " << peak
-                               << " (landing alone " << landingAlone << ")";
-        EXPECT_GE(peak, landingAlone) << c.id;
+        EXPECT_GE(hold, 0.3f) << c.id;
+        // The rule fits the EXPECTED peak to half the pool; 2 % covers the
+        // sampling spread of one run (B1121 measured +-2-3 %).
+        const size_t bound = static_cast<size_t>(pool / 2) + static_cast<size_t>(pool / 100);
+        EXPECT_LE(peak, bound) << c.id << ": Source + own landing peaked at " << peak;
+        EXPECT_GT(peak, 300u) << c.id << ": the landing never filled";  // 458's exception is 373
     }
 }
 
@@ -496,16 +506,23 @@ TEST_P(SpellLandingPool, ASourceAndItsOwnLandingFitHalfThePool) {
 // pool -- so every Source cloud must fit the other half. 253's own landing
 // (2160) cannot be live under a new 253 Source: its recast is 12 s.
 // The lower bounds are the live counts that measured >= 80 % of the oracle's
-// Source coverage on the B1122 gate (refactor/B1122/README.md sec. 5).
+// Source coverage on the B1122 gate (refactor/B1122/README.md sec. 5), at the
+// pool those were measured at. B1131: where a record's held Source cannot sit
+// beside its own landing in half the pool (sbc: 54/656, 41, 253), the pool
+// rule scales the Source too (SpellEffectsConfig::sourcePoolScale), and the
+// floor scales with it.
 TEST_P(SpellLandingPool, EverySourceCloudFitsBesideALanding) {
     const int pool = SpellEffectsConfig::instance().getGlobal().maxParticles;
     const std::pair<uint32_t, size_t> kMinLive[] = {
         {93, 70}, {38, 70}, {54, 670}, {656, 900}, {41, 150}, {253, 1640}, {458, 54}};
     for (const auto& c : kSourceCases) {
-        const auto ps = Run(SourceDef(c), c.castSec);
+        const SpellEffectDef src = SourceDef(c);
+        const auto ps = Run(src, c.castSec + src.emitters.at(0).triggerDelay);
         size_t want = 0;
         for (const auto& [id, n] : kMinLive) if (id == c.id) want = n;
-        EXPECT_GE(ps.size(), want) << c.id << ": a thinner cloud measured below 80 % of the oracle";
+        const float k = SpellEffectsConfig::instance().sourcePoolScale(c.id, RecordOf(c.id));
+        EXPECT_GE(static_cast<float>(ps.size()), static_cast<float>(want) * k)
+            << c.id << ": a thinner cloud measured below 80 % of the oracle (pool factor " << k << ")";
         EXPECT_LE(ps.size(), static_cast<size_t>(pool / 2)) << c.id;
     }
 }

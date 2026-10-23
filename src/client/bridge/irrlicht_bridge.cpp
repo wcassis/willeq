@@ -1126,8 +1126,10 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 // seen its BeginCast (zoned in mid-cast, out of range), so
                 // the completion payload carries the vocabulary too.
                 renderer_->getSpellVisualFX()->noteSpellVocabulary(d.spellId, d.spellVisual);
-                // B1122: released, not freed -- the Source holds to the landing.
-                if (glow.remove) renderer_->getSpellVisualFX()->releaseCastGlow(d.casterId, d.spellId);
+                // B1131: released, not freed -- the Source holds its record's
+                // measured time past OP_Action, longer when the target is someone else.
+                if (glow.remove)
+                    renderer_->getSpellVisualFX()->releaseCastGlow(d.casterId, d.spellId, d.targetId);
                 // B1105: action-only casts have no BeginCast. Keep the old
                 // removal point, then arm Source through the same FX body.
                 if (glow.create) {

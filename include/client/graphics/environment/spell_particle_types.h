@@ -1,6 +1,7 @@
 #pragma once
 
 #include "unified_particle.h"
+#include "spell_effects_config.h"
 #include <vector>
 #include <string>
 #include <cstdint>
@@ -34,13 +35,6 @@ struct SpellEmitterDef {
 struct SpellEffectDef {
     std::string name;                        // Debug name
     std::vector<SpellEmitterDef> emitters;   // Up to 8
-    // B1122: a Source (cast) effect whose style says "anchor": "body" is ONE
-    // cloud on the caster's own entity with the style's geometry; otherwise
-    // SpellVisualFX::createCastGlow() pins it to the two hand bones.
-    bool bodyAnchored = false;
-    // B1122: seconds a Source keeps emitting past OP_Action (style
-    // `releaseDelay`; 0 = freed at OP_Action). See SpellVisualFX::releaseCastGlow.
-    float releaseDelay = 0.0f;
 };
 
 struct SpellEffectInstance {
@@ -76,13 +70,27 @@ struct SpellEffectInstance {
 namespace SpellPresets {
     SpellEffectDef CastGlow(glm::vec4 color, uint32_t spellId = 0);
     SpellEffectDef CastSpray(glm::vec4 color, uint32_t spellId = 0);
-    SpellEffectDef SpellComplete(glm::vec4 color, uint32_t spellId = 0);
-    SpellEffectDef Impact(glm::vec4 color, uint32_t spellId = 0);
+    // B1131: `record` = the spell's spells.eff record (-1 = none): a landing on
+    // the style is scaled for that record's held Source (applyPool).
+    SpellEffectDef SpellComplete(glm::vec4 color, uint32_t spellId = 0, int record = -1);
+    SpellEffectDef Impact(glm::vec4 color, uint32_t spellId = 0, int record = -1);
     SpellEffectDef BuffAura(glm::vec4 color, uint32_t spellId = 0);
     SpellEffectDef Projectile(glm::vec4 color, uint32_t spellId = 0);
     SpellEffectDef SpellRain(glm::vec4 color, float radius, uint32_t spellId = 0);
     SpellEffectDef GroundCircle(glm::vec4 color, float radius, uint32_t spellId = 0);
     glm::vec4 resistToParticleColor(uint8_t resistType);
+
+    // B1131 (#451): the Source of one spells.eff record (anchor class, shape,
+    // onset) built over a castGlow/castSpray definition -- see the TU.
+    SpellEffectDef SourceForRecord(const SpellEffectDef& style,
+                                   const SpellEffectsConfig::SourceRecord& rec,
+                                   float anchorAboveFeet, float share);
+    // The whole Source of a spell as SpellVisualFX::createCastGlow draws it:
+    // the castGlow/castSpray style + the spell's overrides + its record's row.
+    SpellEffectDef SourceForSpell(glm::vec4 color, uint32_t spellId, int record, bool spray,
+                                  float anchorAboveFeet, float share);
+    // Which point that Source follows (Body for an override's own geometry).
+    SpellEffectsConfig::SourceAnchor SourceAnchorForSpell(uint32_t spellId, int record, bool spray);
 
     // T389 (board B162): replace an effect definition's atlas tile choice
     // with the tiles named by a resolved spells.eff stage.

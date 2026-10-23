@@ -310,6 +310,19 @@ void IrrlichtRenderer::initDeferredGraphics() {
                         }
                         return false;
                     }
+                    // B1131: head bone pseudo-entity (record 22's halo disc).
+                    if (EQ::SpellVisualFX::isHeadBoneId(entity_id)) {
+                        if (!entityRenderer_) return false;
+                        const auto& entities = entityRenderer_->getEntities();
+                        auto it = entities.find(EQ::SpellVisualFX::realEntityId(entity_id));
+                        if (it == entities.end() || !it->second.isAnimated || !it->second.animatedNode) return false;
+                        const int boneIdx = it->second.animatedNode->findHeadBoneIndexForFx();
+                        irr::core::vector3df bonePos;
+                        if (boneIdx < 0 || !it->second.animatedNode->getBoneWorldPosition(boneIdx, bonePos))
+                            return false;
+                        out_pos = glm::vec3(bonePos.X, bonePos.Y, bonePos.Z);
+                        return true;
+                    }
                     // Normal entity lookup
                     if (!entityRenderer_) return false;
                     const auto& entities = entityRenderer_->getEntities();

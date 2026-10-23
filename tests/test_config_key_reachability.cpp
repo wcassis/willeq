@@ -79,6 +79,12 @@ const MapNode kDataKeyedMaps[] = {
     {"spell_effects.json", "landingPopulation.exceptions",
      "B1123 (#443): SPELL IDS again; SpellEffectsConfig::applyPopulationRule "
      "enumerates exceptions.getMemberNames() and std::stoul's each one"},
+    {"spell_effects.json", "sourceRecords.records",
+     "B1131 (#451): spells.eff RECORD numbers; SpellEffectsConfig::loadSourceRecords "
+     "enumerates records.getMemberNames() and std::stoi's each one"},
+    {"spell_effects.json", "sourceRecords.overrideRecords",
+     "B1131 (#451): SPELL IDS; SpellEffectsConfig::loadSourceRecords enumerates "
+     "overrideRecords.getMemberNames() and std::stoul's each one"},
 };
 
 // Whole files that are DATA TABLES, not settings: every key below the root is

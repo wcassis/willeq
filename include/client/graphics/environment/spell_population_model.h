@@ -69,12 +69,12 @@ inline float PeakLive(const std::vector<Schedule>& halves) {
     return peak;
 }
 
-// B1122 held the Source past OP_Action (releaseDelay) and lets its sprites
+// B1122 held the Source past OP_Action (its record's hold, B1131) and lets its sprites
 // finish their life, so a cast's Source overlaps its OWN landing.  The Source
-// emits steadily (rate x mean life live) until OP_Action + releaseDelay; its
+// emits steadily (rate x mean life live) until OP_Action + hold; its
 // live count `tau` seconds after OP_Action:
-inline float HeldSourceLiveAt(const Schedule& src, float releaseDelay, float tau) {
-    const float hi = std::min(tau, releaseDelay);
+inline float HeldSourceLiveAt(const Schedule& src, float hold, float tau) {
+    const float hi = std::min(tau, hold);
     const float lo = tau - src.lifetimeMax;
     if (hi <= lo || src.spawnRate <= 0.0f) return 0.0f;
     constexpr int kSteps = 400;
@@ -99,7 +99,7 @@ struct Overlap {
 };
 
 inline Overlap OverlapOf(const std::vector<Schedule>& halves, float landingDelay,
-                         const Schedule& src, float releaseDelay) {
+                         const Schedule& src, float hold) {
     float horizon = 0.0f;
     for (const auto& c : halves) horizon = std::max(horizon, c.emitterLifetime + c.lifetimeMax);
     Overlap o;
@@ -108,9 +108,17 @@ inline Overlap OverlapOf(const std::vector<Schedule>& halves, float landingDelay
         if (tau >= landingDelay)
             for (const auto& c : halves) l += LiveAt(c, tau - landingDelay);
         o.landing.push_back(l);
-        o.source.push_back(HeldSourceLiveAt(src, releaseDelay, tau));
+        o.source.push_back(HeldSourceLiveAt(src, hold, tau));
     }
     return o;
+}
+
+// B1131: the largest k for which (landing + held Source) x k peaks at
+// `target` -- both at one factor, the configured ratio kept.
+inline float ScaleBothToFit(const Overlap& o, float target) {
+    float peak = 0.0f;
+    for (size_t i = 0; i < o.landing.size(); ++i) peak = std::max(peak, o.landing[i] + o.source[i]);
+    return peak > 0.0f ? target / peak : 1.0f;
 }
 
 // The largest k for which the landing x k plus its held Source peaks at

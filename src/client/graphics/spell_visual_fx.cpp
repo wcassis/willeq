@@ -79,6 +79,12 @@ SpellVisualVocabulary SpellVisualFX::spellVocabulary(uint32_t spell_id) const
     return it == m_spell_vocab.end() ? SpellVisualVocabulary{} : it->second;
 }
 
+int SpellVisualFX::sourceRecordOf(uint32_t spell_id) const
+{
+    const int32_t idx = spellVocabulary(spell_id).spellAffectIndex;
+    return idx >= 0 ? static_cast<int>(idx) : -1;
+}
+
 SpellVisualResolution SpellVisualFX::resolveVisual(uint32_t spell_id) const
 {
     static_assert(kNoSpellAffectIndex == kSpellsEffNoEffectIndex,
@@ -374,10 +380,11 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
 {
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
-        // Remove any existing cast glow for this caster (center + both hands)
+        // Remove any existing cast glow for this caster (center, both hands, head)
         m_particle_manager->removeSpellEffectsForEntity(caster_id);
         m_particle_manager->removeSpellEffectsForEntity(rightHandEntityId(caster_id));
         m_particle_manager->removeSpellEffectsForEntity(leftHandEntityId(caster_id));
+        m_particle_manager->removeSpellEffectsForEntity(headEntityId(caster_id));
 
         // T72: spells.eff's Source stage maps onto CastGlow/CastSpray — the
         // caster-side emitter block. Only a *Resolved* record (a real
@@ -396,75 +403,71 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
-        bool spray = isSprayCastStyle(spell_id);
-        auto def = spray
-            ? EQT::Graphics::Environment::SpellPresets::CastSpray(c, spell_id)
-            : EQT::Graphics::Environment::SpellPresets::CastGlow(c, spell_id);
-        // T441 (board B398). The Source stage was already RESOLVED here (the
-        // gate above reads it), but only its presence was used -- its sprite
-        // names were dropped and the glow drew procedural sparkles tinted by
-        // the resist type. Route the names, exactly as T389 did for the
-        // Target stage; applyStageSpriteNames() also drops the tint, because
-        // the art it just installed IS the colour.
-        if (visual.hasSourceStage()) {
-            EQT::Graphics::Environment::SpellPresets::applyStageSpriteNames(
-                def,
-                std::vector<std::string>(visual.source_stage.sprite_names.begin(),
-                                         visual.source_stage.sprite_names.end()),
-                spell_id);
-        }
-        // Override emitter lifetime to match cast duration
-        float durSec = duration_ms / 1000.0f;
-        for (auto& e : def.emitters) {
-            e.config.emitterLifetime = durSec;
-            if (def.bodyAnchored) continue;  // B1122: the style's own geometry
-            if (!spray) e.config.orbitalRadius = 0.4f;  // Tight orbit for hand bones
-            e.positionOffset = glm::vec3(0.0f);
-        }
-
-        // B1122 (B1118 M4): the official client draws its Source stage as a
-        // body-wide cloud from BeginCast + ~0.4 s until OP_Action, not a
-        // pinpoint at the hands. A body-anchored style is ONE emitter on the
-        // caster's own entity, placed and shaped by config/spell_effects.json
-        // (caster heights converted at the B1120 scale); removeCastGlow() at
-        // OP_Action takes it and its live particles down.
-        if (def.bodyAnchored) {
-            LOG_INFO(MOD_SPELL, "createCastGlow: caster={} spell={} spray={} body cloud",
-                     caster_id, spell_id, spray);
-            // A released Source (releaseDelay > 0) is cut by the effect's
-            // maxDuration, which releaseCastGlow() moves to OP_Action +
-            // releaseDelay; until then the emitter must not stop on its own.
-            if (def.releaseDelay > 0.0f)
-                for (auto& e : def.emitters) e.config.emitterLifetime = 0.0f;
-            m_particle_manager->createSpellEffect(def, caster_id, 0, durSec + def.releaseDelay,
-                                                  false);
+        const bool spray = isSprayCastStyle(spell_id);
+        // B1131 (#451): the Source is drawn per spells.eff record, as the
+        // official client draws it (B1130 survey, config `sourceRecords`):
+        // hands / feet-ring / orbit / body / head, with the record's onset.
+        // A spell whose override gives its Source its own geometry (B1122's
+        // 54/656/41/253/458) keeps it on the caster's entity, at its own rate.
+        // Every Source emits until releaseCastGlow() (OP_Action) ends it after
+        // the record's hold; the cap is the cast plus the longest hold, for a
+        // cast whose OP_Action never arrives.
+        namespace Presets = EQT::Graphics::Environment::SpellPresets;
+        using Cfg = EQT::Graphics::Environment::SpellEffectsConfig;
+        const auto& cfg = Cfg::instance();
+        const int record = sourceRecordOf(spell_id);
+        const float durSec = duration_ms / 1000.0f;
+        const float cap = durSec + cfg.sourceRecord(record).maxHold();
+        const float A = cfg.sourceScale().anchorAboveFeet;
+        // T441 (board B398): the Source draws its resolved stage's own sprites
+        // (and so its own colour); applyStageSpriteNames() drops the tint.
+        const std::vector<std::string> stageNames =
+            visual.hasSourceStage()
+                ? std::vector<std::string>(visual.source_stage.sprite_names.begin(),
+                                           visual.source_stage.sprite_names.end())
+                : std::vector<std::string>{};
+        auto build = [&](float anchorAboveFeet, float share) {
+            auto d = Presets::SourceForSpell(c, spell_id, record, spray, anchorAboveFeet, share);
+            if (!stageNames.empty()) Presets::applyStageSpriteNames(d, stageNames, spell_id);
+            return d;
+        };
+        glm::vec3 centerPos(0.0f);
+        const bool hasCenter = m_particle_manager->resolveEntityPosition(caster_id, centerPos);
+        // The followed bone's height above the feet (the entity anchor is A above them).
+        auto boneAboveFeet = [&](const glm::vec3& bone) {
+            return hasCenter ? bone.y - (centerPos.y - A) : A;
+        };
+        using Anchor = Cfg::SourceAnchor;
+        const Anchor anchor = Presets::SourceAnchorForSpell(spell_id, record, spray);
+        if (anchor == Anchor::Hands) {
+            const uint16_t ids[2] = {rightHandEntityId(caster_id), leftHandEntityId(caster_id)};
+            int made = 0;
+            for (uint16_t id : ids) {
+                glm::vec3 hand;
+                if (!m_particle_manager->resolveEntityPosition(id, hand)) continue;
+                m_particle_manager->createSpellEffect(build(boneAboveFeet(hand), 0.5f), id, 0, cap, false);
+                ++made;
+            }
+            LOG_INFO(MOD_SPELL, "createCastGlow: caster={} spell={} record={} hands ({} bones)",
+                     caster_id, spell_id, record, made);
+            if (made > 0) return 1;
+            // No hand bones (placeholder model, non-humanoid): the same spray from the entity.
+            m_particle_manager->createSpellEffect(build(A, 1.0f), caster_id, 0, cap, false);
             return 1;
         }
-
-        // Try hand bones first — create effect at each hand
-        uint16_t rhId = rightHandEntityId(caster_id);
-        uint16_t lhId = leftHandEntityId(caster_id);
-        glm::vec3 rhPos, lhPos, centerPos;
-        bool hasRightHand = m_particle_manager->resolveEntityPosition(rhId, rhPos);
-        bool hasLeftHand  = m_particle_manager->resolveEntityPosition(lhId, lhPos);
-        bool hasCenter    = m_particle_manager->resolveEntityPosition(caster_id, centerPos);
-
-        LOG_INFO(MOD_SPELL, "createCastGlow: caster={} spray={} RH={} ({:.1f},{:.1f},{:.1f}) "
-                 "LH={} ({:.1f},{:.1f},{:.1f}) center={} ({:.1f},{:.1f},{:.1f})",
-                 caster_id, spray,
-                 hasRightHand, rhPos.x, rhPos.y, rhPos.z,
-                 hasLeftHand, lhPos.x, lhPos.y, lhPos.z,
-                 hasCenter, centerPos.x, centerPos.y, centerPos.z);
-
-        if (hasRightHand || hasLeftHand) {
-            if (hasRightHand)
-                m_particle_manager->createSpellEffect(def, rhId, 0, durSec, spray);
-            if (hasLeftHand)
-                m_particle_manager->createSpellEffect(def, lhId, 0, durSec, spray);
-        } else {
-            // Fallback: entity center (no hand bones — placeholder model or non-humanoid)
-            m_particle_manager->createSpellEffect(def, caster_id, 0, durSec, spray);
+        if (anchor == Anchor::Head) {
+            const uint16_t id = headEntityId(caster_id);
+            glm::vec3 head;
+            const bool hasHead = m_particle_manager->resolveEntityPosition(id, head);
+            LOG_INFO(MOD_SPELL, "createCastGlow: caster={} spell={} record={} head (bone={})",
+                     caster_id, spell_id, record, hasHead);
+            m_particle_manager->createSpellEffect(build(hasHead ? boneAboveFeet(head) : A, 1.0f),
+                                                  hasHead ? id : caster_id, 0, cap, false);
+            return 1;
         }
+        LOG_INFO(MOD_SPELL, "createCastGlow: caster={} spell={} spray={} record={} anchor={}",
+                 caster_id, spell_id, spray, record, static_cast<int>(anchor));
+        m_particle_manager->createSpellEffect(build(A, 1.0f), caster_id, 0, cap, false);
         return 1;
     }
 #endif
@@ -638,7 +641,7 @@ void SpellVisualFX::createImpact(uint16_t target_id, uint32_t spell_id)
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::Impact(c, spell_id);
+        auto def = EQT::Graphics::Environment::SpellPresets::Impact(c, spell_id, sourceRecordOf(spell_id));
         // T389 (board B162, T380 Leg B2): the impact burst draws the tiles
         // the spell's spells.eff Target stage names, not the style default.
         // Frost Bolt (54) names GEND10_SPRITE + GENU10_SPRITE x2 there.
@@ -689,7 +692,7 @@ void SpellVisualFX::createImpactAtPosition(const irr::core::vector3df& pos, uint
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::Impact(c, spell_id);
+        auto def = EQT::Graphics::Environment::SpellPresets::Impact(c, spell_id, sourceRecordOf(spell_id));
         // T389 (board B162, T380 Leg B2): the impact burst draws the tiles
         // the spell's spells.eff Target stage names, not the style default.
         // Frost Bolt (54) names GEND10_SPRITE + GENU10_SPRITE x2 there.
@@ -724,7 +727,7 @@ void SpellVisualFX::createSpellComplete(uint16_t caster_id, uint32_t spell_id)
         auto scolor = getSpellColor(spell_id);
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::SpellComplete(c, spell_id);
+        auto def = EQT::Graphics::Environment::SpellPresets::SpellComplete(c, spell_id, sourceRecordOf(spell_id));
         // T441 (board B398). spellComplete is the caster-side half of a
         // landing, so it takes the Source stage's sprites -- and with them
         // its colour. NO suppression gate is added here: unlike the cast

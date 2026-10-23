@@ -53,6 +53,8 @@ void SpellVisualFX::removeCastGlow(uint16_t caster_id)
                                                         kCastStageStyles);
         m_particle_manager->removeSpellEffectsForEntity(leftHandEntityId(caster_id),
                                                         kCastStageStyles);
+        m_particle_manager->removeSpellEffectsForEntity(headEntityId(caster_id),
+                                                        kCastStageStyles);
         return;
     }
 #endif
@@ -73,26 +75,32 @@ void SpellVisualFX::removeCastGlow(uint16_t caster_id)
     }
 }
 
-// B1122: the OP_Action end of a Source. The official client does not drop its
-// cast cloud at the action packet: B1118's videos hold it at its level until
-// the landing takes over (~Act+0.4 s, refactor/B1122/README.md sec. 6). A style
-// with `releaseDelay` keeps emitting that long and then lets its sprites finish
-// their life; without one this is removeCastGlow() (the old instant stop).
-// Interrupts still go through removeCastGlow().
-void SpellVisualFX::releaseCastGlow(uint16_t caster_id, uint32_t spell_id)
+// B1131 (#451): the OP_Action end of a Source. The official client does not
+// drop its cast effect at the action packet. B1122 measured it holding to the
+// landing (~Act+0.4) with the target ON the caster; the B1130 survey, with the
+// target 1.4 caster heights away, measured how long each spells.eff record's
+// Source holds when the target is someone else: 4-6 s on 16 records, 2-4 s on
+// 2, a lower bound <= 1 s on 9 where the landing covers the caster, ~0.3 s on
+// record 22. So the record's emitters keep feeding for holdOther (another
+// target) or holdSelf (the caster, or no target), and their sprites then
+// finish their life. Interrupts still go through removeCastGlow().
+void SpellVisualFX::releaseCastGlow(uint16_t caster_id, uint32_t spell_id, uint16_t target_id)
 {
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
-        const bool spray = isSprayCastStyle(spell_id);
-        const auto s = EQT::Graphics::Environment::SpellEffectsConfig::instance().getStyleSettings(
-            spray ? "castSpray" : "castGlow", spell_id);
-        if (s.hasReleaseDelay && s.releaseDelay > 0.0f) {
-            m_particle_manager->releaseSpellEffectsForEntity(caster_id, kCastStageStyles,
-                                                             s.releaseDelay);
+        const bool self = target_id == 0 || target_id == caster_id;
+        const float hold = EQT::Graphics::Environment::SpellEffectsConfig::instance().sourceHold(
+            sourceRecordOf(spell_id), self);
+        if (hold > 0.0f) {
+            for (uint16_t id : {caster_id, rightHandEntityId(caster_id), leftHandEntityId(caster_id),
+                                headEntityId(caster_id)})
+                m_particle_manager->releaseSpellEffectsForEntity(id, kCastStageStyles, hold);
             return;
         }
     }
 #endif
+    (void)spell_id;
+    (void)target_id;
     removeCastGlow(caster_id);
 }
 

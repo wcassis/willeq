@@ -234,6 +234,30 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_landing_volume DISCOVERY_TIMEOUT 120)
 
+# B1131 (#451): the Source (cast) stage per spells.eff record -- anchor class,
+# shape, onset and hold from the B1130 survey. Config rows run everywhere; the
+# real SpellVisualFX -> ParticleManager -> SimulationWorker seam needs graphics.
+ADD_EXECUTABLE(test_spell_source_anchors
+    test_spell_source_anchors.cpp
+)
+TARGET_LINK_LIBRARIES(test_spell_source_anchors GTest::gtest_main willeq_core)
+# EQT_GRAPHICS=OFF (CI build-headless): willeq_core carries no graphics TU, so
+# the config rows (SourceRecordRows) take the same pure-logic sources as
+# test_spell_colour_and_overrides; the SpellVisualFX seam is #ifdef'd out.
+IF(NOT EQT_GRAPHICS)
+    TARGET_SOURCES(test_spell_source_anchors PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_effects_config.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_emitter_presets.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_spell_source_anchors ${FMT_LIB} ${JSONCPP_LIBRARIES} dl)
+ENDIF()
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_source_anchors PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_source_anchors DISCOVERY_TIMEOUT 120)
+
 # T395 Leg B (board B205): eqemu say-links in server chat text. The helper
 # plus the two consumers that print server-authored lines (OP_SpecialMesg and
 # OP_ChannelMessage).

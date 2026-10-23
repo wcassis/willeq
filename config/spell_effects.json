@@ -24,6 +24,58 @@
             }
         }
     },
+    "sourceRecords": {
+        "rule": "B1131 (#451): the Source (cast) stage per spells.eff record (spells_us.txt field 123), measured on the official client by the B1130 survey (review/B1130/anchor_table.tsv + record_table.tsv, fixed camera, caster heights above the feet). anchor: hands = the two hand bones, feet-ring = a ring at the feet rising lo->hi, orbit = an orbit of radius halfWidth over lo..hi (spiral: rising lo->hi), body = a cloud over lo..hi x +-halfWidth, head = a disc at the head bone (discLo..discHi, discShare of the sprites) with a column falling to lo. onset = seconds after BeginCast; holdOther / holdSelf = seconds the Source keeps emitting past OP_Action when the target is another entity / the caster (holdOther absent = self-only spell). Sprite sizes, lifetimes and art stay the castGlow/castSpray style's (sizes-first, !280); a spellOverrides castGlow/castSpray that sets spawnShape keeps its own geometry and rate. Rows: review/B1131/scripts/gen_source_records.py.",
+        "scale": {"casterHeight": 6.5, "anchorAboveFeet": 3.6, "orbitAngularVelocity": 3.0, "why": "B1120 scale (H 6.5 world units, entity anchor 3.6 above the feet); orbit 3.0 rad/s = B1122's record-23 orbit (54/656 castGlow override)"},
+        "population": {"record": 0, "spawnRate": 80, "why": "a record's spawnRate = 80/s x its oracle Source coverage / record 0's (0.170): record 0 (93/38) keeps B1122/B1123's calibrated castGlow rate, every other record scales by its measured coverage on the same instrument; SpellEffectsConfig::applyPool then fits each landing beside its own held Source"},
+        "default": {"anchor": "body", "onset": 0.41, "holdOther": 4.0, "holdSelf": 0.33},
+        "defaultWhy": "a record the survey did not reach, and a spell with no record: the style's own body cloud (B1122), the median onset of the 40 measured records and the median holdOther of the 28 other-target holds",
+        "overrideRecords": {"38": 0, "93": 0, "41": 20, "54": 23, "656": 23, "253": 35, "458": 33},
+        "overrideRecordsWhy": "spells_us.txt field 123 of every spell with a spellOverrides or landingPopulation row (the pool rule needs the Source hold of its record)",
+        "records": {
+            "0": {"anchor": "hands", "lo": 0.07, "hi": 1.25, "halfWidth": 0.59, "centroid": 0.71, "coverage": 0.17, "onset": 0.46, "holdOther": 4.0, "holdSelf": 0.33, "capture": "r51 93 Burst of Flame; hold: hand flames Act+4.0 f7608, gone Act+5.5 f7646"},
+            "1": {"anchor": "feet-ring", "lo": 0.06, "hi": 1.17, "halfWidth": 0.64, "centroid": 0.48, "coverage": 0.29, "onset": 0.37, "holdOther": 5.5, "holdSelf": 0.33, "capture": "r131 200 Minor Healing; hold: >= 5.5: ring/curtain Act+5.5 f8322"},
+            "2": {"anchor": "hands", "lo": 0.3, "hi": 0.66, "halfWidth": 0.205, "centroid": 0.48, "coverage": 0.147, "onset": 0.4, "holdOther": 4.0, "holdSelf": 0.33, "capture": "r134 202 Courage; hold: plume lit Act+4.0 f8441, gone Act+5.5 f8479"},
+            "3": {"anchor": "body", "lo": 0.28, "hi": 0.99, "halfWidth": 0.42, "centroid": 0.64, "coverage": 0.076, "onset": 0.58, "holdOther": 0.32, "holdSelf": 0.33, "capture": "e3 377 Icestrike; hold: lower bound: sparks Act+0.32 f7366, landing washes the frame from Act+0.48"},
+            "4": {"anchor": "orbit", "lo": 0.1, "hi": 1.86, "halfWidth": 1.195, "centroid": 0.82, "coverage": 1.349, "onset": 0.38, "spiral": true, "holdSelf": 0.33, "capture": "e4 50 Summon Food; self-only (no other-target capture)"},
+            "5": {"anchor": "orbit", "lo": 0.26, "hi": 1.09, "halfWidth": 0.415, "centroid": 0.7, "coverage": 0.18, "onset": 0.39, "holdOther": 4.0, "holdSelf": 0.33, "capture": "e5 80 See Invisible; hold: >= 4: sphere Act+4.0 f8323"},
+            "6": {"anchor": "body", "lo": 0.09, "hi": 1.03, "halfWidth": 0.55, "centroid": 0.57, "coverage": 0.38, "onset": 0.4, "holdSelf": 0.33, "capture": "e6 722 Jaxan`s Jig o` Vigor; self-only (no other-target capture)"},
+            "7": {"anchor": "orbit", "lo": 0.41, "hi": 1.55, "halfWidth": 0.325, "centroid": 0.9, "coverage": 0.39, "onset": 0.4, "holdOther": 5.5, "holdSelf": 0.33, "capture": "r132 40 Strengthen; hold: >= 5.5: lit Act+4.0/+5.5 f8492 f8529"},
+            "8": {"anchor": "orbit", "lo": 0.06, "hi": 1.06, "halfWidth": 0.885, "centroid": 0.49, "coverage": 0.439, "onset": 0.43, "holdSelf": 0.33, "capture": "e8 346 Grim Aura; self-only (no other-target capture)"},
+            "9": {"anchor": "body", "lo": 0.1, "hi": 1.02, "halfWidth": 0.95, "centroid": 0.56, "coverage": 0.861, "onset": 0.39, "holdSelf": 0.33, "capture": "r103 375 Fade; self-only (no other-target capture)"},
+            "10": {"anchor": "orbit", "lo": 0.12, "hi": 1.86, "halfWidth": 1.27, "centroid": 0.79, "coverage": 1.322, "onset": 0.38, "holdSelf": 0.33, "capture": "r43 590 Illusion: Dark Elf; self-only (no other-target capture)"},
+            "11": {"anchor": "orbit", "lo": 0.1, "hi": 0.86, "halfWidth": 0.85, "centroid": 0.58, "coverage": 0.115, "onset": 0.5, "holdSelf": 0.33, "capture": "e11 285 Pendril's Animation; self-only (no other-target capture)"},
+            "12": {"anchor": "orbit", "lo": 0.13, "hi": 1.07, "halfWidth": 0.61, "centroid": 0.64, "coverage": 1.096, "onset": 0.4, "holdOther": 5.5, "holdSelf": 0.33, "capture": "r40 208 Lull; hold: >= 5.5: loops Act+5.5 f7525"},
+            "13": {"anchor": "body", "lo": 0.21, "hi": 1.96, "halfWidth": 0.65, "centroid": 0.91, "coverage": 0.296, "onset": 0.42, "holdOther": 4.0, "holdSelf": 0.33, "capture": "e13 209 Spook the Dead; hold: Act+2.0/+4.0 f7563 f7613"},
+            "14": {"anchor": "hands", "lo": 0.09, "hi": 0.71, "halfWidth": 0.35, "centroid": 0.51, "coverage": 0.083, "onset": 0.49, "holdSelf": 0.33, "capture": "r35 373 Sphere of Light; self-only (no other-target capture)"},
+            "15": {"anchor": "body", "lo": 0.1, "hi": 1.34, "halfWidth": 0.615, "centroid": 0.67, "coverage": 0.806, "onset": 0.39, "holdOther": 4.0, "holdSelf": 0.33, "capture": "e15 289 Taper Enchantment; hold: Act+1.1 f8324, Act+4.0 f8396"},
+            "16": {"anchor": "feet-ring", "lo": 0.24, "hi": 0.81, "halfWidth": 0.595, "centroid": 0.51, "coverage": 0.169, "onset": 0.49, "holdOther": 4.0, "holdSelf": 0.33, "capture": "e16 242 Snare; hold: >= 4: Act+2..+4 f7567 f7617"},
+            "17": {"anchor": "orbit", "lo": 0.1, "hi": 1.51, "halfWidth": 0.82, "centroid": 0.68, "coverage": 0.663, "onset": 0.4, "holdSelf": 0.33, "capture": "e17 237 Dance of the Fireflies; self-only (no other-target capture)"},
+            "18": {"anchor": "hands", "lo": 0.16, "hi": 1.08, "halfWidth": 0.575, "centroid": 0.63, "coverage": 0.296, "onset": 0.4, "holdOther": 4.0, "holdSelf": 0.33, "capture": "e18 378 O'Keils Radiation; hold: hand flame lit Act+4.0 f8396"},
+            "19": {"anchor": "body", "lo": 0.12, "hi": 1.53, "halfWidth": 0.855, "centroid": 0.76, "coverage": 1.325, "onset": 0.48, "holdSelf": 0.33, "capture": "e19 359 Vampiric Embrace; self-only (no other-target capture)"},
+            "20": {"anchor": "body", "lo": 0.07, "hi": 1.71, "halfWidth": 0.64, "centroid": 0.88, "coverage": 0.631, "onset": 0.42, "holdOther": 5.5, "holdSelf": 0.33, "capture": "r139 341 Lifetap; hold: >= 5.5: orb cloud Act+5.5 f7640"},
+            "21": {"anchor": "orbit", "lo": 0.04, "hi": 1.73, "halfWidth": 0.62, "centroid": 0.72, "coverage": 0.825, "onset": 0.41, "holdOther": 1.1, "holdSelf": 0.33, "capture": "e21 218 Ward Undead; hold: lower bound: Act+0.2-1.1 f7512-f7536, then the landing fills the ROI"},
+            "22": {"anchor": "head", "lo": 0.03, "hi": 1.09, "halfWidth": 0.375, "centroid": 0.68, "coverage": 0.256, "onset": 0.46, "discLo": 0.88, "discHi": 1.12, "discHalfWidth": 0.43, "discShare": 0.52, "holdOther": 0.31, "holdSelf": 0.33, "capture": "e22 201 Flash of Light; hold: disc + column Act+0.15-0.31 f7374-f7378, gone under the glare by ~Act+0.5"},
+            "23": {"anchor": "body", "lo": 0.08, "hi": 1.26, "halfWidth": 0.61, "centroid": 0.61, "coverage": 0.429, "onset": 0.42, "holdOther": 2.0, "holdSelf": 0.33, "capture": "e23 372 Blast of Cold; hold: >= 2: squiggles Act+2.0 f7559"},
+            "24": {"anchor": "body", "lo": 0.05, "hi": 0.84, "halfWidth": 0.63, "centroid": 0.39, "coverage": 0.703, "onset": 0.42, "holdOther": 4.0, "holdSelf": 0.33, "capture": "e24 348 Poison Bolt; hold: Act+1.1 f7508, Act+4.0 f7580"},
+            "25": {"anchor": "body", "lo": 0.08, "hi": 1.56, "halfWidth": 0.58, "centroid": 0.83, "coverage": 0.284, "onset": 0.48, "holdOther": 0.3, "holdSelf": 0.33, "capture": "r142 14 Strike; hold: >= 0.3 lower bound: Act+0.3 f7164, then the landing covers the caster"},
+            "26": {"anchor": "body", "lo": 0.14, "hi": 1.25, "halfWidth": 0.59, "centroid": 0.62, "coverage": 0.405, "onset": 0.47, "holdOther": 0.33, "holdSelf": 0.33, "capture": "e26 310 Flare; hold: lower bound: Act+0.0-0.33 f8417-f8425"},
+            "27": {"anchor": "body", "lo": 0.22, "hi": 1.27, "halfWidth": 0.35, "centroid": 0.54, "coverage": 0.179, "onset": 0.38, "holdOther": 1.1, "holdSelf": 0.33, "capture": "e27 290 Color Flux; hold: lower bound: Act+0.15-1.1 f8320-f8344"},
+            "28": {"anchor": "body", "lo": 0.07, "hi": 1.47, "halfWidth": 0.645, "centroid": 0.72, "coverage": 0.612, "onset": 0.39, "holdOther": 0.5, "holdSelf": 0.33, "capture": "e28 73 Gravity Flux; hold: lower bound: Act+0.0-0.5 f7461-f7473"},
+            "29": {"anchor": "hands", "lo": 0.22, "hi": 1.1, "halfWidth": 0.615, "centroid": 0.69, "coverage": 0.148, "onset": 0.4, "holdOther": 4.0, "holdSelf": 0.33, "capture": "e29 286 Shallow Breath; hold: hand flames Act+2-4 f7541 f7591"},
+            "30": {"anchor": "orbit", "lo": 0.07, "hi": 1.47, "halfWidth": 0.63, "centroid": 0.69, "coverage": 0.074, "onset": 0.8, "holdOther": 0.5, "holdSelf": 0.33, "capture": "e30 231 Word of Pain; hold: lower bound: Act+0.0-0.5 f8359-f8371"},
+            "31": {"anchor": "feet-ring", "lo": 0.02, "hi": 1.13, "halfWidth": 0.63, "centroid": 0.41, "coverage": 0.887, "onset": 0.37, "holdOther": 3.0, "holdSelf": 0.33, "capture": "e31 313 Fire Flux; hold: ~2-4: dense Act+2.0 f8277, a few Act+4.0 f8327 (sprites live <= 1.2 s past the stop)"},
+            "32": {"anchor": "feet-ring", "lo": 0.01, "hi": 0.68, "halfWidth": 0.595, "centroid": 0.26, "coverage": 0.535, "onset": 0.39, "holdOther": 0.64, "holdSelf": 0.33, "capture": "e32 374 Numbing Cold; hold: lower bound: Act+0.16-0.64 f8319-f8331"},
+            "33": {"anchor": "orbit", "lo": 0.17, "hi": 0.84, "halfWidth": 0.35, "centroid": 0.51, "coverage": 0.051, "onset": 0.38, "spiral": true, "holdOther": 0.3, "holdSelf": 0.33, "capture": "e33 382 Frost Spiral of Al'Kabor; hold: lower bound: Act+0.14-0.30 f7393-f7397"},
+            "34": {"anchor": "orbit", "lo": 0.02, "hi": 1.27, "halfWidth": 0.52, "centroid": 0.52, "coverage": 0.435, "onset": 0.41, "holdOther": 4.0, "holdSelf": 0.33, "capture": "e34 340 Disease Cloud; hold: Act+1.1 f7376, Act+4.0 f7448"},
+            "35": {"anchor": "orbit", "lo": 0.31, "hi": 2.19, "halfWidth": 0.65, "centroid": 1.36, "coverage": 1.142, "onset": 0.42, "holdOther": 1.1, "holdSelf": 0.33, "capture": "e35 253 Whirling Wind; hold: lower bound: arcs seen apart Act+0.15-1.1 f7351-f7375; after that the NPC's frame-filling whirl is in the caster ROI (the ROI run to Act+5.99 is the landing's, as on records 21/33/26)"},
+            "40": {"anchor": "body", "lo": 0.14, "hi": 1.33, "halfWidth": 0.785, "centroid": 0.66, "coverage": 1.353, "onset": 0.4, "holdSelf": 0.33, "capture": "r84 602 Evacuate: North; self-only (no other-target capture)"},
+            "41": {"anchor": "hands", "lo": 0.17, "hi": 1.5, "halfWidth": 0.56, "centroid": 0.79, "coverage": 0.15, "onset": 0.41, "holdOther": 4.0, "holdSelf": 0.33, "capture": "e41 703 Chords of Dissonance; hold: Act+1.1 f8445, Act+4.0 close f9894"},
+            "42": {"anchor": "hands", "lo": 0.35, "hi": 1.7, "halfWidth": 1.09, "centroid": 0.75, "coverage": 0.077, "onset": 0.41, "holdSelf": 0.33, "capture": "e42 700 Chant of Battle; self-only (no other-target capture)"},
+            "43": {"anchor": "hands", "lo": 0.18, "hi": 1.64, "halfWidth": 1.25, "centroid": 0.74, "coverage": 0.196, "onset": 0.41, "holdSelf": 0.33, "capture": "e43 720 Lyssa`s Locating Lyric; self-only (no other-target capture)"},
+            "51": {"anchor": "body", "lo": 0.21, "hi": 1.96, "halfWidth": 0.65, "centroid": 0.91, "coverage": 0.296, "onset": 0.42, "holdOther": 4.0, "holdSelf": 0.33, "capture": "UNMEASURED (disciplines, not gem-castable): record 13's row, the one other GENK10 Source", "measuredAs": 13}
+        }
+    },
     "resistColors": {
         "none": [0.59, 0.71, 1.0, 1.0],
         "magic": [0.78, 0.39, 1.0, 1.0],
@@ -56,10 +108,7 @@
             "lifetimeMax": 0.7,
             "blendMode": "ADDITIVE",
             "textureRegions": ["SoftCircle", "Ember"],
-            "positionOffset": [0.0, 1.795, 0.0],
-            "triggerDelay": 0.25,
-            "anchor": "body",
-            "releaseDelay": 0.33
+            "positionOffset": [0.0, 1.795, 0.0]
         },
         "castGlow": {
             "spawnRate": 80,
@@ -82,10 +131,7 @@
             "lifetimeMax": 1.2,
             "blendMode": "ADDITIVE",
             "textureRegions": ["SpellSparkle", "StarShape"],
-            "positionOffset": [0.0, 1.795, 0.0],
-            "triggerDelay": 0.25,
-            "anchor": "body",
-            "releaseDelay": 0.33
+            "positionOffset": [0.0, 1.795, 0.0]
         },
         "spellComplete": {
             "spawnRate": 1986.0,
