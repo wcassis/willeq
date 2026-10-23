@@ -35,7 +35,8 @@ renderer. The back-reference surface is narrow:
 The calls are ordinary reads and sends — `GetEntities`, `GetEntityID`,
 `GetPosition`, `GetLevel`, `GetCurrentMana`, `QueuePacket`,
 `AddChatSystemMessage`. One friend-class member access
-(`m_eq->m_loot_complete_corpse_id`, `CombatManager` is a friend).
+(`m_eq->m_loot_complete_corpse_id`, `CombatManager` is a friend; the
+member was deleted by B1133).
 
 ### Verified empirically, not inferred
 

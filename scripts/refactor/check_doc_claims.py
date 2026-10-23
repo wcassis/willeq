@@ -199,6 +199,13 @@ RETIRED = [
     ("PopupType::Skills",
      "deleted; SkillsPopupState is the skills window's visibility",
      "T442 (B450)"),
+    # B1133 (#453): the client-side gate on a corpse's DeleteSpawn. The
+    # server owns corpse lifetime; a real-id DeleteSpawn always removes.
+    ("LootCompleteCorpseId",
+     "deleted; a real-id DeleteSpawn of a corpse is honoured unconditionally",
+     "B1133 (#453)"),
+    ("m_loot_complete_corpse_id",
+     "deleted with the DeleteSpawn loot gate it fed", "B1133 (#453)"),
 ]
 
 

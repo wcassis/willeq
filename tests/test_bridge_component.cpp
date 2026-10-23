@@ -64,24 +64,22 @@ TEST_F(BridgeComponentTest, InspectMessageMovedWithItsAccessorPair) {
     EXPECT_EQ(eq.Bridge().GetInspectMessage().size(), EQT::INSPECT_MESSAGE_MAX_LEN);
 }
 
-// The loot cluster (K05/K06 recorded it as K11's) moved whole: the map, the
-// pending-slot queue and the completed-corpse id, plus the const getter the
-// action handler reads.
+// The loot cluster (K05/K06 recorded it as K11's) moved whole: the map and
+// the pending-slot queue, plus the const getter the action handler reads.
+// (The completed-corpse id that moved with them was deleted by B1133: it fed
+// only the corpse DeleteSpawn gate.)
 TEST_F(BridgeComponentTest, LootClusterMovedWithItsAccessors) {
     EXPECT_TRUE(eq.Bridge().GetLootItems().empty());
     EXPECT_TRUE(eq.Bridge().PendingLootSlots().empty());
-    EXPECT_EQ(eq.Bridge().LootCompleteCorpseId(), 0u);
 
     eq.Bridge().LootItems()[3] =
         eqt::bridge::BridgeComponent::GameLootItem{1001, "Rusty Dagger"};
     eq.Bridge().PendingLootSlots().push_back(3);
-    eq.Bridge().LootCompleteCorpseId() = 77;
 
     // The const getter and the reference getter are the same storage.
     ASSERT_EQ(eq.Bridge().GetLootItems().size(), 1u);
     EXPECT_EQ(eq.Bridge().GetLootItems().at(3).name, "Rusty Dagger");
     EXPECT_EQ(eq.Bridge().PendingLootSlots().front(), 3);
-    EXPECT_EQ(eq.Bridge().LootCompleteCorpseId(), 77u);
 }
 
 // FindLootSlotByName reads the moved map. No window is open here, so it must

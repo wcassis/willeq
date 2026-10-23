@@ -254,7 +254,6 @@ public:
 	// and nothing else. K-final folds them in.
 	std::map<int16_t, GameLootItem>& LootItems() { return m_loot_items; }
 	std::vector<int16_t>& PendingLootSlots() { return m_pending_loot_slots; }
-	uint16_t& LootCompleteCorpseId() { return m_loot_complete_corpse_id; }
 
 	// T230: fire an inventory item's click effect (OP_CastSpell, slot 10)
 	// from an INVENTORY slot. The one sender for both the mouse hotbar path
@@ -520,7 +519,6 @@ private:
 	// loot-all sequencing lives in CombatManager's LootSubState machine
 	// (the m_loot_all_* loop that duplicated it is gone).
 	std::vector<int16_t> m_pending_loot_slots;  // Corpse slots waiting for server confirmation
-	uint16_t m_loot_complete_corpse_id = 0;  // Corpse ID for which looting was completed (ready for deletion)
 	std::map<int16_t, GameLootItem> m_loot_items;  // slot -> item data (game-side)
 
 #ifdef WITH_AUDIO

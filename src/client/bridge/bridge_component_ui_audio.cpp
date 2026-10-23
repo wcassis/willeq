@@ -326,9 +326,6 @@ void eqt::bridge::BridgeComponent::CloseLootWindow(uint16_t corpseId) {
 	m_pending_loot_slots.clear();
 	ctx_.game_state.player().clearLootingCorpse();  // Phase 7.7
 
-	// Mark this corpse as ready for deletion (server will send DeleteSpawn after EndLootRequest)
-	m_loot_complete_corpse_id = targetCorpseId;
-
 	// Send end loot request to server (OP_EndLootRequest, not OP_LootComplete)
 	// Server expects 4 bytes with corpse entity ID as uint16 at offset 0
 	EQ::Net::DynamicPacket packet;

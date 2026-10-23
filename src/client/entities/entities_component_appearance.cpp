@@ -11,8 +11,9 @@
 // EverQuest onto eqt::entities::EntitiesComponent. Still verbatim -- only the
 // substitutions §Mechanism 4 allows (m_game_state/m_bridge/m_entities/
 // m_combat_manager/m_trade_manager/m_inventory_manager/m_buff_manager ->
-// ctx_.*; m_loot_complete_corpse_id/m_loot_items/m_pending_loot_slots ->
-// owner_.m_* (loot cluster, K11 owns the eventual move); AddChatSystemMessage()/
+// ctx_.*; m_loot_items/m_pending_loot_slots -> owner_.m_* (loot cluster,
+// K11 owns the eventual move; B1133 deleted the third member, the corpse
+// DeleteSpawn gate's flag); AddChatSystemMessage()/
 // OnPetRemoved()/OnSpawnRemovedGraphics()/RemoveEntityFromGameState()/
 // UpdateInventoryStats()/IsFullyZonedIn()/CalculateDistance()/PosX()/PosY()/
 // PosZ()/MySpawnId() -> owner_.*, they stay on EverQuest; s_debug_level ->
@@ -84,9 +85,13 @@ void eqt::entities::EntitiesComponent::ZoneProcessDeleteSpawn(const EQ::Net::Pac
 
 	auto it = ctx_.entities.find(spawn_id);
 	if (it != ctx_.entities.end()) {
-		// Handle corpse deletion - only delete corpses we've finished looting
+		// B1133 (#453): the SERVER owns corpse lifetime -- a corpse with
+		// items stays until it decays or is emptied, an emptied one goes at
+		// once, an empty one on the server's decay timer (~1.03 s after the
+		// kill, review/B1125/pcap_deletespawn.tsv). So a real-id DeleteSpawn
+		// of a corpse is honoured like any other; the one corpse-specific
+		// step is closing the loot window if it is open on this corpse.
 		if (it->second.is_corpse) {
-			// If we're actively looting this corpse, close the loot window first
 			if (ctx_.game_state.player().lootingCorpseId() == spawn_id) {
 				LOG_DEBUG(MOD_ENTITY, "Corpse {} ({}) being deleted while looting, closing loot window", spawn_id, it->second.name);
 				// Publish LootWindowClosed (D18a: bridge is sole path to renderer)
@@ -99,25 +104,11 @@ void eqt::entities::EntitiesComponent::ZoneProcessDeleteSpawn(const EQ::Net::Pac
 				ctx_.Bridge().LootItems().clear();
 				ctx_.Bridge().PendingLootSlots().clear();
 				ctx_.game_state.player().clearLootingCorpse();  // Phase 7.7 / T286
-				// Mark as ready for deletion
-				ctx_.Bridge().LootCompleteCorpseId() = spawn_id;
 				// T268: the loot policy machine leaves LOOTING with the window.
 				if (ctx_.combat_manager) {
 					ctx_.combat_manager->OnLootWindowClosed();
 				}
 			}
-
-			// Only delete corpses we've completed looting. (Written when id 0
-			// still meant "current target"; B1125 made id 0 a no-op, so this
-			// now gates only real-id corpse deletes -- including the ~1 s
-			// decay delete of an empty corpse, which this guard refuses.)
-			if (ctx_.Bridge().LootCompleteCorpseId() != spawn_id) {
-				LOG_TRACE(MOD_ENTITY, "Ignoring DeleteSpawn for corpse {} ({}) - not finished looting", spawn_id, it->second.name);
-				return;
-			}
-
-			LOG_DEBUG(MOD_ENTITY, "Corpse {} ({}) removed by server after looting", spawn_id, it->second.name);
-			ctx_.Bridge().LootCompleteCorpseId() = 0;  // Clear the flag
 		}
 
 		LOG_DEBUG(MOD_ENTITY, "Entity {} ({}) despawned", spawn_id, it->second.name);

@@ -37,7 +37,7 @@ other classes' names — ignore. Shared → `owner_.`: the zone-environment set
 K09 left for this unit (`m_zone_map`, `m_zone_bsp_tree*`, `m_zone_fog_*`,
 `m_zone_sky_type`, `m_zone_type`, `m_eq_client_path`, `m_zone_audio_manager`,
 `m_hotbar_model`, `m_loot_items`, `m_pending_loot_slots`,
-`m_loot_complete_corpse_id`) — **this unit moves the loot cluster** (the
+`m_loot_complete_corpse_id`, deleted by B1133) — **this unit moves the loot cluster** (the
 loot window is bridge-facing; K05/K06 recorded it as K11's) and the
 zone-environment set if their only readers are here + `eq.cpp`; record each.
 
@@ -218,7 +218,7 @@ touched by the packet handlers that feed it.
 |---|---|---|
 | `m_loot_items` (+ `struct GameLootItem`, + `GetLootItems()`) | `merchant_trade.cpp` (2), `entities_component_appearance.cpp` (1), `zone_dispatch.cpp` (1), `eq_action_handler.cpp` (2 via the getter) | **MOVED**, with `LootItems()` + the const `GetLootItems()`. (`CombatManager::m_loot_items` in `combat_hunting.cpp`/`combat_rounds.cpp`/two tests is a **different class's same-named member** -- K10 correction (t), the fourth instance) |
 | `m_pending_loot_slots` | `merchant_trade.cpp` (5), `zone_dispatch.cpp` (6), `entities_component_appearance.cpp` (1) | **MOVED**, `PendingLootSlots()` |
-| `m_loot_complete_corpse_id` | `entities_component_appearance.cpp` (3) | **MOVED**, `LootCompleteCorpseId()` |
+| `m_loot_complete_corpse_id` | `entities_component_appearance.cpp` (3) | **MOVED**, `LootCompleteCorpseId()` [B1133: member and accessor deleted with the DeleteSpawn loot gate] |
 | `m_zone_map` (+ `GetZoneMap()`) | `zone_component.cpp` (**8**), `spell_cast_checks.cpp`, `test_eq_action_handler_cast.cpp` | **STAYS** -- zone owns the load and the teardown; the bridge only snapshots it |
 | `m_zone_bsp_tree`, `m_zone_bsp_tree_zone_name` | `zone_component.cpp` (13), `movement_state.cpp` (1) | **STAYS**, same reason |
 | `m_zone_sky_type`, `m_zone_type`, `m_zone_fog_red/green/blue/minclip/maxclip` | `zone_entry.cpp` -- **all seven are WRITTEN by `ZoneProcessNewZone`** and read only by `CreateZoneLoadSnapshot` | **STAYS**. Moving them would make the zone family write through `owner_.Bridge()` on a packet-parse hot path for no gain |

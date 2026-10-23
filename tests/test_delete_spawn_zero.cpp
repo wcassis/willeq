@@ -23,6 +23,7 @@
 #include "zone_stream_test_utils.h"
 
 #include <cstdint>
+#include <variant>
 #include <vector>
 
 using namespace zonetest;
@@ -120,6 +121,146 @@ TEST_F(DeleteSpawnZero, RealId_OtherEntityLeavesSelfTarget) {
     EXPECT_FALSE(Has(kTrollId));
     EXPECT_TRUE(Has(kSelfId));
     EXPECT_EQ(eq.GetCombatManager()->GetTargetId(), kSelfId);
+}
+
+// ---------------------------------------------------------------------------
+// B1133 (#453): the SERVER owns corpse lifetime. A real-id DeleteSpawn of a
+// corpse removes it, loot window or not (Will, 2026-10-23: "the client
+// deletes what the server tells it to delete, nothing more and nothing
+// less"). The removed gate honoured a corpse delete only when it landed with
+// the loot window open on that corpse, so the server's ~1.03 s DeleteSpawn of
+// an empty NPC corpse (17 of 17 kills in review/B1125/pcap_deletespawn.tsv)
+// was dropped and the corpse stayed on screen.
+
+std::vector<uint8_t> DeathPayload(uint32_t victim, uint32_t killer) {
+    std::vector<uint8_t> d = A1RodentDeathPayload();
+    for (int i = 0; i < 4; ++i) {
+        d[i] = static_cast<uint8_t>(victim >> (8 * i));
+        d[4 + i] = static_cast<uint8_t>(killer >> (8 * i));
+        d[8 + i] = static_cast<uint8_t>(victim >> (8 * i));
+    }
+    return d;
+}
+
+class CorpseDeleteSpawn : public DeleteSpawnZero {
+protected:
+    TestBridge bridge;
+
+    void SetUp() override {
+        DeleteSpawnZero::SetUp();
+        eq.setBridge(&bridge);
+        ReplayZone(eq, HC_OP_Death, A1RodentDeathPayload());
+        ASSERT_TRUE(eq.GetEntities().at(kRodentId).is_corpse);
+        (void)bridge.drainEvents();
+    }
+    void TearDown() override { eq.setBridge(nullptr); }
+
+    int LootWindowClosedEvents(uint16_t corpse) {
+        int n = 0;
+        for (const auto& ev : bridge.drainEvents()) {
+            if (ev.type != eqt::state::GameEventType::LootWindowClosed) continue;
+            const auto& d = std::get<eqt::state::LootWindowClosedData>(ev.data);
+            if (d.corpseId == corpse) ++n;
+        }
+        return n;
+    }
+};
+
+// The B1125 pcap order (Death, DeleteSpawn(0), DeleteSpawn(corpse) ~1 s
+// later) with no loot window ever opened: the corpse goes.
+TEST_F(CorpseDeleteSpawn, NoLootWindow_ServerDeleteRemovesCorpse) {
+    ReplayZone(eq, HC_OP_DeleteSpawn, DeleteSpawnPayload(0));
+    ASSERT_TRUE(Has(kRodentId));
+    ReplayZone(eq, HC_OP_DeleteSpawn, DeleteSpawnPayload(kRodentId));
+    EXPECT_FALSE(Has(kRodentId)) << "server DeleteSpawn of a corpse was refused";
+    EXPECT_TRUE(Has(kSelfId));
+    EXPECT_TRUE(Has(kTrollId));
+}
+
+// The corpse is targeted (the usual state after a kill): the delete removes
+// it and drops the target.
+TEST_F(CorpseDeleteSpawn, TargetedCorpse_ServerDeleteRemovesAndClearsTarget) {
+    Target(kRodentId);
+    ReplayZone(eq, HC_OP_DeleteSpawn, DeleteSpawnPayload(kRodentId));
+    EXPECT_FALSE(Has(kRodentId));
+    EXPECT_FALSE(eq.GetCombatManager()->HasTarget());
+}
+
+// Delete while the loot window is open on that corpse: the window closes
+// through LootWindowClosed, the looting state clears, the combat manager
+// leaves LOOTING, and the corpse is removed.
+TEST_F(CorpseDeleteSpawn, LootWindowOpen_ClosesWindowAndRemovesCorpse) {
+    eq.GetCombatManager()->LootCorpse(kRodentId);
+    ASSERT_EQ(eq.GetGameState().player().lootingCorpseId(), kRodentId);
+    ASSERT_TRUE(eq.GetCombatManager()->IsLooting());
+    eq.Bridge().LootItems()[0] = eqt::bridge::BridgeComponent::GameLootItem{1001, "Rat Whiskers"};
+    eq.Bridge().PendingLootSlots().push_back(0);
+    (void)bridge.drainEvents();
+
+    ReplayZone(eq, HC_OP_DeleteSpawn, DeleteSpawnPayload(kRodentId));
+
+    EXPECT_FALSE(Has(kRodentId));
+    EXPECT_EQ(LootWindowClosedEvents(kRodentId), 1);
+    EXPECT_EQ(eq.GetGameState().player().lootingCorpseId(), 0u);
+    EXPECT_FALSE(eq.IsLootWindowOpen());
+    EXPECT_TRUE(eq.Bridge().GetLootItems().empty());
+    EXPECT_TRUE(eq.Bridge().PendingLootSlots().empty());
+    EXPECT_FALSE(eq.GetCombatManager()->IsLooting());
+}
+
+// A loot window open on a DIFFERENT corpse is left alone by this delete.
+TEST_F(CorpseDeleteSpawn, LootWindowOnOtherCorpse_LeftOpen) {
+    ReplayZone(eq, HC_OP_Death, DeathPayload(kTrollId, kSelfId));
+    ASSERT_TRUE(eq.GetEntities().at(kTrollId).is_corpse);
+    eq.GetCombatManager()->LootCorpse(kTrollId);
+    (void)bridge.drainEvents();
+
+    ReplayZone(eq, HC_OP_DeleteSpawn, DeleteSpawnPayload(kRodentId));
+
+    EXPECT_FALSE(Has(kRodentId));
+    EXPECT_TRUE(Has(kTrollId));
+    EXPECT_EQ(eq.GetGameState().player().lootingCorpseId(), kTrollId);
+    EXPECT_TRUE(eq.GetCombatManager()->IsLooting());
+    EXPECT_EQ(LootWindowClosedEvents(kRodentId), 0);
+}
+
+// Nothing less: a corpse no DeleteSpawn names stays.
+TEST_F(CorpseDeleteSpawn, CorpseNotNamed_Stays) {
+    ReplayZone(eq, HC_OP_Death, DeathPayload(kTrollId, kSelfId));
+    ASSERT_TRUE(eq.GetEntities().at(kTrollId).is_corpse);
+    ReplayZone(eq, HC_OP_DeleteSpawn, DeleteSpawnPayload(0));
+    ReplayZone(eq, HC_OP_DeleteSpawn, DeleteSpawnPayload(kRodentId));
+    EXPECT_FALSE(Has(kRodentId));
+    EXPECT_TRUE(Has(kTrollId)) << "a corpse the server did not delete was removed";
+    EXPECT_TRUE(eq.GetEntities().at(kTrollId).is_corpse);
+}
+
+// The user closed the window (OP_EndLootRequest) and the server deletes the
+// emptied corpse: still removed, and a second, later corpse delete with no
+// window works too (no state left over from the first).
+TEST_F(CorpseDeleteSpawn, AfterUserClose_ThenAnotherCorpse_BothRemoved) {
+    eq.GetCombatManager()->LootCorpse(kRodentId);
+    eq.GetCombatManager()->CloseLootWindow();
+    ASSERT_EQ(eq.GetGameState().player().lootingCorpseId(), 0u);
+    ReplayZone(eq, HC_OP_DeleteSpawn, DeleteSpawnPayload(kRodentId));
+    EXPECT_FALSE(Has(kRodentId));
+
+    ReplayZone(eq, HC_OP_Death, DeathPayload(kTrollId, kSelfId));
+    ReplayZone(eq, HC_OP_DeleteSpawn, DeleteSpawnPayload(kTrollId));
+    EXPECT_FALSE(Has(kTrollId));
+    EXPECT_TRUE(Has(kSelfId));
+}
+
+// Non-corpse delete unchanged: a live NPC is removed and a loot window open
+// on a corpse is not touched by it.
+TEST_F(CorpseDeleteSpawn, LiveNpcDelete_Unchanged) {
+    eq.GetCombatManager()->LootCorpse(kRodentId);
+    (void)bridge.drainEvents();
+    ReplayZone(eq, HC_OP_DeleteSpawn, DeleteSpawnPayload(kTrollId));
+    EXPECT_FALSE(Has(kTrollId));
+    EXPECT_TRUE(Has(kRodentId));
+    EXPECT_EQ(eq.GetGameState().player().lootingCorpseId(), kRodentId);
+    EXPECT_EQ(LootWindowClosedEvents(kRodentId), 0);
 }
 
 }  // namespace
