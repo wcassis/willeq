@@ -2104,8 +2104,9 @@ it without taking that measurement first.
   `createImpactAtPosition`, `createBuffAura`, `createRainEffect`,
   `createGroundCircle` (+ their node builders, presets, config styles,
   `hasBuffAura` and `ParticleManager::createSpellEffectAtPosition`): the
-  viewer, their one caller, now runs the client's own cast sequence. Open:
-  `createProjectile` (B1128) and B195's `removeBuffAura`/`removeAllForEntity`.
+  viewer, their one caller, now runs the client's own cast sequence. B1139
+  deleted B195's `removeBuffAura`/`removeAllForEntity`. Open:
+  `createProjectile` (B1128).
   The text below is the pre-B1138 record.
   `include/client/graphics/spell_visual_fx.h` — seven public → issue #116
   methods with **zero callers in `src/`/`include/`** (T381: `tools/` was never
@@ -2295,18 +2296,11 @@ it without taking that measurement first.
   B227's unmeasured travel capture. T417 could not help there either, because
   it never held the lock.
 
-- **B195** (B) `include/client/graphics/spell_visual_fx.h` → issue #118
-  `SpellVisualFX::removeBuffAura(entity_id, spell_id)` and
-  `SpellVisualFX::removeAllForEntity(entity_id)` have **ZERO callers** in
-  `src/`, `include/`, `tests/`, `tools/`, `benchmarks/` or `docker/` (T388
-  census, the B166 rule). They are the removal half of B161's creation half,
-  and unlike the other five they are not even reached by the
-  `tools/model_viewer` FX harness: the harness calls `createBuffAura` and
-  never removes the aura it made. Their bodies are in
-  `src/client/graphics/spell_visual_fx_nodes.cpp`. **Do not delete them
-  independently of B161/B165** -- if the projectile/aura path is wired, an
-  aura that is created and never removed is a leak and these are the fix; if
-  it is deleted, these go with it. Sequenced behind B165. Found by T388.
+- ~~**B195**~~ **CLOSED by B1139** (#459, 2026-10-23) → issue #118:
+  `SpellVisualFX::removeBuffAura` / `removeAllForEntity` deleted with their
+  worker commands (`SpellVFXCommand::RemoveBuffAura` / `RemoveAllForEntity`):
+  the aura creation half they were the removal of went in B1138 (B161), and
+  ZeroCallers listed both as zero-caller in every directory.
 
 - **B166** (P) A reachability census that greps only `src/`, `include/` and
   `tests/` is not "tree-wide". T380 boarded B160 as "`setSpellDatabase()` has <!-- RETIRED-OK: B166 quotes the claim that was wrong; T381 deleted the method -->
@@ -10088,10 +10082,8 @@ fine — the table fails on a stale entry, so it cannot rot.
   `finalizeStripUpload()` / `isStripActive()`), `WeatherSystem` (8),
   `ConstrainedTextureCache::freeze()` / `isFrozen()`, and
   `RendererContext::Slash()` — a Batch-L sibling accessor nothing calls.
-  `SpellVisualFX::removeBuffAura()` / `removeAllForEntity()` are in this group
-  and are ALREADY owned by **B195**: do not delete them independently of B161,
-  they are the leak fix if the creation path is wired. Split this entry before
-  working it. Found by T455.
+  (`SpellVisualFX::removeBuffAura()` / `removeAllForEntity()` were in this
+  group; B1139 deleted them under B195.) Split this entry before working it. Found by T455.
 
 - **B495** (B, unreached) **InventoryManager's bank/cursor/callback API and the → issue #170
   unreached `inventory_constants.h` helpers: 41 zero-caller public functions

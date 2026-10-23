@@ -29,7 +29,10 @@ EQE1Loader fxPack;
 EQE1TextureIndex fxIndex;
 std::vector<std::unique_ptr<EQE1Loader>> fxArchives;
 EQT::Graphics::SimulationWorker fxWorker;
-EQT::Graphics::SimulationOutput fxOutput;
+// Two outputs so --worker-latency 1 can draw the one computed a frame earlier.
+EQT::Graphics::SimulationOutput fxOutputs[2];
+int fxComputed = 0;  // the index computeOnce() last wrote
+bool fxTargetGone = false;  // --target-despawn: the target left the scene
 std::unordered_map<uint16_t, glm::vec3> fxPendingPositions;
 std::unordered_map<uint16_t, glm::vec3> fxPendingDirections;
 eqt::bridge::CastGlowRoute fxRoute;
@@ -266,6 +269,15 @@ void applyHarnessPresetDefaults() {
         harnessOpts.casterRace = 6;
         harnessOpts.casterGender = 1;
         harnessOpts.casterSize = 6.0f;
+        // B1139: her Spawn_Struct appearance in that leg's OP_ZoneEntry (S->C):
+        // face 3, TextureProfile {0, 10, 1, 23, 1, 1, 1, 0, 72} -- the red robe
+        // (chest 10) and IT72, the orb her left hand holds. equip_chest2 reads
+        // 255 there; the client passes it through as appearance.texture.
+        harnessOpts.casterAppearanceSet = true;
+        harnessOpts.casterFace = 3;
+        harnessOpts.casterTexture = 255;
+        const uint32_t equip[9] = {0, 10, 1, 23, 1, 1, 1, 0, 72};
+        std::copy(equip, equip + 9, harnessOpts.casterEquipment);
     }
     // `#spawn TrollF`: eqemu's default #spawn is a level-1 human male
     // (the leg's chat: "Race | Human (1)", "Gender | Male (0)").
@@ -274,6 +286,18 @@ void applyHarnessPresetDefaults() {
         harnessOpts.targetGender = 0;
         harnessOpts.targetSize = 6.0f;
     }
+    // B1139: the fable Tip of the Day window every lane-5 leg opens is drawn
+    // OVER the particles there (opaque: no lit pixel inside it in any frame of
+    // the B1132 leg-B capture). Its box on the 1280x800 grab, read off that
+    // leg's tail frame (review/B1138/backdrop/): x 920.., rows 243..542. Left
+    // out, the harness counted 5.4 % more landing coverage than lane 5 shows.
+    if (!harnessOpts.uiOccludersGiven) harnessOpts.uiOccluders.push_back({920, 243, 1280, 543});
+    // B1139: the lane client simulates at its 60 fps and the grab keeps every
+    // 2nd frame (B1138 measured +2.6 % landing coverage for it), and in leg B
+    // Testcaster stands 228 px head top to feet (rows 377..605 of that leg's
+    // tail frame, review/B1138/backdrop/), not B1118's 235.
+    if (harnessOpts.simHz <= 0) harnessOpts.simHz = 60;
+    if (!harnessOpts.casterPxGiven) harnessOpts.casterPx = 228.0f;
 }
 
 bool initHarnessTextureCache() {
@@ -326,6 +350,13 @@ void shutdownHarness() {
 #endif
     fxTextureCache.reset();
     fxArchives.clear();
+    // B1139: the held items' textures (the caster's orb) live in the viewer's
+    // equipment cache; a static unique_ptr destroyed after the device would
+    // free them through a dead driver (SIGSEGV at exit), so drop them here.
+    if (secondaryEquipNode) { secondaryEquipNode->remove(); secondaryEquipNode = nullptr; }
+    if (primaryEquipNode) { primaryEquipNode->remove(); primaryEquipNode = nullptr; }
+    equipmentModelLoader.reset();
+    equipmentTextureCache.reset();
 }
 
 bool initHarnessParticles() {
@@ -348,7 +379,7 @@ bool initHarnessParticles() {
 
     auto nodeFor = [](uint16_t id) -> EQAnimatedMeshSceneNode* {
         if (id == casterEntityId) return animatedNode;
-        if (id == targetEntityId) return targetAnimatedNode;
+        if (id == targetEntityId && !fxTargetGone) return targetAnimatedNode;  // a despawned entity resolves nothing
         return nullptr;
     };
     // The renderer's two callbacks (renderer_entities.cpp): a plain entity is
@@ -406,6 +437,8 @@ void stepSpellParticles(float dt, uint32_t seed) {
     pi.unifiedRendererInitialized = true;
     pi.poolSize = EQT::Graphics::Environment::SpellEffectsConfig::instance().getGlobal().maxParticles;
     pi.rngSeed = seed;
+    fxComputed ^= 1;
+    EQT::Graphics::SimulationOutput& fxOutput = fxOutputs[fxComputed];
     fxWorker.computeOnce(input, fxOutput);
     fxPendingPositions.clear();
     fxPendingDirections.clear();
@@ -427,6 +460,8 @@ void stepSpellParticles(float dt, uint32_t seed) {
 
 void renderSpellParticles() {
 #ifdef EQT_HAS_GLES2
+    const EQT::Graphics::SimulationOutput& fxOutput =
+        fxOutputs[harnessOpts.workerLatency > 0 ? fxComputed ^ 1 : fxComputed];
     if (!particleManager || !fxOutput.particleOutput.valid) return;
     const core::matrix4 viewMat = driver->getTransform(video::ETS_VIEW);
     const core::matrix4 projMat = driver->getTransform(video::ETS_PROJECTION);
@@ -590,15 +625,27 @@ int runScriptedHarness() {
         fxBackdrop = driver->getTexture(harnessOpts.backdropPath.c_str());
         if (!fxBackdrop) std::fprintf(stderr, "[fx-harness] backdrop %s did not load\n", harnessOpts.backdropPath.c_str());
     }
-    const double dt = 1.0 / harnessOpts.fps;
+    const int simHz = harnessOpts.simHz > 0 ? harnessOpts.simHz : harnessOpts.fps;
+    if (simHz % harnessOpts.fps != 0) {
+        std::fprintf(stderr, "[fx-harness] --sim-hz %d is not a multiple of --fps %d\n", simHz, harnessOpts.fps);
+        return 2;
+    }
+    const int sub = simHz / harnessOpts.fps;  // simulation steps per written frame
+    const double dt = 1.0 / simHz;
     const int frames = static_cast<int>(std::lround(harnessOpts.seconds * harnessOpts.fps));
     const Clock::time_point epoch{};  // the scripted clock: no wall time anywhere
     size_t next = 0;
+    double lastAction = -1.0;  // scripted time of the latest OP_Action
+    bool targetDied = false;
     placeHarnessTarget(plan[0].self, plan[0].distance);
     device->getTimer()->stop();  // (already stopped by setupSpellTestCamera)
-    for (int f = 0; f < frames; ++f) {
+    // Step g runs at t = g / simHz; every sub-th step is drawn and written as
+    // frame g / sub (with sub = 2, exactly review/B1138/scripts/decimate.py's
+    // even frames of a 60 fps run).
+    for (int g = 0; g < frames * sub; ++g) {
         if (!device->run()) break;
-        const double t = f * dt;
+        const double t = g * dt;
+        const int f = g / sub;
         while (next < events.size() && events[next].t <= t + 1e-9) {
             const Event& e = events[next++];
             const HarnessCast& c = plan[e.cast];
@@ -609,12 +656,33 @@ int runScriptedHarness() {
                 harnessBeginCast(sp, c.self, e.castMs, now);
             } else {
                 harnessAction(sp, c.self, now);
+                lastAction = e.t;
             }
             char row[256];
             std::snprintf(row, sizeof(row), "%d\t%.6f\t%s\t%u\t%s\t%.3f\t%u\t%.6f\n", f, t,
                           e.action ? "Action" : "BeginCast", c.spellId, c.self ? "self" : "other",
                           c.distance, e.castMs, e.t);
             timing << row;
+        }
+        // B1139: the lane NPC the tour kills (OP_Death, then OP_DeleteSpawn).
+        // The death is ApplyCorpseDeathPose's witnessed branch: stop, then d05
+        // (d02/d01 fallback) once, play-through, resting on its last frame.
+        if (lastAction >= 0.0 && targetAnimatedNode && !targetDied && harnessOpts.targetDeathAfterAction >= 0.0 &&
+            t + 1e-9 >= lastAction + harnessOpts.targetDeathAfterAction) {
+            targetDied = true;
+            for (const char* anim : {"d05", "d02", "d01"}) {
+                if (!targetAnimatedNode->hasAnimation(anim)) continue;
+                targetAnimatedNode->stopAnimation();
+                targetAnimatedNode->playAnimation(anim, false, true);
+                std::printf("[fx-harness] target death %s at t %.3f\n", anim, t);
+                break;
+            }
+        }
+        if (lastAction >= 0.0 && targetAnimatedNode && !fxTargetGone && harnessOpts.targetDespawnAfterAction >= 0.0 &&
+            t + 1e-9 >= lastAction + harnessOpts.targetDespawnAfterAction) {
+            fxTargetGone = true;
+            targetAnimatedNode->setVisible(false);
+            std::printf("[fx-harness] target despawned at t %.3f\n", t);
         }
         // The scene's own clock: drawAll() animates every node off the device
         // timer, so the timer is stopped and set to the scripted time (+1 s:
@@ -623,9 +691,11 @@ int runScriptedHarness() {
         device->getTimer()->setTime(ms);
         animatedNode->OnAnimate(ms);
         if (targetAnimatedNode) targetAnimatedNode->OnAnimate(ms);
+        updateEquipmentPositions();  // B1139: the caster's held items on their bones
         spellVisualFX->update(static_cast<float>(dt));
         stepSpellParticles(static_cast<float>(dt), harnessOpts.seed);
         uploadHarnessTextures();
+        if (g % sub != 0) continue;  // simulated, not drawn
 
         driver->beginScene(true, true, video::SColor(255, 50, 50, 80));
         if (fxBackdrop) {
@@ -635,6 +705,8 @@ int runScriptedHarness() {
         }
         smgr->drawAll();
         renderSpellParticles();
+        for (const auto& r : harnessOpts.uiOccluders)  // the lane client's UI, drawn last
+            driver->draw2DRectangle(video::SColor(255, 24, 24, 30), core::rect<s32>(r.x0, r.y0, r.x1, r.y1));
         driver->endScene();
 
         video::IImage* shot = driver->createScreenShot();
@@ -651,7 +723,7 @@ int runScriptedHarness() {
         std::snprintf(row, sizeof(row), "%d\t%.6f\t-\t-\t-\t-\t-\t-\n", f, t);
         timing << row;
     }
-    std::printf("[fx-harness] wrote %d frames at %d fps to %s\n", frames, harnessOpts.fps,
-                harnessOpts.framesDir.c_str());
+    std::printf("[fx-harness] wrote %d frames at %d fps (simulated at %d Hz) to %s\n", frames, harnessOpts.fps,
+                simHz, harnessOpts.framesDir.c_str());
     return 0;
 }

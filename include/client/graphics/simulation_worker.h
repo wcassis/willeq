@@ -51,14 +51,13 @@ enum class ParticleCommand : uint8_t {
     ActivateWeather,           // type + intensity → weather emitter from WeatherPresets
     DeactivateWeather,         // remove weather emitter
     CreateSpellEffect,         // SpellEffectDef + caster/target/duration
-    CreateSpellEffectAtPos,    // SpellEffectDef + world position + duration
     // T397 Leg B (board B220): RemoveSpellEffect (by effect id) was DELETED
     // here. It had zero callers in src/ include/ tests/ tools/ benchmarks/
     // docker/, no caller ever stored the id createSpellEffect() returns, and
     // ParticleManager::removeSpellEffect() wrote the wrong field so the
     // worker's arm could not have matched anyway. Removal is by entity, which
-    // is what every live caller (SpellVisualFX::removeCastGlow /
-    // removeBuffAura / removeAllForEntity) actually asks for. Recover with:
+    // is what the live caller (SpellVisualFX::removeCastGlow) actually
+    // asks for. Recover with:
     // git show 8382268d:include/client/graphics/simulation_worker.h
     RemoveSpellEffectsEntity,  // by entityID
     // B1122: stop the matching effects' emission `duration` seconds from now
@@ -88,7 +87,7 @@ struct ParticleCommandData {
     uint8_t weatherType = 0;
     uint8_t weatherIntensity = 0;
 
-    // CreateSpellEffect / CreateSpellEffectAtPos
+    // CreateSpellEffect
     Environment::SpellEffectDef spellDef;
     uint16_t casterID = 0;
     uint16_t targetID = 0;
@@ -96,7 +95,6 @@ struct ParticleCommandData {
     bool useDynamicDir = false;
     float projectileTravelDuration = 0.0f;
     uint32_t preAssignedEffectID = 0;       // Pre-assigned by main thread
-    glm::vec3 worldPos{0.0f};               // For CreateSpellEffectAtPos
 
     // RemoveSpellEffectsEntity. THIS is the field the worker matches on, and
     // T397 Leg B is the unit that made ParticleManager write it: it was
@@ -107,8 +105,8 @@ struct ParticleCommandData {
     uint16_t entityID = 0;
 
     // RemoveSpellEffectsEntity, style filter (T426, board B400). EMPTY means
-    // "every style attached to that entity", which is what removeAllForEntity
-    // and a despawn want. A NON-EMPTY list restricts the removal to effects
+    // "every style attached to that entity", which is what a despawn
+    // wants. A NON-EMPTY list restricts the removal to effects
     // whose SpellEffectDef::name is in it.
     //
     // Why it exists: eqemu sends the caster TWO OP_Action packets for one cast
@@ -195,8 +193,6 @@ struct WeatherCommandData {
 enum class SpellVFXCommand : uint8_t {
     CreateEffect,
     RemoveCastGlow,
-    RemoveBuffAura,
-    RemoveAllForEntity,
     ClearAll,
 };
 

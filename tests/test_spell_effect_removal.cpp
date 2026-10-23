@@ -9,8 +9,8 @@
 //
 // TRACING IT TURNED UP THE LIVE ONE, WHICH IS WHAT THIS FILE PINS.
 // ParticleManager::removeSpellEffectsForEntity() -- the removal every real
-// caller uses (SpellVisualFX::removeCastGlow, removeBuffAura,
-// removeAllForEntity) -- had the SAME wrong-field bug, and there it was not
+// caller uses (SpellVisualFX::removeCastGlow; B1139 deleted the zero-caller
+// removeBuffAura / removeAllForEntity) -- had the SAME wrong-field bug, and there it was not
 // harmless. It wrote cmd.targetID, leaving cmd.entityID at its default 0,
 // while SimulationWorker's RemoveSpellEffectsEntity arm matches
 //

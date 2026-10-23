@@ -161,10 +161,21 @@ bit-deterministic across build types (T403).
 `model_viewer --spell-test --plan <tsv> --frames-dir <dir> --fps 30 --headless
 --seconds N --camera b1118` drives the client's own cast sequence
 (`src/client/bridge/spell_cast_fx.cpp`) through the production FX chain and
-writes frames + `timing.tsv`; `review/B1138/scripts/harness_measure.py` runs the
+writes frames + `timing.tsv`; `review/B1139/scripts/harness_measure.py` runs the
 lane-5 measurement scripts on them unchanged. Lane 5 is for ORACLE legs (the
-official client) only. Residuals vs the lane's own fable numbers are in
-`refactor/B1138/README.md`.
+official client) only. The b1118 preset carries the lane rig's measured parity
+factors as defaults (B1139: 60 Hz step, 228 px Testcaster in her robe with the
+orb, p01/o01 idles, the Tip of the Day window drawn over the particles;
+`tools/model_viewer/README.md`). **What the harness may gate** (B1139, spell 93
+leg B, `refactor/B1139/README.md`):
+- a FABLE REGRESSION, harness against harness at a fixed plan + `--seed`:
+  landing coverage, landing end, landing ROI p90, landing peak time;
+- PARITY with lane 5: landing coverage (seeds 1-5 within -1.3..+2.6 % of both
+  lane captures) and landing end (+0.06..+0.12 s). Quote the seed spread with
+  any parity number: landing ROI p90 moves 0.064..0.071 over seeds;
+- LANE-ONLY: Source ROI p90 (harness reads +15..+32 % over the lane's 0.062;
+  unexplained residual, a denser early hand spray) and colour/hue (the frame
+  mean mixes in the scene).
 
 ⚠ A "no server" negative test is NOT safe without checking the lock: T410's
 smoke test for the could-not-start exit found T405's server UP and logged a

@@ -104,60 +104,6 @@ void SpellVisualFX::releaseCastGlow(uint16_t caster_id, uint32_t spell_id, uint1
     removeCastGlow(caster_id);
 }
 
-void SpellVisualFX::removeBuffAura(uint16_t entity_id, uint32_t spell_id)
-{
-#ifdef EQT_HAS_GLES2
-    if (m_particle_manager) {
-        m_particle_manager->removeSpellEffectsForEntity(entity_id);
-        return;
-    }
-#endif
-    if (m_worker_driven) {
-        EQT::Graphics::SpellVFXCommandData cmd;
-        cmd.type = EQT::Graphics::SpellVFXCommand::RemoveBuffAura;
-        cmd.sourceEntity = entity_id;
-        cmd.spellId = spell_id;
-        m_pending_commands.push_back(cmd);
-    }
-    // Also remove local scene nodes immediately
-    for (size_t i = 0; i < m_effects.size(); ) {
-        if (m_effects[i].type == SpellFXType::AuraPersistent &&
-            m_effects[i].source_entity == entity_id &&
-            m_effects[i].spell_id == spell_id) {
-            removeEffect(i);
-        } else {
-            ++i;
-        }
-    }
-}
-
-void SpellVisualFX::removeAllForEntity(uint16_t entity_id)
-{
-#ifdef EQT_HAS_GLES2
-    if (m_particle_manager) {
-        m_particle_manager->removeSpellEffectsForEntity(entity_id);
-        m_particle_manager->removeSpellEffectsForEntity(rightHandEntityId(entity_id));
-        m_particle_manager->removeSpellEffectsForEntity(leftHandEntityId(entity_id));
-        // Fall through to also clean up any Irrlicht scene nodes
-    }
-#endif
-    if (m_worker_driven) {
-        EQT::Graphics::SpellVFXCommandData cmd;
-        cmd.type = EQT::Graphics::SpellVFXCommand::RemoveAllForEntity;
-        cmd.sourceEntity = entity_id;
-        m_pending_commands.push_back(cmd);
-    }
-    // Also remove local scene nodes immediately
-    for (size_t i = 0; i < m_effects.size(); ) {
-        if (m_effects[i].source_entity == entity_id ||
-            m_effects[i].target_entity == entity_id) {
-            removeEffect(i);
-        } else {
-            ++i;
-        }
-    }
-}
-
 void SpellVisualFX::clearAllEffects()
 {
     if (m_worker_driven) {
