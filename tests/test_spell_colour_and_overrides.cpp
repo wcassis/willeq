@@ -123,7 +123,13 @@
 // exception, `landingPopulation.exceptions`, caps the landing alone).  The
 // pool-accounting cases (SpellPoolRule) run at EVERY platform's pool.  Sizes
 // are judged on the caster-ROI instrument (roi_oracle.txt), not B1118's
-// whole-frame p90: 253 is the style x1.3, the ROI band top.
+// whole-frame p90.
+//
+// B1123 SIZES-FIRST (Will, #443 note 7118): every size matches the oracle's
+// ROI p90 first and coverage follows from the pool -- coverage is never bought
+// with an oversized sprite.  Every measured row now carries its own size,
+// pinned in B1123SizesAreTheOraclesRoi below; coverage after the shrink is
+// reported in refactor/B1123/README.md "Sizes-first leg", not asserted here.
 
 #include <gtest/gtest.h>
 #include <json/json.h>
@@ -580,25 +586,6 @@ TEST_P(SpellPoolRule, WhirlingWindIsASteadyFrameFillingField) {
         << ") must fit the pool (" << pool() << ")";
 }
 
-// B1123 completion (#443; Will 2026-10-22: sprite SIZES are judged on the
-// caster-ROI instrument, review/B1119/scripts/fx_sprite_roi.py, against the
-// oracle's ROI p90 in review/B1120/measure_oracle/roi_oracle.txt).  The
-// oracle's 253 Landing sprite there is 0.093 caster heights (band +-15 %:
-// 0.079-0.107).  B1123 had held 253 to B1119's whole-frame band top (x1.12 of
-// the style, ROI 0.084 at 8192); on the lane-5 8192 capture x1.3 reads at the
-// ROI band top and x1.45 reads 0.130, over it (refactor/B1123/README.md
-// "Completion leg").  The linear-law x1.63 B1123 quoted would read ~0.137.
-// RED on the B1123 config (x1.12).
-TEST_F(SpellStyleOverrides, WhirlingWindSpritesAreTheStyleRaisedToTheRoiBandTop) {
-    for (const auto& pair : {std::make_pair(impact(253), impact(0)),
-                             std::make_pair(complete(253), complete(0))}) {
-        EXPECT_NEAR(pair.first.sizeStartMin / pair.second.sizeStartMin, 1.3f, 0.005f);
-        EXPECT_NEAR(pair.first.sizeStartMax / pair.second.sizeStartMax, 1.3f, 0.005f);
-        EXPECT_NEAR(pair.first.sizeEndMin / pair.second.sizeEndMin, 1.3f, 0.005f);
-        EXPECT_NEAR(pair.first.sizeEndMax / pair.second.sizeEndMax, 1.3f, 0.005f);
-    }
-}
-
 // And it lasts as long as the oracle's: B1118 measured its landing END at
 // Act+6.52 s (T422's 5.6 s total was an llvmpipe-era read).  The sim's last
 // death (delay + emitterLifetime + lifetimeMax) must not fall before it; the
@@ -663,33 +650,29 @@ TEST_P(SpellPoolRule, ThePoolStillHoldsTwoOfTheLargestLanding) {
 }  // namespace
 
 // ---------------------------------------------------------------------------
-// B1119 (#439) -- sprite SIZE per stage, against B1118's real-frame-rate oracle
-// p90 sprite diameters (caster heights).  Calibrated on a sprite-separable
-// lane-5 capture (refactor/B1119/README.md): an isolated sprite's lit p90
-// diameter is linear in its size, ~0.028 caster heights per x1 of the T422
-// landing sizes and ~0.0071 per x1 of the pre-B1119 castGlow sizes.
-//   Landing  style x2.8 (93 656 458 253); 38 x2.07, 54 x3.3, 41 x4.23
-//   Source   castGlow x10.3 (93 38 253); 54/656 x4.5, 458 x5.5; castSpray x22.6 (41)
-// B1119's per-spell size overrides below were forced by B1118's WHOLE-FRAME
-// table.  Will (2026-10-22) re-based every size band on the caster-ROI
-// instrument (review/B1119/scripts/fx_sprite_roi.py; oracle p90s in
-// review/B1120/measure_oracle/roi_oracle.txt, band +-15 %).  The bands, and the
-// B1123-completion lane-5 8192 gate reading of each (refactor/B1123/README.md
-// "Completion leg", gate_table.tsv):
-//   Landing  oracle ROI   band          gate     verdict
-//     93     0.075        0.064-0.086   0.094    over   (held: see README)
-//     38     0.069        0.059-0.079   0.077    in
-//     54     0.044        0.037-0.051   0.069    over   (held)
-//     656    0.035        0.030-0.040   0.062    over   (held)
-//     41     0.101        0.086-0.116   0.156    over   (held)
-//     253    0.093        0.079-0.107   0.107    in     (style x1.3, below)
-//     458    0.101        0.086-0.116   ROI458   (style x1.3, below)
-//   Source   93 0.084, 38 0.074, 54 0.027, 656 0.028, 41 0.113, 253 0.178,
-//            458 0.043 (gate: 0.135 0.130 0.065 0.065 0.181 0.173 0.051).
-// "held" = the size did not move: shrinking it toward the band costs landing
-// coverage the card's coverage rows need, and on a thinned (sprite-separable)
-// capture 38/41 read in band -- the over-read is merged blobs at density.  The
-// trade is Will's (README FOLLOW-UP).
+// B1123 SIZES-FIRST (#443 note 7118) -- sprite SIZE per stage.  Will: "sizes
+// match the oracle first, coverage follows from the pool".  Every row is
+// pinned to the oracle's caster-ROI p90 (review/B1119/scripts/fx_sprite_roi.py;
+// review/B1120/measure_oracle/roi_oracle.txt; band +-15 %), read DENSE on the
+// lane-5 8192 capture (refactor/B1123/README.md "Sizes-first leg", review/
+// B1123/leg3/gate_table.tsv).  Over-band rows were SHRUNK; nothing was held
+// for coverage.  start-range midpoint, oracle ROI, cal c2 / gate reading:
+//   Landing  impact  spellComplete  oracle  band          cal    gate
+//     93     0.198   0.244 (style)  0.075   0.064-0.086   0.075  0.074
+//     38     0.1785  0.219          0.069   0.059-0.079   0.075  0.073
+//     54     0.1525  0.187          0.044   0.037-0.051   0.047  0.046
+//     656    0.115   0.141          0.035   0.030-0.040   0.033  0.033
+//     41     0.2645  0.325          0.101   0.086-0.116   0.102  0.102
+//     253    0.351   0.4315         0.093   0.079-0.107   0.096  0.095
+//     458    0.3615  0.4455         0.101   0.086-0.116   0.101  0.100
+//   Source   castGlow 0.659 (style: 93, 38), 54 0.216, 656 0.225, 253 1.03,
+//            458 0.4895; castSpray 41 1.0035 (style 1.356 untouched: 41 is
+//            its only measured spell).  Oracle 93 0.084, 38 0.074, 54 0.027,
+//            656 0.028, 41 0.113, 253 0.178, 458 0.043; cal c2 0.080 0.079
+//            0.027 0.028 0.112 0.150 0.045; gate 0.078 0.077
+//            0.027 0.028 0.108 0.164 0.046 -- all 14 in band.  Coverage at the gate
+//            (landing 3.01 2.55 0.98 0.62 2.25 3.67 1.50 vs the oracle 5.85 3.89
+//            2.46 2.49 4.15 7.28 1.24) is reported, not asserted.
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -730,38 +713,31 @@ TEST_F(SpellStyleOverrides, B1122SourceShapesFollowTheSpellsEffRecord) {
     EXPECT_NE(castSprayFor(41).spawnExtents, castSprayFor(0).spawnExtents);
     EXPECT_NE(castGlowFor(253).spawnExtents, style.spawnExtents);
     EXPECT_NE(castGlowFor(458).spawnExtents, style.spawnExtents);
-    // The B1119 Source SIZES are untouched (B1119SourceSizesFollowTheOracleTable).
-    EXPECT_FLOAT_EQ(startMid(castGlowFor(253)), startMid(style));
+    // Sizes are B1123SizesAreTheOraclesRoi's: 253 keeps the size that read in
+    // band before the sizes-first shrink of the style.
+    EXPECT_NE(startMid(castGlowFor(253)), startMid(style));
 }
 
-TEST_F(SpellStyleOverrides, B1119LandingStylesAreTwoPointEightTimesT422) {
-    EXPECT_NEAR(startMid(impact(0)) / 0.1025f, 2.8f, 0.03f);    // T422 impact 0.08-0.125
-    EXPECT_NEAR(startMid(complete(0)) / 0.126f, 2.8f, 0.03f);   // T422 spellComplete 0.095-0.157
-}
-
-TEST_F(SpellStyleOverrides, B1119LandingOverridesFollowTheOracleTable) {
-    // 38 0.058 < 93 0.074 < 54 0.064-at-a-smaller-texture-response < 41 0.110.
-    const float style = startMid(impact(0));
-    EXPECT_NEAR(startMid(impact(38)) / style, 2.07f / 2.8f, 0.02f);
-    EXPECT_NEAR(startMid(impact(54)) / style, 3.3f / 2.8f, 0.02f);
-    EXPECT_NEAR(startMid(impact(41)) / style, 4.23f / 2.8f, 0.02f);
-    EXPECT_NEAR(startMid(complete(41)) / startMid(complete(0)), 4.23f / 2.8f, 0.02f);
-    EXPECT_FLOAT_EQ(startMid(impact(93)), style) << "93 is the style's own band";
-    // B1123 completion: 458 left the style on the ROI instrument (below).
-    EXPECT_NEAR(startMid(impact(458)) / style, 1.3f, 0.005f);
-    EXPECT_NEAR(startMid(complete(458)) / startMid(complete(0)), 1.3f, 0.005f);
-}
-
-TEST_F(SpellStyleOverrides, B1119SourceSizesFollowTheOracleTable) {
-    const float glow = startMid(castGlowFor(0));
-    EXPECT_NEAR(glow / 0.10f, 10.3f, 0.1f);                     // pre-B1119 castGlow 0.08-0.12
-    EXPECT_NEAR(startMid(castSprayFor(0)) / 0.06f, 22.6f, 0.2f); // pre-B1119 castSpray 0.04-0.08
-    EXPECT_FLOAT_EQ(startMid(castGlowFor(93)), glow);
-    EXPECT_FLOAT_EQ(startMid(castGlowFor(38)), glow);
-    EXPECT_FLOAT_EQ(startMid(castGlowFor(253)), glow);
-    EXPECT_NEAR(startMid(castGlowFor(54)) / glow, 4.5f / 10.3f, 0.01f);
-    EXPECT_NEAR(startMid(castGlowFor(656)) / glow, 4.5f / 10.3f, 0.01f);
-    EXPECT_NEAR(startMid(castGlowFor(458)) / glow, 5.5f / 10.3f, 0.01f);
+// RED on the completion-leg config (fable 52b810e2): every row but 253/458
+// Landing and 253/458 Source moved.
+TEST_F(SpellStyleOverrides, B1123SizesAreTheOraclesRoi) {
+    struct Row { uint32_t id; float impact, complete; };
+    for (const Row& r : {Row{0, 0.198f, 0.244f}, Row{93, 0.198f, 0.244f}, Row{38, 0.1785f, 0.219f},
+                         Row{54, 0.1525f, 0.187f}, Row{656, 0.115f, 0.141f}, Row{41, 0.2645f, 0.325f},
+                         Row{253, 0.351f, 0.4315f}, Row{458, 0.3615f, 0.4455f}}) {
+        EXPECT_NEAR(startMid(impact(r.id)), r.impact, 0.0006f) << r.id;
+        EXPECT_NEAR(startMid(complete(r.id)), r.complete, 0.0006f) << r.id;
+    }
+    struct Src { uint32_t id; float mid; };
+    for (const Src& r : {Src{0, 0.659f}, Src{93, 0.659f}, Src{38, 0.659f}, Src{54, 0.216f},
+                         Src{656, 0.225f}, Src{253, 1.03f}, Src{458, 0.4895f}}) {
+        EXPECT_NEAR(startMid(castGlowFor(r.id)), r.mid, 0.0006f) << r.id;
+    }
+    EXPECT_NEAR(startMid(castSprayFor(41)), 1.0035f, 0.0006f);
+    EXPECT_NEAR(startMid(castSprayFor(0)), 1.356f, 0.0006f) << "the castSpray style is unmeasured";
+    // 93 IS record 0: no size override of its own.
+    EXPECT_FLOAT_EQ(startMid(impact(93)), startMid(impact(0)));
+    EXPECT_FLOAT_EQ(startMid(castGlowFor(93)), startMid(castGlowFor(0)));
 }
 
 // The point-sprite clamp (POINT_SPRITE_VS: 1..100 px, size * screenH / clip.w)

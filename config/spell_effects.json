@@ -6,10 +6,22 @@
     "landingPopulation": {
         "rule": "B1123 (#443): every landing (impact + spellComplete) peaks at half the platform pool (constrained_presets.json spellParticlePool), so two overlapping landings, or 253's field beside one, fit; the rates below give each landing's schedule and SpellEffectsConfig::applyPool scales them to the peak. An exception is a landing the oracle fills with FEWER sprites: its peak is min(peakLive, half the pool).",
         "exceptions": {
-            "41": {"peakLive": 2492, "why": "B1123 sweep (review/B1123/pool_fit.tsv): 2492 live reaches the oracle's 4.154 landing coverage at the shipped sizes"},
-            "54": {"peakLive": 3517, "why": "B1123 completion lane-5 calibration (review/B1123/leg2/cal/m_k1): 3517 live reads 2.459 against the oracle's 2.461 landing coverage"},
-            "656": {"peakLive": 3517, "why": "spells.eff record 23, one population with 54 (B1122's per-record rule); reads 2.13 of the oracle's 2.49 at it (review/B1123/leg2/cal/m_k1)"},
-            "458": {"peakLive": 373, "why": "the oracle draws FEWER, LARGER sprites: at the style size it read 125 % of the oracle's 1.242 landing coverage with ROI p90 0.079 (band 0.086-0.116); lane-5 calibration (review/B1123/leg2/cal/m_k2) puts x1.3 sprites at ROI 0.104 and 0.6 of B1123's 622 at 0.71 of the coverage"}
+            "41": {
+                "peakLive": 2492,
+                "why": "B1123 sweep (review/B1123/pool_fit.tsv): 2492 live reaches the oracle's 4.154 landing coverage at the shipped sizes"
+            },
+            "54": {
+                "peakLive": 3517,
+                "why": "B1123 completion lane-5 calibration (review/B1123/leg2/cal/m_k1): 3517 live reads 2.459 against the oracle's 2.461 landing coverage"
+            },
+            "656": {
+                "peakLive": 3517,
+                "why": "spells.eff record 23, one population with 54 (B1122's per-record rule); reads 2.13 of the oracle's 2.49 at it (review/B1123/leg2/cal/m_k1)"
+            },
+            "458": {
+                "peakLive": 373,
+                "why": "the oracle draws FEWER, LARGER sprites: at the style size it read 125 % of the oracle's 1.242 landing coverage with ROI p90 0.079 (band 0.086-0.116); lane-5 calibration (review/B1123/leg2/cal/m_k2) puts x1.3 sprites at ROI 0.104 and 0.6 of B1123's 622 at 0.71 of the coverage"
+            }
         }
     },
     "resistColors": {
@@ -62,10 +74,10 @@
             "drag": 0.0,
             "colorStartAlpha": 0.7,
             "colorEndAlpha": 0.0,
-            "sizeStartMin": 0.824,
-            "sizeStartMax": 1.236,
-            "sizeEndMin": 0.412,
-            "sizeEndMax": 0.618,
+            "sizeStartMin": 0.527,
+            "sizeStartMax": 0.791,
+            "sizeEndMin": 0.264,
+            "sizeEndMax": 0.396,
             "lifetimeMin": 0.8,
             "lifetimeMax": 1.2,
             "blendMode": "ADDITIVE",
@@ -88,10 +100,10 @@
             "drag": 0.0,
             "colorStartAlpha": 0.9,
             "colorEndAlpha": 0.0,
-            "sizeStartMin": 0.266,
-            "sizeStartMax": 0.44,
-            "sizeEndMin": 0.532,
-            "sizeEndMax": 0.784,
+            "sizeStartMin": 0.184,
+            "sizeStartMax": 0.304,
+            "sizeEndMin": 0.367,
+            "sizeEndMax": 0.541,
             "lifetimeMin": 1.6,
             "lifetimeMax": 2.0,
             "blendMode": "ADDITIVE",
@@ -115,10 +127,10 @@
             "drag": 0.5,
             "colorStartAlpha": 0.8,
             "colorEndAlpha": 0.0,
-            "sizeStartMin": 0.224,
-            "sizeStartMax": 0.35,
-            "sizeEndMin": 0.44,
-            "sizeEndMax": 0.658,
+            "sizeStartMin": 0.155,
+            "sizeStartMax": 0.241,
+            "sizeEndMin": 0.304,
+            "sizeEndMax": 0.454,
             "lifetimeMin": 1.6,
             "lifetimeMax": 2.0,
             "blendMode": "ADDITIVE",
@@ -250,24 +262,24 @@
     "spellOverrides": {
         "38": {
             "impact": {
-                "sizeStartMin": 0.166,
-                "sizeStartMax": 0.259,
-                "sizeEndMin": 0.325,
-                "sizeEndMax": 0.486
+                "sizeStartMin": 0.139,
+                "sizeStartMax": 0.218,
+                "sizeEndMin": 0.273,
+                "sizeEndMax": 0.408
             },
             "spellComplete": {
-                "sizeStartMin": 0.197,
-                "sizeStartMax": 0.325,
-                "sizeEndMin": 0.393,
-                "sizeEndMax": 0.58
+                "sizeStartMin": 0.165,
+                "sizeStartMax": 0.273,
+                "sizeEndMin": 0.33,
+                "sizeEndMax": 0.487
             }
         },
         "54": {
             "impact": {
-                "sizeStartMin": 0.264,
-                "sizeStartMax": 0.413,
-                "sizeEndMin": 0.518,
-                "sizeEndMax": 0.776,
+                "sizeStartMin": 0.119,
+                "sizeStartMax": 0.186,
+                "sizeEndMin": 0.233,
+                "sizeEndMax": 0.349,
                 "spawnShape": "SPHERE",
                 "spawnExtents": [0.65, 0.0, 0.0],
                 "motionType": "RADIAL_EXPAND",
@@ -282,10 +294,10 @@
                 "emitterLifetime": 3.0
             },
             "spellComplete": {
-                "sizeStartMin": 0.314,
-                "sizeStartMax": 0.518,
-                "sizeEndMin": 0.627,
-                "sizeEndMax": 0.924,
+                "sizeStartMin": 0.141,
+                "sizeStartMax": 0.233,
+                "sizeEndMin": 0.282,
+                "sizeEndMax": 0.416,
                 "spawnShape": "BOX",
                 "spawnExtents": [0.0, 4.225, 0.0],
                 "motionType": "ORBITAL",
@@ -301,10 +313,10 @@
                 "emitterLifetime": 3.0
             },
             "castGlow": {
-                "sizeStartMin": 0.36,
-                "sizeStartMax": 0.54,
-                "sizeEndMin": 0.18,
-                "sizeEndMax": 0.27,
+                "sizeStartMin": 0.173,
+                "sizeStartMax": 0.259,
+                "sizeEndMin": 0.086,
+                "sizeEndMax": 0.13,
                 "spawnShape": "BOX",
                 "spawnExtents": [0.0, 3.575, 0.0],
                 "motionType": "ORBITAL",
@@ -320,10 +332,10 @@
         },
         "656": {
             "castGlow": {
-                "sizeStartMin": 0.36,
-                "sizeStartMax": 0.54,
-                "sizeEndMin": 0.18,
-                "sizeEndMax": 0.27,
+                "sizeStartMin": 0.18,
+                "sizeStartMax": 0.27,
+                "sizeEndMin": 0.09,
+                "sizeEndMax": 0.135,
                 "spawnShape": "BOX",
                 "spawnExtents": [0.0, 3.575, 0.0],
                 "motionType": "ORBITAL",
@@ -349,7 +361,11 @@
                 "positionOffset": [0.0, 1.6, 0.0],
                 "spawnRate": 1500.0,
                 "sustainRate": 499.8,
-                "emitterLifetime": 3.0
+                "emitterLifetime": 3.0,
+                "sizeStartMin": 0.106,
+                "sizeStartMax": 0.176,
+                "sizeEndMin": 0.213,
+                "sizeEndMax": 0.314
             },
             "impact": {
                 "spawnShape": "SPHERE",
@@ -363,15 +379,19 @@
                 "positionOffset": [0.0, -1.0, 0.0],
                 "spawnRate": 1000.0,
                 "sustainRate": 333.2,
-                "emitterLifetime": 3.0
+                "emitterLifetime": 3.0,
+                "sizeStartMin": 0.09,
+                "sizeStartMax": 0.14,
+                "sizeEndMin": 0.176,
+                "sizeEndMax": 0.263
             }
         },
         "458": {
             "castGlow": {
-                "sizeStartMin": 0.44,
-                "sizeStartMax": 0.66,
-                "sizeEndMin": 0.22,
-                "sizeEndMax": 0.33,
+                "sizeStartMin": 0.392,
+                "sizeStartMax": 0.587,
+                "sizeEndMin": 0.196,
+                "sizeEndMax": 0.294,
                 "spawnShape": "BOX",
                 "spawnExtents": [2.34, 2.925, 2.34],
                 "motionType": "LINEAR",
@@ -394,10 +414,10 @@
                 "spawnRate": 500.0,
                 "sustainRate": 166.5,
                 "emitterLifetime": 2.9,
-                "sizeStartMin": 0.346,
-                "sizeStartMax": 0.572,
-                "sizeEndMin": 0.692,
-                "sizeEndMax": 1.019
+                "sizeStartMin": 0.336,
+                "sizeStartMax": 0.555,
+                "sizeEndMin": 0.671,
+                "sizeEndMax": 0.988
             },
             "impact": {
                 "spawnShape": "BOX",
@@ -411,19 +431,19 @@
                 "spawnRate": 500.0,
                 "sustainRate": 166.5,
                 "emitterLifetime": 2.9,
-                "sizeStartMin": 0.291,
-                "sizeStartMax": 0.455,
-                "sizeEndMin": 0.572,
-                "sizeEndMax": 0.855
+                "sizeStartMin": 0.282,
+                "sizeStartMax": 0.441,
+                "sizeEndMin": 0.555,
+                "sizeEndMax": 0.829
             }
         },
         "41": {
             "impact": {
                 "spawnRate": 1174.5,
-                "sizeStartMin": 0.338,
-                "sizeStartMax": 0.529,
-                "sizeEndMin": 0.664,
-                "sizeEndMax": 0.994,
+                "sizeStartMin": 0.206,
+                "sizeStartMax": 0.323,
+                "sizeEndMin": 0.405,
+                "sizeEndMax": 0.606,
                 "spawnShape": "BOX",
                 "spawnExtents": [2.275, 0.325, 2.275],
                 "motionType": "LINEAR",
@@ -437,10 +457,10 @@
             },
             "spellComplete": {
                 "spawnRate": 1918.2,
-                "sizeStartMin": 0.402,
-                "sizeStartMax": 0.664,
-                "sizeEndMin": 0.804,
-                "sizeEndMax": 1.184,
+                "sizeStartMin": 0.245,
+                "sizeStartMax": 0.405,
+                "sizeEndMin": 0.49,
+                "sizeEndMax": 0.722,
                 "spawnShape": "SPHERE",
                 "spawnExtents": [2.6, 0.0, 0.0],
                 "motionType": "RADIAL_EXPAND",
@@ -462,7 +482,11 @@
                 "gravity": [0.0, 0.0, 0.0],
                 "drag": 0.0,
                 "positionOffset": [0.0, 3.225, 0.0],
-                "spawnRate": 330
+                "spawnRate": 330,
+                "sizeStartMin": 0.669,
+                "sizeStartMax": 1.338,
+                "sizeEndMin": 0.334,
+                "sizeEndMax": 0.669
             }
         },
         "253": {
@@ -479,10 +503,10 @@
                 "positionOffset": [0.0, 5.175, 0.0],
                 "spawnWindow": 0.0,
                 "sustainRate": 0.0,
-                "sizeStartMin": 0.291,
-                "sizeStartMax": 0.455,
-                "sizeEndMin": 0.572,
-                "sizeEndMax": 0.855
+                "sizeStartMin": 0.274,
+                "sizeStartMax": 0.428,
+                "sizeEndMin": 0.538,
+                "sizeEndMax": 0.804
             },
             "spellComplete": {
                 "spawnRate": 600.0,
@@ -497,10 +521,10 @@
                 "positionOffset": [0.0, 5.175, 0.0],
                 "spawnWindow": 0.0,
                 "sustainRate": 0.0,
-                "sizeStartMin": 0.346,
-                "sizeStartMax": 0.572,
-                "sizeEndMin": 0.692,
-                "sizeEndMax": 1.019
+                "sizeStartMin": 0.325,
+                "sizeStartMax": 0.538,
+                "sizeEndMin": 0.65,
+                "sizeEndMax": 0.958
             },
             "castGlow": {
                 "spawnShape": "BOX",
@@ -511,7 +535,11 @@
                 "gravity": [0.0, 0.0, 0.0],
                 "drag": 0.0,
                 "positionOffset": [0.0, 4.915, 0.0],
-                "spawnRate": 1950
+                "spawnRate": 1950,
+                "sizeStartMin": 0.824,
+                "sizeStartMax": 1.236,
+                "sizeEndMin": 0.412,
+                "sizeEndMax": 0.618
             }
         }
     }

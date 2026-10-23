@@ -291,22 +291,24 @@ TEST_F(SpellBurstOracleMatch, SheetPlaybackRateFollowsFromTheMeasuredLifetime) {
 // MEASURED RIGHT and was deliberately not touched.  Pin both so a later unit
 // does not move either off a desk argument.  (B1120 replaced the expand
 // speed with the measured spark-shell speed; see the last assertion.)
-// B1123 completion (Will 2026-10-22): sizes are judged on the caster-ROI
-// instrument against review/B1120/measure_oracle/roi_oracle.txt (record 0:
-// 93 0.075, 38 0.069), not B1118's whole-frame p90 above; the record-0 style
-// is unchanged by it (93 reads over that band at 8192, 38 in it -- held,
-// tests/test_spell_colour_and_overrides.cpp's ROI table).
+// B1123 sizes-first (Will, #443 note 7118): every sprite size matches the
+// oracle's caster-ROI p90 (review/B1119/scripts/fx_sprite_roi.py against
+// review/B1120/measure_oracle/roi_oracle.txt, band +-15 %) FIRST, and
+// coverage follows from the pool.  Record 0 is 93's own: the B1119 sizes read
+// 0.094 on the lane-5 8192 gate (band 0.064-0.086), so the landing style is
+// x0.69 of them (cal 0.075 vs the oracle's 0.075; refactor/B1123/README.md
+// "Sizes-first leg").  Coverage is reported there, never bought with size.
 TEST_F(SpellBurstOracleMatch, SpriteSizeAndExpandSpeedAreTheMeasuredOnes) {
     const auto c = Impact();
-    EXPECT_FLOAT_EQ(c.sizeStartMin, 0.224f);
-    EXPECT_FLOAT_EQ(c.sizeStartMax, 0.35f);
-    EXPECT_FLOAT_EQ(c.sizeEndMin, 0.44f);
-    EXPECT_FLOAT_EQ(c.sizeEndMax, 0.658f);
+    EXPECT_FLOAT_EQ(c.sizeStartMin, 0.155f);
+    EXPECT_FLOAT_EQ(c.sizeStartMax, 0.241f);
+    EXPECT_FLOAT_EQ(c.sizeEndMin, 0.304f);
+    EXPECT_FLOAT_EQ(c.sizeEndMax, 0.454f);
     const auto sc = Complete();
-    EXPECT_FLOAT_EQ(sc.sizeStartMin, 0.266f);
-    EXPECT_FLOAT_EQ(sc.sizeStartMax, 0.44f);
-    EXPECT_FLOAT_EQ(sc.sizeEndMin, 0.532f);
-    EXPECT_FLOAT_EQ(sc.sizeEndMax, 0.784f);
+    EXPECT_FLOAT_EQ(sc.sizeStartMin, 0.184f);
+    EXPECT_FLOAT_EQ(sc.sizeStartMax, 0.304f);
+    EXPECT_FLOAT_EQ(sc.sizeEndMin, 0.367f);
+    EXPECT_FLOAT_EQ(sc.sizeEndMax, 0.541f);
     // B1120 (#440): the impact style is no longer RADIAL_EXPAND at 4.0; it is
     // the oracle's 93/38 spark shell, a BURST at 1.6 caster heights/s
     // horizontal (6.5-unit caster, refactor/B1120/README.md sec. 3-4).
