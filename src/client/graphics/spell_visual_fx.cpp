@@ -91,8 +91,10 @@ SpellVisualVocabulary SpellVisualFX::spellVocabulary(uint32_t spell_id) const
 
 int SpellVisualFX::sourceRecordOf(uint32_t spell_id) const
 {
-    const int32_t idx = spellVocabulary(spell_id).spellAffectIndex;
-    return idx >= 0 ? static_cast<int>(idx) : -1;
+    // B1137 (#457): the row of the record the oracle draws (field 145), not
+    // of the spells.eff record (field 123) -- SpellEffectsConfig::rowForAnim().
+    return EQT::Graphics::Environment::SpellEffectsConfig::instance().rowForAnim(
+        spellVocabulary(spell_id).spellAnim);
 }
 
 SpellVisualResolution SpellVisualFX::resolveVisual(uint32_t spell_id) const
@@ -413,7 +415,8 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
         const bool spray = isSprayCastStyle(spell_id);
-        // B1131 (#451): the Source is drawn per spells.eff record, as the
+        // B1131 (#451): the Source is drawn per measured row (B1137: the row of
+        // the spell's field-145 record, sourceRecordOf()), as the
         // official client draws it (B1130 survey, config `sourceRecords`):
         // hands / feet-ring / orbit / body / head, with the record's onset.
         // A spell whose override gives its Source its own geometry (B1122's

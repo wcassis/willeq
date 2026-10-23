@@ -201,6 +201,7 @@ bool SpellEffectsConfig::load(const std::string& path) {
     loadSourceRecords(root);
     // B1132: the per-record Target (landing) rows (anchor, shape).
     loadTargetRecords(root);
+    loadAnimRecords(root);
 
     // B1123: landing populations follow the platform pool (applyPool).
     global_.maxParticles = pool_;
@@ -724,6 +725,32 @@ void SpellEffectsConfig::loadTargetRecords(const Json::Value& root) {
 const SpellEffectsConfig::TargetRecord& SpellEffectsConfig::targetRecord(int record) const {
     auto it = targetRecords_.find(record);
     return it != targetRecords_.end() ? it->second : targetDefault_;
+}
+
+void SpellEffectsConfig::loadAnimRecords(const Json::Value& root) {
+    animRows_.clear();
+    const Json::Value& ar = root["animRecords"];
+    if (!ar.isObject()) {
+        LOG_ERROR(MOD_GRAPHICS, "SpellEffectsConfig: no `animRecords` block -- every spell draws the default "
+                  "Source/Target rows (B1137)");
+        return;
+    }
+    LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: anim rule: {}", ar["rule"].asString());
+    const Json::Value& rows = ar["rows"];
+    for (const auto& key : rows.getMemberNames()) {
+        const int row = rows[key].asInt();
+        if (!sourceRecords_.count(row) || !targetRecords_.count(row))
+            LOG_ERROR(MOD_GRAPHICS, "SpellEffectsConfig: animRecords {} names row {} with no measured "
+                      "Source/Target row", key, row);
+        animRows_[std::stoi(key)] = row;
+    }
+    LOG_INFO(MOD_GRAPHICS, "SpellEffectsConfig: {} spellsnew.eff records carry a measured row (B1137)",
+             animRowCount());
+}
+
+int SpellEffectsConfig::rowForAnim(int spellAnim) const {
+    auto it = animRows_.find(spellAnim);
+    return it != animRows_.end() ? it->second : -1;
 }
 
 int SpellEffectsConfig::overrideRecord(uint32_t spellId) const {

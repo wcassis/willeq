@@ -281,6 +281,28 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_target_anchors DISCOVERY_TIMEOUT 120)
 
+# B1137 (#457): the measured Source/Target row is chosen by the spell's
+# spellsnew.eff record (field 145), not its spells.eff record (field 123).
+# Config rows run everywhere; the SpellVisualFX key check needs graphics.
+ADD_EXECUTABLE(test_spell_anim_rows
+    test_spell_anim_rows.cpp
+)
+TARGET_LINK_LIBRARIES(test_spell_anim_rows GTest::gtest_main willeq_core)
+IF(NOT EQT_GRAPHICS)
+    TARGET_SOURCES(test_spell_anim_rows PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_effects_config.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_emitter_presets.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_eff_reader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_spell_anim_rows ${FMT_LIB} ${JSONCPP_LIBRARIES} dl)
+ENDIF()
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_anim_rows PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_anim_rows DISCOVERY_TIMEOUT 120)
+
 # T395 Leg B (board B205): eqemu say-links in server chat text. The helper
 # plus the two consumers that print server-authored lines (OP_SpecialMesg and
 # OP_ChannelMessage).

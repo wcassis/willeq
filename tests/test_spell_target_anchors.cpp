@@ -31,6 +31,7 @@
 
 #include "client/graphics/environment/spell_effects_config.h"
 #include "spell_pool.h"
+#include "spell_anim_rows.h"
 
 #include <cmath>
 #include <fstream>
@@ -222,6 +223,7 @@ protected:
         v.known = true;
         v.school = EQ::SpellSchool::Evocation;
         v.spellAffectIndex = record;
+        v.spellAnim = static_cast<int16_t>(spell_anim_rows::AnimOfRow(record));  // B1137: the row key
         fx_->noteSpellVocabulary(spell, v);
     }
     void Pump() {
