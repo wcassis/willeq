@@ -63,6 +63,33 @@ structural evidence only.
 5. Source extents grow with cast time (1656 3.0 s vs its row's 1.75 s capture: Source centroid 0.62 vs 0.41).
    A row holds ONE cast time. Scaling it needs the EDD velocity/lifetime fields proven (item 1).
 
+## 6. The controlled oracle A/B (DENIED, not run, not retried)
+
+What was asked for and refused ("Remote Shell Writes"): for ONE oracle leg, replace the oracle client's
+`/home/user/eq-oracle/client/spellsnew.edd` and `spellsnew.eff` with modified copies, after the lane lease and
+before Wine starts, then copy the pristine files back with Wine stopped and before the lease is released. Both
+shas are checked before and after (pristine `spellsnew.edd`
+c3dd72d20dcbcf444eb574e4b1219969651212f0d06b8ccea5c8c6bedc8979f9, `spellsnew.eff`
+fb68c773f81b91a69afafcaae2100a1631784ea95acb9f5b9a2ec77b37cb5cb1; backup in `~/eq-oracle/b1137-pristine/`).
+The hook goes into a rig copy of `scripts/eqemu/oracle/oracle_session.sh`, with env `ORACLE_DATA_SWAP=<dir>`.
+Nothing of it was written to the oracle host.
+
+The exact files are built locally and are not installed anywhere:
+`review/B1137/scripts/make_ab_files.py` -> `review/B1137/ab/AB{1,2,3}/spellsnew.{eff,edd}`. Each leg has a
+`MANIFEST.txt` with every rewritten byte range and the shas (`ab/shas.txt`). The leg plans are
+`review/B1137/plans/legAB{1,2,3}_enc.tsv`, ENC class 14, `oracle_plan_check.py` OK. Per leg:
+- **Carriers**: gems 1-7 = 10, 39, 46, 64, 84, 174, 289 (ENC beneficial, self cast). They draw field-145
+  records 88, 109, 74, 86, 102, 93, 103. Each carrier record's 204 stage bytes (+64..+267) are rewritten:
+  stage 0 slot 0 = {emitter E, b 0, actor 1, d}, every other slot and stage zero, Source sound kept.
+- **Emitters** E = EDD entries 2098-2104. No spellsnew.eff record references them. Each gets the 416 bytes of
+  entry 554 (`Tallon'sArrow1 3-2`: gena20.bmp, one picture, shape 5, no vector fields) with ONE change:
+  - AB1: d = 2 (base), 1, 3, 4, 5; +0xCC/+0x17C..+0x184 x4; base repeat.
+  - AB2: base; +0x80 = 16; +0x84 = 16; +0xA4 x4; +0x94 x4; +0x88 x4; +0xAC x4.
+  - AB3: base; +0xB8 = -3.0; +0xA8 = 0, 1, 9; colour +0xD4..+0xE8 = 255,0,0,255,0,0; +0xA8 = 3.
+- Measured with B1130's `cast_measure.py` (fixed camera, Source = one emitter per cast). Each field gets a
+  transfer function (attach point, size, count, lifetime, speed, radius, gravity, shape, colour) against the
+  base gem of the same leg.
+
 ## Gate (lane 5, 36ba97e6; `review/B1137/README.md` sec. 6)
 
 - The tour (A/B/C) is unchanged within run-to-run noise against B1127's gate: landing coverage -5.2..+0.4 %,
