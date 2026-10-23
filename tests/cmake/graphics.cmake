@@ -321,7 +321,8 @@ TARGET_COMPILE_DEFINITIONS(test_spell_sprite_atlas PRIVATE
 TARGET_INCLUDE_DIRECTORIES(test_spell_sprite_atlas PRIVATE
     ${CMAKE_SOURCE_DIR}/tools
     ${CMAKE_SOURCE_DIR}/include)
-TARGET_LINK_LIBRARIES(test_spell_sprite_atlas GTest::gtest_main)
+# B1127: sprite_image_reader.h decodes the PNG sprites (zlib).
+TARGET_LINK_LIBRARIES(test_spell_sprite_atlas GTest::gtest_main ZLIB::ZLIB)
 GTEST_DISCOVER_TESTS(test_spell_sprite_atlas DISCOVERY_TIMEOUT 120)
 
 # T430 (board B376): the shipped item icon sheets versus the official client's

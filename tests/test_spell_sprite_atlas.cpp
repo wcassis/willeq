@@ -42,6 +42,10 @@
 
 #include "client/graphics/environment/particle_types.h"
 #include "client/graphics/environment/spell_sprite_atlas.h"
+#include <dirent.h>
+#include <strings.h>
+
+#include "sprite_image_reader.h"
 #include "tga_reader.h"
 
 using namespace EQT::Graphics::Environment;
@@ -191,11 +195,30 @@ uint64_t cellAlpha(const Bitmap& bmp, int cell) {
 // either side of the 4x4 sheet's internal seams, as a share of the total,
 // over the band's share of the area. A grid pads each frame inside its own
 // cell (near 0); one centred picture lies across the seams (above 1).
-double seamRatio(const EQT::ToolTGA::Image& img) {
-    const int cell = img.width / SpellSpriteAtlas::kSheetGrid;
+// B1127: the client is Windows -- spellsnew.edd's glowflare02.tga is
+// Glowflare02.tga on disk.
+std::string sourcePath(const char* file) {
+    std::string hit = std::string(kSourceDir) + "/" + file;
+    if (DIR* d = opendir(kSourceDir)) {
+        while (dirent* e = readdir(d)) {
+            if (strcasecmp(e->d_name, file) == 0) hit = std::string(kSourceDir) + "/" + e->d_name;
+        }
+        closedir(d);
+    }
+    return hit;
+}
+
+// B1127: 16 frames = 4x4 grid, 4 = 2x2 grid, 1 = one picture.
+int gridFor(int frames) {
+    return frames == SpellSpriteAtlas::kFramesPerSprite ? SpellSpriteAtlas::kSheetGrid
+         : frames == SpellSpriteAtlas::kTwoByTwo ? 2 : 1;
+}
+
+double seamRatio(const EQT::ToolTGA::Image& img, int grid = SpellSpriteAtlas::kSheetGrid) {
+    const int cell = img.width / grid;
     const int band = std::max(1, cell / 8);
     auto inBand = [&](int v) {
-        for (int k = 1; k < SpellSpriteAtlas::kSheetGrid; ++k) {
+        for (int k = 1; k < grid; ++k) {
             if (v >= k * cell - band && v < k * cell + band) return true;
         }
         return false;
@@ -270,11 +293,13 @@ TEST(SpellSpriteAtlasFile, TheSingleImageSheetsArePackedWholeInTheirFirstCell) {
     const Bitmap bmp = loadBmp(atlasPath());
     ASSERT_TRUE(bmp.ok);
 
-    for (const char* file : {"spelb3.tga", "spelb4.tga", "spelc3.tga", "spelc4.tga",
-                             "speld4.tga", "spely3.tga", "spely4.tga"}) {
-        const int sprite = SpellSpriteAtlas::slotForFile(file);
-        ASSERT_GE(sprite, 0) << file;
-        EXPECT_EQ(SpellSpriteAtlas::framesFor(sprite), 1) << file;
+    // B1127: every single image the sheet now carries (spelb3/spelb4 left it:
+    // no spell without a field-145 record reaches them).
+    int singles = 0;
+    for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
+        if (SpellSpriteAtlas::framesFor(sprite) != SpellSpriteAtlas::kSingleImage) continue;
+        ++singles;
+        const char* file = SpellSpriteAtlas::kFiles[sprite];
         EXPECT_GT(cellAlpha(bmp, SpellSpriteAtlas::cellFor(sprite, 0)), 0u)
             << file << ": the whole picture is not in the first cell";
         for (int f = 1; f < SpellSpriteAtlas::kFramesPerSprite; ++f) {
@@ -282,6 +307,13 @@ TEST(SpellSpriteAtlasFile, TheSingleImageSheetsArePackedWholeInTheirFirstCell) {
                 << file << " reserved cell " << f
                 << " carries texels -- a fragment of the picture is still packed";
         }
+    }
+    EXPECT_EQ(singles, 18);
+    for (const char* file : {"spelc3.tga", "spelc4.tga", "speld4.tga", "spely3.tga",
+                             "spely4.tga", "gena20.bmp", "genb20.bmp", "spelcc.png"}) {
+        const int sprite = SpellSpriteAtlas::slotForFile(file);
+        ASSERT_GE(sprite, 0) << file;
+        EXPECT_EQ(SpellSpriteAtlas::framesFor(sprite), SpellSpriteAtlas::kSingleImage) << file;
     }
 }
 
@@ -321,23 +353,31 @@ TEST(SpellSpriteAtlasFile, TheGridOrSingleCensusMatchesTheHeader) {
     }
     int singles = 0;
     for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
-        const std::string src =
-            std::string(kSourceDir) + "/" + SpellSpriteAtlas::kFiles[sprite];
+        const std::string src = sourcePath(SpellSpriteAtlas::kFiles[sprite]);
         EQT::ToolTGA::Image img;
         std::string error;
-        ASSERT_TRUE(EQT::ToolTGA::load(src, img, error)) << error;
-        const double r = seamRatio(img);
+        ASSERT_TRUE(EQT::ToolSprite::load(src, img, error)) << error;
+        // B1127: a declared 2x2 sheet is measured on its own 2x2 seams.
+        const int frames = SpellSpriteAtlas::framesFor(sprite);
+        const double r = seamRatio(img, frames == SpellSpriteAtlas::kTwoByTwo ? 2 : SpellSpriteAtlas::kSheetGrid);
         const bool single = r >= 1.0;
         if (single) ++singles;
-        EXPECT_EQ(SpellSpriteAtlas::framesFor(sprite), single ? 1 : 16)
+        EXPECT_EQ(frames == SpellSpriteAtlas::kSingleImage, single)
             << SpellSpriteAtlas::kFiles[sprite] << " " << img.width << "x" << img.height
             << " seam ratio " << r;
-        EXPECT_EQ(single, img.width == 64) << SpellSpriteAtlas::kFiles[sprite];
+        // Every 64x64 file is one picture (B1124's census, true of B1127's too).
+        if (img.width == 64) EXPECT_TRUE(single) << SpellSpriteAtlas::kFiles[sprite];
+        // B1127: two ring sheets whose rings touch their cell edges read in the
+        // gap (spelqa 0.39, spelw1 0.58); classified BY EYE as 4x4 grids
+        // (review/B1127 atlas contact sheet) and spellsnew.edd's frame field
+        // says 16 for both.
+        const std::string f = SpellSpriteAtlas::kFiles[sprite];
+        if (f == "spelqa.png" || f == "spelw1.tga") continue;
         EXPECT_TRUE(r <= 0.35 || r >= 1.2)
             << SpellSpriteAtlas::kFiles[sprite] << " seam ratio " << r
             << " fell into the census gap -- classify it by eye before shipping";
     }
-    EXPECT_EQ(singles, 7);
+    EXPECT_EQ(singles, 18);
 }
 
 TEST(SpellSpriteAtlasFile, UnusedCellsAreFullyTransparent) {
@@ -387,24 +427,23 @@ TEST(SpellSpriteAtlasFile, EveryCellEqualsItsSourceFrame) {
     ASSERT_TRUE(bmp.ok);
 
     for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
-        const std::string src =
-            std::string(kSourceDir) + "/" + SpellSpriteAtlas::kFiles[sprite];
+        const std::string src = sourcePath(SpellSpriteAtlas::kFiles[sprite]);
 
         EQT::ToolTGA::Image img;
         std::string error;
-        ASSERT_TRUE(EQT::ToolTGA::load(src, img, error)) << error;
+        ASSERT_TRUE(EQT::ToolSprite::load(src, img, error)) << error;
         ASSERT_EQ(img.width, img.height) << src;
         ASSERT_EQ(img.width % SpellSpriteAtlas::kSheetGrid, 0) << src;
 
         // B1124: a single image is ONE frame, the whole sheet; the other
-        // reserved cells must be all-zero.
+        // reserved cells must be all-zero. B1127: a 2x2 sheet is four.
         const int frames = SpellSpriteAtlas::framesFor(sprite);
-        const int frameSize =
-            frames == 1 ? img.width : img.width / SpellSpriteAtlas::kSheetGrid;
+        const int grid = gridFor(frames);
+        const int frameSize = img.width / grid;
 
         for (int f = 0; f < SpellSpriteAtlas::kFramesPerSprite; ++f) {
-            const int fx = (f % SpellSpriteAtlas::kSheetGrid) * frameSize;
-            const int fy = (f / SpellSpriteAtlas::kSheetGrid) * frameSize;
+            const int fx = (f % grid) * frameSize;
+            const int fy = (f / grid) * frameSize;
             const std::vector<uint8_t> want =
                 f < frames
                     ? expectedCell(

@@ -723,18 +723,22 @@ TEST_F(SpellStyleOverrides, B1122SourceShapesFollowTheSpellsEffRecord) {
 }
 
 // RED on the completion-leg config (fable 52b810e2): every row but 253/458
-// Landing and 253/458 Source moved.
+// Landing and 253/458 Source moved. B1127 (#447): 54/656/253/458 draw their
+// field-145 (spellsnew.edd) sprites, whose drawn footprint differs from the old
+// ones', so their sizes were re-fitted to the SAME oracle ROI p90 bands on lane 5
+// (review/B1127/README.md sec. 5; 253's Source stays short: its sprites reach
+// the point clamp, and 458's largest end size is held at 2.49 under it).
 TEST_F(SpellStyleOverrides, B1123SizesAreTheOraclesRoi) {
     struct Row { uint32_t id; float impact, complete; };
     for (const Row& r : {Row{0, 0.198f, 0.244f}, Row{93, 0.198f, 0.244f}, Row{38, 0.1785f, 0.219f},
-                         Row{54, 0.1525f, 0.187f}, Row{656, 0.115f, 0.141f}, Row{41, 0.2645f, 0.325f},
-                         Row{253, 0.351f, 0.4315f}, Row{458, 0.3615f, 0.4455f}}) {
+                         Row{54, 0.314f, 0.3855f}, Row{656, 0.2015f, 0.2465f}, Row{41, 0.2645f, 0.325f},
+                         Row{253, 0.496f, 0.6105f}, Row{458, 1.0545f, 1.2995f}}) {
         EXPECT_NEAR(startMid(impact(r.id)), r.impact, 0.0006f) << r.id;
         EXPECT_NEAR(startMid(complete(r.id)), r.complete, 0.0006f) << r.id;
     }
     struct Src { uint32_t id; float mid; };
-    for (const Src& r : {Src{0, 0.659f}, Src{93, 0.659f}, Src{38, 0.659f}, Src{54, 0.216f},
-                         Src{656, 0.225f}, Src{253, 1.03f}, Src{458, 0.4895f}}) {
+    for (const Src& r : {Src{0, 0.659f}, Src{93, 0.659f}, Src{38, 0.659f}, Src{54, 0.3435f},
+                         Src{656, 0.3715f}, Src{253, 1.8335f}, Src{458, 1.3165f}}) {
         EXPECT_NEAR(startMid(castGlowFor(r.id)), r.mid, 0.0006f) << r.id;
     }
     EXPECT_NEAR(startMid(castSprayFor(41)), 1.0035f, 0.0006f);

@@ -19,6 +19,7 @@
 #include <unordered_map>
 
 #include "client/spell/spells_eff_reader.h"
+#include "client/spell/spells_new_eff_reader.h"
 #include "client/spell/spell_visual_vocabulary.h"
 #include "client/graphics/spell_visual_selection.h"
 
@@ -387,6 +388,9 @@ private:
 
     SpellsEffReader m_spells_eff;
     bool m_spells_eff_loaded = false;
+    // B1127: spellsnew.eff + spellsnew.edd from the same directory.
+    SpellsNewEffReader m_spells_new_eff;
+    bool m_spells_new_eff_loaded = false;
 
 #ifdef EQT_HAS_GLES2
     EQT::Graphics::Environment::ParticleManager* m_particle_manager = nullptr;

@@ -67,8 +67,11 @@
 #include <string>
 #include <vector>
 
+#include <dirent.h>
+#include <strings.h>
+
 #include "bmp32_writer.h"
-#include "tga_reader.h"
+#include "sprite_image_reader.h"
 
 #include "client/graphics/environment/spell_sprite_atlas.h"
 
@@ -145,11 +148,11 @@ void blitCell(int cell, const uint8_t* src, int stride, int frameSize) {
 // the sheet's area. 1.0 is a uniform texture; a grid's frames are each padded
 // inside their own cell, so it reads near 0; one centred picture's body
 // crosses the seams, so it reads above 1. Integer arithmetic only (B268).
-bool measuresAsSingleImage(const EQT::ToolTGA::Image& img) {
-    const int cell = img.width / Atlas::kSheetGrid;
+bool measuresAsSingleImage(const EQT::ToolTGA::Image& img, int grid) {
+    const int cell = img.width / grid;
     const int band = cell / 8 > 0 ? cell / 8 : 1;
     auto inBand = [&](int v) {
-        for (int k = 1; k < Atlas::kSheetGrid; ++k) {
+        for (int k = 1; k < grid; ++k) {
             const int seam = k * cell;
             if (v >= seam - band && v < seam + band) return true;
         }
@@ -176,39 +179,67 @@ bool measuresAsSingleImage(const EQT::ToolTGA::Image& img) {
     return total > 0 && seamMass * area >= total * seamArea;
 }
 
+// B1127: the client is Windows, so `spellsnew.edd`'s `glowflare02.tga` is
+// `Glowflare02.tga` on disk. Find the file case-insensitively; two matches
+// would be ambiguous and are refused.
+bool findCaseInsensitive(const std::string& dir, const char* name, std::string& path) {
+    DIR* d = opendir(dir.c_str());
+    if (!d) return false;
+    int hits = 0;
+    while (dirent* e = readdir(d)) {
+        if (strcasecmp(e->d_name, name) == 0) {
+            path = dir + "/" + e->d_name;
+            ++hits;
+        }
+    }
+    closedir(d);
+    return hits == 1;
+}
+
 bool packOneFile(const std::string& spellEffectsDir, int sprite) {
-    const std::string path = spellEffectsDir + "/" + Atlas::kFiles[sprite];
+    std::string path;
+    if (!findCaseInsensitive(spellEffectsDir, Atlas::kFiles[sprite], path)) {
+        fprintf(stderr, "Error: %s/%s not found (or not unique, ignoring case)\n",
+                spellEffectsDir.c_str(), Atlas::kFiles[sprite]);
+        return false;
+    }
 
     EQT::ToolTGA::Image img;
     std::string error;
-    if (!EQT::ToolTGA::load(path, img, error)) {
+    if (!EQT::ToolSprite::load(path, img, error)) {
         fprintf(stderr, "Error: %s\n", error.c_str());
         return false;
     }
 
+    // B1127: 16 frames = a 4x4 grid, 4 = a 2x2 grid, 1 = one picture.
+    const int frames = Atlas::framesFor(sprite);
+    const int grid = frames == Atlas::kFramesPerSprite ? Atlas::kSheetGrid
+                   : frames == Atlas::kTwoByTwo ? 2 : 1;
+    if (frames != Atlas::kSingleImage && frames != Atlas::kTwoByTwo &&
+        frames != Atlas::kFramesPerSprite) {
+        fprintf(stderr, "Error: %s declares %d frames; a sheet is 1, 4 or %d\n",
+                path.c_str(), frames, Atlas::kFramesPerSprite);
+        return false;
+    }
     if (img.width != img.height || img.width % Atlas::kSheetGrid != 0) {
-        fprintf(stderr, "Error: %s is %dx%d, not a square 4x4 frame sheet\n",
+        fprintf(stderr, "Error: %s is %dx%d, not a square frame sheet\n",
                 path.c_str(), img.width, img.height);
         return false;
     }
 
     // B1124: the header's declaration and this file's own pixels must agree.
-    const int frames = Atlas::framesFor(sprite);
-    const bool single = measuresAsSingleImage(img);
+    // A declared grid must NOT measure as one picture on its own seams; a
+    // declared single image must measure as one picture on the 4x4 seams.
+    const bool single = measuresAsSingleImage(img, grid == 1 ? Atlas::kSheetGrid : grid);
     if (single != (frames == Atlas::kSingleImage)) {
         fprintf(stderr,
                 "Error: %s measures as a %s but spell_sprite_atlas.h kSheetFrames "
                 "declares %d frame(s)\n",
-                path.c_str(), single ? "SINGLE IMAGE" : "4x4 GRID", frames);
-        return false;
-    }
-    if (frames != Atlas::kSingleImage && frames != Atlas::kFramesPerSprite) {
-        fprintf(stderr, "Error: %s declares %d frames; a sheet is 1 or %d\n",
-                path.c_str(), frames, Atlas::kFramesPerSprite);
+                path.c_str(), single ? "SINGLE IMAGE" : "GRID", frames);
         return false;
     }
 
-    const int frameSize = single ? img.width : img.width / Atlas::kSheetGrid;
+    const int frameSize = img.width / grid;
     const bool integerUp =
         frameSize > 0 && frameSize <= Atlas::kCellSize &&
         Atlas::kCellSize % frameSize == 0;
@@ -228,8 +259,8 @@ bool packOneFile(const std::string& spellEffectsDir, int sprite) {
     // (0x28) origin -- both appear among these files.
     uint64_t sheetAlpha = 0;
     for (int f = 0; f < frames; ++f) {
-        const int fx = (f % Atlas::kSheetGrid) * frameSize;
-        const int fy = (f / Atlas::kSheetGrid) * frameSize;
+        const int fx = (f % grid) * frameSize;
+        const int fy = (f / grid) * frameSize;
         const uint8_t* src =
             img.rgba.data() + (static_cast<size_t>(fy) * img.width + fx) * 4;
 
@@ -305,7 +336,7 @@ int main(int argc, char** argv) {
         drawn += Atlas::framesFor(sprite);
         if (Atlas::framesFor(sprite) == Atlas::kSingleImage) ++singles;
     }
-    printf("Wrote %s (%dx%d, %d sprites: %d 4x4 grids + %d single images = %d "
+    printf("Wrote %s (%dx%d, %d sprites: %d grids + %d single images = %d "
            "drawn cells in %d reserved of %d, from %s)\n",
            outPath.c_str(), Atlas::kWidth, Atlas::kHeight, Atlas::kFileCount,
            Atlas::kFileCount - singles, singles, drawn, Atlas::kUsedCells,

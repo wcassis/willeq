@@ -634,6 +634,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/spell/buff_manager.cpp
     src/client/spell/buff_cancel_request.cpp
     src/client/spell/spells_eff_reader.cpp
+    src/client/spell/spells_new_eff_reader.cpp
     # Skill system sources
     src/client/skill/behind_target.cpp
     src/client/skill/skill_cap_table.cpp
@@ -1369,6 +1370,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         # Spell test mode dependencies
         src/client/spell/spell_database.cpp
         src/client/spell/spells_eff_reader.cpp
+        src/client/spell/spells_new_eff_reader.cpp
         src/client/graphics/spell_visual_fx.cpp
         src/client/graphics/spell_visual_fx_nodes.cpp
         src/client/graphics/spell_visual_selection.cpp
@@ -2139,6 +2141,8 @@ TARGET_INCLUDE_DIRECTORIES(spell_sprite_atlas_builder PRIVATE
     ${CMAKE_SOURCE_DIR}/tools
     ${CMAKE_SOURCE_DIR}/include
 )
+# B1127 (#447): spellsnew.edd's sprites include PNGs (sprite_image_reader.h).
+TARGET_LINK_LIBRARIES(spell_sprite_atlas_builder ZLIB::ZLIB)
 
 # T430 (board B376): item icon atlas builder. Reads the official client's own
 # uifiles/default/dragitem*.tga -- the 34 sheets EQUI_Animations.xml lists

@@ -87,6 +87,7 @@ SpellData* SpellDatabase::queryAndCache(uint32_t spell_id) const {
     // T384 (B163): the two visual columns the builder now binds. Verbatim.
     spell.target_anim = info.targetAnim;
     spell.travel_type = static_cast<uint8_t>(info.travelType);
+    spell.spell_anim = info.spellAnim;
     spell.zone_type = info.zoneType;
     for (size_t ci = 0; ci < spell.class_levels.size() && ci < info.classLevels.size(); ++ci) {
         spell.class_levels[ci] = info.classLevels[ci];

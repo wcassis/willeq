@@ -26,7 +26,7 @@ namespace EQT {
 // input digest the builder writes (`metadata.input_digest`, T450) and the
 // DbReproducible ctest that rebuilds it from its inputs -- so a stale
 // data/willeq.db is caught even when the version is unchanged.
-inline constexpr int kWilleqDbExpectedVersion = 7;  // T384: spells.target_anim + spells.travel_type added (T355 endurance_cost at 6, T304 race_models.color at 5, T246 spell reagents at 4, T68 effect slots at 3)
+inline constexpr int kWilleqDbExpectedVersion = 8;  // B1127: spells.spell_anim (field 145) added; T384 at 7: spells.target_anim + spells.travel_type added (T355 endurance_cost at 6, T304 race_models.color at 5, T246 spell reagents at 4, T68 effect slots at 3)
 
 // Runtime query stats for /pmem and /ft diagnostics
 struct DatabaseStats {
@@ -117,6 +117,8 @@ struct SpellInfo {
     // travel_type == 3 is the projectile population (85 spells).
     uint16_t targetAnim = 0;
     int32_t travelType = 0;
+    // B1127: spells_us.txt field 145 (eqemu spellanim), the spellsnew.eff record.
+    int32_t spellAnim = 0;
     uint8_t zoneType = 0;
     // Minimum level per class (16 classes, PlayerClass enum order:
     // Warrior..Berserker). 255 = class cannot use the spell.

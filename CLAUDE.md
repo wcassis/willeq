@@ -298,7 +298,7 @@ test that fails if the checked-in bytes and their inputs drift apart:
 |---|---|---|---|
 | `data/textures/*.bmp` (72 files) | `scripts/build_textures.sh` → `tools/generate_textures` (64, procedural), `tools/spell_sprite_atlas_builder` (1), `tools/item_icon_atlas_builder` (2), `tools/spell_icon_atlas_builder` (4), `tools/spellbook_backdrop_builder` (1) | `data/textures.sha256` | `TexturesReproducible` |
 | `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (142 entries: 72 textures, 69 ETC1 `_alpha` companions, 1 raw — `build/bin/verify_eqe1` prints the census) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
-| `data/willeq.db` (28,791 rows in ten tables; `metadata.version` = 7) | `scripts/build_willeq_db.sh` → `tools/willeq_db_builder`, over the EQ client's seven `*.txt` files plus `data/item_models.json` and `config/race_models.json` | `data/willeq.db.sha256` | `DbReproducible` (T450) |
+| `data/willeq.db` (28,791 rows in ten tables; `metadata.version` = 8) | `scripts/build_willeq_db.sh` → `tools/willeq_db_builder`, over the EQ client's seven `*.txt` files plus `data/item_models.json` and `config/race_models.json` | `data/willeq.db.sha256` | `DbReproducible` (T450) |
 
 The pack lives outside the repo and is read live by every worktree; only
 `build_willeq_pack.sh` may install it (temp file in the destination directory,
@@ -341,8 +341,8 @@ now feed nothing — boarded, not deleted as a side effect.
 
 **`data/textures/` has FIVE recipes (B300/B376/B1077/B1076).** Sixty-four of the
 BMPs are procedural (`generate_textures`); the other eight are the official
-client's own art. `spell_sprite_atlas.bmp` comes from `SpellEffects/spel*.tga`
-via `tools/spell_sprite_atlas_builder`, and `item_icons0.bmp` + `item_icons1.bmp`
+client's own art. `spell_sprite_atlas.bmp` comes from `SpellEffects/` (B1127: the
+spellsnew.edd textures, PNG/TGA/BMP) via `tools/spell_sprite_atlas_builder`, and `item_icons0.bmp` + `item_icons1.bmp`
 from `uifiles/default/dragitem1..34.tga` via `tools/item_icon_atlas_builder`,
 the four `spell_icon*.bmp` via `tools/spell_icon_atlas_builder`, and
 `spellbook_backdrop.bmp` (book tiles + Done, composed from `uifiles/default`)
@@ -384,11 +384,11 @@ and `SpellEffectsConfig` both include, so the sheet and the client's addressing
 of it cannot drift. A particle's `textureIndex` below `SpellSpriteAtlas::kBase`
 (64) is a procedural atlas tile; at or above it, a **sprite ordinal, not a
 cell** — because `EmitterConfig::textureRegions[]` is a `uint8_t[4]` and 528
-cells do not fit in one. **The 26 4x4 GRID sheets animate** (1024x1024, 32x32
-cells, 16 reserved per sprite, 528): `UnifiedParticleRenderer::render()` takes
+cells do not fit in one. **GRID sheets animate** (4x4, or 2x2 for 128x128 flares;
+1024x1024, 32x32 cells, 16 reserved per sprite): `UnifiedParticleRenderer::render()` takes
 the CELL from `SpellSpriteAtlas::cellForAge()`, so a grid plays exactly once
 per particle life.
-**The seven 64x64 files (spelc3, spelc4, ...) are ONE picture, not a grid**
+**Every 64x64 file is ONE picture, not a grid**
 (B1124): `kSheetFrames` says 1, the builder packs them whole (and exits 1 if
 its seam census disagrees) and the particle holds that cell all life.
 
@@ -397,15 +397,15 @@ A grid's playback rate is therefore `16 / lifetime`, set by
 duration: a landing is FED (`spawnWindow`, then `sustainRate` to
 `emitterLifetime`, B1121), so lengthen emission, never life. Its end is
 measured, not summed: `review/B1121/scripts/b1120_measure.sh <leg> <out>`
-(`LANDING ... end`). No cells/s rate is measured (below Nyquist,
-`review/T422/README.md`). `tests/test_spell_burst_oracle_match.cpp` pins both.
+(`LANDING ... end`); no cells/s rate is measured (T422).
+`tests/test_spell_burst_oracle_match.cpp` pins both.
 
-**A SPELL'S COLOUR IS ITS SPRITE, and there is no colour field anywhere in the
-chain** (T441, boards B397/B398). `spells_us.txt` field 123 SPELLAFFECTINDEX
-indexes `spells.eff`; that record's three stage blocks name sprites;
-`GEN<L><d>0_SPRITE` resolves 0-based to `SpellEffects/spel<l><d+1>.tga`; and the
-particle is that file's texels. Field 85 RESISTTYPE is a mechanic the official
-client does not paint with. So `SpellPresets::applyStageSpriteNames()` drops the
+**A SPELL'S COLOUR IS ITS SPRITE; no colour field is used** (T441, B397/B398).
+**The oracle draws `spellsnew.eff`, not `spells.eff`** (B1127,
+`review/B1127/README.md`): field 145 (`spell_anim`) names the record, its stages
+name `spellsnew.edd` emitters, each names a texture file, and the particle is its
+texels. Field 123 keys only the per-record anchors; its 0-based GEN names serve
+spells with no field 145. Field 85 RESISTTYPE is not painted with. So `SpellPresets::applyStageSpriteNames()` drops the
 particle colour modulation to WHITE whenever it installs a real stage's sprites
 — `POINT_SPRITE_FS` computes `texColor * vColor`, and **any non-white modulation
 is fable tinting the oracle's own art**. `config/spell_effects.json`'s

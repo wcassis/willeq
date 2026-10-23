@@ -85,7 +85,8 @@ int loadSpells(sqlite3* db, const std::string& filepath) {
             noexpend_reagent_1 INTEGER, noexpend_reagent_2 INTEGER, noexpend_reagent_3 INTEGER, noexpend_reagent_4 INTEGER,
             endurance_cost INTEGER,
             target_anim INTEGER,
-            travel_type INTEGER
+            travel_type INTEGER,
+            spell_anim INTEGER
         )
     )");
 
@@ -112,7 +113,7 @@ int loadSpells(sqlite3* db, const std::string& filepath) {
         "reagent_id_1, reagent_id_2, reagent_id_3, reagent_id_4, "
         "reagent_count_1, reagent_count_2, reagent_count_3, reagent_count_4, "
         "noexpend_reagent_1, noexpend_reagent_2, noexpend_reagent_3, noexpend_reagent_4, "
-        "endurance_cost, target_anim, travel_type) "
+        "endurance_cost, target_anim, travel_type, spell_anim) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
         "?,?,?,?,?,?,?,?,?,?,?,?,"
         "?,?,?,?,?,?,?,?,?,?,?,?,"
@@ -121,7 +122,7 @@ int loadSpells(sqlite3* db, const std::string& filepath) {
         "?,?,?,?,?,?,?,?,?,?,?,?,"
         "?,"
         "?,?,?,?,?,?,?,?,?,?,?,?,"
-        "?,?,?)",
+        "?,?,?,?)",
         -1, &stmt, nullptr);
 
     std::string line;
@@ -247,6 +248,9 @@ int loadSpells(sqlite3* db, const std::string& filepath) {
         // stage. Board B163.
         sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::TargetAnim));
         sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::TravelType));
+        // B1127 (#447): field 145, the spellsnew.eff record the official
+        // client draws (eqemu spells_new.spellanim). Verbatim.
+        sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::SpellAnim));
 
         sqlite3_step(stmt);
         count++;

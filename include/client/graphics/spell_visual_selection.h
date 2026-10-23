@@ -9,6 +9,18 @@
  * Irrlicht/rendering dependency -- resolve() is a pure function of its
  * inputs. See refactor/T72_spell_visual_layer.md.
  *
+ * B1127 (#447): THE ART COMES FROM spellsnew.eff. The official client draws
+ * the textures spellsnew.edd names for the emitters of the spell's
+ * spellsnew.eff record (spells_us.txt field 145, `spellAnim`), not the
+ * GEN*_SPRITE names of its spells.eff record (review/B1127/README.md: same
+ * field-123 record + different field 145 = different art on the oracle).
+ * resolve() therefore takes both indices: when field 145 names a populated
+ * record, each stage's names/files ARE that record's textures (up to four,
+ * one per emitter) and its `present` flag is that stage's; spells.eff then
+ * only supplies `spell_affect_index`, which keys the per-record anchors
+ * (B1131/B1132). A field-145 record makes a spell Resolved even with no
+ * spells.eff record (the oracle draws it).
+ *
  * Scope boundary (do not extend past this without re-reading T70's Review):
  * this layer exposes WHICH textures a stage names and WHETHER a stage has
  * content. It does NOT expose timing, scale, colour, particle rate,
@@ -24,6 +36,7 @@
 #include <string>
 
 #include "client/spell/spells_eff_reader.h"
+#include "client/spell/spells_new_eff_reader.h"
 
 namespace EQ {
 
@@ -44,13 +57,18 @@ struct SpellVisualStage {
     bool present = false;  // SpellsEffEmitter::hasContent()
 
     // Raw sprite-name slots as read from the file (may contain empty
-    // strings for unused slots -- see spells_eff_reader.h).
-    std::array<std::string, 3> sprite_names{};
+    // strings for unused slots -- see spells_eff_reader.h). B1127: four
+    // slots, because a spellsnew.eff stage has four emitters; from that
+    // file each name IS a texture file name ("spelua.png").
+    std::array<std::string, 4> sprite_names{};
 
     // effectNameToTexture() applied to each non-empty sprite name. Empty
     // string means either the slot was empty or the name had no evidenced
     // texture mapping (T70 Review) -- both are legitimate, not errors.
-    std::array<std::string, 3> texture_files{};
+    std::array<std::string, 4> texture_files{};
+
+    // B1127: true when the names above came from spellsnew.eff/.edd.
+    bool from_spell_anim = false;
 
     std::string attach_tag;  // "Source" / "Target" / "Sprite" / empty
 };
@@ -60,6 +78,7 @@ struct SpellVisualStage {
 struct SpellVisualResolution {
     SpellVisualSource source = SpellVisualSource::NoAffectIndex;
     int32_t spell_affect_index = kSpellsEffNoEffectIndex;
+    int32_t spell_anim = 0;  // B1127: spells_us.txt field 145
 
     SpellVisualStage source_stage;  // caster
     SpellVisualStage middle_stage;  // travel
@@ -84,14 +103,23 @@ public:
     // reader may be nullptr (e.g. spells.eff missing) -- resolve() then
     // always returns NoAffectIndex/EmptyRecord-equivalent fallback
     // resolutions, never crashes.
-    explicit SpellVisualSelector(const SpellsEffReader* reader) : m_reader(reader) {}
+    explicit SpellVisualSelector(const SpellsEffReader* reader,
+                                 const SpellsNewEffReader* newReader = nullptr)
+        : m_reader(reader), m_new(newReader) {}
 
-    SpellVisualResolution resolve(int32_t spell_affect_index) const;
+    // B1127: `spell_anim` is spells_us.txt field 145; 0 (or no new reader)
+    // keeps the T72 spells.eff-only resolution.
+    SpellVisualResolution resolve(int32_t spell_affect_index, int32_t spell_anim = 0) const;
 
 private:
+    // The T72 spells.eff-only resolution.
+    SpellVisualResolution resolveSpellsEff(int32_t spell_affect_index) const;
     static SpellVisualStage resolveStage(const SpellsEffEmitter& emitter);
+    static SpellVisualStage resolveNewStage(const SpellsNewEffReader& reader, int32_t record,
+                                            int stage);
 
     const SpellsEffReader* m_reader;
+    const SpellsNewEffReader* m_new;
 };
 
 }  // namespace EQ

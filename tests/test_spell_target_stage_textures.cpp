@@ -41,6 +41,16 @@ uint8_t spriteIndex(const char* file) {
     return static_cast<uint8_t>(SpellSpriteAtlas::kBase + (slot < 0 ? 0 : slot));
 }
 
+// B1127 (#447): the sheet now carries the art the oracle draws (spellsnew.edd)
+// plus the spells.eff files only field-145-less spells reach; a GEN name
+// whose file left the sheet (spelh1, spelb1, spelc1, spelu1, spelz1 -- every
+// spell naming them has a field-145 record) falls to the procedural circle.
+uint8_t expectedIndex(const char* file) {
+    const int slot = SpellSpriteAtlas::slotForFile(file);
+    return slot < 0 ? static_cast<uint8_t>(ParticleAtlas::SoftCircle)
+                    : static_cast<uint8_t>(SpellSpriteAtlas::kBase + slot);
+}
+
 SpellEffectDef oneEmitterDef() {
     SpellEffectDef def;
     def.name = "TestImpact";
@@ -159,7 +169,7 @@ TEST(SpellSpriteRealArt, TheFigurativeSpritesNowDrawThemselves) {
     };
     for (const auto& r : rows) {
         EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex(r.name),
-                  spriteIndex(r.file)) << r.name << " (" << r.what << ")";
+                  expectedIndex(r.file)) << r.name << " (" << r.what << ")";
     }
 }
 
@@ -184,7 +194,7 @@ TEST(SpellSpriteRealArt, EveryNameT409ApproximatedNowResolvesToItsOwnFile) {
     };
     for (const auto& r : rows) {
         EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex(r.name),
-                  spriteIndex(r.file)) << r.name;
+                  expectedIndex(r.file)) << r.name;
     }
 }
 
@@ -372,16 +382,25 @@ TEST(SpellSpriteAtlasLayout, AnUnknownFileHasNoCell) {
 // one star in turn.
 // ---------------------------------------------------------------------------
 
-TEST(SpellSpriteAtlasLayout, ExactlyTheSevenCensusedSingleImagesAreOneFrame) {
-    const std::vector<std::string> singles = {"spelb3.tga", "spelb4.tga", "spelc3.tga",
-                                              "spelc4.tga", "speld4.tga", "spely3.tga",
-                                              "spely4.tga"};
+TEST(SpellSpriteAtlasLayout, ExactlyTheCensusedSingleImagesAreOneFrame) {
+    // B1124's seven minus spelb3/spelb4 (they left the sheet, B1127), plus
+    // B1127's 64x64 spellsnew.edd textures and the one 256x256 single picture
+    // (glowflare02, frame field 1 in spellsnew.edd). flare_blsp50a and
+    // flare_whsp50a are 2x2 grids (spellsnew.edd frame field 4).
+    const std::vector<std::string> singles = {
+        "gena20.bmp", "gena30.bmp", "genab1.png", "genb20.bmp", "glowflare02.tga",
+        "spelc3.tga", "spelc4.tga", "spelcc.png", "spelce.png", "spelcf.png",
+        "speld4.tga", "speldc.png", "speldd.tga", "spely3.tga", "spely4.tga",
+        "spelyc.png", "spelyd.png", "spelye.png"};
+    const std::vector<std::string> twoByTwo = {"flare_blsp50a.png", "flare_whsp50a.png"};
     for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
         const std::string file = SpellSpriteAtlas::kFiles[sprite];
         const bool single =
             std::find(singles.begin(), singles.end(), file) != singles.end();
+        const bool quad =
+            std::find(twoByTwo.begin(), twoByTwo.end(), file) != twoByTwo.end();
         EXPECT_EQ(SpellSpriteAtlas::framesFor(sprite),
-                  single ? 1 : SpellSpriteAtlas::kFramesPerSprite)
+                  single ? 1 : quad ? SpellSpriteAtlas::kTwoByTwo : SpellSpriteAtlas::kFramesPerSprite)
             << file;
     }
     // Out of range draws the slot's first cell only, never a neighbour's.
@@ -414,4 +433,35 @@ TEST(SpellSpriteAnimation, AGridSpriteStillWalksAllSixteenCells) {
         EXPECT_EQ(SpellSpriteAtlas::cellForAge(sprite, mid),
                   SpellSpriteAtlas::cellFor(sprite, f));
     }
+}
+
+// ===========================================================================
+// B1127 (#447): a spellsnew.edd stage names its texture FILE, and that file is
+// what the oracle draws. GENA20_SPRITE's own 0-based file (spela3.tga) does
+// not exist; 458's art is gena20.bmp, reached through field 145.
+// ===========================================================================
+
+TEST(SpellSpriteNewEffArt, ATextureFileNameAddressesItsOwnSprite) {
+    auto& cfg = SpellEffectsConfig::instance();
+    for (const char* file : {"gena20.bmp", "spelua.png", "spelub.png", "spelab.tga",
+                             "flare_blsp50a.png", "genb20.bmp", "spelcc.png"}) {
+        EXPECT_EQ(cfg.getTextureIndex(file), spriteIndex(file)) << file;
+    }
+    // Any case: the client is Windows.
+    EXPECT_EQ(cfg.getTextureIndex("GENA20.BMP"), spriteIndex("gena20.bmp"));
+    EXPECT_EQ(cfg.getTextureIndex("GENA20_SPRITE"), ParticleAtlas::SoftCircle);
+}
+
+TEST(SpellSpriteNewEffArt, FrostBoltsTargetStageDrawsTheVioletSquigglesAndCrosses) {
+    // 54's field-145 Target stage (spellsnew.eff record 82), not spells.eff's
+    // GEND10/GENU10 cyan-white stars (kFrostBoltTargetStage above).
+    SpellEffectDef def = oneEmitterDef();
+    SpellPresets::applyStageSpriteNames(def, {"spelua.png", "spelub.png", "spelub.png", "spelab.tga"}, 54);
+    const auto& c = def.emitters[0].config;
+    ASSERT_EQ(c.textureRegionCount, 4);
+    EXPECT_EQ(c.textureRegions[0], spriteIndex("spelua.png"));
+    EXPECT_EQ(c.textureRegions[1], spriteIndex("spelub.png"));
+    EXPECT_EQ(c.textureRegions[3], spriteIndex("spelab.tga"));
+    EXPECT_EQ(c.colorStart.r, 1.0f);  // T441: the sprite is the colour
+    EXPECT_EQ(c.colorStart.b, 1.0f);
 }

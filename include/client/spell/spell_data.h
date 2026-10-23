@@ -142,6 +142,11 @@ struct SpellData {
     // (T68) purely as plumbing — nothing in this unit reads it.
     int32_t spell_affect_index = -1;
 
+    // B1127 (#447): spells_us.txt field 145 (eqemu spellanim) -- the
+    // spellsnew.eff record the OFFICIAL client draws; its emitters' textures
+    // are the spell's art (spells_new_eff_reader.h). 0 = none.
+    int32_t spell_anim = 0;
+
     // ========================================================================
     // Reagents (up to 4)
     // ========================================================================
@@ -321,7 +326,8 @@ struct SpellData {
         v.known = true;
         v.resistType = resist_type;
         v.school = getSchool();
-        v.spellAffectIndex = spell_affect_index;
+        v.spellAffectIndex = static_cast<int16_t>(spell_affect_index);
+        v.spellAnim = static_cast<int16_t>(spell_anim);
         v.travelType = travel_type;
         return v;
     }
