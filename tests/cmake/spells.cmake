@@ -249,6 +249,7 @@ IF(NOT EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_effects_config.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_emitter_presets.cpp
         ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_eff_reader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_LINK_LIBRARIES(test_spell_source_anchors ${FMT_LIB} ${JSONCPP_LIBRARIES} dl)
@@ -270,6 +271,7 @@ IF(NOT EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_effects_config.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_emitter_presets.cpp
         ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_eff_reader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_LINK_LIBRARIES(test_spell_target_anchors ${FMT_LIB} ${JSONCPP_LIBRARIES} dl)
@@ -364,6 +366,7 @@ ADD_EXECUTABLE(test_spell_target_stage_textures
     ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_effects_config.cpp
     ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_emitter_presets.cpp
     ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_eff_reader.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
 )
 TARGET_LINK_LIBRARIES(test_spell_target_stage_textures GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} dl)
@@ -384,6 +387,7 @@ ADD_EXECUTABLE(test_spell_colour_and_overrides
     ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_effects_config.cpp
     ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_emitter_presets.cpp
     ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_eff_reader.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
 )
 TARGET_LINK_LIBRARIES(test_spell_colour_and_overrides GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} dl)

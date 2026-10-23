@@ -10,7 +10,7 @@ namespace EQ {
 SpellVisualStage SpellVisualSelector::resolveStage(const SpellsEffEmitter& emitter) {
     SpellVisualStage stage;
     stage.present = emitter.hasContent();
-    stage.sprite_names = emitter.sprite_names;
+    for (size_t i = 0; i < emitter.sprite_names.size(); ++i) stage.sprite_names[i] = emitter.sprite_names[i];
     stage.attach_tag = emitter.attach_tag;
     for (size_t i = 0; i < stage.sprite_names.size(); ++i) {
         if (!stage.sprite_names[i].empty()) {
@@ -20,7 +20,41 @@ SpellVisualStage SpellVisualSelector::resolveStage(const SpellsEffEmitter& emitt
     return stage;
 }
 
-SpellVisualResolution SpellVisualSelector::resolve(int32_t spell_affect_index) const {
+// B1127: one spellsnew.eff stage -> its emitters' textures, in slot order.
+SpellVisualStage SpellVisualSelector::resolveNewStage(const SpellsNewEffReader& reader,
+                                                      int32_t record, int stage) {
+    SpellVisualStage out;
+    out.from_spell_anim = true;
+    const std::vector<std::string> tex = reader.stageTextures(record, stage);
+    for (size_t i = 0; i < tex.size() && i < out.sprite_names.size(); ++i) {
+        out.sprite_names[i] = tex[i];
+        out.texture_files[i] = tex[i];
+    }
+    out.present = !tex.empty();
+    return out;
+}
+
+SpellVisualResolution SpellVisualSelector::resolve(int32_t spell_affect_index,
+                                                   int32_t spell_anim) const {
+    SpellVisualResolution result = resolveSpellsEff(spell_affect_index);
+    result.spell_anim = spell_anim;
+    const SpellsNewEffRecord* rec = m_new ? m_new->getRecord(spell_anim) : nullptr;
+    if (!rec || !rec->hasContent()) return result;
+    // The oracle draws this record's art for every stage (B1127).
+    const std::string sourceTag = result.source_stage.attach_tag;
+    const std::string middleTag = result.middle_stage.attach_tag;
+    const std::string targetTag = result.target_stage.attach_tag;
+    result.source = SpellVisualSource::Resolved;
+    result.source_stage = resolveNewStage(*m_new, spell_anim, 0);
+    result.middle_stage = resolveNewStage(*m_new, spell_anim, 1);
+    result.target_stage = resolveNewStage(*m_new, spell_anim, 2);
+    result.source_stage.attach_tag = sourceTag;
+    result.middle_stage.attach_tag = middleTag;
+    result.target_stage.attach_tag = targetTag;
+    return result;
+}
+
+SpellVisualResolution SpellVisualSelector::resolveSpellsEff(int32_t spell_affect_index) const {
     SpellVisualResolution result;
     result.spell_affect_index = spell_affect_index;
 

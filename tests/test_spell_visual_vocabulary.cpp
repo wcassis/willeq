@@ -172,12 +172,15 @@ TEST_F(SpellVisualVocabularyTest, EventPayloadCarriesResistSchoolAndAffectIndex)
     EXPECT_EQ(started.spellVisual.resistType, ResistType::Cold);
     EXPECT_EQ(started.spellVisual.school, SpellSchool::Evocation);
     EXPECT_EQ(started.spellVisual.spellAffectIndex, 23);
+    // B1127: and the spellsnew.eff record the oracle draws (field 145).
+    EXPECT_EQ(started.spellVisual.spellAnim, 82);
 
     // A default-constructed payload (an id the game thread could not find)
     // must read as "unknown", never as a real Fire/Abjuration spell.
     eqt::state::SpellCastVisualCompleteData complete;
     EXPECT_FALSE(complete.spellVisual.known);
     EXPECT_EQ(complete.spellVisual.spellAffectIndex, kNoSpellAffectIndex);
+    EXPECT_EQ(complete.spellVisual.spellAnim, 0);
 }
 
 // ---------------------------------------------------------------------------

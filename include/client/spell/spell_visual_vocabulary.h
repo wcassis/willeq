@@ -60,14 +60,21 @@ struct SpellVisualVocabulary {
     // shipped data: 0 (no travel stage) and 3 (projectile).
     uint8_t     travelType = 0;
 
-    int32_t     spellAffectIndex = kNoSpellAffectIndex;
+    // B1127: int16 (spells.eff has 256 records) so the struct stays 8 bytes
+    // with spellAnim beside it.
+    int16_t     spellAffectIndex = kNoSpellAffectIndex;
+
+    // B1127 (#447): spells_us.txt field 145, the spellsnew.eff record the
+    // official client draws (0 = none; the field's values reach 3411).
+    int16_t     spellAnim = 0;
 };
 
 // The struct is carried by value inside two bridge event payloads; T381
 // measured that it costs nothing there because it fits the variant's slack.
-// Keep it 8 bytes -- travelType went into the padding byte after `school`.
+// Keep it 8 bytes -- travelType went into the padding byte after `school`,
+// and B1127 split the int32 index into two int16s (spellAffectIndex, spellAnim).
 static_assert(sizeof(SpellVisualVocabulary) == 8,
-              "SpellVisualVocabulary must stay 8 bytes (T381/T384)");
+              "SpellVisualVocabulary must stay 8 bytes (T381/T384/B1127)");
 
 }  // namespace EQ
 

@@ -19,7 +19,8 @@
 // frame 0 was the empty top-left corner of one centred picture). The census
 // (`review/B1124/sheet_census.tsv`, `refactor/B1124/README.md`) splits the 67
 // files cleanly: every 64x64 one is a single image, every 128/256 one a grid.
-// Seven of the 33 shipped here are single images; `kSheetFrames` below says
+// (B1127 grew the sheet to 60 files, 18 of them single images and two 2x2
+// grids; `kSheetFrames` below says
 // which, and the builder re-measures it and refuses to pack a file whose
 // declaration its own census contradicts.
 //
@@ -34,7 +35,7 @@
 //
 // THE INDEX SPACE, AND WHY IT IS TWO LEVELS.
 // `UnifiedParticle::textureIndex` and `EmitterConfig::textureRegions[]` carry
-// a single flat ordinal, and `textureRegions[]` is a `uint8_t[4]` -- 528 cells
+// a single flat ordinal, and `textureRegions[]` is a `uint8_t[4]` -- 960 cells
 // do not fit in it. So the ordinal names a SPRITE, never a cell:
 //
 //   textureIndex <  kBase   ->  procedural 4x4 particle atlas, tile as-is
@@ -42,8 +43,8 @@
 //
 // The CELL is derived at draw time from the sprite and the particle's age
 // (`cellFor()` + `frameForNormalizedAge()`), which is what makes the sprite
-// animate without widening a single struct field. 33 sprites keeps the
-// ordinal at 96 or below, comfortably inside a `uint8_t`.
+// animate without widening a single struct field. 60 sprites keeps the
+// ordinal at 123 or below, comfortably inside a `uint8_t`.
 //
 // FRAME EXTRACTION. All sixteen frames of every GRID sheet are packed, in the
 // sheet's own display order (frame f at grid column f%4, row f/4 after
@@ -58,10 +59,11 @@
 // silently retime the animation, and a variable per-sprite frame count would
 // buy 16 cells of the 1024 at the cost of a second lookup table.
 //
-// GEOMETRY, AND WHY THE CELL SHRANK. 33 sprites x 16 frames is 528 cells.
+// GEOMETRY, AND WHY THE CELL SHRANK. 33 sprites x 16 frames was 528 cells
+// (B1127: 60 x 16 = 960 of the 1024).
 // At T417's 64 px cell that needs a 2048x2048 sheet: 2.8 MB of ETC1 with mips
 // per pack entry, 5.6 MB with the alpha companion, on every zone's mapped
-// budget and on a 512 MB Orange Pi. A 32 px cell fits all 528 in 1024x1024 at
+// budget and on a 512 MB Orange Pi. A 32 px cell fits all of them in 1024x1024 at
 // a quarter of that. The sprites are drawn as point sprites whose size is
 // clamped to 100 screen pixels and which measure single digits to ~30 px in
 // practice, so 32 px is still oversampled at the size anything actually
@@ -98,24 +100,35 @@ constexpr int kFramesPerSprite = kSheetGrid * kSheetGrid;  // 16
 // atlas later does not renumber the sprites.
 constexpr uint8_t kBase = 64;
 
-// The sprite files, in the order they occupy sprite ordinals 0..kFileCount-1.
-// Sorted by basename, which is also the order the builder's directory scan
-// produces -- keep it sorted.
+// The sprite files, in the order they occupy sprite ordinals 0..kFileCount-1,
+// lower-case (the client is Windows: `spellsnew.edd` writes `Glowflare02.tga`
+// as `glowflare02.tga`), sorted -- keep it sorted.
 //
-// These are exactly the distinct files the 0-based rule
-// (`SpellsEffReader::effectNameToTexture`) reaches from a name that appears in
-// `spells.eff` AND that exists under `SpellEffects/`. Two resolving names
-// name files that are simply not shipped -- `GENA20_SPRITE` -> `spela3.tga`
-// and `GENA30_SPRITE` -> `spela4.tga` -- and they keep the procedural
-// fallback.
+// B1127 (#447): THE ORACLE DRAWS spellsnew.eff, NOT spells.eff. A spell's
+// art is the textures spellsnew.edd names for the emitters of its
+// spellsnew.eff record (spells_us.txt field 145), proven on the oracle by
+// same-record / different-field-145 A/B casts (`review/B1127/README.md`).
+// The sheet therefore carries (a) every non-DDS texture those records name
+// for a player spell, and (b) the spells.eff 0-based files of the records
+// that only a spell WITHOUT a field-145 record still reaches. The DDS
+// textures (NPC and discipline records) are not packed yet and fall back
+// to the procedural circle (boarded, `refactor/B1127/README.md`).
 constexpr const char* kFiles[] = {
-    "spela1.tga", "spela2.tga", "spelb1.tga", "spelb2.tga", "spelb3.tga",
-    "spelb4.tga", "spelc1.tga", "spelc2.tga", "spelc3.tga", "spelc4.tga",
-    "speld2.tga", "speld4.tga", "spele1.tga", "spelg1.tga", "spelh1.tga",
-    "speli1.tga", "spelj1.tga", "spelj2.tga", "spelk2.tga", "spell1.tga",
-    "spelm1.tga", "speln1.tga", "spelo1.tga", "spelp1.tga", "spelr1.tga",
-    "spelr2.tga", "spelu1.tga", "spelu2.tga", "spelv1.tga", "spely2.tga",
-    "spely3.tga", "spely4.tga", "spelz1.tga",
+    "flare_blsp50a.png", "flare_whsp50a.png", "gena20.bmp", "gena30.bmp",
+    "genab1.png", "genb20.bmp", "glowflare02.tga", "gob.png",
+    "spela1.tga", "spela2.tga", "spelaa.png", "spelab.tga",
+    "spelan.png", "spelb2.tga", "spelba.png", "spelbb.tga",
+    "spelc2.tga", "spelc3.tga", "spelc4.tga", "spelcb.png",
+    "spelcc.png", "spelce.png", "spelcf.png", "spelcm.png",
+    "speld2.tga", "speld4.tga", "speldc.png", "speldd.tga",
+    "spele1.tga", "spelg1.tga", "speli1.tga", "spelj1.tga",
+    "spelj2.tga", "spelja.png", "speljb.png", "spelk2.tga",
+    "spelkb.png", "spell1.tga", "spella.png", "spelma.png",
+    "speln1.tga", "spelna.png", "speloa.png", "spelpa.png",
+    "spelqa.png", "spelr1.tga", "spelr2.tga", "spelra.png",
+    "spelu2.tga", "spelua.png", "spelub.png", "spelw1.tga",
+    "spelx1.tga", "spely2.tga", "spely3.tga", "spely4.tga",
+    "spelyb.png", "spelyc.png", "spelyd.png", "spelye.png",
 };
 
 constexpr int kFileCount = static_cast<int>(sizeof(kFiles) / sizeof(kFiles[0]));
@@ -125,23 +138,37 @@ constexpr int kFileCount = static_cast<int>(sizeof(kFiles) / sizeof(kFiles[0]));
 // Parallel to kFiles. Measured, not assumed: `review/B1124/scripts/
 // sheet_census.py` and the builder's own `seamRatio` census (additive mass on
 // the 4x4 seams over their area share: grids <= 0.30 here, single images
-// >= 1.33) agree with the eye on all 33. A wrong entry is an exit 1 from the
+// >= 1.33) agree with the eye on all 33 (B1124; B1127's additions are checked the
+// same way, a 2x2 sheet on its 2x2 seams). A wrong entry is an exit 1 from the
 // builder, not a silently mis-cut sheet.
+// B1127: a 128x128 spellsnew.edd sheet with a frame count of 4 is a 2x2 GRID
+// of 64 px frames (flare_blsp50a, flare_whsp50a); spellsnew.edd's own frame
+// field (block +0x130: 16 / 4 / 1) agrees with the file size on every
+// texture it names (`review/B1127/scripts/edd_census.py`).
 constexpr int kSingleImage = 1;
+constexpr int kTwoByTwo = 4;
 constexpr uint8_t kSheetFrames[] = {
-    16, 16, 16, 16, kSingleImage,           // spela1 spela2 spelb1 spelb2 spelb3
-    kSingleImage, 16, 16, kSingleImage,     // spelb4 spelc1 spelc2 spelc3
-    kSingleImage, 16, kSingleImage, 16,     // spelc4 speld2 speld4 spele1
-    16, 16, 16, 16, 16, 16, 16,             // spelg1 spelh1 speli1 spelj1 spelj2 spelk2 spell1
-    16, 16, 16, 16, 16, 16, 16, 16,         // spelm1 speln1 spelo1 spelp1 spelr1 spelr2 spelu1 spelu2
-    16, 16, kSingleImage, kSingleImage,     // spelv1 spely2 spely3 spely4
-    16,                                     // spelz1
+    kTwoByTwo, kTwoByTwo, kSingleImage, kSingleImage,       // flare_blsp50a flare_whsp50a gena20 gena30
+    kSingleImage, kSingleImage, kSingleImage, 16,           // genab1 genb20 glowflare02 gob
+    16, 16, 16, 16,                                         // spela1 spela2 spelaa spelab
+    16, 16, 16, 16,                                         // spelan spelb2 spelba spelbb
+    16, kSingleImage, kSingleImage, 16,                     // spelc2 spelc3 spelc4 spelcb
+    kSingleImage, kSingleImage, kSingleImage, 16,           // spelcc spelce spelcf spelcm
+    16, kSingleImage, kSingleImage, kSingleImage,           // speld2 speld4 speldc speldd
+    16, 16, 16, 16,                                         // spele1 spelg1 speli1 spelj1
+    16, 16, 16, 16,                                         // spelj2 spelja speljb spelk2
+    16, 16, 16, 16,                                         // spelkb spell1 spella spelma
+    16, 16, 16, 16,                                         // speln1 spelna speloa spelpa
+    16, 16, 16, 16,                                         // spelqa spelr1 spelr2 spelra
+    16, 16, 16, 16,                                         // spelu2 spelua spelub spelw1
+    16, 16, kSingleImage, kSingleImage,                     // spelx1 spely2 spely3 spely4
+    16, kSingleImage, kSingleImage, kSingleImage,           // spelyb spelyc spelyd spelye
 };
 static_assert(sizeof(kSheetFrames) / sizeof(kSheetFrames[0]) == kFileCount,
               "kSheetFrames must name a frame count for every file in kFiles");
 
-// Frames sprite `sprite` carries: kFramesPerSprite for a grid, 1 for a single
-// image. Out of range is 1, which draws the slot's first cell and nothing else.
+// Frames sprite `sprite` carries: 16 for a 4x4 grid, 4 for a 2x2 grid, 1 for
+// a single image. Out of range is 1, which draws the slot's first cell and nothing else.
 inline int framesFor(int sprite) {
     if (sprite < 0 || sprite >= kFileCount) return 1;
     return kSheetFrames[sprite];
@@ -150,7 +177,7 @@ inline int framesFor(int sprite) {
 // Cells RESERVED: sixteen per sprite, packed back to back from cell 0 (a
 // single image fills only the first of its sixteen). Cells from here to
 // kCapacity are unused and transparent.
-constexpr int kUsedCells = kFileCount * kFramesPerSprite;  // 528
+constexpr int kUsedCells = kFileCount * kFramesPerSprite;  // 960
 
 static_assert(kUsedCells <= kCapacity,
               "spell sprite atlas has more frames than cells");
@@ -159,13 +186,21 @@ static_assert(kBase + kFileCount <= 256,
 static_assert(kColumns % kFramesPerSprite == 0,
               "a sprite's animation must not straddle a row boundary");
 
-// Sprite ordinal for a resolved `spel*.tga` basename, or -1 if this sheet
-// does not carry it. Linear over 33 entries, called once per name at
+// Sprite ordinal for a sprite file basename (any case), or -1 if this sheet
+// does not carry it. Linear over 60 entries, called once per name at
 // config-build time -- not a hot path.
 inline int slotForFile(const char* file) {
     if (!file || !*file) return -1;
     for (int i = 0; i < kFileCount; ++i) {
-        if (std::strcmp(kFiles[i], file) == 0) return i;
+        const char* a = kFiles[i];
+        const char* b = file;
+        while (*a && *b) {
+            const char cb = (*b >= 'A' && *b <= 'Z') ? static_cast<char>(*b - 'A' + 'a') : *b;
+            if (*a != cb) break;
+            ++a;
+            ++b;
+        }
+        if (!*a && !*b) return i;  // case-insensitive: the client is Windows
     }
     return -1;
 }

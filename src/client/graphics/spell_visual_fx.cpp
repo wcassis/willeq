@@ -65,6 +65,16 @@ void SpellVisualFX::loadSpellsEff()
         LOG_WARN(MOD_SPELL, "T72: could not load spells.eff from {} ({}) — all spells will use "
                              "resist/school fallback visuals", path, m_spells_eff.loadError());
     }
+
+    // B1127 (#447): the art the official client actually draws.
+    m_spells_new_eff_loaded = m_spells_new_eff.load(m_eq_client_path);
+    if (m_spells_new_eff_loaded) {
+        LOG_INFO(MOD_SPELL, "B1127: loaded spellsnew.eff ({} records) + spellsnew.edd ({} emitters) from {}",
+                 m_spells_new_eff.recordCount(), m_spells_new_eff.emitterCount(), m_eq_client_path);
+    } else {
+        LOG_WARN(MOD_SPELL, "B1127: could not load spellsnew.eff/.edd from {} ({}) -- spell art falls "
+                             "back to spells.eff names", m_eq_client_path, m_spells_new_eff.loadError());
+    }
 }
 
 void SpellVisualFX::noteSpellVocabulary(uint32_t spell_id, const SpellVisualVocabulary& vocab)
@@ -92,10 +102,12 @@ SpellVisualResolution SpellVisualFX::resolveVisual(uint32_t spell_id) const
 
     // T381 (B160): the index comes from the event payload the game thread
     // filled, not from a SpellDatabase pointer the renderer never had.
-    const int32_t affect_index = spellVocabulary(spell_id).spellAffectIndex;
+    const SpellVisualVocabulary vocab = spellVocabulary(spell_id);
+    const int32_t affect_index = vocab.spellAffectIndex;
 
-    SpellVisualSelector selector(m_spells_eff_loaded ? &m_spells_eff : nullptr);
-    SpellVisualResolution res = selector.resolve(affect_index);
+    SpellVisualSelector selector(m_spells_eff_loaded ? &m_spells_eff : nullptr,
+                                 m_spells_new_eff_loaded ? &m_spells_new_eff : nullptr);
+    SpellVisualResolution res = selector.resolve(affect_index, vocab.spellAnim);
 
     // Distinguish the two fallback populations in logs (T72 requirement) --
     // "no visual" for a spell must be diagnosable as "by design (-1)" vs.

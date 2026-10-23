@@ -322,8 +322,9 @@ TEST_F(SpellSpriteSheetDrawTest, EveryShippedSpriteDrawsItsOwnPixels) {
         const uint16_t index =
             static_cast<uint16_t>(SpellSpriteAtlas::kBase + sprite);
         for (float age : {0.0f, 0.5f, 0.999f}) {
+            // B1127: a 2x2 sheet walks its 4 frames, a single image holds 0.
             const int want = SpellSpriteAtlas::cellFor(
-                sprite, SpellSpriteAtlas::framesFor(sprite) == 1 ? 0 : frameAt(age));
+                sprite, SpellSpriteAtlas::frameForNormalizedAge(age, SpellSpriteAtlas::framesFor(sprite)));
             const irr::video::SColor c = drawOne(index, age);
             EXPECT_EQ(identifyCell(c), want)
                 << "sprite " << sprite << " (" << SpellSpriteAtlas::kFiles[sprite]
@@ -355,8 +356,12 @@ TEST_F(SpellSpriteSheetDrawTest, TheSpriteSheetIsNotSampledAtTheAtlasRegionSize)
     // block of cells rather than one. The last shipped cell is the sharpest
     // probe: at any region size larger than 1/32 its footprint runs into the
     // unused, transparent cells beyond it and the read-back stops naming it.
-    const int lastCell = SpellSpriteAtlas::kUsedCells - 1;
-    const int sprite = SpellSpriteAtlas::kFileCount - 1;
+    // B1127: the sheet now ends in single images, so the probe is the LAST
+    // FRAME OF THE LAST 4x4 GRID: the transparent reserved cells of the
+    // single image after it are what an oversized footprint would run into.
+    int sprite = SpellSpriteAtlas::kFileCount - 1;
+    while (sprite > 0 && SpellSpriteAtlas::framesFor(sprite) != SpellSpriteAtlas::kFramesPerSprite) --sprite;
+    const int lastCell = SpellSpriteAtlas::cellFor(sprite, SpellSpriteAtlas::kFramesPerSprite - 1);
     const irr::video::SColor c =
         drawOne(static_cast<uint16_t>(SpellSpriteAtlas::kBase + sprite), 0.999f);
     EXPECT_EQ(identifyCell(c), lastCell)

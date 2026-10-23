@@ -38,6 +38,7 @@ GTEST_DISCOVER_TESTS(test_spell_database DISCOVERY_TIMEOUT 120)
 ADD_EXECUTABLE(test_spells_eff_reader
     test_spells_eff_reader.cpp
     ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_eff_reader.cpp
     ${CMAKE_SOURCE_DIR}/src/client/spell/spell_database.cpp
     ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
     ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
@@ -54,6 +55,7 @@ ADD_EXECUTABLE(test_spell_visual_selection
     test_spell_visual_selection.cpp
     ${CMAKE_SOURCE_DIR}/src/client/graphics/spell_visual_selection.cpp
     ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_eff_reader.cpp
     ${CMAKE_SOURCE_DIR}/src/client/spell/spell_database.cpp
     ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
     ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
@@ -61,6 +63,17 @@ ADD_EXECUTABLE(test_spell_visual_selection
 TARGET_COMPILE_DEFINITIONS(test_spell_visual_selection PRIVATE "WILLEQ_DB_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 TARGET_LINK_LIBRARIES(test_spell_visual_selection GTest::gtest_main ${FMT_LIB} dl)
 GTEST_DISCOVER_TESTS(test_spell_visual_selection DISCOVERY_TIMEOUT 120)
+
+# B1127 (#447): spellsnew.eff + spellsnew.edd -- the art the official client
+# draws -- and the selector's field-145 routing. Pure file reads, no renderer.
+ADD_EXECUTABLE(test_spells_new_eff_reader
+    test_spells_new_eff_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/spell_visual_selection.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_eff_reader.cpp
+)
+TARGET_LINK_LIBRARIES(test_spells_new_eff_reader GTest::gtest_main ${FMT_LIB} dl)
+GTEST_DISCOVER_TESTS(test_spells_new_eff_reader DISCOVERY_TIMEOUT 120)
 
 # Test WilleqDatabase::open() schema-version validation (T56)
 ADD_EXECUTABLE(test_willeq_database

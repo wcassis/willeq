@@ -36,4 +36,4 @@
 # Pinned here so an input drift, or a hand-edit of the database, is a ctest
 # FAIL (DbReproducible). Update this line in the SAME commit that changes an
 # input -- exactly like data/willeq.eqe1.sha256 and data/textures.sha256.
-ff3de5263cad0ed40c43ef5a9174cd20c66b6941e926869f4ea65b4ba8a170f5  willeq.db
+ed47e5ef918702e3f640a321d650d982d1953aabe9a92aa1b65543062d7efab9  willeq.db

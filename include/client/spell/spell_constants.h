@@ -551,6 +551,12 @@ namespace SpellField {
     constexpr int Deity1            = 142;
 
     constexpr int NewIcon           = 144;
+    // B1127 (#447): eqemu spells_new.spellanim (Columns()[145]). The record
+    // of spellsnew.eff the OFFICIAL client draws for this spell -- the oracle
+    // ignores spells.eff (field 123) when this names a record
+    // (review/B1127/README.md). 0 = none; the shipped file has 418 records
+    // and the field names up to 3411, so out-of-range values draw nothing.
+    constexpr int SpellAnim         = 145;
     constexpr int SpellIcon         = 143;
     constexpr int NoBuffBlock       = 161;
 

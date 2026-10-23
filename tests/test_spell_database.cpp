@@ -323,6 +323,25 @@ TEST_F(SpellDatabaseTest, NegativeSpellAffectIndexRoundTrips) {
     EXPECT_EQ(spell->spell_affect_index, -1);
 }
 
+// B1127 (#447): spells_us.txt field 145 (eqemu spellanim) -- the spellsnew.eff
+// record the official client draws -- reaches SpellData verbatim, including
+// for a spell with no spells.eff record (1899 Imbue Fire Opal).
+TEST_F(SpellDatabaseTest, SpellAnimFieldRoundTrips) {
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
+    }
+    struct Row { uint32_t id; int32_t affect; int32_t anim; };
+    for (const Row& r : {Row{54, 23, 82}, Row{656, 23, 82}, Row{458, 33, 121},
+                         Row{93, 0, 80}, Row{1656, 25, 85}, Row{14, 25, 115},
+                         Row{1899, -1, 83}}) {
+        const SpellData* spell = db.getSpell(r.id);
+        ASSERT_NE(spell, nullptr) << r.id;
+        EXPECT_EQ(spell->spell_affect_index, r.affect) << r.id;
+        EXPECT_EQ(spell->spell_anim, r.anim) << r.id;
+        EXPECT_EQ(spell->visualVocabulary().spellAnim, r.anim) << r.id;
+    }
+}
+
 // ============================================================================
 // Filtering Tests — all deleted.
 //

@@ -84,16 +84,24 @@ uint8_t SpellEffectsConfig::getTextureIndex(const std::string& name) const {
     // the layout header the builder also includes. T420 (B355): the ordinal
     // names the SPRITE; the animation CELL is chosen per particle at draw
     // time from its age, so nothing here changes when the sheet grew 16x.
+    // B1127 (#447): a spellsnew.edd stage names its texture FILE directly
+    // ("spelua.png", "gena20.bmp") -- that is the art the oracle draws.
+    {
+        const int slot = SpellSpriteAtlas::slotForFile(name.c_str());
+        if (slot >= 0) return static_cast<uint8_t>(SpellSpriteAtlas::kBase + slot);
+    }
+
     const std::string file = EQ::SpellsEffReader::effectNameToTexture(name);
     if (!file.empty()) {
         const int slot = SpellSpriteAtlas::slotForFile(file.c_str());
         if (slot >= 0) {
             return static_cast<uint8_t>(SpellSpriteAtlas::kBase + slot);
         }
-        // The rule named a file the client does not ship. Two names do
-        // this -- GENA20_SPRITE -> spela3.tga and GENA30_SPRITE ->
-        // spela4.tga, neither of which exists under SpellEffects/ -- and
-        // they fall through to the procedural circle below.
+        // The rule named a file the sheet does not carry: GENA20_SPRITE ->
+        // spela3.tga / GENA30_SPRITE -> spela4.tga (not shipped), or a
+        // spells.eff file no spell without a field-145 record reaches
+        // (B1127). It falls through to the procedural circle below; a spell
+        // WITH a field-145 record never asks for it.
     }
 
     return ParticleAtlas::SoftCircle;

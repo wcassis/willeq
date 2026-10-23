@@ -264,6 +264,8 @@ static void readSpellEffectColumns(sqlite3_stmt* stmt, int firstCol, SpellInfo& 
     // moved. Keep new columns going on the end.
     info.targetAnim = static_cast<uint16_t>(sqlite3_column_int(stmt, col++));
     info.travelType = sqlite3_column_int(stmt, col++);
+    // B1127: spell_anim (field 145) appended last, same rule.
+    info.spellAnim = sqlite3_column_int(stmt, col++);
 }
 
 SpellInfo WilleqDatabase::getSpell(uint32_t spellId) {
@@ -292,7 +294,7 @@ SpellInfo WilleqDatabase::getSpell(uint32_t spellId) {
         "reagent_id_1, reagent_id_2, reagent_id_3, reagent_id_4, "
         "reagent_count_1, reagent_count_2, reagent_count_3, reagent_count_4, "
         "noexpend_reagent_1, noexpend_reagent_2, noexpend_reagent_3, noexpend_reagent_4, "
-        "endurance_cost, target_anim, travel_type "
+        "endurance_cost, target_anim, travel_type, spell_anim "
         "FROM spells WHERE id=?",
         stmtGetSpell_);
     if (!stmt) return info;
@@ -367,7 +369,7 @@ SpellInfo WilleqDatabase::getSpellByName(const std::string& name) {
         "reagent_id_1, reagent_id_2, reagent_id_3, reagent_id_4, "
         "reagent_count_1, reagent_count_2, reagent_count_3, reagent_count_4, "
         "noexpend_reagent_1, noexpend_reagent_2, noexpend_reagent_3, noexpend_reagent_4, "
-        "endurance_cost, target_anim, travel_type "
+        "endurance_cost, target_anim, travel_type, spell_anim "
         "FROM spells WHERE name=?",
         stmtGetSpellByName_);
     if (!stmt) return info;
