@@ -19,6 +19,34 @@ export DISPLAY=:99 WINEPREFIX=/home/user/eq-oracle/wineprefix WINEARCH=win32 WIN
 if [[ $ORACLE_LANE == 5 ]]; then export __GLX_VENDOR_LIBRARY_NAME=nvidia; fi
 source /mnt/projects/eq-oracle/scripts/ui-lib.sh
 CLIENT=/home/user/eq-oracle/client
+# B1134 (#454): the OBSERVER. A plan with `# observer=<Character>` runs a SECOND
+# official client: the observer (a second PLAYER character, never a spawned
+# NPC) on :99 -- the NVIDIA Xorg that the video grabs -- from its own client
+# copy and Wine prefix, and the plan's login character (the caster) on a
+# session Xvfb (llvmpipe; its frames are never measured). Rows prefixed `obs`
+# drive the observer; every other row drives the caster. Setup:
+# oracle_observer_setup.sh; recipe: docs/oracle_driver.md "The observer".
+OBS_CLIENT=/home/user/eq-oracle/client-observer
+OBS_PREFIX=/home/user/eq-oracle/wineprefix-observer
+OBS_DISPLAY=:99
+CASTER_DISPLAY=${ORACLE_CASTER_DISPLAY:-:98}
+CASTER_CLIENT=$CLIENT CASTER_PREFIX=$WINEPREFIX
+OBSERVER= ROLE=caster CASTER_CHARACTER=
+use_role() {
+    ROLE=$1
+    if [[ $ROLE == observer ]]; then
+        export DISPLAY=$OBS_DISPLAY WINEPREFIX=$OBS_PREFIX LP_NUM_THREADS=1
+        CLIENT=$OBS_CLIENT CHARACTER=$OBSERVER
+        if [[ $ORACLE_LANE == 5 ]]; then export __GLX_VENDOR_LIBRARY_NAME=nvidia; else unset __GLX_VENDOR_LIBRARY_NAME; fi
+    else
+        # The caster's Xvfb registers Mesa's GLX only. llvmpipe stays at ONE
+        # thread: more JIT workers exhaust the 32-bit eqgame.exe's address
+        # space ("LLVM ERROR: Unable to allocate section memory!",
+        # /mnt/projects/eq-oracle/scripts/launch-client.sh).
+        export DISPLAY=$CASTER_DISPLAY WINEPREFIX=$CASTER_PREFIX LP_NUM_THREADS=1 __GLX_VENDOR_LIBRARY_NAME=mesa
+        CLIENT=$CASTER_CLIENT CHARACTER=$CASTER_CHARACTER
+    fi
+}
 alive() { pgrep -x eqgame.exe >/dev/null && xdotool search --name '^EverQuest$' >/dev/null 2>&1; }
 # B1073 (#393): the lane-5 rig has NO window manager, so after a re-render the
 # client window does not hold input focus and motion clicks (jclick, the
@@ -28,7 +56,8 @@ alive() { pgrep -x eqgame.exe >/dev/null && xdotool search --name '^EverQuest$' 
 # still made (a lost focus costs one retry, an always-throwing helper would
 # cost every run), so this never returns non-zero.
 client_focus() {
-    xdotool windowfocus --sync --name '^EverQuest$' 2>/dev/null || :
+    # B1134: bounded, so a display with no focusable window cannot hang it.
+    timeout 5 xdotool windowfocus --sync --name '^EverQuest$' 2>/dev/null || :
 }
 # The wrap. ui-lib.sh (sourced above) defines jclick/jrclick; on lane 5 we
 # redefine them so every motion click -- the facepick-rows open loop, the
@@ -755,7 +784,7 @@ if [[ $ACTION == selftest ]]; then
 fi
 stop_capture() {
     local p
-    for kind in video pcap; do
+    for kind in video video-caster pcap; do
         p=$(cat "$DIR/$kind.pid" 2>/dev/null || :)
         if [[ $p =~ ^[0-9]+$ ]]; then kill -INT "$p" 2>/dev/null || :; fi
         rm -f "$DIR/$kind.pid"
@@ -764,6 +793,12 @@ stop_capture() {
     cp "$CLIENT/eqclient.ini" "$DIR/eqclient-after.ini" 2>/dev/null || :
     cp "$CLIENT"/Testcaster_*.ini "$DIR/" 2>/dev/null || :
     cp "$CLIENT"/Testchar_*.ini "$DIR/" 2>/dev/null || :
+    obs_name=$(cat "$DIR/observer.name" 2>/dev/null || :)
+    if [[ $obs_name =~ ^[A-Za-z]+$ ]]; then
+        mkdir -p "$DIR/observer-ini"
+        cp "$OBS_CLIENT/eqclient.ini" "$DIR/observer-ini/eqclient-after.ini" 2>/dev/null || :
+        cp "$OBS_CLIENT/${obs_name}_"*.ini "$DIR/observer-ini/" 2>/dev/null || :
+    fi
     # VM-side pkill, not an eqemu-container pkill. This oracle VM is single-tenant
     # under the lane lock; leave no Wine client alive.
     pkill -TERM -x eqgame.exe 2>/dev/null || :
@@ -786,11 +821,22 @@ stop_capture() {
         cmp -s "$DIR/character-original.ini" "$(cat "$DIR/character-file.txt")" || return 65
         touch "$DIR/character-restored"
     fi
-    rm -f "$DIR/drive-login.sh"
+    # B1134: the observer's eqclient.ini edits (`# obs-ini-set=`) come back last.
+    if [[ -f $DIR/observer-eqclient-original.ini && ! -e $DIR/observer-eqclient-restored ]]; then
+        cp "$DIR/observer-eqclient-original.ini" "$OBS_CLIENT/eqclient.ini" || return 65
+        cmp -s "$DIR/observer-eqclient-original.ini" "$OBS_CLIENT/eqclient.ini" || return 65
+        touch "$DIR/observer-eqclient-restored"
+    fi
+    rm -f "$DIR/drive-login.sh" "$DIR/drive-login-observer.sh"
     # Kill only the Xvfb this session started (xvfb.pid). Lane 5's :99 is a
     # real Xorg (oracle-xorg.service) that run found up, so no pid is saved;
     # a stale or reused pid that is not an Xvfb is left alone.
     p=$(cat "$DIR/xvfb.pid" 2>/dev/null || :)
+    if [[ $p =~ ^[0-9]+$ && $(ps -o comm= -p "$p" 2>/dev/null) == Xvfb ]]; then
+        kill -TERM "$p" 2>/dev/null || :
+    fi
+    # B1134: the caster's Xvfb of an observer session, same rule (own pid only).
+    p=$(cat "$DIR/xvfb-caster.pid" 2>/dev/null || :)
     if [[ $p =~ ^[0-9]+$ && $(ps -o comm= -p "$p" 2>/dev/null) == Xvfb ]]; then
         kill -TERM "$p" 2>/dev/null || :
     fi
@@ -814,17 +860,54 @@ if [[ $LUCLIN_MODELS == true ]]; then
 fi
 CHARACTER=$(awk -F'\t' '$1=="login" {print $2; exit}' "$DIR/plan.tsv")
 [[ $CHARACTER =~ ^[A-Za-z]+$ ]] || exit 65
+CASTER_CHARACTER=$CHARACTER
+# B1134 (#454): `# observer=<Character>` -- the second official client (top of
+# this file). Its client copy, prefix and credentials file must exist
+# (oracle_observer_setup.sh); the caster gets its own Xvfb, recorded in
+# xvfb-caster.pid so stop kills only that one.
+OBSERVER=$(sed -n 's/^# observer=//p' "$DIR/plan.tsv" | head -1)
+if [[ -n $OBSERVER ]]; then
+    [[ $OBSERVER =~ ^[A-Za-z]+$ && $OBSERVER != "$CHARACTER" ]] || exit 65
+    [[ -d $OBS_CLIENT && -d $OBS_PREFIX && -f /home/user/eq-oracle/observer-$OBSERVER.cred ]] || { echo "observer $OBSERVER not set up (oracle_observer_setup.sh)" >&2; exit 65; }
+    [[ $CASTER_DISPLAY =~ ^:[0-9]+$ && $CASTER_DISPLAY != "$OBS_DISPLAY" ]] || exit 65
+    printf '%s\n' "$OBSERVER" >"$DIR/observer.name"
+    if ! xdpyinfo -display "$CASTER_DISPLAY" >/dev/null 2>&1; then
+        Xvfb "$CASTER_DISPLAY" -screen 0 1280x1024x24 +extension GLX +render -noreset >"$DIR/xvfb-caster.log" 2>&1 &
+        echo $! >"$DIR/xvfb-caster.pid"
+        sleep 3
+        xdpyinfo -display "$CASTER_DISPLAY" >/dev/null 2>&1 || exit 65
+    else
+        echo "caster display $CASTER_DISPLAY already up: refusing to share it" >&2; exit 65
+    fi
+    # `# obs-ini-set=Section.Key=VALUE` (several allowed) edits the OBSERVER's
+    # eqclient.ini (its camera), backed up first and restored at stop.
+    OBS_INI_SETS=$(sed -n 's/^# obs-ini-set=//p' "$DIR/plan.tsv")
+    cp "$OBS_CLIENT/eqclient.ini" "$DIR/observer-eqclient-before.ini" || exit 65
+    if [[ -n $OBS_INI_SETS ]]; then
+        cp "$OBS_CLIENT/eqclient.ini" "$DIR/observer-eqclient-original.ini" || exit 65
+        while IFS= read -r one; do
+            [[ $one =~ ^[A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9-]*=[A-Za-z0-9.-]+$ ]] || exit 65
+            mkdir -p "$DIR/observer-ini"
+            python3 /home/user/eq-oracle/uigap-scripts/oracle_ini_seed.py \
+                "$OBS_CLIENT" "$DIR/observer-ini" "" "$one" || exit 65
+        done <<<"$OBS_INI_SETS"
+    fi
+fi
 INI_UNSET=$(sed -n 's/^# ini-unset=//p' "$DIR/plan.tsv" | head -1)
 # B1002: `# ini-set=Section.Key=VALUE` edits the GLOBAL eqclient.ini (the
 # character- INI is the ini-unset domain; eqclient.ini's [Defaults] holds
 # HideChatWin and friends). Backed up and restored like the global luclin
 # edit.
-INI_SET=$(sed -n 's/^# ini-set=//p' "$DIR/plan.tsv" | head -1)
-if [[ -n $INI_SET ]]; then
-    [[ $INI_SET =~ ^[A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9]*=.+$ ]] || exit 65
+# B1134: several `# ini-set=` rows (B1130/B1137 rig copies; keys may carry
+# a '-', e.g. Options.Camera2-Distance), one backup before the first edit.
+INI_SETS=$(sed -n 's/^# ini-set=//p' "$DIR/plan.tsv")
+if [[ -n $INI_SETS ]]; then
     cp "$CLIENT/eqclient.ini" "$DIR/eqclient-iniset-original.ini" || exit 65
-    python3 /home/user/eq-oracle/uigap-scripts/oracle_ini_seed.py \
-        "$CLIENT" "$DIR" "" "$INI_SET" || exit 65
+    while IFS= read -r INI_SET; do
+        [[ $INI_SET =~ ^[A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9-]*=[A-Za-z0-9.-]+$ ]] || exit 65
+        python3 /home/user/eq-oracle/uigap-scripts/oracle_ini_seed.py \
+            "$CLIENT" "$DIR" "" "$INI_SET" || exit 65
+    done <<<"$INI_SETS"
 fi
 # B1058: `# create-clicks=template` makes a create row locate its race, class,
 # gender and Name-field controls from templates instead of the table above.
@@ -854,11 +937,28 @@ printf '%s\n' "$filter" >"$DIR/pcap.filter"
 sudo -n tcpdump -i any -s 0 -U -Z user -w "$DIR/capture.pcap" "$filter" >"$DIR/pcap.log" 2>&1 &
 echo $! >"$DIR/pcap.pid"
 date -u +%s.%N >"$DIR/video.mp4.t0"
-ffmpeg -nostdin -loglevel error -f x11grab -framerate 10 -video_size 1280x800 -i :99+0,30 -c:v libx264 -preset ultrafast -crf 23 -pix_fmt yuv420p "$DIR/video.mp4" >"$DIR/video.log" 2>&1 &
+# B1134: `# fps=N` (B1127/B1130 rig copies: 30 fps passthrough, crf 18 for FX
+# legs; x11grab >= 30 fps is the FX-leg bar). The default stays 10 fps, crf 23.
+FPS=$(sed -n 's/^# fps=//p' "$DIR/plan.tsv" | head -1)
+if [[ -n $FPS ]]; then
+    [[ $FPS =~ ^[1-6]?[0-9]$ ]] || exit 65
+    ffmpeg -nostdin -loglevel error -f x11grab -framerate "$FPS" -video_size 1280x800 -i :99+0,30 -fps_mode passthrough -c:v libx264 -preset ultrafast -crf 18 -pix_fmt yuv420p "$DIR/video.mp4" >"$DIR/video.log" 2>&1 &
+else
+    ffmpeg -nostdin -loglevel error -f x11grab -framerate 10 -video_size 1280x800 -i :99+0,30 -c:v libx264 -preset ultrafast -crf 23 -pix_fmt yuv420p "$DIR/video.mp4" >"$DIR/video.log" 2>&1 &
+fi
 echo $! >"$DIR/video.pid"
 sleep 3
 kill -0 "$(cat "$DIR/pcap.pid")" 2>/dev/null || exit 65
 kill -0 "$(cat "$DIR/video.pid")" 2>/dev/null || exit 65
+# B1134: `# caster-video=1` (observer sessions) also grabs the CASTER's display
+# (its own camera: the self view, for the observer's other-entity view to be
+# compared with). llvmpipe renders it, so its frame rate is the client's, not
+# the grab's (video-caster.mp4.t0 = its start epoch; passthrough pts).
+if [[ -n $OBSERVER ]] && grep -qx '# caster-video=1' "$DIR/plan.tsv"; then
+    date -u +%s.%N >"$DIR/video-caster.mp4.t0"
+    ffmpeg -nostdin -loglevel error -f x11grab -framerate 30 -video_size 1280x800 -i "$CASTER_DISPLAY+0,30" -fps_mode passthrough -c:v libx264 -preset ultrafast -crf 18 -pix_fmt yuv420p "$DIR/video-caster.mp4" >"$DIR/video-caster.log" 2>&1 &
+    echo $! >"$DIR/video-caster.pid"
+fi
 # A visible onset lets the report reject a wall-clock/video mapping that is
 # more than one frame off. The marker is removed before Wine launches.
 # B1057: lane 5's :99 is a long-lived Xorg whose screen saver is usually
@@ -881,13 +981,22 @@ shot timeline_begin || exit 65
 sleep 3
 kill "$marker_pid" 2>/dev/null || :
 wait "$marker_pid" 2>/dev/null || :
+[[ -z $OBSERVER ]] || use_role caster
 cd "$CLIENT" || exit 65
 nohup wine eqgame.exe patchme >"$DIR/wine.log" 2>&1 </dev/null &
 echo $! >"$DIR/wine.pid"
 step=0
-while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
+while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6 arg7; do
     [[ -z $verb || $verb == \#* ]] && continue
     step=$((step+1))
+    # B1134: an `obs` row is the same row for the observer's client.
+    if [[ $verb == obs ]]; then
+        [[ -n $OBSERVER ]] || exit 65
+        verb=$target target=$arg3 arg3=$arg4 arg4=$arg5 arg5=$arg6 arg6=$arg7
+        use_role observer
+    elif [[ -n $OBSERVER ]]; then
+        use_role caster
+    fi
     hold_ms=$arg3 still_name=$arg4
     if [[ $verb == create ]]; then
         race=$arg3 class=$arg4 gender=$arg5 still_name=$arg6
@@ -901,9 +1010,24 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
     mark BEGIN "$name"
     case $verb in
         login)
-            python3 /home/user/eq-oracle/uigap-scripts/oracle_login_patch.py \
-                /home/user/eq-oracle/drive-login.sh "$DIR/drive-login.sh" || exit 65
-            bash "$DIR/drive-login.sh" >"$DIR/login.log" 2>&1 || exit 65 ;;
+            if [[ $ROLE == observer ]]; then
+                # B1134: the observer's own Wine (prefix + client copy) starts
+                # here; its login helper is the VM helper with this display
+                # and the observer's credentials file sourced, never copied.
+                [[ $target == "$OBSERVER" ]] || exit 65
+                if [[ ! -e $DIR/observer-wine.pid ]]; then
+                    ( cd "$CLIENT" && nohup wine eqgame.exe patchme >"$DIR/observer-wine.log" 2>&1 </dev/null & echo $! >"$DIR/observer-wine.pid" )
+                fi
+                python3 /home/user/eq-oracle/uigap-scripts/oracle_login_patch.py \
+                    /home/user/eq-oracle/drive-login.sh "$DIR/drive-login-observer.sh" \
+                    --display "$DISPLAY" --credentials "/home/user/eq-oracle/observer-$OBSERVER.cred" || exit 65
+                bash "$DIR/drive-login-observer.sh" >"$DIR/login-observer.log" 2>&1 || exit 65
+            else
+                python3 /home/user/eq-oracle/uigap-scripts/oracle_login_patch.py \
+                    /home/user/eq-oracle/drive-login.sh "$DIR/drive-login.sh" \
+                    ${OBSERVER:+--display "$DISPLAY"} || exit 65
+                bash "$DIR/drive-login.sh" >"$DIR/login.log" 2>&1 || exit 65
+            fi ;;
         zone)
             # Seeded by the host before login; enter the selected character here.
             entered=0
@@ -1060,7 +1184,7 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             ;;
         click-template) click_template "$target" "$hold_ms" "$name" || exit 65 ;;
         wait-template) wait_template "$target" "$hold_ms" "$name" || exit 65 ;;
-        press) xdotool key "$target" ;;
+        press) [[ -z $OBSERVER ]] || client_focus; xdotool key "$target" ;;
         hold)
             [[ $target =~ ^[0-9]+,[0-9]+$ && $hold_ms =~ ^[0-9]+$ ]] || exit 65
             IFS=, read -r x y <<<"$target"
@@ -1364,7 +1488,7 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             # requires OP_CharacterCreate in this interval; the window check
             # below only proves that a live client remains after the click.
             : ;;
-        command) xdotool key Return; xdotool type --delay 80 "$target"; xdotool key Return ;;
+        command) [[ -z $OBSERVER ]] || client_focus; xdotool key Return; xdotool type --delay 80 "$target"; xdotool key Return ;;
         explore-open)
             # B888-CC3 (#204): enter the character-select screen's Explore
             # mode. CSW_Explore_Button is XML (2,60) 48x32. Location MEASURED

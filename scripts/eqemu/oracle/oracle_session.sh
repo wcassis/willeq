@@ -19,7 +19,7 @@ source "$REPO/scripts/eqemu/env.sh"
 source "$REPO/scripts/eqemu/restore_lib.sh"
 OWNER="${ORACLE_OWNER:-oracle_session}_$(date -u +%Y%m%dT%H%M%S)_$$"
 [[ $OWNER =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid ORACLE_OWNER" >&2; exit 64; }
-STATUS=0 LOCKED=0 SNAPSHOT=0 REMOTE_STARTED=0 CREATE_ACCOUNT_ID= BROKER_PID= STATE_CHAR=
+STATUS=0 LOCKED=0 SNAPSHOT=0 REMOTE_STARTED=0 CREATE_ACCOUNT_ID= BROKER_PID= STATE_CHAR= OBS_ID= VITALS_IDS= PROVISION= PROV_ACC= PROV_LOGIN_ID=
 REMOTE_DIR="/home/user/eq-oracle/sessions/$OWNER"
 say() { printf '%s\n' "$*" | tee -a "$OUT/driver.log"; }
 remote() { ssh -n -o BatchMode=yes -o ConnectTimeout=10 "user@$EQEMU_ORACLE_HOST" "$@"; }
@@ -65,7 +65,27 @@ cleanup() {
                     eqemu_sql "DELETE FROM character_data WHERE id=$id AND name='$name' AND account_id=$CREATE_ACCOUNT_ID;" >/dev/null || STATUS=66
                 done <"$OUT/created-ids.tsv"
             fi
-            eqemu_restore_snapshot "$OUT/db-before.tsv" "$OUT/db-after.tsv" say >>"$OUT/driver.log" 2>&1 || STATUS=66
+            if [[ -n $PROVISION ]]; then
+                # The provisioned character's rows are the only new ones.
+                PROV_ID=$(eqemu_sql "SELECT id FROM character_data WHERE name='$PROVISION';")
+                PROV_ACC=$(eqemu_sql "SELECT account_id FROM character_data WHERE name='$PROVISION';")
+                if [[ $PROV_ID =~ ^[0-9]+$ && $PROV_ACC =~ ^[0-9]+$ ]]; then
+                    PROV_ACC_NAME=$(eqemu_sql "SELECT name FROM account WHERE id=$PROV_ACC;")
+                    PROV_LOGIN_ID=$(eqemu_sql "SELECT id FROM login_accounts WHERE account_name='$PROV_ACC_NAME';")
+                    printf 'character\t%s\t%s\naccount\t%s\t%s\nlogin_account\t%s\t%s\n' "$PROV_ID" "$PROVISION" \
+                        "$PROV_ACC" "$PROV_ACC_NAME" "$PROV_LOGIN_ID" "$PROV_ACC_NAME" >"$OUT/provisioned.tsv"
+                    say "provisioned: character $PROV_ID $PROVISION on account $PROV_ACC $PROV_ACC_NAME (login $PROV_LOGIN_ID)"
+                else
+                    say "provision=$PROVISION: no character was created"; STATUS=66
+                fi
+                eqemu_world_stop >>"$OUT/driver.log" 2>&1 || STATUS=66
+                eqemu_sql "$(eqemu_restore_sql_from "$OUT/db-before.tsv")" >/dev/null || STATUS=66
+                eqemu_snapshot "$OUT/db-after-raw.tsv" || STATUS=66
+                awk -F'\t' -v id="${PROV_ID:-x}" '$1 != id' "$OUT/db-after-raw.tsv" >"$OUT/db-after.tsv"
+                diff -q "$OUT/db-before.tsv" "$OUT/db-after.tsv" >>"$OUT/driver.log" 2>&1 || { say "SNAPSHOT MISMATCH (provision)"; STATUS=66; }
+            else
+                eqemu_restore_snapshot "$OUT/db-before.tsv" "$OUT/db-after.tsv" say >>"$OUT/driver.log" 2>&1 || STATUS=66
+            fi
             # B1129 (#449): the provisioning hooks' undo, with the WORLD DOWN
             # (the zone writes the character back at shutdown, so an earlier
             # undo is overwritten). The snapshot covers level, not class,
@@ -86,6 +106,25 @@ cleanup() {
                 fi
                 char_state "$STATE_CHAR" after || STATUS=66
             fi
+            # B1134 (#454): HP/mana/endurance and the PvP flag of the login
+            # character and the observer (an observer leg may nuke the observer
+            # or flag both PvP), then the observer's buffs (none before: the
+            # session refused otherwise) and its after-census.
+            if [[ -n $VITALS_IDS ]]; then
+                eqemu_world_stop >>"$OUT/driver.log" 2>&1 || STATUS=66
+                vsql=$(awk -F'\t' 'NF==5 && $1 ~ /^[0-9]+$/ {printf "UPDATE character_data SET cur_hp=%s,mana=%s,endurance=%s,pvp_status=%s WHERE id=%s;", $2,$3,$4,$5,$1}' "$OUT/vitals-before.tsv")
+                [[ -z $vsql ]] || eqemu_sql "$vsql" >>"$OUT/driver.log" 2>&1 || STATUS=66
+                eqemu_sql "SELECT id,cur_hp,mana,endurance,pvp_status FROM character_data WHERE id IN ($VITALS_IDS) ORDER BY id;" >"$OUT/vitals-after.tsv" || STATUS=66
+                diff -q "$OUT/vitals-before.tsv" "$OUT/vitals-after.tsv" >>"$OUT/driver.log" 2>&1 || STATUS=66
+            fi
+            if [[ -n $OBS_ID ]]; then
+                eqemu_sql "DELETE FROM character_buffs WHERE character_id=$OBS_ID;" >>"$OUT/driver.log" 2>&1 || STATUS=66
+                char_state "$OBS_ID" observer-after || STATUS=66
+                for f in state memmed book buffs; do
+                    ext=tsv; [[ $f == book || $f == buffs ]] && ext=txt
+                    cmp -s "$OUT/char-$f-observer-before.$ext" "$OUT/char-$f-observer-after.$ext" || { say "observer $OBS_ID $f changed"; STATUS=66; }
+                done
+            fi
             eqemu_inventory_restore "$OUT/inventory-before.tsv" "$CHAR_IDS" >>"$OUT/driver.log" 2>&1 || STATUS=66
             eqemu_inventory_snapshot "$OUT/inventory-after.tsv" "$CHAR_IDS" >>"$OUT/driver.log" 2>&1 || STATUS=66
             diff -q "$OUT/inventory-before.tsv" "$OUT/inventory-after.tsv" >>"$OUT/driver.log" 2>&1 || STATUS=66
@@ -98,6 +137,13 @@ cleanup() {
             eqemu_sql "DELETE FROM login_accounts WHERE id NOT IN ($login_ids) AND account_name LIKE 'willeq_test%';" >/dev/null || STATUS=66
             eqemu_sql "SELECT id,name FROM account ORDER BY id;" >"$OUT/accounts-after.tsv" || STATUS=66
             eqemu_sql "SELECT id,account_name FROM login_accounts ORDER BY id;" >"$OUT/login-accounts-after.tsv" || STATUS=66
+            if [[ -n $PROVISION && -s $OUT/provisioned.tsv ]]; then
+                # the provisioned account + login rows are the only new rows
+                mv "$OUT/accounts-after.tsv" "$OUT/accounts-after-raw.tsv"
+                mv "$OUT/login-accounts-after.tsv" "$OUT/login-accounts-after-raw.tsv"
+                awk -F'\t' -v id="$PROV_ACC" '$1 != id' "$OUT/accounts-after-raw.tsv" >"$OUT/accounts-after.tsv"
+                awk -F'\t' -v id="$PROV_LOGIN_ID" '$1 != id' "$OUT/login-accounts-after-raw.tsv" >"$OUT/login-accounts-after.tsv"
+            fi
             diff -q "$OUT/accounts-before.tsv" "$OUT/accounts-after.tsv" >>"$OUT/driver.log" 2>&1 || STATUS=66
             diff -q "$OUT/login-accounts-before.tsv" "$OUT/login-accounts-after.tsv" >>"$OUT/driver.log" 2>&1 || STATUS=66
         fi
@@ -133,6 +179,31 @@ eqemu_roster_zone_seed >>"$OUT/driver.log" 2>&1 || { STATUS=65; exit "$STATUS"; 
 eqemu_snapshot "$OUT/db-before.tsv" || { STATUS=65; exit "$STATUS"; }
 CHAR_IDS=$(eqemu_sql "SELECT id FROM character_data WHERE name IN ('Testcaster','Testchar','Testbuddy') ORDER BY id;" | paste -sd, -)
 [[ -n $CHAR_IDS ]] || { STATUS=65; exit "$STATUS"; }
+# B1134 (#454): `# observer=<Character>` = a second official client logged in
+# as another PLAYER character (docs/oracle_driver.md "The observer"). Its
+# inventory joins the snapshot; its zone and `# observer-pose=` are seeded
+# below like the login character's and come back with the snapshot restore.
+# `# provision=<Observer>` is the one-time leg that MAKES the observer: its
+# account does not exist yet (the loginserver auto-creates it at the first
+# login, oracle_observer_setup.sh wrote its credentials on the oracle host)
+# and an `obs create <Observer> ...` row creates the character. That account,
+# its login row and that character are the only rows the restore and the
+# census checks let through, and they are kept (provisioned.tsv).
+OBSERVER=$(awk '/^# observer=/ {sub(/^# observer=/, ""); print; exit}' "$PLAN")
+PROVISION=$(awk '/^# provision=/ {sub(/^# provision=/, ""); print; exit}' "$PLAN")
+if [[ -n $OBSERVER ]]; then
+    [[ $OBSERVER =~ ^[A-Za-z]+$ ]] || { STATUS=64; exit "$STATUS"; }
+    OBS_ID=$(eqemu_sql "SELECT id FROM character_data WHERE name='$OBSERVER';")
+    if [[ -n $PROVISION ]]; then
+        [[ $PROVISION == "$OBSERVER" && -z $OBS_ID ]] || { say "provision=$PROVISION: needs observer=$PROVISION and no such character yet"; STATUS=64; exit "$STATUS"; }
+        awk -F'\t' -v n="$PROVISION" '$1=="obs" && $2=="create" && $3==n {f=1} END {exit !f}' "$PLAN" || { STATUS=64; exit "$STATUS"; }
+    else
+        [[ $OBS_ID =~ ^[0-9]+$ ]] || { say "observer $OBSERVER not found"; STATUS=65; exit "$STATUS"; }
+        [[ ,$CHAR_IDS, == *,$OBS_ID,* ]] || CHAR_IDS+=",$OBS_ID"
+    fi
+elif [[ -n $PROVISION ]]; then
+    STATUS=64; exit "$STATUS"
+fi
 eqemu_inventory_snapshot "$OUT/inventory-before.tsv" "$CHAR_IDS" || { STATUS=65; exit "$STATUS"; }
 eqemu_sql "SELECT id,name FROM account ORDER BY id;" >"$OUT/accounts-before.tsv" || { STATUS=65; exit "$STATUS"; }
 eqemu_sql "SELECT id,account_name FROM login_accounts ORDER BY id;" >"$OUT/login-accounts-before.tsv" || { STATUS=65; exit "$STATUS"; }
@@ -164,6 +235,14 @@ if [[ -n ${ORACLE_STATE_CHAR:-} ]]; then
     [[ $ORACLE_STATE_CHAR =~ ^[0-9]+$ ]] || { STATUS=64; exit "$STATUS"; }
     char_state "$ORACLE_STATE_CHAR" before || { STATUS=65; exit "$STATUS"; }
     STATE_CHAR=$ORACLE_STATE_CHAR
+fi
+if [[ -n $OBS_ID ]]; then
+    char_state "$OBS_ID" observer-before || { STATUS=65; exit "$STATUS"; }
+    [[ $(cat "$OUT/char-buffs-observer-before.txt") == 0 ]] || { say "observer $OBSERVER has buffs; refusing"; STATUS=65; exit "$STATUS"; }
+    LOGIN_ID=$(eqemu_sql "SELECT id FROM character_data WHERE name='$CHARACTER';")
+    [[ $LOGIN_ID =~ ^[0-9]+$ && $LOGIN_ID != "$OBS_ID" ]] || { STATUS=65; exit "$STATUS"; }
+    VITALS_IDS="$LOGIN_ID,$OBS_ID"
+    eqemu_sql "SELECT id,cur_hp,mana,endurance,pvp_status FROM character_data WHERE id IN ($VITALS_IDS) ORDER BY id;" >"$OUT/vitals-before.tsv" || { STATUS=65; exit "$STATUS"; }
 fi
 if [[ -n ${ORACLE_PRE_SQL:-} ]]; then
     say "pre-SQL: $ORACLE_PRE_SQL"
@@ -207,6 +286,16 @@ if [[ -n $ZONE && -n $CHARACTER ]]; then
         [[ $POSE =~ ^-?[0-9.]+,-?[0-9.]+,-?[0-9.]+,[0-9.]+$ ]] || { STATUS=64; exit "$STATUS"; }
         IFS=, read -r PX PY PZ PH <<<"$POSE"
         eqemu_sql "UPDATE character_data SET x=$PX, y=$PY, z=$PZ, heading=$PH WHERE name='$CHARACTER';" >/dev/null || { STATUS=65; exit "$STATUS"; }
+    fi
+    # B1134: the observer stands in the same zone at its own pose.
+    if [[ -n $OBS_ID ]]; then
+        eqemu_sql "UPDATE character_data SET zone_id=$ZONE_ID WHERE id=$OBS_ID;" >/dev/null || { STATUS=65; exit "$STATUS"; }
+        OPOSE=$(awk '/^# observer-pose=/ {sub(/^# observer-pose=/, ""); print; exit}' "$PLAN")
+        if [[ -n $OPOSE ]]; then
+            [[ $OPOSE =~ ^-?[0-9.]+,-?[0-9.]+,-?[0-9.]+,[0-9.]+$ ]] || { STATUS=64; exit "$STATUS"; }
+            IFS=, read -r PX PY PZ PH <<<"$OPOSE"
+            eqemu_sql "UPDATE character_data SET x=$PX, y=$PY, z=$PZ, heading=$PH WHERE id=$OBS_ID;" >/dev/null || { STATUS=65; exit "$STATUS"; }
+        fi
     fi
 fi
 remote "mkdir -p ~/eq-oracle/uigap-scripts '$REMOTE_DIR'" || { STATUS=65; exit "$STATUS"; }

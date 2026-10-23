@@ -175,7 +175,7 @@ gem-column clicks are reported as unchecked, not guessed.
 
 **Several classes = one leg per class**: `oracle_class_leg.sh <lane> <class>
 <plan> <out> [--char-id 67] [--home-class 12] [--gems 93,38,54,41,253,458,656]
-[--post-sql-file F]`. It checks the plan offline, waits for the lease (never
+[--pre-sql-file F] [--post-sql-file F]`. It checks the plan offline, waits for the lease (never
 breaks it) and runs the driver with four hooks the driver runs only inside
 its locked session: `ORACLE_STATE_CHAR` (class/level, gems, spellbook and
 buffs census before and after), `ORACLE_PRE_SQL` (the class switch, only
@@ -183,9 +183,77 @@ from the home class), `ORACLE_EXPECT_CLASS` (refuse if the switch did not
 take), and `ORACLE_POST_SQL`, run in cleanup **with the world down** after
 the snapshot restore, which covers level but not class, gems or buffs: home
 class back, the `--gems` list rewritten in slots 0.., buffs cleared, plus the
-file (B1130's skills restore is `review/B1130/scripts/skills_restore_t2.sql`).
-The driver then deletes spellbook rows the leg added. The helper exits 66
+file. The character's skills, disciplines and persistent timers (none of them
+in the snapshot; a song raises a skill, `#traindisc` scribes, a `/disc` starts
+a reuse timer) are copied to `oracle_save_<table>_<id>` before the switch and
+put back exactly in the undo (B1134; `SAVED`/`LEG`/`BACK` row counts in
+`driver.log`). `--pre-sql-file` runs after the switch (a leg's server rule; its
+undo goes in `--post-sql-file`). The driver then deletes spellbook rows the leg added. The helper exits 66
 when the after-census does not show the home class and exactly `--gems`.
+
+## The observer: a second player character (B1134)
+
+**An FX leg's other target and its camera are a SECOND PLAYER CHARACTER on a
+SECOND official client, never a spawned NPC** (B1134, #454). B1132 lost four
+legs trying to move a `#spawn`ed NPC off the caster; a caster's own camera
+cannot see a landing that happens after it zones (a port) and the gem rig
+cannot cast what is not a gem (a discipline). The observer sees all of it:
+"unmeasurable" is never a finding, a rig limit is.
+
+**Prior work this follows.** `/mnt/projects/eq-oracle/scripts/two-client-capture.sh`
+(H05) already ran two official clients on one VM: display `:99` + `:98`, a
+second client directory and a second Wine prefix, one account each. fable's own
+two-client scenarios (`two_client_survive`, `equip_observed`/`equip_actor`,
+`scripts/scenario.sh`) are the same idea for the fable client.
+
+**How it runs.** A plan with `# observer=<Character>` runs two clients:
+
+| role | display | client | Wine prefix | rows |
+| --- | --- | --- | --- | --- |
+| observer | `:99` (the grabbed display: `video.mp4` is ITS window) | `~/eq-oracle/client-observer` | `~/eq-oracle/wineprefix-observer` | `obs <verb> ...` |
+| caster (the plan's `login` character) | a session Xvfb `:98` (`ORACLE_CASTER_DISPLAY`; Mesa GLX, llvmpipe, one thread: more exhaust the 32-bit client) | `~/eq-oracle/client` | `~/eq-oracle/wineprefix` | every other row |
+
+An `obs` row is any driver row with `obs` in front (`obs login Oraclewatch`,
+`obs zone qeynos2`, `obs press F9`, `obs click 1229,555`); its still is taken
+on the observer's display. The session seeds the observer's zone (the plan's
+`zone`) and `# observer-pose=x,y,z,heading`, adds it to the inventory
+snapshot, records its census (`char-*-observer-before/after`, which must
+match), refuses an observer with buffs, and restores HP/mana/endurance and the
+PvP flag of BOTH characters with the world down (`vitals-before/after.tsv`).
+`# obs-ini-set=Section.Key=VALUE` edits the observer's `eqclient.ini` and is
+undone at stop; `# fps=30` sets the x11grab rate (passthrough, crf 18; FX legs
+need >= 30). The pcap holds both clients; a measurement selects the
+observer's stream by the client port of its C->S `OP_ZoneEntry`
+(`review/B1134/scripts/obs_measure.py`).
+
+**Setup, once per lane** (no eqgame running):
+`oracle_observer_setup.sh <lane> Oraclewatch --account willeqwatch` copies the
+client and the prefix, gives the observer the caster's UI layout and writes
+`~/eq-oracle/observer-Oraclewatch.cred` with a password GENERATED on the
+oracle host (it never leaves it; `oracle_login_patch.py --credentials` makes
+the login helper source the file). The loginserver's `auto_create_accounts`
+creates the account at the first login, and a `# provision=Oraclewatch` leg
+creates the character through the official creation screen (`obs create
+Oraclewatch Human Warrior Male`); that account, its login row and that
+character are the only rows its restore and census let through, and they are
+kept (`provisioned.tsv`). Lane 5: character 103 Oraclewatch (level-1 Human
+Warrior), account 80 `willeqwatch` (B1134 leg P1).
+
+**The geometry** (B1134, the B1130 survey's own): the observer stands where
+B1130's caster stood after its `#goto` (`-67.6,434.4,3.75`, heading 160) and
+the caster where B1130's `#spawn`ed TrollF stood (`-74,428,3.75`, heading
+160), 9.05 world units = about 1.4 caster heights to the observer's right. The
+observer's F9 x3 is B1130's fixed camera, so the caster is framed like
+B1130's `fixed_npc` target and a landing on the observer like B1130's
+`fixed_self`. Plans: `review/B1134/plans/p2_rig93.tsv` (the rig check),
+`p3_ports.tsv`, `p4_discs.tsv`.
+
+**A detrimental cast on the observer** needs both characters `#set pvp on`
+(eqemu `Mob::IsAttackAllowed`: client vs client only when both are PvP or
+dueling) and, near guards, `Character:PVPEnableGuardFactionAssist` off for the
+leg (`zone/spells.cpp`: guards within 70 units add the caster to their hate
+list): `oracle_class_leg.sh --pre-sql-file` / `--post-sql-file`, then
+`#reload rules global` in the plan.
 
 ## Template clicks (B1058)
 

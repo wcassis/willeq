@@ -177,6 +177,14 @@ leg B, `refactor/B1139/README.md`):
   unexplained residual, a denser early hand spray) and colour/hue (the frame
   mean mixes in the scene).
 
+**An oracle FX leg's other target and its camera are a SECOND PLAYER
+CHARACTER, never a spawned NPC** (B1134, #454): the observer rig of
+`docs/oracle_driver.md` "The observer" (`# observer=Oraclewatch`, a second
+official client on lane 5's `:99`). B1132 lost four legs trying to move a
+`#spawn`ed NPC off the caster, and a caster's own camera cannot see a landing
+that happens after it zones (ports) or a cast it does not make from a gem
+(disciplines). "Unmeasurable" is never the finding: name the rig limit.
+
 ⚠ A "no server" negative test is NOT safe without checking the lock: T410's
 smoke test for the could-not-start exit found T405's server UP and logged a
 character in under another unit's lock (B306). Before ANY command that could
