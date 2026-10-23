@@ -430,6 +430,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_zone_entities DISCOVERY_TIMEOUT 120)
 
+# B1125 (#445): OP_DeleteSpawn(0) names no entity (eqemu's ~Mob despawn of an
+# NPC whose id went to its corpse); the local player and a live target survive
+# it. Same headless replay-seam idiom as test_zone_entities.
+ADD_EXECUTABLE(test_delete_spawn_zero
+    test_delete_spawn_zero.cpp
+)
+TARGET_LINK_LIBRARIES(test_delete_spawn_zero GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_delete_spawn_zero PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_delete_spawn_zero DISCOVERY_TIMEOUT 120)
+
 # T18: chat-domain zone-stream tests (eq_chat.cpp) -- ChannelMessage channel
 # mapping, /reply tracking, size guards, and real-capture chat replay,
 # observed through GameStateBridge events.

@@ -196,9 +196,12 @@ place on death rather than spawning a second one:
    same id in `m_entities` — it does not create a new entity either.
    `ZoneProcessDeleteSpawn()` additionally special-cases corpses (`if
    (it->second.is_corpse)`) to refuse deletion until looting completes, so
-   the id survives the server's `DeleteSpawn(0)` (interpreted as "delete
+   the id survives the server's `DeleteSpawn(0)` (then interpreted as "delete
    current target") that arrives immediately after death — confirmed live
    in T32's transcript at the same timestamp the corpse rename happened.
+   [B1125: id 0 is now ignored outright — it is eqemu's despawn of the NPC
+   object whose id went to the corpse, and the target mapping erased a
+   self-targeted player; `refactor/B1125/README.md`.]
 
 This means the id captured at `ZoneProcessDeath()` time (`victim_id`) is
 valid for the corpse's entire lifetime — no name/rename fallback needed.
