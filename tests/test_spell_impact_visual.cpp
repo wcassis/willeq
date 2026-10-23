@@ -272,7 +272,18 @@ TEST(SpellImpactVisualProducer, LocalActionOnlyHasSourceStageRoute) {
     const auto end = body.find("case state::GameEventType::SpellCastVisualInterrupted:", begin);
     ASSERT_NE(begin, std::string::npos);
     ASSERT_NE(end, std::string::npos);
-    EXPECT_NE(body.substr(begin, end - begin).find("createCastGlow("), std::string::npos);
+    // B1138: the arm's FX half is ApplySpellCastCompleteFx (spell_cast_fx.cpp,
+    // shared with tools/model_viewer's FX harness); the action-only Source is
+    // armed there.
+    EXPECT_NE(body.substr(begin, end - begin).find("ApplySpellCastCompleteFx("), std::string::npos);
+    std::ifstream fxSource(std::string(WILLEQ_REPO_ROOT) + "/src/client/bridge/spell_cast_fx.cpp");
+    ASSERT_TRUE(fxSource.good());
+    const std::string fx(std::istreambuf_iterator<char>{fxSource}, {});
+    const auto fb = fx.find("void ApplySpellCastCompleteFx(");
+    const auto fe = fx.find("void ApplySpellCastInterruptedFx(", fb);
+    ASSERT_NE(fb, std::string::npos);
+    ASSERT_NE(fe, std::string::npos);
+    EXPECT_NE(fx.substr(fb, fe - fb).find("createCastGlow("), std::string::npos);
 }
 
 // The packet EVERY client in range receives must be the one that arms the

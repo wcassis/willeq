@@ -157,6 +157,15 @@ bit-deterministic across build types (T403).
 
 ## eqemu (only if the plan assigns server ownership)
 
+**Spell FX gates on FABLE run in the harness, not on a lane** (B1138, #458):
+`model_viewer --spell-test --plan <tsv> --frames-dir <dir> --fps 30 --headless
+--seconds N --camera b1118` drives the client's own cast sequence
+(`src/client/bridge/spell_cast_fx.cpp`) through the production FX chain and
+writes frames + `timing.tsv`; `review/B1138/scripts/harness_measure.py` runs the
+lane-5 measurement scripts on them unchanged. Lane 5 is for ORACLE legs (the
+official client) only. Residuals vs the lane's own fable numbers are in
+`refactor/B1138/README.md`.
+
 ⚠ A "no server" negative test is NOT safe without checking the lock: T410's
 smoke test for the could-not-start exit found T405's server UP and logged a
 character in under another unit's lock (B306). Before ANY command that could

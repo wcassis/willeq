@@ -982,27 +982,6 @@ uint32_t ParticleManager::createSpellEffect(const SpellEffectDef& def,
     return effectID;
 }
 
-uint32_t ParticleManager::createSpellEffectAtPosition(const SpellEffectDef& def,
-                                                       const glm::vec3& worldPos,
-                                                       float duration) {
-    if (!unifiedRendererInitialized_) return 0;
-
-    uint32_t effectID = nextLocalSpellEffectID_++;
-
-    ParticleCommandData cmd;
-    cmd.type = ParticleCommand::CreateSpellEffectAtPos;
-    cmd.spellDef = def;
-    cmd.worldPos = worldPos;
-    cmd.duration = duration;
-    cmd.preAssignedEffectID = effectID;
-    pendingCommands_.push_back(std::move(cmd));
-
-    LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Enqueued CreateSpellEffectAtPos '{}' id={} at ({:.1f},{:.1f},{:.1f})",
-              def.name, effectID, worldPos.x, worldPos.y, worldPos.z);
-
-    return effectID;
-}
-
 // T397 Leg B, board B220: removeSpellEffect(uint32_t) was deleted from here.
 // See particle_manager.h for why.
 //

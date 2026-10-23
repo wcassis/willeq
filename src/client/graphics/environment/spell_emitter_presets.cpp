@@ -452,23 +452,6 @@ void applyStageSpriteNames(SpellEffectDef& def,
     }
 }
 
-SpellEffectDef BuffAura(glm::vec4 color, uint32_t spellId) {
-    auto s = SpellEffectsConfig::instance().getStyleSettings("buffAura", spellId);
-
-    SpellEffectDef def;
-    def.name = "BuffAura";
-
-    SpellEmitterDef ed;
-    ed.trigger = SpellTrigger::IMMEDIATE;
-    ed.attach = SpellAttach::CASTER;
-    ed.positionOffset = s.hasPositionOffset ? s.positionOffset : glm::vec3(0.0f, 0.5f, 0.0f);
-
-    applyStyle(s, ed.config, color);
-
-    def.emitters.push_back(ed);
-    return def;
-}
-
 SpellEffectDef Projectile(glm::vec4 color, uint32_t spellId) {
     SpellEffectDef def;
     def.name = "Projectile";
@@ -501,47 +484,6 @@ SpellEffectDef Projectile(glm::vec4 color, uint32_t spellId) {
         def.emitters.push_back(ed);
     }
 
-    return def;
-}
-
-SpellEffectDef SpellRain(glm::vec4 color, float radius, uint32_t spellId) {
-    auto s = SpellEffectsConfig::instance().getStyleSettings("spellRain", spellId);
-
-    SpellEffectDef def;
-    def.name = "SpellRain";
-
-    SpellEmitterDef ed;
-    ed.trigger = SpellTrigger::IMMEDIATE;
-    ed.attach = SpellAttach::GROUND_TARGET;
-    ed.positionOffset = s.hasPositionOffset ? s.positionOffset : glm::vec3(0.0f, 10.0f, 0.0f);
-
-    applyStyle(s, ed.config, color);
-
-    // Override spawn extents with the radius parameter
-    ed.config.spawnExtents = glm::vec3(radius, 0.0f, radius);
-
-    def.emitters.push_back(ed);
-    return def;
-}
-
-SpellEffectDef GroundCircle(glm::vec4 color, float radius, uint32_t spellId) {
-    auto s = SpellEffectsConfig::instance().getStyleSettings("groundCircle", spellId);
-
-    SpellEffectDef def;
-    def.name = "GroundCircle";
-
-    SpellEmitterDef ed;
-    ed.trigger = SpellTrigger::IMMEDIATE;
-    ed.attach = SpellAttach::GROUND_TARGET;
-    ed.positionOffset = s.hasPositionOffset ? s.positionOffset : glm::vec3(0.0f, 0.3f, 0.0f);
-
-    applyStyle(s, ed.config, color);
-
-    // Override radius-dependent fields with the radius parameter
-    ed.config.spawnExtents = glm::vec3(radius, 0.0f, 0.0f);
-    ed.config.orbitalRadius = radius;
-
-    def.emitters.push_back(ed);
     return def;
 }
 

@@ -193,9 +193,7 @@ extern float spellTestCastDuration;
 extern const EQ::SpellData* spellTestCurrentSpell;
 extern bool spellTestCastAnimPlaying;
 
-// Virtual entity IDs for hand bone particle tracking
-extern uint16_t casterRightHandEntityId;
-extern uint16_t casterLeftHandEntityId;
+// Hand bone indices (FX anchors: SpellVisualFX's pseudo-entities, B1138)
 extern int casterRightHandBoneIdx;
 extern int casterLeftHandBoneIdx;
 

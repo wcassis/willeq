@@ -187,19 +187,6 @@ bool SpellVisualFX::hasCastGlow(uint16_t caster_id) const
     return false;
 }
 
-bool SpellVisualFX::hasBuffAura(uint16_t entity_id, uint32_t spell_id) const
-{
-    for (const auto& effect : m_effects) {
-        if (effect.type == SpellFXType::AuraPersistent &&
-            effect.source_entity == entity_id &&
-            effect.spell_id == spell_id &&
-            effect.active) {
-            return true;
-        }
-    }
-    return false;
-}
-
 // ============================================================================
 // Private Helpers
 // ============================================================================
@@ -427,114 +414,6 @@ void SpellVisualFX::createImpactNode(SpellFXInstance& effect)
     }
 }
 
-void SpellVisualFX::createAuraNode(SpellFXInstance& effect)
-{
-    if (!m_smgr) return;
-    if (m_particle_multiplier <= 0.0f) return;  // Particles disabled
-
-    // Create a particle system for the persistent aura
-    effect.particle_system = m_smgr->addParticleSystemSceneNode(false, nullptr, -1,
-        effect.source_pos);
-
-    if (effect.particle_system) {
-        // Apply particle multiplier to emission rates
-        int minPPS = static_cast<int>(5 * m_particle_multiplier);
-        int maxPPS = static_cast<int>(10 * m_particle_multiplier);
-
-        // Create ring emitter for aura effect
-        irr::scene::IParticleEmitter* emitter = effect.particle_system->createRingEmitter(
-            irr::core::vector3df(0, 0, 0),              // Center
-            5.0f, 7.0f,                                  // Ring radius min/max
-            irr::core::vector3df(0, 0.01f, 0),          // Direction (slight upward)
-            minPPS, maxPPS,                              // Particles per second (scaled)
-            effect.color,                                // Min color
-            effect.color,                                // Max color
-            500, 1000,                                   // Min/max lifetime ms
-            0,                                           // Max angle
-            irr::core::dimension2df(0.5f, 0.5f),        // Min size
-            irr::core::dimension2df(1.5f, 1.5f)         // Max size
-        );
-
-        effect.particle_system->setEmitter(emitter);
-        emitter->drop();
-
-        // Add fade out affector
-        irr::scene::IParticleAffector* fadeAffector =
-            effect.particle_system->createFadeOutParticleAffector();
-        effect.particle_system->addAffector(fadeAffector);
-        fadeAffector->drop();
-
-        // Set particle texture based on spell type
-        irr::video::ITexture* tex = getTextureForSpell(effect.spell_id);
-        if (tex) {
-            effect.particle_system->setMaterialTexture(0, tex);
-        }
-
-        effect.particle_system->setMaterialFlag(irr::video::EMF_LIGHTING, false);
-        effect.particle_system->setMaterialType(irr::video::EMT_TRANSPARENT_ADD_COLOR);
-    }
-}
-
-void SpellVisualFX::createRainNode(SpellFXInstance& effect)
-{
-    if (!m_smgr) return;
-    if (m_particle_multiplier <= 0.0f) return;  // Particles disabled
-
-    // Create particle system for rain effect
-    effect.particle_system = m_smgr->addParticleSystemSceneNode(false, nullptr, -1,
-        effect.target_pos + irr::core::vector3df(0, 30, 0));  // Start above target
-
-    if (effect.particle_system) {
-        float radius = effect.scale;
-
-        // Apply particle multiplier to emission rates
-        int minPPS = static_cast<int>(30 * m_particle_multiplier);
-        int maxPPS = static_cast<int>(60 * m_particle_multiplier);
-
-        irr::scene::IParticleEmitter* emitter = effect.particle_system->createBoxEmitter(
-            irr::core::aabbox3df(-radius, 0, -radius, radius, 5, radius),
-            irr::core::vector3df(0, -0.1f, 0),          // Falling direction
-            minPPS, maxPPS,                              // Particles per second (scaled)
-            effect.color,
-            effect.color,
-            500, 1500,                                   // Lifetime
-            0,
-            irr::core::dimension2df(0.3f, 0.3f),
-            irr::core::dimension2df(0.8f, 0.8f)
-        );
-
-        effect.particle_system->setEmitter(emitter);
-        emitter->drop();
-
-        // Set particle texture based on spell type
-        irr::video::ITexture* tex = getTextureForSpell(effect.spell_id);
-        if (tex) {
-            effect.particle_system->setMaterialTexture(0, tex);
-        }
-
-        effect.particle_system->setMaterialFlag(irr::video::EMF_LIGHTING, false);
-        effect.particle_system->setMaterialType(irr::video::EMT_TRANSPARENT_ADD_COLOR);
-    }
-}
-
-void SpellVisualFX::createGroundCircleNode(SpellFXInstance& effect)
-{
-    if (!m_smgr) return;
-
-    // Simple billboard on ground for now
-    effect.billboard = m_smgr->addBillboardSceneNode(nullptr,
-        irr::core::dimension2df(effect.scale * 2, effect.scale * 2),
-        effect.target_pos + irr::core::vector3df(0, 0.5f, 0));  // Slightly above ground
-
-    if (effect.billboard) {
-        irr::video::SColor circleColor = effect.color;
-        circleColor.setAlpha(100);
-        effect.billboard->setColor(circleColor);
-        effect.billboard->setMaterialFlag(irr::video::EMF_LIGHTING, false);
-        effect.billboard->setMaterialType(irr::video::EMT_TRANSPARENT_ADD_COLOR);
-    }
-}
-
 // ============================================================================
 // Update Functions
 // ============================================================================
@@ -602,19 +481,6 @@ void SpellVisualFX::updateGlow(SpellFXInstance& effect, float delta_time)
     }
 }
 
-void SpellVisualFX::updateAura(SpellFXInstance& effect, float delta_time)
-{
-    if (!effect.particle_system) return;
-
-    // Update position to follow entity
-    if (effect.source_entity != 0 && m_entity_pos_callback) {
-        irr::core::vector3df pos;
-        if (m_entity_pos_callback(effect.source_entity, pos)) {
-            effect.particle_system->setPosition(pos);
-        }
-    }
-}
-
 void SpellVisualFX::adjustParticleMultiplier(float delta)
 {
     float old_mult = m_particle_multiplier;
@@ -665,9 +531,6 @@ void SpellVisualFX::applyWorkerResults(const EQT::Graphics::SimulationOutput& re
                 break;
             case SpellFXType::ProjectileTravel:
                 createProjectileNode(effect);
-                break;
-            case SpellFXType::AuraPersistent:
-                createAuraNode(effect);
                 break;
             default:
                 break;

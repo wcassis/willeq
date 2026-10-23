@@ -107,9 +107,8 @@ float spellTestCastDuration = 0;
 const EQ::SpellData* spellTestCurrentSpell = nullptr;
 bool spellTestCastAnimPlaying = false;
 
-// Virtual entity IDs for hand bone particle tracking
-uint16_t casterRightHandEntityId = 101;
-uint16_t casterLeftHandEntityId = 102;
+// Hand bone indices (the FX anchors are SpellVisualFX's own hand/head
+// pseudo-entities since B1138, resolved by spell_fx_bone_anchor.h)
 int casterRightHandBoneIdx = -1;
 int casterLeftHandBoneIdx = -1;
 

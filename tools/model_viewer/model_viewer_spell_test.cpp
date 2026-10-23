@@ -6,6 +6,7 @@
 // (board B167 -- that TU was 3,246 lines, over the 3,000-line hard cap).
 
 #include "model_viewer_state.h"
+#include "model_viewer_fx_harness.h"
 
 const char* getClassName(int classIndex) {
     switch (static_cast<EQ::PlayerClass>(classIndex)) {
@@ -141,18 +142,24 @@ void cycleEffect(int direction) {
 }
 
 // ============================================================================
-// Spell Test Mode: Cast trigger and cancel
+// Spell Test Mode: Cast trigger and cancel.
+//
+// B1138 (#458): the three steps publish the client's own SpellCastVisual*
+// payloads through eqt::bridge::ApplySpellCast*Fx (spell_cast_fx.cpp, the body
+// IrrlichtBridge runs), so what the viewer draws is the production sequence:
+// BeginCast -> createCastGlow, OP_Action (both packets) -> releaseCastGlow +
+// createLanding, cancel -> removeCastGlow. The pre-B1131 path this replaced
+// picked createImpact/createRainEffect/createGroundCircle/createBuffAura/...
+// from its own isBoltSpell()/isAESpell() heuristics, which the client never
+// did; those four FX entry points were deleted with it.
 // ============================================================================
 void triggerSpellTestCast() {
     if (spellTestSpellList.empty() || !spellVisualFX) return;
 
     const auto* spell = spellTestSpellList[spellTestSpellIndex];
     spellTestCurrentSpell = spell;
-    // T381 (B160): SpellVisualFX holds no SpellDatabase* any more; feed it the
-    // vocabulary the way the client does (off the SpellCastVisual* payload).
-    spellVisualFX->noteSpellVocabulary(spell->id, spell->visualVocabulary());
+    // spells_us.txt field 13 (SpellData::cast_time_ms), as the server sends it.
     spellTestCastDuration = spell->cast_time_ms / 1000.0f;
-    if (spellTestCastDuration < 0.5f) spellTestCastDuration = 0.5f;  // Min 0.5s for visual
     spellTestCastElapsed = 0;
     spellTestCasting = true;
 
@@ -165,39 +172,9 @@ void triggerSpellTestCast() {
               << ", " << spellTestCastDuration << "s, "
               << getResistTypeName(spell->resist_type) << ")" << std::endl;
 
-    uint32_t castMs = static_cast<uint32_t>(spellTestCastDuration * 1000);
-    bool hasHandBones = (casterRightHandBoneIdx >= 0 || casterLeftHandBoneIdx >= 0);
-
-#ifdef EQT_HAS_GLES2
-    // GLES2: create particle effects at each hand bone position
-    if (hasHandBones && particleManager) {
-        using namespace EQT::Graphics::Environment;
-        auto scolor = spellVisualFX->getSpellColorForSpell(spell->id);
-        glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
-                     scolor.getBlue() / 255.0f, 1.0f);
-
-        bool isSpray = spellVisualFX->isSprayCastStyle(spell->id);
-        auto def = isSpray ? SpellPresets::CastSpray(c, spell->id) : SpellPresets::CastGlow(c, spell->id);
-        float durSec = spellTestCastDuration;
-        for (auto& e : def.emitters) {
-            e.config.emitterLifetime = durSec;
-            if (!isSpray) {
-                e.config.orbitalRadius = 0.4f;     // Tight orbit around hand
-            }
-            e.positionOffset = glm::vec3(0.0f); // Bone position is already accurate
-        }
-        if (casterRightHandBoneIdx >= 0) {
-            particleManager->createSpellEffect(def, casterRightHandEntityId, 0, durSec, isSpray);
-        }
-        if (casterLeftHandBoneIdx >= 0) {
-            particleManager->createSpellEffect(def, casterLeftHandEntityId, 0, durSec, isSpray);
-        }
-    } else
-#endif
-    {
-        // Non-GLES2 or no hand bones: glow at entity center
-        spellVisualFX->createCastGlow(casterEntityId, spell->id, castMs);
-    }
+    placeHarnessTarget(spellTestSelfMode, harnessOpts.interactiveDistance);
+    harnessBeginCast(*spell, spellTestSelfMode, spell->cast_time_ms,
+                     eqt::bridge::CastGlowRoute::Clock::now());
 }
 
 void completeSpellTestCast() {
@@ -206,17 +183,7 @@ void completeSpellTestCast() {
     const auto* spell = spellTestCurrentSpell;
     std::cout << "Cast complete: " << spell->name << std::endl;
 
-    // Remove cast glows from hands and fallback entity center
-#ifdef EQT_HAS_GLES2
-    if (particleManager) {
-        particleManager->removeSpellEffectsForEntity(casterRightHandEntityId);
-        particleManager->removeSpellEffectsForEntity(casterLeftHandEntityId);
-    }
-#endif
-    spellVisualFX->removeCastGlow(casterEntityId);
-
-    // Create spell completion effect on caster (at midpoint)
-    spellVisualFX->createSpellComplete(casterEntityId, spell->id);
+    harnessAction(*spell, spellTestSelfMode, eqt::bridge::CastGlowRoute::Clock::now());
 
     // Play cast animation once, then return to idle
     if (animatedNode && useAnimatedMesh) {
@@ -226,76 +193,13 @@ void completeSpellTestCast() {
         animatedNode->playAnimation(castAnim, false, false);  // loop=false: play once
     }
 
-    // Create appropriate effects based on spell type
-    uint16_t effectTarget = spellTestSelfMode ? casterEntityId : targetEntityId;
-
-    if (spell->isBoltSpell()) {
-        // Bolt: projectile from caster to target, impact on arrival
-        if (!spellTestSelfMode) {
-            spellVisualFX->createProjectile(casterEntityId, targetEntityId, spell->id);
-        }
-        spellVisualFX->createImpact(effectTarget, spell->id);
-    } else if (spell->isDamageSpell() && !spell->isAESpell()) {
-        // Single target direct damage: instant impact on target
-        spellVisualFX->createImpact(effectTarget, spell->id);
-    } else if (spell->isPBAE()) {
-        // PBAE: impact at caster position
-        irr::core::vector3df casterPos;
-        if (animatedNode) casterPos = animatedNode->getAbsolutePosition();
-        spellVisualFX->createImpactAtPosition(casterPos, spell->id);
-    } else if (spell->isAESpell()) {
-        // Targeted AE: rain/ground circle at target's feet
-        irr::core::vector3df targetPos;
-        irr::scene::IAnimatedMeshSceneNode* aeNode = nullptr;
-        if (targetAnimatedNode && !spellTestSelfMode) {
-            aeNode = targetAnimatedNode;
-        } else if (animatedNode) {
-            aeNode = animatedNode;
-        }
-        if (aeNode) {
-            targetPos = aeNode->getAbsolutePosition();
-            // Model origin is at center — lower to feet using bounding box
-            auto bbox = aeNode->getTransformedBoundingBox();
-            float halfHeight = (bbox.MaxEdge.Y - bbox.MinEdge.Y) * 0.5f;
-            targetPos.Y -= halfHeight;
-        }
-        float radius = spell->aoe_range > 0 ? spell->aoe_range * 0.1f : 5.0f;
-        if (spell->isDamageSpell()) {
-            spellVisualFX->createRainEffect(targetPos, radius, spell->id, 3.0f);
-        } else {
-            spellVisualFX->createGroundCircle(targetPos, radius, spell->id, 3.0f);
-        }
-    } else if (spell->isHealSpell()) {
-        // Heal: impact on target (or self)
-        spellVisualFX->createImpact(effectTarget, spell->id);
-    } else if (spell->isBuffSpell()) {
-        // Buff: aura on target
-        spellVisualFX->createBuffAura(effectTarget, spell->id);
-    } else if (spell->hasDuration() && !spell->is_beneficial) {
-        // Debuff: projectile + impact on target
-        if (!spellTestSelfMode) {
-            spellVisualFX->createProjectile(casterEntityId, targetEntityId, spell->id);
-        }
-        spellVisualFX->createImpact(effectTarget, spell->id);
-    } else {
-        // Utility: just impact on target
-        spellVisualFX->createImpact(effectTarget, spell->id);
-    }
-
     spellTestCasting = false;
     spellTestCurrentSpell = nullptr;
 }
 
 void cancelSpellTestCast() {
-    if (spellTestCasting && spellVisualFX) {
-#ifdef EQT_HAS_GLES2
-        // Remove hand bone particle effects created directly on PM
-        if (particleManager) {
-            particleManager->removeSpellEffectsForEntity(casterRightHandEntityId);
-            particleManager->removeSpellEffectsForEntity(casterLeftHandEntityId);
-        }
-#endif
-        spellVisualFX->removeCastGlow(casterEntityId);
+    if (spellTestCasting && spellVisualFX && spellTestCurrentSpell) {
+        harnessInterrupt(*spellTestCurrentSpell);
         spellTestCasting = false;
         spellTestCurrentSpell = nullptr;
         std::cout << "Cast cancelled" << std::endl;
@@ -317,6 +221,26 @@ void cancelSpellTestCast() {
 #endif
 }
 
+// Creates one spell-test entity: the client's scale rule (race scale times
+// server size / 6, entityScaleForServerSize) and its material flags.
+static EQAnimatedMeshSceneNode* createSpellTestEntity(uint16_t race, uint8_t gender, float size,
+                                                      const core::vector3df& pos, float rotY) {
+    EQAnimatedMeshSceneNode* node =
+        raceModelLoader->createAnimatedNodeWithAppearance(race, gender, 0, 0, nullptr, -1);
+    if (!node) return nullptr;
+    const float scale = entityScaleForServerSize(raceModelLoader->getRaceScale(race), size);
+    node->setScale(core::vector3df(scale, scale, scale));
+    node->setPosition(pos);
+    node->setRotation(core::vector3df(0, rotY, 0));
+    node->playAnimation("p01", true, false);  // Idle
+    for (u32 i = 0; i < node->getMaterialCount(); ++i) {
+        node->getMaterial(i).Lighting = false;
+        node->getMaterial(i).BackfaceCulling = false;
+    }
+    node->updateAbsolutePosition();
+    return node;
+}
+
 // ============================================================================
 // Spell Test Mode initialization -- lifted out of main() (T385). Runs only
 // when --spell-test was given; main() calls it after the device exists.
@@ -330,121 +254,34 @@ bool initSpellTestMode() {
         std::cout << "WARNING: Failed to load spells: " << spellDatabase->getLoadError() << std::endl;
     }
 
-    // Create SpellVisualFX
+    // Create SpellVisualFX (spells.eff is read from the client directory)
     spellVisualFX = std::make_unique<EQ::SpellVisualFX>(smgr, driver, clientPath);
+    if (!initHarnessTextureCache()) return false;
 
-    // Set up entity position callback (handles real + virtual hand entity IDs)
-    spellVisualFX->setEntityPositionCallback(
-        [](uint16_t entity_id, irr::core::vector3df& out_pos) -> bool {
-        // Hand bone virtual entities — track hand positions on caster
-        if (entity_id == casterRightHandEntityId && animatedNode && casterRightHandBoneIdx >= 0) {
-        return animatedNode->getBoneWorldPosition(casterRightHandBoneIdx, out_pos);
-        }
-        if (entity_id == casterLeftHandEntityId && animatedNode && casterLeftHandBoneIdx >= 0) {
-        return animatedNode->getBoneWorldPosition(casterLeftHandBoneIdx, out_pos);
-        }
-        if (entity_id == casterEntityId && animatedNode) {
-        out_pos = animatedNode->getAbsolutePosition();
-        out_pos.Y += 1.0f;
-        return true;
-        }
-        if (entity_id == targetEntityId && targetAnimatedNode) {
-        out_pos = targetAnimatedNode->getAbsolutePosition();
-        out_pos.Y += 1.0f;
-        return true;
-        }
-        return false;
-        });
-
-    #ifdef EQT_HAS_GLES2
-    if (useGLES2Renderer) {
-        particleManager = std::make_unique<EQT::Graphics::Environment::ParticleManager>(smgr, driver);
-        particleManager->init(clientPath);
-        particleManager->initUnifiedRenderer();
-        spellVisualFX->setParticleManager(particleManager.get());
-        // Set entity position callback on ParticleManager (uses glm::vec3)
-        particleManager->setEntityPositionCallback(
-            [](uint16_t entity_id, glm::vec3& out_pos) -> bool {
-            // Hand bone virtual entities
-            if (entity_id == casterRightHandEntityId && animatedNode && casterRightHandBoneIdx >= 0) {
-            irr::core::vector3df bonePos;
-            if (animatedNode->getBoneWorldPosition(casterRightHandBoneIdx, bonePos)) {
-            out_pos = glm::vec3(bonePos.X, bonePos.Y, bonePos.Z);
-            return true;
-            }
-            }
-            if (entity_id == casterLeftHandEntityId && animatedNode && casterLeftHandBoneIdx >= 0) {
-            irr::core::vector3df bonePos;
-            if (animatedNode->getBoneWorldPosition(casterLeftHandBoneIdx, bonePos)) {
-            out_pos = glm::vec3(bonePos.X, bonePos.Y, bonePos.Z);
-            return true;
-            }
-            }
-            if (entity_id == casterEntityId && animatedNode) {
-            auto p = animatedNode->getAbsolutePosition();
-            out_pos = glm::vec3(p.X, p.Y + 1.0f, p.Z);
-            return true;
-            }
-            if (entity_id == targetEntityId && targetAnimatedNode) {
-            auto p = targetAnimatedNode->getAbsolutePosition();
-            out_pos = glm::vec3(p.X, p.Y + 1.0f, p.Z);
-            return true;
-            }
-            return false;
-            });
-        // Set direction callback for spray effects (bone forward vector)
-        particleManager->setEntityDirectionCallback(
-            [](uint16_t entity_id, glm::vec3& out_dir) -> bool {
-            if (!animatedNode) return false;
-            int boneIdx = -1;
-            if (entity_id == casterRightHandEntityId) boneIdx = casterRightHandBoneIdx;
-            else if (entity_id == casterLeftHandEntityId) boneIdx = casterLeftHandBoneIdx;
-            if (boneIdx < 0) return false;
-            irr::core::vector3df dir;
-            if (animatedNode->getBoneWorldDirection(boneIdx, dir)) {
-            out_dir = glm::vec3(dir.X, dir.Y, dir.Z);
-            return true;
-            }
-            return false;
-            });
-
-        std::cout << "GLES2 ParticleManager + UnifiedRenderer initialized" << std::endl;
-    }
-    #endif
-
-    // Create caster entity (Human male at origin) — 1x scale for correct particle sizing
-    animatedNode = raceModelLoader->createAnimatedNodeWithAppearance(
-        currentRaceId, currentGender, 0, 0, nullptr, -1);
+    // B1138: in a preset the caster (and the `#spawn` target beside her)
+    // faces the camera; otherwise the caster faces the target.
+    const bool preset = !harnessOpts.cameraPreset.empty();
+    animatedNode = createSpellTestEntity(harnessOpts.casterRace, harnessOpts.casterGender,
+                                         harnessOpts.casterSize, core::vector3df(0, 0, 0),
+                                         preset ? kHarnessFaceOnRotY : 90.0f);
     if (animatedNode) {
-        animatedNode->setPosition(core::vector3df(0, 0, 0));
-        animatedNode->setRotation(core::vector3df(0, 90, 0));
-        animatedNode->playAnimation("p01", true, false);  // Idle
-        for (u32 i = 0; i < animatedNode->getMaterialCount(); ++i) {
-            animatedNode->getMaterial(i).Lighting = false;
-            animatedNode->getMaterial(i).BackfaceCulling = false;
-        }
         useAnimatedMesh = true;
-
-        // Cache hand bone indices for spell particle emission
+        currentRaceId = harnessOpts.casterRace;
         casterRightHandBoneIdx = animatedNode->findRightHandBoneIndex();
         casterLeftHandBoneIdx = animatedNode->findLeftHandBoneIndex();
-        std::cout << "Created caster entity (race " << currentRaceId
-        << ") R_HAND=" << casterRightHandBoneIdx
-        << " L_HAND=" << casterLeftHandBoneIdx << std::endl;
+        std::cout << "Created caster entity (race " << harnessOpts.casterRace << " gender "
+                  << int(harnessOpts.casterGender) << ") R_HAND=" << casterRightHandBoneIdx
+                  << " L_HAND=" << casterLeftHandBoneIdx
+                  << " HEAD=" << animatedNode->findHeadBoneIndexForFx() << std::endl;
     }
+    targetAnimatedNode = createSpellTestEntity(
+        harnessOpts.targetRace, harnessOpts.targetGender, harnessOpts.targetSize,
+        core::vector3df(harnessOpts.interactiveDistance, 0, 0), preset ? kHarnessFaceOnRotY : -90.0f);
 
-    // Create target entity (Human male offset to right) — ~5 units apart at 1x scale
-    targetAnimatedNode = raceModelLoader->createAnimatedNodeWithAppearance(
-        1, 0, 0, 0, nullptr, -1);  // Human male
-    if (targetAnimatedNode) {
-        targetAnimatedNode->setPosition(core::vector3df(5, 0, 0));
-        targetAnimatedNode->setRotation(core::vector3df(0, -90, 0));  // Face caster
-        targetAnimatedNode->playAnimation("p01", true, false);
-        for (u32 i = 0; i < targetAnimatedNode->getMaterialCount(); ++i) {
-            targetAnimatedNode->getMaterial(i).Lighting = false;
-            targetAnimatedNode->getMaterial(i).BackfaceCulling = false;
-        }
-        std::cout << "Created target entity at (5, 0, 0)" << std::endl;
+    uploadHarnessTextures();
+    if (!initHarnessParticles()) {
+        std::cout << "ERROR: the spell FX chain did not start (see above)" << std::endl;
+        return false;
     }
 
     // Build initial spell list

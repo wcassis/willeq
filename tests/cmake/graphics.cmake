@@ -445,3 +445,18 @@ IF(TARGET charcreate_capture)
     SET_TESTS_PROPERTIES(charcreate_gate PROPERTIES
         LABELS "charcreate_gate" SKIP_RETURN_CODE 125 RUN_SERIAL TRUE)
 ENDIF()
+
+# B1138 (#458): the fable-side spell FX harness end to end -- runs
+# model_viewer --spell-test --plan surfaceless (llvmpipe) for 4 s and counts
+# the landing's lit pixels on the target vs the caster (B1132's rule).
+# Graphics trees only (model_viewer exists only there); label `graphics`.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY AND TARGET model_viewer)
+    ADD_EXECUTABLE(test_fx_harness test_fx_harness.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_fx_harness PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_fx_harness GTest::gtest_main willeq_core)
+    ADD_DEPENDENCIES(test_fx_harness model_viewer)
+    # The binary by environment, as commands.cmake passes WILLEQ_BIN (an
+    # absolute -D would defeat ccache across worktrees, B1090).
+    GTEST_DISCOVER_TESTS(test_fx_harness DISCOVERY_TIMEOUT 120 PROPERTIES LABELS "graphics" TIMEOUT 300
+        ENVIRONMENT "WILLEQ_MODEL_VIEWER_BIN=$<TARGET_FILE:model_viewer>")
+ENDIF()

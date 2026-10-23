@@ -109,8 +109,7 @@ reason and a no-grow max. Close-outs: `refactor/J_file_size_reclamation.md`,
 `refactor/K_component_extraction.md`,
 `refactor/L_renderer_component_extraction.md`, `refactor/G_oversize_methods.md`.
 
-**`CLAUDE.md` itself has a 60,000-character ceiling** in the same test, for the
-reason at the top of this file. Cut narrative before you cut a rule.
+**`CLAUDE.md` itself has a 60,000-character ceiling** (same test, reason at the top). Cut narrative before you cut a rule.
 
 ### Memory accounting (Will's standing decisions)
 
@@ -426,6 +425,8 @@ invented override is the guess Will forbids.**
 `config/constrained_presets.json` (desktop 8192, sbc 4096; B1130's survey demand
 fits both); every landing population derives from it by one rule
 (`SpellEffectsConfig::applyPool`, B1123).
+**Fable FX gates run in `tools/model_viewer --spell-test --plan`** (B1138, the
+client's cast sequence surfaceless); lane 5 is for oracle legs.
 `tests/test_spell_colour_and_overrides.cpp` pins both halves and the negatives.
 
 #### Texture alpha
@@ -645,9 +646,8 @@ sudo setcap cap_net_raw,cap_net_admin+ep ./build/bin/willeq
 - `CAP_NET_ADMIN`: `SO_RCVBUFFORCE`, to set the UDP receive buffer above the
   kernel limit.
 
-Zone-in bursts 40+ packets, which can overflow the default socket buffer and
-hang the load at 40%. The client asks for 1 MB via `SO_RCVBUFFORCE`; without
-`CAP_NET_ADMIN` it gets `net.core.rmem_max` (~212 KB) and fails intermittently.
+Without `CAP_NET_ADMIN` the zone-in burst overflows the socket buffer
+(`net.core.rmem_max`) and the load hangs at 40%.
 
 On the Pi: the CI-published binary (NFS) carries no capability, and `setcap`
 does not stick on NFS or on the Pi's `/tmp` (tmpfs, `nosuid`). Copy it to the

@@ -12,6 +12,7 @@ namespace eqt::bridge {
 // casts; observers get only the animation packet, so their entry also expires.
 class CastGlowRoute {
 public:
+    using Clock = std::chrono::steady_clock;
     static constexpr uint32_t kActionGlowMs = 2000;
 
     struct Completion {
@@ -19,8 +20,10 @@ public:
         bool create = false;
     };
 
-    bool onBeginCast(uint16_t caster, uint32_t spell, uint32_t castTimeMs) {
-        const auto now = Clock::now();
+    // B1138: `now` is a parameter so tools/model_viewer's scripted harness can
+    // drive the route on its fixed-dt clock; the client passes Clock::now().
+    bool onBeginCast(uint16_t caster, uint32_t spell, uint32_t castTimeMs,
+                     Clock::time_point now = Clock::now()) {
         auto it = active_.find(caster);
         if (it != active_.end() && it->second.spell == spell &&
             now < it->second.until && !it->second.successSeen)
@@ -31,8 +34,8 @@ public:
     }
 
     Completion onComplete(uint16_t caster, uint32_t spell,
-                          bool isCastAnimation, bool isSuccess) {
-        const auto now = Clock::now();
+                          bool isCastAnimation, bool isSuccess,
+                          Clock::time_point now = Clock::now()) {
         auto it = active_.find(caster);
         const bool same = it != active_.end() && it->second.spell == spell &&
                           now < it->second.until;
@@ -55,7 +58,6 @@ public:
     void onInterrupt(uint16_t caster) { active_.erase(caster); }
 
 private:
-    using Clock = std::chrono::steady_clock;
     struct Active {
         uint32_t spell;
         Clock::time_point until;

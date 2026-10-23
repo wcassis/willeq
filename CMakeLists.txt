@@ -664,6 +664,7 @@ IF(EQT_GRAPHICS)
         src/client/input/hotkey_manager.cpp
         src/client/input/hotkey_manager_user.cpp  # B433: Options Keys page rebinding
         src/client/bridge/irrlicht_bridge.cpp
+        src/client/bridge/spell_cast_fx.cpp  # B1138: the SpellCastVisual* FX half, shared with tools/model_viewer
         # EQ file loaders (pfs.cpp/wld_loader.cpp moved to CLIENT_CORE_SOURCES — P28, see there)
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
@@ -1306,6 +1307,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         tools/model_viewer/model_viewer_entity.cpp
         tools/model_viewer/model_viewer_equipment.cpp
         tools/model_viewer/model_viewer_spell_test.cpp
+        tools/model_viewer/model_viewer_fx_harness.cpp  # B1138: the scripted FX harness
         tools/tool_race_db.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
@@ -1368,6 +1370,24 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/willeq_database.cpp
         third_party/sqlite3.c
         # Spell test mode dependencies
+        # B1138: the client's SpellCastVisual* FX body and the worker that owns
+        # the particle pool (the production chain, not a viewer copy).
+        src/client/bridge/spell_cast_fx.cpp
+        src/client/graphics/simulation_worker.cpp
+        src/client/graphics/sim_particles.cpp
+        src/client/graphics/sim_animation.cpp
+        src/client/graphics/sim_boids.cpp
+        src/client/graphics/sim_entity_sync.cpp
+        src/client/graphics/sim_visibility.cpp
+        src/client/graphics/sim_weather.cpp
+        src/client/graphics/software_occlusion_culler.cpp
+        src/client/graphics/portal_system.cpp
+        src/client/graphics/weather_system.cpp
+        src/client/graphics/weather_ambient_oracle.cpp
+        src/client/hc_map.cpp
+        src/client/raycast_mesh.cpp
+        src/common/util/compression.cpp
+        src/client/graphics/eqe1_texture_index.cpp
         src/client/spell/spell_database.cpp
         src/client/spell/spells_eff_reader.cpp
         src/client/spell/spells_new_eff_reader.cpp

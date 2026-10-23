@@ -8,6 +8,7 @@
 // out-parameters, and `return 1` on a fatal path became `return false`.
 
 #include "model_viewer_state.h"
+#include "model_viewer_fx_harness.h"
 #include "client/graphics/gles2_shader_cache.h"
 
 
@@ -24,6 +25,40 @@ void parseCommandLine(int argc, char* argv[], ViewerArgs& args) {
             if (clientPath.back() != '/') clientPath += '/';
         } else if (arg == "--spell-test") {
             spellTestMode = true;
+        // B1138: the scripted FX harness (model_viewer_fx_harness.h).
+        } else if (arg == "--plan" && i + 1 < argc) {
+            harnessOpts.planPath = argv[++i];
+        } else if (arg == "--frames-dir" && i + 1 < argc) {
+            harnessOpts.framesDir = argv[++i];
+        } else if (arg == "--fps" && i + 1 < argc) {
+            harnessOpts.fps = std::atoi(argv[++i]);
+        } else if (arg == "--seconds" && i + 1 < argc) {
+            harnessOpts.seconds = std::atof(argv[++i]);
+        } else if (arg == "--caster-px" && i + 1 < argc) {
+            harnessOpts.casterPx = static_cast<float>(std::atof(argv[++i]));
+        } else if (arg == "--no-ground") {
+            harnessOpts.ground = false;
+        } else if (arg == "--headless") {
+            harnessOpts.headless = true;
+        } else if (arg == "--camera" && i + 1 < argc) {
+            harnessOpts.cameraPreset = argv[++i];
+        } else if (arg == "--backdrop" && i + 1 < argc) {
+            harnessOpts.backdropPath = argv[++i];
+        } else if (arg == "--eqe1" && i + 1 < argc) {
+            harnessOpts.eqe1Path = argv[++i];
+        } else if (arg == "--eqe1-dir" && i + 1 < argc) {
+            harnessOpts.eqe1Dir = argv[++i];
+        } else if (arg == "--seed" && i + 1 < argc) {
+            harnessOpts.seed = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
+        } else if (arg == "--caster" && i + 1 < argc) {
+            // race:gender[:size]
+            std::sscanf(argv[++i], "%hu:%hhu:%f", &harnessOpts.casterRace,
+                        &harnessOpts.casterGender, &harnessOpts.casterSize);
+            harnessOpts.casterGiven = true;
+        } else if (arg == "--target" && i + 1 < argc) {
+            std::sscanf(argv[++i], "%hu:%hhu:%f", &harnessOpts.targetRace,
+                        &harnessOpts.targetGender, &harnessOpts.targetSize);
+            harnessOpts.targetGiven = true;
         } else if (arg == "--gl") {
             useGLRenderer = true;
         } else if (arg == "--gles2") {
@@ -59,7 +94,11 @@ void printUsageBanner(const ViewerArgs& args) {
     std::cout << "Debug level: " << args.debugLevel << std::endl;
     std::cout << "Usage: model_viewer [client_path] [race_code]" << std::endl;
     std::cout << "       model_viewer --entities <file.json> [--entity <name>]" << std::endl;
-    std::cout << "       model_viewer --spell-test [--gl|--gles2] --client <path>" << std::endl;
+    std::cout << "       model_viewer --spell-test [--gles2] --client <path>" << std::endl;
+    std::cout << "       model_viewer --spell-test --client <path> --plan <tsv> --frames-dir <dir>" << std::endl;
+    std::cout << "                    --fps 30 --seconds N --headless [--camera b1118] [--backdrop <png>]" << std::endl;
+    std::cout << "                    [--caster race:gender[:size]] [--target race:gender[:size]]" << std::endl;
+    std::cout << "                    [--eqe1 <willeq.eqe1>] [--eqe1-dir <dir>] [--seed N] [--no-ground] [--caster-px 235]   (B1138 FX harness)" << std::endl;
     std::cout << "       --debug, -d [level]  Enable debug output (default level 1)" << std::endl;
     std::cout << std::endl;
     std::cout << "Controls:" << std::endl;
@@ -304,16 +343,22 @@ bool createViewerDevice() {
         std::cout << "Using GLES2 renderer" << std::endl;
     }
     #endif
+    #ifdef EQT_HAS_GLES2
     else if (spellTestMode) {
-        // Spell test mode defaults to GL for particle effects
-        driverType = video::EDT_OPENGL;
-        std::cout << "Spell test mode: using OpenGL renderer (use --gles2 for GLES2)" << std::endl;
+        // B1138: the spell FX chain is the GLES2 one (ParticleManager +
+        // UnifiedParticleRenderer); desktop GL is gone (P30). On x86 the
+        // device falls back to surfaceless EGL (llvmpipe) with no display.
+        driverType = video::EDT_OGLES2;
+        useGLES2Renderer = true;
+        std::cout << "Spell test mode: using GLES2 renderer" << std::endl;
     }
+    #endif
 
     // Create Irrlicht device
     eqt::ConfigureGles2ShaderCache();  // B959: cache dir via ResolveCachePathForWrite
+    if (spellTestMode) applyHarnessPresetDefaults();  // B1138: --camera b1118 is 1280x800
     device = createDevice(driverType,
-        core::dimension2d<u32>(800, 600),
+        core::dimension2d<u32>(static_cast<u32>(harnessOpts.width), static_cast<u32>(harnessOpts.height)),
         32, false, false, false, &receiver);
 
     if (!device) {

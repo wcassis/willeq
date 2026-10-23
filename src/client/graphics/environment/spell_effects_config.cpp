@@ -917,36 +917,6 @@ void SpellEffectsConfig::setDefaults() {
         markAllPresent(s);
     }
 
-    // buffAura
-    {
-        StyleSettings& s = styles_["buffAura"];
-        s.spawnRate = 3.0f;
-        s.burstCount = 0;
-        s.emitterLifetime = 0.0f;
-        s.spawnShape = "POINT";
-        s.spawnExtents = glm::vec3(0.0f);
-        s.motionType = "ORBITAL";
-        s.velocityBase = glm::vec3(0.0f, 0.5f, 0.0f);
-        s.velocitySpread = glm::vec3(0.0f);
-        s.gravity = glm::vec3(0.0f);
-        s.drag = 0.0f;
-        s.colorStartAlpha = 0.4f;
-        s.colorEndAlpha = 0.0f;
-        s.sizeStartMin = 0.06f;
-        s.sizeStartMax = 0.08f;
-        s.sizeEndMin = 0.10f;
-        s.sizeEndMax = 0.14f;
-        s.lifetimeMin = 1.5f;
-        s.lifetimeMax = 2.5f;
-        s.blendMode = "ADDITIVE";
-        s.textureRegions = {"SpellSparkle", "StarShape"};
-        s.orbitalRadius = 1.2f;
-        s.orbitalAngularVelocity = 2.0f;
-        s.expandSpeed = 0.0f;
-        s.positionOffset = glm::vec3(0.0f, 0.5f, 0.0f);
-        markAllPresent(s);
-    }
-
     // projectileTrail
     {
         StyleSettings& s = styles_["projectileTrail"];
@@ -1004,66 +974,6 @@ void SpellEffectsConfig::setDefaults() {
         s.orbitalAngularVelocity = 0.0f;
         s.expandSpeed = 4.0f;
         s.positionOffset = glm::vec3(0.0f, 1.0f, 0.0f);
-        markAllPresent(s);
-    }
-
-    // spellRain
-    {
-        StyleSettings& s = styles_["spellRain"];
-        s.spawnRate = 15.0f;
-        s.burstCount = 0;
-        s.emitterLifetime = 0.0f;
-        s.spawnShape = "BOX";
-        s.spawnExtents = glm::vec3(1.0f, 0.0f, 1.0f);  // Placeholder; overridden by radius param
-        s.motionType = "LINEAR";
-        s.velocityBase = glm::vec3(0.0f, -8.0f, 0.0f);
-        s.velocitySpread = glm::vec3(0.5f, 1.0f, 0.5f);
-        s.gravity = glm::vec3(0.0f, -3.0f, 0.0f);
-        s.drag = 0.0f;
-        s.colorStartAlpha = 0.7f;
-        s.colorEndAlpha = 0.0f;
-        s.sizeStartMin = 0.03f;
-        s.sizeStartMax = 0.06f;
-        s.sizeEndMin = 0.02f;
-        s.sizeEndMax = 0.04f;
-        s.lifetimeMin = 0.6f;
-        s.lifetimeMax = 1.2f;
-        s.blendMode = "ADDITIVE";
-        s.textureRegions = {"SoftCircle", "RainStreak"};
-        s.orbitalRadius = 0.0f;
-        s.orbitalAngularVelocity = 0.0f;
-        s.expandSpeed = 0.0f;
-        s.positionOffset = glm::vec3(0.0f, 10.0f, 0.0f);
-        markAllPresent(s);
-    }
-
-    // groundCircle
-    {
-        StyleSettings& s = styles_["groundCircle"];
-        s.spawnRate = 6.0f;
-        s.burstCount = 0;
-        s.emitterLifetime = 0.0f;
-        s.spawnShape = "RING";
-        s.spawnExtents = glm::vec3(1.0f, 0.0f, 0.0f);  // Placeholder; overridden by radius param
-        s.motionType = "ORBITAL";
-        s.velocityBase = glm::vec3(0.0f, 0.5f, 0.0f);
-        s.velocitySpread = glm::vec3(0.0f);
-        s.gravity = glm::vec3(0.0f);
-        s.drag = 0.0f;
-        s.colorStartAlpha = 0.6f;
-        s.colorEndAlpha = 0.0f;
-        s.sizeStartMin = 0.05f;
-        s.sizeStartMax = 0.08f;
-        s.sizeEndMin = 0.08f;
-        s.sizeEndMax = 0.12f;
-        s.lifetimeMin = 1.2f;
-        s.lifetimeMax = 2.0f;
-        s.blendMode = "ADDITIVE";
-        s.textureRegions = {"SpellSparkle", "StarShape"};
-        s.orbitalRadius = 1.0f;  // Placeholder; overridden by radius param
-        s.orbitalAngularVelocity = 1.5f;
-        s.expandSpeed = 0.0f;
-        s.positionOffset = glm::vec3(0.0f, 0.3f, 0.0f);
         markAllPresent(s);
     }
 

@@ -126,15 +126,24 @@ TEST_F(TargetRecordRows, EachRecordCarriesTheOraclesAnchorAndExtent) {
 // createLanding(). RED on 4a5246c1, whose arm was
 // createSpellComplete(d.casterId, ...) + createImpact(d.targetId, ...): half of
 // every other-target landing drawn on the caster (B1131 FOLLOW-UP 1).
+// B1138: the arm's FX half moved to spell_cast_fx.cpp (shared with the
+// model_viewer FX harness); both files are held to the rule.
 TEST(TargetLandingBridge, TheCastAnimationArmDrawsTheLandingThroughCreateLanding) {
-    std::ifstream f(std::string(WILLEQ_REPO_ROOT) + "/src/client/bridge/irrlicht_bridge.cpp");
-    ASSERT_TRUE(f.good());
-    std::stringstream ss;
-    ss << f.rdbuf();
-    const std::string src = ss.str();
-    EXPECT_NE(src.find("createLanding(d.casterId, d.targetId, d.spellId)"), std::string::npos);
-    EXPECT_EQ(src.find("createSpellComplete(d.casterId"), std::string::npos)
-        << "the caster-side landing half is back on the caster of an other-target cast";
+    auto slurp = [](const char* rel) {
+        std::ifstream f(std::string(WILLEQ_REPO_ROOT) + rel);
+        std::stringstream ss;
+        ss << f.rdbuf();
+        return ss.str();
+    };
+    const std::string bridge = slurp("/src/client/bridge/irrlicht_bridge.cpp");
+    const std::string fx = slurp("/src/client/bridge/spell_cast_fx.cpp");
+    ASSERT_FALSE(bridge.empty());
+    ASSERT_FALSE(fx.empty());
+    EXPECT_NE(bridge.find("ApplySpellCastCompleteFx("), std::string::npos);
+    EXPECT_NE(fx.find("createLanding(d.casterId, d.targetId, d.spellId)"), std::string::npos);
+    for (const std::string* src : {&bridge, &fx})
+        EXPECT_EQ(src->find("createSpellComplete(d.casterId"), std::string::npos)
+            << "the caster-side landing half is back on the caster of an other-target cast";
 }
 
 TEST_F(TargetRecordRows, AnUnsurveyedRecordIsTheStyleVolumeOnTheTarget) {

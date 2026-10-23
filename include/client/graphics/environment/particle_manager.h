@@ -224,7 +224,7 @@ public:
     bool initUnifiedRenderer(int poolSize = 0);
 
     // T426 test seam. initUnifiedRenderer() needs a live GL context, and
-    // createSpellEffect()/createSpellEffectAtPosition() refuse to enqueue
+    // createSpellEffect() refuses to enqueue
     // without it -- so a headless test that drives the real SpellVisualFX ->
     // ParticleManager -> SimulationWorker chain (tests/test_caster_own_landing.cpp)
     // cannot get a single command out of the manager. Nothing in production
@@ -350,14 +350,10 @@ public:
                                bool useDynamicDir = false,
                                float projectileTravelDuration = 0.0f);
 
-    /**
-     * Create a spell particle effect at a fixed world position (no entity attachment).
-     * Used for PBAE impacts, rain, ground circles at world coordinates.
-     * @return Effect ID for later removal
-     */
-    uint32_t createSpellEffectAtPosition(const SpellEffectDef& def,
-                                          const glm::vec3& worldPos,
-                                          float duration = 0.0f);
+    // B1138: createSpellEffectAtPosition() was DELETED with its only callers
+    // (SpellVisualFX::createImpactAtPosition/createRainEffect/createGroundCircle,
+    // reached only from model_viewer's pre-B1131 heuristics). The worker's
+    // ParticleCommand::CreateSpellEffectAtPos arm has no producer now.
 
     // T397 Leg B (board B220): removeSpellEffect(uint32_t) was DELETED here.
     // Zero callers tree-wide, nothing kept the id, and it wrote
@@ -375,7 +371,7 @@ public:
     /**
      * Remove only the named STYLES attached to an entity (T426, board B400).
      * `styles` are SpellEffectDef::name values -- "CastGlow", "CastSpray",
-     * "Impact", "SpellComplete", "BuffAura", ... An empty list means every
+     * "Impact", "SpellComplete", "CastGlow", ... An empty list means every
      * style, i.e. the overload above.
      *
      * The reason this exists: RemoveSpellEffectsEntity matches an effect whose

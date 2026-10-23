@@ -434,6 +434,10 @@ def collect_functions(root):
 # EXEMPT row below names one of these; the reason lives here once instead of
 # being repeated 417 times.
 BOARD_REASONS = {
+    "B1128":
+        "the spell projectile (B165: 85 spells carry TravelType == 3): "
+        "SpellVisualFX::createProjectile, reached only from a test until "
+        "GitLab B1128 wires it into the client's cast sequence",
     "B490":
         "the environment/particle subsystem's query and control API -- "
         "emitter, flock, boids, overlay and storm-cloud accessors and setters "
@@ -838,6 +842,13 @@ EXEMPT_GROUPS = {
 
 EXEMPT_TESTS_GROUPS = {
     ("(free)", "ComputeHelpCoverage"): "seam",
+    # B1138 (#458): tools/model_viewer was the one non-test caller of both and
+    # now runs the client's own cast sequence (spell_cast_fx.cpp), which reaches
+    # neither. createProjectile is the never-wired projectile (B165), boarded
+    # as B1128, which wires it; getSpellColorForSpell is T381's test window on
+    # the noted vocabulary's fallback colour (test_spell_visual_vocabulary).
+    ("SpellVisualFX", "createProjectile"): "B1128",
+    ("SpellVisualFX", "getSpellColorForSpell"): "observer",
     # B1083 (#403): the test's window onto which pack served an (archive, name)
     # EQE1 request. Its production WRITER is recordEQE1Request()/dumpEQE1RequestLog()
     # at zone load (T214); the reader is test_eqe1_source_archive, which asserts
