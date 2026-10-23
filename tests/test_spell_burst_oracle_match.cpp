@@ -210,12 +210,14 @@ TEST_P(SpellBurstPool, OneLandingReachesTheOraclesPeakSpriteCount) {
            "715 blobs on the official client (Burst of Flame)";
     // B1123: the pool rule puts the record-0 landing plus its own held Source
     // AT half the pool (the oracle needs more sprites, B1123 sweep), so the
-    // landing is pinned just under the bound: its 80/s Source is nearly dead
-    // when it peaks (the exact rule is EveryLandingPeaksAtTheRuleForThisPool).
+    // landing is pinned just under the bound. B1131: record 0's Source holds
+    // 4 s past OP_Action with another target (B1130), so its ~80 live sprites
+    // (80/s x <= 1.2 s) sit beside the landing's peak and the landing yields
+    // them (the exact rule is EveryLandingPeaksAtTheRuleForThisPool).
     const float live = PeakLive();
     EXPECT_LE(live, 0.5f * Pool() * 1.001f)
         << "one landing holds up to " << live << " live sprites; two must fit the pool " << Pool();
-    EXPECT_GE(live, 0.5f * Pool() * 0.98f)
+    EXPECT_GE(live, (0.5f * Pool() - 96.0f) * 0.99f)
         << "the record-0 landing (" << live << ") is not at half the pool " << Pool()
         << ": the pool rule (SpellEffectsConfig::applyPool) did not run";
 }
@@ -334,8 +336,16 @@ TEST_F(SpellBurstOracleMatch, TheSourceCloudRatesAreTheCalibratedOnes) {
     EXPECT_FLOAT_EQ(spray(41).config.spawnRate, 330.0f);  // record 20
     EXPECT_FLOAT_EQ(glow(253).config.spawnRate, 1950.0f); // record 35
     EXPECT_FLOAT_EQ(glow(458).config.spawnRate, 65.0f);   // record 33
-    for (uint32_t id : {93u, 54u, 253u, 458u}) {
-        EXPECT_FLOAT_EQ(glow(id).triggerDelay, 0.25f) << id;
+    // B1131: the onset is the spells.eff RECORD's (B1130 survey), not a style
+    // key: 93 = record 0 (BC+0.46), 54 = 23 (0.42), 253 = 35 (0.42), 458 = 33 (0.38).
+    const auto& cfg = SpellEffectsConfig::instance();
+    const std::pair<uint32_t, float> kOnset[] = {{93u, 0.46f}, {54u, 0.42f}, {253u, 0.42f}, {458u, 0.38f}};
+    for (const auto& [id, onset] : kOnset) {
+        const auto src = SpellPresets::SourceForSpell(glm::vec4(1.0f), id, cfg.overrideRecord(id), false,
+                                                      3.6f, 1.0f);
+        EXPECT_FLOAT_EQ(src.emitters.at(0).triggerDelay, onset) << id;
+        EXPECT_EQ(glow(id).trigger, EQT::Graphics::Environment::SpellTrigger::IMMEDIATE)
+            << id << ": the style carries no onset of its own";
         // The Source keeps its B1119 per-particle life: the sheet plays once
         // per life, so a denser cloud is more sprites, never longer ones.
         EXPECT_FLOAT_EQ(glow(id).config.lifetimeMin, 0.8f) << id;

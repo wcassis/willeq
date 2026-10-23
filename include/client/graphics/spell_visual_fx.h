@@ -85,6 +85,9 @@ public:
     static bool isHandBoneId(uint16_t id) { return (id & 0x8000) != 0; }
     static uint16_t realEntityId(uint16_t id) { return id & 0x3FFF; }
     static bool isRightHand(uint16_t id) { return (id & 0xC000) == 0x8000; }
+    // B1131: head bone pseudo-entity (bit 14 alone) -- record 22's halo disc.
+    static uint16_t headEntityId(uint16_t caster_id) { return (caster_id & 0x3FFF) | 0x4000; }
+    static bool isHeadBoneId(uint16_t id) { return (id & 0xC000) == 0x4000; }
 
     SpellVisualFX(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
                    const std::string& eqClientPath = "");
@@ -185,8 +188,14 @@ public:
 
     // Remove casting glow (when cast ends)
     void removeCastGlow(uint16_t caster_id);
-    // B1122: OP_Action's end of the Source (style `releaseDelay`), see the TU.
-    void releaseCastGlow(uint16_t caster_id, uint32_t spell_id);
+    // B1131: OP_Action's end of the Source: it keeps emitting its spells.eff
+    // record's hold (holdOther when the target is another entity, holdSelf
+    // when it is the caster or unknown), then its sprites finish their life.
+    void releaseCastGlow(uint16_t caster_id, uint32_t spell_id, uint16_t target_id);
+
+    // B1131: the spells.eff record noted for this spell (spells_us.txt field
+    // 123 via the vocabulary), -1 when none was noted.
+    int sourceRecordOf(uint32_t spell_id) const;
 
     // Remove buff aura (when buff fades).
     // ZERO CALLERS anywhere (T388 census: src/ include/ tests/ tools/

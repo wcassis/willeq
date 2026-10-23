@@ -117,21 +117,69 @@ public:
         // starts at once crosses the visibility threshold ~0.1 s after it.
         float triggerDelay = 0.0f;       bool hasTriggerDelay = false;
 
-        // B1122: where a Source (castGlow/castSpray) effect sits: "body" = one
-        // cloud on the caster's entity (the official client's body-wide cast
-        // cloud, B1118 M4), anything else = the legacy hand-bone pinpoint.
-        std::string anchor;              bool hasAnchor = false;
-        // B1122: seconds a Source keeps emitting after OP_Action before its
-        // sprites are left to die (0 = freed at OP_Action, the old stop). The
-        // official client holds its cast cloud until the landing takes over.
-        float releaseDelay = 0.0f;       bool hasReleaseDelay = false;
+        // B1131: the Source's anchor, onset and hold are per spells.eff record
+        // (SourceRecord below), no longer style keys (B1122's `anchor` /
+        // `releaseDelay` were one rule for every record).
     };
 
     /**
      * Get merged style settings for a given style name and optional spell ID.
      * If spellId is non-zero and has overrides, those fields replace base style values.
+     *
+     * B1131: `record` is the spell's spells.eff record (spells_us.txt field
+     * 123, -1 = none). A landing half ("impact" / "spellComplete") the spell
+     * does not override is the style scaled for THAT record's held Source
+     * (applyPool: a landing plus its own held Source peaks at half the pool).
      */
-    StyleSettings getStyleSettings(const std::string& styleName, uint32_t spellId = 0) const;
+    StyleSettings getStyleSettings(const std::string& styleName, uint32_t spellId = 0,
+                                   int record = -1) const;
+
+    /**
+     * B1131 (#451): the Source (cast) stage of one spells.eff record, measured
+     * on the official client by the B1130 survey (review/B1130/anchor_table.tsv,
+     * record_table.tsv; config `sourceRecords`). Heights and widths are in
+     * caster heights above the feet (sourceScale() converts).
+     */
+    enum class SourceAnchor : uint8_t { Body, Hands, FeetRing, Orbit, Head };
+    struct SourceRecord {
+        SourceAnchor anchor = SourceAnchor::Body;
+        bool hasShape = false;      // false: the castGlow/castSpray style's own geometry
+        float lo = 0.0f, hi = 0.0f; // lit extent, caster heights above the feet
+        float halfWidth = 0.0f;     // lateral half-span (orbit/ring radius), caster heights
+        float centroid = 0.0f;      // lit centroid height, caster heights
+        bool spiral = false;        // orbit: born at lo, rising to hi over one sprite life
+        // head: the halo disc (band discLo..discHi, radius discHalfWidth) gets
+        // discShare of the sprites; the rest fall from it to lo.
+        float discLo = 0.0f, discHi = 0.0f, discHalfWidth = 0.0f, discShare = 0.0f;
+        float coverage = 0.0f;      // the oracle's Source peak coverage, caster heights^2
+        float spawnRate = 0.0f;     // `population` rule (0 = the style's rate)
+        float onset = 0.0f;         // seconds after BeginCast
+        float holdOther = 0.0f;     // seconds emitting past OP_Action, target = another entity
+        float holdSelf = 0.0f;      // ... target = the caster
+        int record = -1;            // the row this is (-1 = the default row)
+        int measuredAs = -1;        // an unmeasured record's stand-in (51 -> 13)
+        float maxHold() const { return holdOther > holdSelf ? holdOther : holdSelf; }
+    };
+    struct SourceScale {
+        float casterHeight = 6.5f;       // world units (B1120)
+        float anchorAboveFeet = 3.6f;    // entity anchor above the feet, world units
+        float orbitAngularVelocity = 3.0f;
+    };
+    /** The record's row, or the default row for a record the survey did not reach. */
+    const SourceRecord& sourceRecord(int record) const;
+    const SourceScale& sourceScale() const { return sourceScale_; }
+    /** The hold past OP_Action for this record and target. */
+    float sourceHold(int record, bool targetIsSelf) const;
+    /** True when spellOverrides gives this spell's Source style its own geometry. */
+    bool hasSourceShapeOverride(uint32_t spellId, const std::string& styleName) const;
+    /** True when spellOverrides gives this spell's Source style its own rate. */
+    bool hasSourceRateOverride(uint32_t spellId, const std::string& styleName) const;
+    /** spells.eff record of a spell with an override/exception row (-1 = not listed). */
+    int overrideRecord(uint32_t spellId) const;
+    /** B1131: the pool rule's factor on this spell's held Source (1 = its own rate). */
+    float sourcePoolScale(uint32_t spellId, int record) const;
+    /** Number of measured rows loaded (tests). */
+    size_t sourceRecordCount() const { return sourceRecords_.size(); }
 
     /**
      * Get global settings.
@@ -179,6 +227,7 @@ private:
     static StyleSettings mergeOverrides(const StyleSettings& base, const StyleSettings& over);
     void buildTextureNameMap();
     void applyPopulationRule(const Json::Value& root);
+    void loadSourceRecords(const Json::Value& root);
 
     std::string configPath_;
     bool loaded_ = false;
@@ -190,6 +239,15 @@ private:
     std::unordered_map<uint32_t, std::unordered_map<std::string, StyleSettings>> spellOverrides_;
     std::unordered_map<std::string, glm::vec4> resistColors_;
     std::unordered_map<std::string, uint8_t> textureNameMap_;
+    // B1131: per-record Source rows, the default row, and the per-record
+    // factor on the style landing (applyPopulationRule).
+    std::unordered_map<int, SourceRecord> sourceRecords_;
+    SourceRecord sourceDefault_;
+    SourceScale sourceScale_;
+    std::unordered_map<uint32_t, int> overrideRecords_;
+    std::unordered_map<int, float> recordLandingScale_;
+    std::unordered_map<int, float> recordSourceScale_;      // -1 = the default row
+    std::unordered_map<uint32_t, float> spellSourceScale_;  // spells with a landing override
 
     ReloadCallback reloadCallback_;
 };

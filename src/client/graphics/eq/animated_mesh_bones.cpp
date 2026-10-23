@@ -13,6 +13,7 @@
 #include <set>
 
 #include "client/graphics/eq/animated_mesh_skinning.h"
+#include "client/graphics/first_person_eye.h"
 
 namespace EQT {
 namespace Graphics {
@@ -148,6 +149,16 @@ int EQAnimatedMeshSceneNode::findRightHandBoneIndex() const {
     }
 
     return -1;
+}
+
+int EQAnimatedMeshSceneNode::findHeadBoneIndexForFx() const {
+    if (!eqMesh_) return -1;
+    auto skeleton = eqMesh_->getSkeleton();
+    if (!skeleton) return -1;
+    std::vector<std::string> names;
+    names.reserve(skeleton->bones.size());
+    for (const auto& bone : skeleton->bones) names.push_back(bone.name);
+    return findHeadBoneIndex(skeleton->modelCode, names);
 }
 
 int EQAnimatedMeshSceneNode::findLeftHandBoneIndex() const {

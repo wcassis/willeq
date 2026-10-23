@@ -189,6 +189,9 @@ bool SpellEffectsConfig::load(const std::string& path) {
         loadSpellOverrides(root["spellOverrides"]);
     }
 
+    // B1131: the per-record Source rows (anchor, shape, onset, hold).
+    loadSourceRecords(root);
+
     // B1123: landing populations follow the platform pool (applyPool).
     global_.maxParticles = pool_;
     if (pool_ > 0) applyPopulationRule(root);
@@ -289,11 +292,13 @@ void SpellEffectsConfig::applyPopulationRule(const Json::Value& root) {
         out.sustainRate = resolved.sustainRate * k; out.hasSustainRate = true;
     };
 
-    // The bound: one landing PLUS its own held Source (B1122: the Source keeps
-    // emitting releaseDelay past OP_Action, then its sprites finish their
-    // life) peaks at half the pool.  Which Source a spell draws (castGlow or
-    // castSpray) is decided at cast time, so the larger overlap of the two
-    // counts.  Computed from the UNSCALED style each spell merges over.
+    // The bound: one landing PLUS its own held Source peaks at half the pool.
+    // B1131: the Source keeps emitting its RECORD's hold past OP_Action (the
+    // longer of holdOther / holdSelf: the target is not known here), at the
+    // record's rate unless the spell's override sets one, and then its sprites
+    // finish their life.  Which Source a spell draws (castGlow or castSpray)
+    // is decided at cast time, so the larger overlap of the two counts.
+    // Computed from the UNSCALED style each spell merges over.
     auto resolve = [&](uint32_t id, const char* style) {
         auto st = styles_.find(style);
         StyleSettings r = st != styles_.end() ? st->second : StyleSettings{};
@@ -304,15 +309,28 @@ void SpellEffectsConfig::applyPopulationRule(const Json::Value& root) {
         }
         return r;
     };
-    auto factor = [&](uint32_t id, const StyleSettings landing[2], float* peakOut, float* targetOut) {
+    // B1131: a Source held for seconds can be too large to sit beside its own
+    // landing at all (253's 1950/s cloud is ~95 % of the sbc half pool), and
+    // then the landing would be scaled to nothing.  So where the landing's own
+    // schedule plus the held Source does not fit, the Source scales by that
+    // same factor first (the configured Source:landing ratio is kept) and the
+    // landing then fills the rest.  Every Source that fits keeps its rate.
+    auto factor = [&](uint32_t id, int record, const StyleSettings landing[2], float* peakOut, float* targetOut,
+                      float* sourceScaleOut = nullptr) {
         const std::vector<spell_population::Schedule> halves = {scheduleOf(landing[0]), scheduleOf(landing[1])};
         const float alone = spell_population::PeakLive(halves);
-        float k = std::numeric_limits<float>::max();
+        const SourceRecord& rec = sourceRecord(record);
+        float k = std::numeric_limits<float>::max(), kSource = 1.0f;
         for (const char* src : {"castGlow", "castSpray"}) {
-            const StyleSettings s = resolve(id, src);
-            const auto o = spell_population::OverlapOf(halves, landing[0].triggerDelay, scheduleOf(s), s.releaseDelay);
+            spell_population::Schedule sch = scheduleOf(resolve(id, src));
+            if (!hasSourceRateOverride(id, src) && rec.spawnRate > 0.0f) sch.spawnRate = rec.spawnRate;
+            auto o = spell_population::OverlapOf(halves, landing[0].triggerDelay, sch, rec.maxHold());
+            const float kS = std::min(1.0f, spell_population::ScaleBothToFit(o, bound));
+            for (auto& v : o.source) v *= kS;
+            kSource = std::min(kSource, kS);
             k = std::min(k, spell_population::ScaleToFit(o, bound));
         }
+        if (sourceScaleOut) *sourceScaleOut = kSource;
         auto ex = exceptions.find(id);
         if (ex != exceptions.end() && alone > 0.0f) k = std::min(k, ex->second / alone);
         *peakOut = alone;
@@ -332,14 +350,32 @@ void SpellEffectsConfig::applyPopulationRule(const Json::Value& root) {
     for (uint32_t id : ids) {
         Scaled sc{id, {resolve(id, kHalves[0]), resolve(id, kHalves[1])}, 1.0f};
         float alone = 0.0f, target = 0.0f;
-        sc.k = factor(id, sc.resolved, &alone, &target);
+        float kSource = 1.0f;
+        sc.k = factor(id, overrideRecord(id), sc.resolved, &alone, &target, &kSource);
         if (alone <= 0.0f) continue;
+        spellSourceScale_[id] = kSource;
         scaled.push_back(sc);
         LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: pool {} -> spell {} landing peak {:.0f} -> {:.0f} (x{:.3f}{})",
                   pool_, id, alone, target, sc.k, exceptions.count(id) ? ", exception" : "");
     }
     float styleAlone = 0.0f, styleTarget = 0.0f;
-    const float kStyle = factor(0, base, &styleAlone, &styleTarget);
+    float kSourceStyle = 1.0f;
+    const float kStyle = factor(0, -1, base, &styleAlone, &styleTarget, &kSourceStyle);
+    recordSourceScale_[-1] = kSourceStyle;
+    // B1131: a spell on the style landing is scaled for its own record's held
+    // Source; the style carries the default row's, so each record stores its
+    // factor relative to that.
+    if (kStyle > 0.0f) {
+        for (const auto& kv : sourceRecords_) {
+            float a = 0.0f, t = 0.0f, kS = 1.0f;
+            const float kRec = factor(0, kv.first, base, &a, &t, &kS);
+            recordLandingScale_[kv.first] = kRec / kStyle;
+            recordSourceScale_[kv.first] = kS;
+            LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: pool {} -> record {} style landing x{:.3f}, "
+                      "held Source {:.0f}/s x{:.3f} for {:.2f} s", pool_, kv.first, kRec / kStyle,
+                      kv.second.spawnRate, kS, kv.second.maxHold());
+        }
+    }
 
     for (auto& sc : scaled)
         for (int h = 0; h < 2; ++h) scaleInto(spellOverrides_[sc.id][kHalves[h]], sc.resolved[h], sc.k);
@@ -403,8 +439,6 @@ void SpellEffectsConfig::loadStyle(const Json::Value& json, const std::string& n
     if (json.isMember("spawnWindow")) { s.spawnWindow = json["spawnWindow"].asFloat(); s.hasSpawnWindow = true; }
     if (json.isMember("sustainRate")) { s.sustainRate = json["sustainRate"].asFloat(); s.hasSustainRate = true; }
     if (json.isMember("sustainFrom")) { s.sustainFrom = json["sustainFrom"].asFloat(); s.hasSustainFrom = true; }
-    if (json.isMember("anchor")) { s.anchor = json["anchor"].asString(); s.hasAnchor = true; }
-    if (json.isMember("releaseDelay")) { s.releaseDelay = json["releaseDelay"].asFloat(); s.hasReleaseDelay = true; }
 
     LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: Loaded style '{}'", name);
 }
@@ -461,14 +495,12 @@ SpellEffectsConfig::StyleSettings SpellEffectsConfig::mergeOverrides(
     if (over.hasSpawnWindow) { result.spawnWindow = over.spawnWindow; result.hasSpawnWindow = true; }
     if (over.hasSustainRate) { result.sustainRate = over.sustainRate; result.hasSustainRate = true; }
     if (over.hasSustainFrom) { result.sustainFrom = over.sustainFrom; result.hasSustainFrom = true; }
-    if (over.hasAnchor) { result.anchor = over.anchor; result.hasAnchor = true; }
-    if (over.hasReleaseDelay) { result.releaseDelay = over.releaseDelay; result.hasReleaseDelay = true; }
 
     return result;
 }
 
 SpellEffectsConfig::StyleSettings SpellEffectsConfig::getStyleSettings(
-        const std::string& styleName, uint32_t spellId) const {
+        const std::string& styleName, uint32_t spellId, int record) const {
     // Find base style
     auto baseIt = styles_.find(styleName);
     if (baseIt == styles_.end()) {
@@ -489,7 +521,144 @@ SpellEffectsConfig::StyleSettings SpellEffectsConfig::getStyleSettings(
         }
     }
 
+    // B1131: a landing half on the style is scaled for its record's held
+    // Source (applyPopulationRule); the style itself carries the default row's.
+    if (record >= 0 && (styleName == "impact" || styleName == "spellComplete")) {
+        auto k = recordLandingScale_.find(record);
+        if (k != recordLandingScale_.end()) {
+            StyleSettings scaled = base;
+            scaled.spawnRate *= k->second;
+            scaled.sustainRate *= k->second;
+            return scaled;
+        }
+    }
+
     return base;
+}
+
+// ---------------------------------------------------------------------------
+// B1131 (#451): THE SOURCE PER spells.eff RECORD.  B1122 drew every record's
+// Source as one body cloud from BeginCast+0.25 s, released 0.33 s after
+// OP_Action.  The B1130 survey measured all 41 records the level-1-60 spells
+// use (review/B1130/anchor_table.tsv): hands 8, feet/ground ring 4, orbit 13,
+// whole body 14, head 1 (record 22's halo), record 51 unmeasured; onset
+// BC+0.37-0.50 (median 0.41); and, when the target is another entity, the
+// caster's Source holds 4-6 s past OP_Action on 16 records.  Each row is
+// read here; SpellVisualFX::createCastGlow builds its emitters and
+// releaseCastGlow applies its hold.
+// ---------------------------------------------------------------------------
+static bool parseAnchor(const std::string& a, SpellEffectsConfig::SourceAnchor& out) {
+    using A = SpellEffectsConfig::SourceAnchor;
+    if (a == "body") { out = A::Body; return true; }
+    if (a == "hands") { out = A::Hands; return true; }
+    if (a == "feet-ring") { out = A::FeetRing; return true; }
+    if (a == "orbit") { out = A::Orbit; return true; }
+    if (a == "head") { out = A::Head; return true; }
+    return false;
+}
+
+void SpellEffectsConfig::loadSourceRecords(const Json::Value& root) {
+    sourceRecords_.clear();
+    overrideRecords_.clear();
+    recordLandingScale_.clear();
+    recordSourceScale_.clear();
+    spellSourceScale_.clear();
+    sourceDefault_ = SourceRecord{};
+    sourceScale_ = SourceScale{};
+    const Json::Value& sr = root["sourceRecords"];
+    if (!sr.isObject()) {
+        LOG_ERROR(MOD_GRAPHICS, "SpellEffectsConfig: no `sourceRecords` block -- every Source draws the "
+                  "style's body cloud with no onset or hold (B1131)");
+        return;
+    }
+    LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: Source rule: {} | default: {} | override records: {}",
+              sr["rule"].asString(), sr["defaultWhy"].asString(), sr["overrideRecordsWhy"].asString());
+    const Json::Value& sc = sr["scale"];
+    if (sc.isMember("casterHeight")) sourceScale_.casterHeight = sc["casterHeight"].asFloat();
+    if (sc.isMember("anchorAboveFeet")) sourceScale_.anchorAboveFeet = sc["anchorAboveFeet"].asFloat();
+    if (sc.isMember("orbitAngularVelocity")) sourceScale_.orbitAngularVelocity = sc["orbitAngularVelocity"].asFloat();
+
+    auto readRow = [](const Json::Value& j, SourceRecord& r) {
+        if (j.isMember("anchor") && !parseAnchor(j["anchor"].asString(), r.anchor))
+            LOG_ERROR(MOD_GRAPHICS, "SpellEffectsConfig: unknown Source anchor '{}'", j["anchor"].asString());
+        r.hasShape = j.isMember("lo") && j.isMember("hi") && j.isMember("halfWidth");
+        r.lo = j.get("lo", 0.0).asFloat();
+        r.hi = j.get("hi", 0.0).asFloat();
+        r.halfWidth = j.get("halfWidth", 0.0).asFloat();
+        r.centroid = j.get("centroid", 0.0).asFloat();
+        r.spiral = j.get("spiral", false).asBool();
+        r.discLo = j.get("discLo", 0.0).asFloat();
+        r.discHi = j.get("discHi", 0.0).asFloat();
+        r.discHalfWidth = j.get("discHalfWidth", 0.0).asFloat();
+        r.discShare = j.get("discShare", 0.0).asFloat();
+        r.coverage = j.get("coverage", 0.0).asFloat();
+        r.onset = j.get("onset", 0.0).asFloat();
+        r.holdSelf = j.get("holdSelf", 0.0).asFloat();
+        // A self-only spell has no other-target hold: its Source never has another target.
+        r.holdOther = j.isMember("holdOther") ? j["holdOther"].asFloat() : r.holdSelf;
+        r.measuredAs = j.get("measuredAs", -1).asInt();
+    };
+    readRow(sr["default"], sourceDefault_);
+    sourceDefault_.hasShape = false;  // the default is the style's own cloud
+
+    const Json::Value& recs = sr["records"];
+    for (const auto& key : recs.getMemberNames()) {
+        SourceRecord r;
+        readRow(recs[key], r);
+        r.record = std::stoi(key);
+        sourceRecords_[r.record] = r;
+    }
+    // The population rule: rate = anchor rate x coverage / the anchor record's coverage.
+    const Json::Value& pop = sr["population"];
+    const int popRecord = pop.get("record", 0).asInt();
+    const float popRate = pop.get("spawnRate", 0.0).asFloat();
+    auto anchorIt = sourceRecords_.find(popRecord);
+    if (anchorIt != sourceRecords_.end() && anchorIt->second.coverage > 0.0f && popRate > 0.0f) {
+        const float perCoverage = popRate / anchorIt->second.coverage;
+        for (auto& kv : sourceRecords_) kv.second.spawnRate = perCoverage * kv.second.coverage;
+    }
+    const Json::Value& orr = sr["overrideRecords"];
+    for (const auto& key : orr.getMemberNames())
+        overrideRecords_[static_cast<uint32_t>(std::stoul(key))] = orr[key].asInt();
+    LOG_INFO(MOD_GRAPHICS, "SpellEffectsConfig: {} Source records (B1131), default onset {:.2f} s, "
+             "hold other/self {:.2f}/{:.2f} s", sourceRecordCount(), sourceDefault_.onset,
+             sourceDefault_.holdOther, sourceDefault_.holdSelf);
+}
+
+const SpellEffectsConfig::SourceRecord& SpellEffectsConfig::sourceRecord(int record) const {
+    auto it = sourceRecords_.find(record);
+    return it != sourceRecords_.end() ? it->second : sourceDefault_;
+}
+
+float SpellEffectsConfig::sourceHold(int record, bool targetIsSelf) const {
+    const SourceRecord& r = sourceRecord(record);
+    return targetIsSelf ? r.holdSelf : r.holdOther;
+}
+
+bool SpellEffectsConfig::hasSourceShapeOverride(uint32_t spellId, const std::string& styleName) const {
+    auto sp = spellOverrides_.find(spellId);
+    if (spellId == 0 || sp == spellOverrides_.end()) return false;
+    auto it = sp->second.find(styleName);
+    return it != sp->second.end() && it->second.hasSpawnShape;
+}
+
+bool SpellEffectsConfig::hasSourceRateOverride(uint32_t spellId, const std::string& styleName) const {
+    auto sp = spellOverrides_.find(spellId);
+    if (spellId == 0 || sp == spellOverrides_.end()) return false;
+    auto it = sp->second.find(styleName);
+    return it != sp->second.end() && it->second.hasSpawnRate;
+}
+
+float SpellEffectsConfig::sourcePoolScale(uint32_t spellId, int record) const {
+    auto sp = spellSourceScale_.find(spellId);
+    if (spellId != 0 && sp != spellSourceScale_.end()) return sp->second;
+    auto r = recordSourceScale_.find(sourceRecords_.count(record) ? record : -1);
+    return r != recordSourceScale_.end() ? r->second : 1.0f;
+}
+
+int SpellEffectsConfig::overrideRecord(uint32_t spellId) const {
+    auto it = overrideRecords_.find(spellId);
+    return it != overrideRecords_.end() ? it->second : -1;
 }
 
 glm::vec4 SpellEffectsConfig::getResistColor(uint8_t resistType) const {

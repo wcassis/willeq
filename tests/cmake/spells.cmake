@@ -234,6 +234,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_landing_volume DISCOVERY_TIMEOUT 120)
 
+# B1131 (#451): the Source (cast) stage per spells.eff record -- anchor class,
+# shape, onset and hold from the B1130 survey. Config rows run everywhere; the
+# real SpellVisualFX -> ParticleManager -> SimulationWorker seam needs graphics.
+ADD_EXECUTABLE(test_spell_source_anchors
+    test_spell_source_anchors.cpp
+)
+TARGET_LINK_LIBRARIES(test_spell_source_anchors GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_source_anchors PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_source_anchors DISCOVERY_TIMEOUT 120)
+
 # T395 Leg B (board B205): eqemu say-links in server chat text. The helper
 # plus the two consumers that print server-authored lines (OP_SpecialMesg and
 # OP_ChannelMessage).

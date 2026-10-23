@@ -175,10 +175,12 @@ TEST_F(CasterOwnLandingTest, TheCastGlowItselfIsStillRemoved) {
         << "removeCastGlow() stopped removing the cast glow";
 }
 
-// B1122 (#442, B1118 M4): the Source is ONE body-wide cloud on the caster's
-// own entity, not a pinpoint at each hand bone, and an interrupt's teardown
-// (removeCastGlow) takes its live sprites down at once. RED on the B1121
-// code + config: the glow was created on the two hand-bone pseudo-entities.
+// B1122 (#442, B1118 M4): a spell with no spells.eff record noted draws the
+// default Source row (B1131): ONE body-wide cloud on the caster's own entity,
+// and an interrupt's teardown (removeCastGlow) takes its live sprites down at
+// once. The per-record anchors (hands, head, ...) are
+// tests/test_spell_source_anchors.cpp's. RED on the B1121 code + config: the
+// glow was created on the two hand-bone pseudo-entities.
 TEST_F(CasterOwnLandingTest, TheSourceIsOneBodyCloudThatAnInterruptFrees) {
     fx_->createCastGlow(kSelfCaster, kBurstOfFlame, kCastTimeMs);
     PumpFrame();
@@ -199,9 +201,10 @@ TEST_F(CasterOwnLandingTest, TheSourceIsOneBodyCloudThatAnInterruptFrees) {
 // B1122, the coordinator's ruling on the measured oracle: the official client
 // does NOT drop its cast cloud at OP_Action. B1118's lit series holds it at its
 // level through the post-Action gap (93: 0.41 caster heights^2 at Act-0.1, 0.42
-// at Act+0.3; 41: 1.16 -> 1.30) until the landing takes over at ~Act+0.4. So
-// OP_Action RELEASES the Source (releaseCastGlow): it keeps emitting for the
-// style's releaseDelay -- the landing's own triggerDelay -- and its sprites
+// at Act+0.3; 41: 1.16 -> 1.30) until the landing takes over at ~Act+0.4 --
+// with the target ON the caster, which is this self cast. So OP_Action
+// RELEASES the Source (releaseCastGlow): it keeps emitting the record's
+// holdSelf (B1131; 0.33 s, the landing's own triggerDelay) and its sprites
 // then finish their life. RED on the stop-at-OP_Action behaviour (B1122's
 // first commit freed every sprite on the action packet).
 TEST_F(CasterOwnLandingTest, TheSourceHoldsPastTheActionUntilTheLandingTakesOver) {
@@ -210,16 +213,16 @@ TEST_F(CasterOwnLandingTest, TheSourceHoldsPastTheActionUntilTheLandingTakesOver
     const size_t atAction = output_.particleOutput.renderBuffer.size();
     ASSERT_GT(atAction, 40u);
 
-    fx_->releaseCastGlow(kSelfCaster, kBurstOfFlame);  // OP_Action
+    fx_->releaseCastGlow(kSelfCaster, kBurstOfFlame, kSelfCaster);  // OP_Action, self target
     fx_->createSpellComplete(kSelfCaster, kBurstOfFlame);
     fx_->createImpact(kSelfCaster, kBurstOfFlame);
     for (int f = 0; f < 18; ++f) PumpFrame();  // Act+0.3, before the landing triggers
     EXPECT_GE(output_.particleOutput.renderBuffer.size(), atAction * 3 / 4)
         << "the cloud went dark at OP_Action; the oracle holds it until the landing";
 
-    // Then it stops feeding and dies out by Act + releaseDelay + the longest life.
-    const float release = EQT::Graphics::Environment::SpellPresets::CastGlow(
-        glm::vec4(1.0f), kBurstOfFlame).releaseDelay;
+    // Then it stops feeding and dies out by Act + holdSelf + the longest life.
+    const float release = EQT::Graphics::Environment::SpellEffectsConfig::instance().sourceHold(
+        fx_->sourceRecordOf(kBurstOfFlame), true);
     EXPECT_GE(release, 0.25f);
     EXPECT_LE(release, 0.45f);
     for (int f = 0; f < 120; ++f) PumpFrame();  // Act+2.3

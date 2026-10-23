@@ -38,6 +38,7 @@ enum class SpawnShape : uint8_t {
     BOX = 1,    // Random within box half-extents
     SPHERE = 2, // Random within sphere of radius spawnExtents.x
     RING = 3,   // Random angle at fixed radius spawnExtents.x
+    DISC = 4,   // B1131: uniform over a flat disc of radius spawnExtents.x, +-spawnExtents.y thick
 };
 
 // === Particle Structure ===

@@ -516,18 +516,22 @@ TEST(SpellPoolPlatforms, TheSbcPoolIsTheSmallerOne) {
 TEST_P(SpellPoolRule, EveryLandingPeaksAtTheRuleForThisPool) {
     namespace sp = EQT::Graphics::Environment::spell_population;
     const float bound = 0.5f * pool();
+    const auto& cfg = EQT::Graphics::Environment::SpellEffectsConfig::instance();
     for (uint32_t id : {0u, 93u, 38u, 54u, 656u, 41u, 253u, 458u, 285u}) {
-        const auto imp = SpellPresets::Impact(glm::vec4(1.0f), id);
-        const auto com = SpellPresets::SpellComplete(glm::vec4(1.0f), id);
+        // B1131: the held Source is the spell's RECORD's (rate, hold); 0 and 285
+        // stand for a spell whose record is not listed (the default row).
+        const int rec = cfg.overrideRecord(id);
+        const auto imp = SpellPresets::Impact(glm::vec4(1.0f), id, rec);
+        const auto com = SpellPresets::SpellComplete(glm::vec4(1.0f), id, rec);
         const std::vector<sp::Schedule> halves = {
             spell_landing_population::ScheduleOf(imp.emitters.at(0).config),
             spell_landing_population::ScheduleOf(com.emitters.at(0).config)};
         float withSource = 0.0f;
-        for (const auto& src : {SpellPresets::CastGlow(glm::vec4(1.0f), id),
-                                SpellPresets::CastSpray(glm::vec4(1.0f), id)}) {
+        for (bool spray : {false, true}) {
+            const auto src = SpellPresets::SourceForSpell(glm::vec4(1.0f), id, rec, spray, 3.6f, 1.0f);
             const auto o = sp::OverlapOf(halves, imp.emitters.at(0).triggerDelay,
                                          spell_landing_population::ScheduleOf(src.emitters.at(0).config),
-                                         src.releaseDelay);
+                                         cfg.sourceRecord(rec).maxHold());
             withSource = std::max(withSource, o.PeakAt(1.0f));
         }
         const float ex = exception(id);

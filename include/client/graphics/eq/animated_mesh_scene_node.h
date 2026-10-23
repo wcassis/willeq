@@ -266,6 +266,8 @@ public:
     // Returns -1 if hand bone not found
     int findRightHandBoneIndex() const;
     int findLeftHandBoneIndex() const;
+    // B1131: the head bone (`<modelCode>he`, first_person_eye.h's rule), -1 if none.
+    int findHeadBoneIndexForFx() const;
 
     // T300: setFirstPersonMode()/isFirstPersonMode()/
     // hasValidFirstPersonGeometry()/getArmBoneCount()/getArmBoneIndices()
