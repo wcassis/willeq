@@ -159,6 +159,20 @@ TEST_F(CasterOwnLandingTest, SelfCastLandingSurvivesTheSuccessRepeatTeardown) {
            "never receives the second packet) keeps its copy";
 }
 
+// B1132 (#452): the bridge now draws the whole landing through createLanding()
+// (both halves on the record's Target anchor). On a self cast that anchor is
+// the caster, and the success repeat's teardown must still leave it alone.
+TEST_F(CasterOwnLandingTest, SelfCastWholeLandingSurvivesTheSuccessRepeatTeardown) {
+    fx_->removeCastGlow(kSelfCaster);
+    EXPECT_EQ(fx_->createLanding(kSelfCaster, kSelfCaster, kBurstOfFlame), kSelfCaster);
+    PumpFrame();
+    ASSERT_EQ(LiveEffectEntities().count(kSelfCaster), 1u);
+    fx_->releaseCastGlow(kSelfCaster, kBurstOfFlame, kSelfCaster);  // packet 2
+    fx_->removeCastGlow(kSelfCaster);
+    PumpFrame();
+    EXPECT_EQ(LiveEffectEntities().count(kSelfCaster), 1u) << "B400 through createLanding()";
+}
+
 // The teardown must still do its job: a cast glow really is removed.
 TEST_F(CasterOwnLandingTest, TheCastGlowItselfIsStillRemoved) {
     fx_->createCastGlow(kSelfCaster, kBurstOfFlame, kCastTimeMs);

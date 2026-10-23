@@ -92,6 +92,21 @@ namespace SpellPresets {
     // Which point that Source follows (Body for an override's own geometry).
     SpellEffectsConfig::SourceAnchor SourceAnchorForSpell(uint32_t spellId, int record, bool spray);
 
+    // B1132 (#452): one landing half (`complete` = the spellComplete style,
+    // else the impact style) shaped for its spells.eff record's Target row
+    // (SpellEffectsConfig::TargetRecord) -- see the TU. `anchorAboveFeet` is
+    // the followed point's height above the landing entity's feet, world units.
+    SpellEffectDef TargetForRecord(const SpellEffectDef& style,
+                                   const SpellEffectsConfig::TargetRecord& rec,
+                                   float anchorAboveFeet, bool complete);
+    // A spell's landing half as SpellVisualFX::createLanding draws it: the
+    // style + the spell's overrides + its record's row (an override that sets
+    // its own spawnShape keeps that geometry).
+    SpellEffectDef TargetForSpell(glm::vec4 color, uint32_t spellId, int record, bool complete,
+                                  float anchorAboveFeet);
+    // Which point that landing follows.
+    SpellEffectsConfig::TargetAnchor TargetAnchorForSpell(uint32_t spellId, int record);
+
     // T389 (board B162): replace an effect definition's atlas tile choice
     // with the tiles named by a resolved spells.eff stage.
     //

@@ -258,6 +258,27 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_source_anchors DISCOVERY_TIMEOUT 120)
 
+# B1132 (#452): the Target (landing) stage per spells.eff record -- anchor
+# class and shape from the B1130 survey, and no landing on the caster of an
+# other-target cast. Same layout as test_spell_source_anchors.
+ADD_EXECUTABLE(test_spell_target_anchors
+    test_spell_target_anchors.cpp
+)
+TARGET_LINK_LIBRARIES(test_spell_target_anchors GTest::gtest_main willeq_core)
+IF(NOT EQT_GRAPHICS)
+    TARGET_SOURCES(test_spell_target_anchors PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_effects_config.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_emitter_presets.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_spell_target_anchors ${FMT_LIB} ${JSONCPP_LIBRARIES} dl)
+ENDIF()
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_target_anchors PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_target_anchors DISCOVERY_TIMEOUT 120)
+
 # T395 Leg B (board B205): eqemu say-links in server chat text. The helper
 # plus the two consumers that print server-authored lines (OP_SpecialMesg and
 # OP_ChannelMessage).

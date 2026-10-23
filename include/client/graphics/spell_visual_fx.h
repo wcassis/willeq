@@ -171,6 +171,15 @@ public:
     // Create spell completion effect (burst of particles when cast succeeds)
     void createSpellComplete(uint16_t caster_id, uint32_t spell_id);
 
+    // B1132 (#452): the whole landing of a cast (OP_Action, cast-animation
+    // packet): both halves (spellComplete + impact) on the record's Target
+    // anchor -- the TARGET's body, head bone or feet, or a column above it;
+    // the CASTER only for a caster-anchored record (27's PB-AE, the self-only
+    // records) or when there is no target. Never on the caster of an
+    // other-target cast otherwise (B1131 FOLLOW-UP 1). Returns the entity the
+    // landing follows (the head pseudo-entity for a head row), 0 when none.
+    uint16_t createLanding(uint16_t caster_id, uint16_t target_id, uint32_t spell_id);
+
     // Create persistent buff aura around entity
     uint32_t createBuffAura(uint16_t entity_id, uint32_t spell_id);
 

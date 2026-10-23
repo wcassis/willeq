@@ -134,7 +134,7 @@ reason at the top of this file. Cut narrative before you cut a rule.
   as EXCLUDED, never a shrink bucket; the driver .so COW pages stay on the
   owned side; B978 2026-10-01 superseded B933's figure). **Memory first,
   frame rate second** (Will,
-  2026-09-29). The original client ran these assets in 32 MB total.
+  2026-09-29).
 - **GPU buffers are outside RssAnon on the Pi** (Lima GEM/shmem, B955): the
   `gpu_buffers` row (`[memgpu]`, `include/client/core/gpu_buffer_census.h`)
   sees them only when the client runs in its own cgroup (the Pi rigs do).
@@ -237,7 +237,7 @@ never a defect).
 # Headless (no graphics)
 ./build/bin/willeq -c willeq.json --no-graphics
 
-# VNC (headless servers). VNC_PORT=5950 (the script header's 5999 is stale, T215)
+# VNC (headless servers). VNC_PORT=5950
 ./scripts/start-with-vnc.sh -c willeq.json          # vnc://localhost:5950
 
 # VNC + audio streaming: VNC_PORT=5910, AUDIO_PORT=8085
@@ -412,10 +412,11 @@ is fable tinting the oracle's own art**. `config/spell_effects.json`'s
 `resistColors` and `SpellVisualFX::colorForVocabulary()` survive only for the
 ~946 spells with no usable `spells.eff` record. All three stages route their
 names: Source → cast glow and spellComplete, Middle → projectile trail, Target →
-impact. The landing is a VOLUME, not a disc (B1120); the Source is drawn PER
-spells.eff RECORD (B1131 `sourceRecords`: hands/feet-ring/orbit/body/head disc,
-onset ~BC+0.4 s, held past OP_Action up to 5.5 s when the target is someone
-else; `tests/test_spell_source_anchors.cpp`). `spellOverrides` holds
+impact. The landing is a VOLUME, not a disc (B1120). Source and Target are drawn
+PER spells.eff RECORD: B1131 `sourceRecords` (anchor, onset, hold past
+OP_Action), B1132 `targetRecords` (both landing halves on the TARGET, never the
+caster of an other-target cast; head bone 5, feet rings 16/28, column 3, caster
+27); `tests/test_spell_{source,target}_anchors.cpp`. `spellOverrides` holds
 measured values only (B1120/B1122 shapes; **sizes match the oracle FIRST**:
 caster-ROI p90, `review/B1119/scripts/fx_sprite_roi.py` vs
 `review/B1120/measure_oracle/roi_oracle.txt`; coverage follows from the pool,
@@ -628,7 +629,7 @@ bash scripts/ci/encode_capture.sh /tmp/capture <UNIT_ID> [output_dir]
   video with the measured fps/frame-count/real-time span; keep that file with
   the video.
 - **Capture fps is an artifact of the capture mechanism, not a performance
-  measurement** (P12: ~4-7.6 fps on llvmpipe). **Never draw a performance conclusion from a
+  measurement** (P12). **Never draw a performance conclusion from a
   capture video.**
 - Verify frames are real images before encoding — `saveScreenshot()` has
   returned garbage under the surfaceless path before (P10, P20; `review/T64/`).

@@ -191,6 +191,8 @@ bool SpellEffectsConfig::load(const std::string& path) {
 
     // B1131: the per-record Source rows (anchor, shape, onset, hold).
     loadSourceRecords(root);
+    // B1132: the per-record Target (landing) rows (anchor, shape).
+    loadTargetRecords(root);
 
     // B1123: landing populations follow the platform pool (applyPool).
     global_.maxParticles = pool_;
@@ -654,6 +656,65 @@ float SpellEffectsConfig::sourcePoolScale(uint32_t spellId, int record) const {
     if (spellId != 0 && sp != spellSourceScale_.end()) return sp->second;
     auto r = recordSourceScale_.find(sourceRecords_.count(record) ? record : -1);
     return r != recordSourceScale_.end() ? r->second : 1.0f;
+}
+
+static bool parseTargetAnchor(const std::string& a, SpellEffectsConfig::TargetAnchor& out) {
+    using T = SpellEffectsConfig::TargetAnchor;
+    if (a == "body") { out = T::Body; return true; }
+    if (a == "caster") { out = T::Caster; return true; }
+    if (a == "head") { out = T::Head; return true; }
+    if (a == "feet") { out = T::FeetGround; return true; }
+    if (a == "column") { out = T::Column; return true; }
+    return false;
+}
+
+void SpellEffectsConfig::loadTargetRecords(const Json::Value& root) {
+    targetRecords_.clear();
+    targetDefault_ = TargetRecord{};
+    targetReferenceCoverage_ = 0.0f;
+    const Json::Value& tr = root["targetRecords"];
+    if (!tr.isObject()) {
+        LOG_ERROR(MOD_GRAPHICS, "SpellEffectsConfig: no `targetRecords` block -- every landing draws the "
+                  "style's body volume on the target (B1132)");
+        return;
+    }
+    LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: Target rule: {} | default: {}", tr["rule"].asString(),
+              tr["defaultWhy"].asString());
+    targetReferenceCoverage_ = tr.get("referenceCoverage", 0.0).asFloat();
+    auto readRow = [](const Json::Value& j, TargetRecord& r) {
+        if (j.isMember("anchor") && !parseTargetAnchor(j["anchor"].asString(), r.anchor))
+            LOG_ERROR(MOD_GRAPHICS, "SpellEffectsConfig: unknown Target anchor '{}'", j["anchor"].asString());
+        r.lo = j.get("lo", 0.0).asFloat();
+        r.hi = j.get("hi", 0.0).asFloat();
+        r.halfWidth = j.get("halfWidth", 0.0).asFloat();
+        r.centroid = j.get("centroid", 0.0).asFloat();
+        r.coverage = j.get("coverage", 0.0).asFloat();
+        r.onset = j.get("onset", 0.0).asFloat();
+        r.faceOnset = j.get("faceOnset", 0.0).asFloat();
+        r.end = j.get("end", 0.0).asFloat();
+        r.population = j.get("population", 1.0).asFloat();
+        r.unmeasured = j.get("unmeasured", false).asBool();
+        using T = SpellEffectsConfig::TargetAnchor;
+        r.hasShape = (r.anchor == T::Head || r.anchor == T::FeetGround || r.anchor == T::Column) &&
+                     j.isMember("lo") && j.isMember("hi") && j.isMember("halfWidth");
+        LOG_TRACE(MOD_GRAPHICS, "SpellEffectsConfig: Target row: {}", j["capture"].asString());
+    };
+    readRow(tr["default"], targetDefault_);
+    targetDefault_.hasShape = false;
+    const Json::Value& recs = tr["records"];
+    for (const auto& key : recs.getMemberNames()) {
+        TargetRecord r;
+        readRow(recs[key], r);
+        r.record = std::stoi(key);
+        targetRecords_[r.record] = r;
+    }
+    LOG_INFO(MOD_GRAPHICS, "SpellEffectsConfig: {} Target records (B1132), shaped-row population "
+             "relative to landing coverage {:.3f}", targetRecordCount(), targetReferenceCoverage());
+}
+
+const SpellEffectsConfig::TargetRecord& SpellEffectsConfig::targetRecord(int record) const {
+    auto it = targetRecords_.find(record);
+    return it != targetRecords_.end() ? it->second : targetDefault_;
 }
 
 int SpellEffectsConfig::overrideRecord(uint32_t spellId) const {
