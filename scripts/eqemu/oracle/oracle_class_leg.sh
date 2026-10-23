@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# B1129 (#449): one oracle leg with a test character switched to another CLASS
+# for that leg only -- the multi-class recipe of B1118 (review/B1118/scripts/
+# class_run.sh) and B1130 (review/B1130/scripts/leg.sh), made a driver feature.
+#
+# The official client refuses a gem cast its class cannot use, so a set of
+# spells from several classes needs one leg per class. This helper:
+#   1. checks the plan OFFLINE first (oracle_plan_check.py, the target class,
+#      the gems the leg starts with) and refuses before touching the lane;
+#   2. waits for the lane lease, then runs oracle_session.sh, which TAKES the
+#      lease itself; every SQL below runs only inside that locked session
+#      (class_run.sh's class switch ran outside the lock -- not repeated here);
+#   3. ORACLE_PRE_SQL switches the class (only from the home class);
+#      the driver then re-checks the plan against the character's real class,
+#      level and gems before Wine starts;
+#   4. ORACLE_POST_SQL runs in cleanup with the WORLD DOWN, after the snapshot
+#      restore (which covers level but NOT class, memorised gems or buffs):
+#      home class back, the memorised gems rewritten from --gems (slot 0 =
+#      gem 1), buffs cleared, plus --post-sql-file (e.g. B1130's
+#      skills_restore_t2.sql); the driver drops spellbook rows the leg added;
+#   5. verifies the after-census: home class and exactly --gems memorised.
+#
+# usage: oracle_class_leg.sh <lane 1..5> <class 1..16> <plan.tsv> <out_dir>
+#            [--char-id 67] [--home-class 12] [--gems 93,38,54,41,253,458,656]
+#            [--post-sql-file F] [--no-wait]
+# Exit codes: oracle_session.sh's (0/64/65/66/67); 64 also = plan refused;
+# 66 also = the after-census does not show the home class and the gems.
+set -uo pipefail
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+REPO=$(cd "$SCRIPT_DIR/../../.." && pwd)
+usage() { sed -n '/^# usage:/,/^# Exit/p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
+[[ $# -ge 4 ]] || usage
+LANE=$1 CLS=$2 PLAN=$3 OUT=$4; shift 4
+CHAR_ID=67 HOME_CLASS=12 GEMS=93,38,54,41,253,458,656 POST_FILE= WAIT=1
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --char-id) CHAR_ID=$2; shift 2 ;;
+        --home-class) HOME_CLASS=$2; shift 2 ;;
+        --gems) GEMS=$2; shift 2 ;;
+        --post-sql-file) POST_FILE=$2; shift 2 ;;
+        --no-wait) WAIT=0; shift ;;
+        *) usage ;;
+    esac
+done
+[[ $LANE =~ ^[1-5]$ && $CLS =~ ^([1-9]|1[0-6])$ && $HOME_CLASS =~ ^([1-9]|1[0-6])$ && $CHAR_ID =~ ^[0-9]+$ ]] || usage
+[[ $GEMS =~ ^([0-9]+(,[0-9]+)*)?$ ]] || usage
+[[ -f $PLAN ]] || { echo "no plan: $PLAN" >&2; exit 64; }
+[[ -z $POST_FILE || -f $POST_FILE ]] || { echo "no post-SQL file: $POST_FILE" >&2; exit 64; }
+PLAN=$(realpath "$PLAN") OUT=$(realpath -m "$OUT")
+
+# 1. offline: the leg starts with --gems memorised (the previous leg's undo).
+MEMMED= slot=0
+for sid in ${GEMS//,/ }; do MEMMED+="${MEMMED:+,}$slot:$sid"; slot=$((slot + 1)); done
+if ! python3 "$SCRIPT_DIR/oracle_plan_check.py" check "$PLAN" --class "$CLS" --lane "$LANE" ${MEMMED:+--memmed "$MEMMED"} >&2; then
+    echo "plan refused for class $CLS before taking lane $LANE" >&2
+    exit 64
+fi
+
+# 3./4. the hooks oracle_session.sh runs inside its locked session.
+VALUES= slot=0
+for sid in ${GEMS//,/ }; do VALUES+="${VALUES:+,}($CHAR_ID,$slot,$sid)"; slot=$((slot + 1)); done
+export ORACLE_STATE_CHAR=$CHAR_ID ORACLE_EXPECT_CLASS=$CLS
+export ORACLE_PRE_SQL="UPDATE character_data SET class=$CLS WHERE id=$CHAR_ID AND class=$HOME_CLASS;"
+ORACLE_POST_SQL="UPDATE character_data SET class=$HOME_CLASS WHERE id=$CHAR_ID; DELETE FROM character_memmed_spells WHERE id=$CHAR_ID;"
+[[ -n $VALUES ]] && ORACLE_POST_SQL+=" INSERT INTO character_memmed_spells (id,slot_id,spell_id) VALUES $VALUES;"
+ORACLE_POST_SQL+=" DELETE FROM character_buffs WHERE character_id=$CHAR_ID;"
+[[ -n $POST_FILE ]] && ORACLE_POST_SQL+=" $(cat "$POST_FILE")"
+export ORACLE_POST_SQL
+export ORACLE_OWNER=${ORACLE_OWNER:-oracle_class_c$CLS}
+
+# 2. wait for the lease (never break it); a lost take race (64 with no
+# session.started) is retried, anything else is the leg's result.
+export EQEMU_LANE=$LANE
+# shellcheck source=/dev/null
+source "$REPO/scripts/eqemu/env.sh"
+for try in $(seq 1 240); do
+    if (( WAIT )); then while eqemu_lock_show >/dev/null 2>&1; do sleep 30; done; fi
+    bash "$SCRIPT_DIR/oracle_session.sh" "$LANE" "$PLAN" "$OUT"
+    RC=$?
+    if (( WAIT && RC == 64 )) && [[ ! -e $OUT/session.started ]]; then
+        echo "lane $LANE lease race lost (try $try), retrying" >&2; rm -rf "$OUT"; sleep 20; continue
+    fi
+    break
+done
+
+# 5. the after-census (written by the driver's cleanup) must show the undo.
+if [[ -e $OUT/char-state-before.tsv ]]; then
+    want_mem=$(slot=0; for sid in ${GEMS//,/ }; do printf '%s\t%s\n' "$slot" "$sid"; slot=$((slot + 1)); done)
+    got_class=$(cut -f2 "$OUT/char-state-after.tsv" 2>/dev/null)
+    if [[ $got_class != "$HOME_CLASS" ]] || [[ $(cat "$OUT/char-memmed-after.tsv" 2>/dev/null) != "$want_mem" ]]; then
+        echo "char $CHAR_ID NOT restored: class '$got_class' (want $HOME_CLASS), gems in $OUT/char-memmed-after.tsv (want $GEMS)" >&2
+        RC=66
+    else
+        echo "char $CHAR_ID restored: class $HOME_CLASS, gems $GEMS" >&2
+    fi
+fi
+exit "$RC"

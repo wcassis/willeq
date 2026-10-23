@@ -19,7 +19,7 @@ source "$REPO/scripts/eqemu/env.sh"
 source "$REPO/scripts/eqemu/restore_lib.sh"
 OWNER="${ORACLE_OWNER:-oracle_session}_$(date -u +%Y%m%dT%H%M%S)_$$"
 [[ $OWNER =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid ORACLE_OWNER" >&2; exit 64; }
-STATUS=0 LOCKED=0 SNAPSHOT=0 REMOTE_STARTED=0 CREATE_ACCOUNT_ID= BROKER_PID=
+STATUS=0 LOCKED=0 SNAPSHOT=0 REMOTE_STARTED=0 CREATE_ACCOUNT_ID= BROKER_PID= STATE_CHAR=
 REMOTE_DIR="/home/user/eq-oracle/sessions/$OWNER"
 say() { printf '%s\n' "$*" | tee -a "$OUT/driver.log"; }
 remote() { ssh -n -o BatchMode=yes -o ConnectTimeout=10 "user@$EQEMU_ORACLE_HOST" "$@"; }
@@ -30,7 +30,19 @@ stop_broker() {
         BROKER_PID=
     fi
 }
+# B1129: one character's provisioning state (class/level/race, memorised
+# gems, spellbook ids, buff count) to $OUT/char-*-<before|after>.
+char_state() {
+    eqemu_sql "SELECT id,class,level,race FROM character_data WHERE id=$1;" >"$OUT/char-state-$2.tsv" &&
+    eqemu_sql "SELECT slot_id,spell_id FROM character_memmed_spells WHERE id=$1 ORDER BY slot_id;" >"$OUT/char-memmed-$2.tsv" &&
+    eqemu_sql "SELECT spell_id FROM character_spells WHERE id=$1 ORDER BY spell_id;" >"$OUT/char-book-$2.txt" &&
+    eqemu_sql "SELECT COUNT(*) FROM character_buffs WHERE character_id=$1;" >"$OUT/char-buffs-$2.txt"
+}
 cleanup() {
+    # B1129: a `set -u` abort (unbound variable) reaches this trap with $? != 0
+    # but STATUS still 0; it used to exit 0. Every deliberate exit sets STATUS.
+    local aborted=$?
+    if (( STATUS == 0 && aborted != 0 )); then STATUS=65; fi
     local prior=$STATUS
     stop_broker
     if (( REMOTE_STARTED )); then
@@ -54,6 +66,26 @@ cleanup() {
                 done <"$OUT/created-ids.tsv"
             fi
             eqemu_restore_snapshot "$OUT/db-before.tsv" "$OUT/db-after.tsv" say >>"$OUT/driver.log" 2>&1 || STATUS=66
+            # B1129 (#449): the provisioning hooks' undo, with the WORLD DOWN
+            # (the zone writes the character back at shutdown, so an earlier
+            # undo is overwritten). The snapshot covers level, not class,
+            # memorised gems, buffs or the spellbook: ORACLE_POST_SQL puts
+            # those back (oracle_class_leg.sh builds it), then any spellbook
+            # row the leg added (a #memspell scribes) is removed.
+            if [[ -n ${ORACLE_POST_SQL:-} || $STATE_CHAR != "" ]]; then
+                eqemu_world_stop >>"$OUT/driver.log" 2>&1 || STATUS=66
+            fi
+            if [[ -n ${ORACLE_POST_SQL:-} ]]; then
+                say "post-SQL (world down): $ORACLE_POST_SQL"
+                eqemu_sql "$ORACLE_POST_SQL" >>"$OUT/driver.log" 2>&1 || STATUS=66
+            fi
+            if [[ -n $STATE_CHAR ]]; then
+                book=$(paste -sd, - <"$OUT/char-book-before.txt")
+                if [[ -n $book ]]; then
+                    eqemu_sql "DELETE FROM character_spells WHERE id=$STATE_CHAR AND spell_id NOT IN ($book);" >>"$OUT/driver.log" 2>&1 || STATUS=66
+                fi
+                char_state "$STATE_CHAR" after || STATUS=66
+            fi
             eqemu_inventory_restore "$OUT/inventory-before.tsv" "$CHAR_IDS" >>"$OUT/driver.log" 2>&1 || STATUS=66
             eqemu_inventory_snapshot "$OUT/inventory-after.tsv" "$CHAR_IDS" >>"$OUT/driver.log" 2>&1 || STATUS=66
             diff -q "$OUT/inventory-before.tsv" "$OUT/inventory-after.tsv" >>"$OUT/driver.log" 2>&1 || STATUS=66
@@ -124,6 +156,43 @@ while IFS= read -r name; do
     printf '%s\n' "$name" >>"$OUT/validated-names.tsv"
 done <"$OUT/plan-names.tsv"
 cp "$OUT/validated-names.tsv" "$OUT/absent-names.tsv"
+# B1129 (#449): provisioning hooks, run with the lock held and the snapshot
+# taken. ORACLE_STATE_CHAR=<id> records that character's class, gems,
+# spellbook and buffs before ORACLE_PRE_SQL (e.g. a class switch) and again
+# after the world-down undo; oracle_class_leg.sh sets all four variables.
+if [[ -n ${ORACLE_STATE_CHAR:-} ]]; then
+    [[ $ORACLE_STATE_CHAR =~ ^[0-9]+$ ]] || { STATUS=64; exit "$STATUS"; }
+    char_state "$ORACLE_STATE_CHAR" before || { STATUS=65; exit "$STATUS"; }
+    STATE_CHAR=$ORACLE_STATE_CHAR
+fi
+if [[ -n ${ORACLE_PRE_SQL:-} ]]; then
+    say "pre-SQL: $ORACLE_PRE_SQL"
+    eqemu_sql "$ORACLE_PRE_SQL" >>"$OUT/driver.log" 2>&1 || { STATUS=65; exit "$STATUS"; }
+fi
+# B1129 (#449): the official client refuses a gem cast its class cannot use
+# ("You are not high enough level to cast this spell!", no OP_CastSpell);
+# check every gem cast against the login character's REAL class, level and
+# gems now, before Wine starts (oracle_plan_check.py; exit 64 = refused).
+if [[ -n $CHARACTER ]]; then
+    [[ $CHARACTER =~ ^[A-Za-z]+$ ]] || { STATUS=65; exit "$STATUS"; }
+    eqemu_sql "SELECT class,level FROM character_data WHERE name='$CHARACTER' LIMIT 1;" >"$OUT/plan-character.tsv" || { STATUS=65; exit "$STATUS"; }
+    eqemu_sql "SELECT m.slot_id,m.spell_id FROM character_memmed_spells m JOIN character_data c ON c.id=m.id WHERE c.name='$CHARACTER' ORDER BY m.slot_id;" >"$OUT/plan-memmed.tsv" || { STATUS=65; exit "$STATUS"; }
+    read -r CHAR_CLASS CHAR_LEVEL <"$OUT/plan-character.tsv"
+    [[ $CHAR_CLASS =~ ^[0-9]+$ && $CHAR_LEVEL =~ ^[0-9]+$ ]] || { STATUS=65; exit "$STATUS"; }
+    if [[ -n ${ORACLE_EXPECT_CLASS:-} && $CHAR_CLASS != "$ORACLE_EXPECT_CLASS" ]]; then
+        say "$CHARACTER is class $CHAR_CLASS after the pre-SQL, expected $ORACLE_EXPECT_CLASS; refusing"
+        STATUS=65; exit "$STATUS"
+    fi
+    python3 "$REPO/scripts/eqemu/oracle/oracle_plan_check.py" check "$PLAN" --class "$CHAR_CLASS" \
+        --level "$CHAR_LEVEL" --lane "$LANE" --memmed-file "$OUT/plan-memmed.tsv" >"$OUT/plan-check.txt" 2>&1
+    PLAN_RC=$?
+    cat "$OUT/plan-check.txt" >>"$OUT/driver.log"
+    if (( PLAN_RC != 0 )); then
+        say "plan refused (gem casts the official client would refuse; $OUT/plan-check.txt):"
+        grep -E '^REFUSED' "$OUT/plan-check.txt" | tee -a "$OUT/driver.log" >&2
+        STATUS=64; exit "$STATUS"
+    fi
+fi
 if [[ -n $ZONE && -n $CHARACTER ]]; then
     [[ $ZONE =~ ^[a-z0-9_]+$ && $CHARACTER =~ ^[A-Za-z]+$ ]] || { STATUS=65; exit "$STATUS"; }
     ZONE_ID=$(eqemu_sql "SELECT zoneidnumber FROM zone WHERE short_name='$ZONE' LIMIT 1;")

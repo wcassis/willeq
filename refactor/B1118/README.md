@@ -40,7 +40,8 @@ model-height scale:
 artifact:**
 1. **The official client refuses gem casts that the class cannot use.** The message is "You
    are not high enough level to cast this spell!" (`oracle_leg/24_fx41.png`). This, not the
-   gem pitch, is why B1107 got 3/7. The fable client does not check this, and the server
+   gem pitch, is why B1107 got 3/7 (B1129: B1107's own table lists 41 as confirmed on a
+   wizard, which this refusal rules out; `refactor/B1129/README.md` "B1107 reconciled"). The fable client does not check this, and the server
    does not either.
 2. **Fable deletes the self-targeted local player when the server sends `OP_DeleteSpawn(0)`.**
    The server sends that packet after every NPC death. The code is
@@ -373,6 +374,7 @@ Workers do not cut cards; these are for the orchestrator.
    later in every pcap here). Repro: `fable_A1_selfdelete/` (self-target, AE kills an NPC).
 10. **FX-MIDDLE (M10). Oracle-owed measurement.** Capture the Middle stage at distance, as
     in §6, before any projectile work.
-11. **ORACLE-RIG (process).** Plans that click gems must use a character of a class that can
+11. ~~**ORACLE-RIG (process).** Plans that click gems must use a character of a class that can
     cast the spell, or the official client refuses the cast. Record the gem pitch per lane:
-    lane 5 is (25, 213+30i).
+    lane 5 is (25, 213+30i).~~ **Done by B1129 (#449):** `scripts/eqemu/oracle/gem_pitch.tsv`,
+    `oracle_plan_check.py` (the driver refuses such a plan), `oracle_class_leg.sh`.

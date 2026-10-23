@@ -140,7 +140,8 @@ the post-session value separately; an individual step diff is empty until the
 official client flushes the setting, so the report never assigns a later write
 to an earlier step.
 
-Exit codes: `0` complete; `64` invalid invocation or lane lock held; `65`
+Exit codes: `0` complete; `64` invalid invocation, lane lock held, or a gem
+cast the login character cannot make (below); `65`
 server/capture/driver failure; `66` restore or lock-release failure; `67`
 client disconnected mid-plan. The disconnect result appends world/zone log
 tail evidence to `summary.md` and saves `disconnect-logs.txt`. Never treat a
@@ -148,6 +149,43 @@ partial summary or a green process alone as a valid observation: inspect
 `ledger_check.txt`, the relevant step files, and the cleanup line in
 `driver.log`. The character-creation plan deletes its newly created character
 with the world stopped, then verifies the snapshot.
+
+## Gem casts and class legs (B1129)
+
+**The official client refuses a gem cast its class cannot use** and sends
+nothing: "You are not high enough level to cast this spell!", no
+`OP_CastSpell` (`refactor/B1118/README.md`). That holds for a `spells_us.txt`
+class level of 255 (fields 104..119, classes 1..16 WAR..BER) and for a level
+above the character's. So, with the lock held and the snapshot taken, the
+driver reads the login character's class, level and memorised gems and runs
+`oracle_plan_check.py check` over the plan; a refused cast exits **64**
+before Wine starts, naming the plan line, spell and class
+(`plan-check.txt`). It replays the plan's `#memspell <spell_id> <slot>` (slot
+0 = gem 1) and `#level N` rows; a gem cast is `command /cast N` or a `click`
+on a gem of the lane's measured bar. `spells_us.txt` comes from
+`$EQ_CLIENT_PATH` (default `/mnt/projects/EverQuestP1999`).
+
+**The gem bar is measured per lane, never derived**:
+`scripts/eqemu/oracle/gem_pitch.tsv`. Lane 5 (1280x800): pitch 30 px, gem i
+(1-based) centred at root (25, 213+30i) (B1118 `oracle_calib/`). Lanes 1-4
+are unmeasured: measure on first use (B1118's `plans/oracle_calib.tsv`
+recipe, a still of a known memorisation) and add the row; until then their
+gem-column clicks are reported as unchecked, not guessed.
+`oracle_plan_check.py gem-xy --lane 5 --gem 3` prints a click target.
+
+**Several classes = one leg per class**: `oracle_class_leg.sh <lane> <class>
+<plan> <out> [--char-id 67] [--home-class 12] [--gems 93,38,54,41,253,458,656]
+[--post-sql-file F]`. It checks the plan offline, waits for the lease (never
+breaks it) and runs the driver with four hooks the driver runs only inside
+its locked session: `ORACLE_STATE_CHAR` (class/level, gems, spellbook and
+buffs census before and after), `ORACLE_PRE_SQL` (the class switch, only
+from the home class), `ORACLE_EXPECT_CLASS` (refuse if the switch did not
+take), and `ORACLE_POST_SQL`, run in cleanup **with the world down** after
+the snapshot restore, which covers level but not class, gems or buffs: home
+class back, the `--gems` list rewritten in slots 0.., buffs cleared, plus the
+file (B1130's skills restore is `review/B1130/scripts/skills_restore_t2.sql`).
+The driver then deletes spellbook rows the leg added. The helper exits 66
+when the after-census does not show the home class and exactly `--gems`.
 
 ## Template clicks (B1058)
 

@@ -1,0 +1,14 @@
+# B1129 (#449): the official client's spell-gem bar per oracle lane, in ROOT
+# screen coordinates (the plan's `click x,y`; a still is the root cropped
+# +0+30). Gem i is 1-BASED (gem 1 = DB slot_id 0 = `#memspell <id> 0`):
+#   centre = (gem_x, gem1_y + pitch*(i-1)), i.e. lane 5 (25, 213+30i).
+# A row is filled ONLY from a measurement on that lane (a gem-bar still of a
+# known memorisation, review/B1118/plans/oracle_calib.tsv is the recipe) --
+# never from the INI + fable's spell_gem_layout.h, which is how B1107 got a
+# wrong ~35 px "measured" pitch. Unmeasured lanes are `-`: measure on first use.
+# lane	screen	gem_x	gem1_y	pitch	gems	source
+1	-	-	-	-	-	unmeasured: measure on first use
+2	-	-	-	-	-	unmeasured: measure on first use
+3	-	-	-	-	-	unmeasured: measure on first use
+4	-	-	-	-	-	unmeasured: measure on first use
+5	1280x800	25	243	30	8	review/B1118/oracle_calib/11_gems_ready.png (refactor/B1118/README.md "Oracle gem pitch")
