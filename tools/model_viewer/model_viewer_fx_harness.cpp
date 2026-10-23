@@ -235,8 +235,9 @@ bool parseHarnessPlan(const std::string& path, std::vector<HarnessCast>& out, st
         ++n;
         if (line.empty() || line[0] == '#') continue;
         const auto c = splitTabs(line);
-        if (c.size() < 4 || c.size() > 5) {
-            err = path + ":" + std::to_string(n) + ": want t_begin_s, spell_id, self|other, distance_units[, cast_ms]";
+        if (c.size() < 4 || c.size() > 7) {
+            err = path + ":" + std::to_string(n) +
+                  ": want t_begin_s, spell_id, self|other, distance_units[, cast_ms[, caster_level[, begincast|action]]]";
             return false;
         }
         if (c[0] == "t_begin_s") continue;  // header row
@@ -247,7 +248,12 @@ bool parseHarnessPlan(const std::string& path, std::vector<HarnessCast>& out, st
             if (c[2] != "self" && c[2] != "other") throw std::invalid_argument("target");
             hc.self = c[2] == "self";
             hc.distance = std::stof(c[3]);
-            if (c.size() == 5 && !c[4].empty() && c[4] != "-") hc.castMsOverride = std::stoi(c[4]);
+            if (c.size() >= 5 && !c[4].empty() && c[4] != "-") hc.castMsOverride = std::stoi(c[4]);
+            if (c.size() >= 6 && !c[5].empty() && c[5] != "-") hc.casterLevel = std::stoi(c[5]);
+            if (c.size() >= 7) {
+                if (c[6] != "begincast" && c[6] != "action") throw std::invalid_argument("packets");
+                hc.beginCast = c[6] == "begincast";
+            }
         } catch (const std::exception&) {
             err = path + ":" + std::to_string(n) + ": unparseable row '" + line + "'";
             return false;
@@ -474,8 +480,10 @@ void renderSpellParticles() {
 #endif
 }
 
-void harnessBeginCast(const EQ::SpellData& spell, bool self, uint32_t castMs, Clock::time_point now) {
+void harnessBeginCast(const EQ::SpellData& spell, bool self, uint32_t castMs, int casterLevel,
+                      Clock::time_point now) {
     eqt::state::SpellCastVisualStartedData d{};
+    d.fxGateLevel = casterLevel;  // B1144: the local player's spawn level
     d.casterId = casterEntityId;
     d.spellId = spell.id;
     d.castTimeMs = castMs;
@@ -487,8 +495,9 @@ void harnessBeginCast(const EQ::SpellData& spell, bool self, uint32_t castMs, Cl
     eqt::bridge::ApplySpellCastStartedFx(fxRoute, spellVisualFX.get(), d, now);
 }
 
-void harnessAction(const EQ::SpellData& spell, bool self, Clock::time_point now) {
+void harnessAction(const EQ::SpellData& spell, bool self, int casterLevel, Clock::time_point now) {
     eqt::state::SpellCastVisualCompleteData d{};
+    d.fxGateLevel = casterLevel;  // B1144
     d.casterId = casterEntityId;
     d.targetId = self ? casterEntityId : targetEntityId;
     d.spellId = spell.id;
@@ -607,7 +616,7 @@ int runScriptedHarness() {
         }
         const uint32_t castMs = plan[i].castMsOverride >= 0 ? static_cast<uint32_t>(plan[i].castMsOverride)
                                                             : sp->cast_time_ms;
-        events.push_back({plan[i].tBegin, static_cast<int>(i), false, castMs});
+        if (plan[i].beginCast) events.push_back({plan[i].tBegin, static_cast<int>(i), false, castMs});
         events.push_back({plan[i].tBegin + castMs / 1000.0, static_cast<int>(i), true, castMs});
     }
     std::stable_sort(events.begin(), events.end(), [](const Event& a, const Event& b) { return a.t < b.t; });
@@ -620,6 +629,11 @@ int runScriptedHarness() {
         return 4;
     }
     timing << "frame\tt\tevent\tspell\ttarget\tdistance\tcast_ms\tt_event\n";
+    // B1144: the spellsnew.eff slots each packet draws (SpellVisualFX::stageSlots,
+    // the rule createCastGlow / createLanding draw by): BeginCast -> Source,
+    // the cast-animation Action -> Target. No BeginCast = no Source row.
+    std::ofstream slotsOut(harnessOpts.framesDir + "/slots.tsv");
+    slotsOut << "t_event\tevent\tspell\tanim\tlevel\tstage\tslot\temitter\tmin_level\tanchor\tattach\ttexture\n";
 
     if (!harnessOpts.backdropPath.empty()) {
         fxBackdrop = driver->getTexture(harnessOpts.backdropPath.c_str());
@@ -651,12 +665,24 @@ int runScriptedHarness() {
             const HarnessCast& c = plan[e.cast];
             const EQ::SpellData& sp = *spellOrNull(c.spellId);
             const auto now = epoch + std::chrono::microseconds(std::llround(e.t * 1e6));
+            const int level = c.casterLevel >= 0 ? c.casterLevel : harnessOpts.casterLevel;
             if (!e.action) {
                 placeHarnessTarget(c.self, c.distance);
-                harnessBeginCast(sp, c.self, e.castMs, now);
+                harnessBeginCast(sp, c.self, e.castMs, level, now);
             } else {
-                harnessAction(sp, c.self, now);
+                if (!c.beginCast) placeHarnessTarget(c.self, c.distance);
+                harnessAction(sp, c.self, level, now);
                 lastAction = e.t;
+            }
+            {
+                const int stage = e.action ? EQ::kSpellsNewEffTarget : EQ::kSpellsNewEffSource;
+                const auto ss = spellVisualFX->stageSlots(c.spellId, stage, level);
+                for (const auto& d : ss.drawn)
+                    slotsOut << e.t << '\t' << (e.action ? "Action" : "BeginCast") << '\t' << c.spellId << '\t'
+                             << spellVisualFX->spellVocabulary(c.spellId).spellAnim << '\t' << level << '\t'
+                             << (e.action ? "Target" : "Source") << '\t' << d.index << '\t' << d.slot.emitter
+                             << '\t' << d.slot.minLevel << '\t' << d.slot.anchor << '\t' << d.slot.attachPoint
+                             << '\t' << d.texture << '\n';
             }
             char row[256];
             std::snprintf(row, sizeof(row), "%d\t%.6f\t%s\t%u\t%s\t%.3f\t%u\t%.6f\n", f, t,

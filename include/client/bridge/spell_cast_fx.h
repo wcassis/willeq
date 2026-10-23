@@ -5,9 +5,10 @@
 // tools/model_viewer --spell-test (with its fixed-dt clock), so the fable-side
 // FX harness draws exactly the sequence the client draws:
 //   BeginCast  -> noteSpellVocabulary + createCastGlow(caster, spell, castMs)
-//   OP_Action  -> noteSpellVocabulary + releaseCastGlow (B1131 hold) or the
-//                 action-only createCastGlow (B1105), then, on the
-//                 cast-animation packet only, createLanding (B1132)
+//   OP_Action  -> noteSpellVocabulary + releaseCastGlow (B1131 hold), then,
+//                 on the cast-animation packet only, createLanding (B1132);
+//                 no Source without a BeginCast (B1144, cast_glow_route.h)
+//   Both pass the payload's fxGateLevel: the spellsnew.eff slot gate (B1144).
 //   interrupt  -> removeCastGlow
 // The non-FX parts of those arms (casting bars, NPC completion animation)
 // stay in the bridge.

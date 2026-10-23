@@ -26,6 +26,8 @@
 #include <vector>
 #include <fstream>
 
+#include <fmt/format.h>
+
 namespace EQ {
 
 SpellVisualFX::SpellVisualFX(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
@@ -104,6 +106,20 @@ int SpellVisualFX::sourceRecordOf(uint32_t spell_id) const
 }
 
 #ifdef EQT_HAS_GLES2
+// B1144: B1146's colour words for a def whose texture regions are these
+// emitters' textures, one per region in order (a per-slot def).
+void SpellVisualFX::applySlotEddColours(EQT::Graphics::Environment::SpellEffectDef& def,
+                                        const std::vector<int32_t>& emitters) const
+{
+    std::vector<SpellsNewEddColour> colours;
+    for (int32_t e : emitters) {
+        const SpellsNewEddColour* c = m_spells_new_edd_colour.emitter(e);
+        if (!c) return;  // no texture/colour pairing to trust
+        colours.push_back(*c);
+    }
+    EQT::Graphics::Environment::SpellPresets::applyStageEmitterColours(def, colours);
+}
+
 void SpellVisualFX::applyStageEddColours(EQT::Graphics::Environment::SpellEffectDef& def,
                                          const SpellVisualResolution& visual, int stage) const
 {
@@ -116,6 +132,32 @@ void SpellVisualFX::applyStageEddColours(EQT::Graphics::Environment::SpellEffect
         def, m_spells_new_edd_colour.stageColours(visual.spell_anim, stage));
 }
 #endif
+uint16_t SpellVisualFX::attachPointEntityId(uint16_t entity, int32_t attachPoint)
+{
+    switch (static_cast<SpellsNewEffAttach>(attachPoint)) {
+        case SpellsNewEffAttach::LeftHand:  return leftHandEntityId(entity);
+        case SpellsNewEffAttach::RightHand: return rightHandEntityId(entity);
+        case SpellsNewEffAttach::Head:
+        case SpellsNewEffAttach::LeftEye:
+        case SpellsNewEffAttach::RightEye:
+        case SpellsNewEffAttach::Mouth:     return headEntityId(entity);
+        default:                            return entity;
+    }
+}
+
+SpellVisualFX::StageSlots SpellVisualFX::stageSlots(uint32_t spell_id, int stage, int casterLevel) const
+{
+    StageSlots out;
+    const int32_t record = spellVocabulary(spell_id).spellAnim;
+    if (!m_spells_new_eff_loaded) return out;
+    const SpellsNewEffRecord* rec = m_spells_new_eff.getRecord(record);
+    // The record the selector draws the art from (B1127): one with content.
+    if (!rec || !rec->hasContent()) return out;
+    out.fromFile = true;
+    out.drawn = m_spells_new_eff.drawnSlots(record, stage, casterLevel);
+    out.measured = m_spells_new_eff.emitterSlotCount(record, stage);
+    return out;
+}
 
 SpellVisualResolution SpellVisualFX::resolveVisual(uint32_t spell_id) const
 {
@@ -407,7 +449,8 @@ bool SpellVisualFX::isSprayCastStyle(uint32_t spell_id) const
            vocab.school == SpellSchool::Abjuration;
 }
 
-uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, uint32_t duration_ms)
+uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, uint32_t duration_ms,
+                                      int casterLevel)
 {
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
@@ -471,6 +514,53 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
             return hasCenter ? bone.y - (centerPos.y - A) : A;
         };
         using Anchor = Cfg::SourceAnchor;
+        // B1144 (#464): a spellsnew.eff record's Source is its slots -- one
+        // emitter per slot the caster's level passes (eqgame 0x495cc3), on the
+        // slot's anchor (the caster: every Source slot is anchor 1 or 0) at its
+        // attach point. The row keeps the shape, sizes, onset and hold; each
+        // slot draws 1/measured of the row's population and its own emitter's
+        // art. A spell whose override sets its own Source spawnShape (B1122's
+        // measured 54/656/41/253/458 clouds) keeps that geometry on the
+        // caster's entity for every slot.
+        const StageSlots slots = stageSlots(spell_id, kSpellsNewEffSource, casterLevel);
+        if (slots.fromFile) {
+            if (slots.drawn.empty()) {
+                LOG_INFO(MOD_SPELL, "createCastGlow: caster={} spell={} level={}: no Source slot passes "
+                                    "the level gate -- nothing drawn", caster_id, spell_id, casterLevel);
+                return 1;
+            }
+            const bool ownShape =
+                cfg.hasSourceShapeOverride(spell_id, spray ? "castSpray" : "castGlow");
+            const float share = 1.0f / static_cast<float>(std::max<size_t>(slots.measured, 1));
+            std::string made;
+            for (const auto& d : slots.drawn) {
+                if (d.slot.anchorKind() == SpellsNewEffAnchor::Missile ||
+                    d.slot.anchorKind() == SpellsNewEffAnchor::Target)
+                    continue;  // no Source slot in the file is either (reader test)
+                // World (anchor 0): the caller's fixed position; the caster's
+                // own, not attached to a point.
+                uint16_t id = (ownShape || d.slot.anchorKind() == SpellsNewEffAnchor::World)
+                                  ? caster_id : attachPointEntityId(caster_id, d.slot.attachPoint);
+                glm::vec3 bone(0.0f);
+                if (id != caster_id && !m_particle_manager->resolveEntityPosition(id, bone)) id = caster_id;
+                auto def = Presets::SourceForSpell(c, spell_id, record, spray,
+                                                   id == caster_id ? A : boneAboveFeet(bone), share);
+                if (!d.texture.empty()) {
+                    Presets::applyStageSpriteNames(def, {d.texture}, spell_id);
+                    applySlotEddColours(def, {d.slot.emitter});  // B1146's colour, this slot's emitter
+                }
+                else if (!stageNames.empty()) {
+                    Presets::applyStageSpriteNames(def, stageNames, spell_id);
+                    applyStageEddColours(def, visual, 0);  // B1146
+                }
+                m_particle_manager->createSpellEffect(def, id, 0, cap, false);
+                made += fmt::format(" {}:{}@{}", d.index, d.slot.attachPoint, id);
+            }
+            LOG_INFO(MOD_SPELL, "createCastGlow: caster={} spell={} anim={} level={} row={} slots{} (of {})",
+                     caster_id, spell_id, spellVocabulary(spell_id).spellAnim, casterLevel, record, made,
+                     slots.measured);
+            return 1;
+        }
         const Anchor anchor = Presets::SourceAnchorForSpell(spell_id, record, spray);
         if (anchor == Anchor::Hands) {
             const uint16_t ids[2] = {rightHandEntityId(caster_id), leftHandEntityId(caster_id)};
@@ -711,7 +801,8 @@ void SpellVisualFX::createImpact(uint16_t target_id, uint32_t spell_id)
     LOG_TRACE(MOD_SPELL, "Created impact on entity {} spell {}", target_id, spell_id);
 }
 
-uint16_t SpellVisualFX::createLanding(uint16_t caster_id, uint16_t target_id, uint32_t spell_id)
+uint16_t SpellVisualFX::createLanding(uint16_t caster_id, uint16_t target_id, uint32_t spell_id,
+                                      int casterLevel)
 {
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
@@ -719,6 +810,9 @@ uint16_t SpellVisualFX::createLanding(uint16_t caster_id, uint16_t target_id, ui
         using Cfg = EQT::Graphics::Environment::SpellEffectsConfig;
         using Anchor = Cfg::TargetAnchor;
         const int record = sourceRecordOf(spell_id);
+        // B1144 (#464): a spellsnew.eff record lands as its Target slots.
+        const StageSlots slots = stageSlots(spell_id, kSpellsNewEffTarget, casterLevel);
+        if (slots.fromFile) return createLandingFromSlots(caster_id, target_id, spell_id, record, slots, casterLevel);
         const Anchor anchor = Presets::TargetAnchorForSpell(spell_id, record);
         const uint16_t entity = (anchor == Anchor::Caster || target_id == 0) ? caster_id : target_id;
         const auto& cfg = Cfg::instance();
@@ -772,6 +866,87 @@ uint16_t SpellVisualFX::createLanding(uint16_t caster_id, uint16_t target_id, ui
     createImpact(entity, spell_id);
     return entity;
 }
+
+#ifdef EQT_HAS_GLES2
+// B1144 (#464): the landing of a spellsnew.eff record. The client plays the
+// record's Target stage (eqgame 0x47f5e1 / 0x45448b) slot by slot (0x495cc3):
+// each slot whose minLevel the caster's level passes puts its emitter on its
+// anchor actor -- 3 the target, 1 the caster, 0 a fixed position (the
+// landing entity's, unattached) -- at its attach point. A stage with no slot
+// drawn draws nothing: no Target emitters = no landing (record 326, B1134's
+// /disc). fable draws each slot as one pair of its two landing halves
+// (B1120's spellComplete + impact volumes, the row's B1132 shape class,
+// sizes, lifetimes and onset), each carrying 1/measured of the row's
+// population; an override's own landing geometry (B1120/B1122) stays on the
+// landing entity. Returns the point the first slot follows (0 when nothing is
+// drawn).
+uint16_t SpellVisualFX::createLandingFromSlots(uint16_t caster_id, uint16_t target_id, uint32_t spell_id,
+                                               int record, const StageSlots& slots, int casterLevel)
+{
+    namespace Presets = EQT::Graphics::Environment::SpellPresets;
+    using Cfg = EQT::Graphics::Environment::SpellEffectsConfig;
+    if (slots.drawn.empty()) {
+        LOG_INFO(MOD_SPELL, "createLanding: caster={} target={} spell={}: no Target slot drawn -- no landing",
+                 caster_id, target_id, spell_id);
+        return 0;
+    }
+    const auto& cfg = Cfg::instance();
+    const float A = cfg.sourceScale().anchorAboveFeet;
+    const bool ownShape = Presets::TargetHasOverrideShape(spell_id);
+    const float share = 1.0f / static_cast<float>(std::max<size_t>(slots.measured, 1));
+    auto scolor = getSpellColor(spell_id);
+    const glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f, scolor.getBlue() / 255.0f, 1.0f);
+    std::vector<std::string> sourceArt;
+    std::vector<int32_t> sourceEmitters;
+    for (const auto& d : stageSlots(spell_id, kSpellsNewEffSource, casterLevel).drawn)
+        if (!d.texture.empty()) {
+            sourceArt.push_back(d.texture);
+            sourceEmitters.push_back(d.slot.emitter);
+        }
+    uint16_t first = 0;
+    std::string made;
+    for (const auto& d : slots.drawn) {
+        const auto anchor = d.slot.anchorKind();
+        if (anchor == SpellsNewEffAnchor::Missile) continue;  // fable has no missile (B1128/B1147)
+        const uint16_t entity =
+            (anchor == SpellsNewEffAnchor::Caster || target_id == 0) ? caster_id : target_id;
+        uint16_t follow = (ownShape || anchor == SpellsNewEffAnchor::World)
+                              ? entity : attachPointEntityId(entity, d.slot.attachPoint);
+        float aboveFeet = A;
+        if (follow != entity) {
+            glm::vec3 center(0.0f), bone(0.0f);
+            if (m_particle_manager->resolveEntityPosition(follow, bone) &&
+                m_particle_manager->resolveEntityPosition(entity, center))
+                aboveFeet = bone.y - (center.y - A);
+            else
+                follow = entity;
+        }
+        const bool onHead = isHeadBoneId(follow);
+        auto complete = Presets::TargetForSpell(c, spell_id, record, true, aboveFeet, share, onHead);
+        auto impact = Presets::TargetForSpell(c, spell_id, record, false, aboveFeet, share, onHead);
+        // Art: the impact half draws the slot emitter's own texture; the
+        // spellComplete half keeps T441's Source-stage art, i.e. the textures
+        // of the Source slots this caster's level draws (B1123's populations
+        // were calibrated on that pair; spell 93's tour coverage holds,
+        // refactor/B1144/README.md).
+        if (!d.texture.empty()) {
+            Presets::applyStageSpriteNames(impact, {d.texture}, spell_id);
+            applySlotEddColours(impact, {d.slot.emitter});  // B1146
+        }
+        if (!sourceArt.empty()) {
+            Presets::applyStageSpriteNames(complete, sourceArt, spell_id);
+            applySlotEddColours(complete, sourceEmitters);  // B1146
+        }
+        m_particle_manager->createSpellEffect(complete, follow, 0);
+        m_particle_manager->createSpellEffect(impact, 0, follow);
+        if (first == 0) first = follow;
+        made += fmt::format(" {}:{}/{}@{}", d.index, static_cast<int>(anchor), d.slot.attachPoint, follow);
+    }
+    LOG_INFO(MOD_SPELL, "createLanding: caster={} target={} spell={} row={} slots{} (of {})",
+             caster_id, target_id, spell_id, record, made, slots.measured);
+    return first;
+}
+#endif
 
 void SpellVisualFX::createSpellComplete(uint16_t caster_id, uint32_t spell_id)
 {

@@ -19,13 +19,14 @@ void ApplySpellCastStartedFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
     // all three back out (colour, spray style, spells.eff stage gate). The
     // game thread filled them; the renderer never touches a SpellDatabase.
     fx->noteSpellVocabulary(d.spellId, d.spellVisual);
-    fx->createCastGlow(d.casterId, d.spellId, d.castTimeMs);
+    // B1144 (#464): the caster's gate level picks the record's slots.
+    fx->createCastGlow(d.casterId, d.spellId, d.castTimeMs, d.fxGateLevel);
 }
 
 void ApplySpellCastCompleteFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
                               const state::SpellCastVisualCompleteData& d,
                               CastGlowRoute::Clock::time_point now) {
-    const auto glow = route.onComplete(d.casterId, d.spellId, d.isCastAnimation, d.isSuccess, now);
+    route.onComplete(d.casterId, d.spellId, d.isSuccess, now);
     if (!fx) return;
     // T381 (B160): a cast can land without this client having seen its
     // BeginCast (zoned in mid-cast, out of range), so the completion payload
@@ -33,10 +34,10 @@ void ApplySpellCastCompleteFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
     fx->noteSpellVocabulary(d.spellId, d.spellVisual);
     // B1131: released, not freed -- the Source holds its record's measured
     // time past OP_Action, longer when the target is someone else.
-    if (glow.remove) fx->releaseCastGlow(d.casterId, d.spellId, d.targetId);
-    // B1105: action-only casts have no BeginCast. Keep the old removal point,
-    // then arm Source through the same FX body.
-    if (glow.create) fx->createCastGlow(d.casterId, d.spellId, CastGlowRoute::kActionGlowMs);
+    // B1144 (#464): an action with no BeginCast draws no Source (the client
+    // plays stage 0 from begin-cast only, cast_glow_route.h); the release is
+    // then a no-op.
+    fx->releaseCastGlow(d.casterId, d.spellId, d.targetId);
     // T395 (board B204): the landing is armed by the CAST-ANIMATION packet
     // (effect_flag == 0), not the success repeat. The success packet reaches
     // only the caster and the target, so gating on isSuccess meant no
@@ -44,7 +45,8 @@ void ApplySpellCastCompleteFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
     // both, would have drawn it twice.
     // B1132 (#452): the whole landing on the record's Target anchor (the
     // target; the caster only for a caster-anchored record).
-    if (d.isCastAnimation) fx->createLanding(d.casterId, d.targetId, d.spellId);
+    // B1144: the record's Target slots at the caster's gate level; none = no landing.
+    if (d.isCastAnimation) fx->createLanding(d.casterId, d.targetId, d.spellId, d.fxGateLevel);
 }
 
 void ApplySpellCastInterruptedFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,

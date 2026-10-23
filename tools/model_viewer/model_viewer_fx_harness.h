@@ -8,8 +8,9 @@
 // Scripted mode (`--plan <tsv> --frames-dir <dir> --fps 30 --headless
 // --seconds N`) steps a fixed dt = 1/sim-hz (default 1/fps) with no wall
 // clock, draws every (sim-hz / fps)-th step and writes
-// frame_%05d.png, timing.tsv (BeginCast/Action rows) and scene.tsv (each
-// entity's screen box). It is a TOOL writing frames, not the client's
+// frame_%05d.png, timing.tsv (BeginCast/Action rows), scene.tsv (each
+// entity's screen box) and slots.tsv (B1144: the spellsnew.eff slots each
+// packet draws at the cast's gate level). It is a TOOL writing frames, not the client's
 // `--dump-frames-dir`. `--camera b1118` is the lane-5 tour framing
 // (review/B1118/README.md): 1280x800, caster feet at (640,605), 228 px tall
 // (leg B's own Testcaster, B1139), with the lane rig's measured parity factors
@@ -29,13 +30,19 @@ namespace EQ { struct SpellData; }
 
 // One row of a --plan file: t_begin_s, spell_id, target (self|other),
 // distance_units, cast_ms (optional; default = the spell's spells_us.txt
-// field 13 cast time via SpellData).
+// field 13 cast time via SpellData; '-' = default), caster_level (optional,
+// B1144: the caster's spellsnew.eff slot-gate level; '-' = --caster-level),
+// packets (optional, B1144: `begincast` = OP_BeginCast then OP_Action, the
+// gem cast; `action` = OP_Action alone at t_begin_s + cast_ms, the /disc path
+// B1134 captured: OP_CastSpell slot 10 -> OP_Action, no OP_BeginCast).
 struct HarnessCast {
     double tBegin = 0.0;
     uint32_t spellId = 0;
     bool self = false;
     float distance = 0.0f;
     int castMsOverride = -1;
+    int casterLevel = -1;     // -1 = harnessOpts.casterLevel
+    bool beginCast = true;    // false = the action-only (/disc) packets
 };
 
 struct HarnessOptions {
@@ -49,6 +56,9 @@ struct HarnessOptions {
     double seconds = 0.0;
     bool headless = false;
     uint32_t seed = 1;                 // particle RNG seed in scripted mode
+    // B1144 (#464): the caster's spellsnew.eff slot-gate level (--caster-level).
+    // 60 = the `#level 60` every oracle capture behind the measured rows ran at.
+    int casterLevel = 60;
     int width = 800;
     int height = 600;
     uint16_t casterRace = 1;
@@ -134,9 +144,9 @@ void renderSpellParticles();
 // through eqt::bridge::ApplySpellCast*Fx. Action publishes the cast-animation
 // packet (effect_flag 0) and then the success repeat (effect_flag 4), the pair
 // the caster receives 4 ms apart (review/B1132 pcap).
-void harnessBeginCast(const EQ::SpellData& spell, bool self, uint32_t castMs,
+void harnessBeginCast(const EQ::SpellData& spell, bool self, uint32_t castMs, int casterLevel,
                       eqt::bridge::CastGlowRoute::Clock::time_point now);
-void harnessAction(const EQ::SpellData& spell, bool self,
+void harnessAction(const EQ::SpellData& spell, bool self, int casterLevel,
                    eqt::bridge::CastGlowRoute::Clock::time_point now);
 void harnessInterrupt(const EQ::SpellData& spell);
 

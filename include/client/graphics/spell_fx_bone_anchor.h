@@ -7,6 +7,11 @@
 // FX harness both call these, so a Source on a hand or a head lands on the
 // same bone in both. The plain-entity half (the node origin) stays with each
 // caller: the client reads it off EntityVisual, the viewer off its node.
+//
+// B1144 (#464): which pseudo-id a spellsnew.eff slot follows is chosen from
+// the slot's attach point by EQ::SpellVisualFX::attachPointEntityId():
+// LHAND/RHAND -> the hand ids, HEAD/LEYE/REYE/MOUTH -> the head id, every
+// other point -> the entity (resolved by the caller's plain-entity half).
 
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/spell_visual_fx.h"

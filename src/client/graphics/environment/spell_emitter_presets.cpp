@@ -2,6 +2,8 @@
 #include "client/graphics/environment/spell_effects_config.h"
 #include "client/graphics/environment/particle_types.h"
 
+#include <cmath>
+
 namespace EQT {
 namespace Graphics {
 namespace Environment {
@@ -327,7 +329,7 @@ SpellEffectDef SourceForSpell(glm::vec4 color, uint32_t spellId, int record, boo
 // Both halves of a shaped row carry `population` of the style's rates.
 SpellEffectDef TargetForRecord(const SpellEffectDef& style,
                                const SpellEffectsConfig::TargetRecord& rec,
-                               float anchorAboveFeet, bool complete) {
+                               float anchorAboveFeet, bool complete, bool followsHeadBone) {
     using T = SpellEffectsConfig::TargetAnchor;
     SpellEffectDef def = style;
     if (!rec.hasShape || def.emitters.empty()) return def;
@@ -343,7 +345,8 @@ SpellEffectDef TargetForRecord(const SpellEffectDef& style,
     const float span = (rec.hi - rec.lo) * H;
     // A head row is placed relative to the head bone alone (boneAt = the height
     // the bone stands for), so the target's own feet and size do not move it.
-    const float followed = (rec.anchor == T::Head && rec.boneAt > 0.0f) ? rec.boneAt * H : anchorAboveFeet;
+    const float followed =
+        (rec.anchor == T::Head && rec.boneAt > 0.0f && followsHeadBone) ? rec.boneAt * H : anchorAboveFeet;
     auto at = [&](float h) { return h * H - followed; };
     c.gravity = glm::vec3(0.0f);
     c.drag = 0.0f;
@@ -416,11 +419,27 @@ SpellEffectsConfig::TargetAnchor TargetAnchorForSpell(uint32_t spellId, int reco
     return rec.hasShape ? rec.anchor : T::Body;
 }
 
+bool TargetHasOverrideShape(uint32_t spellId) {
+    const auto& cfg = SpellEffectsConfig::instance();
+    return cfg.hasSourceShapeOverride(spellId, "impact") ||
+           cfg.hasSourceShapeOverride(spellId, "spellComplete");
+}
+
 SpellEffectDef TargetForSpell(glm::vec4 color, uint32_t spellId, int record, bool complete,
-                              float anchorAboveFeet) {
+                              float anchorAboveFeet, float share, bool followsHeadBone) {
     const SpellEffectDef style = complete ? SpellComplete(color, spellId, record)
                                           : Impact(color, spellId, record);
-    return TargetForRecord(style, targetRowForSpell(spellId, record), anchorAboveFeet, complete);
+    SpellEffectDef def = TargetForRecord(style, targetRowForSpell(spellId, record), anchorAboveFeet,
+                                         complete, followsHeadBone);
+    if (share != 1.0f) {
+        for (auto& ed : def.emitters) {
+            ed.config.spawnRate *= share;
+            ed.config.sustainRate *= share;
+            ed.config.burstCount =
+                static_cast<int>(std::lround(static_cast<float>(ed.config.burstCount) * share));
+        }
+    }
+    return def;
 }
 
 void applyStageSpriteNames(SpellEffectDef& def,

@@ -51,6 +51,8 @@ void parseCommandLine(int argc, char* argv[], ViewerArgs& args) {
             harnessOpts.eqe1Path = argv[++i];
         } else if (arg == "--eqe1-dir" && i + 1 < argc) {
             harnessOpts.eqe1Dir = argv[++i];
+        } else if (arg == "--caster-level" && i + 1 < argc) {
+            harnessOpts.casterLevel = std::atoi(argv[++i]);
         } else if (arg == "--seed" && i + 1 < argc) {
             harnessOpts.seed = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
         } else if (arg == "--ui-occluder" && i + 1 < argc) {
@@ -130,7 +132,7 @@ void printUsageBanner(const ViewerArgs& args) {
     std::cout << "                    [--target-despawn <s>] [--worker-latency 0|1]" << std::endl;
     std::cout << "                    [--caster-appearance face,texture:e0,...,e8] [--sim-hz <hz>]" << std::endl;
     std::cout << "                    [--caster race:gender[:size]] [--target race:gender[:size]]" << std::endl;
-    std::cout << "                    [--eqe1 <willeq.eqe1>] [--eqe1-dir <dir>] [--seed N] [--no-ground] [--caster-px 235]   (B1138 FX harness)" << std::endl;
+    std::cout << "                    [--eqe1 <willeq.eqe1>] [--eqe1-dir <dir>] [--seed N] [--no-ground] [--caster-px 235] [--caster-level 60]   (B1138 FX harness)" << std::endl;
     std::cout << "       --debug, -d [level]  Enable debug output (default level 1)" << std::endl;
     std::cout << std::endl;
     std::cout << "Controls:" << std::endl;
