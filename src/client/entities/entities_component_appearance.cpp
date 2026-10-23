@@ -70,14 +70,18 @@ void eqt::entities::EntitiesComponent::ZoneProcessDeleteSpawn(const EQ::Net::Pac
 
 	uint16_t spawn_id = p.GetUInt16(2);
 
-	// Special case: spawn_id 0 might mean "delete current target"
-	if (spawn_id == 0 && ctx_.combat_manager && ctx_.combat_manager->HasTarget()) {
-		spawn_id = ctx_.combat_manager->GetTargetId();
-		if (EverQuest::GetDebugLevel() >= 1) {
-			LOG_DEBUG(MOD_MAIN, "DeleteSpawn with ID 0 interpreted as current target: {}", spawn_id);
-		}
+	// B1125 (#445): id 0 names no entity -- ignore it. eqemu's NPC::Death
+	// hands the NPC's id to its corpse and then SetID(0)s the NPC, so the
+	// NPC object's own despawn (Mob::~Mob -> CreateDespawnPacket) goes out as
+	// DeleteSpawn(0) ~40 ms after every corpse-leaving death; the corpse
+	// keeps the id and gets its own real-id DeleteSpawn when it decays
+	// (review/B1125/pcap_deletespawn.tsv). Reading 0 as "current target"
+	// erased a self-targeted local player (B1118 M9).
+	if (spawn_id == 0) {
+		LOG_TRACE(MOD_ENTITY, "DeleteSpawn(0) ignored: the server's despawn of an NPC whose id went to its corpse");
+		return;
 	}
-	
+
 	auto it = ctx_.entities.find(spawn_id);
 	if (it != ctx_.entities.end()) {
 		// Handle corpse deletion - only delete corpses we've finished looting
@@ -103,8 +107,10 @@ void eqt::entities::EntitiesComponent::ZoneProcessDeleteSpawn(const EQ::Net::Pac
 				}
 			}
 
-			// Only delete corpses we've completed looting
-			// This prevents corpses from being deleted when NPCs die (server sends DeleteSpawn(0))
+			// Only delete corpses we've completed looting. (Written when id 0
+			// still meant "current target"; B1125 made id 0 a no-op, so this
+			// now gates only real-id corpse deletes -- including the ~1 s
+			// decay delete of an empty corpse, which this guard refuses.)
 			if (ctx_.Bridge().LootCompleteCorpseId() != spawn_id) {
 				LOG_TRACE(MOD_ENTITY, "Ignoring DeleteSpawn for corpse {} ({}) - not finished looting", spawn_id, it->second.name);
 				return;
