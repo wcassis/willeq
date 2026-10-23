@@ -371,10 +371,10 @@
         },
         "54": {
             "impact": {
-                "sizeStartMin": 0.119,
-                "sizeStartMax": 0.186,
-                "sizeEndMin": 0.233,
-                "sizeEndMax": 0.349,
+                "sizeStartMin": 0.245,
+                "sizeStartMax": 0.383,
+                "sizeEndMin": 0.481,
+                "sizeEndMax": 0.72,
                 "spawnShape": "SPHERE",
                 "spawnExtents": [0.65, 0.0, 0.0],
                 "motionType": "RADIAL_EXPAND",
@@ -389,10 +389,10 @@
                 "emitterLifetime": 3.0
             },
             "spellComplete": {
-                "sizeStartMin": 0.141,
-                "sizeStartMax": 0.233,
-                "sizeEndMin": 0.282,
-                "sizeEndMax": 0.416,
+                "sizeStartMin": 0.29,
+                "sizeStartMax": 0.481,
+                "sizeEndMin": 0.582,
+                "sizeEndMax": 0.858,
                 "spawnShape": "BOX",
                 "spawnExtents": [0.0, 4.225, 0.0],
                 "motionType": "ORBITAL",
@@ -408,10 +408,10 @@
                 "emitterLifetime": 3.0
             },
             "castGlow": {
-                "sizeStartMin": 0.173,
-                "sizeStartMax": 0.259,
-                "sizeEndMin": 0.086,
-                "sizeEndMax": 0.13,
+                "sizeStartMin": 0.275,
+                "sizeStartMax": 0.412,
+                "sizeEndMin": 0.137,
+                "sizeEndMax": 0.207,
                 "spawnShape": "BOX",
                 "spawnExtents": [0.0, 3.575, 0.0],
                 "motionType": "ORBITAL",
@@ -427,10 +427,10 @@
         },
         "656": {
             "castGlow": {
-                "sizeStartMin": 0.18,
-                "sizeStartMax": 0.27,
-                "sizeEndMin": 0.09,
-                "sizeEndMax": 0.135,
+                "sizeStartMin": 0.297,
+                "sizeStartMax": 0.446,
+                "sizeEndMin": 0.148,
+                "sizeEndMax": 0.223,
                 "spawnShape": "BOX",
                 "spawnExtents": [0.0, 3.575, 0.0],
                 "motionType": "ORBITAL",
@@ -457,10 +457,10 @@
                 "spawnRate": 1500.0,
                 "sustainRate": 499.8,
                 "emitterLifetime": 3.0,
-                "sizeStartMin": 0.106,
-                "sizeStartMax": 0.176,
-                "sizeEndMin": 0.213,
-                "sizeEndMax": 0.314
+                "sizeStartMin": 0.185,
+                "sizeStartMax": 0.308,
+                "sizeEndMin": 0.373,
+                "sizeEndMax": 0.549
             },
             "impact": {
                 "spawnShape": "SPHERE",
@@ -475,18 +475,18 @@
                 "spawnRate": 1000.0,
                 "sustainRate": 333.2,
                 "emitterLifetime": 3.0,
-                "sizeStartMin": 0.09,
-                "sizeStartMax": 0.14,
-                "sizeEndMin": 0.176,
-                "sizeEndMax": 0.263
+                "sizeStartMin": 0.158,
+                "sizeStartMax": 0.245,
+                "sizeEndMin": 0.308,
+                "sizeEndMax": 0.46
             }
         },
         "458": {
             "castGlow": {
-                "sizeStartMin": 0.392,
-                "sizeStartMax": 0.587,
-                "sizeEndMin": 0.196,
-                "sizeEndMax": 0.294,
+                "sizeStartMin": 1.054,
+                "sizeStartMax": 1.579,
+                "sizeEndMin": 0.527,
+                "sizeEndMax": 0.791,
                 "spawnShape": "BOX",
                 "spawnExtents": [2.34, 2.925, 2.34],
                 "motionType": "LINEAR",
@@ -509,10 +509,10 @@
                 "spawnRate": 500.0,
                 "sustainRate": 166.5,
                 "emitterLifetime": 2.9,
-                "sizeStartMin": 0.336,
-                "sizeStartMax": 0.555,
-                "sizeEndMin": 0.671,
-                "sizeEndMax": 0.988
+                "sizeStartMin": 0.98,
+                "sizeStartMax": 1.619,
+                "sizeEndMin": 1.958,
+                "sizeEndMax": 2.49
             },
             "impact": {
                 "spawnShape": "BOX",
@@ -526,10 +526,10 @@
                 "spawnRate": 500.0,
                 "sustainRate": 166.5,
                 "emitterLifetime": 2.9,
-                "sizeStartMin": 0.282,
-                "sizeStartMax": 0.441,
-                "sizeEndMin": 0.555,
-                "sizeEndMax": 0.829
+                "sizeStartMin": 0.823,
+                "sizeStartMax": 1.286,
+                "sizeEndMin": 1.619,
+                "sizeEndMax": 2.418
             }
         },
         "41": {
@@ -598,10 +598,10 @@
                 "positionOffset": [0.0, 5.175, 0.0],
                 "spawnWindow": 0.0,
                 "sustainRate": 0.0,
-                "sizeStartMin": 0.274,
-                "sizeStartMax": 0.428,
-                "sizeEndMin": 0.538,
-                "sizeEndMax": 0.804
+                "sizeStartMin": 0.387,
+                "sizeStartMax": 0.605,
+                "sizeEndMin": 0.761,
+                "sizeEndMax": 1.137
             },
             "spellComplete": {
                 "spawnRate": 600.0,
@@ -616,10 +616,10 @@
                 "positionOffset": [0.0, 5.175, 0.0],
                 "spawnWindow": 0.0,
                 "sustainRate": 0.0,
-                "sizeStartMin": 0.325,
-                "sizeStartMax": 0.538,
-                "sizeEndMin": 0.65,
-                "sizeEndMax": 0.958
+                "sizeStartMin": 0.46,
+                "sizeStartMax": 0.761,
+                "sizeEndMin": 0.919,
+                "sizeEndMax": 1.355
             },
             "castGlow": {
                 "spawnShape": "BOX",
@@ -631,10 +631,10 @@
                 "drag": 0.0,
                 "positionOffset": [0.0, 4.915, 0.0],
                 "spawnRate": 1950,
-                "sizeStartMin": 0.824,
-                "sizeStartMax": 1.236,
-                "sizeEndMin": 0.412,
-                "sizeEndMax": 0.618
+                "sizeStartMin": 1.467,
+                "sizeStartMax": 2.2,
+                "sizeEndMin": 0.733,
+                "sizeEndMax": 1.1
             }
         }
     }
