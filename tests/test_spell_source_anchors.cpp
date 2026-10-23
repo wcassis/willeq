@@ -7,7 +7,8 @@
 // official client, with the target standing 1.4 caster heights away
 // (review/B1130/anchor_table.tsv, record_table.tsv, strips/record_<N>.png):
 //   - anchor class per record: hands 8, feet/ground ring 4, orbit 13, whole
-//     body 14, head 1 (record 22's halo disc), record 51 unmeasured;
+//     body 14, head 1 (record 22's halo disc); record 51 (disciplines) was
+//     measured by B1134 (#454) with the OBSERVER rig: feet/ground ring;
 //   - onset BC+0.37-0.50 on 38 of 40 records (median 0.41);
 //   - with ANOTHER target the caster's Source holds >= 4 s past OP_Action on
 //     16 records, 2-4 s on 2, a lower bound <= 1 s on 9, ~0.3 s on record 22.
@@ -72,8 +73,8 @@ protected:
     }
 };
 
-// Every one of the 41 records the survey reached carries its measured row,
-// in the survey's class counts; 51 (unmeasured) stands in as record 13.
+// Every one of the 41 records carries its measured row, in the survey's class
+// counts; 51 is B1134's observer measurement (it used to stand in as record 13).
 TEST_F(SourceRecordRows, EverySurveyedRecordHasItsMeasuredRow) {
     const auto& cfg = SpellEffectsConfig::instance();
     const int surveyed[] = {4, 2, 7, 51, 1, 9, 10, 12, 20, 40, 25, 18, 16, 0, 14, 5, 17, 6, 19, 23, 43,
@@ -84,19 +85,32 @@ TEST_F(SourceRecordRows, EverySurveyedRecordHasItsMeasuredRow) {
         const auto& row = cfg.sourceRecord(r);
         EXPECT_EQ(row.record, r) << "record " << r << " has no row";
         EXPECT_TRUE(row.hasShape) << r;
-        if (r != 51) ++classes[row.anchor];
+        ++classes[row.anchor];
         EXPECT_GE(row.onset, 0.37f) << r;
         EXPECT_LE(row.onset, 0.80f) << r;  // record 30's 0.80 is the survey's one outlier
-        EXPECT_NEAR(row.holdSelf, kHoldSelf, 1e-4f) << r;
+        if (r != 51) EXPECT_NEAR(row.holdSelf, kHoldSelf, 1e-4f) << r;
         EXPECT_GT(row.spawnRate, 0.0f) << r;
     }
     EXPECT_EQ(classes[Anchor::Hands], 8);
-    EXPECT_EQ(classes[Anchor::FeetRing], 4);
+    EXPECT_EQ(classes[Anchor::FeetRing], 5);  // 1, 16, 31, 32 + 51 (B1134)
     EXPECT_EQ(classes[Anchor::Orbit], 13);
     EXPECT_EQ(classes[Anchor::Body], 14);
     EXPECT_EQ(classes[Anchor::Head], 1);
-    EXPECT_EQ(cfg.sourceRecord(51).measuredAs, 13);
-    EXPECT_EQ(cfg.sourceRecord(51).anchor, cfg.sourceRecord(13).anchor);
+    // B1134 (#454): record 51 (disciplines) is measured, no stand-in: the observer
+    // saw a ring of blue-white flames at the feet (h -0.05..0.74, +-0.345) from
+    // Act+0.7 after a 0-ms OP_BeginCast, lit to Act+8.04-8.28 on all four
+    // discipline records (review/B1134/obs_rows.json); self-only, so no
+    // other-target hold of its own.
+    const auto& d = cfg.sourceRecord(51);
+    EXPECT_EQ(d.measuredAs, -1);
+    EXPECT_EQ(d.anchor, Anchor::FeetRing);
+    EXPECT_NEAR(d.lo, -0.05f, 1e-3f);
+    EXPECT_NEAR(d.hi, 0.74f, 1e-3f);
+    EXPECT_NEAR(d.halfWidth, 0.345f, 1e-3f);
+    EXPECT_NEAR(d.centroid, 0.21f, 1e-3f);
+    EXPECT_NEAR(d.onset, 0.70f, 1e-3f);
+    EXPECT_NEAR(d.holdSelf, 8.16f, 1e-3f);
+    EXPECT_NEAR(d.holdOther, d.holdSelf, 1e-4f) << "self-only: the loader's holdOther = holdSelf";
     // The records whose Source holds >= 4 s past OP_Action with another target.
     // B1130 counted 16; record 35's (253) arcs are seen apart only to Act+1.1
     // (f7351-f7375) and its later caster-ROI run is the NPC's frame-filling

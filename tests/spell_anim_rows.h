@@ -15,7 +15,8 @@ struct RowAnim {
     int anim;  // field 145 of the spell that row was captured on
 };
 
-// 40 rows; 51 (disciplines, not gem-castable) was never captured.
+// 41 rows: the B1130 survey's 40, plus 51 (disciplines) measured by B1134
+// (#454) with the observer rig on 4499 Defensive Discipline (field 145 = 326).
 const RowAnim kRowAnim[] = {
     {0, 80},
     {1, 73},
@@ -57,6 +58,7 @@ const RowAnim kRowAnim[] = {
     {41, 100},
     {42, 99},
     {43, 98},
+    {51, 326},
 };
 
 inline int AnimOfRow(int row) {
