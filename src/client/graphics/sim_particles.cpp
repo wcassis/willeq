@@ -212,34 +212,9 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
                           cmd.spellDef.name, cmd.preAssignedEffectID, cmd.casterID, cmd.targetID);
                 break;
             }
-            case ParticleCommand::CreateSpellEffectAtPos: {
-                SpellEffectInstance inst;
-                inst.effectID = cmd.preAssignedEffectID;
-                inst.spellID = 0;
-                inst.casterEntityID = 0;
-                inst.targetEntityID = 0;
-                inst.groundTarget = cmd.worldPos;
-                inst.age = 0.0f;
-                inst.maxDuration = cmd.duration;
-                inst.def = cmd.spellDef;
-                for (auto& e : inst.def.emitters) {
-                    if (e.attach == SpellAttach::CASTER) {
-                        e.attach = SpellAttach::GROUND_TARGET;
-                    }
-                }
-                for (int i = 0; i < static_cast<int>(cmd.spellDef.emitters.size()); ++i) {
-                    SpellEffectInstance::EmitterState es;
-                    es.defIndex = i;
-                    es.activeEmitterID = 0;
-                    es.triggered = false;
-                    inst.emitterStates.push_back(es);
-                }
-                particleSpellEffects_.push_back(std::move(inst));
-                if (particleNextSpellEffectID_ <= cmd.preAssignedEffectID) {
-                    particleNextSpellEffectID_ = cmd.preAssignedEffectID + 1;
-                }
-                break;
-            }
+            // B1139: the CreateSpellEffectAtPos arm (and SpellAttach::GROUND_TARGET,
+            // the attach it rewrote CASTER emitters to) was deleted: its producer
+            // ParticleManager::createSpellEffectAtPosition went in B1138.
             // T397 Leg B (board B220): the RemoveSpellEffect (by effect id) arm
             // was deleted here along with its command and its producer. It
             // matched cmd.effectID, which no producer ever set. Recover with:
@@ -624,9 +599,6 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
                                     auto posIt = pi.entityPositions.find(attachEntity);
                                     if (posIt != pi.entityPositions.end()) attachPos = posIt->second;
                                 }
-                                break;
-                            case SpellAttach::GROUND_TARGET:
-                                attachPos = effect.groundTarget;
                                 break;
                             case SpellAttach::PROJECTILE_PATH:
                                 if (effect.casterEntityID != 0) {
@@ -1042,35 +1014,6 @@ void SimulationWorker::computeSpellVFX(const SimulationInput& input, SimulationO
                 for (size_t i = 0; i < spellVfxEffects_.size(); ) {
                     if (spellVfxEffects_[i].type == FX_CAST_GLOW &&
                         spellVfxEffects_[i].sourceEntity == cmd.sourceEntity) {
-                        svo.removeEvents.push_back({spellVfxEffects_[i].effectId});
-                        if (i != spellVfxEffects_.size() - 1)
-                            spellVfxEffects_[i] = std::move(spellVfxEffects_.back());
-                        spellVfxEffects_.pop_back();
-                    } else {
-                        ++i;
-                    }
-                }
-                break;
-            }
-            case SpellVFXCommand::RemoveBuffAura: {
-                for (size_t i = 0; i < spellVfxEffects_.size(); ) {
-                    if (spellVfxEffects_[i].type == FX_AURA &&
-                        spellVfxEffects_[i].sourceEntity == cmd.sourceEntity &&
-                        spellVfxEffects_[i].spellId == cmd.spellId) {
-                        svo.removeEvents.push_back({spellVfxEffects_[i].effectId});
-                        if (i != spellVfxEffects_.size() - 1)
-                            spellVfxEffects_[i] = std::move(spellVfxEffects_.back());
-                        spellVfxEffects_.pop_back();
-                    } else {
-                        ++i;
-                    }
-                }
-                break;
-            }
-            case SpellVFXCommand::RemoveAllForEntity: {
-                for (size_t i = 0; i < spellVfxEffects_.size(); ) {
-                    if (spellVfxEffects_[i].sourceEntity == cmd.sourceEntity ||
-                        spellVfxEffects_[i].targetEntity == cmd.sourceEntity) {
                         svo.removeEvents.push_back({spellVfxEffects_[i].effectId});
                         if (i != spellVfxEffects_.size() - 1)
                             spellVfxEffects_[i] = std::move(spellVfxEffects_.back());

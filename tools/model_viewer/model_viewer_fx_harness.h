@@ -6,12 +6,15 @@
 // legs (the official client) do.
 //
 // Scripted mode (`--plan <tsv> --frames-dir <dir> --fps 30 --headless
-// --seconds N`) steps a fixed dt = 1/fps with no wall clock and writes
+// --seconds N`) steps a fixed dt = 1/sim-hz (default 1/fps) with no wall
+// clock, draws every (sim-hz / fps)-th step and writes
 // frame_%05d.png, timing.tsv (BeginCast/Action rows) and scene.tsv (each
 // entity's screen box). It is a TOOL writing frames, not the client's
 // `--dump-frames-dir`. `--camera b1118` is the lane-5 tour framing
-// (review/B1118/README.md): 1280x800, caster feet at (640,605), 235 px tall.
-// refactor/B1138/README.md is the report; review/B1138/scripts/ the consumers.
+// (review/B1118/README.md): 1280x800, caster feet at (640,605), 228 px tall
+// (leg B's own Testcaster, B1139), with the lane rig's measured parity factors
+// as defaults (tools/model_viewer/README.md). refactor/B1138/README.md and
+// refactor/B1139/README.md are the reports; review/B1139/scripts/ the consumers.
 
 #ifndef WILLEQ_TOOLS_MODEL_VIEWER_FX_HARNESS_H
 #define WILLEQ_TOOLS_MODEL_VIEWER_FX_HARNESS_H
@@ -56,9 +59,41 @@ struct HarnessOptions {
     float targetSize = 0.0f;
     float interactiveDistance = 5.0f;  // F6 TARGETED mode's target distance
     float casterPx = 235.0f;           // the preset's caster height in px (--caster-px)
+    bool casterPxGiven = false;
+    // Simulation steps per second (--sim-hz, a multiple of --fps; 0 = fps).
+    // The b1118 preset defaults to 60: the lane client runs 60 fps
+    // ("FPS: 60" on its frames) while x11grab writes 30 (B1139).
+    int simHz = 0;
     bool ground = true;                // a preset's depth-only ground plane (--no-ground)
     bool casterGiven = false;          // --caster / --target win over a preset
     bool targetGiven = false;
+    // B1139 (#459) lane-parity factors, each measured in refactor/B1139/README.md.
+    // Opaque screen rectangles drawn over the particles, as the lane client's
+    // UI windows are (x0,y0,x1,y1 px, --ui-occluder, repeatable); the b1118
+    // preset defaults to the Tip of the Day window every lane-5 leg opens.
+    struct Rect { int x0, y0, x1, y1; };
+    std::vector<Rect> uiOccluders;
+    bool uiOccludersGiven = false;     // --ui-occluder / --no-ui-occluder win over a preset
+    // Seconds after OP_Action at which the target plays its death animation
+    // (--target-death; < 0 = it stands; the B1132 leg-B pcap: OP_Death 0.000 s
+    // after OP_Action) and at which it is despawned (--target-despawn; the pcap's
+    // OP_DeleteSpawn 1.027 s after, which a B1133 client obeys).
+    double targetDeathAfterAction = -1.0;
+    double targetDespawnAfterAction = -1.0;
+    // Frames between the worker's compute and the draw of its buffer
+    // (--worker-latency): the client draws the output of the input it posted
+    // the frame before (renderer_frame.cpp: applySimulationResults, then
+    // postSimulationInput), the synchronous harness by default the same frame.
+    int workerLatency = 0;
+    // The caster's Spawn_Struct appearance (--caster-appearance
+    // face,texture:e0,..,e8 -- the TextureProfile at offset 197: head, chest,
+    // arms, wrist, hands, legs, feet, primary, secondary). The b1118 preset
+    // defaults to Testcaster's own (B1132 leg-B pcap, OP_ZoneEntry S->C):
+    // chest material 10 (the robe) and secondary IT72 (the orb in her left hand).
+    bool casterAppearanceSet = false;
+    uint8_t casterFace = 0;
+    uint8_t casterTexture = 0;
+    uint32_t casterEquipment[9] = {0};
 };
 extern HarnessOptions harnessOpts;
 
@@ -71,7 +106,8 @@ constexpr float kHarnessFaceOnRotY = -90.0f;
 bool parseHarnessPlan(const std::string& path, std::vector<HarnessCast>& out, std::string& err);
 
 // The --camera preset's size and models (b1118: 1280x800, the lane-5
-// Testcaster = dark elf female, the `#spawn` target = human male).
+// Testcaster = dark elf female, the `#spawn` target = human male, the Tip of
+// the Day window as a UI occluder, Testcaster's robe and orb).
 void applyHarnessPresetDefaults();
 
 // The renderer's texture cache: willeq.eqe1 plus the name -> archive resolver

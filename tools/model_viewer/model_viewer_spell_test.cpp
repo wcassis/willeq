@@ -224,15 +224,22 @@ void cancelSpellTestCast() {
 // Creates one spell-test entity: the client's scale rule (race scale times
 // server size / 6, entityScaleForServerSize) and its material flags.
 static EQAnimatedMeshSceneNode* createSpellTestEntity(uint16_t race, uint8_t gender, float size,
-                                                      const core::vector3df& pos, float rotY) {
+                                                      const core::vector3df& pos, float rotY, const char* idle,
+                                                      const EntityAppearance* appearance = nullptr) {
+    // B1139: with an appearance, the client's own builder (entity_mesh_build.cpp
+    // calls createAnimatedNodeWithEquipment when any equipment is set).
     EQAnimatedMeshSceneNode* node =
-        raceModelLoader->createAnimatedNodeWithAppearance(race, gender, 0, 0, nullptr, -1);
+        appearance ? raceModelLoader->createAnimatedNodeWithEquipment(race, gender, *appearance, nullptr, -1)
+                   : raceModelLoader->createAnimatedNodeWithAppearance(race, gender, 0, 0, nullptr, -1);
     if (!node) return nullptr;
     const float scale = entityScaleForServerSize(raceModelLoader->getRaceScale(race), size);
     node->setScale(core::vector3df(scale, scale, scale));
     node->setPosition(pos);
     node->setRotation(core::vector3df(0, rotY, 0));
-    node->playAnimation("p01", true, false);  // Idle
+    // B1139: the client's idles -- the local player stands in p01
+    // (renderer_player_physics.cpp), an idle NPC in o01 (entity_updates.cpp);
+    // the lane #spawn stands feet apart (o01), not feet together (p01).
+    node->playAnimation(node->hasAnimation(idle) ? idle : "p01", true, false);
     for (u32 i = 0; i < node->getMaterialCount(); ++i) {
         node->getMaterial(i).Lighting = false;
         node->getMaterial(i).BackfaceCulling = false;
@@ -261,9 +268,14 @@ bool initSpellTestMode() {
     // B1138: in a preset the caster (and the `#spawn` target beside her)
     // faces the camera; otherwise the caster faces the target.
     const bool preset = !harnessOpts.cameraPreset.empty();
+    EntityAppearance casterLook;
+    casterLook.face = harnessOpts.casterFace;
+    casterLook.texture = harnessOpts.casterTexture;
+    std::copy(harnessOpts.casterEquipment, harnessOpts.casterEquipment + 9, casterLook.equipment);
     animatedNode = createSpellTestEntity(harnessOpts.casterRace, harnessOpts.casterGender,
                                          harnessOpts.casterSize, core::vector3df(0, 0, 0),
-                                         preset ? kHarnessFaceOnRotY : 90.0f);
+                                         preset ? kHarnessFaceOnRotY : 90.0f, "p01",
+                                         harnessOpts.casterAppearanceSet ? &casterLook : nullptr);
     if (animatedNode) {
         useAnimatedMesh = true;
         currentRaceId = harnessOpts.casterRace;
@@ -273,10 +285,19 @@ bool initSpellTestMode() {
                   << int(harnessOpts.casterGender) << ") R_HAND=" << casterRightHandBoneIdx
                   << " L_HAND=" << casterLeftHandBoneIdx
                   << " HEAD=" << animatedNode->findHeadBoneIndexForFx() << std::endl;
+        // The held items (equipment slots 7/8): the viewer's attach, placed on
+        // their bones every frame by updateEquipmentPositions().
+        if (harnessOpts.casterAppearanceSet &&
+            (harnessOpts.casterEquipment[7] != 0 || harnessOpts.casterEquipment[8] != 0)) {
+            currentRaceCode = RaceModelLoader::getRaceCode(harnessOpts.casterRace);  // the viewer's gender rule
+            if (currentRaceCode.size() == 3 && currentRaceCode.back() == 'M' && harnessOpts.casterGender == 1)
+                currentRaceCode.back() = 'F';
+            attachEquipmentModels(harnessOpts.casterEquipment[7], harnessOpts.casterEquipment[8]);
+        }
     }
     targetAnimatedNode = createSpellTestEntity(
         harnessOpts.targetRace, harnessOpts.targetGender, harnessOpts.targetSize,
-        core::vector3df(harnessOpts.interactiveDistance, 0, 0), preset ? kHarnessFaceOnRotY : -90.0f);
+        core::vector3df(harnessOpts.interactiveDistance, 0, 0), preset ? kHarnessFaceOnRotY : -90.0f, "o01");
 
     uploadHarnessTextures();
     if (!initHarnessParticles()) {

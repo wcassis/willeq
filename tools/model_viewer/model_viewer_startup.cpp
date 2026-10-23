@@ -36,6 +36,9 @@ void parseCommandLine(int argc, char* argv[], ViewerArgs& args) {
             harnessOpts.seconds = std::atof(argv[++i]);
         } else if (arg == "--caster-px" && i + 1 < argc) {
             harnessOpts.casterPx = static_cast<float>(std::atof(argv[++i]));
+            harnessOpts.casterPxGiven = true;
+        } else if (arg == "--sim-hz" && i + 1 < argc) {
+            harnessOpts.simHz = std::atoi(argv[++i]);
         } else if (arg == "--no-ground") {
             harnessOpts.ground = false;
         } else if (arg == "--headless") {
@@ -50,6 +53,32 @@ void parseCommandLine(int argc, char* argv[], ViewerArgs& args) {
             harnessOpts.eqe1Dir = argv[++i];
         } else if (arg == "--seed" && i + 1 < argc) {
             harnessOpts.seed = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
+        } else if (arg == "--ui-occluder" && i + 1 < argc) {
+            // B1139: x0,y0,x1,y1 screen px, repeatable
+            HarnessOptions::Rect r{};
+            if (std::sscanf(argv[++i], "%d,%d,%d,%d", &r.x0, &r.y0, &r.x1, &r.y1) == 4)
+                harnessOpts.uiOccluders.push_back(r);
+            harnessOpts.uiOccludersGiven = true;
+        } else if (arg == "--no-ui-occluder") {
+            harnessOpts.uiOccluders.clear();
+            harnessOpts.uiOccludersGiven = true;
+        } else if (arg == "--target-death" && i + 1 < argc) {
+            harnessOpts.targetDeathAfterAction = std::atof(argv[++i]);
+        } else if (arg == "--target-despawn" && i + 1 < argc) {
+            harnessOpts.targetDespawnAfterAction = std::atof(argv[++i]);
+        } else if (arg == "--caster-appearance" && i + 1 < argc) {
+            // B1139: face,texture:e0,e1,...,e8 (the Spawn_Struct TextureProfile)
+            unsigned f = 0, t = 0;
+            uint32_t* e = harnessOpts.casterEquipment;
+            if (std::sscanf(argv[++i], "%u,%u:%u,%u,%u,%u,%u,%u,%u,%u,%u", &f, &t, &e[0], &e[1], &e[2], &e[3],
+                            &e[4], &e[5], &e[6], &e[7], &e[8]) == 11) {
+                harnessOpts.casterFace = static_cast<uint8_t>(f);
+                harnessOpts.casterTexture = static_cast<uint8_t>(t);
+                harnessOpts.casterAppearanceSet = true;
+            }
+            harnessOpts.casterGiven = true;
+        } else if (arg == "--worker-latency" && i + 1 < argc) {
+            harnessOpts.workerLatency = std::atoi(argv[++i]) > 0 ? 1 : 0;
         } else if (arg == "--caster" && i + 1 < argc) {
             // race:gender[:size]
             std::sscanf(argv[++i], "%hu:%hhu:%f", &harnessOpts.casterRace,
@@ -97,6 +126,9 @@ void printUsageBanner(const ViewerArgs& args) {
     std::cout << "       model_viewer --spell-test [--gles2] --client <path>" << std::endl;
     std::cout << "       model_viewer --spell-test --client <path> --plan <tsv> --frames-dir <dir>" << std::endl;
     std::cout << "                    --fps 30 --seconds N --headless [--camera b1118] [--backdrop <png>]" << std::endl;
+    std::cout << "                    [--ui-occluder x0,y0,x1,y1]... [--no-ui-occluder] [--target-death <s>]" << std::endl;
+    std::cout << "                    [--target-despawn <s>] [--worker-latency 0|1]" << std::endl;
+    std::cout << "                    [--caster-appearance face,texture:e0,...,e8] [--sim-hz <hz>]" << std::endl;
     std::cout << "                    [--caster race:gender[:size]] [--target race:gender[:size]]" << std::endl;
     std::cout << "                    [--eqe1 <willeq.eqe1>] [--eqe1-dir <dir>] [--seed N] [--no-ground] [--caster-px 235]   (B1138 FX harness)" << std::endl;
     std::cout << "       --debug, -d [level]  Enable debug output (default level 1)" << std::endl;

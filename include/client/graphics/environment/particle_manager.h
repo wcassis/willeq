@@ -353,7 +353,8 @@ public:
     // B1138: createSpellEffectAtPosition() was DELETED with its only callers
     // (SpellVisualFX::createImpactAtPosition/createRainEffect/createGroundCircle,
     // reached only from model_viewer's pre-B1131 heuristics). The worker's
-    // ParticleCommand::CreateSpellEffectAtPos arm has no producer now.
+    // ParticleCommand::CreateSpellEffectAtPos arm and SpellAttach::GROUND_TARGET
+    // followed it in B1139.
 
     // T397 Leg B (board B220): removeSpellEffect(uint32_t) was DELETED here.
     // Zero callers tree-wide, nothing kept the id, and it wrote

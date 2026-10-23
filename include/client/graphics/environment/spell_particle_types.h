@@ -20,7 +20,6 @@ enum class SpellTrigger : uint8_t {
 enum class SpellAttach : uint8_t {
     CASTER = 0,
     TARGET = 1,
-    GROUND_TARGET = 2,    // Fixed world position
     PROJECTILE_PATH = 3,  // Lerps from caster to target
 };
 
@@ -42,7 +41,6 @@ struct SpellEffectInstance {
     uint32_t spellID = 0;
     uint16_t casterEntityID = 0;
     uint16_t targetEntityID = 0;
-    glm::vec3 groundTarget{0.0f};
     float age = 0.0f;
     float maxDuration = 0.0f;            // 0 = until emitters expire
     bool hitSignaled = false;

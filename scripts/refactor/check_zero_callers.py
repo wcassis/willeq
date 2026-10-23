@@ -705,8 +705,6 @@ EXEMPT_GROUPS = {
     ("SoftwareOcclusionCuller", "getStatsMutable"): "B494",
     ("SpellVisualFX", "adjustParticleMultiplier"): "B494",
     ("SpellVisualFX", "getParticleMultiplier"): "B494",
-    ("SpellVisualFX", "removeAllForEntity"): "B494",
-    ("SpellVisualFX", "removeBuffAura"): "B494",
     ("SpellVisualFX", "setParticleMultiplier"): "B494",
     ("TextBatch", "addText3D"): "B494",
     ("TextBatch", "addTextW"): "B494",

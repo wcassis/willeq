@@ -1,0 +1,85 @@
+# model_viewer `--spell-test`: the fable-side spell FX harness
+
+`model_viewer --spell-test --plan <tsv>` drives the client's own cast sequence
+(`src/client/bridge/spell_cast_fx.cpp`) through the production
+SpellVisualFX -> ParticleManager -> SimulationWorker chain, surfaceless, on a
+scripted clock, and writes `frame_%05d.png`, `timing.tsv` and `scene.tsv`.
+Options and code: `tools/model_viewer/model_viewer_fx_harness.h`. Reports:
+`refactor/B1138/README.md` (the harness), `refactor/B1139/README.md` (its
+calibration against lane 5).
+
+```
+model_viewer --spell-test --client /mnt/projects/EverQuestP1999 \
+    --eqe1 /mnt/projects/EverQuest_ETC1/willeq.eqe1 --plan plan.tsv \
+    --frames-dir out/ --fps 30 --seconds 13.2 --headless --camera b1118
+```
+
+Plan rows: `t_begin_s  spell_id  self|other  distance_units  [cast_ms]`.
+Measure a run with `review/B1139/scripts/harness_measure.py <frames> <out>` (the
+lane-5 measurement scripts of `review/B1132/scripts/`, unchanged; cast times
+from `timing.tsv`).
+
+## The b1118 preset is the lane-5 tour rig
+
+`--camera b1118` reproduces the B1118/B1123 tour as lane 5 records it. Every
+default below is a measured fact of that rig (B1132 tour leg B: the capture,
+pcap and fable.log in `review/B1132/gate/fable_B/`), and each one is a
+**rig** correction, not a fable change:
+
+| default | source | override |
+|---|---|---|
+| 1280x800, camera az 180 pitch 12, 62.8 deg FOV, caster feet row 605 | B1118 tour, `/camera set` | -- |
+| caster 228 px head top to feet | leg B tail frame rows 377..605 (B1138) | `--caster-px` |
+| caster race 6 gender 1, face 3, TextureProfile {0,10,1,23,1,1,1,0,72}: the robe (chest 10) and IT72, the orb in her left hand | char 67 Testcaster; OP_ZoneEntry S->C Spawn_Struct offsets 6/197/339 | `--caster`, `--caster-appearance f,t:e0..e8` |
+| target race 1 gender 0 (the `#spawn`) | leg chat | `--target` |
+| caster idle p01, target idle o01 | the client: the local player stands in p01 (`renderer_player_physics.cpp`), an idle NPC in o01 (`entity_updates.cpp`) | -- |
+| simulation at 60 Hz, every 2nd step written at `--fps 30` | the lane client runs 60 fps ("FPS: 60" on its frames), x11grab keeps 30 | `--sim-hz` |
+| the Tip of the Day window, an opaque 920,243..1280,543 rectangle drawn over the particles | every lane-5 leg opens it; no lit pixel inside it in any frame of leg B | `--ui-occluder x0,y0,x1,y1`, `--no-ui-occluder` |
+
+Plan-specific lane facts are options, not defaults: `--target-death <s>` (the
+target plays its death animation `s` seconds after OP_Action: leg B's pcap has
+OP_Death 0.000 s after it, so `--target-death 0`), `--target-despawn <s>` (its
+OP_DeleteSpawn, 1.027 s, which a B1133 client obeys), `--backdrop <png>` (the
+leg's own tail frame above the horizon), `--worker-latency 1` (draw the worker
+output of the previous step, as the client does).
+
+## What each factor moves (spell 93, leg B, pool 8192; `refactor/B1139/README.md`)
+
+Landing coverage (lane 5: 2.938 on B1132's capture, 2.929 on B1127's, which
+draws this tree's art):
+
+| change | land_cov | vs lane B1132 |
+|---|---|---|
+| B1138 preset (235 px, 30 Hz, no occluder, no appearance, p01 idles) | 3.250 | +10.6 % |
+| + 60 Hz step, 228 px, backdrop (B1138's best) | 3.131 | +6.6 % |
+| + the Tip of the Day occluder | 2.986 | +1.6 % |
+| + target death at OP_Action | 2.994 | +1.9 % |
+| + Testcaster's robe and orb | 3.005 | +2.3 % |
+| defaults (+ p01/o01 idles, no backdrop), seed 1 | 3.006 | +2.3 % |
+| defaults, seeds 1-5 | 2.900 .. 3.006, mean 2.950 | -1.3 .. +2.3 %, mean +0.4 % |
+
+Measured to move it by less than 0.5 %: the target's death (+0.3 %), the
+worker's one-frame latency (+0.2 %), the B1133 despawn at +1.027 s (+0.1 %),
+the backdrop (+0.03 %), the lane's libx264 crf 18 yuv420p encode instead of
+ffv1 (-0.9 .. +1.3 %, `FX_CODEC=lane`). Background and lighting are bounded by
+the lane tail baseline: 2.2 % of the peak lit count lies on pixels whose red
+channel exceeds 175 (where an additive sprite's rise can stay under 80).
+
+## What the harness may gate
+
+- **Fable regressions, harness against harness** (same plan, `--seed`, preset):
+  landing coverage, landing end, landing ROI p90, landing peak time. The
+  frames are deterministic except where two models occupy the same pixels
+  (a distance-0 target: ~50 px per frame inside the figures z-fight between
+  runs), which none of these quantities reads.
+- **Parity with lane 5**: landing coverage (5 seeds within -1.3 .. +2.6 % of
+  both lane captures, inside the +-3 % band) and the landing end (+0.06 ..
+  +0.12 s late; the two lane captures differ by 0.024 s). Seed spread is part
+  of any parity claim: landing ROI p90 varies 0.064 .. 0.071 over seeds 1-5
+  (lane 0.072 on this art), so one seed does not prove it.
+- **Lane-only**: Source ROI p90 (harness 0.071 .. 0.082 against 0.062 on
+  both lane captures; the residual is a denser early hand spray, unexplained,
+  `refactor/B1139/README.md`), and colour (fx_measure's frame-mean hue mixes
+  in the scene: the harness's dark clear colour reads hue 20, the lane's grass
+  and sky 35-37).
+- Oracle legs (the official client) are lane 5 only.

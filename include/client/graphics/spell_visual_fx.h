@@ -149,9 +149,9 @@ public:
     //   client never does. Do not rebuild them for the viewer; the viewer runs
     //   the client's sequence.
     //
-    //   Called by NOTHING, in any directory: removeBuffAura,
-    //   removeAllForEntity (see the Effect Removal block below); hasBuffAura
-    //   went with createBuffAura (B1138).
+    //   B1139 DELETED removeBuffAura and removeAllForEntity (B195: zero
+    //   callers in any directory, ZeroCallers) with their worker commands;
+    //   hasBuffAura went with createBuffAura (B1138).
     // ========================================================================
 
     // Determine cast effect style from spell school (spray vs smolder/orbital)
@@ -194,17 +194,6 @@ public:
     // its spellsnew.eff record (spells_us.txt field 145 via the vocabulary,
     // SpellEffectsConfig::rowForAnim), -1 = the default row.
     int sourceRecordOf(uint32_t spell_id) const;
-
-    // Remove buff aura (when buff fades).
-    // ZERO CALLERS anywhere (T388 census: src/ include/ tests/ tools/
-    // benchmarks/ docker/) -- not even the model_viewer harness, which
-    // creates auras and never removes them. Board B195.
-    void removeBuffAura(uint16_t entity_id, uint32_t spell_id);
-
-    // Remove all effects for an entity (when entity despawns).
-    // ZERO CALLERS anywhere (same census). Nothing calls this on despawn.
-    // Board B195.
-    void removeAllForEntity(uint16_t entity_id);
 
     // Clear all effects
     void clearAllEffects();
