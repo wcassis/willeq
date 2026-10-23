@@ -28,9 +28,10 @@ Branch `task/B1138-fx-harness`, cut from fable 285a53f6. Evidence:
   `tools/hwcaps/zone_bench_loader.cpp` shape), the lane capture layout of
   `review/B1132/gate/fable_B` (x11grab mkv + pcap) and the B1118/B1119/B1120/B1122
   measurement scripts in `review/B1132/scripts/`.
-- The installed pack `/mnt/projects/EverQuest_ETC1/willeq.eqe1` was NOT the
-  pinned one during this unit (sha 1cdd31..., mtime 2026-10-23 13:03, written by
-  another session; pin 8199a8...). The verification used a private pack built
+- During this unit the installed pack `/mnt/projects/EverQuest_ETC1/willeq.eqe1`
+  was B1127's (sha 1cdd31..., installed 2026-10-23 13:03) while this branch was
+  still cut from 285a53f6 (pin 8199a8...); after the rebase onto 526c6db2 the pin
+  and the installed pack agree. The 93 verification predates the rebase. The verification used a private pack built
   with `scripts/build_willeq_pack.sh --output <scratch>` (sha 8199a8..., equal to
   the pin and to the lane leg's `pack.sha256`). With the stale pack the 93
   landing drew blue/green star sprites.
@@ -88,11 +89,16 @@ Branch `task/B1138-fx-harness`, cut from fable 285a53f6. Evidence:
    (board B1128) and `getSpellColorForSpell` (observer) as tests-only.
 5. **ctest** `FxHarness.AnOtherTargetLandingLightsTheTargetAndNotTheCaster`
    (`tests/test_fx_harness.cpp`, label `graphics`, graphics trees only): 201
-   Flash of Light (record 22, Source held 0.31 s) on a target 14 units away, 4 s
-   at 30 fps; over Act+1..2 s the target box peaks 14,000-18,500 lit px, the
-   caster box 0-143 (idle-animation diffs); asserts >= 3000 / <= 400. Mutation
-   check: with `createLanding(d.casterId, d.casterId, ...)` it FAILS (target
-   1006, caster 7816; `review/B1138/tests/mutation_landing_on_caster.log`).
+   Flash of Light (record 22) on a target 14 units away, 4 s at 30 fps, window
+   Act+1.4..1.95 s. On 526c6db2 + pack 1cdd31e7
+   (`review/B1138/tests/fxharness_1cdd31/`): the caster box's Source cloud
+   (near-white, same rows as during the cast) decays 941 -> 578 -> 280 -> 48 -> 0
+   px over Act+0.9..1.3 s, so the first window (from Act+1.0) read 578 and
+   failed; from Act+1.4 the box holds 0-176 px, all in the head rows 371..426
+   (the idle animation moving the hair), while the target box holds
+   23,200-27,700. Asserts target >= 3000, caster <= 400 (2.3x the measured
+   maximum). Mutation check (landing put on the caster) fails: target 2875,
+   caster 9877 (`review/B1138/tests/mutation_landing_on_caster_rebased.log`).
 6. Docs: `docs/module_map.md` row, CLAUDE.md one sentence (net size kept under
    60,000 bytes by tightening the CAP_NET_ADMIN paragraph),
    `refactor/EXECUTOR_PROTOCOL.md` (fable FX gates in the harness, lane 5 for

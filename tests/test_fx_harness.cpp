@@ -12,10 +12,14 @@
 // missing particle-atlas cache).
 //
 // The worked case is 201 Flash of Light (spells.eff record 22): its Source is
-// a head halo held only 0.31 s past OP_Action (B1131), so by Act+1 s the
-// caster's box holds no FX at all and only the idle animation moves there.
-// Measured on 2026-10-23 (review/B1138/README.md): target box 14,000-18,500
-// lit px over Act+1..2 s, caster box 0-143 px (idle-animation diffs).
+// held 0.31 s past OP_Action (B1131) and its sprites then finish their life,
+// so the window starts at Act+1.4 s, after the last Source frame. Measured on
+// 526c6db2 + pack 1cdd31e7 (review/B1138/tests/fxharness_1cdd31/): the
+// caster box's near-white Source cloud (the same colour and rows as during the
+// cast) decays 941 -> 578 -> 280 -> 48 -> 0 px over Act+0.9..1.3 s; from
+// Act+1.4 to +2.0 the box holds 0-176 px, all in the head rows (371..426:
+// the idle animation moving the pale hair), while the target box holds
+// 23,200-27,700. A window starting at Act+1.0 caught the Source tail (578 px).
 //
 // Self-skips without the EQ client files or the willeq.eqe1 pack.
 
@@ -130,7 +134,7 @@ TEST_F(FxHarness, AnOtherTargetLandingLightsTheTargetAndNotTheCaster) {
     irr::video::IImage* base = load(frame(kBegin - 0.1));  // pre-cast, idle pose running
     ASSERT_NE(base, nullptr);
     int targetPeak = 0, casterPeak = 0;
-    for (double t = kAction + 1.0; t <= kAction + 1.95; t += 1.0 / kFps) {
+    for (double t = kAction + 1.4; t <= kAction + 1.95; t += 1.0 / kFps) {
         irr::video::IImage* img = load(frame(t));
         ASSERT_NE(img, nullptr) << frame(t);
         targetPeak = std::max(targetPeak, lit(img, base, scene.at("target")));
@@ -139,6 +143,8 @@ TEST_F(FxHarness, AnOtherTargetLandingLightsTheTargetAndNotTheCaster) {
     }
     base->drop();
     EXPECT_GE(targetPeak, 3000) << "the landing did not light the target";
+    // 400 = 2.3x the measured idle-animation maximum (176); a caster landing
+    // puts thousands there (7,816 in the mutation check).
     EXPECT_LE(casterPeak, 400) << "the landing (or a half of it) is on the caster of an other-target cast";
     if (!HasFailure()) fs::remove_all(dir);
 }

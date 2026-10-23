@@ -109,8 +109,7 @@ reason and a no-grow max. Close-outs: `refactor/J_file_size_reclamation.md`,
 `refactor/K_component_extraction.md`,
 `refactor/L_renderer_component_extraction.md`, `refactor/G_oversize_methods.md`.
 
-**`CLAUDE.md` itself has a 60,000-character ceiling** in the same test, for the
-reason at the top of this file. Cut narrative before you cut a rule.
+**`CLAUDE.md` itself has a 60,000-character ceiling** (same test, reason at the top). Cut narrative before you cut a rule.
 
 ### Memory accounting (Will's standing decisions)
 
