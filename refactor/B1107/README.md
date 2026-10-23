@@ -15,8 +15,9 @@ landed on `fable`, so this run grades their result.
 **The gem-cast path reaches `OP_BeginCast` on both clients, so B1104's
 decisive gap (no FX because the GM `#castspell` produced no `OP_BeginCast`)
 is closed.** Fable confirms **7/7** gem casts server-side; the official client
-confirms **3/7** (the other 4 are oracle click-calibration misses, not client
-defects). Fable's `createCastGlow` (B1105) now fires for all 7 — the B1104
+confirms **3/7** (~~the other 4 are oracle click-calibration misses, not client
+defects~~ -- superseded by B1118/B1129: the official client refuses a gem cast
+its class cannot use, and Testcaster is a wizard; see "Gap G1" below). Fable's `createCastGlow` (B1105) now fires for all 7 — the B1104
 run had **zero** for the local player. The first leg showed 4 of 7 with
 unresolved hand positions (a first-run render-thread race, §6 F3); the final
 (day-set) leg shows all 7 resolved, so the Source stage is confirmed
@@ -139,8 +140,12 @@ Fixed pose, quiet zone, day, one GM target (the B1104 setup) plus the gem cast.
   (no `/hideui`, unlike B1104) so it can be clicked. Gem screen coords: the
   INI `[CastSpellWnd] XPos1280x800=0 YPos1280x800=185` + `spell_gem_layout.h`
   (gem cell 36×28 at window-y `10+30i`) → gem i (0-based) center ≈ **(21,
-  209+30i)**. (The measured pitch in this Wine session reads closer to ~35 px,
-  §6 gap G1 — the 4 click misses below trace to this.)
+  209+30i)**. ~~(The measured pitch in this Wine session reads closer to ~35 px,
+  §6 gap G1 — the 4 click misses below trace to this.)~~ **Superseded (B1129,
+  #449):** the pitch was never measured here; the INI + `spell_gem_layout.h`
+  derivation is not a source for oracle clicks. The measured bar is per lane in
+  `scripts/eqemu/oracle/gem_pitch.tsv` (lane 5: 30 px, gem i 1-based at
+  (25, 213+30i), B1118; lane 1 unmeasured).
 - **Fable** (`fable_leg.sh`), a `--script` tour of `wait N` + `/cast N` +
   `wait`, `--dump-frames-dir` every 2 frames, `--log-module=SPELL:DEBUG,
   COMBAT:DEBUG,ZONE:DEBUG`. fps is MEASURED from the per-frame log cadence,
@@ -199,8 +204,10 @@ for a real gem cast** — the exact path Will's session used.
 *does* produce `OP_CastSpell → OP_BeginCast` (54, 41, 656 in the pcap) — the
 same server echo the fable client receives. That is what the card asks the
 oracle to show. 4 clicks (93, 38, 253, 458) produced no cast packet — see gap
-G1 (a capture-calibration miss, not a client defect: the bar is visible and
-lit, the client is not rejecting, the other 3 identical clicks worked).
+G1 (~~a capture-calibration miss, not a client defect: the bar is visible and
+lit, the client is not rejecting, the other 3 identical clicks worked~~ --
+superseded: B1118 saw the official client reject class-excluded gems on a
+wizard; `refactor/B1129/README.md`).
 
 ## 6. Findings per spell + FOLLOW-UP
 
@@ -248,7 +255,17 @@ re-runs at TRACE or adds a `createImpact`/`createSpellComplete` INFO line to
 make the Target stage observable. B1106's sim-worker delta-clamp is in the
 build but not the thing this capture measures.
 
-### Gap G1 — oracle gem-click calibration (4/7 clicks missed)
+### Gap G1 — oracle gem-click calibration (4/7 clicks missed) — SUPERSEDED by B1118 + B1129
+
+**Struck (B1129, #449).** The ~35 px "pitch" below was a vision estimate, not a
+measurement; lane 5's bar measures 30 px (B1118 `oracle_calib/`), and the
+official client REFUSES a gem whose `spells_us.txt` class level excludes the
+caster ("You are not high enough level to cast this spell!", no
+`OP_CastSpell`): 93 (DRU/SHM/MAG) and 253 (DRU) can never go on a wizard.
+The driver now refuses such a plan (`oracle_plan_check.py`) and multi-class
+sets run one leg per class (`oracle_class_leg.sh`); `refactor/B1129/README.md`.
+The original text, kept for the record:
+
 The oracle leg's gem clicks used the INI-derived coords (21, 209+30i). The
 client confirmed 3 (41, 54, 656) and produced no `OP_CastSpell` for 4 (93, 38,
 253, 458). The bar is visible and all 7 gems lit (vision-confirmed in the
@@ -291,8 +308,9 @@ created-but-invisible-vs-dropped question is still open for a gem cast;
 (b) the **F3 start-up race** leaves the first few `createCastGlow` calls
 (4/7 on a cold render thread) falling to the entity-center fallback, and the
 uninitialised `rhPos/lhPos/centerPos` log fields are a real (small) defect;
-(c) the **oracle leg needs the G1 click recalibration** to confirm all 7 gems
-on the official client (3/7 confirmed now).
+(c) ~~the **oracle leg needs the G1 click recalibration** to confirm all 7 gems
+on the official client (3/7 confirmed now)~~ -- done by B1118 (class legs,
+lane-5 measured pitch); see `refactor/B1129/README.md`.
 
 ### FOLLOW-UP (not cut here — workers do not cut cards; Will's call)
 1. **Target-stage observability (the #424 blocker):** add a `LOG_INFO` to
@@ -304,5 +322,8 @@ on the official client (3/7 confirmed now).
    `spell_visual_fx.cpp:427` (and/or guard the `:429` log on the callback's
    bool), and decide whether to prime the render-thread position cache or defer
    the first `createCastGlow` past the cache-warm frames.
-3. **G1:** re-measure the oracle's real gem pitch on the lane, recalibrate the
-   click coords, and re-run the 4 missed gems (93, 38, 253, 458).
+3. ~~**G1:** re-measure the oracle's real gem pitch on the lane, recalibrate the
+   click coords, and re-run the 4 missed gems (93, 38, 253, 458).~~ **Done:**
+   B1118 measured lane 5 and ran the class legs; B1129 made both a driver
+   feature (`scripts/eqemu/oracle/gem_pitch.tsv`, `oracle_plan_check.py`,
+   `oracle_class_leg.sh`).

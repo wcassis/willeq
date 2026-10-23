@@ -529,6 +529,20 @@ ADD_TEST(NAME OracleRemoteStopSafety
     COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/remote_stop_safety.sh)
 SET_TESTS_PROPERTIES(OracleRemoteStopSafety PROPERTIES LABELS "hygiene")
 
+# B1129 (#449): the official client refuses a gem cast its class cannot use
+# and sends nothing (refactor/B1118/README.md), so a plan doing that is
+# refused with the spell and the class named; the per-lane gem-pitch table
+# (lane 5 measured, lanes 1-4 never guessed); and the multi-class provisioning
+# helper's hooks (class switch only from the home class, world-down undo of
+# class + memorised gems + buffs). Device-free fixtures; the real
+# spells_us.txt is cross-checked only when the EQ client files are present.
+ADD_TEST(NAME OracleGemCastPlanCheck
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/oracle_plan_check_test.py)
+SET_TESTS_PROPERTIES(OracleGemCastPlanCheck PROPERTIES LABELS "hygiene")
+ADD_TEST(NAME OracleClassLegSafety
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/class_leg_safety.sh)
+SET_TESTS_PROPERTIES(OracleClassLegSafety PROPERTIES LABELS "hygiene")
+
 # B1089 (#409): the lane lease's hermetic net. The core
 # (scripts/eqemu/lease_core.sh) is host-side and self-contained, so running
 # it against a temp dir IS the unit test -- no ssh, no network, no lane
