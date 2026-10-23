@@ -251,7 +251,7 @@ B1130's `fixed_npc` target and a landing on the observer like B1130's
 **A detrimental cast on the observer** needs both characters `#set pvp on`
 (eqemu `Mob::IsAttackAllowed`: client vs client only when both are PvP or
 dueling) and, near guards, `Character:PVPEnableGuardFactionAssist` off for the
-leg (`zone/spells.cpp`: guards within 70 units add the caster to their hate
+leg (eqemu `Mob::SpellFinished` (its spells.cpp, the eqemu source under the akk-stack on the ThinkPad): guards within 70 units add the caster to their hate
 list): `oracle_class_leg.sh --pre-sql-file` / `--post-sql-file`, then
 `#reload rules global` in the plan.
 
