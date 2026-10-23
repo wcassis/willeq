@@ -88,6 +88,10 @@ const MapNode kDataKeyedMaps[] = {
     {"spell_effects.json", "targetRecords.records",
      "B1132 (#452): spells.eff RECORD numbers; SpellEffectsConfig::loadTargetRecords "
      "enumerates records.getMemberNames() and std::stoi's each one"},
+    {"spell_effects.json", "animRecords.rows",
+     "B1137 (#457): spellsnew.eff RECORD numbers (spells_us.txt field 145); "
+     "SpellEffectsConfig::loadAnimRecords enumerates rows.getMemberNames() and "
+     "std::stoi's each one, and rowForAnim() looks them up by the spell's field 145"},
 };
 
 // Whole files that are DATA TABLES, not settings: every key below the root is

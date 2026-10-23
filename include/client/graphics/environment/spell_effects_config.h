@@ -117,7 +117,8 @@ public:
         // starts at once crosses the visibility threshold ~0.1 s after it.
         float triggerDelay = 0.0f;       bool hasTriggerDelay = false;
 
-        // B1131: the Source's anchor, onset and hold are per spells.eff record
+        // B1131: the Source's anchor, onset and hold are per measured row
+        // (B1137: chosen by the spell's field-145 record, rowForAnim())
         // (SourceRecord below), no longer style keys (B1122's `anchor` /
         // `releaseDelay` were one rule for every record).
     };
@@ -215,6 +216,20 @@ public:
     float targetReferenceCoverage() const { return targetReferenceCoverage_; }
 
     /**
+     * B1137 (#457): the measured row a spell is drawn with, keyed by the record
+     * the official client DRAWS -- its spellsnew.eff record, spells_us.txt field
+     * 145 (`spellAnim`; B1127) -- not by its spells.eff record (field 123). The
+     * B1131/B1132 rows keep their survey ids (the field-123 record of the spell
+     * each was captured on); config `animRecords.rows` names, per field-145
+     * record, the row captured on a spell that draws it. A field-145 record no
+     * row was captured on resolves to -1 (the default row): a field-123 row
+     * was measured on a spell drawing a DIFFERENT field-145 record (1656/14,
+     * 1605/372), so it is not evidence for this one.
+     */
+    int rowForAnim(int spellAnim) const;
+    size_t animRowCount() const { return animRows_.size(); }
+
+    /**
      * Get global settings.
      */
     const GlobalSettings& getGlobal() const { return global_; }
@@ -262,6 +277,7 @@ private:
     void applyPopulationRule(const Json::Value& root);
     void loadSourceRecords(const Json::Value& root);
     void loadTargetRecords(const Json::Value& root);
+    void loadAnimRecords(const Json::Value& root);
 
     std::string configPath_;
     bool loaded_ = false;
@@ -286,6 +302,8 @@ private:
     std::unordered_map<int, TargetRecord> targetRecords_;
     TargetRecord targetDefault_;
     float targetReferenceCoverage_ = 0.0f;
+    // B1137: field-145 record -> measured row id (animRecords.rows).
+    std::unordered_map<int, int> animRows_;
 
     ReloadCallback reloadCallback_;
 };

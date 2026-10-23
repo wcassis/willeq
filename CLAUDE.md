@@ -403,8 +403,8 @@ measured, not summed: `review/B1121/scripts/b1120_measure.sh <leg> <out>`
 **The oracle draws `spellsnew.eff`, not `spells.eff`** (B1127,
 `review/B1127/README.md`): field 145 (`spell_anim`) names the record, its stages
 name `spellsnew.edd` emitters, each names a texture file, and the particle is its
-texels. Field 123 keys only the per-record anchors; its 0-based GEN names serve
-spells with no field 145. Field 85 RESISTTYPE is not painted with. So `SpellPresets::applyStageSpriteNames()` drops the
+texels, and picks the measured row (`animRecords`, B1137). Field 123's GEN names
+serve spells with no field 145. Field 85 RESISTTYPE is not painted with. So `SpellPresets::applyStageSpriteNames()` drops the
 particle colour modulation to WHITE whenever it installs a real stage's sprites
 — `POINT_SPRITE_FS` computes `texColor * vColor`, and **any non-white modulation
 is fable tinting the oracle's own art**. `config/spell_effects.json`'s
@@ -412,7 +412,7 @@ is fable tinting the oracle's own art**. `config/spell_effects.json`'s
 ~946 spells with no usable `spells.eff` record. All three stages route their
 names: Source → cast glow and spellComplete, Middle → projectile trail, Target →
 impact. The landing is a VOLUME, not a disc (B1120). Source and Target are drawn
-PER spells.eff RECORD: B1131 `sourceRecords` (anchor, onset, hold past
+per MEASURED ROW: B1131 `sourceRecords` (anchor, onset, hold past
 OP_Action), B1132 `targetRecords` (both landing halves on the TARGET, never the
 caster of an other-target cast; head bone 5, feet rings 16/28, column 3, caster
 27); `tests/test_spell_{source,target}_anchors.cpp`. `spellOverrides` holds

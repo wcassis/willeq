@@ -27,6 +27,7 @@
 
 #include "client/graphics/environment/spell_effects_config.h"
 #include "spell_pool.h"
+#include "spell_anim_rows.h"
 
 #include <cmath>
 #include <map>
@@ -209,6 +210,7 @@ protected:
         v.known = true;
         v.school = EQ::SpellSchool::Evocation;  // castGlow: the spray style differs only in size/life
         v.spellAffectIndex = o.record;
+        v.spellAnim = static_cast<int16_t>(spell_anim_rows::AnimOfRow(o.record));  // B1137: the row key
         fx_->noteSpellVocabulary(o.spell, v);
     }
 

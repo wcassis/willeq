@@ -190,8 +190,9 @@ public:
     // when it is the caster or unknown), then its sprites finish their life.
     void releaseCastGlow(uint16_t caster_id, uint32_t spell_id, uint16_t target_id);
 
-    // B1131: the spells.eff record noted for this spell (spells_us.txt field
-    // 123 via the vocabulary), -1 when none was noted.
+    // B1131/B1137: the measured Source/Target row of this spell: the row of
+    // its spellsnew.eff record (spells_us.txt field 145 via the vocabulary,
+    // SpellEffectsConfig::rowForAnim), -1 = the default row.
     int sourceRecordOf(uint32_t spell_id) const;
 
     // Remove buff aura (when buff fades).
