@@ -111,6 +111,7 @@ TEST_F(TargetRecordRows, EachRecordCarriesTheOraclesAnchorAndExtent) {
         EXPECT_EQ(row.hasShape, shaped) << o.record;
     }
     EXPECT_NEAR(cfg.targetRecord(5).faceOnset, 0.41f, 1e-3f) << "e5 f8233";
+    EXPECT_NEAR(cfg.targetRecord(5).boneAt, 0.90f, 1e-3f) << "the head row follows the head bone (the face)";
     // The vision records the survey checked and found NOT head-anchored.
     EXPECT_NE(cfg.targetRecord(14).anchor, TAnchor::Head) << "Bind Sight class (r35)";
     EXPECT_NE(cfg.targetRecord(7).anchor, TAnchor::Head) << "Insight (r132)";

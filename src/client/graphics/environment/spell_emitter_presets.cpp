@@ -341,7 +341,10 @@ SpellEffectDef TargetForRecord(const SpellEffectDef& style,
     const float life = 0.5f * (c.lifetimeMin + c.lifetimeMax);
     const float w = rec.halfWidth * H;
     const float span = (rec.hi - rec.lo) * H;
-    auto at = [&](float h) { return h * H - anchorAboveFeet; };
+    // A head row is placed relative to the head bone alone (boneAt = the height
+    // the bone stands for), so the target's own feet and size do not move it.
+    const float followed = (rec.anchor == T::Head && rec.boneAt > 0.0f) ? rec.boneAt * H : anchorAboveFeet;
+    auto at = [&](float h) { return h * H - followed; };
     c.gravity = glm::vec3(0.0f);
     c.drag = 0.0f;
     c.expandSpeed = 0.0f;

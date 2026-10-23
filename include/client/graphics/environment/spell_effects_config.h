@@ -204,6 +204,7 @@ public:
         float faceOnset = 0.0f;     // Head: Act+ s the glow lights the face (0 = none)
         float end = 0.0f;           // Act+ s the oracle's landing ends
         float population = 1.0f;    // share of the style landing (shaped rows)
+        float boneAt = 0.0f;        // Head: the height the head bone stands for (target heights)
         bool unmeasured = false;    // 40/51: the default row stands in
         int record = -1;            // -1 = the default row
     };

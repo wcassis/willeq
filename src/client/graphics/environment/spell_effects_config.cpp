@@ -693,6 +693,7 @@ void SpellEffectsConfig::loadTargetRecords(const Json::Value& root) {
         r.faceOnset = j.get("faceOnset", 0.0).asFloat();
         r.end = j.get("end", 0.0).asFloat();
         r.population = j.get("population", 1.0).asFloat();
+        r.boneAt = j.get("boneAt", 0.0).asFloat();
         r.unmeasured = j.get("unmeasured", false).asBool();
         using T = SpellEffectsConfig::TargetAnchor;
         r.hasShape = (r.anchor == T::Head || r.anchor == T::FeetGround || r.anchor == T::Column) &&
