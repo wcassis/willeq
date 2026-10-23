@@ -36,8 +36,9 @@ protected:
 // was captured on, one row per record, and nothing else is.
 TEST_F(AnimRows, EveryMeasuredRowIsReachedByTheRecordItWasCapturedOn) {
     const auto& cfg = SpellEffectsConfig::instance();
-    // + 93 -> 6, the one decoded equivalence (TheDecodedEquivalence below).
-    EXPECT_EQ(cfg.animRowCount(), std::size(spell_anim_rows::kRowAnim) + 1)
+    // + 93 -> 6, the one decoded equivalence (TheDecodedEquivalence below), and
+    // + 328/329/330 -> 51, the three discipline records B1134 measured beside 326.
+    EXPECT_EQ(cfg.animRowCount(), std::size(spell_anim_rows::kRowAnim) + 1 + 3)
         << "config/spell_effects.json animRecords.rows";
     std::set<int> rows;
     for (const auto& r : spell_anim_rows::kRowAnim) {
@@ -76,11 +77,24 @@ TEST_F(AnimRows, TheDecodedEquivalence) {
 // field-123 stand-in (that row was measured on a different field-145 record).
 TEST_F(AnimRows, AnUncapturedRecordDrawsTheDefaultRows) {
     const auto& cfg = SpellEffectsConfig::instance();
-    for (int anim : {0, -1, 153, 221, 254, 314, 325, 326, 328, 329, 330, 417, 3411}) {
+    for (int anim : {0, -1, 153, 221, 254, 314, 325, 417, 3411}) {
         EXPECT_EQ(cfg.rowForAnim(anim), -1) << anim;
     }
     EXPECT_EQ(cfg.sourceRecord(-1).record, -1);
     EXPECT_EQ(cfg.targetRecord(-1).record, -1);
+}
+
+// B1134 (#454): the discipline records. 326 (Blue: 4499 Defensive) is row 51's
+// own capture; 328 (Green: 4721 Focused Will), 329 (Red: 4498 Aggressive) and
+// 330 (White: 4670 Fortitude) were cast on the same observer rig and drew the
+// same shape (RUN h -0.06..0.79, dx -0.32..+0.38, lit to Act+8.0-8.3; review/
+// B1134/obs_rows.json). Their spellsnew.eff records differ in the name and the
+// colour words (B1137); 325 (Black, shadow knight) also differs in textures
+// and particle lifetimes and was not cast, so it stays on the default rows.
+TEST_F(AnimRows, TheMeasuredDisciplineRecordsTakeRowFiftyOne) {
+    const auto& cfg = SpellEffectsConfig::instance();
+    for (int anim : {326, 328, 329, 330}) EXPECT_EQ(cfg.rowForAnim(anim), 51) << anim;
+    EXPECT_EQ(cfg.rowForAnim(325), -1);
 }
 
 // The pool rule's override rows (sourceRecords.overrideRecords, spell ->
@@ -126,12 +140,14 @@ TEST_F(AnimRows, SpellVisualFxKeysTheRowByFieldOneFortyFive) {
         note(14, 25, 115);
         note(1605, 23, 106);
         note(1899, -1, 83);
-        note(4499, 51, 326);  // Defensive Discipline: field 123 has a row, field 145 none
+        note(4499, 51, 326);  // Defensive Discipline: B1134 measured 326 as row 51
+        note(8604, 51, 325);  // Leechcurse Discipline: field 123 has a row, field 145 none
         EXPECT_EQ(fx.sourceRecordOf(1656), 31);
         EXPECT_EQ(fx.sourceRecordOf(14), 25);
         EXPECT_EQ(fx.sourceRecordOf(1605), 32);
         EXPECT_EQ(fx.sourceRecordOf(1899), 4);
-        EXPECT_EQ(fx.sourceRecordOf(4499), -1);
+        EXPECT_EQ(fx.sourceRecordOf(4499), 51);
+        EXPECT_EQ(fx.sourceRecordOf(8604), -1);
     }
     device->drop();
 }

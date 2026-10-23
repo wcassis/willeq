@@ -44,11 +44,18 @@ grep -q 'REFUSED.*93 "Burst of Flame".*WIZ (class 12)' "$FIXTURE/wiz.log" || { e
 leg 6 dru
 [[ $rc == 0 ]] || { echo "druid leg returned $rc"; cat "$FIXTURE/dru.log"; exit 1; }
 H=$FIXTURE/dru/hooks.txt
-grep -qx 'PRE=UPDATE character_data SET class=6 WHERE id=67 AND class=12;' "$H" || { echo 'pre-SQL wrong'; cat "$H"; exit 1; }
-grep -q '^POST=UPDATE character_data SET class=12 WHERE id=67; DELETE FROM character_memmed_spells WHERE id=67; INSERT INTO character_memmed_spells (id,slot_id,spell_id) VALUES (67,0,93),(67,1,38); DELETE FROM character_buffs WHERE character_id=67;$' "$H" || { echo 'post-SQL wrong'; cat "$H"; exit 1; }
+grep -q '^PRE=.*UPDATE character_data SET class=6 WHERE id=67 AND class=12;$' "$H" || { echo 'pre-SQL wrong'; cat "$H"; exit 1; }
+grep -q '^POST=UPDATE character_data SET class=12 WHERE id=67; DELETE FROM character_memmed_spells WHERE id=67; INSERT INTO character_memmed_spells (id,slot_id,spell_id) VALUES (67,0,93),(67,1,38); DELETE FROM character_buffs WHERE character_id=67;' "$H" || { echo 'post-SQL wrong'; cat "$H"; exit 1; }
+# B1134: skills, disciplines and timers are saved BEFORE the class switch and
+# put back exactly (delete + insert from the copy, copy dropped) in the undo.
+for t in character_skills:id character_disciplines:id timers:char_id; do
+    tb=${t%%:*} col=${t##*:}
+    grep -q "^PRE=.*CREATE TABLE oracle_save_${tb}_67 AS SELECT \* FROM $tb WHERE $col=67;.*UPDATE character_data SET class=6" "$H" || { echo "pre-SQL does not save $tb before the switch"; exit 1; }
+    grep -q "^POST=.*DELETE FROM $tb WHERE $col=67; INSERT INTO $tb SELECT \* FROM oracle_save_${tb}_67; DROP TABLE oracle_save_${tb}_67;" "$H" || { echo "post-SQL does not restore $tb"; exit 1; }
+done
 grep -qx 'STATE=67' "$H" && grep -qx 'EXPECT=6' "$H" && grep -qx 'OWNER=oracle_class_c6' "$H" || { echo 'state/expect/owner wrong'; exit 1; }
 
 # 3. an after-census that does not show the home class is a restore failure.
 PROBE_AFTER_CLASS=6 leg 6 dru_bad
 [[ $rc == 66 ]] || { echo "unrestored class returned $rc, expected 66"; exit 1; }
-echo 'PASS: class leg refuses an uncastable gem offline, hooks switch only from the home class, undo restores class + gems + buffs, an unrestored census is 66'
+echo 'PASS: class leg refuses an uncastable gem offline, hooks switch only from the home class, undo restores class + gems + buffs + skills/disciplines/timers, an unrestored census is 66'

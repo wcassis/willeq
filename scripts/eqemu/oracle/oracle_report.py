@@ -37,6 +37,9 @@ summary = ['# Official-client oracle session', '',
 stepper = []
 previous_ini = out / 'before-character.ini'
 for index, row in enumerate(actions, 1):
+    if row[0] == 'obs':
+        # B1134 (#454): an observer row is the same row on the second client.
+        row = row[1:]
     verb, target, hold_ms, label = (row + [''] * 4)[:4]
     if verb == 'create':
         if len(row) != 6:

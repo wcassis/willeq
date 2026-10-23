@@ -27,6 +27,7 @@ stop() {
     local dir="$FIXTURE/home/eq-oracle/sessions/$1"
     mkdir -p "$dir"
     [[ -z ${2:-} ]] || echo "$2" >"$dir/xvfb.pid"
+    [[ -z ${3:-} ]] || echo "$3" >"$dir/xvfb-caster.pid"
     PATH="$FIXTURE/stub:$PATH" bash "$FIXTURE/oracle_remote.sh" stop "$dir" || { echo "stop $1 failed"; exit 1; }
     "$REAL_SLEEP" 0.2
 }
@@ -40,4 +41,12 @@ kill -0 "$XORG" 2>/dev/null || { echo 'stop killed a non-Xvfb pid from xvfb.pid'
 # 3. The session's own Xvfb (lanes 1-4 shape) is still stopped.
 stop own-xvfb "$XVFB"
 if kill -0 "$XVFB" 2>/dev/null; then echo 'stop left its own Xvfb running'; exit 1; fi
-echo 'PASS: stop keeps a display it did not start (no pid, stale pid) and stops its own Xvfb'
+# 4. B1134: an observer session's caster Xvfb (xvfb-caster.pid) is stopped,
+#    the lane's :99 Xorg is not, and a stale caster pid naming the Xorg is left.
+"$FIXTURE/real/Xvfb" 300 & XVFB2=$!; PIDS+=("$XVFB2")
+stop observer-stale "" "$XORG"
+kill -0 "$XORG" 2>/dev/null || { echo 'stop killed a non-Xvfb pid from xvfb-caster.pid'; exit 1; }
+stop observer-own "" "$XVFB2"
+if kill -0 "$XVFB2" 2>/dev/null; then echo 'stop left the caster Xvfb running'; exit 1; fi
+kill -0 "$XORG" 2>/dev/null || { echo 'stopping the caster Xvfb killed the display'; exit 1; }
+echo 'PASS: stop keeps a display it did not start (no pid, stale pid) and stops its own Xvfb, the caster Xvfb of an observer session included'

@@ -22,7 +22,7 @@
 #
 # usage: oracle_class_leg.sh <lane 1..5> <class 1..16> <plan.tsv> <out_dir>
 #            [--char-id 67] [--home-class 12] [--gems 93,38,54,41,253,458,656]
-#            [--post-sql-file F] [--no-wait]
+#            [--pre-sql-file F] [--post-sql-file F] [--no-wait]
 # Exit codes: oracle_session.sh's (0/64/65/66/67); 64 also = plan refused;
 # 66 also = the after-census does not show the home class and the gems.
 set -uo pipefail
@@ -31,12 +31,13 @@ REPO=$(cd "$SCRIPT_DIR/../../.." && pwd)
 usage() { sed -n '/^# usage:/,/^# Exit/p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
 [[ $# -ge 4 ]] || usage
 LANE=$1 CLS=$2 PLAN=$3 OUT=$4; shift 4
-CHAR_ID=67 HOME_CLASS=12 GEMS=93,38,54,41,253,458,656 POST_FILE= WAIT=1
+CHAR_ID=67 HOME_CLASS=12 GEMS=93,38,54,41,253,458,656 PRE_FILE= POST_FILE= WAIT=1
 while [[ $# -gt 0 ]]; do
     case $1 in
         --char-id) CHAR_ID=$2; shift 2 ;;
         --home-class) HOME_CLASS=$2; shift 2 ;;
         --gems) GEMS=$2; shift 2 ;;
+        --pre-sql-file) PRE_FILE=$2; shift 2 ;;
         --post-sql-file) POST_FILE=$2; shift 2 ;;
         --no-wait) WAIT=0; shift ;;
         *) usage ;;
@@ -46,6 +47,7 @@ done
 [[ $GEMS =~ ^([0-9]+(,[0-9]+)*)?$ ]] || usage
 [[ -f $PLAN ]] || { echo "no plan: $PLAN" >&2; exit 64; }
 [[ -z $POST_FILE || -f $POST_FILE ]] || { echo "no post-SQL file: $POST_FILE" >&2; exit 64; }
+[[ -z $PRE_FILE || -f $PRE_FILE ]] || { echo "no pre-SQL file: $PRE_FILE" >&2; exit 64; }
 PLAN=$(realpath "$PLAN") OUT=$(realpath -m "$OUT")
 
 # 1. offline: the leg starts with --gems memorised (the previous leg's undo).
@@ -60,10 +62,28 @@ fi
 VALUES= slot=0
 for sid in ${GEMS//,/ }; do VALUES+="${VALUES:+,}($CHAR_ID,$slot,$sid)"; slot=$((slot + 1)); done
 export ORACLE_STATE_CHAR=$CHAR_ID ORACLE_EXPECT_CLASS=$CLS
-export ORACLE_PRE_SQL="UPDATE character_data SET class=$CLS WHERE id=$CHAR_ID AND class=$HOME_CLASS;"
+# B1134 (#454; B1137's rig copy, made a driver feature): the character's
+# skills, disciplines and persistent timers are not in the snapshot, and a
+# leg can change all three (a song raises a skill, #traindisc scribes
+# disciplines, a /disc starts a reuse timer). Copy them aside before the class
+# switch and put exactly those rows back in the post-SQL; the census lines
+# (SAVED/LEG/BACK: rows and value sums) land in driver.log.
+SAVE_TABLES="character_skills:id character_disciplines:id timers:char_id"
+SAVE_PRE= SAVE_POST=
+for tc in $SAVE_TABLES; do
+    t=${tc%%:*} c=${tc##*:} s=oracle_save_${t}_$CHAR_ID
+    SAVE_PRE+="DROP TABLE IF EXISTS $s; CREATE TABLE $s AS SELECT * FROM $t WHERE $c=$CHAR_ID; SELECT 'SAVED','$t',COUNT(*) FROM $s; "
+    SAVE_POST+=" SELECT 'LEG','$t',COUNT(*) FROM $t WHERE $c=$CHAR_ID; DELETE FROM $t WHERE $c=$CHAR_ID; INSERT INTO $t SELECT * FROM $s; DROP TABLE $s; SELECT 'BACK','$t',COUNT(*) FROM $t WHERE $c=$CHAR_ID;"
+done
+ORACLE_PRE_SQL="${SAVE_PRE}UPDATE character_data SET class=$CLS WHERE id=$CHAR_ID AND class=$HOME_CLASS;"
+# B1134: --pre-sql-file runs after the save and the switch (e.g. a server rule
+# a leg needs off; its undo goes in --post-sql-file).
+[[ -n $PRE_FILE ]] && ORACLE_PRE_SQL+=" $(cat "$PRE_FILE")"
+export ORACLE_PRE_SQL
 ORACLE_POST_SQL="UPDATE character_data SET class=$HOME_CLASS WHERE id=$CHAR_ID; DELETE FROM character_memmed_spells WHERE id=$CHAR_ID;"
 [[ -n $VALUES ]] && ORACLE_POST_SQL+=" INSERT INTO character_memmed_spells (id,slot_id,spell_id) VALUES $VALUES;"
 ORACLE_POST_SQL+=" DELETE FROM character_buffs WHERE character_id=$CHAR_ID;"
+ORACLE_POST_SQL+="$SAVE_POST"
 [[ -n $POST_FILE ]] && ORACLE_POST_SQL+=" $(cat "$POST_FILE")"
 export ORACLE_POST_SQL
 export ORACLE_OWNER=${ORACLE_OWNER:-oracle_class_c$CLS}

@@ -528,6 +528,11 @@ SET_TESTS_PROPERTIES(OracleSessionSafety PROPERTIES LABELS "hygiene")
 ADD_TEST(NAME OracleRemoteStopSafety
     COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/remote_stop_safety.sh)
 SET_TESTS_PROPERTIES(OracleRemoteStopSafety PROPERTIES LABELS "hygiene")
+# B1134 (#454): the observer's login copy (a second official client as a
+# second player character) sources its credentials file, never types a secret.
+ADD_TEST(NAME OracleLoginPatch
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/login_patch_test.sh)
+SET_TESTS_PROPERTIES(OracleLoginPatch PROPERTIES LABELS "hygiene")
 
 # B1129 (#449): the official client refuses a gem cast its class cannot use
 # and sends nothing (refactor/B1118/README.md), so a plan doing that is

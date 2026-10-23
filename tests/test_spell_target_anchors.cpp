@@ -16,7 +16,10 @@
 //   - feet/ground 2: record 16 (Snare) rings on the ground climbing the legs,
 //     record 28 (Gravity Flux) ground rings + a body column;
 //   - column above 1: record 3 (Icestrike) a sheet sweeping down over the target;
-//   - unmeasured 2: 40 (zone change), 51 (not castable).
+//   - measured by B1134 (#454) with the OBSERVER rig, a second player
+//     character on a second official client: 40 (ports: round the caster plus
+//     a column above its head, gone with the caster at Act+0.73) and 51
+//     (disciplines: no Target stage, nothing drawn at OP_Action).
 // Records 14 (Bind Sight) and 7 (Insight) are NOT head-anchored.
 //
 // THE SEAM is the real one: SpellVisualFX (EDT_NULL device) -> ParticleManager
@@ -85,17 +88,40 @@ TEST_F(TargetRecordRows, EverySurveyedRecordHasItsLandingRow) {
         EXPECT_EQ(row.record, r) << r;
         if (row.unmeasured) { ++unmeasured; continue; }
         ++classes[row.anchor];
+        if (r == 51) continue;  // no Target stage: no extent (B1134)
         EXPECT_GT(row.hi, row.lo) << r;
         EXPECT_GT(row.halfWidth, 0.0f) << r;
     }
-    EXPECT_EQ(unmeasured, 2);
-    EXPECT_TRUE(cfg.targetRecord(40).unmeasured);
-    EXPECT_TRUE(cfg.targetRecord(51).unmeasured);
-    EXPECT_EQ(classes[TAnchor::Body] + classes[TAnchor::Caster], 35) << "whole body, B1130";
-    EXPECT_EQ(classes[TAnchor::Caster], 6) << "27 + the self-only 8/9/11/19/43";
+    EXPECT_EQ(unmeasured, 0) << "B1134 measured 40 and 51";
+    EXPECT_EQ(classes[TAnchor::Body] + classes[TAnchor::Caster], 37) << "whole body, B1130 + 40/51";
+    EXPECT_EQ(classes[TAnchor::Caster], 8) << "27 + the self-only 8/9/11/19/43 + 40/51";
     EXPECT_EQ(classes[TAnchor::Head], 1);
     EXPECT_EQ(classes[TAnchor::FeetGround], 2);
     EXPECT_EQ(classes[TAnchor::Column], 1);
+}
+
+// B1134 (#454): the two records the B1130 survey's own camera could not see,
+// measured on the OBSERVER's frames (review/B1134/obs_rows.json). Record 40
+// (ports): the landing is round the CASTER and reaches over its head, rises at
+// OP_Action and ends with the caster's model (it zones 0.16 s after
+// OP_Action; nothing stays at the spot). Record 51 (disciplines): no Target
+// stage at all.
+TEST_F(TargetRecordRows, ThePortAndDisciplineRowsAreTheObserversNumbers) {
+    const auto& cfg = SpellEffectsConfig::instance();
+    const auto& port = cfg.targetRecord(40);
+    EXPECT_FALSE(port.unmeasured);
+    EXPECT_EQ(port.anchor, TAnchor::Caster);
+    EXPECT_NEAR(port.lo, 0.07f, 1e-3f);
+    EXPECT_NEAR(port.hi, 1.67f, 1e-3f);
+    EXPECT_NEAR(port.halfWidth, 0.615f, 1e-3f);
+    EXPECT_NEAR(port.centroid, 0.87f, 1e-3f);
+    EXPECT_NEAR(port.onset, 0.07f, 1e-3f);
+    EXPECT_NEAR(port.end, 0.73f, 1e-3f);
+    EXPECT_LT(port.end, 1.0f) << "the port landing ends with the caster, not ~6 s later";
+    const auto& disc = cfg.targetRecord(51);
+    EXPECT_FALSE(disc.unmeasured);
+    EXPECT_EQ(disc.anchor, TAnchor::Caster);
+    EXPECT_EQ(disc.coverage, 0.0f) << "no Target-stage emitter: nothing at OP_Action";
 }
 
 TEST_F(TargetRecordRows, EachRecordCarriesTheOraclesAnchorAndExtent) {
