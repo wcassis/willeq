@@ -35,7 +35,8 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
             particlePool_[i].setAlive(false);
         }
         particleActiveCount_ = 0;
-        particleRng_.seed(std::random_device{}());
+        particleRng_.seed(input.particleInput.rngSeed != 0 ? input.particleInput.rngSeed
+                                                         : std::random_device{}());
         particlePoolInitialized_ = true;
         LOG_INFO(MOD_GRAPHICS, "SimulationWorker: Particle pool initialized (size={})", poolSize);
     }

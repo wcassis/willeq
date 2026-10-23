@@ -26,6 +26,7 @@
 // model_viewer_state.h. See refactor/T385_tools_ceiling_model_viewer.md.
 
 #include "model_viewer/model_viewer_state.h"
+#include "model_viewer/model_viewer_fx_harness.h"
 
 int main(int argc, char* argv[]) {
     // T270: race codes/scales/archives are served only from WilleqDatabase
@@ -69,8 +70,9 @@ int main(int argc, char* argv[]) {
     }
     initViewerSubsystems();
 
-    if (spellTestMode) {
-        initSpellTestMode();
+    if (spellTestMode && !initSpellTestMode()) {
+        device->drop();
+        return 3;
     }
 
     // If we have loaded entities and a specific entity was requested, load it
@@ -128,28 +130,26 @@ int main(int argc, char* argv[]) {
 
     // Add camera
     if (spellTestMode) {
-        // Camera looking at midpoint between caster (0,0,0) and target (5,0,0)
-        camera = smgr->addCameraSceneNode(
-            nullptr, core::vector3df(2.5f, 3.0f, -10.0f), core::vector3df(2.5f, 1.5f, 0));
+        setupSpellTestCamera();  // B1138: --camera preset, else caster/target midpoint
     } else {
         camera = smgr->addCameraSceneNode(
             nullptr, core::vector3df(0, 5, -cameraDistance), core::vector3df(0, 0, 0));
     }
-    runViewerLoop();
+    // B1138: --plan runs the scripted FX harness instead of the interactive loop.
+    int rc = 0;
+    if (spellTestMode && !harnessOpts.planPath.empty()) {
+        rc = runScriptedHarness();
+    } else {
+        runViewerLoop();
+    }
 
     // Clean up spell effects before device destruction to avoid segfault
     spellFX.clearAllEffects();
-    if (spellVisualFX) {
-        spellVisualFX->clearAllEffects();
-        spellVisualFX.reset();
-    }
-    #ifdef EQT_HAS_GLES2
-    particleManager.reset();
-    #endif
+    if (spellVisualFX) spellVisualFX->clearAllEffects();
+    shutdownHarness();  // B1138: particle manager, then the texture cache
+    spellVisualFX.reset();
     spellDatabase.reset();
 
     device->drop();
-    return 0;
-    device->drop();
-    return 0;
+    return rc;
 }

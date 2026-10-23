@@ -334,11 +334,12 @@ TEST_P(SpellLandingPool, OneFedLandingFitsHalfThePool) {
     EXPECT_LE(peak, static_cast<size_t>(pool / 2)) << "one landing peaked at " << peak << " live sprites";
 }
 
-// A style with no triggerDelay keeps the IMMEDIATE trigger (the buff aura is
-// the worked case; the cast glow was until B1122 gave the Source its onset).
+// A style with no triggerDelay keeps the IMMEDIATE trigger (the projectile
+// trail is the worked case since B1138 deleted the buff aura; the cast glow was
+// one until B1122 gave the Source its onset).
 TEST_F(SpellLandingVolume, AStyleWithoutADelayStaysImmediate) {
-    const auto aura = SpellPresets::BuffAura(glm::vec4(1.0f), 285);
-    EXPECT_EQ(aura.emitters.at(0).trigger, SpellTrigger::IMMEDIATE);
+    const auto projectile = SpellPresets::Projectile(glm::vec4(1.0f), 285);
+    EXPECT_EQ(projectile.emitters.at(0).trigger, SpellTrigger::IMMEDIATE);
 }
 
 // ---------------------------------------------------------------------------

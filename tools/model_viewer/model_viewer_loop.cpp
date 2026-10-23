@@ -6,6 +6,7 @@
 // out-parameters, and `return 1` on a fatal path became `return false`.
 
 #include "model_viewer_state.h"
+#include "model_viewer_fx_harness.h"
 
 void runViewerLoop() {
     u32 lastTime = device->getTimer()->getTime();
@@ -55,16 +56,11 @@ void runViewerLoop() {
             targetAnimatedNode->OnAnimate(currentTime);
         }
 
-        #ifdef EQT_HAS_GLES2
-        if (particleManager) {
-            glm::vec3 camPosGlm(0);
-            if (camera) {
-                auto cp = camera->getAbsolutePosition();
-                camPosGlm = glm::vec3(cp.X, cp.Y, cp.Z);
-            }
-            particleManager->updateUnified(deltaSeconds, camPosGlm);
-        }
-        #endif
+        // B1138: the client's particle half -- queued commands through a
+        // SimulationWorker frame (ParticleManager::updateUnified() is a no-op
+        // since the worker owns the pool, so the old call drew nothing).
+        stepSpellParticles(deltaSeconds, 0);
+        uploadHarnessTextures();
 
         // Update casting bar and check for cast completion
         if (castingBar.update(deltaSeconds)) {
@@ -93,18 +89,8 @@ void runViewerLoop() {
         driver->beginScene(true, true, video::SColor(255, 50, 50, 80));
         smgr->drawAll();
 
-        #ifdef EQT_HAS_GLES2
         // Render unified particles (point sprites) after 3D scene, before 2D overlay
-        if (particleManager) {
-            irr::core::matrix4 viewMat = driver->getTransform(video::ETS_VIEW);
-            irr::core::matrix4 projMat = driver->getTransform(video::ETS_PROJECTION);
-            irr::core::vector3df camPos = camera ? camera->getAbsolutePosition()
-            : irr::core::vector3df(0, 0, 0);
-            float screenH = static_cast<float>(driver->getScreenSize().Height);
-            particleManager->renderUnified(viewMat, projMat, camPos,
-                999999.0f, 999999.0f, nullptr, screenH);
-        }
-        #endif
+        renderSpellParticles();
 
         // Draw info text
         gui::IGUIFont* font = device->getGUIEnvironment()->getBuiltInFont();

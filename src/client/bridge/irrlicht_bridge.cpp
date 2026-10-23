@@ -1,4 +1,5 @@
 #include "client/bridge/irrlicht_bridge.h"
+#include "client/bridge/spell_cast_fx.h"
 #include "client/core/memory_ledger.h"
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/entity_renderer.h"
@@ -1085,18 +1086,10 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::SpellCastVisualStarted:
         if (renderer_) {
             auto& d = std::get<state::SpellCastVisualStartedData>(event.data);
-            const bool createGlow = castGlowRoute_.onBeginCast(d.casterId, d.spellId,
-                                                               d.castTimeMs);
-            // Create cast glow effect
-            if (createGlow && renderer_->getSpellVisualFX()) {
-                // T381 (B160): teach the FX layer this spell's resist type,
-                // school and spell_affect_index BEFORE creating anything --
-                // createCastGlow() reads all three back out (colour, spray
-                // style, spells.eff stage gate). The game thread filled them;
-                // the renderer never touches a SpellDatabase.
-                renderer_->getSpellVisualFX()->noteSpellVocabulary(d.spellId, d.spellVisual);
-                renderer_->getSpellVisualFX()->createCastGlow(d.casterId, d.spellId, d.castTimeMs);
-            }
+            // B1138: the FX half is shared with tools/model_viewer's FX harness
+            // (spell_cast_fx.cpp) so the harness draws this exact sequence.
+            ApplySpellCastStartedFx(castGlowRoute_, renderer_->getSpellVisualFX(), d,
+                                    CastGlowRoute::Clock::now());
             if (d.isPlayerCast) {
                 // U06d: New UI casting bar
                 renderer_->Frame().castingBarState_.isCasting = true;
@@ -1118,39 +1111,14 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::SpellCastVisualComplete:
         if (renderer_) {
             auto& d = std::get<state::SpellCastVisualCompleteData>(event.data);
-            const auto glow = castGlowRoute_.onComplete(d.casterId, d.spellId,
-                                                        d.isCastAnimation, d.isSuccess);
-            // Remove cast glow from caster
-            if (renderer_->getSpellVisualFX()) {
-                // T381 (B160): a cast can land without this client having
-                // seen its BeginCast (zoned in mid-cast, out of range), so
-                // the completion payload carries the vocabulary too.
-                renderer_->getSpellVisualFX()->noteSpellVocabulary(d.spellId, d.spellVisual);
-                // B1131: released, not freed -- the Source holds its record's
-                // measured time past OP_Action, longer when the target is someone else.
-                if (glow.remove)
-                    renderer_->getSpellVisualFX()->releaseCastGlow(d.casterId, d.spellId, d.targetId);
-                // B1105: action-only casts have no BeginCast. Keep the old
-                // removal point, then arm Source through the same FX body.
-                if (glow.create) {
-                    renderer_->getSpellVisualFX()->createCastGlow(
-                        d.casterId, d.spellId, CastGlowRoute::kActionGlowMs);
-                }
-            }
+            // B1138: B1131's release (or B1105's action-only glow) and B1132's
+            // createLanding on the cast-animation packet, shared with the FX
+            // harness (spell_cast_fx.cpp).
+            ApplySpellCastCompleteFx(castGlowRoute_, renderer_->getSpellVisualFX(), d,
+                                     CastGlowRoute::Clock::now());
             // Complete entity casting bar
             if (renderer_->getEntityRenderer()) {
                 renderer_->getEntityRenderer()->completeEntityCast(d.casterId);
-            }
-            // Spell completion visual effects.
-            // T395 (board B204): armed by the CAST-ANIMATION packet
-            // (effect_flag == 0), not the success repeat. The success packet
-            // reaches only the caster and the target, so gating here on
-            // isSuccess meant no observing client ever drew an impact -- and
-            // the caster, which receives both, would have drawn it twice.
-            if (d.isCastAnimation && renderer_->getSpellVisualFX()) {
-                // B1132 (#452): the whole landing on the record's Target anchor
-                // (the target; the caster only for a caster-anchored record).
-                renderer_->getSpellVisualFX()->createLanding(d.casterId, d.targetId, d.spellId);
             }
             // Play completion animation on NPC casters
             if (!d.completionAnim.empty()) {
@@ -1167,11 +1135,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::SpellCastVisualInterrupted:
         if (renderer_) {
             auto& d = std::get<state::SpellCastVisualInterruptedData>(event.data);
-            castGlowRoute_.onInterrupt(d.casterId);
-            // Remove cast glow
-            if (renderer_->getSpellVisualFX()) {
-                renderer_->getSpellVisualFX()->removeCastGlow(d.casterId);
-            }
+            ApplySpellCastInterruptedFx(castGlowRoute_, renderer_->getSpellVisualFX(), d);
             // Cancel entity casting bar
             if (renderer_->getEntityRenderer()) {
                 renderer_->getEntityRenderer()->cancelEntityCast(d.casterId);

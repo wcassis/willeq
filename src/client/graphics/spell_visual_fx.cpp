@@ -357,9 +357,6 @@ void SpellVisualFX::update(float delta_time)
             case SpellFXType::CastGlow:
                 updateGlow(effect, delta_time);
                 break;
-            case SpellFXType::AuraPersistent:
-                updateAura(effect, delta_time);
-                break;
             default:
                 break;
         }
@@ -688,50 +685,6 @@ void SpellVisualFX::createImpact(uint16_t target_id, uint32_t spell_id)
     LOG_TRACE(MOD_SPELL, "Created impact on entity {} spell {}", target_id, spell_id);
 }
 
-void SpellVisualFX::createImpactAtPosition(const irr::core::vector3df& pos, uint32_t spell_id)
-{
-#ifdef EQT_HAS_GLES2
-    if (m_particle_manager) {
-        // T72: same Target-stage gate as createImpact() above.
-        SpellVisualResolution visual = resolveVisual(spell_id);
-        if (!visual.isFallback() && !visual.hasTargetStage()) {
-            LOG_DEBUG(MOD_SPELL, "T72: spell {} spells.eff record {} has no Target-stage content "
-                                  "— suppressing impact burst at position (data-driven, not a bug)",
-                      spell_id, visual.spell_affect_index);
-            return;
-        }
-
-        auto scolor = getSpellColor(spell_id);
-        glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
-                     scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::Impact(c, spell_id, sourceRecordOf(spell_id));
-        // T389 (board B162, T380 Leg B2): the impact burst draws the tiles
-        // the spell's spells.eff Target stage names, not the style default.
-        // Frost Bolt (54) names GEND10_SPRITE + GENU10_SPRITE x2 there.
-        if (visual.hasTargetStage()) {
-            EQT::Graphics::Environment::SpellPresets::applyStageSpriteNames(
-                def,
-                std::vector<std::string>(visual.target_stage.sprite_names.begin(),
-                                         visual.target_stage.sprite_names.end()),
-                spell_id);
-        }
-        glm::vec3 worldPos(pos.X, pos.Y, pos.Z);
-        m_particle_manager->createSpellEffectAtPosition(def, worldPos);
-        return;
-    }
-#endif
-    SpellFXInstance effect;
-    effect.type = SpellFXType::ImpactBurst;
-    effect.spell_id = spell_id;
-    effect.target_pos = pos;
-    effect.color = getSpellColor(spell_id);
-    effect.lifetime = DEFAULT_IMPACT_DURATION;
-    effect.active = true;
-
-    createImpactNode(effect);
-    m_effects.push_back(effect);
-}
-
 uint16_t SpellVisualFX::createLanding(uint16_t caster_id, uint16_t target_id, uint32_t spell_id)
 {
 #ifdef EQT_HAS_GLES2
@@ -892,122 +845,6 @@ void SpellVisualFX::createSpellComplete(uint16_t caster_id, uint32_t spell_id)
     m_effects.push_back(effect);
 
     LOG_TRACE(MOD_SPELL, "Created spell complete effect for entity {} spell {}", caster_id, spell_id);
-}
-
-uint32_t SpellVisualFX::createBuffAura(uint16_t entity_id, uint32_t spell_id)
-{
-#ifdef EQT_HAS_GLES2
-    if (m_particle_manager) {
-        auto scolor = getSpellColor(spell_id);
-        glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
-                     scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::BuffAura(c, spell_id);
-        // Permanent — no duration, entity-attached
-        return m_particle_manager->createSpellEffect(def, entity_id, 0);
-    }
-#endif
-    if (m_worker_driven) {
-        if (hasBuffAura(entity_id, spell_id)) return 0;
-
-        auto color = getSpellColor(spell_id);
-        uint32_t eid = m_next_effect_id++;
-        EQT::Graphics::SpellVFXCommandData cmd;
-        cmd.type = EQT::Graphics::SpellVFXCommand::CreateEffect;
-        cmd.effectId = eid;
-        cmd.fxType = static_cast<uint8_t>(SpellFXType::AuraPersistent);
-        cmd.spellId = spell_id;
-        cmd.sourceEntity = entity_id;
-        cmd.lifetime = 0;  // Permanent
-        cmd.colorA = color.getAlpha();
-        cmd.colorR = color.getRed();
-        cmd.colorG = color.getGreen();
-        cmd.colorB = color.getBlue();
-        m_pending_commands.push_back(cmd);
-        return eid;
-    }
-
-    // Don't create duplicate auras
-    if (hasBuffAura(entity_id, spell_id)) {
-        return 0;
-    }
-
-    SpellFXInstance effect;
-    effect.type = SpellFXType::AuraPersistent;
-    effect.spell_id = spell_id;
-    effect.source_entity = entity_id;
-    effect.color = getSpellColor(spell_id);
-    effect.lifetime = 0;  // Permanent until removed
-    effect.active = true;
-
-    if (m_entity_pos_callback) {
-        m_entity_pos_callback(entity_id, effect.source_pos);
-    }
-
-    createAuraNode(effect);
-    m_effects.push_back(effect);
-
-    LOG_TRACE(MOD_SPELL, "Created buff aura for entity {} spell {}", entity_id, spell_id);
-    return m_next_effect_id++;
-}
-
-void SpellVisualFX::createRainEffect(const irr::core::vector3df& center, float radius,
-                                     uint32_t spell_id, float duration)
-{
-#ifdef EQT_HAS_GLES2
-    if (m_particle_manager) {
-        auto scolor = getSpellColor(spell_id);
-        glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
-                     scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::SpellRain(c, radius, spell_id);
-        for (auto& e : def.emitters) e.config.emitterLifetime = duration;
-        glm::vec3 worldPos(center.X, center.Y, center.Z);
-        m_particle_manager->createSpellEffectAtPosition(def, worldPos, duration);
-        return;
-    }
-#endif
-    // Rain effects are fire-and-forget (Irrlicht particle system drives them)
-    // Create directly even in worker-driven mode
-    SpellFXInstance effect;
-    effect.type = SpellFXType::RainEffect;
-    effect.spell_id = spell_id;
-    effect.target_pos = center;
-    effect.scale = radius;
-    effect.color = getSpellColor(spell_id);
-    effect.lifetime = duration;
-    effect.active = true;
-
-    createRainNode(effect);
-    m_effects.push_back(effect);
-}
-
-void SpellVisualFX::createGroundCircle(const irr::core::vector3df& center, float radius,
-                                       uint32_t spell_id, float duration)
-{
-#ifdef EQT_HAS_GLES2
-    if (m_particle_manager) {
-        auto scolor = getSpellColor(spell_id);
-        glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
-                     scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::GroundCircle(c, radius, spell_id);
-        for (auto& e : def.emitters) e.config.emitterLifetime = duration;
-        glm::vec3 worldPos(center.X, center.Y, center.Z);
-        m_particle_manager->createSpellEffectAtPosition(def, worldPos, duration);
-        return;
-    }
-#endif
-    // Ground circles are fire-and-forget (Irrlicht particle system drives them)
-    // Create directly even in worker-driven mode
-    SpellFXInstance effect;
-    effect.type = SpellFXType::GroundCircle;
-    effect.spell_id = spell_id;
-    effect.target_pos = center;
-    effect.scale = radius;
-    effect.color = getSpellColor(spell_id);
-    effect.lifetime = duration;
-    effect.active = true;
-
-    createGroundCircleNode(effect);
-    m_effects.push_back(effect);
 }
 
 } // namespace EQ

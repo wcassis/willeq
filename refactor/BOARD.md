@@ -2100,7 +2100,14 @@ it without taking that measurement first.
   `SpellDatabase` instance. Pre-fix-failing test: two spells of different
   resist types must produce different particle colours. Found by T380.
 
-- **B161** (B) `include/client/graphics/spell_visual_fx.h` — seven public → issue #116
+- **B161** (B) **B1138 (2026-10-23) deleted four of the seven** --
+  `createImpactAtPosition`, `createBuffAura`, `createRainEffect`,
+  `createGroundCircle` (+ their node builders, presets, config styles,
+  `hasBuffAura` and `ParticleManager::createSpellEffectAtPosition`): the
+  viewer, their one caller, now runs the client's own cast sequence. Open:
+  `createProjectile` (B1128) and B195's `removeBuffAura`/`removeAllForEntity`.
+  The text below is the pre-B1138 record.
+  `include/client/graphics/spell_visual_fx.h` — seven public → issue #116
   methods with **zero callers in `src/`/`include/`** (T381: `tools/` was never
   grepped for these either — re-run the census including it before deleting
   anything, see B166; `model_viewer.cpp` calls `createProjectile`,

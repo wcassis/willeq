@@ -386,6 +386,11 @@ struct SimulationInput {
         float density[3] = {1.0f, 1.0f, 1.0f};
         bool unifiedRendererInitialized = false;
         int poolSize = 1024;  // For deferred initialization
+        // B1138: 0 = seed the particle RNG from std::random_device (the
+        // client); any other value seeds it with that number, so
+        // tools/model_viewer's scripted FX harness renders the same frames
+        // twice. Read once, when the pool is first initialised.
+        uint32_t rngSeed = 0;
     } particleInput;
 
     // Boids system input

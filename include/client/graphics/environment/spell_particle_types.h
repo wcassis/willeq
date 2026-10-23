@@ -74,10 +74,7 @@ namespace SpellPresets {
     // the style is scaled for that record's held Source (applyPool).
     SpellEffectDef SpellComplete(glm::vec4 color, uint32_t spellId = 0, int record = -1);
     SpellEffectDef Impact(glm::vec4 color, uint32_t spellId = 0, int record = -1);
-    SpellEffectDef BuffAura(glm::vec4 color, uint32_t spellId = 0);
     SpellEffectDef Projectile(glm::vec4 color, uint32_t spellId = 0);
-    SpellEffectDef SpellRain(glm::vec4 color, float radius, uint32_t spellId = 0);
-    SpellEffectDef GroundCircle(glm::vec4 color, float radius, uint32_t spellId = 0);
     glm::vec4 resistToParticleColor(uint8_t resistType);
 
     // B1131 (#451): the Source of one spells.eff record (anchor class, shape,

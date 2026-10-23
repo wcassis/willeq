@@ -129,28 +129,29 @@ public:
     // ========================================================================
     // Effect Creation
     //
-    // WHO CALLS WHAT (board B161; census re-taken by T388 over src/, include/,
-    // tests/, tools/, benchmarks/ and docker/ -- the B166 rule: a zero-caller
-    // claim must name the directories it grepped, and tools/ must be one):
+    // WHO CALLS WHAT (board B161; census re-taken by B1138 over src/,
+    // include/, tests/, tools/, benchmarks/ and docker/ -- the B166 rule: a
+    // zero-caller claim names the directories it grepped, tools/ among them):
     //
-    //   Reached from the GAME (src/client/bridge/irrlicht_bridge.cpp):
-    //     createCastGlow / removeCastGlow, createSpellComplete, createImpact.
+    //   Reached from the GAME through src/client/bridge/spell_cast_fx.cpp
+    //   (the one FX body IrrlichtBridge AND tools/model_viewer --spell-test
+    //   run, B1138): createCastGlow / releaseCastGlow / removeCastGlow and
+    //   createLanding, which draws createSpellComplete + createImpact's legacy
+    //   halves on the scene-node path; createImpact is also the projectile's
+    //   arrival (update(), applyWorkerResults()).
     //
-    //   Reached ONLY from tools/model_viewer/model_viewer_spell_test.cpp --
-    //   the manual FX harness, the one place a developer exercises this layer
-    //   by hand -- and, for createProjectile, also from
-    //   tests/test_spell_visual_vocabulary.cpp:
-    //     createProjectile, createImpactAtPosition, createBuffAura,
-    //     createRainEffect, createGroundCircle.
-    //   These are KEPT deliberately: deleting them deletes the harness's
-    //   feature, and the projectile question is open (B165: 6,250 spells
-    //   populate the travel gate, 85 carry TravelType == 3 -- T384 put that
-    //   on SpellVisualVocabulary::travelType -- but what to DRAW for them
-    //   waits on B162's oracle capture). Do not wire them speculatively and
-    //   do not delete them; the decision is a planned unit.
+    //   createProjectile: reached only from tests/test_spell_visual_vocabulary.cpp
+    //   until B1128 wires it (B165: 85 spells carry TravelType == 3).
+    //
+    //   B1138 DELETED createImpactAtPosition, createBuffAura, createRainEffect
+    //   and createGroundCircle with their presets and config styles: only the
+    //   model_viewer's own pre-B1131 cast heuristics reached them, and the
+    //   client never does. Do not rebuild them for the viewer; the viewer runs
+    //   the client's sequence.
     //
     //   Called by NOTHING, in any directory: removeBuffAura,
-    //   removeAllForEntity (see the Effect Removal block below).
+    //   removeAllForEntity (see the Effect Removal block below); hasBuffAura
+    //   went with createBuffAura (B1138).
     // ========================================================================
 
     // Determine cast effect style from spell school (spray vs smolder/orbital)
@@ -166,9 +167,6 @@ public:
     // Create impact effect at target location
     void createImpact(uint16_t target_id, uint32_t spell_id);
 
-    // Create impact at specific position (for AE spells)
-    void createImpactAtPosition(const irr::core::vector3df& pos, uint32_t spell_id);
-
     // Create spell completion effect (burst of particles when cast succeeds)
     void createSpellComplete(uint16_t caster_id, uint32_t spell_id);
 
@@ -180,17 +178,6 @@ public:
     // other-target cast otherwise (B1131 FOLLOW-UP 1). Returns the entity the
     // landing follows (the head pseudo-entity for a head row), 0 when none.
     uint16_t createLanding(uint16_t caster_id, uint16_t target_id, uint32_t spell_id);
-
-    // Create persistent buff aura around entity
-    uint32_t createBuffAura(uint16_t entity_id, uint32_t spell_id);
-
-    // Create rain effect for AE spells
-    void createRainEffect(const irr::core::vector3df& center, float radius,
-                          uint32_t spell_id, float duration);
-
-    // Create ground circle for targeted AE
-    void createGroundCircle(const irr::core::vector3df& center, float radius,
-                           uint32_t spell_id, float duration);
 
     // ========================================================================
     // Effect Removal
@@ -226,7 +213,6 @@ public:
     // ========================================================================
 
     bool hasCastGlow(uint16_t caster_id) const;
-    bool hasBuffAura(uint16_t entity_id, uint32_t spell_id) const;
     size_t getActiveEffectCount() const { return m_effects.size(); }
 
     // ========================================================================
@@ -334,15 +320,11 @@ private:
     void createGlowNode(SpellFXInstance& effect);
     void createProjectileNode(SpellFXInstance& effect);
     void createImpactNode(SpellFXInstance& effect);
-    void createAuraNode(SpellFXInstance& effect);
-    void createRainNode(SpellFXInstance& effect);
-    void createGroundCircleNode(SpellFXInstance& effect);
 
     // Update individual effect types
     void updateProjectile(SpellFXInstance& effect, float delta_time,
                           std::vector<std::pair<uint16_t, uint32_t>>& pendingImpacts);
     void updateGlow(SpellFXInstance& effect, float delta_time);
-    void updateAura(SpellFXInstance& effect, float delta_time);
 
     irr::scene::ISceneManager* m_smgr;
     irr::video::IVideoDriver* m_driver;
