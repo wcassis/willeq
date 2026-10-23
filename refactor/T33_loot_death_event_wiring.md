@@ -201,7 +201,12 @@ place on death rather than spawning a second one:
    in T32's transcript at the same timestamp the corpse rename happened.
    [B1125: id 0 is now ignored outright — it is eqemu's despawn of the NPC
    object whose id went to the corpse, and the target mapping erased a
-   self-targeted player; `refactor/B1125/README.md`.]
+   self-targeted player; `refactor/B1125/README.md`. B1133: the corpse
+   special case that refused a real-id delete "until looting completes" is
+   gone too -- it dropped the server's ~1 s DeleteSpawn of every empty
+   corpse. The server owns corpse lifetime; a real-id DeleteSpawn of a
+   corpse closes its loot window if open and removes it;
+   `refactor/B1133/README.md`.]
 
 This means the id captured at `ZoneProcessDeath()` time (`victim_id`) is
 valid for the corpse's entire lifetime — no name/rename fallback needed.

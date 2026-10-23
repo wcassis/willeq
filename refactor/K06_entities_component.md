@@ -32,7 +32,7 @@ Members:
 | member | refs | elsewhere | decision |
 |---|---|---|---|
 | `m_pending_door_clicks` | 2 | none | **move** |
-| `m_loot_complete_corpse_id` | 3 | `eq_bridge_ui_audio.cpp` | shared: `owner_.` (loot cluster → K11) |
+| `m_loot_complete_corpse_id` | 3 | `eq_bridge_ui_audio.cpp` | shared: `owner_.` (loot cluster → K11) [B1133: member deleted, the DeleteSpawn loot gate it fed is gone] |
 | `m_exp`, `m_exp_aa` | 3 / 2 | `eq_zone_entry.cpp`, `eq.cpp` | shared with zone: `owner_.`; K09 moves them |
 | `m_player_graphics_entity_pending`, `m_req_new_zone_sent`, `m_send_exp_zonein_received`, `m_server_filter_sent`, `m_weather_received`, `m_zone_entry_sent`, `m_zone_lines`, `m_update_running` | 1–3 | zone / handshake / movement | shared: `owner_.`; zone-family members, K09 |
 | `m_world_objects` | 7 | `eq_player_misc.cpp`, `eq_action_handler_spells_trade.cpp`, `eq_bridge_intents.cpp`, `action/action_dispatcher.cpp` | shared non-core: `owner_.`; **candidate to move here when K08/K11/K12 retarget their readers — record the four reader sites** |
