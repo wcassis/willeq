@@ -251,11 +251,6 @@ public:
     // Convenience spell lookup
     const SpellData* getSpell(uint32_t spell_id) const { return m_spell_db.getSpell(spell_id); }
 
-    // T251: the component validateCast() last found short (0 when the last
-    // validation did not fail on reagents). Read by castRefusalMessage()
-    // right after a ComponentMissing result to name the item.
-    uint32_t getLastMissingReagentId() const { return m_last_missing_reagent_id; }
-
 private:
     // ========================================================================
     // Target Adjustment  (defined in src/client/spell/spell_cast_validation.cpp)
@@ -274,8 +269,8 @@ private:
     //
     // T407: validateCast / checkMana / checkEndurance / checkRange are defined
     // in src/client/spell/spell_cast_validation.cpp; checkLineOfSight /
-    // checkReagents / checkPlayerState / countCarriedItem in
-    // src/client/spell/spell_cast_checks.cpp (T246).
+    // checkPlayerState in src/client/spell/spell_cast_checks.cpp (T246).
+    // B1140: no reagent check -- components are judged by the server.
     // ========================================================================
 
     CastResult validateCast(const SpellData& spell, uint16_t target_id);
@@ -284,20 +279,14 @@ private:
     // by nothing until T355, so every discipline read as free here.
     bool checkEndurance(const SpellData& spell) const;
     bool checkRange(const SpellData& spell, uint16_t target_id) const;
-    // T246: these three were `return true` stubs until T246, which made
-    // T244's Stunned / Silenced / ComponentMissing / NoLineOfSight refusals
-    // unreachable. See the definitions for exactly what each one checks and
-    // what it deliberately leaves to the server.
+    // T246: these were `return true` stubs until T246, which made T244's
+    // Stunned / Silenced / NoLineOfSight refusals unreachable. See the
+    // definitions for exactly what each one checks and what it
+    // deliberately leaves to the server.
     bool checkLineOfSight(uint16_t target_id) const;
-    // T251: on false, `*missing_item_id` (if given) is the first component
-    // found short.
-    bool checkReagents(const SpellData& spell, uint32_t* missing_item_id = nullptr) const;
     // Success, or the first of Stunned / Silenced / Feared the player's
     // buff list shows (a Mez buff reports as Stunned).
     CastResult checkPlayerState() const;
-    // Units of `item_id` the player carries (worn + general + bag contents,
-    // the eqemu invWhereWorn|invWherePersonal set; not bank/trade/cursor).
-    uint32_t countCarriedItem(uint32_t item_id) const;
 
     // ========================================================================
     // Packet Sending  (defined in src/client/spell/spell_publish.cpp, beside
@@ -363,7 +352,6 @@ private:
     // ------------------------------------------------------------------------
 
     bool m_is_casting = false;
-    uint32_t m_last_missing_reagent_id = 0;  // T251, see getLastMissingReagentId()
     uint32_t m_current_spell_id = SPELL_UNKNOWN;
     uint16_t m_current_target_id = 0;
     uint8_t m_current_gem_slot = 0;

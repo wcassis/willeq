@@ -45,6 +45,15 @@
 #include <functional>
 #include <string>
 
+// B1140: SpellData::requiresReagents() went with the client-side reagent
+// check (no production reader); the tests read the same predicate here.
+static bool consumesReagents(const EQ::SpellData& s) {
+    for (size_t i = 0; i < EQ::MAX_SPELL_REAGENTS; ++i) {
+        if (s.reagent_id[i] != 0 && s.reagent_count[i] > 0) return true;
+    }
+    return false;
+}
+
 using namespace eqt;
 using namespace zonetest;
 
@@ -286,7 +295,7 @@ TEST_P(SourceWrites, Spells_BeginCastFromGem_WritesSourceCastingAndGem) {
     for (uint32_t cand = 1; cand <= 4000 && id == 0; ++cand) {
         const EQ::SpellData* s = mgr->getSpell(cand);
         if (s && s->target_type == EQ::SpellTargetType::Self && s->cast_time_ms > 0 &&
-            s->mana_cost >= 0 && !s->requiresReagents()) {
+            s->mana_cost >= 0 && !consumesReagents(*s)) {
             id = cand;
         }
     }
@@ -619,6 +628,39 @@ TEST_P(SourceWrites, Inventory_DeleteItem_ClearsSourceOccupancy) {
 
     ReplayZone(eq, HC_OP_DeleteItem, DeleteItemPayload(eqt::inventory::GENERAL_BEGIN + 3));
     EXPECT_FALSE(inv.hasGeneralItem(3));
+}
+
+// B1140: eqemu's Client::DeleteItemInInventory sends OP_DeleteItem when ONE
+// unit leaves a stack that survives (a consumed spell component; the stack
+// that empties is OP_MoveItem to=-1 instead). It is never an echo of the
+// client's own destroy. dacd9534 ignored it in the model ("trust our
+// client-side deletion") and published the slot EMPTY: a 2-stack of Fire
+// Opals read as gone in the UI and as 2 in the model. FAILS on dacd9534.
+TEST_P(SourceWrites, Inventory_DeleteItem_OnStackTakesOneUnit) {
+    eqt::inventory::ItemInstance opals;
+    opals.itemId = 10031;
+    opals.name = "Fire Opal";
+    opals.stackable = true;
+    opals.stackSize = 20;
+    opals.quantity = 2;
+    opals.slots = 0xFFFFFFFFu;
+    auto* mgr = eq.GetInventoryManager();
+    mgr->setItem(eqt::inventory::GENERAL_BEGIN + 2, opals);
+    ReplayZone(eq, HC_OP_MoveItem, MoveItemPayload(eqt::inventory::GENERAL_BEGIN + 2,
+                                                   eqt::inventory::GENERAL_BEGIN + 2));
+    const auto& inv = eq.GetGameState().inventory();
+    ASSERT_TRUE(inv.hasGeneralItem(2));
+
+    ReplayZone(eq, HC_OP_DeleteItem, DeleteItemPayload(eqt::inventory::GENERAL_BEGIN + 2));
+    const auto* left = mgr->getItem(eqt::inventory::GENERAL_BEGIN + 2);
+    ASSERT_NE(left, nullptr) << "one of two opals consumed: the stack is still there";
+    EXPECT_EQ(left->quantity, 1);
+    EXPECT_TRUE(inv.hasGeneralItem(2)) << "published occupancy follows the model";
+
+    // The last unit leaves as OP_MoveItem to=-1 (eqemu: the item is gone).
+    ReplayZone(eq, HC_OP_MoveItem, MoveItemPayload(eqt::inventory::GENERAL_BEGIN + 2, -1));
+    EXPECT_EQ(mgr->getItem(eqt::inventory::GENERAL_BEGIN + 2), nullptr);
+    EXPECT_FALSE(inv.hasGeneralItem(2));
 }
 
 // ---------------------------------------------------------------------

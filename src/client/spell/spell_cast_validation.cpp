@@ -8,8 +8,8 @@
  *      and isValidCreatureTarget() screens the body-type-restricted lines.
  *   2. MAY it be cast -- validateCast() is the single entry point, calling
  *      checkMana / checkEndurance / checkRange here and checkLineOfSight /
- *      checkReagents / checkPlayerState in the sibling TU
- *      spell_cast_checks.cpp (T246).
+ *      checkPlayerState in the sibling TU spell_cast_checks.cpp (T246).
+ *      Components are the server's (B1140, see validateCast()).
  *
  * Bodies moved verbatim; no behaviour change.
  */
@@ -153,12 +153,15 @@ CastResult SpellManager::validateCast(const SpellData& spell, uint16_t target_id
         }
     }
 
-    // Check reagents. T251: remember WHICH component was short so the
-    // refusal message can name it (castRefusalMessage(), cast_refusal.h).
-    m_last_missing_reagent_id = 0;
-    if (spell.requiresReagents() && !checkReagents(spell, &m_last_missing_reagent_id)) {
-        return CastResult::ComponentMissing;
-    }
+    // B1140: NO local reagent check. The official client sends OP_CastSpell
+    // with the component carried nowhere (oracle leg review/B1140/oracle/
+    // O1_wiz: 1899 Imbue Fire Opal, zero Fire Opals -> C->S OP_CastSpell);
+    // the server judges components when the cast FINISHES (eqemu
+    // spells.cpp CastedSpellFinished: worn+personal, never the cursor, pet
+    // spells exempt by rule) and answers with 272 + 433 and an interrupt,
+    // or consumes them (S->C OP_MoveItem to=-1 / OP_DeleteItem). T246's
+    // local refusal (never checked against the oracle) refused casts the
+    // official client sends, e.g. a reagent still in the cursor queue.
 
     return CastResult::Success;
 }
@@ -216,7 +219,7 @@ bool SpellManager::checkRange(const SpellData& spell, uint16_t target_id) const
     return distance <= spell.range;
 }
 
-// T246: checkLineOfSight / countCarriedItem / checkReagents / checkPlayerState
+// T246: checkLineOfSight / checkPlayerState
 // live in spell_cast_checks.cpp (same class, own TU).
 
 } // namespace EQ

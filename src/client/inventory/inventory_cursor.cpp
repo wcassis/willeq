@@ -250,6 +250,22 @@ bool InventoryManager::pickupPartialStack(int16_t slotId, int32_t quantity) {
     return true;
 }
 
+// B1140: /autoinventory. Slot choice in findAutoInventorySlot()
+// (inventory_bags.cpp); the wire is placeOnMatchingStack()'s / placeItem()'s.
+bool InventoryManager::autoInventoryCursor() {
+    const ItemInstance* front = getCursorItem();
+    if (!front) {
+        return false;
+    }
+    const int16_t slot = findAutoInventorySlot(*front);
+    if (slot == SLOT_INVALID) {
+        LOG_DEBUG(MOD_UI, "InventoryManager autoinventory: no slot for '{}'", front->name);
+        return false;
+    }
+    LOG_DEBUG(MOD_UI, "InventoryManager autoinventory: '{}' -> slot {}", front->name, slot);
+    return placeOnMatchingStack(slot);
+}
+
 bool InventoryManager::placeOnMatchingStack(int16_t targetSlot) {
     if (cursorQueue_.empty()) {
         return false;  // Nothing to place

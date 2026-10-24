@@ -558,6 +558,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_read_book DISCOVERY_TIMEOUT 120)
 
+# B1140: /autoinventory -- InventoryManager::autoInventoryCursor() replays
+# the official client's placements measured on lane 5 (review/B1140/oracle/
+# O1_wiz, O2_wiz). Graphics-free, no willeq.db.
+ADD_EXECUTABLE(test_autoinventory
+    test_autoinventory.cpp
+)
+TARGET_LINK_LIBRARIES(test_autoinventory GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_autoinventory PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_autoinventory DISCOVERY_TIMEOUT 120)
 # T276: scribe a spell scroll (T264 F5). /scribe -> ScribeSpellIntent ->
 # OP_MoveItem-then-OP_MemorizeSpell(scribing=0) wire bytes (real
 # DaybreakConnection over FakeUdpTransport) -> the server echo adds the

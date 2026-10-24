@@ -558,6 +558,13 @@ void CommandProcessor::registerInventoryCommands() {
         "Pick an item (or part of a stack) up onto the cursor (slot = inventory.slot_id)",
         "Inventory", false
     }, [this](const std::string& args) { return cmdPickup(args); });
+    // B1140: the official /autoinventory (oracle review/B1140/oracle/O1_wiz,
+    // O2_wiz) -- the cursor front to the slot the official client picks.
+    registerCommand({
+        "autoinventory", {}, "/autoinventory",
+        "Put the item on the cursor into your inventory (a matching stack, else the first free slot)",
+        "Inventory", false
+    }, [this](const std::string& args) { return cmdAutoInventory(args); });
     registerCommand({
         "putdown", {}, "/putdown <slot>",
         "Put the item on the cursor down in a slot (swaps or stacks like a click)",

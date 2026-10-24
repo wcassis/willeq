@@ -1,5 +1,7 @@
 # T246 — SpellManager's cast pre-checks are `return true` stubs (T244 finding)
 
+> **SUPERSEDED in part by B1140 (#460, refactor/B1140/README.md):** the local reagent refusal (`checkReagents`/`countCarriedItem`, and T251's named 433 for it) was never measured on the oracle and is REMOVED. The official client sends OP_CastSpell with the component carried nowhere (review/B1140/oracle/O1_wiz); the server says 272 + 433 when the cast finishes.
+
 Slot: slot3. x86. OWNS eqemu briefly (noclobber) for a live check of the
 reagent refusal. Class A (player state, reagents) / B (line of sight).
 Territory: src/client/spell/spell_manager.cpp `checkPlayerState`,

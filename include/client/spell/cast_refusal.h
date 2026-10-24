@@ -13,9 +13,10 @@
  * keep their own wording for those.
  *
  * T251: castRefusalMessage() is what both sites now call -- it renders the
- * id through the string DB and, for ComponentMissing, names the short
- * component with 433 "You are missing %1." (the official client's form)
- * whenever the item's name is known, falling back to the unnamed 272.
+ * id through the string DB. (T251 also named a short component with 433;
+ * B1140 removed the local reagent refusal -- the official client sends the
+ * cast and the SERVER says 272 + 433 -- so nothing local produces
+ * ComponentMissing any more.)
  *
  * T253: a THIRD site -- the mouse hotbar Spell arm (HotbarActivateIntent in
  * eq_bridge.cpp) -- had kept three literals and stayed silent for every
@@ -52,12 +53,8 @@ enum CastRefusalStringId : uint32_t {
 };
 
 // T251: the chat line for a refusal, or "" when the result has no official
-// string (see castRefusalStringId()). ComponentMissing reads the short
-// component from SpellManager::getLastMissingReagentId() and names it via
-// 433 when the InventoryManager's by-id item cache (every ItemPacket the
-// client has received: inventory, bank, merchant, loot, links) knows the
-// item; an item the client has never been sent has no local name source,
-// so 272 stands for it. Defined in src/client/spell/cast_refusal.cpp.
+// string (see castRefusalStringId()). Defined in
+// src/client/spell/cast_refusal.cpp.
 //
 // T366 (B038 cluster 4): takes the ClientContext, not EverQuest&. The three
 // things it reads -- the spell manager, the inventory manager and the eqstr

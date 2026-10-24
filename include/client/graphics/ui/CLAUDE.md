@@ -443,7 +443,7 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    (aliases `/memory`, `/mem_report`), `/music`, `/sound`, `/volume`
    (`/vol`), `/musicvolume` (`/mvol`), `/effectsvolume` (`/evol`, `/sfxvol`).
 2. **Registry 2 — `action::CommandProcessor`**
-   (`src/client/action/command_processor_registration.cpp`, **157**
+   (`src/client/action/command_processor_registration.cpp`, **158**
    `registerCommand({...})` calls — T347 inserted `/cleartarget` at entry 022
    and `tests/goldens/command_registration_order_g03.txt` pins both the count
    and the position, so re-read the golden header rather than this line; J04

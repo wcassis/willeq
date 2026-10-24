@@ -487,6 +487,7 @@ private:
     ActionResult cmdScribe(const std::string& args); // T276
     // B442 (#151): command_processor_cursor.cpp.
     ActionResult cmdPickup(const std::string& args);
+    ActionResult cmdAutoInventory(const std::string& args);  // B1140
     ActionResult cmdPutdown(const std::string& args);
     ActionResult cmdCursor(const std::string& args);
     ActionResult cmdCoin(const std::string& args);

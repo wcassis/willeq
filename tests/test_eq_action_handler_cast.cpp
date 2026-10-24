@@ -507,8 +507,9 @@ TEST(EqActionHandlerCast, CastSpell_PetSpellWithoutPet_SaysNoPet) {
 // =====================================================================
 // T246: the three cast pre-checks stop being `return true` stubs.
 // checkPlayerState() reads the player's buff list (a Stun/Mez buff ->
-// 175, Silence -> 207), checkReagents() counts consumed components in
-// worn+general+bag slots, checkLineOfSight() rays the zone collision map.
+// 175, Silence -> 207), checkLineOfSight() rays the zone collision map.
+// (T246's checkReagents() was removed by B1140: the official client sends
+// the cast without its components; the tests below pin that.)
 // On pre-T246 code every one of these casts PROCEEDS and puts an
 // OP_CastSpell on the wire (review/T246/red_cast.txt).
 // =====================================================================
@@ -518,6 +519,15 @@ TEST(EqActionHandlerCast, CastSpell_PetSpellWithoutPet_SaysNoPet) {
 #include "client/spell/buff_manager.h"
 
 #include <unistd.h>
+
+// B1140: SpellData::requiresReagents() went with the client-side reagent
+// check (no production reader); the tests read the same predicate here.
+static bool consumesReagents(const EQ::SpellData& s) {
+    for (size_t i = 0; i < EQ::MAX_SPELL_REAGENTS; ++i) {
+        if (s.reagent_id[i] != 0 && s.reagent_count[i] > 0) return true;
+    }
+    return false;
+}
 
 namespace {
 
@@ -536,7 +546,7 @@ uint32_t findSelfSpellWithReagent(EverQuest& eq, uint32_t& reagent_id, uint32_t&
     auto& db = eq.GetSpellManager()->getDatabase();
     for (uint32_t id = 1; id <= 4000; ++id) {
         const EQ::SpellData* s = db.getSpell(id);
-        if (s && s->requiresReagents() && s->target_type == EQ::SpellTargetType::Self &&
+        if (s && consumesReagents(*s) && s->target_type == EQ::SpellTargetType::Self &&
             s->cast_time_ms > 0 && s->mana_cost < 100) {
             reagent_id = s->reagent_id[0];
             reagent_count = s->reagent_count[0];
@@ -665,7 +675,12 @@ TEST(EqActionHandlerCast, CastSpell_OrdinaryBuffOnPlayer_DoesNotBlock) {
     EXPECT_EQ(h.sentCasts().size(), 1u);
 }
 
-TEST(EqActionHandlerCast, CastSpell_MissingReagent_SaysMissingComponentsSendsNothing) {
+// B1140: the official client sends the cast with the component carried
+// NOWHERE (oracle leg review/B1140/oracle/O1_wiz: 1899 Imbue Fire Opal with
+// zero Fire Opals -> C->S OP_CastSpell; the server answers 272 + 433 when
+// the cast finishes). T246's local refusal sent nothing here. FAILS on
+// dacd9534 (review/B1140/red_cast.txt).
+TEST(EqActionHandlerCast, CastSpell_NoReagentCarried_SendsCastLikeOfficialClient) {
     if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
     WireHarness h;
     ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
@@ -681,11 +696,47 @@ TEST(EqActionHandlerCast, CastSpell_MissingReagent_SaysMissingComponentsSendsNot
 
     h.handler.castSpell(1);
 
-    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
-    EXPECT_TRUE(h.sentCasts().empty()) << "no OP_CastSpell for spell " << id << " without item " << reagent;
-    // T251: an item the client has never received an ItemPacket for has no
-    // name to put in 433, so the unnamed 272 stands -- with eqstr's text.
-    EXPECT_EQ(h.lastSystemMessage(), "You are missing some required components.");
+    EXPECT_TRUE(h.eq.GetSpellManager()->isCasting());
+    auto casts = h.sentCasts();
+    ASSERT_EQ(casts.size(), 1u) << "OP_CastSpell for spell " << id << " without item " << reagent;
+    EXPECT_EQ(casts[0].spell_id, id);
+    EXPECT_EQ(h.lastSystemMessage().find("missing"), std::string::npos) << h.lastSystemMessage();
+}
+
+// B1140, the defect's own state: 1899 Imbue Fire Opal (1 x 10031) with the
+// Fire Opal summoned into the cursor QUEUE behind an item already on the
+// cursor (Testcaster logs in holding Crimson Robe of Alendine 11641 there;
+// #summonitem's OP_ItemPacket names slot 30 for the opal). The official
+// client casts (B1127 legC, B1140 O1); dacd9534 said "You are missing Fire
+// Opal." and sent nothing.
+TEST(EqActionHandlerCast, CastSpell_ImbueFireOpal_OpalQueuedOnCursor_SendsCast) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    WireHarness h;
+    ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
+    const EQ::SpellData* fo = h.eq.GetSpellManager()->getSpell(1899);
+    if (!fo || fo->reagent_id[0] != 10031u || fo->reagent_count[0] != 1u) {
+        GTEST_SKIP() << "spell 1899 is not Imbue Fire Opal with 1 x 10031 in this DB";
+    }
+
+    h.spawnSelfAndGuard();
+    h.eq.GetGameState().player().setMana(1000, 1000);
+    h.loadGemsLikePlayerProfile({1899, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty, kEmpty});
+    auto* inv = h.eq.GetInventoryManager();
+    eqt::inventory::ItemInstance robe;
+    robe.itemId = 11641;
+    robe.name = "Crimson Robe of Alendine";
+    inv->setItem(eqt::inventory::CURSOR_SLOT, robe);
+    inv->setItem(eqt::inventory::CURSOR_SLOT, makeStack(10031, 1, "Fire Opal"));
+    ASSERT_EQ(inv->getItem(eqt::inventory::CURSOR_SLOT)->itemId, 11641u) << "the opal queues behind the robe";
+    h.clearSent();
+
+    h.handler.castSpell(1);
+
+    EXPECT_TRUE(h.eq.GetSpellManager()->isCasting());
+    auto casts = h.sentCasts();
+    ASSERT_EQ(casts.size(), 1u);
+    EXPECT_EQ(casts[0].spell_id, 1899u);
+    EXPECT_EQ(h.lastSystemMessage().find("missing"), std::string::npos) << h.lastSystemMessage();
 }
 
 TEST(EqActionHandlerCast, CastSpell_ReagentPresent_CastProceeds) {
@@ -713,7 +764,9 @@ TEST(EqActionHandlerCast, CastSpell_ReagentPresent_CastProceeds) {
 }
 
 // Bone Walk needs 2 x item 13073: one carried is a refusal, two is a cast.
-TEST(EqActionHandlerCast, CastSpell_ReagentCountShort_RefusedUntilStackReachesCount) {
+// B1140: one chip of Bone Walk's 2 x 13073 is not a local refusal either --
+// the count is the server's to judge (was T246's count-short refusal).
+TEST(EqActionHandlerCast, CastSpell_ReagentCountShort_StillSendsCast) {
     if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
     WireHarness h;
     ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
@@ -729,22 +782,14 @@ TEST(EqActionHandlerCast, CastSpell_ReagentCountShort_RefusedUntilStackReachesCo
     h.clearSent();
 
     h.handler.castSpell(1);
-    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
-    EXPECT_TRUE(h.sentCasts().empty());
-    // T251: the one chip carried names the item -> 433, not 272.
-    EXPECT_EQ(h.lastSystemMessage(), "You are missing Bone Chips.");
-
-    // A second single chip in another slot: counts add up across slots.
-    h.eq.GetInventoryManager()->setItem(eqt::inventory::GENERAL_BEGIN + 1, makeStack(13073, 1, "Bone Chips"));
-    h.clearSent();
-    h.handler.castSpell(1);
     EXPECT_TRUE(h.eq.GetSpellManager()->isCasting());
     EXPECT_EQ(h.sentCasts().size(), 1u);
+    EXPECT_EQ(h.lastSystemMessage().find("missing"), std::string::npos) << h.lastSystemMessage();
 }
 
-// T251: the UI route (CastSpellIntent through ProcessBridgeIntents, the
-// second refusal site T244 unified) renders the same named 433.
-TEST(EqActionHandlerCast, CastSpellIntent_ReagentCountShort_SaysMissingNamedItem) {
+// T251/B1140: the UI route (CastSpellIntent through ProcessBridgeIntents, the
+// second refusal site T244 unified) sends the cast too.
+TEST(EqActionHandlerCast, CastSpellIntent_ReagentCountShort_SendsCast) {
     if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
     WireHarness h;
     ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
@@ -762,18 +807,19 @@ TEST(EqActionHandlerCast, CastSpellIntent_ReagentCountShort_SaysMissingNamedItem
     h.bridge.pushIntent(eqt::events::CastSpellIntent{0});
     h.eq.Bridge().ProcessBridgeIntents();
 
-    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
-    EXPECT_TRUE(h.sentCasts().empty());
-    EXPECT_EQ(h.lastSystemMessage(), "You are missing Bone Chips.");
+    EXPECT_TRUE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_EQ(h.sentCasts().size(), 1u);
+    EXPECT_EQ(h.lastSystemMessage().find("missing"), std::string::npos) << h.lastSystemMessage();
 }
 
 // T253: the THIRD refusal site -- a mouse click on a hotbar Spell button
 // (HotbarActivateIntent, HotbarSlotType::Spell, eq_bridge.cpp) -- kept its
 // own literals after T244/T251 and said NOTHING for ComponentMissing,
 // OutOfRange, NoLineOfSight, InvalidTarget, Stunned, Silenced, NoPet.
-// Both cases below FAIL on the pre-T253 arm (lastSystemMessage() stays
-// empty); see review/T253/red_hotbar.txt.
-TEST(EqActionHandlerCast, HotbarSpellClick_ReagentCountShort_SaysMissingNamedItem) {
+// The out-of-range case below FAILS on the pre-T253 arm
+// (lastSystemMessage() stays empty); see review/T253/red_hotbar.txt.
+// B1140: no local component refusal on this site either -- the click casts.
+TEST(EqActionHandlerCast, HotbarSpellClick_ReagentCountShort_SendsCast) {
     if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
     WireHarness h;
     ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
@@ -795,9 +841,9 @@ TEST(EqActionHandlerCast, HotbarSpellClick_ReagentCountShort_SaysMissingNamedIte
     h.bridge.pushIntent(click);
     h.eq.Bridge().ProcessBridgeIntents();
 
-    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
-    EXPECT_TRUE(h.sentCasts().empty());
-    EXPECT_EQ(h.lastSystemMessage(), "You are missing Bone Chips.");
+    EXPECT_TRUE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_EQ(h.sentCasts().size(), 1u);
+    EXPECT_EQ(h.lastSystemMessage().find("missing"), std::string::npos) << h.lastSystemMessage();
 }
 
 TEST(EqActionHandlerCast, HotbarSpellClick_TargetOutOfRange_SaysOutOfRange) {
@@ -826,9 +872,9 @@ TEST(EqActionHandlerCast, HotbarSpellClick_TargetOutOfRange_SaysOutOfRange) {
     EXPECT_EQ(h.lastSystemMessage(), "Your target is out of range, get closer!");
 }
 
-// A reagent sitting in the BANK does not count (eqemu checks worn +
-// personal only).
-TEST(EqActionHandlerCast, CastSpell_ReagentOnlyInBank_StillRefused) {
+// B1140: a reagent only in the BANK is not a local refusal (eqemu's
+// worn+personal check refuses it when the cast finishes); the cast is sent.
+TEST(EqActionHandlerCast, CastSpell_ReagentOnlyInBank_StillSendsCast) {
     if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
     WireHarness h;
     ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
@@ -845,11 +891,9 @@ TEST(EqActionHandlerCast, CastSpell_ReagentOnlyInBank_StillRefused) {
 
     h.handler.castSpell(1);
 
-    EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
-    EXPECT_TRUE(h.sentCasts().empty());
-    // T251: the banked stack's ItemPacket taught the client the name, so
-    // the refusal is the named 433 even though the bank does not count.
-    EXPECT_EQ(h.lastSystemMessage(), "You are missing Banked Reagent.");
+    EXPECT_TRUE(h.eq.GetSpellManager()->isCasting());
+    EXPECT_EQ(h.sentCasts().size(), 1u);
+    EXPECT_EQ(h.lastSystemMessage().find("missing"), std::string::npos) << h.lastSystemMessage();
 }
 
 // Wall between caster and target -> 108 and nothing sent; the same wall

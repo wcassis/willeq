@@ -13,7 +13,6 @@
 #include "client/spell/spell_manager.h"
 #include "client/eq.h"
 #include "client/hc_map.h"
-#include "client/inventory/inventory_manager.h"
 #include "client/spell/buff_manager.h"
 #include "common/logging.h"
 
@@ -71,60 +70,10 @@ bool SpellManager::checkLineOfSight(uint16_t target_id) const
     return clear;
 }
 
-uint32_t SpellManager::countCarriedItem(uint32_t item_id) const
-{
-    const auto* inv = m_eq->GetInventoryManager();
-    if (!inv || item_id == 0) {
-        return 0;
-    }
-
-    using namespace eqt::inventory;
-    uint32_t total = 0;
-    auto countSlot = [&](int16_t slot) {
-        const ItemInstance* item = inv->getItem(slot);
-        if (item && item->itemId == item_id) {
-            total += item->stackable && item->quantity > 0 ? static_cast<uint32_t>(item->quantity) : 1u;
-        }
-    };
-    for (int16_t slot = EQUIPMENT_BEGIN; slot <= EQUIPMENT_END; ++slot) countSlot(slot);
-    for (int16_t slot = GENERAL_BEGIN; slot <= GENERAL_END; ++slot) countSlot(slot);
-    for (int16_t slot = GENERAL_BAGS_BEGIN; slot <= GENERAL_BAGS_END; ++slot) countSlot(slot);
-    return total;
-}
-
-// T246. Every consumed component (reagent_id/reagent_count, populated from
-// willeq.db since T246) must be carried in at least the listed count.
-// Deliberately NOT checked: noexpend_reagent_id (the held-not-consumed
-// focus; carried in SpellData as plumbing only) and a reagent whose count
-// is 0 in the data -- both left to the server rather than risk refusing a
-// cast it would accept.
-//
-// T251: the first component found short is reported through
-// `missing_item_id` (when the caller passes one) so the refusal can name
-// it -- eqstr 433 "You are missing %1." -- instead of the generic 272.
-bool SpellManager::checkReagents(const SpellData& spell, uint32_t* missing_item_id) const
-{
-    if (missing_item_id) {
-        *missing_item_id = 0;
-    }
-    for (size_t i = 0; i < MAX_SPELL_REAGENTS; ++i) {
-        uint32_t id = spell.reagent_id[i];
-        uint32_t needed = spell.reagent_count[i];
-        if (id == 0 || needed == 0) {
-            continue;
-        }
-        uint32_t have = countCarriedItem(id);
-        if (have < needed) {
-            LOG_DEBUG(MOD_SPELL, "checkReagents: spell '{}' needs {} x item {}, carrying {}",
-                spell.name, needed, id, have);
-            if (missing_item_id) {
-                *missing_item_id = id;
-            }
-            return false;
-        }
-    }
-    return true;
-}
+// B1140: countCarriedItem() / checkReagents() (T246/T251) are gone. The
+// official client refuses nothing for a missing component (oracle leg
+// review/B1140/oracle/O1_wiz); the server judges components when the cast
+// finishes. See validateCast() and refactor/B1140/README.md.
 
 // T246/T247. Two sources of casting-blocker state: the instantaneous
 // OP_Stun packet (T247: EverQuest::IsStunned(), a duration the server

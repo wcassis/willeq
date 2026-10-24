@@ -116,8 +116,8 @@ void eqt::merchant::MerchantComponent::ZoneProcessMoveItem(const EQ::Net::Packet
 
 void eqt::merchant::MerchantComponent::ZoneProcessDeleteItem(const EQ::Net::Packet &p)
 {
-	// Server response to our DeleteItem request
-	LOG_DEBUG(MOD_INVENTORY, "Received DeleteItem response");
+	// Server-side deletion of one unit (B1140: never an echo of our own destroy)
+	LOG_DEBUG(MOD_INVENTORY, "Received DeleteItem");
 
 	if (ctx_.inventory_manager) {
 		ctx_.inventory_manager->processDeleteItemResponse(p);
@@ -125,16 +125,25 @@ void eqt::merchant::MerchantComponent::ZoneProcessDeleteItem(const EQ::Net::Pack
 
 	// Publish InventorySlotChanged for the deleted slot (D18a: bridge-only)
 	// T221: the source-side occupancy write precedes the bridge guard.
+	// B1140: a stack that loses one unit is still there -- publish the slot's
+	// real state after processDeleteItemResponse(), not "empty".
 	if (p.Length() >= 6) {
 		int16_t slot = static_cast<int16_t>(p.GetUInt32(2));
-		SyncInventorySlotToGameState(slot, false);
+		const auto* item = ctx_.inventory_manager ? ctx_.inventory_manager->getItem(slot) : nullptr;
+		const bool hasItem = item != nullptr && item->itemId != 0;
+		SyncInventorySlotToGameState(slot, hasItem);
 		if (!ctx_.bridge) {
 			return;
 		}
 		eqt::state::InventorySlotChangedData data;
 		data.slotId = slot;
-		data.hasItem = false;
-		data.itemId = 0;
+		data.hasItem = hasItem;
+		data.itemId = hasItem ? item->itemId : 0;
+		data.itemName = hasItem ? item->name : "";
+		data.iconId = hasItem ? item->icon : 0;
+		data.quantity = hasItem ? item->quantity : 0;
+		data.bagSlots = hasItem ? item->bagSlots : 0;
+		data.scrollSpellId = hasItem ? item->getScrollSpellId() : 0;
 		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 	}

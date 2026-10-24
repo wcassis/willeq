@@ -1,5 +1,7 @@
 # T251 — "You are missing <item>." for missing spell components (T246 leftover)
 
+> **SUPERSEDED in part by B1140 (#460, refactor/B1140/README.md):** the local reagent refusal (`checkReagents`/`countCarriedItem`, and T251's named 433 for it) was never measured on the oracle and is REMOVED. The official client sends OP_CastSpell with the component carried nowhere (review/B1140/oracle/O1_wiz); the server says 272 + 433 when the cast finishes.
+
 Slot: slot2. x86. NO eqemu. Class A. Territory: src/client/spell/
 spell_cast_checks.cpp `checkReagents` (return WHICH component is missing),
 include/client/spell/cast_refusal.h, src/client/eq_strings.cpp fallback
