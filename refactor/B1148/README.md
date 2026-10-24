@@ -127,7 +127,11 @@ a real corpse through `beginCorpseFade` + the walk (untouched at 1.25 s, alpha 1
 gone at 3.55), live spawn not listed, id reuse, Dark Elf female T04/T05/T06 within 0.3 s of B1145's per-anim
 medians (4.077/4.349/4.287), per-race tracks differ; `WILLEQ_CAST_TRACK_TSV` writes `cast_tracks.tsv`.
 `test_spell_slot_rules.cpp`: `TheSourceRunsTheCastersOwnCastAnimationTrack`. `test_spell_impact_visual.cpp`:
-the source-scan string carries `d.castAnim`. Build/ctest results: `review/B1148/README.md`.
+the source-scan string carries `d.castAnim`. Whole tree with the CI flags (`cmake --build build-ci -j 4 -- -k`):
+BUILD_EXIT=0, 0 `error:` lines (`review/B1148/build_ci_whole.log`); `ctest -R "Spell|Bridge|Particle|FxHarness|
+Entities|DeleteSpawn|Oracle|SlotRules|CorpseFade|CastAnimationTerm|CorpsePose|..."` 957/957 with
+`EQ_CLIENT_PATH=/mnt/projects/EverQuestP1999` (`ctest_targeted.log`); `ctest -L hygiene` 51/51 (`ctest_hygiene.log`).
+CLAUDE.md 59,957 bytes.
 
 ## FOLLOW-UP
 
