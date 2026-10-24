@@ -176,7 +176,7 @@ lane" for the taxonomy and how it hangs off `AutomatedMode`'s per-tick hook.
 | TU | Lines | Contents |
 |---|---|---|
 | command_processor_social.cpp | 798 | Chat, target/attack, group/raid, duel, trade, who/inspect, guild |
-| command_processor_registration.cpp | 891 | G03: `registerBuiltinCommands()` is now 22 lines — the ORDERED list of 21 per-family `registerXCommands()` calls that hold the same **155** `registerCommand({…})` calls (T347 inserted `/cleartarget`, B897 `/friends` and `/ignore`, B899 `/bag`, B442 `/pickup` `/putdown` `/cursor` `/coin`), the whole registry-2 vocabulary. Order is load-bearing (a later registration shadows an earlier name/alias, J04/T097) and is pinned by `tests/test_command_registration_order.cpp` against `tests/goldens/command_registration_order_g03.txt` |
+| command_processor_registration.cpp | 1015 | G03: `registerBuiltinCommands()` is now 22 lines — the ORDERED list of 21 per-family `registerXCommands()` calls that hold the same **158** `registerCommand({…})` calls (T347 inserted `/cleartarget`, B897 `/friends` and `/ignore`, B899 `/bag`, B442 `/pickup` `/putdown` `/cursor` `/coin`, B1140 `/autoinventory`), the whole registry-2 vocabulary. Order is load-bearing (a later registration shadows an earlier name/alias, J04/T097) and is pinned by `tests/test_command_registration_order.cpp` against `tests/goldens/command_registration_order_g03.txt` |
 | command_processor_spells_gm.cpp | 713 | Cast/mem/gems/buffs/spellbook, pet, stance and movement modes, logging controls, track/find, the GM family, /appearance |
 | command_processor_world.cpp | 490 | Corpse/consent, world objects, tradeskill recipes, vendor/buy/sell, equip/read/scribe, loc/sit/stand/move/warp/follow, quit/camp, debug/perf/time |
 | src/client/action/command_processor.cpp | 284 | Core: processCommand/processInput, registerCommand, lookup/completion/category queries, parsing helpers, message sinks |
@@ -190,11 +190,11 @@ lane" for the taxonomy and how it hangs off `AutomatedMode`'s per-tick hook.
 
 | TU | Lines | Contents |
 |---|---|---|
-| inventory_cursor.cpp | 800 | Cursor pickup/place, partial stacks, cursor money, scribe scroll, swap/move, equip validation |
+| inventory_cursor.cpp | 887 | Cursor pickup/place, partial stacks, cursor money, scribe scroll, swap/move, equip validation, `/autoinventory` (B1140 `autoInventoryCursor`) |
 | inventory_manager.cpp | 581 | Core: slot get/set/remove, item cache, per-container accessors, stat/weight calculation, destroy |
 | inventory_item_parser.cpp | 503 | The wire item-blob parser |
-| inventory_bags.cpp | 414 | Bag/world-container/bank-bag placement rules, lore conflicts, bag contents |
-| inventory_packets.cpp | 276 | processCharInventory, processItemPacket, move/delete responses, dumpInventory |
+| inventory_bags.cpp | 445 | Bag/world-container/bank-bag placement rules, lore conflicts, bag contents, the `/autoinventory` slot choice (B1140 `findAutoInventorySlot`, measured on the oracle) |
+| inventory_packets.cpp | 300 | processCharInventory, processItemPacket, move/delete responses (B1140: a server OP_DeleteItem takes one unit off a stack), dumpInventory |
 | inventory_constants.cpp | 125 | Slot constants and name tables |
 
 ## Spells — SpellManager (`include/client/spell/spell_manager.h`) — split by T407
@@ -212,7 +212,7 @@ the TU that defines the bodies under it.
 | spell_gems.cpp | 350 | The gem bar and the spellbook — one storage family (`m_spell_gems`, `m_gem_states`, `m_gem_cooldown_start`/`_duration`, `m_memorize_*`, `m_spellbook`): `memorizeSpell`, `forgetSpell`, the six gem accessors, `calculateMemorizeTime`, `findGemSlotForSpell`, `startGemCooldown`, `scribeSpell`, `hasSpellScribed`, `getSpellbookSpell`, `findFreeSpellbookSlot`, `getScribedSpells`, `setSpellbook`, `setSpellGems`, `applyServerGemUpdate` (T404's server-driven gem edit) |
 | spell_packet_handlers.cpp | 520 | The inbound-packet arms the zone dispatcher calls — `handleBeginCast`, `handleAction`, `handleInterrupt` (T469), `handleManaChange`, `handleSpellBarRefresh` (T482, `OP_MemorizeSpell` scribing 3) and `noteZonePacket` (T482) — with T469's `endOwnCastByServer` and T482's `releaseConfirmedCast` / `resolvePendingOutcome` / `publishOwnCastReleased`: how the server ends our own cast. Plus `showSpellMessages` / `showBeginCastMessage`, whose only callers they are. T357's deleted spell-land hook sat inside `handleAction()`; `SpellLandHookIsGone` in `tests/test_spell_manager_timing.cpp` reads this TU (and every sibling) as text to keep it gone |
 | spell_cast_validation.cpp | 222 | The pre-cast decision layer: `adjustTargetForSpellType`, `isValidCreatureTarget`, then `validateCast` and the three checks it owns — `checkMana`, `checkEndurance` (T355), `checkRange` |
-| spell_cast_checks.cpp | 171 | T246: the other four pre-cast checks — `checkLineOfSight`, `countCarriedItem`, `checkReagents`, `checkPlayerState`. Each is permissive wherever the client has no state to judge from |
+| spell_cast_checks.cpp | 120 | T246: the other pre-cast checks — `checkLineOfSight`, `checkPlayerState`. Each is permissive wherever the client has no state to judge from. No reagent check: B1140 measured the official client sending a cast with its component carried nowhere (the server judges components at cast end) and removed T246's `checkReagents`/`countCarriedItem` |
 | spell_publish.cpp | 148 | Everything that leaves the class: the three outbound packets (`sendCastSpellPacket`, `sendInterruptPacket`, `sendMemorizePacket`) and the three bridge publishers (`publishCastStarted`, `publishCastComplete` — T44 — and `publishGemChanged` — U06b), each of which also does T221's source-side `GameState` write first |
 
 Beside it in `src/client/spell/`, the spell VISUAL data readers (no `SpellManager` bodies):

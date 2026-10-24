@@ -180,11 +180,13 @@ TEST(CommandRegistrationOrderTest, GoldenIsPresentAndTheRightSize) {
     // +1 by B1025-H3 (#345): entry 029 `hotbutton` INSERTED after 028
     // `useskill` (registerCombatCommands, beside /useskill); 029-156
     // renumbered to 030-157.
-    EXPECT_EQ(golden.size(), 157u)
+    // +1 by B1140 (#460): entry 082 `autoinventory` INSERTED after 081
+    // `pickup`, 082-157 renumbered to 083-158.
+    EXPECT_EQ(golden.size(), 158u)
         << "142 commands at G03, +1 for T347's /cleartarget, +4 for B442's cursor "
            "commands, +5 for B895's tracking family, +1 for B899's /bag, +2 for "
            "B897's /friends and /ignore, +1 for B900's /range, +1 for "
-           "B1025-H3's /hotbutton; the golden has "
+           "B1025-H3's /hotbutton, +1 for B1140's /autoinventory; the golden has "
         << golden.size();
     for (const auto& n : golden) {
         EXPECT_FALSE(n.empty());
