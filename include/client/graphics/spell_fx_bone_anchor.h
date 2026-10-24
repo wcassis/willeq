@@ -48,5 +48,19 @@ inline bool resolveSpellFxBoneDirection(const EQAnimatedMeshSceneNode* node, uin
     return bone >= 0 && node->getBoneWorldDirection(bone, out);
 }
 
+// B1148 (#468): the length in ms of `node`'s animation track `code` (the
+// skeleton's own, donor tracks included: frames x frame ms,
+// s3d_loader_skinning.cpp) -- what eqgame 0x47ddd4 reads off the caster
+// actor for the spell's CastingAnim. -1 when the node, its skeleton or the
+// track is missing.
+inline int32_t CastAnimationTrackMs(const EQAnimatedMeshSceneNode* node, const char* code) {
+    if (!node || !code) return -1;
+    const auto skeleton = node->getAnimator().getSkeleton();
+    if (!skeleton) return -1;
+    const auto it = skeleton->animations.find(code);
+    if (it == skeleton->animations.end() || !it->second) return -1;
+    return it->second->animationTimeMs;
+}
+
 }  // namespace Graphics
 }  // namespace EQT

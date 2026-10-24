@@ -21,13 +21,20 @@
  * args"): Source = the cast time + the cast animation's length (0x49b977:
  * cast_ms + 0x47ddd4()), Middle = spell field 18 (0x476b12), Target = 0.
  *
- * MEASURED, not in the file:
- *   - kSpellFxCastAnimationSeconds: 0x47ddd4 returns the length of the
- *     caster model's cast animation track (model data, not traced). B1145
- *     measured the term on the official client: the caster box of the 20
- *     unsaturated B1130 other-target captures stops being fed a median 4.35 s
- *     after OP_Action (IQR 4.12..4.81, CastingAnim 42/43/44 alike;
- *     review/B1145/cast_anim/, scripts/cast_anim_fit.py).
+ * The cast-animation term (B1148, #468): 0x47ddd4(spell+0x186) indexes the
+ * caster actor's animation table by the spell's CastingAnim (field 120) and
+ * returns that track's length (ftol of the track object's first virtual).
+ * The id names the track through eqgame's code table (0x8ffbc8 + id * 20,
+ * filled by 0x44e7ec..: 1 = C01 .. 42 = T04, 43 = T05, 44 = T06;
+ * SpellCastAnimationCode); fable reads the length from the caster's own
+ * skeleton (frames x frame ms, s3d_loader_skinning.cpp), the model data the
+ * client reads. A caster whose model fable cannot resolve (no entity, no
+ * track) takes kSpellFxCastAnimationSeconds, the term B1145 MEASURED on the
+ * official client: the caster box of the 20 unsaturated B1130 other-target
+ * captures stops being fed a median 4.35 s after OP_Action (IQR 4.12..4.81;
+ * review/B1145/cast_anim/, scripts/cast_anim_fit.py) -- that caster was
+ * char 67, a Dark Elf female, whose model's T04/T05/T06 (the ELF donor's,
+ * animation_mapping.cpp) are 4100 ms each.
  *   - the stage's start itself (the client's delay from the packet to the
  *     first emission) is the measured stage latency the caller passes; no
  *     slot of the 40 measured records has a +0x8C on its first emitter, yet
@@ -45,18 +52,45 @@
 namespace EQ {
 
 // B1145: the cast-animation term eqgame adds to the Source duration, seconds
-// (measured; see the header comment).
+// (measured; see the header comment). B1148: only the fallback for a caster
+// whose model track fable cannot read.
 constexpr float kSpellFxCastAnimationSeconds = 4.35f;
+
+// B1148 (#468): eqgame's animation id -> track code table (0x8ffbc8 + id *
+// 20, filled by 0x44e7ec..0x44ed..; read from the binary by
+// review/B1148/scripts/anim_code_table.py). Lower case, the codes fable's
+// skeletons key their animations by. nullptr for an id outside 1..78.
+inline const char* SpellCastAnimationCode(int id) {
+    static const char* const kCodes[] = {
+        nullptr,
+        "c01", "c02", "c03", "c04", "c05", "c06", "c07", "c08", "c09", "c10", "c11",  //  1..11
+        "d01", "d02", "d03", "d04", "d05",                                             // 12..16
+        "l01", "l02", "l03", "l04", "l05", "l06", "l07", "l08", "l09",                 // 17..25
+        "o01",                                                                          // 26
+        "s01", "s02", "s03", "s04", "s05",                                             // 27..31
+        "p01", "p02", "p03", "p04", "p05", "p06", "p07",                               // 32..38
+        "t01", "t02", "t03", "t04", "t05", "t06", "t07", "t08", "t09",                 // 39..47
+        "s06", "s07", "s08", "s09", "s10", "s11", "s12", "s13", "s14", "s15", "s16",   // 48..58
+        "s17", "s18", "s19", "s20", "s21", "s22", "s23", "s24", "s25", "s26", "s27",   // 59..69
+        "s28", "p08", "o02", "o03", "p09", "l11", "l12", "s29", "l10",                 // 70..78
+    };
+    constexpr int kCount = static_cast<int>(sizeof(kCodes) / sizeof(kCodes[0]));
+    return (id > 0 && id < kCount) ? kCodes[id] : nullptr;
+}
 
 enum class SpellFxStage : int { Source = 0, Middle = 1, Target = 2 };
 
 // The caller duration eqgame passes to every slot of a stage, in ms (the
 // unit CreateEmitter takes: 0 = none given).
-inline int32_t SpellFxCallerDurationMs(SpellFxStage stage, int32_t castMs, int32_t field18Ms) {
+// castAnimMs: the caster model's CastingAnim track length (0x47ddd4), < 0 =
+// unknown -> kSpellFxCastAnimationSeconds.
+inline int32_t SpellFxCallerDurationMs(SpellFxStage stage, int32_t castMs, int32_t field18Ms,
+                                       int32_t castAnimMs = -1) {
     switch (stage) {
         case SpellFxStage::Source:
             return std::max<int32_t>(castMs, 0) +
-                   static_cast<int32_t>(kSpellFxCastAnimationSeconds * 1000.0f + 0.5f);
+                   (castAnimMs >= 0 ? castAnimMs
+                                    : static_cast<int32_t>(kSpellFxCastAnimationSeconds * 1000.0f + 0.5f));
         case SpellFxStage::Middle: return std::max<int32_t>(field18Ms, 0);
         case SpellFxStage::Target: return 0;
     }

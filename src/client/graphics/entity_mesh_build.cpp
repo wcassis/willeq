@@ -34,6 +34,12 @@ bool EntityRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const std
                                      uint8_t gender, const EntityAppearance& appearance, bool isNPC,
                                      bool isCorpse, float serverSize, uint8_t entityLevel) {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityInstances);  // T491
+    // B1148: a corpse on the fade list is an actor whose spawn is gone; the
+    // client keeps the two apart, fable keys both by id, so a new spawn of the
+    // same id ends the old actor's fade early.
+    if (auto fading = entities_.find(spawnId); fading != entities_.end() && fading->second.isFading) {
+        removeEntity(spawnId);
+    }
     if (!smgr_ || hasEntity(spawnId)) {
         return false;
     }

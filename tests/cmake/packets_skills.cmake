@@ -214,6 +214,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_b1022_swing_native DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1148 (GitLab #468): the client's corpse-fade list (alpha from 1.3 s,
+# removed past 3499 ms after OP_DeleteSpawn) and the per-caster cast-animation
+# term. Device-free half always; the EDT_NULL half skips without the db or the
+# client tree (same gate as test_b1022_swing_native).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_corpse_fade
+        test_corpse_fade.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_corpse_fade PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_corpse_fade GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_corpse_fade PRIVATE
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")"
+        "EQ_CLIENT_DATA_PATH=WILLEQ_REPO_PATH(\"data/eq_client\")")
+    GTEST_DISCOVER_TESTS(test_corpse_fade DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B973 (GitLab #291): post-load entity build scheduling -- guaranteed progress
 # in every governor state, bounded per-frame work, and B966's create unit
 # promoting materials before the node's first draw. Part 1 is device-free; the

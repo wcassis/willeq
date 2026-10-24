@@ -1,4 +1,5 @@
 #include "client/graphics/entity_renderer.h"
+#include "client/graphics/corpse_fade.h"
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/constrained_renderer_config.h"
@@ -122,6 +123,12 @@ void EntityRenderer::updateMainThreadEntityState(float deltaTime) {
     std::vector<uint16_t> toRemove;
     std::vector<uint16_t> toDeactivate;
 
+    // B1148: the fade list's clock runs for every listed corpse, drawn or
+    // culled (the client's walk compares now with the stamped start).
+    for (auto& [spawnId, visual] : entities_) {
+        if (visual.isFading) visual.fadeTimer += deltaTime;
+    }
+
     for (uint16_t spawnId : activeEntities_) {
         auto it = entities_.find(spawnId);
         if (it == entities_.end()) continue;
@@ -134,55 +141,25 @@ void EntityRenderer::updateMainThreadEntityState(float deltaTime) {
             continue;
         }
 
-        // Handle fading entities (corpses decaying)
+        // B1148 (#468): the client's corpse-fade walk (0x4012bb -> 0x401127,
+        // corpse_fade.h): the model's alpha from 1.3 s, removal past 3499 ms
+        // (collected below).
         if (visual.isFading) {
-            visual.fadeTimer += deltaTime;
-            visual.fadeAlpha = 1.0f - (visual.fadeTimer / EntityVisual::FADE_DURATION);
-            if (visual.fadeAlpha <= 0.0f) {
-                visual.fadeAlpha = 0.0f;
-            }
-
-            irr::u8 colorVal = static_cast<irr::u8>(visual.fadeAlpha * 255);
-            irr::video::SColor fadeColor(255, colorVal, colorVal, colorVal);
-
-            if (visual.animatedNode) {
-                for (irr::u32 i = 0; i < visual.animatedNode->getMaterialCount(); ++i) {
-                    irr::video::SMaterial& mat = visual.animatedNode->getMaterial(i);
-                    mat.MaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
-                    mat.AmbientColor = fadeColor;
-                    mat.DiffuseColor = fadeColor;
-                    mat.EmissiveColor = irr::video::SColor(255, colorVal/2, colorVal/2, colorVal/2);
-                }
-            } else if (visual.meshNode) {
-                for (irr::u32 i = 0; i < visual.meshNode->getMaterialCount(); ++i) {
-                    irr::video::SMaterial& mat = visual.meshNode->getMaterial(i);
-                    mat.MaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
-                    mat.AmbientColor = fadeColor;
-                    mat.DiffuseColor = fadeColor;
-                    mat.EmissiveColor = irr::video::SColor(255, colorVal/2, colorVal/2, colorVal/2);
-                }
-            }
-            if (visual.primaryEquipNode) {
-                for (irr::u32 i = 0; i < visual.primaryEquipNode->getMaterialCount(); ++i) {
-                    irr::video::SMaterial& mat = visual.primaryEquipNode->getMaterial(i);
-                    mat.MaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
-                    mat.AmbientColor = fadeColor;
-                    mat.DiffuseColor = fadeColor;
-                    mat.EmissiveColor = irr::video::SColor(255, colorVal/2, colorVal/2, colorVal/2);
-                }
-            }
-            if (visual.secondaryEquipNode) {
-                for (irr::u32 i = 0; i < visual.secondaryEquipNode->getMaterialCount(); ++i) {
-                    irr::video::SMaterial& mat = visual.secondaryEquipNode->getMaterial(i);
-                    mat.MaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
-                    mat.AmbientColor = fadeColor;
-                    mat.DiffuseColor = fadeColor;
-                    mat.EmissiveColor = irr::video::SColor(255, colorVal/2, colorVal/2, colorVal/2);
-                }
-            }
-            if (visual.nameNode) {
-                irr::video::SColor nameColor(colorVal, 255, 255, 255);
-                visual.nameNode->setTextColor(nameColor);
+            const auto elapsedMs = static_cast<uint32_t>(visual.fadeTimer * 1000.0f);
+            const float alpha = CorpseFadeAlpha(elapsedMs);
+            if (alpha < visual.fadeAlpha) {
+                visual.fadeAlpha = alpha;
+                CorpseFadeMaterials mats;
+                mats.solid = shaderMaterialSolid_;
+                mats.alphaTest = shaderMaterialAlphaTest_;
+                mats.alphaTestRGBA = shaderMaterialAlphaTestRGBA_;
+                mats.fadeSolid = fadeMaterialSolid_;
+                mats.fadeAlphaTest = fadeMaterialAlphaTest_;
+                mats.fadeAlphaTestRGBA = fadeMaterialAlphaTestRGBA_;
+                // The per-instance skinned mesh carries the alpha; a static
+                // meshNode shares its buffers with every instance of the
+                // model, so it stays opaque until it is removed.
+                ApplyCorpseFadeAlpha(visual.animatedNode, alpha, mats);
             }
             continue;
         }
@@ -217,14 +194,14 @@ void EntityRenderer::updateMainThreadEntityState(float deltaTime) {
         updateEquipmentTransforms(visual);
     }
 
-    // Remove fully faded entities
+    // B1148: the actor is deleted once more than 3499 ms have passed (0x4012bb).
     for (const auto& [spawnId, visual] : entities_) {
-        if (visual.isFading && visual.fadeAlpha <= 0.0f) {
+        if (visual.isFading && CorpseFadeExpired(static_cast<uint32_t>(visual.fadeTimer * 1000.0f))) {
             toRemove.push_back(spawnId);
         }
     }
     for (uint16_t spawnId : toRemove) {
-        LOG_DEBUG(MOD_ENTITY, "Removing fully faded corpse {}", spawnId);
+        LOG_DEBUG(MOD_ENTITY, "Corpse {} off the fade list: removed", spawnId);
         removeEntity(spawnId);
     }
 

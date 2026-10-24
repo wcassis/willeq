@@ -136,6 +136,9 @@ struct SpellCastVisualStartedData {
     // (eqgame 0x495cc3): the caster spawn's level, 1 for an NPC or a caster
     // this client does not know (EQ::SpellsNewEffGateLevel).
     int fxGateLevel = 1;
+    // B1148 (#468): spell field 120 CastingAnim, the animation id whose track
+    // length eqgame adds to the Source duration (0x47ddd4); 0 = unknown.
+    int castAnim = 0;
 };
 
 struct SpellCastVisualCompleteData {

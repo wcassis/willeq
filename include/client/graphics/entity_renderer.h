@@ -297,11 +297,13 @@ struct EntityVisual {
     std::chrono::steady_clock::time_point castStartTime;  // When cast started
     irr::scene::IBillboardSceneNode* castBarBillboard = nullptr;  // Casting bar billboard
 
-    // Corpse decay/fade state
-    bool isFading = false;                    // True if corpse is fading out
-    float fadeAlpha = 1.0f;                   // Current opacity (1.0 = visible, 0.0 = invisible)
-    float fadeTimer = 0.0f;                   // Time since fade started
-    static constexpr float FADE_DURATION = 3.0f;  // Duration of fade-out in seconds
+    // B1148 (#468): the corpse-fade list (corpse_fade.h). isFading = this
+    // spawn's OP_DeleteSpawn came and its actor is on the list: the spawn is
+    // gone (no name, no target, no click), the model fades from 1.3 s and is
+    // removed past 3499 ms.
+    bool isFading = false;
+    float fadeAlpha = 1.0f;                   // the alpha corpse_fade.h gives (1 = opaque)
+    float fadeTimer = 0.0f;                   // seconds since OP_DeleteSpawn
 
     // First-person view state (for player entity only)
     bool isFirstPersonMode = false;           // True if player is in first-person view
@@ -431,6 +433,7 @@ public:
     // `isNPC`; everything else (other players, the player, corpses) is PC.
     void setNameTagKindsVisible(bool pcNames, bool npcNames);
     bool nameTagKindVisible(const EntityVisual& visual) const {
+        if (visual.isFading) return false;  // B1148: the spawn is deleted, only its actor fades
         return visual.isNPC ? npcNameTagsVisible_ : pcNameTagsVisible_;
     }
 
@@ -486,8 +489,24 @@ public:
     // Mark an entity as a corpse (plays death animation and prevents further animation updates)
     void markEntityAsCorpse(uint16_t spawnId);
 
-    // Start corpse decay animation (fade out over a few seconds, then remove)
+    // CorpseDecayStarted (the bridge, just before EntityDespawned): a corpse
+    // goes on the fade list (beginCorpseFade); any other entity is removed.
     void startCorpseDecay(uint16_t spawnId);
+
+    // B1148 (#468): OP_DeleteSpawn of `spawnId`. A corpse whose race is not
+    // 216/472 goes on the client's corpse-fade list (corpse_fade.h): true,
+    // and the caller must NOT remove it (the per-frame walk in
+    // updateMainThreadEntityState() fades and removes it). False for every
+    // other entity, which the caller removes at the packet.
+    bool beginCorpseFade(uint16_t spawnId);
+
+    // B1148: the blended twins of the entity materials (ZoneShaderManager's
+    // getMaterialTypeFade*; -1 = none, the built-in path).
+    void setFadeShaderMaterialTypes(irr::s32 solid, irr::s32 alphaTest, irr::s32 alphaTestRGBA) {
+        fadeMaterialSolid_ = solid;
+        fadeMaterialAlphaTest_ = alphaTest;
+        fadeMaterialAlphaTestRGBA_ = alphaTestRGBA;
+    }
 
     // Set entity pose state (sitting, standing, etc.) - prevents movement updates from overriding pose
     void setEntityPoseState(uint16_t spawnId, EntityVisual::PoseState pose);
@@ -873,6 +892,9 @@ private:
     bool npcNameTagsVisible_ = true;  // B431
     bool lightingEnabled_ = false;
     irr::s32 shaderMaterialSolid_ = -1;
+    irr::s32 fadeMaterialSolid_ = -1;          // B1148: corpse-fade twins
+    irr::s32 fadeMaterialAlphaTest_ = -1;
+    irr::s32 fadeMaterialAlphaTestRGBA_ = -1;
     irr::s32 shaderMaterialAlphaTest_ = -1;
     irr::s32 shaderMaterialAlphaTestRGBA_ = -1;  // P21: H02d Option-A main-texture-alpha variant
 

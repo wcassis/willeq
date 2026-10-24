@@ -758,8 +758,9 @@ uint16_t OverlaysComponent::getEntityAtScreenPos(int screenX, int screenY) {
     uint16_t closestEntity = 0;
 
     for (const auto& [spawnId, visual] : entities) {
-        // Skip player entity
-        if (visual.isPlayer) {
+        // Skip player entity, and a corpse on the fade list (B1148: its
+        // spawn was deleted; only the actor is still drawn)
+        if (visual.isPlayer || visual.isFading) {
             continue;
         }
 

@@ -126,6 +126,28 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
                  materialAlphaTestRGBA_);
     }
 
+    // B1148 (#468): the corpse fade's blended twins of the three entity
+    // materials -- the same sources, drawn with blending (the client fades a
+    // corpse actor's alpha from 1.3 s after OP_DeleteSpawn, corpse_fade.h).
+    {
+        struct Twin { irr::s32* out; const char* fs; const char* what; };
+        const Twin twins[] = {
+            {&materialFadeSolid_, FRAGMENT_SHADER_SOLID_SRC, "solid"},
+            {&materialFadeAlphaTest_, fragmentAlphaSrc, "alphaTest"},
+            {&materialFadeAlphaTestRGBA_, fragmentAlphaRGBASrc, "alphaTestRGBA"},
+        };
+        for (const Twin& t : twins) {
+            ShaderCallback* cb = new ShaderCallback(this);
+            *t.out = gpu->addHighLevelShaderMaterial(
+                VERTEX_SHADER_SRC, "main", irr::video::EVST_VS_1_1,
+                t.fs, "main", irr::video::EPST_PS_1_1,
+                cb, irr::video::EMT_TRANSPARENT_VERTEX_ALPHA);
+            cb->drop();
+            if (*t.out < 0)
+                LOG_WARN(MOD_GRAPHICS, "ZoneShaderManager: Failed to compile fade {} shader", t.what);
+        }
+    }
+
     // Compile atlas shaders (separate callbacks for solid and alpha)
     AtlasShaderCallback* atlasSolidCallback = new AtlasShaderCallback(this, false);
     materialAtlasSolid_ = gpu->addHighLevelShaderMaterial(
