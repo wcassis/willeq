@@ -301,12 +301,53 @@ TEST_F(SlotRules, ASpellsNewSourceRunsItsSlotsDurations) {
     for (size_t i = 0; i < all.size(); ++i) {
         const auto& ed = all[i].spellDef.emitters.at(0);
         EXPECT_NEAR(ed.triggerDelay, latency, 1e-5f) << i;
-        EXPECT_NEAR(ed.config.emitterLifetime, 1.5f + EQ::kSpellFxCastAnimationSeconds, 1e-4f) << i;
+        // The measured term is the emission's end after OP_Action: the run
+        // from fable's start (BC + latency) ends at BC + 1.5 + the term.
+        EXPECT_NEAR(ed.config.emitterLifetime, 1.5f - latency + EQ::kSpellFxCastAnimationSeconds, 1e-3f) << i;
+        EXPECT_NEAR(ed.triggerDelay + ed.config.emitterLifetime, 1.5f + EQ::kSpellFxCastAnimationSeconds, 1e-3f) << i;
         EXPECT_FLOAT_EQ(ed.config.lifetimeMax, lifes[i]) << i;
-        EXPECT_NEAR(all[i].duration, latency + 1.5f + EQ::kSpellFxCastAnimationSeconds + lifes[i] + 0.1f, 1e-4f) << i;
+        EXPECT_NEAR(all[i].duration, 1.5f + EQ::kSpellFxCastAnimationSeconds + lifes[i] + 0.1f, 1e-3f) << i;
     }
     fx_->releaseCastGlow(kCaster, 93, kOther);
     EXPECT_TRUE(pm_->drainCommands().empty()) << "OP_Action released a spellsnew.eff Source";
+}
+
+// B1145 (#465): OP_DeleteSpawn deletes the spawn's actor and every spell
+// emitter attached to it with its particles (eqgame 0x4581b7 -> 0x4849b2 ->
+// 0x48f4a4; EQGraphicsDX9 actor destructor 0x10040150 -> particle manager
+// vtbl +0x30 = 0x1005e760 -> 0x1005e550). A corpse's actor is deleted 3.5 s
+// later (the corpse-fade list: 0x401351 queues it at the packet, 0x4012bb
+// deletes it once 0xdab ms have passed) -- so 93's landing on a target that
+// died at OP_Action and was despawned at +1.036 s ends at ~Act+4.54, the
+// oracle tour's cliff (4.55..4.71).
+TEST_F(SlotRules, ADeletedSpawnTakesItsAttachedEffectsWithIt) {
+    auto removals = [&]() {
+        std::vector<uint16_t> ids;
+        for (auto& c : pm_->drainCommands())
+            if (c.type == EQT::Graphics::ParticleCommand::RemoveSpellEffectsEntity) ids.push_back(c.entityID);
+        return ids;
+    };
+    const std::vector<uint16_t> attached = {kOther, SpellVisualFX::rightHandEntityId(kOther),
+                                            SpellVisualFX::leftHandEntityId(kOther),
+                                            SpellVisualFX::headEntityId(kOther)};
+    Note(kBurstOfFlame);
+    fx_->createLanding(kCaster, kOther, 93, 60);
+    pm_->drainCommands();
+    // A live spawn's actor goes at the packet.
+    fx_->onSpawnDeleted(kOther, false, 1);
+    EXPECT_EQ(removals(), attached);
+    // A corpse's actor goes 3.5 s later; until then its landing runs on.
+    fx_->onSpawnDeleted(kOther, true, 1);
+    EXPECT_TRUE(removals().empty());
+    fx_->update(3.4f);
+    EXPECT_TRUE(removals().empty()) << "the corpse actor is deleted only past 3499 ms";
+    fx_->update(0.15f);
+    EXPECT_EQ(removals(), attached);
+    fx_->update(5.0f);
+    EXPECT_TRUE(removals().empty()) << "a corpse's actor is deleted once";
+    // Races 216 and 472 skip the fade list (0x47bfd0): at the packet.
+    fx_->onSpawnDeleted(kOther, true, 216);
+    EXPECT_EQ(removals(), attached);
 }
 
 // Record 113 (290 Color Flux): every Target slot is anchor 1 -- the landing is

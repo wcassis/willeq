@@ -395,7 +395,8 @@ A grid's playback rate is therefore `16 / lifetime`, set by
 `config/spell_effects.json`. **A spellsnew.eff slot is timed by its EDD words**
 (B1145, `spell_fx_timing.h`): +0x8C delay, run (fixed |+0x78| or the stage's
 duration), +0x7C life, burst/stream; B1121's fed schedule serves spells with
-no record. Ends: `review/B1121/scripts/b1120_measure.sh <leg> <out>` (T422).
+no record; OP_DeleteSpawn takes a corpse's emitters 3.5 s later (`onSpawnDeleted`).
+Ends: `review/B1121/scripts/b1120_measure.sh <leg> <out>` (T422).
 `tests/test_spell_burst_oracle_match.cpp` pins both.
 
 **A spell particle is its sprite x its EDD emitter's colour words** (B1146).

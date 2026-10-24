@@ -106,6 +106,15 @@ void IrrlichtRenderer::updateEntity(uint16_t spawnId, float x, float y, float z,
 
 void IrrlichtRenderer::removeEntity(uint16_t spawnId) {
     if (isLoading()) return;
+    // B1145 (#465): OP_DeleteSpawn deletes the spawn's actor and with it every
+    // spell emitter attached to it -- 3.5 s later for a corpse (the client's
+    // corpse-fade list; SpellVisualFX::onSpawnDeleted).
+    if (auto& fx = SimBridge().spellVisualFX(); fx && entityRenderer_) {
+        const auto& ents = entityRenderer_->getEntities();
+        const auto it = ents.find(spawnId);
+        const bool corpse = it != ents.end() && it->second.isCorpse;
+        fx->onSpawnDeleted(spawnId, corpse, it != ents.end() ? it->second.raceId : 0);
+    }
     if (entityRenderer_) {
         entityRenderer_->removeEntity(spawnId);
     }

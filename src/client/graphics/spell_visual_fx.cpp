@@ -396,8 +396,49 @@ irr::video::ITexture* SpellVisualFX::getTextureForSpell(uint32_t spell_id) const
     return m_particle_texture;
 }
 
+void SpellVisualFX::onSpawnDeleted(uint16_t spawn_id, bool corpse, uint16_t race_id)
+{
+    if (spawn_id == 0) return;
+    // 0x4849b2: the deferred (corpse-fade) path is taken for spawn type >= 2
+    // unless 0x47bfd0 says race 216 or 472.
+    const bool fades = corpse && race_id != 216 && race_id != 472;
+    if (!fades) {
+        removeAttachedEffects(spawn_id);
+        return;
+    }
+    for (auto& p : m_pending_actor_deletes)
+        if (p.first == spawn_id) return;  // already queued
+    m_pending_actor_deletes.emplace_back(spawn_id, kCorpseActorDeleteSeconds);
+}
+
+void SpellVisualFX::removeAttachedEffects(uint16_t spawn_id)
+{
+#ifdef EQT_HAS_GLES2
+    if (m_particle_manager) {
+        // remove-by-actor matches the actor and every bone of it: the entity
+        // and fable's hand / head pseudo-entities.
+        for (uint16_t id : {spawn_id, rightHandEntityId(spawn_id), leftHandEntityId(spawn_id),
+                            headEntityId(spawn_id)})
+            m_particle_manager->removeSpellEffectsForEntity(id);
+        LOG_DEBUG(MOD_SPELL, "spawn {} actor deleted: its attached spell emitters removed", spawn_id);
+    }
+#endif
+    (void)spawn_id;
+}
+
 void SpellVisualFX::update(float delta_time)
 {
+    // B1145: the corpse actors the client deletes 3.5 s after OP_DeleteSpawn.
+    for (size_t i = 0; i < m_pending_actor_deletes.size();) {
+        m_pending_actor_deletes[i].second -= delta_time;
+        if (m_pending_actor_deletes[i].second <= 0.0f) {
+            removeAttachedEffects(m_pending_actor_deletes[i].first);
+            m_pending_actor_deletes.erase(m_pending_actor_deletes.begin() + static_cast<long>(i));
+        } else {
+            ++i;
+        }
+    }
+
     // Worker-driven path: update math runs on SimulationWorker thread
     if (m_worker_driven) return;
 
@@ -554,9 +595,13 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         // +0x78/+0x7C/+0x80..+0x8C) for the duration eqgame passes a Source:
         // the cast time + the cast-animation term (spell_fx_timing.h), from
         // the stage's measured start; the row keeps shape and size only.
-        const int32_t sourceCallerMs =
-            SpellFxCallerDurationMs(SpellFxStage::Source, static_cast<int32_t>(duration_ms), 0);
+        // The cast-animation term was MEASURED as the emission's end after
+        // OP_Action (kSpellFxCastAnimationSeconds); fable's emitter starts
+        // at the stage's measured latency after OP_BeginCast, so its run is
+        // that much shorter for the emission to end where the oracle's did.
         const float sourceLatency = cfg.sourceStageLatency();
+        const int32_t sourceCallerMs = SpellFxCallerDurationMs(
+            SpellFxStage::Source, static_cast<int32_t>(duration_ms) - static_cast<int32_t>(sourceLatency * 1000.0f + 0.5f), 0);
         if (slots.fromFile) {
             if (slots.drawn.empty()) {
                 LOG_INFO(MOD_SPELL, "createCastGlow: caster={} spell={} level={}: no Source slot passes "

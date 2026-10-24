@@ -23,11 +23,17 @@ eqgame passes).
   Act+2.61/2.65. The harness (separated target) now ends the level-1 landing at **Act+2.667** (was 4.133);
   level 60 at Act+6.500 (B1130's alive capture 6.67; was 4.767); the caster's Source at Act+4.97..5.00
   (oracle r51 caster box 4.908; was 3.97..4.23).
-- **Gate NOT met: 93 end within +-0.1 s of lane +4.938.** The tour rig's target DIES at OP_Action
-  (OP_Death +0.000, corpse OP_DeleteSpawn +1.036). The oracle cuts the landing of every nuke whose target
-  dies (93/38/54/656 end 4.85..5.10 against the file's 6.5), while an alive target runs the file's end
-  (B1130 r51 93: 6.67; tour 41 Weaken: 6.224 vs 6.2). The cut is a client death/despawn behaviour, not an
-  EDD word, and is untraced (FOLLOW-UP 1). The branch harness reads +6.733 on the dying-target tour.
+- **A dying target's landing is cut by the client's corpse-actor delete** (sec. 5a, traced): OP_DeleteSpawn
+  queues a corpse's actor on the fade list and deletes it -- with every emitter attached to it -- once more
+  than 3499 ms have passed. Wired (`SpellVisualFX::onSpawnDeleted`): with the target dying at OP_Action and
+  despawned at +1.027 (lane leg B's pcap), fable's landing now drops at Act+4.53 (47,331 -> 5,017 lit px in
+  one frame), the oracle's cliff at 4.55..4.71; a live target still runs the file's end (+6.733).
+- **Gate still NOT met by +0.23..0.26 s**: 93 dying reads +5.167..+5.200 (seeds 1-3) against lane +4.938.
+  What is left past the cut is the caster's Source tail (distance 0, same pixels): its sprites decay from
+  5,017 to the threshold over ~0.5 s where the oracle's decay over ~0.2 s (8,330 -> 1,095, 4.71..4.87),
+  because fable's four Source slots carry EQUAL shares (B1144) where the file's 278 (L 0.25) holds ~150 live
+  sprites against the hands' ~34 -- per-slot counts are B1147's. 38/54/656 dying read +5.20..+5.23 (oracle
+  4.85..5.10).
 - Coverage moved (sec. 6): 93 landing 2.92..2.96 -> 2.32..2.36 (-20 %) at the same peak live count.
 
 ## 1. Prior work found
@@ -107,23 +113,58 @@ Then the rows' measured values were removed from the config and kept as the test
 | run | landing end (Act+) | landing cov | note |
 |---|---|---|---|
 | base 8f577477, tour 93 L60 | +5.000 (seed 1), +5.033 (tour) | 2.962 / 2.921 | |
-| B1145, tour 93 L60 seeds 1-3 | +6.733 x3 | 2.316..2.358 | target dies at OP_Action (`--target-death 0`) |
+| B1145, tour 93 L60 seeds 1-3, death only (no despawn) | +6.733 x3 | 2.316..2.358 | first wiring |
+| B1145 final, tour 93 L60 seeds 1-3, death at Act + despawn +1.027 | **+5.200 / +5.167 / +5.200** | 2.334 / 2.321 / 2.361 | lane +4.938: NOT met (+0.23..0.26, the Source tail) |
+| B1145 final, tour 93 L60, live target | +6.733 | 2.328 | the file's end |
+| B1145 final, 38 / 54 / 656 dying, 41 / 458 live (single-spell plans) | +5.233 / +5.200 / +5.217, +6.433 / +5.833 | | oracle 4.850 / 5.103 / 5.004, 6.224 / 4.942 |
 | B1145, tour 93 L1 | +5.500 | 1.516 | distance 0: the caster's Source (A + 1 s) is in the same pixels |
 | base, separated (14 units) L1 / L60, target box | +4.133 / +4.767 | | `scripts/box_end.py` |
 | B1145, separated L1 / L60, target box | **+2.667** / **+6.500** | | oracle: observer 2.61/2.65; B1130 alive 6.67 |
-| caster box Source end, base / B1145 | 3.97..4.23 / 4.97..5.00 | | oracle r51 4.908 |
+| caster box Source end, base / B1145 first / final | 3.97..4.23 / 4.97..5.00 / 4.47..4.53 | | oracle r51 4.908 (the visible end of fable's equal-share slots, not the emission end) |
+| B1145 final, separated L1 / L60, target box | +2.667 / +6.167 | | L60's sparse tail moves with the random stream (6.500 on the first wiring) |
 
 Tour (all seven, `tour_table.tsv`): 41 (target alive) +6.433 vs oracle 6.224 (lane fable 6.278); 253 (self)
 +8.117 vs 6.522 and 458 (alive) +7.800 vs 4.942: their emitters fade for most of their life (432:
 +0x94 3.25 of L 3.5; 458's Source 552: 3.75 of 4), which the oracle's visible end shows and fable's
 alpha (clientAlpha off, B1146) does not; at distance 0 458's tail is its held Source (A + L 4). 93/38/54/656
-(targets die): +6.73..6.77 vs 4.85..5.10 (sec. 0). Lane 5 was not used: the death evidence is in hand
-(dying vs alive captures of the same client and spell; 41 as the alive control in the tour rig) and one leg
-cannot trace the mechanism.
+(targets die): the whole-tour run above has no despawn (+6.73..6.77); with the corpse-actor delete wired and
+the despawn modelled see the final rows (sec. 5a). Lane 5 was not used: the mechanism is in the code, and the
+oracle tour's own frames and pcap check it.
+
+## 5a. A dying target: the corpse-actor delete (traced, `review/B1141/ghidra/out/`)
+
+| step | address | what |
+|---|---|---|
+| OP_Death (0x6160) | eqgame 0x4a8cd5 -> 0x484e79 | the spawn becomes a corpse (spawn +0x244 = 2, "%s's corpse"), death animation; nothing touches its emitters |
+| OP_DeleteSpawn (0x55bc) | eqgame 0x4581b7 -> 0x4849b2 (ecx = the spawn) | for a corpse (+0x244 > 1) whose race is not 216/472 (0x47bfd0) sets actor-gfx +0x19c = 1, then 0x48f4a4 |
+| actor release | eqgame 0x48f4a4 | +0x19c set: 0x401022/0x401351 put the CActor on the corpse-fade list (start = now, 0x401100) instead of deleting it; else 0x439a46 deletes it now |
+| fade list, per frame | eqgame 0x445243 -> 0x4012bb -> 0x401127 | from 1001 ms plays effect 0x5e at the hand/chest/feet points, from 1300 ms fades the model's alpha (1 - 0.0005/ms, vtbl +0x1b0); when now - start > 0xdab (3499 ms): 0x401110 -> 0x439a46 |
+| actor delete | eqgame 0x439a46 -> world vtbl +0x48 = DLL 0x10056b50 -> +0x08 = 0x10056b60 | the CActor's scalar-deleting destructor |
+| emitters | DLL actor destructors 0x10040150 / 0x100489e0 / 0x10049fb0 -> particle manager (DAT_102326f0, vtable 0x101cbe38) vtbl +0x30 = 0x1005e760 -> 0x1005e550 | every emitter whose actor (+0x68) is this actor, or whose bone (+0x6c) belongs to it, is unlinked and deleted with its particle ring (vtbl +0x14(1)) |
+
+The Target stage attaches its emitters to the target spawn's actor (slot walk 0x495cc3: actor = *(spawn
++0x1a8), bone = the attach point; handle = target spawn id << 16 | spell). So with OP_Death at Act+0.000 and
+OP_DeleteSpawn at +1.036 (oracle tour pcap, spawn 260) the landing runs until the first frame past 1.036 + 3.5
+= Act+4.536 and vanishes at once: the oracle's cliff (lit 72,736 at 4.55 -> 8,330 at 4.71; 38: 4.57..4.69,
+its DeleteSpawn +1.032). Nothing is fitted. A live spawn's OP_DeleteSpawn deletes its actor at the packet.
+The reassign (vtbl +0x20 = 0x1005e4c0, from 0x485873's model rebuild) moves emitters to a new actor and
+clears the bone; remove-by-handle (vtbl +0x34 = 0x1005e930, from 0x4543fa / 0x4544ed / 0x4b6b1b on a buff's
+removal) deletes by handle. Neither runs on death or despawn. Frames: `review/B1145/oracle_frames/`.
+
+fable: `SpellVisualFX::onSpawnDeleted(spawn, corpse, race)` (called by `IrrlichtRenderer::removeEntity` on
+EntityDespawned, and by the harness at `--target-despawn`) removes the spawn's and its bone pseudo-entities'
+spell effects with their particles -- at once for a live spawn or race 216/472, 3.5 s later
+(`kCorpseActorDeleteSeconds`, run in `update()`) for a corpse. Test:
+`SlotRules.ADeletedSpawnTakesItsAttachedEffectsWithIt`. Not wired: the corpse model's own alpha fade and
+effect 0x5e.
+
+Also fixed with it: the measured cast-animation term is the Source's emission end after OP_Action, so the run
+from fable's Source start (BC + the 0.41 s latency) is that much shorter (it had ended 0.41 s late).
 
 ## 6. What moved besides timing
 
-- Landing coverage at the same peak live count: 93 -20 %, 38 -22 %, 41 -9 %, 458 -18 %, 253 +72 %
+- **Coverage parity: pending B1147** (known interim; no band loosened). Landing coverage at the same peak
+  live count: 93 -20 % (2.32..2.36 vs 2.92..2.96), 38 -22 %, 41 -9 %, 458 -18 %, 253 +72 %
   (its field now runs 5 s at its file envelope). The slots' lives (L) and envelopes differ from the style's
   1.6..2.0 s cohort; counts and sizes are B1147's.
 - The pool rule's held Source is the computed 4.35 s for every row (was the measured holdOther, 0.32..5.5):
@@ -138,20 +179,17 @@ from the header); `test_spell_burst_oracle_match.cpp` (Source onset); `test_spel
 (253 sbc bound); `test_fx_harness.cpp` (the other-target check compares the caster box with a reference run
 whose OP_Action falls past the window -- the Source now holds to ~Act+4.35 + life -- and the target-box
 presence bound is 2,000 px: record 112's file envelope reads 2,677 there).
-Builds and suites (`review/B1145/`): whole tree with the CI flags, `cmake --build build-ci -j 4 -- -k`,
-BUILD_EXIT=0, 0 `error:` lines (`build_ci_whole_final.log`); `ctest -R "Spell|Bridge|Particle|FxHarness|
+Builds and suites (`review/B1145/`, final tree): whole tree with the CI flags, `cmake --build build-ci -j 4 --
+-k`, BUILD_EXIT=0, 0 `error:` lines (`build_ci_whole_final.log`); `ctest -R "Spell|Bridge|Particle|FxHarness|
 ConfigKeyReachability|Oracle|SlotRules|SourceAnchors|SourceRecordRows|TargetRecordRows|TargetLanding|Landing|
-CasterOwn"` 897/898 (`ctest_targeted.log`; the one red, FxHarness's other-target check, fixed after it and
-re-run 3/3 with only `test_fx_harness` rebuilt); `ctest -L hygiene` 51/51 (`ctest_hygiene.log`; the EDD
-reader's count accessor is `emitterCount()`: an `entryCount()` made ZeroCallers read SkillCapTable's
-same-named accessor as production-called). No config map added (ConfigKeyReachability unchanged).
-CLAUDE.md 59,5xx characters.
+CasterOwn"` 899/899 (`ctest_targeted.log`, incl. `SlotRules.ADeletedSpawnTakesItsAttachedEffectsWithIt`);
+`ctest -L hygiene` 51/51 (`ctest_hygiene.log`; the EDD reader's count accessor is `emitterCount()`: an
+`entryCount()` made ZeroCallers read SkillCapTable's same-named accessor as production-called). No config map
+added (ConfigKeyReachability unchanged). CLAUDE.md 59,652 characters.
 
 ## FOLLOW-UP
 
-1. Trace what a target's death/despawn does to its Target emitters (eqgame OP_Death 0x6160 -> 0x4a8cd5,
-   OP_DeleteSpawn 0x55bc -> 0x4581b7; particle manager vtbl +0x20 reassign 0x1005e4c0, +0x30 remove-by-actor
-   0x1005e760, +0x34 remove-by-handle 0x1005e930). Until then fable runs a dying target's landing to the file
-   end (1.6..1.9 s past the oracle on 93/38/54/656).
+1. Done here (sec. 5a). Left: the corpse model's alpha fade (from 1.3 s, 0.0005/ms) and effect 0x5e, and the
+   Source tail's counts (B1147), which hold the dying-target tour gate +0.23 s out.
 2. Per-caster cast-animation length (0x47ddd4: the model's CastingAnim track) instead of one 4.35 s.
 3. B1147: counts, sizes, shapes, motion, client alpha; then re-calibrate coverage (sec. 6).

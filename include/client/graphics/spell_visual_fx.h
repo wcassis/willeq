@@ -233,6 +233,21 @@ public:
     // Effect Removal
     // ========================================================================
 
+    // B1145 (#465): OP_DeleteSpawn of a spawn the FX may be attached to. The
+    // official client (eqgame 0x4581b7 -> 0x4849b2 -> 0x48f4a4) deletes the
+    // spawn's CActor, and the actor's destructor (EQGraphicsDX9 0x10040150 and
+    // kin) calls the particle manager's remove-by-actor (vtbl +0x30 =
+    // 0x1005e760 -> 0x1005e550): every emitter attached to that actor or one
+    // of its bones is deleted WITH its live particles. For a CORPSE (spawn
+    // +0x244 >= 2) whose race is not 216/472 (0x47bfd0) the actor is not
+    // deleted then: 0x48f4a4 queues it on the corpse-fade list (0x401351,
+    // started at the packet, 0x401100), which fades the model from 1.3 s
+    // (0x401127) and deletes the actor when more than 3499 ms have passed
+    // (0x4012bb: 0xdab < now - start) -- so a dying target's landing is cut
+    // 3.5 s after its OP_DeleteSpawn. `corpse` = the spawn was a corpse.
+    static constexpr float kCorpseActorDeleteSeconds = 3.5f;
+    void onSpawnDeleted(uint16_t spawn_id, bool corpse, uint16_t race_id);
+
     // Remove casting glow (when cast ends)
     void removeCastGlow(uint16_t caster_id);
     // B1131: OP_Action's end of the Source: it keeps emitting its spells.eff
@@ -437,6 +452,10 @@ private:
 #ifdef EQT_HAS_GLES2
     EQT::Graphics::Environment::ParticleManager* m_particle_manager = nullptr;
 #endif
+
+    // B1145: corpse actors awaiting the client's 3.5 s delete (spawn, seconds left).
+    std::vector<std::pair<uint16_t, float>> m_pending_actor_deletes;
+    void removeAttachedEffects(uint16_t spawn_id);
 
     // Worker-driven state
     std::vector<EQT::Graphics::SpellVFXCommandData> m_pending_commands;
