@@ -139,6 +139,14 @@ SWEEP_PLACEHOLDER
 
 ## 7. Tests
 
+Run on the tip (b611c7ae) through rbuild on the ThinkPad (B1087; Release GLES2 tree,
+`/home/user/willeq-builds/kb-b1149-finish/build`; logs in `/home/user/kb-evidence/kb-b1149-finish/`, rbuild_*.log):
+`rbuild configure` rc 0 (rbuild_configure.log); `rbuild --target` rc 0 for model_viewer and the six test
+executables this section names (no `test_spell_visual_fx` target exists in the tree; the targets are the six
+below, rbuild_build_*.log); `rbuild test -R 'Spell|Bridge|Particle|FxHarness|ConfigKeyReachability|Oracle'`
+rc 0, 53/53 passed in 5.8 s with the three capture-dependent skips (162 SpellColourChain measured-stages,
+588/589 Oracle glyph templates) -- rbuild_test_targeted.log; `rbuild hygiene` rc 0, 48/48 -- rbuild_hygiene.log.
+
 - `test_spell_slot_rules.cpp`: `EachSourceSlotEmitsItsFilesPopulationAndSize` (record 80's Source: 2/2/5/33 burst,
   1/1/5/33 per tick at 32/32/10/18, widths 0.875/0.875/1.25/1.0; level 1 two hand slots),
   `EachLandingSlotIsOneEmitterOfItsFilesPopulation` (280 50+50x30, 281 1, 282 2+2x28 w 6, 9 3+3x10; own art; client
@@ -155,7 +163,9 @@ SWEEP_PLACEHOLDER
 
 ## 8. Builds
 
-BUILD_PLACEHOLDER
+Same tip (b611c7ae), rbuild on the ThinkPad (Release GLES2, the CI configure): configure rc 0, the six test
+targets + model_viewer rc 0 (logs `/home/user/kb-evidence/kb-b1149-finish/rbuild_*.log`). The full CI-flag
+build of this tip is the MR's `build` job (step 5); nothing here was built whole-tree on purpose.
 
 ## FOLLOW-UP
 
