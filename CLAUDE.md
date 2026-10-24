@@ -412,10 +412,9 @@ client's fade x peak alpha and +0x68 blend stay off (`clientAlpha`,
 spells with no usable record. All three stages route their
 names: Source → cast glow and spellComplete, Middle → projectile trail, Target →
 impact. The landing is a VOLUME, not a disc (B1120). Source and Target are drawn
-per MEASURED ROW: B1131 `sourceRecords` (anchor, onset, hold past
-OP_Action), B1132 `targetRecords` (both landing halves on the TARGET, never the
-caster of an other-target cast; head bone 5, feet rings 16/28, column 3, caster
-27); `tests/test_spell_{source,target}_anchors.cpp`. `spellOverrides` holds
+per spellsnew.eff SLOT (B1144): minLevel <= caster level (NPC 1), on its anchor
+at its attach point; no Target slot, no landing; no OP_BeginCast, no Source.
+B1131/B1132 rows give shape, size and timing; `tests/test_spell_slot_rules.cpp`. `spellOverrides` holds
 measured values only (B1120/B1122 shapes; **sizes match the oracle FIRST**:
 caster-ROI p90, `review/B1119/scripts/fx_sprite_roi.py` vs
 `review/B1120/measure_oracle/roi_oracle.txt`; coverage follows from the pool,
