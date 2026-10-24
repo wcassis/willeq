@@ -190,11 +190,7 @@ SpellEffectDef SourceForRecord(const SpellEffectDef& style,
     base.triggerDelay = rec.onset;
     base.config.emitterLifetime = 0.0f;  // emits until releaseCastGlow's hold ends it
     base.config.burstCount = 0;
-    if (rec.spawnRate > 0.0f)
-        base.config.spawnRate = rec.spawnRate * share *
-                                SpellEffectsConfig::instance().getGlobal().densityMultiplier;
-    else
-        base.config.spawnRate *= share;
+    base.config.spawnRate *= share;  // B1149: no row population (a record's slots draw the file's)
     def.emitters.assign(1, base);
     if (!rec.hasShape) return def;  // the default row: the style's own body cloud
 
@@ -287,15 +283,13 @@ SpellEffectDef SourceForRecord(const SpellEffectDef& style,
 
 // The record row a spell's Source is drawn with: a spellOverrides castGlow /
 // castSpray that sets its own spawnShape (B1122's measured 54/656/41/253/458
-// clouds) keeps that geometry on the caster's entity, and one that sets its
-// own spawnRate keeps that rate; the anchor class, onset and hold are always
-// the record's.
+// clouds) keeps that geometry on the caster's entity; the anchor class, onset
+// and hold are always the record's.
 static SpellEffectsConfig::SourceRecord rowForSpell(uint32_t spellId, int record, bool spray) {
     const auto& cfg = SpellEffectsConfig::instance();
     SpellEffectsConfig::SourceRecord rec = cfg.sourceRecord(record);
     const char* style = spray ? "castSpray" : "castGlow";
     if (cfg.hasSourceShapeOverride(spellId, style)) rec.hasShape = false;
-    if (cfg.hasSourceRateOverride(spellId, style)) rec.spawnRate = 0.0f;
     return rec;
 }
 
@@ -328,7 +322,8 @@ SpellEffectDef SourceForSpell(glm::vec4 color, uint32_t spellId, int record, boo
 //   Column     the spellComplete half falls from hi to lo over +-halfWidth
 //              (the sheet that sweeps down over the target); the impact half
 //              fills lo..hi (the wash).
-// Both halves of a shaped row carry `population` of the style's rates.
+// B1149: the halves carry the style's rates only as the geometry split of
+// their slot's file population (applySlotEmitter).
 SpellEffectDef TargetForRecord(const SpellEffectDef& style,
                                const SpellEffectsConfig::TargetRecord& rec,
                                float anchorAboveFeet, bool complete, bool followsHeadBone) {
@@ -339,9 +334,6 @@ SpellEffectDef TargetForRecord(const SpellEffectDef& style,
     const float H = sc.casterHeight;
     auto& ed = def.emitters[0];
     auto& c = ed.config;
-    c.spawnRate *= rec.population;
-    c.sustainRate *= rec.population;
-    c.burstCount = static_cast<int>(static_cast<float>(c.burstCount) * rec.population);
     const float life = 0.5f * (c.lifetimeMin + c.lifetimeMax);
     const float w = rec.halfWidth * H;
     const float span = (rec.hi - rec.lo) * H;
@@ -486,7 +478,9 @@ void applyStageEmitterColours(SpellEffectDef& def,
         for (size_t k = 0; k < colours.size(); ++k) {
             const EQ::SpellsNewEddColour& w = colours[k];
             EmitterConfig::RegionColour rc;
-            rc.active = !w.isWhite();
+            // B1149: on the client's alpha every region is the client's
+            // (white too); RGB-only keeps a white region inactive (B1146).
+            rc.active = clientAlpha || !w.isWhite();
             rc.clientAlpha = clientAlpha;
             rc.additive = w.additive;
             for (int i = 0; i < 3; ++i) {
@@ -501,39 +495,69 @@ void applyStageEmitterColours(SpellEffectDef& def,
     }
 }
 
-// B1145 (#465): see the header. The emitter's age starts at its trigger, so
+// B1149 (#469): see the header. The emitter's age starts at its trigger, so
 // emitterLifetime is the window; a zero window (a burst-only slot such as
 // 281's) still needs one simulation step to fire its burst, hence the floor.
-void applySlotTiming(SpellEffectDef& def, const EQ::SpellFxSlotTiming& t, float stageLatency) {
+void applySlotEmitter(const std::vector<SpellEffectDef*>& slotDefs, const EQ::SpellFxSlotTiming& t,
+                      const EQ::SpellsNewEddSprite* sprite, float stageLatency, float attachScale) {
     constexpr float kOneStep = 0.05f;
     const float L = t.lifetime;
     const bool emits = t.emits() && L > 0.0f && t.peakLive() > 0.0f;
-    for (auto& ed : def.emitters) {
-        auto& c = ed.config;
-        spell_population::Schedule before;
-        before.spawnRate = c.spawnRate;
-        before.burstCount = c.burstCount;
-        before.spawnWindow = c.spawnWindow;
-        before.sustainRate = c.sustainRate;
-        before.sustainFrom = c.sustainFrom;
-        before.emitterLifetime = c.emitterLifetime;
-        before.lifetimeMin = c.lifetimeMin;
-        before.lifetimeMax = c.lifetimeMax;
-        const float peak = spell_population::PeakLive({before});
-        const float oldLife = 0.5f * (c.lifetimeMin + c.lifetimeMax);
 
+    // The geometry split: each emitter's measured (pre-B1149) peak, so the
+    // slot's file count is shared the way the row was measured.
+    std::vector<SpellEmitterDef*> eds;
+    std::vector<float> weight;
+    for (SpellEffectDef* d : slotDefs)
+        for (auto& ed : d->emitters) {
+            const auto& c = ed.config;
+            spell_population::Schedule before;
+            before.spawnRate = c.spawnRate;
+            before.burstCount = c.burstCount;
+            before.spawnWindow = c.spawnWindow;
+            before.sustainRate = c.sustainRate;
+            before.sustainFrom = c.sustainFrom;
+            before.emitterLifetime = c.emitterLifetime;
+            before.lifetimeMin = c.lifetimeMin;
+            before.lifetimeMax = c.lifetimeMax;
+            eds.push_back(&ed);
+            weight.push_back(std::max(spell_population::PeakLive({before}), 0.0f));
+        }
+    float total = 0.0f;
+    for (float w : weight) total += w;
+    for (float& w : weight) w = total > 0.0f ? w / total : 1.0f / static_cast<float>(weight.size());
+
+    // The burst is whole sprites: largest remainder, so the shares add to it.
+    std::vector<int> burst(eds.size(), 0);
+    if (emits && t.burst > 0 && !eds.empty()) {
+        int given = 0;
+        std::vector<std::pair<float, size_t>> rem;
+        for (size_t i = 0; i < eds.size(); ++i) {
+            const float exact = weight[i] * static_cast<float>(t.burst);
+            burst[i] = static_cast<int>(std::floor(exact));
+            given += burst[i];
+            rem.push_back({exact - static_cast<float>(burst[i]), i});
+        }
+        std::stable_sort(rem.begin(), rem.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+        for (size_t k = 0; given < t.burst && k < rem.size(); ++k, ++given) ++burst[rem[k].second];
+    }
+
+    for (size_t i = 0; i < eds.size(); ++i) {
+        SpellEmitterDef& ed = *eds[i];
+        auto& c = ed.config;
+        const float oldLife = 0.5f * (c.lifetimeMin + c.lifetimeMax);
         const float delay = std::max(stageLatency, 0.0f) + t.start;
         ed.trigger = delay > 0.0f ? SpellTrigger::DELAYED : SpellTrigger::IMMEDIATE;
         ed.triggerDelay = delay;
         c.spawnWindow = 0.0f;
         c.sustainRate = 0.0f;
         c.sustainFrom = 0.0f;
+        c.spawnRate = 0.0f;
         c.emitterLifetime = std::max(t.window(), kOneStep);
-        if (!emits || peak <= 0.0f) {
-            c.burstCount = 0;
-            c.spawnRate = 0.0f;
-            continue;
-        }
+        c.burstCount = 0;
+        c.ticksPerSecond = 0.0f;
+        c.tickParticles = 0.0f;
+        if (!emits) continue;
         if (oldLife > 0.0f) {
             const float k = oldLife / L;
             c.velocityBase *= k;
@@ -544,60 +568,26 @@ void applySlotTiming(SpellEffectDef& def, const EQ::SpellFxSlotTiming& t, float 
         }
         c.lifetimeMin = L;
         c.lifetimeMax = L;
-        const float scale = peak / t.peakLive();
-        c.burstCount = static_cast<int>(std::lround(scale * static_cast<float>(std::max(t.burst, 0))));
-        c.spawnRate = t.window() > 0.0f ? scale * t.streamRate() : 0.0f;
-    }
-}
-
-static spell_population::Schedule scheduleOf(const EmitterConfig& c) {
-    spell_population::Schedule s;
-    s.spawnRate = c.spawnRate;
-    s.burstCount = c.burstCount;
-    s.spawnWindow = c.spawnWindow;
-    s.sustainRate = c.sustainRate;
-    s.sustainFrom = c.sustainFrom;
-    s.emitterLifetime = c.emitterLifetime;
-    s.lifetimeMin = c.lifetimeMin;
-    s.lifetimeMax = c.lifetimeMax;
-    return s;
-}
-
-float CombinedPeakLive(const std::vector<const SpellEffectDef*>& defs) {
-    struct E { spell_population::Schedule s; float from; };
-    std::vector<E> es;
-    float horizon = 0.0f;
-    for (const SpellEffectDef* d : defs)
-        for (const auto& ed : d->emitters) {
-            const float from = ed.trigger == SpellTrigger::DELAYED ? ed.triggerDelay : 0.0f;
-            E e{scheduleOf(ed.config), from};
-            // An unbounded emitter (a Source held to its release) is steady
-            // after one life: look one life past its start.
-            const float run = e.s.emitterLifetime > 0.0f ? e.s.emitterLifetime : e.s.lifetimeMax;
-            horizon = std::max(horizon, from + run + e.s.lifetimeMax);
-            es.push_back(e);
+        c.burstCount = burst[i];
+        if (t.window() > 0.0f && t.ticksPerSecond > 0.0f && t.perTick > 0) {
+            c.ticksPerSecond = t.ticksPerSecond;
+            c.tickParticles = weight[i] * static_cast<float>(t.perTick);
         }
-    float peak = 0.0f;
-    for (float t = 0.0f; t <= horizon; t += 0.02f) {
-        float n = 0.0f;
-        for (const auto& e : es)
-            if (t >= e.from) n += spell_population::LiveAt(e.s, t - e.from);
-        peak = std::max(peak, n);
-    }
-    return peak;
-}
-
-void ScaleToCombinedPeak(const std::vector<SpellEffectDef*>& defs, float targetPeak) {
-    std::vector<const SpellEffectDef*> cdefs(defs.begin(), defs.end());
-    const float peak = CombinedPeakLive(cdefs);
-    if (peak <= 0.0f || targetPeak <= 0.0f) return;
-    const float k = targetPeak / peak;
-    for (SpellEffectDef* d : defs)
-        for (auto& ed : d->emitters) {
-            ed.config.spawnRate *= k;
-            ed.config.sustainRate *= k;
-            ed.config.burstCount = static_cast<int>(std::lround(static_cast<float>(ed.config.burstCount) * k));
+        if (sprite) {
+            auto& es = c.eddSprite;
+            es.active = true;
+            es.widthMin = sprite->widthMin;
+            es.widthMax = sprite->widthMax;
+            es.heightMin = sprite->heightMin;
+            es.heightMax = sprite->heightMax;
+            es.scale = sprite->multiplier * (sprite->scaleSizes ? attachScale : 1.0f);
+            es.sameRandom = sprite->sameRandom;
+            es.growIn = sprite->growIn;
+            es.shrinkOut = sprite->shrinkOut;
+            es.heightShrink = sprite->heightShrink;
+            es.widthShrink = sprite->widthShrink;
         }
+    }
 }
 
 SpellEffectDef Projectile(glm::vec4 color, uint32_t spellId) {

@@ -152,10 +152,10 @@ public:
         // head: the halo disc (band discLo..discHi, radius discHalfWidth) gets
         // discShare of the sprites; the rest fall from it to lo.
         float discLo = 0.0f, discHi = 0.0f, discHalfWidth = 0.0f, discShare = 0.0f;
-        float coverage = 0.0f;      // the oracle's Source peak coverage, caster heights^2
-        float spawnRate = 0.0f;     // `population` rule (0 = the style's rate)
+        // B1149 (#469): no population: a row's record draws its slots' file
+        // counts; the measured coverage is a band (tests/spell_fx_population_oracle.h).
         // B1145 (#465): a spellsnew.eff Source takes its timing from the file
-        // per slot (SpellPresets::applySlotTiming), so the rows carry no
+        // per slot (SpellPresets::applySlotEmitter), so the rows carry no
         // onset or hold: they inherit the default row's onset (the stage's
         // measured latency, sourceStageLatency()) and the computed hold, the
         // cast-animation term EQ::kSpellFxCastAnimationSeconds a caller-
@@ -191,8 +191,6 @@ public:
     float targetStageLatency() const;
     /** True when spellOverrides gives this spell's Source style its own geometry. */
     bool hasSourceShapeOverride(uint32_t spellId, const std::string& styleName) const;
-    /** True when spellOverrides gives this spell's Source style its own rate. */
-    bool hasSourceRateOverride(uint32_t spellId, const std::string& styleName) const;
     /** spells.eff record of a spell with an override/exception row (-1 = not listed). */
     int overrideRecord(uint32_t spellId) const;
     /** B1131: the pool rule's factor on this spell's held Source (1 = its own rate). */
@@ -218,14 +216,12 @@ public:
         float lo = 0.0f, hi = 0.0f; // landing run p5..p95 height, target heights above the feet
         float halfWidth = 0.0f;     // lateral half-span (p5..p95 / 2), target heights
         float centroid = 0.0f;      // landing run centroid, target heights
-        float coverage = 0.0f;      // the oracle's landing coverage
         // B1145 (#465): onset / end are no longer config keys: a landing's
         // timing is its slots' (spellsnew.edd); the measured values are the
         // bands in tests/spell_fx_timing_oracle.h. 0 unless a row sets them.
         float onset = 0.0f;         // Act+ s the oracle's landing rises (RISE rule)
         float faceOnset = 0.0f;     // Head: Act+ s the glow lights the face (0 = none)
         float end = 0.0f;           // Act+ s the oracle's landing ends
-        float population = 1.0f;    // share of the style landing (shaped rows)
         float boneAt = 0.0f;        // Head: the height the head bone stands for (target heights)
         bool unmeasured = false;    // 40/51: the default row stands in
         int record = -1;            // -1 = the default row
@@ -233,8 +229,6 @@ public:
     /** The record's landing row, or the default row (the style volume on the target). */
     const TargetRecord& targetRecord(int record) const;
     size_t targetRecordCount() const { return targetRecords_.size(); }
-    /** The record-0 landing coverage the shaped rows' population is relative to. */
-    float targetReferenceCoverage() const { return targetReferenceCoverage_; }
 
     /**
      * B1137 (#457): the measured row a spell is drawn with, keyed by the record
@@ -322,7 +316,6 @@ private:
     // B1132: per-record Target (landing) rows.
     std::unordered_map<int, TargetRecord> targetRecords_;
     TargetRecord targetDefault_;
-    float targetReferenceCoverage_ = 0.0f;
     // B1137: field-145 record -> measured row id (animRecords.rows).
     std::unordered_map<int, int> animRows_;
 

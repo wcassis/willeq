@@ -7,9 +7,9 @@
 //   - its attach point (slot +12) picks the point on that actor (LHAND /
 //     RHAND / HEAD here; DEFAULT, CHEST and the rest = the entity);
 //   - a Target stage with no slot drawn draws no landing (record 326).
-// The measured rows (B1131/B1132) still give the shape, sizes and timing; each
-// slot carries 1/N of its row's population, N = the stage's emitter slots (the
-// set the `#level 60` oracle captures drew), and its own emitter's art.
+// The measured rows (B1131/B1132) still give the shape; B1145 the timing and
+// B1149 the population and sprite size come from each slot's spellsnew.edd
+// emitter, with its own art and colour words on the client's alpha.
 //
 // The real SpellVisualFX -> ParticleManager seam, on the shipped client files
 // (EQ_CLIENT_PATH, default /mnt/projects/EverQuestP1999); skips without them.
@@ -176,28 +176,124 @@ TEST_F(SlotRules, TheSourceIsTheSlotsTheCastersLevelPasses) {
     }
 }
 
-// The shares: at the measured level the slots add up to the row's population.
-// B1145 (#465): each slot then runs its own spellsnew.edd timing and envelope,
-// so the slots no longer peak together; the stage is scaled as a whole so its
-// COMBINED most-alive count is what its slots had untimed: the whole row at
-// the measured level, half of it for a level-1 caster's two of four slots.
-TEST_F(SlotRules, AtTheMeasuredLevelTheSlotsCarryTheWholeRow) {
-    auto peak = [](const std::vector<EQT::Graphics::ParticleCommandData>& v) {
-        std::vector<const EQT::Graphics::Environment::SpellEffectDef*> defs;
-        for (const auto& c : v) defs.push_back(&c.spellDef);
-        return Presets::CombinedPeakLive(defs);
-    };
+// B1149 (#469): each drawn slot emits its emitter's FILE population
+// (spellsnew.edd +0x80 burst, then +0x84 per tick at +0x88 ticks/s;
+// CParticleSystem::Render 0x10060ea4..0x10060ffd) and draws its sprite size
+// (+0xCC/+0x184 x +0x17C/+0x180 x +0x16C, world units). Record 80's Source:
+// 276 (2 + 1 x 32/s, 0.875) on each hand, 277 (5 + 5 x 10/s, 1.25), 278
+// (33 + 33 x 18/s, 1.0). No share of a measured row any more.
+TEST_F(SlotRules, EachSourceSlotEmitsItsFilesPopulationAndSize) {
     Note(kBurstOfFlame);
     fx_->createCastGlow(kCaster, 93, 1500, 60);
-    const float sum = peak(Created());
-    const int row = fx_->sourceRecordOf(93);
-    const auto rowDef = Presets::SourceForSpell(glm::vec4(1.0f), 93, row, false, 3.6f, 1.0f);
-    const float whole = Presets::CombinedPeakLive({&rowDef});
-    ASSERT_GT(whole, 0.0f);
-    EXPECT_NEAR(sum, whole, 0.03f * whole);  // burst counts round to whole sprites
-    // ...and a level-1 caster's two slots carry half of it.
+    const auto all = Created();
+    ASSERT_EQ(all.size(), 4u);
+    const int burst[4] = {2, 2, 5, 33};
+    const float perTick[4] = {1.0f, 1.0f, 5.0f, 33.0f};
+    const float tps[4] = {32.0f, 32.0f, 10.0f, 18.0f};
+    const float width[4] = {0.875f, 0.875f, 1.25f, 1.0f};
+    for (size_t i = 0; i < all.size(); ++i) {
+        int b = 0;
+        float t = 0.0f;
+        for (const auto& ed : all[i].spellDef.emitters) {
+            b += ed.config.burstCount;
+            t += ed.config.tickParticles;
+            EXPECT_FLOAT_EQ(ed.config.ticksPerSecond, tps[i]) << i;
+            EXPECT_FLOAT_EQ(ed.config.spawnRate, 0.0f) << i << ": no rate path";
+            const auto& es = ed.config.eddSprite;
+            EXPECT_TRUE(es.active) << i;
+            EXPECT_FLOAT_EQ(es.widthMin, width[i]) << i;
+            EXPECT_FLOAT_EQ(es.widthMax, width[i]) << i;
+            EXPECT_FLOAT_EQ(es.heightMin, width[i]) << i;
+            EXPECT_FLOAT_EQ(es.scale, 1.0f) << i << ": +0x16C 1, attach scale 1";
+        }
+        EXPECT_EQ(b, burst[i]) << i;
+        EXPECT_NEAR(t, perTick[i], 1e-5f) << i;
+    }
+    // A level-1 caster draws the two level-0 hand slots, each its full count.
     fx_->createCastGlow(kCaster, 93, 1500, 1);
-    EXPECT_NEAR(peak(Created()), 0.5f * whole, 0.03f * whole);
+    const auto one = Created();
+    ASSERT_EQ(one.size(), 2u);
+    for (const auto& c : one) EXPECT_EQ(c.spellDef.emitters.at(0).config.burstCount, 2);
+}
+
+// B1149: a landing slot's two halves (the row's spellComplete + impact
+// geometry) are ONE emitter: their counts add to the file's, both draw the
+// slot's own texture and sprite size. Record 80 at level 60: 280 (50 + 50 x
+// 30/s, 0.5), 281 (1, 16), 282 (2 + 2 x 28/s, 6), 9 (3 + 3 x 10/s, 1.25).
+TEST_F(SlotRules, EachLandingSlotIsOneEmitterOfItsFilesPopulation) {
+    Note(kBurstOfFlame);
+    fx_->createLanding(kCaster, kOther, 93, 60);
+    const auto all = Created();
+    ASSERT_EQ(all.size(), 8u);
+    const int burst[4] = {50, 1, 2, 3};
+    const float perTick[4] = {50.0f, 0.0f, 2.0f, 3.0f};
+    const float width[4] = {0.5f, 16.0f, 6.0f, 1.25f};
+    const char* tex[4] = {"spelcc.png", "spelcm.png", "spelcf.png", "spelcb.png"};
+    for (size_t slot = 0; slot < 4; ++slot) {
+        int b = 0;
+        float t = 0.0f;
+        for (size_t h = 0; h < 2; ++h)
+            for (const auto& ed : all[2 * slot + h].spellDef.emitters) {
+                b += ed.config.burstCount;
+                t += ed.config.tickParticles;
+                EXPECT_FLOAT_EQ(ed.config.eddSprite.widthMin, width[slot]) << slot;
+                EXPECT_EQ(ed.config.textureRegionCount, 1) << slot;
+                EXPECT_EQ(ed.config.textureRegions[0], Tile(tex[slot])) << slot;
+                EXPECT_TRUE(ed.config.regionColours[0].active) << slot << ": white, on the client's alpha";
+                EXPECT_TRUE(ed.config.regionColours[0].clientAlpha) << slot;
+            }
+        EXPECT_EQ(b, burst[slot]) << slot;
+        EXPECT_NEAR(t, perTick[slot], 1e-4f) << slot;
+    }
+}
+
+// B1149: the simulation emits by the client's ticks -- the burst on the first
+// frame, then tickParticles for every 1/ticksPerSecond of emitter age -- and
+// sizes the sprite from the file's range, as a world-unit quad.
+TEST(SlotRulesSim, TheEmitterEmitsTheBurstThenTicksAndDrawsTheFilesSize) {
+    EQT::Graphics::Environment::SpellEffectDef def;
+    EQT::Graphics::Environment::SpellEmitterDef ed;
+    auto& c = ed.config;
+    c.spawnRate = 0.0f;
+    c.burstCount = 5;
+    c.ticksPerSecond = 10.0f;
+    c.tickParticles = 2.5f;
+    c.emitterLifetime = 0.5f;
+    c.lifetimeMin = c.lifetimeMax = 5.0f;
+    c.velocityBase = glm::vec3(0.0f);
+    c.eddSprite.active = true;
+    c.eddSprite.widthMin = c.eddSprite.widthMax = 1.25f;
+    c.eddSprite.heightMin = 2.0f;
+    c.eddSprite.heightMax = 3.0f;
+    c.eddSprite.scale = 2.0f;
+    def.emitters.push_back(ed);
+    EQT::Graphics::SimulationWorker worker;
+    EQT::Graphics::SimulationOutput output;
+    std::vector<EQT::Graphics::Environment::UnifiedParticle> alive;
+    for (int f = 0; f < 60; ++f) {  // 1 s at 60 Hz: the 0.5 s window and beyond
+        EQT::Graphics::SimulationInput input;
+        auto& pi = input.particleInput;
+        pi.deltaTime = 1.0f / 60.0f;
+        pi.unifiedRendererInitialized = true;
+        pi.poolSize = 256;
+        if (f == 0) {
+            EQT::Graphics::ParticleCommandData cmd;
+            cmd.type = EQT::Graphics::ParticleCommand::CreateSpellEffect;
+            cmd.spellDef = def;
+            cmd.preAssignedEffectID = 1;
+            pi.commands.push_back(cmd);
+        }
+        worker.computeOnce(input, output);
+        if (output.particleOutput.valid) alive = output.particleOutput.renderBuffer;
+    }
+    // 5 + ticks 1..4 (age < 0.5) x 2.5 = 15 sprites.
+    EXPECT_EQ(alive.size(), 15u);
+    for (const auto& p : alive) {
+        EXPECT_TRUE(p.hasEddSprite());
+        EXPECT_FLOAT_EQ(p.size, 2.5f);
+        EXPECT_GE(p.height, 4.0f);
+        EXPECT_LE(p.height, 6.0f);
+    }
 }
 
 // Record 112 (201 Flash of Light, B1131's head row): HEAD at 24 and 0, DEFAULT
@@ -232,16 +328,15 @@ TEST_F(SlotRules, TheLandingIsTheTargetSlotsTheCastersLevelPasses) {
     EXPECT_TRUE(hasTile(all, "spelcf.png"));
     EXPECT_FALSE(hasTile(one, "spelcf.png"));
     EXPECT_TRUE(hasTile(one, "spelcc.png"));  // slot 0, emitter 280
-    // The spellComplete half (even entries) takes the Source slots' art at the
-    // same level (T441): spelcb only at level 1 -- spelce is 278, a level-24
-    // Source slot.
+    // B1149: both halves of a slot draw that slot's emitter's art (B1144 gave
+    // the spellComplete half the Source slots' art): no Source texture here.
+    EXPECT_FALSE(hasTile(all, "spelce.png"));
     for (size_t i = 0; i < one.size(); i += 2) {
-        const auto& c = one[i].spellDef.emitters[0].config;
-        EXPECT_EQ(c.textureRegionCount, 2) << i;  // the two hand slots, both emitter 276
-        for (uint8_t k = 0; k < c.textureRegionCount; ++k) EXPECT_EQ(c.textureRegions[k], Tile("spelcb.png")) << i;
+        const auto& a = one[i].spellDef.emitters[0].config;
+        const auto& b = one[i + 1].spellDef.emitters[0].config;
+        EXPECT_EQ(a.textureRegionCount, 1) << i;
+        EXPECT_EQ(a.textureRegions[0], b.textureRegions[0]) << i;
     }
-    EXPECT_TRUE(hasTile(all, "spelce.png"));
-    EXPECT_FALSE(hasTile(one, "spelce.png"));
 }
 
 // B1145 (#465): each landing slot carries its emitter's TIMING from
@@ -265,13 +360,11 @@ TEST_F(SlotRules, EachLandingSlotRunsItsEmittersTiming) {
             EXPECT_NEAR(ed.config.emitterLifetime, 0.75f, 1e-5f) << i;
             EXPECT_FLOAT_EQ(ed.config.lifetimeMin, 1.5f) << i;
             EXPECT_FLOAT_EQ(ed.config.lifetimeMax, 1.5f) << i;
-            EXPECT_GT(ed.config.burstCount, 0) << i;
-            EXPECT_NEAR(ed.config.spawnRate / static_cast<float>(ed.config.burstCount), 30.0f, 1.0f)
-                << i << ": the stream is the file's 50/tick x 30/s after its 50 burst";
+            EXPECT_FLOAT_EQ(ed.config.ticksPerSecond, 30.0f) << i << ": the file's 30 ticks/s";
         } else {      // slot 1, emitter 281: the burst alone
             EXPECT_NEAR(ed.triggerDelay, latency, 1e-5f) << i;
             EXPECT_FLOAT_EQ(ed.config.spawnRate, 0.0f) << i;
-            EXPECT_GT(ed.config.burstCount, 0) << i;
+            EXPECT_FLOAT_EQ(ed.config.tickParticles, 0.0f) << i;
             EXPECT_FLOAT_EQ(ed.config.lifetimeMax, 1.0f) << i;
         }
         EXPECT_FLOAT_EQ(ed.config.sustainRate, 0.0f) << i << ": the B1121 two-phase schedule is gone";

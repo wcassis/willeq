@@ -35,6 +35,7 @@
 #include "client/graphics/environment/spell_effects_config.h"
 #include "spell_pool.h"
 #include "spell_anim_rows.h"
+#include "spell_fx_population_oracle.h"
 #include "spell_fx_timing_oracle.h"
 
 #include <algorithm>
@@ -133,7 +134,11 @@ TEST_F(TargetRecordRows, ThePortAndDisciplineRowsAreTheObserversNumbers) {
     const auto& disc = cfg.targetRecord(51);
     EXPECT_FALSE(disc.unmeasured);
     EXPECT_EQ(disc.anchor, TAnchor::Caster);
-    EXPECT_EQ(disc.coverage, 0.0f) << "no Target-stage emitter: nothing at OP_Action";
+    const auto band = std::find_if(std::begin(spell_fx_population_oracle::kRows),
+                                   std::end(spell_fx_population_oracle::kRows),
+                                   [](const spell_fx_population_oracle::RecordRow& o) { return o.row == 51; });
+    ASSERT_NE(band, std::end(spell_fx_population_oracle::kRows));
+    EXPECT_EQ(band->landingCoverage, 0.0f) << "no Target-stage emitter: nothing at OP_Action";
 }
 
 TEST_F(TargetRecordRows, EachRecordCarriesTheOraclesAnchorAndExtent) {
@@ -154,11 +159,13 @@ TEST_F(TargetRecordRows, EachRecordCarriesTheOraclesAnchorAndExtent) {
     // The vision records the survey checked and found NOT head-anchored.
     EXPECT_NE(cfg.targetRecord(14).anchor, TAnchor::Head) << "Bind Sight class (r35)";
     EXPECT_NE(cfg.targetRecord(7).anchor, TAnchor::Head) << "Insight (r132)";
-    // Shaped rows draw the oracle's lighter population (record 0 = the style).
-    EXPECT_NEAR(cfg.targetReferenceCoverage(), 3.945f, 1e-3f);
-    EXPECT_NEAR(cfg.targetRecord(5).population, 0.559f / 3.945f, 0.002f);
-    EXPECT_NEAR(cfg.targetRecord(3).population, 1.0f, 1e-4f) << "a saturated wash is not a count";
-    EXPECT_NEAR(cfg.targetRecord(12).population, 1.0f, 1e-4f) << "body rows keep B1123's populations";
+    // B1149 (#469): the shaped rows' populations are retired (each record
+    // draws its slots' file counts); the measured coverages they came from are
+    // bands: record 5's head glow 0.559 of record 0's 3.945.
+    namespace pop = spell_fx_population_oracle;
+    EXPECT_NEAR(pop::kRetiredTargetReferenceCoverage, 3.945f, 1e-3f);
+    for (const auto& o : pop::kRows)
+        if (o.row == 5) EXPECT_NEAR(o.populationShare, 0.559f / 3.945f, 0.002f);
 }
 
 // The bridge's cast-animation arm draws the whole landing through

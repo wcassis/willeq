@@ -392,9 +392,10 @@ private:
     void createImpactNode(SpellFXInstance& effect);
 
 #ifdef EQT_HAS_GLES2
-    // B1144: createLanding's spellsnew.eff path (one emitter pair per Target slot).
+    // B1144: createLanding's spellsnew.eff path (one emitter pair per Target
+    // slot; B1149: the pair is the slot's one emitter, the file's population).
     uint16_t createLandingFromSlots(uint16_t caster_id, uint16_t target_id, uint32_t spell_id,
-                                    int record, const StageSlots& slots, int casterLevel);
+                                    int record, const StageSlots& slots);
 #endif
 
     // Update individual effect types

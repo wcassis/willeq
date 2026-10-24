@@ -127,7 +127,8 @@
 // re-sizes it) and NO number above is a population any more: every landing
 // is derived from the pool by one rule (SpellEffectsConfig::applyPool -- a
 // landing plus its own held Source peaks at half the pool; an oracle
-// exception, `landingPopulation.exceptions`, caps the landing alone).  The
+// exception, `landingPopulation.exceptions`, capped the landing alone --
+// retired by B1149, tests/spell_fx_population_oracle.h).  The
 // pool-accounting cases (SpellPoolRule) run at EVERY platform's pool.  Sizes
 // are judged on the caster-ROI instrument (roi_oracle.txt), not B1118's
 // whole-frame p90.
@@ -154,6 +155,7 @@
 #include "client/graphics/environment/spell_sprite_atlas.h"
 #include "client/spell/spells_eff_reader.h"
 #include "spell_landing_population.h"
+#include "spell_fx_population_oracle.h"
 #include "spell_pool.h"
 
 using namespace EQT::Graphics::Environment;
@@ -493,16 +495,6 @@ protected:
     static float pool() {
         return static_cast<float>(SpellEffectsConfig::instance().getGlobal().maxParticles);
     }
-    // `landingPopulation.exceptions.<id>.peakLive` (0 = none): a landing the
-    // oracle fills with fewer sprites than half the pool.
-    static float exception(uint32_t id) {
-        std::ifstream f(repoRoot() + "/config/spell_effects.json");
-        Json::Value root;
-        Json::CharReaderBuilder b;
-        std::string errs;
-        if (!Json::parseFromStream(b, f, &root, &errs)) return 0.0f;
-        return root["landingPopulation"]["exceptions"][std::to_string(id)]["peakLive"].asFloat();
-    }
 };
 INSTANTIATE_TEST_SUITE_P(Platforms, SpellPoolRule, ::testing::ValuesIn(spell_pool::kPlatforms));
 
@@ -516,8 +508,8 @@ TEST(SpellPoolPlatforms, TheSbcPoolIsTheSmallerOne) {
 
 // Every measured landing peaks at the rule for this pool: the landing plus its
 // own held Source (B1122) at half the pool -- so two overlapping landings, or
-// 253's field beside one, fit -- or, for an oracle exception, the landing alone
-// at min(peakLive, that).  Computed through the shipped presets (what the
+// 253's field beside one, fit (B1149: the oracle exceptions are retired; and a
+// spell with a spellsnew.eff record draws its slots' file counts, not this).  Computed through the shipped presets (what the
 // worker is handed), not the config structs.  RED on the pre-rule tree
 // (populations were hand-typed for one pool).
 TEST_P(SpellPoolRule, EveryLandingPeaksAtTheRuleForThisPool) {
@@ -541,35 +533,28 @@ TEST_P(SpellPoolRule, EveryLandingPeaksAtTheRuleForThisPool) {
                                          cfg.sourceRecord(rec).maxHold());
             withSource = std::max(withSource, o.PeakAt(1.0f));
         }
-        const float ex = exception(id);
         const float alone = live(id);
-        if (ex > 0.0f && ex <= alone * 1.002f) {
-            EXPECT_NEAR(alone, ex, 0.002f * ex) << "spell " << id << " (oracle exception)";
-            EXPECT_LE(withSource, bound * 1.002f) << "spell " << id;
-        } else {
-            EXPECT_NEAR(withSource, bound, 0.002f * bound)
-                << "spell " << id << " at pool " << pool() << ": landing " << alone << " + held Source";
-        }
+        EXPECT_NEAR(withSource, bound, 0.002f * bound)
+            << "spell " << id << " at pool " << pool() << ": landing " << alone << " + held Source";
     }
 }
 
-// The hand-set exceptions are the landings the oracle fills with FEWER sprites
-// than the pool bound -- each with its measured reason -- and the bound-limited
-// landings (record 0 = 93/38, 253's field) are NOT exceptions: they re-flow
-// with the pool.  RED on the B1123 config (no landingPopulation block).
-TEST(SpellPoolExceptions, OnlyTheOracleLimitedLandingsAreExceptions) {
+// B1149 (#469): the hand-set exceptions (B1123's fitted peaks for the four
+// landings the oracle fills with FEWER sprites) are retired with the rest of
+// the per-record populations: every spellsnew.eff record draws its slots'
+// FILE counts. Their values are bands in tests/spell_fx_population_oracle.h.
+TEST(SpellPoolExceptions, TheFittedExceptionsAreRetiredToBands) {
     std::ifstream f(repoRoot() + "/config/spell_effects.json");
     Json::Value root;
     Json::CharReaderBuilder b;
     std::string errs;
     ASSERT_TRUE(Json::parseFromStream(b, f, &root, &errs)) << errs;
-    const Json::Value& ex = root["landingPopulation"]["exceptions"];
-    ASSERT_TRUE(ex.isObject()) << "config/spell_effects.json has no landingPopulation.exceptions";
-    for (const char* id : {"41", "54", "656", "458"}) {
-        EXPECT_GT(ex[id]["peakLive"].asFloat(), 0.0f) << id;
-        EXPECT_GT(ex[id]["why"].asString().size(), 20u) << id << ": an exception says why";
-    }
-    for (const char* id : {"0", "93", "38", "253"}) EXPECT_FALSE(ex.isMember(id)) << id;
+    EXPECT_FALSE(root["landingPopulation"].isMember("exceptions"));
+    EXPECT_FALSE(root["sourceRecords"].isMember("population"));
+    EXPECT_FALSE(root["targetRecords"].isMember("referenceCoverage"));
+    std::vector<int> ids;
+    for (const auto& e : spell_fx_population_oracle::kRetiredExceptions) ids.push_back(e.spell);
+    EXPECT_EQ(ids, (std::vector<int>{41, 54, 656, 458}));
 }
 
 // The rule scales a landing's rates, never its schedule: the peak:sustain and

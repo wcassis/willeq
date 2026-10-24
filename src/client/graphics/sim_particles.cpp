@@ -416,6 +416,25 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
             // (0 = the whole emitter life), then sustainRate feeds the emitter
             // from sustainFrom to emitterLifetime (EmitterConfig).
             const auto& ec = emitter.config;
+            // B1149 (#469): a spellsnew.edd emitter emits by the client's
+            // ticks: tick n at emitter age n / ticksPerSecond, each new tick
+            // tickParticles (0x10060e8b..0x10060ffd: ticks = ftol(age x rate),
+            // the burst stands for tick 0).
+            if (ec.ticksPerSecond > 0.0f && ec.tickParticles > 0.0f) {
+                const int ticks = static_cast<int>(std::floor(emitter.emitterAge * ec.ticksPerSecond));
+                if (ticks > emitter.lastTick) {
+                    emitter.spawnAccumulator += static_cast<float>(ticks - emitter.lastTick) * ec.tickParticles *
+                                                std::min(1.0f, std::max(0.0f, density));
+                    emitter.lastTick = ticks;
+                    const int toSpawn = static_cast<int>(emitter.spawnAccumulator);
+                    emitter.spawnAccumulator -= static_cast<float>(toSpawn);
+                    for (int s = 0; s < toSpawn; ++s) {
+                        spawnSpellParticle(emitter.config, emitter.emitterID,
+                                           emitter.position + emitter.attachOffset, dirPtr, emitter.family);
+                    }
+                }
+                continue;
+            }
             float rate = 0.0f;
             if (ec.spawnWindow <= 0.0f || emitter.emitterAge < ec.spawnWindow) rate += ec.spawnRate;
             if (ec.sustainRate > 0.0f && emitter.emitterAge >= ec.sustainFrom) rate += ec.sustainRate;
@@ -448,7 +467,10 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
         // Interpolate color and size
         p.color = glm::mix(p.colorStart, p.colorEnd, t);
         if (p.hasEddColour()) p.color.a = p.eddAlpha();  // B1146: the client's fade x peak
-        p.size = glm::mix(p.sizeStart, p.sizeEnd, t);
+        if (p.hasEddSprite())
+            p.eddSpriteSize();  // B1149: the client's size over life
+        else
+            p.size = glm::mix(p.sizeStart, p.sizeEnd, t);
 
         if (p.motionType == MotionType::CAMERA_RELATIVE) {
             auto it = particleEmitters_.find(p.emitterID);
@@ -762,6 +784,7 @@ void SimulationWorker::spawnWeatherParticle(const EmitterConfig& cfg, uint16_t e
     if (idx < 0) return;
 
     UnifiedParticle& p = particlePool_[idx];
+    p.flags = 0;  // B1149: a reused slot keeps no EDD colour/sprite bit of its last particle
 
     const glm::vec3& he = cfg.spawnVolumeHalfExtents;
     p.position.x = cameraPos.x + particleRandomFloat(-he.x, he.x);
@@ -790,9 +813,30 @@ void SimulationWorker::spawnWeatherParticle(const EmitterConfig& cfg, uint16_t e
         p.color.a = alphaVar;
     }
 
-    p.sizeStart = particleRandomFloat(cfg.sizeStartMin, cfg.sizeStartMax);
-    p.sizeEnd = particleRandomFloat(cfg.sizeEndMin, cfg.sizeEndMax);
-    p.size = p.sizeStart;
+    if (cfg.eddSprite.active) {
+        // B1149 (#469): the client's sprite size (0x10061262..0x100612a8): the
+        // height from one draw, the width from the same draw when +0x18C is
+        // set, else its own; world units, constant but for the grow-in /
+        // shrink-out times.
+        const auto& es = cfg.eddSprite;
+        const float u = particleRandomFloat(0.0f, 1.0f);
+        const float v = es.sameRandom ? u : particleRandomFloat(0.0f, 1.0f);
+        p.sizeStart = (es.widthMin + (es.widthMax - es.widthMin) * v) * es.scale;
+        p.sizeEnd = p.sizeStart;
+        p.eddBaseHeight = (es.heightMin + (es.heightMax - es.heightMin) * u) * es.scale;
+        p.eddGrowIn = es.growIn;
+        p.eddShrinkOut = es.shrinkOut;
+        p.eddHeightShrink = es.heightShrink;
+        p.eddWidthShrink = es.widthShrink;
+        p.setEddSprite(true);
+        p.age = 0.0f;
+        p.eddSpriteSize();
+    } else {
+        p.sizeStart = particleRandomFloat(cfg.sizeStartMin, cfg.sizeStartMax);
+        p.sizeEnd = particleRandomFloat(cfg.sizeEndMin, cfg.sizeEndMax);
+        p.size = p.sizeStart;
+        p.setEddSprite(false);
+    }
 
     if (cfg.sizeSpeedCorrelation > 0.0f) {
         float sizeRange = cfg.sizeStartMax - cfg.sizeStartMin;
@@ -830,6 +874,7 @@ void SimulationWorker::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emi
     if (idx < 0) return;
 
     UnifiedParticle& p = particlePool_[idx];
+    p.flags = 0;  // B1149: a reused slot keeps no EDD colour/sprite bit of its last particle
 
     p.position = emitterPos;
     if (cfg.spawnShape == SpawnShape::BOX) {
@@ -885,9 +930,30 @@ void SimulationWorker::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emi
     p.colorEnd = cfg.colorEnd;
     p.color = cfg.colorStart;
 
-    p.sizeStart = particleRandomFloat(cfg.sizeStartMin, cfg.sizeStartMax);
-    p.sizeEnd = particleRandomFloat(cfg.sizeEndMin, cfg.sizeEndMax);
-    p.size = p.sizeStart;
+    if (cfg.eddSprite.active) {
+        // B1149 (#469): the client's sprite size (0x10061262..0x100612a8): the
+        // height from one draw, the width from the same draw when +0x18C is
+        // set, else its own; world units, constant but for the grow-in /
+        // shrink-out times.
+        const auto& es = cfg.eddSprite;
+        const float u = particleRandomFloat(0.0f, 1.0f);
+        const float v = es.sameRandom ? u : particleRandomFloat(0.0f, 1.0f);
+        p.sizeStart = (es.widthMin + (es.widthMax - es.widthMin) * v) * es.scale;
+        p.sizeEnd = p.sizeStart;
+        p.eddBaseHeight = (es.heightMin + (es.heightMax - es.heightMin) * u) * es.scale;
+        p.eddGrowIn = es.growIn;
+        p.eddShrinkOut = es.shrinkOut;
+        p.eddHeightShrink = es.heightShrink;
+        p.eddWidthShrink = es.widthShrink;
+        p.setEddSprite(true);
+        p.age = 0.0f;
+        p.eddSpriteSize();
+    } else {
+        p.sizeStart = particleRandomFloat(cfg.sizeStartMin, cfg.sizeStartMax);
+        p.sizeEnd = particleRandomFloat(cfg.sizeEndMin, cfg.sizeEndMax);
+        p.size = p.sizeStart;
+        p.setEddSprite(false);
+    }
 
     p.drag = cfg.drag;
     p.motionType = cfg.motionType;
@@ -913,11 +979,11 @@ void SimulationWorker::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emi
     p.setBlendMode(cfg.blendMode);
     p.setFamily(family);  // B995
 
-    // B1146 (#466): the emitter that names this texture carries non-white
-    // spellsnew.edd colour words -- the particle takes its start -> end RGB
-    // (EQGraphicsDX9 0x100605b0). With `clientAlpha` it also takes the
-    // client's fade x peak alpha and its +0x68 blend; without it the alpha
-    // and blend stay the style's, like every white emitter's (see
+    // B1146 (#466): the emitter that names this texture carries spellsnew.edd
+    // colour words -- the particle takes its start -> end RGB (EQGraphicsDX9
+    // 0x100605b0). With `clientAlpha` (B1149: every spellsnew.eff emitter,
+    // white too) it also takes the client's fade x peak alpha and its +0x68
+    // blend; without it the alpha and blend stay the style's (see
     // SpellPresets::applyStageEmitterColours()).
     const auto& rc = cfg.regionColours[region];
     if (rc.active) {

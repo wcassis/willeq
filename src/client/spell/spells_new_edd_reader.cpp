@@ -24,6 +24,24 @@ SpellsNewEddTiming decodeSpellsNewEddTiming(const uint8_t* e) {
     return t;
 }
 
+SpellsNewEddSprite decodeSpellsNewEddSprite(const uint8_t* e) {
+    SpellsNewEddSprite s;
+    s.widthMin = eddFloat(e, kEddWidthMinOffset);
+    s.widthMax = eddFloat(e, kEddWidthMaxOffset);
+    s.heightMin = eddFloat(e, kEddHeightMinOffset);
+    s.heightMax = eddFloat(e, kEddHeightMaxOffset);
+    s.multiplier = eddFloat(e, kEddSizeMultiplierOffset);
+    s.sameRandom = eddInt(e, kEddSameRandomOffset) == 1;
+    s.scaleSizes = eddInt(e, kEddScaleSizesOffset) == 1;
+    s.scaleShape = eddInt(e, kEddScaleShapeOffset) == 1;
+    s.growIn = eddFloat(e, kEddGrowInOffset);
+    s.shrinkOut = eddFloat(e, kEddShrinkOutOffset);
+    s.heightShrink = eddFloat(e, kEddHeightShrinkOffset);
+    s.widthShrink = eddFloat(e, kEddWidthShrinkOffset);
+    s.lodDistance = eddFloat(e, kEddLodDistanceOffset);
+    return s;
+}
+
 bool SpellsNewEddReader::loadFile(const std::string& path) {
     std::ifstream f(path, std::ios::binary);
     if (!f.is_open()) {
@@ -39,6 +57,7 @@ bool SpellsNewEddReader::loadBytes(std::vector<uint8_t> bytes, const std::string
     m_loaded = false;
     m_bytes.clear();
     m_timing.clear();
+    m_sprite.clear();
     m_count = 0;
     if (bytes.size() < kSpellsNewEddMagicBytes ||
         (bytes.size() - kSpellsNewEddMagicBytes) % kSpellsNewEddEntryBytes != 0 ||
@@ -49,9 +68,12 @@ bool SpellsNewEddReader::loadBytes(std::vector<uint8_t> bytes, const std::string
     m_bytes = std::move(bytes);
     m_count = (m_bytes.size() - kSpellsNewEddMagicBytes) / kSpellsNewEddEntryBytes;
     m_timing.resize(m_count);
-    for (size_t i = 0; i < m_count; ++i)
-        m_timing[i] = decodeSpellsNewEddTiming(m_bytes.data() + kSpellsNewEddMagicBytes +
-                                               i * kSpellsNewEddEntryBytes);
+    m_sprite.resize(m_count);
+    for (size_t i = 0; i < m_count; ++i) {
+        const uint8_t* e = m_bytes.data() + kSpellsNewEddMagicBytes + i * kSpellsNewEddEntryBytes;
+        m_timing[i] = decodeSpellsNewEddTiming(e);
+        m_sprite[i] = decodeSpellsNewEddSprite(e);
+    }
     m_error.clear();
     m_loaded = true;
     return true;
@@ -65,6 +87,11 @@ const uint8_t* SpellsNewEddReader::entryBytes(int32_t index) const {
 const SpellsNewEddTiming* SpellsNewEddReader::timing(int32_t index) const {
     if (index <= 0 || static_cast<size_t>(index) >= m_count) return nullptr;
     return &m_timing[static_cast<size_t>(index)];
+}
+
+const SpellsNewEddSprite* SpellsNewEddReader::sprite(int32_t index) const {
+    if (index <= 0 || static_cast<size_t>(index) >= m_count) return nullptr;
+    return &m_sprite[static_cast<size_t>(index)];
 }
 
 std::string SpellsNewEddReader::name(int32_t index) const {
