@@ -22,10 +22,11 @@ int main(int argc, char** argv) {
     }
     // The attack animations fable plays (animation_constants.h): c01..c11,
     // c10 swim-attack, t07/t08/t09. Also print o01 (idle) and l01 (walk) as
-    // references.
+    // references. B1148: t04/t05/t06 are the cast tracks spell CastingAnim
+    // 42/43/44 name (eqgame's id -> code table at 0x8ffbc8 + id * 20).
     static const std::vector<std::string> interesting = {
         "c01", "c02", "c03", "c04", "c05", "c06", "c07", "c08", "c09",
-        "c10", "c11", "t07", "t08", "t09", "o01", "l01"
+        "c10", "c11", "t04", "t05", "t06", "t07", "t08", "t09", "o01", "l01"
     };
     for (int a = 1; a < argc; ++a) {
         S3DLoader loader;

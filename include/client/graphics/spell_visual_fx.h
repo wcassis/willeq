@@ -200,8 +200,20 @@ public:
     // Returns effect ID for later removal
     // B1144: `casterLevel` is the slot gate's level (SpellsNewEffGateLevel);
     // a spellsnew.eff record's Source draws one emitter per slot it passes.
+    // B1148 (#468): `castAnim` = spell field 120; the Source's caller
+    // duration is the cast time + the caster model's track for it
+    // (castAnimationMs), the measured 4.35 s when that does not resolve.
     uint32_t createCastGlow(uint16_t caster_id, uint32_t spell_id, uint32_t duration_ms,
-                            int casterLevel = kMeasuredCasterLevel);
+                            int casterLevel = kMeasuredCasterLevel, int castAnim = 0);
+
+    // B1148: the caster model's track length for an animation code ("t04"),
+    // in ms; < 0 = no such entity / model / track. Set by the renderer (the
+    // entity's skeleton) and by tools/model_viewer's FX harness.
+    using CastAnimationLengthCallback = std::function<int32_t(uint16_t entity_id, const char* animCode)>;
+    void setCastAnimationLengthCallback(CastAnimationLengthCallback cb) { m_cast_anim_length_cb = std::move(cb); }
+    // The CastingAnim term for this caster in ms (castAnim's track length),
+    // < 0 when it does not resolve.
+    int32_t castAnimationMs(uint16_t caster_id, int castAnim) const;
 
     // Create projectile traveling from caster to target
     void createProjectile(uint16_t caster_id, uint16_t target_id, uint32_t spell_id);
@@ -393,6 +405,7 @@ private:
     irr::scene::ISceneManager* m_smgr;
     irr::video::IVideoDriver* m_driver;
     EntityPositionCallback m_entity_pos_callback;
+    CastAnimationLengthCallback m_cast_anim_length_cb;  // B1148
 
     // T381 (B160): spell id -> render vocabulary, fed by the bridge from the
     // SpellCastVisual* event payloads. Replaces the never-set SpellDatabase*.

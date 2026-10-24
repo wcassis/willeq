@@ -86,7 +86,7 @@ Additional context is in subdirectory CLAUDE.md files:
   builds and runs the suite in one job, B1042; `RDPServerFrameTest.UpdateFrameMultipleTimes`
   is re-run with `--repeat until-pass:3`) and `gate` (`visual_gate`, 3 in-script retries,
   never `allow_failure`, all five manifest zones, `docs/ci.md`). The x86 jobs run
-  on **gitlab-runner-1 and gitlab-runner-2** (both tag `x86-build`, B1008, ccache on both) and refuse
+  on **gitlab-runner-1 and gitlab-runner-2** (tag `x86-build`, B1008) and refuse
   other hosts (a kanban worker's 4 GiB cap OOM-kills a link; builds stay off the Inspur box and off
   hermes-ext). `client-ledger-live` rebuilds in-job a tree not stamped by its host+sha (B1026).
   Push a new branch with `-o ci.skip`, then open the MR: the MR pipeline is the one that counts
@@ -98,8 +98,7 @@ Additional context is in subdirectory CLAUDE.md files:
 `include/`, `tests/`, `tools/` and `benchmarks/` is under 1,500 lines, and
 `scripts/refactor/file_size_allowlist.txt` is EMPTY.** A file over 1,500 is a
 **FAIL** in the `FileSizeCeiling` ctest test, not a warning (M00,
-`docs/decisions.md` 2026-09-04; T385/B167 added `tools/` and `benchmarks/` to
-`--all`, which had never been scanned). 3,000 lines is a second, universal hard
+`docs/decisions.md` 2026-09-04; T385/B167 added `tools/`, `benchmarks/`). 3,000 lines is a second, universal hard
 cap that applies to allowlisted files too.
 
 Measure, do not quote: `bash scripts/refactor/check_file_sizes.sh -C <repo>
@@ -394,8 +393,9 @@ its seam census disagrees) and the particle holds that cell all life.
 A grid's playback rate is therefore `16 / lifetime`, set by
 `config/spell_effects.json`. **A spellsnew.eff slot is timed by its EDD words**
 (B1145, `spell_fx_timing.h`): +0x8C delay, run (fixed |+0x78| or the stage's
-duration), +0x7C life, burst/stream; B1121's fed schedule serves spells with
-no record; OP_DeleteSpawn takes a corpse's emitters 3.5 s later (`onSpawnDeleted`).
+duration; Source: + the caster's CastingAnim track, B1148), +0x7C life, burst/stream; B1121's schedule
+serves spells with no record; OP_DeleteSpawn takes a corpse's emitters and model (faded from 1.3 s,
+`corpse_fade.h`) 3.5 s later.
 Ends: `review/B1121/scripts/b1120_measure.sh <leg> <out>` (T422).
 `tests/test_spell_burst_oracle_match.cpp` pins both.
 

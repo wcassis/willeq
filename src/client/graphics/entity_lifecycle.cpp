@@ -1,4 +1,5 @@
 #include "client/graphics/entity_renderer.h"
+#include "client/graphics/corpse_fade.h"
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/constrained_renderer_config.h"
@@ -111,31 +112,38 @@ void EntityRenderer::removeEntity(uint16_t spawnId) {
 }
 
 void EntityRenderer::startCorpseDecay(uint16_t spawnId) {
+    // The bridge sends this right before EntityDespawned for a spawn its game
+    // state calls a corpse; both land in beginCorpseFade(), which is idempotent.
+    if (!beginCorpseFade(spawnId)) {
+        removeEntity(spawnId);
+    }
+}
+
+bool EntityRenderer::beginCorpseFade(uint16_t spawnId) {
     auto it = entities_.find(spawnId);
     if (it == entities_.end()) {
-        return;
+        return false;
     }
-
     EntityVisual& visual = it->second;
-
-    // Only start decay for corpses, and only if not already fading
-    if (!visual.isCorpse || visual.isFading) {
-        // Not a corpse or already fading - just remove immediately
-        if (!visual.isCorpse) {
-            removeEntity(spawnId);
-        }
-        return;
+    if (visual.isFading) {
+        return true;  // already on the list
     }
-
-    LOG_DEBUG(MOD_ENTITY, "Starting corpse decay for {} ({})", spawnId, visual.name);
-
-    // Start the fade-out animation
+    // eqgame 0x4849b2: spawn type > 1 (a corpse) and race not 216/472
+    // (0x47bfd0); anything else is deleted at the packet (corpse_fade.h).
+    if (!CorpseUsesFadeList(visual.isCorpse, visual.raceId)) {
+        return false;
+    }
+    LOG_DEBUG(MOD_ENTITY, "Corpse {} ({}) on the fade list", spawnId, visual.name);
     visual.isFading = true;
     visual.fadeTimer = 0.0f;
     visual.fadeAlpha = 1.0f;
-
-    // Add to active entities - fading entities need per-frame updates
+    // The SPAWN is gone at the packet; only its actor stays: no name.
+    if (visual.nameNode) {
+        visual.nameNode->setVisible(false);
+    }
+    // The per-frame walk (updateMainThreadEntityState) iterates activeEntities_.
     activeEntities_.insert(spawnId);
+    return true;
 }
 
 void EntityRenderer::updateEntityAppearance(uint16_t spawnId, uint16_t raceId, uint8_t gender,

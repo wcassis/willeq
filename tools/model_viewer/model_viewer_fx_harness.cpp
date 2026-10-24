@@ -9,6 +9,7 @@
 #include "client/graphics/eqe1_texture_index.h"
 #include "client/data_paths.h"
 #include "client/graphics/first_person_camera.h"
+#include "client/graphics/corpse_fade.h"
 #include "client/graphics/spell_fx_bone_anchor.h"
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/environment/spell_effects_config.h"
@@ -419,6 +420,11 @@ bool initHarnessParticles() {
         out = n->getAbsolutePosition();
         return true;
     });
+    // B1148 (#468): the caster model's CastingAnim track, as the renderer
+    // reads it (spell_fx_bone_anchor.h).
+    spellVisualFX->setCastAnimationLengthCallback([nodeFor](uint16_t id, const char* code) -> int32_t {
+        return CastAnimationTrackMs(nodeFor(id), code);
+    });
     std::printf("[fx-harness] SpellVisualFX -> ParticleManager -> SimulationWorker ready\n");
     std::fflush(stdout);
     return true;
@@ -492,6 +498,7 @@ void harnessBeginCast(const EQ::SpellData& spell, bool self, uint32_t castMs, in
     d.isPlayerCast = true;
     d.isTargetCast = false;
     d.spellVisual = spell.visualVocabulary();
+    d.castAnim = spell.cast_anim;  // B1148
     (void)self;
     eqt::bridge::ApplySpellCastStartedFx(fxRoute, spellVisualFX.get(), d, now);
 }
@@ -652,6 +659,9 @@ int runScriptedHarness() {
     size_t next = 0;
     double lastAction = -1.0;  // scripted time of the latest OP_Action
     bool targetDied = false;
+    bool targetDespawned = false;
+    double corpseFadeStart = -1.0;  // B1148: scripted time of a corpse's OP_DeleteSpawn
+    float corpseFadeAlpha = 1.0f;
     placeHarnessTarget(plan[0].self, plan[0].distance);
     device->getTimer()->stop();  // (already stopped by setupSpellTestCamera)
     // Step g runs at t = g / simHz; every sub-th step is drawn and written as
@@ -705,14 +715,34 @@ int runScriptedHarness() {
                 break;
             }
         }
-        if (lastAction >= 0.0 && targetAnimatedNode && !fxTargetGone && harnessOpts.targetDespawnAfterAction >= 0.0 &&
+        if (lastAction >= 0.0 && targetAnimatedNode && !targetDespawned && harnessOpts.targetDespawnAfterAction >= 0.0 &&
             t + 1e-9 >= lastAction + harnessOpts.targetDespawnAfterAction) {
-            fxTargetGone = true;
-            targetAnimatedNode->setVisible(false);
+            targetDespawned = true;
             // B1145: the production OP_DeleteSpawn hook (a corpse once the
             // target died: its attached spell emitters go 3.5 s later).
             spellVisualFX->onSpawnDeleted(targetEntityId, targetDied, 0);
-            std::printf("[fx-harness] target despawned at t %.3f\n", t);
+            // B1148 (#468): the model the way EntityRenderer::beginCorpseFade
+            // takes it -- a corpse on the fade list (corpse_fade.h), any other
+            // spawn at the packet.
+            if (CorpseUsesFadeList(targetDied, harnessOpts.targetRace)) {
+                corpseFadeStart = t;
+                std::printf("[fx-harness] target despawned at t %.3f: corpse on the fade list\n", t);
+            } else {
+                fxTargetGone = true;
+                targetAnimatedNode->setVisible(false);
+                std::printf("[fx-harness] target despawned at t %.3f\n", t);
+            }
+        }
+        if (corpseFadeStart >= 0.0 && !fxTargetGone) {
+            const auto elapsedMs = static_cast<uint32_t>(std::llround((t - corpseFadeStart) * 1000.0));
+            if (CorpseFadeExpired(elapsedMs)) {
+                fxTargetGone = true;
+                targetAnimatedNode->setVisible(false);
+                std::printf("[fx-harness] corpse removed at t %.3f (%u ms after despawn)\n", t, elapsedMs);
+            } else if (const float a = CorpseFadeAlpha(elapsedMs); a < corpseFadeAlpha) {
+                corpseFadeAlpha = a;
+                ApplyCorpseFadeAlpha(targetAnimatedNode, a, CorpseFadeMaterials{});
+            }
         }
         // The scene's own clock: drawAll() animates every node off the device
         // timer, so the timer is stopped and set to the scripted time (+1 s:

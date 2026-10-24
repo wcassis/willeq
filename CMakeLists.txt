@@ -786,6 +786,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/camera_controller.cpp
         src/client/graphics/entity_renderer.cpp
         src/client/graphics/corpse_death_pose.cpp
+        src/client/graphics/corpse_fade.cpp
         src/client/graphics/entity_mesh_build.cpp
         src/client/graphics/entity_build_step.cpp
         src/client/graphics/entity_updates.cpp
@@ -1363,6 +1364,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/animated_mesh_skinning.cpp
         src/client/graphics/eq/animated_mesh_bones.cpp
         src/client/graphics/eq/animated_mesh_eye.cpp
+        src/client/graphics/corpse_fade.cpp  # B1148: the FX harness fades a despawned corpse
         src/client/graphics/first_person_eye.cpp
         src/client/graphics/graphics_archive_index.cpp
         src/common/performance_metrics.cpp

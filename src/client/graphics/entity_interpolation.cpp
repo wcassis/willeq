@@ -62,69 +62,10 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
             continue;
         }
 
-        // Handle fading entities (corpses decaying)
+        // B1148: a corpse on the fade list is faded and removed by
+        // updateMainThreadEntityState() (corpse_fade.h); nothing here.
         if (visual.isFading) {
-            visual.fadeTimer += deltaTime;
-            visual.fadeAlpha = 1.0f - (visual.fadeTimer / EntityVisual::FADE_DURATION);
-
-            if (visual.fadeAlpha <= 0.0f) {
-                // Fade complete - mark for removal (can't remove during iteration)
-                visual.fadeAlpha = 0.0f;
-                // We'll collect and remove these after the loop
-            }
-
-            // Apply fade using additive transparency (fades to transparent/dark)
-            // This works better with textured meshes than vertex alpha
-            irr::u8 colorVal = static_cast<irr::u8>(visual.fadeAlpha * 255);
-            irr::video::SColor fadeColor(255, colorVal, colorVal, colorVal);
-
-            if (visual.sceneNode) {
-                if (visual.animatedNode) {
-                    for (irr::u32 i = 0; i < visual.animatedNode->getMaterialCount(); ++i) {
-                        irr::video::SMaterial& mat = visual.animatedNode->getMaterial(i);
-                        // Use additive blending which fades to transparent as color approaches black
-                        mat.MaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
-                        mat.AmbientColor = fadeColor;
-                        mat.DiffuseColor = fadeColor;
-                        mat.EmissiveColor = irr::video::SColor(255, colorVal/2, colorVal/2, colorVal/2);
-                    }
-                } else if (visual.meshNode) {
-                    for (irr::u32 i = 0; i < visual.meshNode->getMaterialCount(); ++i) {
-                        irr::video::SMaterial& mat = visual.meshNode->getMaterial(i);
-                        mat.MaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
-                        mat.AmbientColor = fadeColor;
-                        mat.DiffuseColor = fadeColor;
-                        mat.EmissiveColor = irr::video::SColor(255, colorVal/2, colorVal/2, colorVal/2);
-                    }
-                }
-
-                // Also fade equipment
-                if (visual.primaryEquipNode) {
-                    for (irr::u32 i = 0; i < visual.primaryEquipNode->getMaterialCount(); ++i) {
-                        irr::video::SMaterial& mat = visual.primaryEquipNode->getMaterial(i);
-                        mat.MaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
-                        mat.AmbientColor = fadeColor;
-                        mat.DiffuseColor = fadeColor;
-                        mat.EmissiveColor = irr::video::SColor(255, colorVal/2, colorVal/2, colorVal/2);
-                    }
-                }
-                if (visual.secondaryEquipNode) {
-                    for (irr::u32 i = 0; i < visual.secondaryEquipNode->getMaterialCount(); ++i) {
-                        irr::video::SMaterial& mat = visual.secondaryEquipNode->getMaterial(i);
-                        mat.MaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
-                        mat.AmbientColor = fadeColor;
-                        mat.DiffuseColor = fadeColor;
-                        mat.EmissiveColor = irr::video::SColor(255, colorVal/2, colorVal/2, colorVal/2);
-                    }
-                }
-
-                // Fade name tag
-                if (visual.nameNode) {
-                    irr::video::SColor nameColor(colorVal, 255, 255, 255);
-                    visual.nameNode->setTextColor(nameColor);
-                }
-            }
-            continue;  // Skip normal interpolation for fading entities
+            continue;
         }
 
         // Check if corpse needs position adjustment (mid-game death animation just finished)
@@ -348,18 +289,6 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
 
         // Update equipment positions to follow bone attachment points
         updateEquipmentTransforms(visual);
-    }
-
-    // Remove fully faded entities (can't remove during iteration above)
-    std::vector<uint16_t> toRemove;
-    for (const auto& [spawnId, visual] : entities_) {
-        if (visual.isFading && visual.fadeAlpha <= 0.0f) {
-            toRemove.push_back(spawnId);
-        }
-    }
-    for (uint16_t spawnId : toRemove) {
-        LOG_DEBUG(MOD_ENTITY, "Removing fully faded corpse {}", spawnId);
-        removeEntity(spawnId);
     }
 
     // Remove deactivated entities from active set (they became stationary)

@@ -642,6 +642,10 @@ void IrrlichtRenderer::createEntityRenderer() {
         entityRenderer_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
                                                 zoneShader_->getActiveAlphaTest(),
                                                 zoneShader_->getActiveAlphaTestRGBA());
+        // B1148: the corpse fade's blended twins (corpse_fade.h).
+        entityRenderer_->setFadeShaderMaterialTypes(zoneShader_->getMaterialTypeFadeSolid(),
+                                                    zoneShader_->getMaterialTypeFadeAlphaTest(),
+                                                    zoneShader_->getMaterialTypeFadeAlphaTestRGBA());
     }
     if (config_.constrainedConfig.chrCacheMaxEntries > 0 && entityRenderer_->getRaceModelLoader()) {
         entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);

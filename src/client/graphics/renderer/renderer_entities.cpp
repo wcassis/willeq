@@ -115,7 +115,10 @@ void IrrlichtRenderer::removeEntity(uint16_t spawnId) {
         const bool corpse = it != ents.end() && it->second.isCorpse;
         fx->onSpawnDeleted(spawnId, corpse, it != ents.end() ? it->second.raceId : 0);
     }
-    if (entityRenderer_) {
+    // B1148 (#468): the model too -- a corpse (race not 216/472) goes on the
+    // client's corpse-fade list (alpha from 1.3 s, removed past 3499 ms,
+    // corpse_fade.h); every other spawn's model goes at the packet.
+    if (entityRenderer_ && !entityRenderer_->beginCorpseFade(spawnId)) {
         entityRenderer_->removeEntity(spawnId);
     }
 }
@@ -293,6 +296,17 @@ void IrrlichtRenderer::initDeferredGraphics() {
                 return true;
             }
         );
+
+        // B1148 (#468): the caster model's track for a CastingAnim code
+        // (eqgame 0x47ddd4 reads the actor's own animation table).
+        SimBridge().spellVisualFX()->setCastAnimationLengthCallback(
+            [this](uint16_t entity_id, const char* code) -> int32_t {
+                if (!entityRenderer_ || !code) return -1;
+                const auto& entities = entityRenderer_->getEntities();
+                auto it = entities.find(entity_id);
+                if (it == entities.end() || !it->second.animatedNode) return -1;
+                return CastAnimationTrackMs(it->second.animatedNode, code);
+            });
 
         LOG_DEBUG(MOD_GRAPHICS, "Spell visual effects initialized");
 

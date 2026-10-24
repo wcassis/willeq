@@ -94,6 +94,14 @@ public:
     // unaffected by this).
     irr::s32 getMaterialTypeAlphaTestRGBA() const { return materialAlphaTestRGBA_; }
     bool isAlphaTestRGBAAvailable() const { return materialAlphaTestRGBA_ >= 0; }
+    // B1148 (#468): the alpha-BLENDED twins of the three entity materials
+    // (same per-pixel sources, base EMT_TRANSPARENT_VERTEX_ALPHA), which a
+    // corpse on the client's fade list draws with: gl_FragColor.a already
+    // carries vColor.a, i.e. the vertex alpha corpse_fade.h writes. -1 if a
+    // compile failed (the fade then uses the driver's built-in path).
+    irr::s32 getMaterialTypeFadeSolid() const { return materialFadeSolid_; }
+    irr::s32 getMaterialTypeFadeAlphaTest() const { return materialFadeAlphaTest_; }
+    irr::s32 getMaterialTypeFadeAlphaTestRGBA() const { return materialFadeAlphaTestRGBA_; }
     // P01: lightweight counterpart, needed to classify draws by material
     // family in the zone benchmark's --material-counts diagnostic.
     irr::s32 getMaterialTypeLWAlphaTestRGBA() const { return materialLWAlphaTestRGBA_; }
@@ -270,6 +278,9 @@ private:
     irr::s32 materialSolid_ = -1;
     irr::s32 materialAlphaTest_ = -1;
     irr::s32 materialAlphaTestRGBA_ = -1;  // H02d: main-texture-alpha variant (heavy/per-pixel)
+    irr::s32 materialFadeSolid_ = -1;          // B1148: blended twins for the corpse fade
+    irr::s32 materialFadeAlphaTest_ = -1;
+    irr::s32 materialFadeAlphaTestRGBA_ = -1;
     irr::s32 materialAtlasSolid_ = -1;
     irr::s32 materialAtlasAlpha_ = -1;
     irr::s32 materialWindAlphaTest_ = -1;

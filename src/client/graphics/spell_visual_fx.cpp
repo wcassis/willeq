@@ -517,8 +517,17 @@ static void scaleStageToUntimedPeak(std::vector<P>& pending,
 }
 #endif
 
+int32_t SpellVisualFX::castAnimationMs(uint16_t caster_id, int castAnim) const
+{
+    // B1148 (#468): 0x47ddd4 -- the caster actor's track for the spell's
+    // CastingAnim id (eqgame's code table, spell_fx_timing.h).
+    const char* code = SpellCastAnimationCode(castAnim);
+    if (!code || !m_cast_anim_length_cb) return -1;
+    return m_cast_anim_length_cb(caster_id, code);
+}
+
 uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, uint32_t duration_ms,
-                                      int casterLevel)
+                                      int casterLevel, int castAnim)
 {
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
@@ -599,9 +608,16 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         // OP_Action (kSpellFxCastAnimationSeconds); fable's emitter starts
         // at the stage's measured latency after OP_BeginCast, so its run is
         // that much shorter for the emission to end where the oracle's did.
+        // B1148 (#468): the term is the caster model's CastingAnim track
+        // (0x47ddd4), the measured 4.35 s only when that does not resolve.
         const float sourceLatency = cfg.sourceStageLatency();
+        const int32_t castAnimMs = castAnimationMs(caster_id, castAnim);
         const int32_t sourceCallerMs = SpellFxCallerDurationMs(
-            SpellFxStage::Source, static_cast<int32_t>(duration_ms) - static_cast<int32_t>(sourceLatency * 1000.0f + 0.5f), 0);
+            SpellFxStage::Source, static_cast<int32_t>(duration_ms) - static_cast<int32_t>(sourceLatency * 1000.0f + 0.5f), 0,
+            castAnimMs);
+        LOG_DEBUG(MOD_SPELL, "createCastGlow: caster={} spell={} castAnim={} track={} ms (term {} ms)", caster_id,
+                  spell_id, castAnim, castAnimMs,
+                  castAnimMs >= 0 ? castAnimMs : static_cast<int32_t>(kSpellFxCastAnimationSeconds * 1000.0f + 0.5f));
         if (slots.fromFile) {
             if (slots.drawn.empty()) {
                 LOG_INFO(MOD_SPELL, "createCastGlow: caster={} spell={} level={}: no Source slot passes "

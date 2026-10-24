@@ -312,6 +312,36 @@ TEST_F(SlotRules, ASpellsNewSourceRunsItsSlotsDurations) {
     EXPECT_TRUE(pm_->drainCommands().empty()) << "OP_Action released a spellsnew.eff Source";
 }
 
+// B1148 (#468): the cast-animation term is the CASTER MODEL's track for the
+// spell's CastingAnim (0x47ddd4): 93's CastingAnim 44 names t06 (eqgame's
+// code table); a caster whose t06 is 1500 ms (fable's Dark Elf / Human male,
+// the ELM donor) runs its Source 1.5 s past the cast, a 4100 ms one (the
+// Dark Elf female B1130 cast with) 4.1 s; an unresolved track keeps 4.35 s.
+TEST_F(SlotRules, TheSourceRunsTheCastersOwnCastAnimationTrack) {
+    Note(kBurstOfFlame);
+    const float latency = SpellEffectsConfig::instance().sourceStageLatency();
+    std::string asked;
+    fx_->setCastAnimationLengthCallback([&](uint16_t id, const char* code) -> int32_t {
+        asked = code;
+        return id == kCaster ? 1500 : -1;
+    });
+    fx_->createCastGlow(kCaster, 93, 1500, 60, /*castAnim=*/44);
+    EXPECT_EQ(asked, "t06");
+    auto all = Created();
+    ASSERT_EQ(all.size(), 4u);
+    for (const auto& c : all)
+        EXPECT_NEAR(c.spellDef.emitters.at(0).config.emitterLifetime, 1.5f - latency + 1.5f, 1e-3f);
+    fx_->removeCastGlow(kCaster);
+    pm_->drainCommands();
+    fx_->setCastAnimationLengthCallback([](uint16_t, const char*) -> int32_t { return -1; });
+    fx_->createCastGlow(kCaster, 93, 1500, 60, 44);
+    all = Created();
+    ASSERT_EQ(all.size(), 4u);
+    for (const auto& c : all)
+        EXPECT_NEAR(c.spellDef.emitters.at(0).config.emitterLifetime,
+                    1.5f - latency + EQ::kSpellFxCastAnimationSeconds, 1e-3f) << "unresolved: the measured 4.35 s";
+}
+
 // B1145 (#465): OP_DeleteSpawn deletes the spawn's actor and every spell
 // emitter attached to it with its particles (eqgame 0x4581b7 -> 0x4849b2 ->
 // 0x48f4a4; EQGraphicsDX9 actor destructor 0x10040150 -> particle manager

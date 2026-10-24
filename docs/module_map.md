@@ -219,7 +219,7 @@ Beside it in `src/client/spell/`, the spell VISUAL data readers (no `SpellManage
 
 | TU | Lines | Contents |
 |---|---|---|
-| spells_new_edd_reader.cpp | 98 | B1145: `EQ::SpellsNewEddReader` -- the one reader of spellsnew.edd's 416-byte entries (magic, entry bytes, name, texture, frame count) and the timing / emission words per entry (`SpellsNewEddTiming`: +0x78 duration, +0x7C lifetime, +0x80 burst, +0x84 per tick, +0x88 ticks/s, +0x8C delay); `SpellsNewEffReader` (`edd()`) and the colour table read through it. The timing rules are header-only in `include/client/spell/spell_fx_timing.h` (`SpellFxSlotTimingFor`, `SpellFxCallerDurationMs`, the measured `kSpellFxCastAnimationSeconds`) |
+| spells_new_edd_reader.cpp | 98 | B1145: `EQ::SpellsNewEddReader` -- the one reader of spellsnew.edd's 416-byte entries (magic, entry bytes, name, texture, frame count) and the timing / emission words per entry (`SpellsNewEddTiming`: +0x78 duration, +0x7C lifetime, +0x80 burst, +0x84 per tick, +0x88 ticks/s, +0x8C delay); `SpellsNewEffReader` (`edd()`) and the colour table read through it. The timing rules are header-only in `include/client/spell/spell_fx_timing.h` (`SpellFxSlotTimingFor`, `SpellFxCallerDurationMs`, B1148's `SpellCastAnimationCode` -- eqgame's CastingAnim id -> track code table -- and the measured fallback `kSpellFxCastAnimationSeconds`); the caster's track length comes from `CastAnimationTrackMs()` (`spell_fx_bone_anchor.h`) |
 | spells_new_edd_colour.cpp | 87 | B1146: `EQ::SpellsNewEddColourTable` -- the colour words (+0x68 additive, +0x90/+0x94 fades, +0xA4 peak, +0xD4..+0xE8 start/end RGB; `docs/spellsnew_format.md`) decoded per emitter, read through `SpellsNewEffReader`/`SpellsNewEddReader` (B1145), `stageColours()` in `SpellsNewEffReader::stageTextures()` order; the alpha formula `eddParticleAlpha()` is inline in the header, shared with `UnifiedParticle::eddAlpha()` |
 
 ## Renderer — IrrlichtRenderer class (`include/client/graphics/irrlicht_renderer.h`)
@@ -390,7 +390,7 @@ Re-measure; do not quote a number from this paragraph.
 |---|---|---|
 | zone_shader_sources_gles2.h | 1,017 | GLSL ES 1.0 shader sources (private header, `zone_shader.cpp` only) |
 | zone_shader_callbacks.h | 702 | `ShaderCallback` and friends (private header, `zone_shader.cpp` only) |
-| src/client/graphics/zone_shader.cpp | 525 | Material registration and the `getActive*()` accessors |
+| src/client/graphics/zone_shader.cpp | 537 | Material registration and the `getActive*()` accessors; B1148's three corpse-fade twins (`getMaterialTypeFade*`, base EMT_TRANSPARENT_VERTEX_ALPHA) |
 
 The two headers are `#include`d by `zone_shader.cpp` and by nothing else;
 they hold file-local `static` definitions and are not a public interface.
@@ -419,7 +419,7 @@ retired by P30/P32 and no supported build parsed it.
 | entity_build_step.cpp | 628 | J03: processOneEntityBuildStep — the frame-budgeted build step. B973: asks the scheduler before a unit and records its measured cost; the player's target after in-progress entities; a not-ready Placeholder is skipped instead of blocking the ones behind it; the create unit runs NodeSetup too (B966); `countBuildBacklog()`; the one-texture upload unit (`processOnePendingTextureUpload()`) |
 | entity_build_scheduler.cpp | 130 | B973 (#291): `EntityBuildScheduler`, device-free — the per-frame slice by governor state (Green 20 % / Yellow 12 % / Red 6 % of the target frame time), the guaranteed first unit, the per-kind cost predictor, the `[entity-build]` window accounting, `WILLEQ_ENTITY_BUILD_LEGACY=1`. Header `include/client/graphics/entity_build_scheduler.h`; `tests/test_entity_build_scheduler.cpp` |
 | entity_prep_worker.cpp | 476 | EntityPrepWorker: background entity prep (start/stop, requestPrep, priority sort, prepVariantTextures, prepEquipmentModels) |
-| entity_lifecycle.cpp | 451 | J03: removeEntity, corpse decay, appearance update, clearEntities, visibility/name-tag/material toggles |
+| entity_lifecycle.cpp | 506 | J03: removeEntity, corpse decay, appearance update, clearEntities, visibility/name-tag/material toggles. B1148: `beginCorpseFade()` puts a corpse (race not 216/472) on the client's corpse-fade list at OP_DeleteSpawn; `updateMainThreadEntityState()` (`entity_updates.cpp`) fades its model from 1.3 s and removes it past 3499 ms |
 | entity_combat_anim.cpp | 437 | Combat animation queues + animation queries |
 | entity_first_person_draw.cpp | 401 | T309: the attack-animation draw rule, first-person mode, player entity position/animation |
 | entity_interpolation.cpp | 372 | J03: updateInterpolation |
@@ -429,6 +429,7 @@ retired by P30/P32 and no supported build parsed it.
 | equipment_actor_geometry.cpp (under `src/client/graphics/eq/`) | 197 | T476: resolves an IT actor's reference chain (0x14 -> 0x2D mesh, or 0x11 skeleton with rest-pose-placed pieces) into one `ZoneGeometry` with the item's centre added, the frame `computeHeldItemTransform()` expects |
 | entity_size.cpp | 58 | setEntitySize |
 | corpse_death_pose.cpp | 66 | T456 (B477): `ApplyCorpseDeathPose()`, the ONE d05/d02/d01 death-pose ladder — held on the last frame for a corpse found lying there (both build paths), played through for a witnessed death (`markEntityAsCorpse()`, T486). Header `include/client/graphics/corpse_death_pose.h`; `tests/test_corpse_death_pose.cpp` drives all three production paths into it and fails on a second copy of the ladder under `src/` |
+| corpse_fade.cpp | 50 | B1148 (#468): `ApplyCorpseFadeAlpha()` -- a fading corpse's vertex alpha + its materials' blended twins. Header `include/client/graphics/corpse_fade.h`: the client's fade-list schedule (eqgame 0x401127/0x4012bb: alpha 1 - (t - 1300) x 0.0005, deleted past 3499 ms), the 216/472 race rule, effect 0x5e; shared with `tools/model_viewer`'s FX harness; `tests/test_corpse_fade.cpp` |
 
 ## WLD loader — WLDLoader class (split by J05)
 

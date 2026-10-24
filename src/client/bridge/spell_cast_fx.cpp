@@ -20,7 +20,9 @@ void ApplySpellCastStartedFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
     // game thread filled them; the renderer never touches a SpellDatabase.
     fx->noteSpellVocabulary(d.spellId, d.spellVisual);
     // B1144 (#464): the caster's gate level picks the record's slots.
-    fx->createCastGlow(d.casterId, d.spellId, d.castTimeMs, d.fxGateLevel);
+    // B1148 (#468): CastingAnim picks the caster track whose length the
+    // Source runs past the cast time.
+    fx->createCastGlow(d.casterId, d.spellId, d.castTimeMs, d.fxGateLevel, d.castAnim);
 }
 
 void ApplySpellCastCompleteFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
