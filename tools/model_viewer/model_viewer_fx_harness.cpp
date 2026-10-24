@@ -292,12 +292,13 @@ void applyHarnessPresetDefaults() {
         harnessOpts.targetGender = 0;
         harnessOpts.targetSize = 6.0f;
     }
-    // B1139: the fable Tip of the Day window every lane-5 leg opens is drawn
-    // OVER the particles there (opaque: no lit pixel inside it in any frame of
-    // the B1132 leg-B capture). Its box on the 1280x800 grab, read off that
-    // leg's tail frame (review/B1138/backdrop/): x 920.., rows 243..542. Left
-    // out, the harness counted 5.4 % more landing coverage than lane 5 shows.
-    if (!harnessOpts.uiOccludersGiven) harnessOpts.uiOccluders.push_back({920, 243, 1280, 543});
+    // B1142 (#462): no UI occluder by default. B1139 drew the fable Tip of the
+    // Day window (920,243..1280,543) here because every lane-5 leg up to B1127
+    // left it open over the particles; the lane rig now starts the client
+    // with [Tips] ShowTOTD=0 (review/B1142/scripts/fable_leg_remote.sh), so
+    // the FX field is unoccluded on lane 5 as on the oracle (whose rig closes
+    // its window with a click before the first cast). `--ui-occluder
+    // 920,243,1280,543` reproduces a pre-B1142 capture.
     // B1139: the lane client simulates at its 60 fps and the grab keeps every
     // 2nd frame (B1138 measured +2.6 % landing coverage for it), and in leg B
     // Testcaster stands 228 px head top to feet (rows 377..605 of that leg's

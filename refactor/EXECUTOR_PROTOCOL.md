@@ -165,17 +165,22 @@ writes frames + `timing.tsv`; `review/B1139/scripts/harness_measure.py` runs the
 lane-5 measurement scripts on them unchanged. Lane 5 is for ORACLE legs (the
 official client) only. The b1118 preset carries the lane rig's measured parity
 factors as defaults (B1139: 60 Hz step, 228 px Testcaster in her robe with the
-orb, p01/o01 idles, the Tip of the Day window drawn over the particles;
-`tools/model_viewer/README.md`). **What the harness may gate** (B1139, spell 93
-leg B, `refactor/B1139/README.md`):
+orb, p01/o01 idles; no UI occluder since B1142;
+`tools/model_viewer/README.md`). **A fable lane-5 FX leg starts the client
+with `[Tips] ShowTOTD=0`** (B1142, #462): up to B1127 every leg left fable's
+Tip of the Day open over x >= 920 of the FX field and lost up to 16 % of a
+landing's peak pixels under it. The fixed rig (per-leg `WILLEQ_CACHE_DIR`, the
+shared UI ini untouched) is `review/B1142/scripts/fable_leg_remote.sh`; the
+tour baseline to compare against is `review/B1142/gate/measure_tour/summary.tsv`.
+**What the harness may gate** (B1139, B1142; `tools/model_viewer/README.md`):
 - a FABLE REGRESSION, harness against harness at a fixed plan + `--seed`:
   landing coverage, landing end, landing ROI p90, landing peak time;
-- PARITY with lane 5: landing coverage (seeds 1-5 within -1.3..+2.6 % of both
-  lane captures) and landing end (+0.06..+0.12 s). Quote the seed spread with
-  any parity number: landing ROI p90 moves 0.064..0.071 over seeds;
-- LANE-ONLY: Source ROI p90 (harness reads +15..+32 % over the lane's 0.062;
-  unexplained residual, a denser early hand spray) and colour/hue (the frame
-  mean mixes in the scene).
+- PARITY with lane 5: landing coverage (seeds 1-5 mean +2.3 % over four
+  unoccluded lane captures of 93 that spread 5 % among themselves) and
+  landing end. Quote the seed spread with any parity number;
+- LANE-ONLY: Source ROI p90 (harness 0.069..0.074 against 0.064..0.066 on
+  lane legs with no target outline in the pre-cast baseline) and colour/hue
+  (the frame mean mixes in the scene).
 
 **An oracle FX leg's other target and its camera are a SECOND PLAYER
 CHARACTER, never a spawned NPC** (B1134, #454): the observer rig of
