@@ -45,6 +45,15 @@
 #include <functional>
 #include <string>
 
+// B1140: SpellData::requiresReagents() went with the client-side reagent
+// check (no production reader); the tests read the same predicate here.
+static bool consumesReagents(const EQ::SpellData& s) {
+    for (size_t i = 0; i < EQ::MAX_SPELL_REAGENTS; ++i) {
+        if (s.reagent_id[i] != 0 && s.reagent_count[i] > 0) return true;
+    }
+    return false;
+}
+
 using namespace eqt;
 using namespace zonetest;
 
@@ -286,7 +295,7 @@ TEST_P(SourceWrites, Spells_BeginCastFromGem_WritesSourceCastingAndGem) {
     for (uint32_t cand = 1; cand <= 4000 && id == 0; ++cand) {
         const EQ::SpellData* s = mgr->getSpell(cand);
         if (s && s->target_type == EQ::SpellTargetType::Self && s->cast_time_ms > 0 &&
-            s->mana_cost >= 0 && !s->requiresReagents()) {
+            s->mana_cost >= 0 && !consumesReagents(*s)) {
             id = cand;
         }
     }

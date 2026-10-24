@@ -272,16 +272,6 @@ struct SpellData {
         return nullptr;
     }
 
-    // Check if spell requires reagents
-    bool requiresReagents() const {
-        for (size_t i = 0; i < MAX_SPELL_REAGENTS; i++) {
-            if (reagent_id[i] != 0 && reagent_count[i] > 0) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     // Check if this is likely a damage spell
     bool isDamageSpell() const {
         for (const auto& effect : effects) {

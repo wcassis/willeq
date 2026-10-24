@@ -520,6 +520,15 @@ TEST(EqActionHandlerCast, CastSpell_PetSpellWithoutPet_SaysNoPet) {
 
 #include <unistd.h>
 
+// B1140: SpellData::requiresReagents() went with the client-side reagent
+// check (no production reader); the tests read the same predicate here.
+static bool consumesReagents(const EQ::SpellData& s) {
+    for (size_t i = 0; i < EQ::MAX_SPELL_REAGENTS; ++i) {
+        if (s.reagent_id[i] != 0 && s.reagent_count[i] > 0) return true;
+    }
+    return false;
+}
+
 namespace {
 
 uint32_t findSpellWithEffect(EverQuest& eq, EQ::SpellEffect effect) {
@@ -537,7 +546,7 @@ uint32_t findSelfSpellWithReagent(EverQuest& eq, uint32_t& reagent_id, uint32_t&
     auto& db = eq.GetSpellManager()->getDatabase();
     for (uint32_t id = 1; id <= 4000; ++id) {
         const EQ::SpellData* s = db.getSpell(id);
-        if (s && s->requiresReagents() && s->target_type == EQ::SpellTargetType::Self &&
+        if (s && consumesReagents(*s) && s->target_type == EQ::SpellTargetType::Self &&
             s->cast_time_ms > 0 && s->mana_cost < 100) {
             reagent_id = s->reagent_id[0];
             reagent_count = s->reagent_count[0];

@@ -38,7 +38,9 @@ Branch `task/B1140-reagent-count` (wt/b1140, cut from fable dacd9534). Evidence:
 ## Fix
 
 - `SpellManager::validateCast()`: no reagent check. `checkReagents()`, `countCarriedItem()`,
-  `getLastMissingReagentId()` and T251's 433 branch in `castRefusalMessage()` are deleted (no producer is left).
+  `getLastMissingReagentId()` and T251's 433 branch in `castRefusalMessage()` are deleted (no producer is left),
+  with what only they read: `SpellData::requiresReagents()` and InventoryManager's by-id item cache
+  (`getItemById`/`cacheItemById`, ZeroCallers hygiene).
   The server's own 272/433 reach chat through the existing SimpleMessage/FormattedMessage handlers.
 - `/autoinventory` (registered in the B442 cursor family, golden entry 082):
   `InventoryManager::autoInventoryCursor()` -> `findAutoInventorySlot()` -> `placeOnMatchingStack()`. Order as

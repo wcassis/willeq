@@ -116,9 +116,6 @@ public:
     ItemInstance* getItemMutable(int16_t slotId);
     bool hasItem(int16_t slotId) const;
 
-    // Item access by ID (for item link tooltips)
-    const ItemInstance* getItemById(uint32_t itemId) const;
-
     // Find slot containing item by item ID (for hotbar item activation)
     // Searches equipment slots first, then general/bag slots
     // Returns SLOT_INVALID if not found
@@ -367,14 +364,6 @@ public:
 private:
     // Item storage - slot ID to item
     std::map<int16_t, std::unique_ptr<ItemInstance>> items_;
-
-    // Item cache by ID (for quick lookup by item ID from chat links)
-    // Stores copies of items seen (limited to MAX_ITEM_CACHE_SIZE)
-    std::map<uint32_t, std::unique_ptr<ItemInstance>> itemCacheById_;
-    static constexpr size_t MAX_ITEM_CACHE_SIZE = 500;
-
-    // Cache an item by its ID
-    void cacheItemById(const ItemInstance& item);
 
     // Cursor queue - multiple items can be on cursor (e.g., zone-in with items on cursor)
     // Front item is the "active" cursor item shown to user

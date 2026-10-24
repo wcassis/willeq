@@ -121,8 +121,8 @@ SpellData* SpellDatabase::queryAndCache(uint32_t spell_id) const {
     spell.spell_affect_index = info.spellAffectIndex;
 
     // Reagents (T246): spells_us.txt marks an empty reagent slot with -1
-    // (and still carries count 1 for it), so -1 lands as id 0 / count 0 and
-    // SpellData::requiresReagents() (id != 0 && count > 0) reads cleanly.
+    // (and still carries count 1 for it), so -1 lands as id 0 / count 0: a
+    // consumed component is exactly id != 0 && count > 0.
     for (size_t ri = 0; ri < spell.reagent_id.size() && ri < info.reagentId.size(); ++ri) {
         int32_t rawId = info.reagentId[ri];
         int32_t rawCount = info.reagentCount[ri];

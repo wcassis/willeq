@@ -159,7 +159,6 @@ int InventoryManager::ingestParsedItem(int16_t slotId, std::unique_ptr<ItemInsta
             if (index == SLOT_INVALID || !bagItem) {
                 continue;
             }
-            cacheItemById(*bagItem);
             held.emplace_back(index, std::move(bagItem));
             stored++;
         }

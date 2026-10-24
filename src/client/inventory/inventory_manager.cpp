@@ -59,30 +59,6 @@ bool InventoryManager::hasItem(int16_t slotId) const {
     return items_.find(slotId) != items_.end();
 }
 
-const ItemInstance* InventoryManager::getItemById(uint32_t itemId) const {
-    // First check the ID cache
-    auto it = itemCacheById_.find(itemId);
-    if (it != itemCacheById_.end()) {
-        return it->second.get();
-    }
-
-    // Fall back to searching inventory slots (slower but covers any edge cases)
-    for (const auto& [slotId, item] : items_) {
-        if (item && item->itemId == itemId) {
-            return item.get();
-        }
-    }
-
-    // Check cursor queue
-    for (const auto& item : cursorQueue_) {
-        if (item && item->itemId == itemId) {
-            return item.get();
-        }
-    }
-
-    return nullptr;
-}
-
 int16_t InventoryManager::findItemSlotByItemId(uint32_t itemId) const {
     // Search equipment slots first (0-21) as these are typically clickable items
     for (int16_t slot = 0; slot < EQUIPMENT_COUNT; slot++) {
@@ -129,30 +105,7 @@ bool InventoryManager::addQuantityToExistingStack(uint32_t itemId, int32_t quant
     return false;
 }
 
-void InventoryManager::cacheItemById(const ItemInstance& item) {
-    if (item.itemId == 0) {
-        return;  // Don't cache items with no ID
-    }
-
-    // Check if already cached
-    if (itemCacheById_.find(item.itemId) != itemCacheById_.end()) {
-        return;  // Already have this item cached
-    }
-
-    // Evict old entries if cache is full
-    if (itemCacheById_.size() >= MAX_ITEM_CACHE_SIZE) {
-        // Simple eviction: remove the first entry (oldest by map order)
-        itemCacheById_.erase(itemCacheById_.begin());
-    }
-
-    // Cache a copy of the item
-    itemCacheById_[item.itemId] = std::make_unique<ItemInstance>(item);
-}
-
 void InventoryManager::setItem(int16_t slotId, const ItemInstance& item) {
-    // Cache the item by ID for item link lookups
-    cacheItemById(item);
-
     auto newItem = std::make_unique<ItemInstance>(item);
     newItem->currentSlot = slotId;
 
@@ -173,9 +126,6 @@ void InventoryManager::setItem(int16_t slotId, const ItemInstance& item) {
 
 void InventoryManager::setItem(int16_t slotId, std::unique_ptr<ItemInstance> item) {
     if (item) {
-        // Cache the item by ID for item link lookups (before moving)
-        cacheItemById(*item);
-
         item->currentSlot = slotId;
 
         // Special handling for cursor slot - server uses 33, client uses 30
@@ -239,7 +189,6 @@ void InventoryManager::clearAll() {
     cursorQueue_.clear();
     queuedCursorBagContents_.clear();
     cursorSourceSlot_ = SLOT_INVALID;
-    itemCacheById_.clear();
     ++changeCounter_;
 }
 
