@@ -113,7 +113,12 @@ each capture. Seed 1 with the window drawn back: 2.963 against Bon's 2.942 (+0.7
 
 ## Builds and tests (`review/B1142/tests/`)
 
-See `review/B1142/README.md` "Builds and tests" for the logs and counts.
+- `build-ci` configured `-DCMAKE_BUILD_TYPE=Release -DEQT_BUILD_TESTS=ON -DEQT_GRAPHICS=ON -DEQT_GLES2=ON
+  -DEQT_GLES2_IRRLICHT_DIR=$PWD/third_party/irrlicht-gles2-x86`; named `model_viewer` builds while iterating;
+  whole tree `cmake --build build-ci -j 4 -- -k`: BUILD_EXIT=0, 0 `error:` lines (`build_ci_whole.log`).
+- `ctest -L hygiene`: 51/51 (`ctest_hygiene.log`); CLAUDE.md 59,920 bytes, unchanged.
+- `ctest -R 'Spell|FxHarness|Oracle'`: 653/653 passed, 80 of them skipped for absent EQ client files
+  (`ctest_spell_fxharness_oracle.log`).
 
 ## FOLLOW-UP
 
