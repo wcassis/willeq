@@ -2,6 +2,7 @@
 
 #include "unified_particle.h"
 #include "spell_effects_config.h"
+#include "client/spell/spells_new_edd_colour.h"
 #include <vector>
 #include <string>
 #include <cstdint>
@@ -115,21 +116,42 @@ namespace SpellPresets {
     // Applied to every emitter in the definition, because the Target stage
     // describes one impact and the Impact preset is one emitter.
     //
-    // T441 (board B398): applying a stage ALSO drops the caller's colour
-    // modulation to white. The official client has no per-spell colour field
-    // at all -- the colour of a spell's particles IS the art in the
-    // `spel*.tga` this stage names, reached from spells_us.txt field 123
-    // (SPELLAFFECTINDEX) -> the spells.eff record -> the stage's three
-    // 32-byte sprite-name slots. `POINT_SPRITE_FS` computes
-    // `texColor * vColor`, so any non-white modulation is fable tinting the
-    // oracle's own art with something the oracle never applies. The resist /
-    // school colour survives only where NO stage resolved (the ~946 spells
-    // with no usable spells.eff record), which is the one case where fable
-    // has no art to take a colour from. Alphas are untouched -- they are the
-    // style's fade curve, not a colour.
+    // T441 (board B398): applying a stage ALSO drops the caller's resist /
+    // school colour modulation to white: field 85 RESISTTYPE is a mechanic
+    // the client does not paint with. `POINT_SPRITE_FS` computes
+    // `texColor * vColor`. The resist / school colour survives only where NO
+    // stage resolved (the spells with no usable record), where fable has no
+    // art to take a colour from. Alphas are untouched -- they are the style's
+    // fade curve. A spellsnew.eff stage's OWN colour is applied after this
+    // by applyStageEmitterColours() (B1146).
     void applyStageSpriteNames(SpellEffectDef& def,
                                const std::vector<std::string>& spriteNames,
                                uint32_t spellId = 0);
+
+    // B1146 (#466): the spellsnew.edd colour words of the stage's emitters,
+    // one per texture in the order applyStageSpriteNames() was given them
+    // (EQ::SpellsNewEddColourTable::stageColours()), installed on every
+    // emitter of `def` as EmitterConfig::regionColours[k]. The official
+    // client multiplies the sprite texel by the vertex colour: RGB
+    // interpolated start -> end over the particle's life, alpha its fade x
+    // peak, additive (+0x68) blended SRC_ALPHA, ONE. An ACTIVE region's
+    // particle takes the RGB; with `clientAlpha` also that alpha and blend.
+    //
+    // Production passes clientAlpha = false (review/B1146/README.md): the
+    // client's alpha belongs to the client's own particle counts, sizes and
+    // lifetimes, and fable's emitters are measured rows fitted to the
+    // style's alpha and ONE, ONE. On those rows it left the discipline
+    // records 1/20 of the oracle's lit pixels while their white sibling kept
+    // its brightness; the RGB alone puts all four on the oracle's hue at the
+    // white sibling's brightness.
+    //
+    // A white emitter (both triples 255) stays inactive and draws exactly as
+    // before; so does every region when `colours` is empty or its count
+    // differs from the regions the stage installed (no texture/colour
+    // pairing to trust).
+    void applyStageEmitterColours(SpellEffectDef& def,
+                                  const std::vector<EQ::SpellsNewEddColour>& colours,
+                                  bool clientAlpha = false);
 }
 
 } // namespace Environment

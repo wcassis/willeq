@@ -66,6 +66,12 @@ void SpellVisualFX::loadSpellsEff()
                              "resist/school fallback visuals", path, m_spells_eff.loadError());
     }
 
+    // B1146 (#466): the colour words of the same emitters.
+    if (!m_spells_new_edd_colour.load(m_eq_client_path)) {
+        LOG_WARN(MOD_SPELL, "B1146: spellsnew.edd colour words not loaded ({}) -- spell particles "
+                             "draw their sprite's own colour", m_spells_new_edd_colour.loadError());
+    }
+
     // B1127 (#447): the art the official client actually draws.
     m_spells_new_eff_loaded = m_spells_new_eff.load(m_eq_client_path);
     if (m_spells_new_eff_loaded) {
@@ -96,6 +102,20 @@ int SpellVisualFX::sourceRecordOf(uint32_t spell_id) const
     return EQT::Graphics::Environment::SpellEffectsConfig::instance().rowForAnim(
         spellVocabulary(spell_id).spellAnim);
 }
+
+#ifdef EQT_HAS_GLES2
+void SpellVisualFX::applyStageEddColours(EQT::Graphics::Environment::SpellEffectDef& def,
+                                         const SpellVisualResolution& visual, int stage) const
+{
+    // B1146 (#466): a spellsnew.eff stage's emitters carry their own colour
+    // words; a spells.eff (field 123) stage has none.
+    const SpellVisualStage& st = stage == 0 ? visual.source_stage
+                               : stage == 1 ? visual.middle_stage : visual.target_stage;
+    if (visual.isFallback() || !st.present || !st.from_spell_anim) return;
+    EQT::Graphics::Environment::SpellPresets::applyStageEmitterColours(
+        def, m_spells_new_edd_colour.stageColours(visual.spell_anim, stage));
+}
+#endif
 
 SpellVisualResolution SpellVisualFX::resolveVisual(uint32_t spell_id) const
 {
@@ -441,6 +461,7 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         auto build = [&](float anchorAboveFeet, float share) {
             auto d = Presets::SourceForSpell(c, spell_id, record, spray, anchorAboveFeet, share);
             if (!stageNames.empty()) Presets::applyStageSpriteNames(d, stageNames, spell_id);
+            applyStageEddColours(d, visual, 0);  // B1146
             return d;
         };
         glm::vec3 centerPos(0.0f);
@@ -573,6 +594,7 @@ void SpellVisualFX::createProjectile(uint16_t caster_id, uint16_t target_id, uin
                                          visual.middle_stage.sprite_names.end()),
                 spell_id);
         }
+        applyStageEddColours(def, visual, 1);  // B1146
 
         // Compute travel duration from distance
         irr::core::vector3df srcPos, tgtPos;
@@ -664,6 +686,7 @@ void SpellVisualFX::createImpact(uint16_t target_id, uint32_t spell_id)
                                          visual.target_stage.sprite_names.end()),
                 spell_id);
         }
+        applyStageEddColours(def, visual, 2);  // B1146
         m_particle_manager->createSpellEffect(def, 0, target_id);
         return;
     }
@@ -724,6 +747,7 @@ uint16_t SpellVisualFX::createLanding(uint16_t caster_id, uint16_t target_id, ui
                 std::vector<std::string>(visual.source_stage.sprite_names.begin(),
                                          visual.source_stage.sprite_names.end()),
                 spell_id);
+        applyStageEddColours(complete, visual, 0);  // B1146
         m_particle_manager->createSpellEffect(complete, follow, 0);
         // impact half: T72's Target-stage gate, the Target stage's art (T389).
         if (visual.isFallback() || visual.hasTargetStage()) {
@@ -734,6 +758,7 @@ uint16_t SpellVisualFX::createLanding(uint16_t caster_id, uint16_t target_id, ui
                     std::vector<std::string>(visual.target_stage.sprite_names.begin(),
                                              visual.target_stage.sprite_names.end()),
                     spell_id);
+            applyStageEddColours(impact, visual, 2);  // B1146
             m_particle_manager->createSpellEffect(impact, 0, follow);
         }
         LOG_INFO(MOD_SPELL, "createLanding: caster={} target={} spell={} record={} anchor={} on={}",
@@ -770,6 +795,7 @@ void SpellVisualFX::createSpellComplete(uint16_t caster_id, uint32_t spell_id)
                                          visual.source_stage.sprite_names.end()),
                 spell_id);
         }
+        applyStageEddColours(def, visual, 0);  // B1146
         m_particle_manager->createSpellEffect(def, caster_id, 0);
         return;
     }

@@ -1,6 +1,13 @@
 // T441 -- board B398 (where a spell's colour comes from) and B397 (the
 // per-spell style overrides).
 //
+// B1146 (#466): the "no colour field" finding below is about spells.eff (the
+// field-123 chain) and still holds there. The official client draws
+// spellsnew.eff (B1127), whose spellsnew.edd emitters DO carry colour words
+// (B1141, read from the client's code); those are applied after the white
+// reset pinned here, by SpellPresets::applyStageEmitterColours()
+// (tests/test_spell_edd_colour.cpp).
+//
 // ============================================================================
 // B398.  WHERE THE OFFICIAL CLIENT'S PER-SPELL COLOUR COMES FROM.
 // ============================================================================

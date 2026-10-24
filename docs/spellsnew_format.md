@@ -12,7 +12,10 @@ Addresses are virtual addresses (eqgame base 0x400000, EQGraphicsDX9 base 0x1000
 tables with every read site, the Ghidra 12.1.4 project, the scripts and the cross-check against the 40
 oracle-measured records are in `review/B1141/README.md` (`edd_fields_from_code.tsv`,
 `eff_fields_from_code.tsv`, `crosscheck.tsv`). Fable reads only the texture, the frame count and the
-emitter slots today (`include/client/spell/spells_new_eff_reader.h`); nothing below is wired into
+emitter slots (`include/client/spell/spells_new_eff_reader.h`) and, since B1146, the colour words
++0x68, +0x90, +0x94, +0xA4 and +0xD4..+0xE8 (`include/client/spell/spells_new_edd_colour.h`, applied
+per texture region by `SpellPresets::applyStageEmitterColours()`: the RGB is drawn, the alpha and blend
+words wait behind its `clientAlpha`, `refactor/B1146/README.md`); nothing else below is wired into
 fable's FX yet.
 
 ## Who does what
