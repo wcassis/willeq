@@ -41,7 +41,7 @@ pcap and fable.log in `review/B1132/gate/fable_B/`), and each one is a
 | target race 1 gender 0 (the `#spawn`) | leg chat | `--target` |
 | caster idle p01, target idle o01 | the client: the local player stands in p01 (`renderer_player_physics.cpp`), an idle NPC in o01 (`entity_updates.cpp`) | -- |
 | simulation at 60 Hz, every 2nd step written at `--fps 30` | the lane client runs 60 fps ("FPS: 60" on its frames), x11grab keeps 30 | `--sim-hz` |
-| the Tip of the Day window, an opaque 920,243..1280,543 rectangle drawn over the particles | every lane-5 leg opens it; no lit pixel inside it in any frame of leg B | `--ui-occluder x0,y0,x1,y1`, `--no-ui-occluder` |
+| no UI over the FX field (B1142) | the lane rig starts the client with `[Tips] ShowTOTD=0` (`review/B1142/scripts/fable_leg_remote.sh`); before B1142 every lane-5 leg had fable's Tip of the Day open at 920,243..1280,543, OVER the particles | `--ui-occluder x0,y0,x1,y1` (repeatable; `920,243,1280,543` reproduces a pre-B1142 capture), `--no-ui-occluder` |
 
 Plan-specific lane facts are options, not defaults: `--target-death <s>` (the
 target plays its death animation `s` seconds after OP_Action: leg B's pcap has
@@ -79,14 +79,20 @@ channel exceeds 175 (where an additive sprite's rise can stay under 80).
   frames are deterministic except where two models occupy the same pixels
   (a distance-0 target: ~50 px per frame inside the figures z-fight between
   runs), which none of these quantities reads.
-- **Parity with lane 5**: landing coverage (5 seeds within -1.3 .. +2.6 % of
-  both lane captures, inside the +-3 % band) and the landing end (+0.06 ..
-  +0.12 s late; the two lane captures differ by 0.024 s). Seed spread is part
-  of any parity claim: landing ROI p90 varies 0.064 .. 0.071 over seeds 1-5
-  (lane 0.072 on this art), so one seed does not prove it.
-- **Lane-only**: Source ROI p90 (harness 0.071 .. 0.082 against 0.062 on
-  both lane captures; the residual is a denser early hand spray, unexplained,
-  `refactor/B1139/README.md`), and colour as fx_measure reads it (its
+- **Parity with lane 5** (B1142's unoccluded rig, `refactor/B1142/README.md`):
+  landing coverage -- seeds 1-5 with `--target-death 0 --target-despawn 1.027`
+  read 3.111 .. 3.191 (mean 3.151) against four lane captures of 93 at
+  2.990 .. 3.140 (mean 3.079, the lane's own spread 5 %): mean +2.3 %, each seed
+  -0.9 .. +6.7 % of each capture; with the old window drawn back in
+  (`--ui-occluder 920,243,1280,543`) seed 1 reads 2.963 against the same
+  code's window-open capture 2.942 (+0.7 %). Landing end: harness
+  +4.967 .. +5.033 s against the lane's +4.898 .. +5.047 s.
+  Seed spread is part of any parity claim: landing ROI p90 varies
+  0.065 .. 0.073 over seeds 1-5 (lane 0.069 .. 0.072), so one seed does not prove it.
+- **Lane-only**: Source ROI p90 (harness 0.069 .. 0.074 against 0.064 .. 0.066
+  on the lane legs without a target outline; B1142 traced most of B1139's
+  "2x denser early hand spray" to the lane's target outline sitting in the
+  pre-cast baseline), and colour as fx_measure reads it (its
   frame-mean hue mixes in the scene: the harness's dark clear colour reads hue
   20, the lane's grass and sky 35-37).
 - **Colour, scene-free** (B1146): `review/B1146/scripts/added_hue.py` reads the

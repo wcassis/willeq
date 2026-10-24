@@ -79,8 +79,8 @@ struct HarnessOptions {
     bool targetGiven = false;
     // B1139 (#459) lane-parity factors, each measured in refactor/B1139/README.md.
     // Opaque screen rectangles drawn over the particles, as the lane client's
-    // UI windows are (x0,y0,x1,y1 px, --ui-occluder, repeatable); the b1118
-    // preset defaults to the Tip of the Day window every lane-5 leg opens.
+    // UI windows are (x0,y0,x1,y1 px, --ui-occluder, repeatable). None by
+    // default: since B1142 the lane rig keeps the FX field unoccluded.
     struct Rect { int x0, y0, x1, y1; };
     std::vector<Rect> uiOccluders;
     bool uiOccludersGiven = false;     // --ui-occluder / --no-ui-occluder win over a preset
