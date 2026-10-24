@@ -447,6 +447,7 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
 
         // Interpolate color and size
         p.color = glm::mix(p.colorStart, p.colorEnd, t);
+        if (p.hasEddColour()) p.color.a = p.eddAlpha();  // B1146: the client's fade x peak
         p.size = glm::mix(p.sizeStart, p.sizeEnd, t);
 
         if (p.motionType == MotionType::CAMERA_RELATIVE) {
@@ -900,16 +901,38 @@ void SimulationWorker::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emi
         p.position.z = emitterPos.z + p.radius * std::sin(p.phase);
     }
 
-    if (cfg.textureRegionCount > 1) {
-        p.textureIndex = cfg.textureRegions[particleRandomInt(0, cfg.textureRegionCount - 1)];
-    } else {
-        p.textureIndex = cfg.textureRegions[0];
-    }
+    // The same one random draw as before B1146, so a white emitter's
+    // particles (and the RNG stream every later particle sees) are unchanged.
+    const int region = cfg.textureRegionCount > 1
+                           ? particleRandomInt(0, cfg.textureRegionCount - 1)
+                           : 0;
+    p.textureIndex = cfg.textureRegions[region];
 
     p.emitterID = emitterID;
     p.setAlive(true);
     p.setBlendMode(cfg.blendMode);
     p.setFamily(family);  // B995
+
+    // B1146 (#466): the emitter that names this texture carries non-white
+    // spellsnew.edd colour words -- the particle takes its start -> end RGB
+    // (EQGraphicsDX9 0x100605b0). With `clientAlpha` it also takes the
+    // client's fade x peak alpha and its +0x68 blend; without it the alpha
+    // and blend stay the style's, like every white emitter's (see
+    // SpellPresets::applyStageEmitterColours()).
+    const auto& rc = cfg.regionColours[region];
+    if (rc.active) {
+        p.colorStart = glm::vec4(rc.start, p.colorStart.a);
+        p.colorEnd = glm::vec4(rc.end, p.colorEnd.a);
+        p.color = p.colorStart;
+        if (rc.clientAlpha) {
+            p.setEddColour(true);
+            p.eddFadeIn = rc.fadeIn;
+            p.eddFadeOut = rc.fadeOut;
+            p.eddPeakOpacity = rc.peakOpacity;
+            p.color.a = p.eddAlpha();
+            p.setBlendMode(rc.additive ? UnifiedBlendMode::ADDITIVE : UnifiedBlendMode::ALPHA);
+        }
+    }
 }
 
 // ============================================================================

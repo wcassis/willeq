@@ -215,6 +215,12 @@ the TU that defines the bodies under it.
 | spell_cast_checks.cpp | 171 | T246: the other four pre-cast checks — `checkLineOfSight`, `countCarriedItem`, `checkReagents`, `checkPlayerState`. Each is permissive wherever the client has no state to judge from |
 | spell_publish.cpp | 148 | Everything that leaves the class: the three outbound packets (`sendCastSpellPacket`, `sendInterruptPacket`, `sendMemorizePacket`) and the three bridge publishers (`publishCastStarted`, `publishCastComplete` — T44 — and `publishGemChanged` — U06b), each of which also does T221's source-side `GameState` write first |
 
+Beside it in `src/client/spell/`, the spell VISUAL data readers (no `SpellManager` bodies):
+
+| TU | Lines | Contents |
+|---|---|---|
+| spells_new_edd_colour.cpp | 138 | B1146: `EQ::SpellsNewEddColourTable` -- spellsnew.eff + spellsnew.edd read for the colour words only (+0x68 additive, +0x90/+0x94 fades, +0xA4 peak, +0xD4..+0xE8 start/end RGB; `docs/spellsnew_format.md`), `stageColours()` in `SpellsNewEffReader::stageTextures()` order; the alpha formula `eddParticleAlpha()` is inline in the header, shared with `UnifiedParticle::eddAlpha()` |
+
 ## Renderer — IrrlichtRenderer class (`include/client/graphics/irrlicht_renderer.h`)
 
 K16 (board B006): `IrrlichtRenderer` now implements

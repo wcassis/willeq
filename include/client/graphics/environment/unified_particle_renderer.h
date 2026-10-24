@@ -211,6 +211,10 @@ private:
     std::vector<PointSpriteVertex> alphaVerts_;
     std::vector<PointSpriteVertex> spriteAdditiveVerts_;
     std::vector<PointSpriteVertex> spriteAlphaVerts_;
+    // B1146: additive particles with spellsnew.edd colour words, drawn
+    // GL_SRC_ALPHA, GL_ONE (UnifiedBlendMode::ADDITIVE_SRC_ALPHA).
+    std::vector<PointSpriteVertex> additiveSrcAlphaVerts_;
+    std::vector<PointSpriteVertex> spriteAdditiveSrcAlphaVerts_;
 };
 
 } // namespace Environment

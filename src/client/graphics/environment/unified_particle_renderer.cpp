@@ -287,6 +287,8 @@ bool UnifiedParticleRenderer::init(irr::video::IVideoDriver* driver) {
     alphaVerts_.reserve(256);
     spriteAdditiveVerts_.reserve(1024);
     spriteAlphaVerts_.reserve(256);
+    additiveSrcAlphaVerts_.reserve(64);        // B1146
+    spriteAdditiveSrcAlphaVerts_.reserve(256);
 
     // B972 (#290) / B972-FT (#326), the ALTERNATIVE shape: the ring's VBOs
     // are created EMPTY and grown on first use in uploadPackedVerts(); the
@@ -320,6 +322,8 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     alphaVerts_.clear();
     spriteAdditiveVerts_.clear();
     spriteAlphaVerts_.clear();
+    additiveSrcAlphaVerts_.clear();
+    spriteAdditiveSrcAlphaVerts_.clear();
 
     for (int i = 0; i < count; ++i) {
         const UnifiedParticle& p = particles[i];
@@ -366,11 +370,20 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
             atlasV = row * 0.25f;
         }
 
+        // B1146 (#466): a particle on the client's alpha (hasEddColour())
+        // blends the client's way -- additive is SRC_ALPHA, ONE, so its alpha
+        // (fade x peak) scales what it adds; every other additive particle
+        // keeps ONE, ONE exactly as before.
+        const bool additive = p.getBlendMode() == UnifiedBlendMode::ADDITIVE;
+        const bool srcAlphaAdditive = additive && p.hasEddColour();
+
         // B995: the family's Options opacity / near clip (identity by default).
+        // The Options opacity is the client's SpellParticleOpacity, which
+        // multiplies the alpha (0x10063a85); a ONE, ONE particle has no alpha
+        // in its blend, so it takes the opacity in its RGB instead.
         glm::vec4 color = p.color;
-        if (!applyParticleKnobs(knobs_, p.getFamily(),
-                                p.getBlendMode() == UnifiedBlendMode::ADDITIVE, p.position,
-                                cameraPos_, color)) {
+        if (!applyParticleKnobs(knobs_, p.getFamily(), additive && !srcAlphaAdditive,
+                                p.position, cameraPos_, color)) {
             continue;
         }
 
@@ -387,16 +400,18 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         v.atlasU = atlasU;
         v.atlasV = atlasV;
 
-        const bool additive = p.getBlendMode() == UnifiedBlendMode::ADDITIVE;
         if (onSpriteSheet) {
-            (additive ? spriteAdditiveVerts_ : spriteAlphaVerts_).push_back(v);
+            (srcAlphaAdditive ? spriteAdditiveSrcAlphaVerts_
+                              : additive ? spriteAdditiveVerts_ : spriteAlphaVerts_).push_back(v);
         } else {
-            (additive ? additiveVerts_ : alphaVerts_).push_back(v);
+            (srcAlphaAdditive ? additiveSrcAlphaVerts_
+                              : additive ? additiveVerts_ : alphaVerts_).push_back(v);
         }
     }
 
     if (additiveVerts_.empty() && alphaVerts_.empty() &&
-        spriteAdditiveVerts_.empty() && spriteAlphaVerts_.empty()) {
+        spriteAdditiveVerts_.empty() && spriteAlphaVerts_.empty() &&
+        additiveSrcAlphaVerts_.empty() && spriteAdditiveSrcAlphaVerts_.empty()) {
         return;
     }
 
@@ -510,8 +525,10 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
             v.insert(v.end(), src.begin(), src.end());
         };
         pack(packedVerts_, additiveVerts_);
+        pack(packedVerts_, additiveSrcAlphaVerts_);
         pack(packedVerts_, alphaVerts_);
         pack(packedVerts_, spriteAdditiveVerts_);
+        pack(packedVerts_, spriteAdditiveSrcAlphaVerts_);
         pack(packedVerts_, spriteAlphaVerts_);
         if (useVbo_ && !packedVerts_.empty()) packVbo = uploadPackedVerts();
     }
@@ -539,7 +556,7 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     };
 
     // ── Sheet 0: the 4x4 procedural particle atlas ──────────────────────
-    if (!additiveVerts_.empty() || !alphaVerts_.empty()) {
+    if (!additiveVerts_.empty() || !alphaVerts_.empty() || !additiveSrcAlphaVerts_.empty()) {
         if (uAtlasRegionSize_ >= 0) glUniform2f(uAtlasRegionSize_, 0.25f, 0.25f);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D,
@@ -548,6 +565,7 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         glBindTexture(GL_TEXTURE_2D, atlasTexture);
 
         drawWindow(additiveVerts_, UnifiedBlendMode::ADDITIVE, 0);
+        drawWindow(additiveSrcAlphaVerts_, UnifiedBlendMode::ADDITIVE_SRC_ALPHA, 4);
         drawWindow(alphaVerts_, UnifiedBlendMode::ALPHA, 1);
     }
 
@@ -556,7 +574,8 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     // ── Sheet 1: the spell sprite sheet (T417, board B300) ──────────────
     // The binning loop already dropped these when spriteTexture is 0, so
     // reaching here with a non-empty batch means the sheet is loaded.
-    if (!spriteAdditiveVerts_.empty() || !spriteAlphaVerts_.empty()) {
+    if (!spriteAdditiveVerts_.empty() || !spriteAlphaVerts_.empty() ||
+        !spriteAdditiveSrcAlphaVerts_.empty()) {
         if (uAtlasRegionSize_ >= 0) {
             glUniform2f(uAtlasRegionSize_, 1.0f / SpellSpriteAtlas::kColumns,
                         1.0f / SpellSpriteAtlas::kRows);
@@ -568,6 +587,7 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         glBindTexture(GL_TEXTURE_2D, spriteTexture);
 
         drawWindow(spriteAdditiveVerts_, UnifiedBlendMode::ADDITIVE, 2);
+        drawWindow(spriteAdditiveSrcAlphaVerts_, UnifiedBlendMode::ADDITIVE_SRC_ALPHA, 5);
         drawWindow(spriteAlphaVerts_, UnifiedBlendMode::ALPHA, 3);
     }
 
@@ -635,6 +655,8 @@ void UnifiedParticleRenderer::renderBatch(const PointSpriteVertex* verts, size_t
 
     if (blendMode == UnifiedBlendMode::ADDITIVE) {
         glBlendFunc(GL_ONE, GL_ONE);
+    } else if (blendMode == UnifiedBlendMode::ADDITIVE_SRC_ALPHA) {
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);  // B1146: the client's DESTBLEND ONE
     } else {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }

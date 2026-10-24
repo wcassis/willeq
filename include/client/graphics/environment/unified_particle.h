@@ -8,6 +8,7 @@
 #include <cstdint>
 
 #include "client/graphics/environment/particle_options.h"  // B995: ParticleFamily
+#include "client/spell/spells_new_edd_colour.h"         // B1146: eddParticleAlpha
 
 namespace EQT {
 namespace Graphics {
@@ -26,6 +27,10 @@ enum class MotionType : uint8_t {
 enum class UnifiedBlendMode : uint8_t {
     ADDITIVE = 0,   // glBlendFunc(GL_ONE, GL_ONE) — fire, sparks, holy, lightning
     ALPHA = 1,      // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA) — smoke, snow
+    // B1146: glBlendFunc(GL_SRC_ALPHA, GL_ONE) -- the official client's spell
+    // additive blend (EQGraphicsDX9 0x1005f7c2). A renderer batch only: a
+    // particle carries it as ADDITIVE + hasEddColour().
+    ADDITIVE_SRC_ALPHA = 2,
 };
 
 enum class UnifiedRendererType : uint8_t {
@@ -43,7 +48,7 @@ enum class SpawnShape : uint8_t {
 
 // === Particle Structure ===
 
-// Single unified particle instance (~96 bytes)
+// Single unified particle instance (B1146 added the three EDD alpha words)
 // Stored contiguously in a fixed pool for cache-friendly linear scan
 struct UnifiedParticle {
     // Core state — 48 bytes
@@ -69,12 +74,19 @@ struct UnifiedParticle {
     // Metadata — 8 bytes
     uint16_t emitterID = 0;         // Which emitter owns this particle
     uint16_t textureIndex = 0;      // Region within atlas (UV offset selector)
-    uint8_t flags = 0;              // Bit 0: alive, Bit 1: blend mode (0=additive, 1=alpha), Bits 2-3: family (B995)
+    uint8_t flags = 0;              // Bit 0: alive, Bit 1: blend mode (0=additive, 1=alpha), Bits 2-3: family (B995), Bit 4: EDD colour (B1146)
     MotionType motionType = MotionType::LINEAR;
     uint16_t padding = 0;
 
     // UV rotation for rain streaks (radians, 0 = no rotation)
     float rotation = 0.0f;
+
+    // B1146 (#466): the client's alpha for a particle drawn with its
+    // spellsnew.edd colour words (hasEddColour()): min(fadeIn * fadeOut,
+    // peak), see EQ::eddParticleAlpha(). Unused otherwise.
+    float eddFadeIn = 0.0f;         // +0x90, s
+    float eddFadeOut = 0.0f;        // +0x94, s
+    float eddPeakOpacity = 1.0f;    // +0xA4
 
     bool isAlive() const { return (flags & 0x01) != 0; }
     void setAlive(bool alive) { if (alive) flags |= 0x01; else flags &= ~0x01; }
@@ -91,6 +103,16 @@ struct UnifiedParticle {
     ParticleFamily getFamily() const { return static_cast<ParticleFamily>((flags >> 2) & 0x03); }
     void setFamily(ParticleFamily f) {
         flags = static_cast<uint8_t>((flags & ~0x0C) | ((static_cast<uint8_t>(f) & 0x03) << 2));
+    }
+
+    // B1146: the particle is on the CLIENT's alpha (a region with
+    // RegionColour::clientAlpha) -- its alpha is the fade x peak of its
+    // spellsnew.edd emitter, and an additive one blends SRC_ALPHA, ONE (the
+    // client's DESTBLEND ONE over SRCBLEND SRCALPHA), not the style's ONE, ONE.
+    bool hasEddColour() const { return (flags & 0x10) != 0; }
+    void setEddColour(bool on) { if (on) flags |= 0x10; else flags &= ~0x10; }
+    float eddAlpha() const {
+        return EQ::eddParticleAlpha(age, maxLifetime - age, eddFadeIn, eddFadeOut, eddPeakOpacity);
     }
 
     // Get normalized age (0 = just spawned, 1 = about to die)
@@ -145,6 +167,25 @@ struct EmitterConfig {
     UnifiedBlendMode blendMode = UnifiedBlendMode::ADDITIVE;
     uint8_t textureRegions[4] = {0, 0, 0, 0};  // Possible atlas tile indices
     uint8_t textureRegionCount = 1;              // How many regions to pick from
+
+    // B1146 (#466): the spellsnew.edd colour words of the emitter that names
+    // textureRegions[k] (SpellPresets::applyStageEmitterColours()). A region
+    // whose `active` is false keeps the config's colorStart/colorEnd and
+    // blendMode -- every white emitter and every non-spellsnew emitter.
+    struct RegionColour {
+        bool active = false;
+        // The client's fade x peak alpha and +0x68 blend as well as its RGB
+        // (UnifiedParticle::hasEddColour()); false keeps the style's alpha
+        // and blend -- the shipped setting, review/B1146/README.md.
+        bool clientAlpha = false;
+        bool additive = true;            // +0x68
+        glm::vec3 start{1.0f};           // +0xD4..+0xDC / 255
+        glm::vec3 end{1.0f};             // +0xE0..+0xE8 / 255
+        float fadeIn = 0.0f;             // +0x90, s
+        float fadeOut = 0.0f;            // +0x94, s
+        float peakOpacity = 1.0f;        // +0xA4
+    };
+    RegionColour regionColours[4];
 
     // Spell motion parameters (ORBITAL / RADIAL_EXPAND)
     float orbitalRadius = 1.0f;           // ORBITAL: orbit radius

@@ -399,17 +399,17 @@ measured, not summed: `review/B1121/scripts/b1120_measure.sh <leg> <out>`
 (`LANDING ... end`); no cells/s rate is measured (T422).
 `tests/test_spell_burst_oracle_match.cpp` pins both.
 
-**A SPELL'S COLOUR IS ITS SPRITE; no colour field is used** (T441, B397/B398).
+**A spell particle is its sprite x its EDD emitter's colour words** (B1146).
 **The oracle draws `spellsnew.eff`, not `spells.eff`** (B1127,
 `review/B1127/README.md`): field 145 (`spell_anim`) names the record, its stages
 name `spellsnew.edd` emitters, each names a texture file, and the particle is its
 texels, and picks the measured row (`animRecords`, B1137). Field 123's GEN names
-serve spells with no field 145. Field 85 RESISTTYPE is not painted with. So `SpellPresets::applyStageSpriteNames()` drops the
-particle colour modulation to WHITE whenever it installs a real stage's sprites
-— `POINT_SPRITE_FS` computes `texColor * vColor`, and **any non-white modulation
-is fable tinting the oracle's own art**. `config/spell_effects.json`'s
-`resistColors` and `SpellVisualFX::colorForVocabulary()` survive only for the
-~946 spells with no usable `spells.eff` record. All three stages route their
+serve spells with no field 145. Field 85 RESISTTYPE is not painted with: `SpellPresets::applyStageSpriteNames()`
+drops the resist tint to white (T441), then `applyStageEmitterColours()` gives each
+texture region its emitter's start->end RGB (`docs/spellsnew_format.md`); the
+client's fade x peak alpha and +0x68 blend stay off (`clientAlpha`,
+`refactor/B1146/README.md`). `resistColors` and `colorForVocabulary()` serve only
+spells with no usable record. All three stages route their
 names: Source → cast glow and spellComplete, Middle → projectile trail, Target →
 impact. The landing is a VOLUME, not a disc (B1120). Source and Target are drawn
 per MEASURED ROW: B1131 `sourceRecords` (anchor, onset, hold past

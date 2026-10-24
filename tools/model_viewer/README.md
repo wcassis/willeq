@@ -79,7 +79,13 @@ channel exceeds 175 (where an additive sprite's rise can stay under 80).
   (lane 0.072 on this art), so one seed does not prove it.
 - **Lane-only**: Source ROI p90 (harness 0.071 .. 0.082 against 0.062 on
   both lane captures; the residual is a denser early hand spray, unexplained,
-  `refactor/B1139/README.md`), and colour (fx_measure's frame-mean hue mixes
-  in the scene: the harness's dark clear colour reads hue 20, the lane's grass
-  and sky 35-37).
+  `refactor/B1139/README.md`), and colour as fx_measure reads it (its
+  frame-mean hue mixes in the scene: the harness's dark clear colour reads hue
+  20, the lane's grass and sky 35-37).
+- **Colour, scene-free** (B1146): `review/B1146/scripts/added_hue.py` reads the
+  ADDED colour (frame minus the pre-cast median) of the risen pixels, the same
+  arithmetic on an oracle capture, a fable lane leg and a harness frames dir.
+  93's landing reads hue 25 on both the harness and lane leg B; the discipline
+  records 326/329/328 read the oracle's hue within 20 deg
+  (`refactor/B1146/README.md`).
 - Oracle legs (the official client) are lane 5 only.

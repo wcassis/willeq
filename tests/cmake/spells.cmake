@@ -417,3 +417,15 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_colour_and_overrides PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_colour_and_overrides DISCOVERY_TIMEOUT 120)
+
+# B1146 (#466): the spellsnew.edd colour words -- decode, the client's alpha,
+# the per-region preset and the particle path (SimulationWorker::computeOnce).
+# The decode cases run everywhere; the particle cases need GLES2.
+ADD_EXECUTABLE(test_spell_edd_colour
+    test_spell_edd_colour.cpp
+)
+TARGET_LINK_LIBRARIES(test_spell_edd_colour GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_edd_colour PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_edd_colour DISCOVERY_TIMEOUT 120)

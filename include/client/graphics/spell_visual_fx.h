@@ -20,13 +20,14 @@
 
 #include "client/spell/spells_eff_reader.h"
 #include "client/spell/spells_new_eff_reader.h"
+#include "client/spell/spells_new_edd_colour.h"
 #include "client/spell/spell_visual_vocabulary.h"
 #include "client/graphics/spell_visual_selection.h"
 
 namespace EQT { namespace Graphics { class ConstrainedTextureCache; }}
 
 #ifdef EQT_HAS_GLES2
-namespace EQT { namespace Graphics { namespace Environment { class ParticleManager; }}}
+namespace EQT { namespace Graphics { namespace Environment { class ParticleManager; struct SpellEffectDef; }}}
 #endif
 
 // Forward declarations for worker-driven spell VFX
@@ -363,6 +364,14 @@ private:
     // B1127: spellsnew.eff + spellsnew.edd from the same directory.
     SpellsNewEffReader m_spells_new_eff;
     bool m_spells_new_eff_loaded = false;
+    // B1146 (#466): the colour words of spellsnew.edd's emitters.
+    SpellsNewEddColourTable m_spells_new_edd_colour;
+#ifdef EQT_HAS_GLES2
+    // Installs stage `stage`'s (0 Source, 1 Middle, 2 Target) colour words on
+    // `def` when that stage came from spellsnew.eff.
+    void applyStageEddColours(EQT::Graphics::Environment::SpellEffectDef& def,
+                              const SpellVisualResolution& visual, int stage) const;
+#endif
 
 #ifdef EQT_HAS_GLES2
     EQT::Graphics::Environment::ParticleManager* m_particle_manager = nullptr;

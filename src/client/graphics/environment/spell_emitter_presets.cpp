@@ -443,12 +443,40 @@ void applyStageSpriteNames(SpellEffectDef& def,
         for (uint8_t i = 0; i < 4; ++i) {
             ed.config.textureRegions[i] = (i < count) ? regions[i] : regions[0];
         }
-        // T441 (board B398). The sprite art IS the colour -- see the header.
-        // Modulate with white so `texColor * vColor` in POINT_SPRITE_FS draws
-        // the official client's own texels. The alphas stay: they are the
-        // style's fade curve.
+        // T441 (board B398): no resist / school tint over the stage's art
+        // -- see the header. The alphas stay: they are the style's fade
+        // curve. B1146: a spellsnew.edd emitter's own colour words come from
+        // applyStageEmitterColours().
         ed.config.colorStart = glm::vec4(1.0f, 1.0f, 1.0f, ed.config.colorStart.a);
         ed.config.colorEnd = glm::vec4(1.0f, 1.0f, 1.0f, ed.config.colorEnd.a);
+        for (auto& rc : ed.config.regionColours) rc = EmitterConfig::RegionColour{};
+    }
+}
+
+void applyStageEmitterColours(SpellEffectDef& def,
+                              const std::vector<EQ::SpellsNewEddColour>& colours,
+                              bool clientAlpha) {
+    if (colours.empty() || colours.size() > 4) return;
+    for (auto& ed : def.emitters) {
+        auto& c = ed.config;
+        // The pairing is texture k <-> colour k; a count mismatch means the
+        // regions came from somewhere else (an override's own list).
+        if (c.textureRegionCount != colours.size()) continue;
+        for (size_t k = 0; k < colours.size(); ++k) {
+            const EQ::SpellsNewEddColour& w = colours[k];
+            EmitterConfig::RegionColour rc;
+            rc.active = !w.isWhite();
+            rc.clientAlpha = clientAlpha;
+            rc.additive = w.additive;
+            for (int i = 0; i < 3; ++i) {
+                rc.start[i] = static_cast<float>(w.start[static_cast<size_t>(i)]) / 255.0f;
+                rc.end[i] = static_cast<float>(w.end[static_cast<size_t>(i)]) / 255.0f;
+            }
+            rc.fadeIn = w.fadeIn;
+            rc.fadeOut = w.fadeOut;
+            rc.peakOpacity = w.peakOpacity;
+            c.regionColours[k] = rc;
+        }
     }
 }
 
