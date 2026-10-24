@@ -621,6 +621,39 @@ TEST_P(SourceWrites, Inventory_DeleteItem_ClearsSourceOccupancy) {
     EXPECT_FALSE(inv.hasGeneralItem(3));
 }
 
+// B1140: eqemu's Client::DeleteItemInInventory sends OP_DeleteItem when ONE
+// unit leaves a stack that survives (a consumed spell component; the stack
+// that empties is OP_MoveItem to=-1 instead). It is never an echo of the
+// client's own destroy. dacd9534 ignored it in the model ("trust our
+// client-side deletion") and published the slot EMPTY: a 2-stack of Fire
+// Opals read as gone in the UI and as 2 in the model. FAILS on dacd9534.
+TEST_P(SourceWrites, Inventory_DeleteItem_OnStackTakesOneUnit) {
+    eqt::inventory::ItemInstance opals;
+    opals.itemId = 10031;
+    opals.name = "Fire Opal";
+    opals.stackable = true;
+    opals.stackSize = 20;
+    opals.quantity = 2;
+    opals.slots = 0xFFFFFFFFu;
+    auto* mgr = eq.GetInventoryManager();
+    mgr->setItem(eqt::inventory::GENERAL_BEGIN + 2, opals);
+    ReplayZone(eq, HC_OP_MoveItem, MoveItemPayload(eqt::inventory::GENERAL_BEGIN + 2,
+                                                   eqt::inventory::GENERAL_BEGIN + 2));
+    const auto& inv = eq.GetGameState().inventory();
+    ASSERT_TRUE(inv.hasGeneralItem(2));
+
+    ReplayZone(eq, HC_OP_DeleteItem, DeleteItemPayload(eqt::inventory::GENERAL_BEGIN + 2));
+    const auto* left = mgr->getItem(eqt::inventory::GENERAL_BEGIN + 2);
+    ASSERT_NE(left, nullptr) << "one of two opals consumed: the stack is still there";
+    EXPECT_EQ(left->quantity, 1);
+    EXPECT_TRUE(inv.hasGeneralItem(2)) << "published occupancy follows the model";
+
+    // The last unit leaves as OP_MoveItem to=-1 (eqemu: the item is gone).
+    ReplayZone(eq, HC_OP_MoveItem, MoveItemPayload(eqt::inventory::GENERAL_BEGIN + 2, -1));
+    EXPECT_EQ(mgr->getItem(eqt::inventory::GENERAL_BEGIN + 2), nullptr);
+    EXPECT_FALSE(inv.hasGeneralItem(2));
+}
+
 // ---------------------------------------------------------------------
 // Vendor / Bank / Trainer windows (T227 FOLD: the three domains T221's
 // census found with NO source write at all -- only the projection ever

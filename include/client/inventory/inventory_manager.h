@@ -148,6 +148,24 @@ public:
     bool pickupPartialStack(int16_t slotId, int32_t quantity);  // Pick up specific quantity from stack
     bool placeItem(int16_t targetSlot);
     bool placeOnMatchingStack(int16_t targetSlot);  // Auto-stack cursor item onto matching stack
+    // B1140: /autoinventory -- the official client's placement of the cursor
+    // FRONT, measured on the oracle (review/B1140/oracle/O1_wiz, O2_wiz):
+    //   1. a stackable item goes onto a same-id stack with room (O2: the 2nd
+    //      Fire Opal -> the opal stack in backpack slot 311, OP_MoveItem
+    //      30->311 qty=1, though bag slot 312 was empty);
+    //   2. else the first empty general slot (O2: 30->25 with 25 free);
+    //   3. else the first empty bag slot, bag by bag in general-slot order
+    //      (O1: 30->311, 312, 313 with the general row full).
+    // Equipment slots are not searched: no worn slot was empty in either leg,
+    // so nothing about them is measured.
+    // Returns SLOT_INVALID when nothing fits. Unmeasured and so taken in
+    // plain ascending order: several stacks / several bags.
+    int16_t findAutoInventorySlot(const ItemInstance& item) const;
+    // Places the cursor front at findAutoInventorySlot() through
+    // placeOnMatchingStack() (the OP_MoveItem 30->slot, and 30->30 when the
+    // queue advances, exactly as O1/O2 recorded). False when the cursor is
+    // empty or nothing fits; sends nothing then.
+    bool autoInventoryCursor();
     bool hasCursorItem() const;
     const ItemInstance* getCursorItem() const;
     int16_t getCursorSourceSlot() const { return cursorSourceSlot_; }

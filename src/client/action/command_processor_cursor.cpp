@@ -21,6 +21,10 @@ ActionResult CommandProcessor::cmdCursor(const std::string& args) {
     return m_dispatcher.cursorCommand("cursor", args);
 }
 
+ActionResult CommandProcessor::cmdAutoInventory(const std::string& args) {
+    return m_dispatcher.cursorCommand("autoinventory", args);
+}
+
 ActionResult CommandProcessor::cmdCoin(const std::string& args) {
     return m_dispatcher.cursorCommand("coin", args);
 }

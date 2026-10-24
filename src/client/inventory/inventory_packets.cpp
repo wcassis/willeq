@@ -217,10 +217,34 @@ void InventoryManager::processMoveItemResponse(const EQ::Net::Packet& packet) {
 }
 
 void InventoryManager::processDeleteItemResponse(const EQ::Net::Packet& packet) {
-    // Server sends back DeleteItem_Struct to confirm deletion
-    LOG_DEBUG(MOD_UI, "InventoryManager Received DeleteItem response, size: {}", packet.Length());
-
-    // For now, we trust our client-side deletion
+    // B1140: a server-sent OP_DeleteItem is NOT an echo of the client's own
+    // destroy (eqemu Handle_OP_DeleteItem deletes with client_update=false
+    // and sends nothing back). It is eqemu Client::DeleteItemInInventory
+    // taking ONE unit off a stack that survives (stackable, or arrows): a
+    // consumed spell component, an arrow, a combine. A stack that empties
+    // arrives as OP_MoveItem to=-1 instead (processMoveItemResponse). The
+    // old body "trusted our client-side deletion" -- there is none for a
+    // server-side consumption, so a 2-stack of reagents stayed 2 forever.
+    // DeleteItem_Struct: from_slot(4), to_slot(4) = -1, number_in_stack(4)
+    // = 0xFFFFFFFF; one packet per unit (eqemu queues it `quantity` times).
+    LOG_DEBUG(MOD_UI, "InventoryManager Received DeleteItem, size: {}", packet.Length());
+    if (packet.Length() < 6) {
+        return;
+    }
+    const int16_t slot = static_cast<int16_t>(static_cast<int32_t>(packet.GetUInt32(2)));
+    ItemInstance* item = getItemMutable(slot);
+    if (!item) {
+        LOG_DEBUG(MOD_UI, "InventoryManager DeleteItem: slot {} already empty", slot);
+        return;
+    }
+    if (item->stackable && item->quantity > 1) {
+        --item->quantity;
+        ++changeCounter_;
+        LOG_INFO(MOD_UI, "Item stack in slot {} ({}) decremented to {} via DeleteItem", slot, item->name, item->quantity);
+    } else {
+        LOG_INFO(MOD_UI, "Item deleted from slot {} ({}) via DeleteItem", slot, item->name);
+        removeItem(slot);
+    }
 }
 
 void InventoryManager::dumpInventory() const {

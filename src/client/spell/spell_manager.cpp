@@ -330,8 +330,7 @@ uint32_t SpellManager::getCastTimeRemaining() const
 // T246/T407: the pre-cast decision layer -- adjustTargetForSpellType /
 // isValidCreatureTarget / validateCast / checkMana / checkEndurance /
 // checkRange live in spell_cast_validation.cpp, and checkLineOfSight /
-// countCarriedItem / checkReagents / checkPlayerState in
-// spell_cast_checks.cpp (same class, own TUs).
+// checkPlayerState in spell_cast_checks.cpp (same class, own TUs).
 
 // T407: the gem bar and the spellbook -- memorizeSpell / forgetSpell /
 // startGemCooldown / scribeSpell / setSpellbook /

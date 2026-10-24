@@ -1,5 +1,5 @@
 // B442 (GitLab #151): CommandsComponent::RequestCursorCommand -- /pickup,
-// /putdown, /cursor and /coin. A new TU beside commands_component.cpp (which
+// /putdown, /cursor and /coin (and B1140's /autoinventory). A new TU beside commands_component.cpp (which
 // is near the size ceiling). Parsing is eqt::inventory::ParseCursorCommand()
 // (cursor_gesture.cpp, slot numbers through parseUserSlot()); the move itself
 // is the same CursorGestureIntent a slot click pushes, drained by
@@ -14,6 +14,16 @@
 void eqt::commands::CommandsComponent::RequestCursorCommand(const std::string& verb,
                                                             const std::string& args)
 {
+	// B1140: /autoinventory places the cursor front itself (the
+	// RequestEquip idiom: this runs on the game thread, beside the model).
+	// The official client prints nothing; neither does this, even when
+	// nothing fits (unmeasured) or the cursor is empty.
+	if (verb == "autoinventory") {
+		if (ctx_.inventory_manager) {
+			ctx_.inventory_manager->autoInventoryCursor();
+		}
+		return;
+	}
 	if (verb == "cursor") {
 		ctx_.out.System(ctx_.inventory_manager
 			? eqt::inventory::DescribeCursor(*ctx_.inventory_manager)

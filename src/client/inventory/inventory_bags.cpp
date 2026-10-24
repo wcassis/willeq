@@ -410,5 +410,36 @@ bool InventoryManager::canPlaceInBankSlot(const ItemInstance* item, int16_t targ
     return false;
 }
 
+// B1140: /autoinventory's slot choice -- see the declaration for the oracle
+// rows each step reproduces.
+int16_t InventoryManager::findAutoInventorySlot(const ItemInstance& item) const {
+    // The carried search order: the general row, then each general-row bag's
+    // contents in turn.
+    std::vector<int16_t> order;
+    for (int16_t g = GENERAL_BEGIN; g <= GENERAL_END; ++g) {
+        order.push_back(g);
+    }
+    for (int16_t g = GENERAL_BEGIN; g <= GENERAL_END; ++g) {
+        for (int16_t b : getBagContentsSlots(g)) {
+            order.push_back(b);
+        }
+    }
+    if (item.stackable && item.itemId != 0) {
+        for (int16_t slot : order) {
+            const ItemInstance* held = getItem(slot);
+            if (held && held->stackable && held->itemId == item.itemId &&
+                held->stackSize > 0 && held->quantity < held->stackSize) {
+                return slot;
+            }
+        }
+    }
+    for (int16_t slot : order) {
+        if (!hasItem(slot) && canPlaceItemInSlot(&item, slot)) {
+            return slot;
+        }
+    }
+    return SLOT_INVALID;
+}
+
 } // namespace inventory
 } // namespace eqt
