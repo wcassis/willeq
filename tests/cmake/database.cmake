@@ -39,6 +39,7 @@ ADD_EXECUTABLE(test_spells_eff_reader
     test_spells_eff_reader.cpp
     ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
     ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_eff_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_edd_reader.cpp
     ${CMAKE_SOURCE_DIR}/src/client/spell/spell_database.cpp
     ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
     ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
@@ -56,6 +57,7 @@ ADD_EXECUTABLE(test_spell_visual_selection
     ${CMAKE_SOURCE_DIR}/src/client/graphics/spell_visual_selection.cpp
     ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
     ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_eff_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_edd_reader.cpp
     ${CMAKE_SOURCE_DIR}/src/client/spell/spell_database.cpp
     ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
     ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
@@ -71,6 +73,7 @@ ADD_EXECUTABLE(test_spells_new_eff_reader
     ${CMAKE_SOURCE_DIR}/src/client/graphics/spell_visual_selection.cpp
     ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
     ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_eff_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_edd_reader.cpp
 )
 TARGET_LINK_LIBRARIES(test_spells_new_eff_reader GTest::gtest_main ${FMT_LIB} dl)
 GTEST_DISCOVER_TESTS(test_spells_new_eff_reader DISCOVERY_TIMEOUT 120)
@@ -90,3 +93,14 @@ TARGET_LINK_LIBRARIES(test_willeq_database GTest::gtest_main ${FMT_LIB} ${ZLIB_L
 TARGET_COMPILE_DEFINITIONS(test_willeq_database PRIVATE
     "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
 GTEST_DISCOVER_TESTS(test_willeq_database DISCOVERY_TIMEOUT 120)
+
+# B1145 (#465): spell FX timing from spellsnew.edd (+0x78/+0x7C/+0x80..+0x8C)
+# and its cross-check against the measured oracle timing
+# (tests/spell_fx_timing_oracle.h). Pure file reads, no renderer.
+ADD_EXECUTABLE(test_spell_fx_timing
+    test_spell_fx_timing.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_eff_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_edd_reader.cpp
+)
+TARGET_LINK_LIBRARIES(test_spell_fx_timing GTest::gtest_main ${FMT_LIB} dl)
+GTEST_DISCOVER_TESTS(test_spell_fx_timing DISCOVERY_TIMEOUT 120)

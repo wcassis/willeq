@@ -21,6 +21,7 @@
 #include "client/spell/spells_eff_reader.h"
 #include "client/spell/spells_new_eff_reader.h"
 #include "client/spell/spells_new_edd_colour.h"
+#include "client/spell/spell_fx_timing.h"
 #include "client/spell/spell_visual_vocabulary.h"
 #include "client/graphics/spell_visual_selection.h"
 
@@ -123,6 +124,10 @@ public:
         size_t measured = 0;
     };
     StageSlots stageSlots(uint32_t spell_id, int stage, int casterLevel) const;
+    // B1145 (#465): one slot's timing from its spellsnew.edd emitter, given
+    // its stage's caller duration (EQ::SpellFxCallerDurationMs); false when
+    // the emitter has no entry.
+    bool slotTiming(int32_t emitter, int32_t callerMs, SpellFxSlotTiming& out) const;
 
     SpellVisualFX(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
                    const std::string& eqClientPath = "");
@@ -233,6 +238,9 @@ public:
     // B1131: OP_Action's end of the Source: it keeps emitting its spells.eff
     // record's hold (holdOther when the target is another entity, holdSelf
     // when it is the caster or unknown), then its sprites finish their life.
+    // B1145: a spellsnew.eff Source is not released here: each slot emits for
+    // the duration eqgame gave it at OP_BeginCast (cast + the cast-animation
+    // term, or its fixed +0x78) whatever OP_Action does.
     void releaseCastGlow(uint16_t caster_id, uint32_t spell_id, uint16_t target_id);
 
     // B1131/B1137: the measured Source/Target row of this spell: the row of

@@ -19,6 +19,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #if defined(EQT_HAS_GRAPHICS) && defined(EQT_HAS_GLES2)
 
 #include <glm/glm.hpp>
@@ -29,6 +31,7 @@
 #include "client/graphics/environment/spell_particle_types.h"
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/spell_visual_fx.h"
+#include "client/graphics/environment/spell_population_model.h"
 #include "spell_pool.h"
 
 #include <cstdlib>
@@ -174,24 +177,27 @@ TEST_F(SlotRules, TheSourceIsTheSlotsTheCastersLevelPasses) {
 }
 
 // The shares: at the measured level the slots add up to the row's population.
+// B1145 (#465): each slot then runs its own spellsnew.edd timing and envelope,
+// so the slots no longer peak together; the stage is scaled as a whole so its
+// COMBINED most-alive count is what its slots had untimed: the whole row at
+// the measured level, half of it for a level-1 caster's two of four slots.
 TEST_F(SlotRules, AtTheMeasuredLevelTheSlotsCarryTheWholeRow) {
+    auto peak = [](const std::vector<EQT::Graphics::ParticleCommandData>& v) {
+        std::vector<const EQT::Graphics::Environment::SpellEffectDef*> defs;
+        for (const auto& c : v) defs.push_back(&c.spellDef);
+        return Presets::CombinedPeakLive(defs);
+    };
     Note(kBurstOfFlame);
     fx_->createCastGlow(kCaster, 93, 1500, 60);
-    float sum = 0.0f;
-    for (const auto& c : Created())
-        for (const auto& e : c.spellDef.emitters) sum += e.config.spawnRate;
+    const float sum = peak(Created());
     const int row = fx_->sourceRecordOf(93);
-    float whole = 0.0f;
-    for (const auto& e : Presets::SourceForSpell(glm::vec4(1.0f), 93, row, false, 3.6f, 1.0f).emitters)
-        whole += e.config.spawnRate;
+    const auto rowDef = Presets::SourceForSpell(glm::vec4(1.0f), 93, row, false, 3.6f, 1.0f);
+    const float whole = Presets::CombinedPeakLive({&rowDef});
     ASSERT_GT(whole, 0.0f);
-    EXPECT_NEAR(sum, whole, 1e-3f * whole);
+    EXPECT_NEAR(sum, whole, 0.03f * whole);  // burst counts round to whole sprites
     // ...and a level-1 caster's two slots carry half of it.
     fx_->createCastGlow(kCaster, 93, 1500, 1);
-    float one = 0.0f;
-    for (const auto& c : Created())
-        for (const auto& e : c.spellDef.emitters) one += e.config.spawnRate;
-    EXPECT_NEAR(one, 0.5f * whole, 1e-3f * whole);
+    EXPECT_NEAR(peak(Created()), 0.5f * whole, 0.03f * whole);
 }
 
 // Record 112 (201 Flash of Light, B1131's head row): HEAD at 24 and 0, DEFAULT
@@ -236,6 +242,71 @@ TEST_F(SlotRules, TheLandingIsTheTargetSlotsTheCastersLevelPasses) {
     }
     EXPECT_TRUE(hasTile(all, "spelce.png"));
     EXPECT_FALSE(hasTile(one, "spelce.png"));
+}
+
+// B1145 (#465): each landing slot carries its emitter's TIMING from
+// spellsnew.edd (eqgame passes a Target stage no duration): record 80 at
+// level 1 is 280 (a 1 s fixed run, 0.25 s delay, 1.5 s life: 50 + 50 x 30/s)
+// and 281 (a one-sprite burst living 1 s), from the landing's measured
+// stage latency (the styles' triggerDelay). The level-1 landing therefore ends
+// 2.5 s after the stage starts -- where B1144's observer saw it (Act+2.61..2.65)
+// -- and level 60 adds 282's 5 s run (its 6.5 s end; B1130's capture 6.67).
+TEST_F(SlotRules, EachLandingSlotRunsItsEmittersTiming) {
+    Note(kBurstOfFlame);
+    const float latency = SpellEffectsConfig::instance().targetStageLatency();
+    EXPECT_FLOAT_EQ(latency, 0.33f);
+    fx_->createLanding(kCaster, kOther, 93, 1);
+    const auto one = Created();
+    ASSERT_EQ(one.size(), 4u);
+    for (size_t i = 0; i < one.size(); ++i) {
+        const auto& ed = one[i].spellDef.emitters.at(0);
+        if (i < 2) {  // slot 0, emitter 280
+            EXPECT_NEAR(ed.triggerDelay, latency + 0.25f, 1e-5f) << i;
+            EXPECT_NEAR(ed.config.emitterLifetime, 0.75f, 1e-5f) << i;
+            EXPECT_FLOAT_EQ(ed.config.lifetimeMin, 1.5f) << i;
+            EXPECT_FLOAT_EQ(ed.config.lifetimeMax, 1.5f) << i;
+            EXPECT_GT(ed.config.burstCount, 0) << i;
+            EXPECT_NEAR(ed.config.spawnRate / static_cast<float>(ed.config.burstCount), 30.0f, 1.0f)
+                << i << ": the stream is the file's 50/tick x 30/s after its 50 burst";
+        } else {      // slot 1, emitter 281: the burst alone
+            EXPECT_NEAR(ed.triggerDelay, latency, 1e-5f) << i;
+            EXPECT_FLOAT_EQ(ed.config.spawnRate, 0.0f) << i;
+            EXPECT_GT(ed.config.burstCount, 0) << i;
+            EXPECT_FLOAT_EQ(ed.config.lifetimeMax, 1.0f) << i;
+        }
+        EXPECT_FLOAT_EQ(ed.config.sustainRate, 0.0f) << i << ": the B1121 two-phase schedule is gone";
+        float end = ed.triggerDelay + std::max(ed.config.emitterLifetime, 0.0f) + ed.config.lifetimeMax;
+        if (i >= 2) end = ed.triggerDelay + ed.config.lifetimeMax;  // a burst dies with its sprites
+        EXPECT_LE(end, latency + 2.5f + 1e-4f) << i;
+    }
+    fx_->createLanding(kCaster, kOther, 93, 60);
+    float latest = 0.0f;
+    for (const auto& c : Created())
+        for (const auto& ed : c.spellDef.emitters)
+            latest = std::max(latest, ed.triggerDelay + ed.config.emitterLifetime + ed.config.lifetimeMax);
+    EXPECT_NEAR(latest, latency + 6.5f, 1e-4f) << "282: 0.25 s delay + 4.75 s window + 1.5 s life";
+}
+
+// B1145: a spellsnew.eff Source slot runs the duration eqgame passed at
+// OP_BeginCast (0x49b977: the cast time + the cast-animation term for a
+// +0x78 >= 0 emitter), from the Source's measured stage latency, with its
+// emitter's lifetime -- and OP_Action does not release it.
+TEST_F(SlotRules, ASpellsNewSourceRunsItsSlotsDurations) {
+    Note(kBurstOfFlame);
+    const float latency = SpellEffectsConfig::instance().sourceStageLatency();
+    fx_->createCastGlow(kCaster, 93, 1500, 60);
+    const auto all = Created();
+    ASSERT_EQ(all.size(), 4u);
+    const float lifes[4] = {1.0f, 1.0f, 1.0f, 0.25f};  // 276, 276, 277, 278
+    for (size_t i = 0; i < all.size(); ++i) {
+        const auto& ed = all[i].spellDef.emitters.at(0);
+        EXPECT_NEAR(ed.triggerDelay, latency, 1e-5f) << i;
+        EXPECT_NEAR(ed.config.emitterLifetime, 1.5f + EQ::kSpellFxCastAnimationSeconds, 1e-4f) << i;
+        EXPECT_FLOAT_EQ(ed.config.lifetimeMax, lifes[i]) << i;
+        EXPECT_NEAR(all[i].duration, latency + 1.5f + EQ::kSpellFxCastAnimationSeconds + lifes[i] + 0.1f, 1e-4f) << i;
+    }
+    fx_->releaseCastGlow(kCaster, 93, kOther);
+    EXPECT_TRUE(pm_->drainCommands().empty()) << "OP_Action released a spellsnew.eff Source";
 }
 
 // Record 113 (290 Color Flux): every Target slot is anchor 1 -- the landing is

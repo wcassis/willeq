@@ -5,8 +5,6 @@
 
 #include "client/spell/spells_new_eff_reader.h"
 
-#include <algorithm>
-#include <cctype>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -61,17 +59,15 @@ bool SpellsNewEffReader::loadFiles(const std::string& effPath, const std::string
     m_records.clear();
     m_edd.clear();
 
-    std::vector<uint8_t> eff, edd;
+    std::vector<uint8_t> eff;
     if (!readAll(effPath, eff)) { m_error = "cannot open " + effPath; return false; }
-    if (!readAll(eddPath, edd)) { m_error = "cannot open " + eddPath; return false; }
     if (eff.empty() || eff.size() % kSpellsNewEffRecordSize != 0) {
         m_error = effPath + " is not a whole number of 268-byte records";
         return false;
     }
-    if (edd.size() < kSpellsNewEddHeaderBytes ||
-        (edd.size() - kSpellsNewEddHeaderBytes) % kSpellsNewEddEntrySize != 0 ||
-        std::memcmp(edd.data(), "EDD\0", 4) != 0) {
-        m_error = eddPath + " is not an EDD file of 416-byte entries";
+    // B1145: spellsnew.edd goes through the one EDD reader.
+    if (!m_eddReader.loadFile(eddPath)) {
+        m_error = m_eddReader.loadError();
         return false;
     }
 
@@ -91,20 +87,14 @@ bool SpellsNewEffReader::loadFiles(const std::string& effPath, const std::string
         }
     }
 
-    const size_t nEdd = (edd.size() - kSpellsNewEddHeaderBytes) / kSpellsNewEddEntrySize;
+    const size_t nEdd = m_eddReader.emitterCount();
     m_edd.resize(nEdd);
-    for (size_t i = 0; i < nEdd; ++i) {
-        const uint8_t* b = edd.data() + kSpellsNewEddHeaderBytes + i * kSpellsNewEddEntrySize;
+    for (size_t i = 1; i < nEdd; ++i) {
         SpellsNewEddEntry& e = m_edd[i];
-        e.name = fixedString(b, 64);
-        std::string tex = fixedString(b + 64, 64);
-        // One shipped entry spells its file "gena20.bmp......." -- trailing
-        // dots are padding, not part of a Windows file name.
-        while (!tex.empty() && tex.back() == '.') tex.pop_back();
-        std::transform(tex.begin(), tex.end(), tex.begin(),
-                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        e.texture = tex;
-        e.frames = le32(b + kSpellsNewEddFramesOffset);
+        const int32_t idx = static_cast<int32_t>(i);
+        e.name = m_eddReader.name(idx);
+        e.texture = m_eddReader.texture(idx);
+        e.frames = m_eddReader.frames(idx);
     }
 
     // Every emitter a record names must exist.

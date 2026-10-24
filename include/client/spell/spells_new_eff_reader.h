@@ -34,8 +34,10 @@
  *   +0x130 int32 frames      16 / 4 / 1 -- agrees with every texture's
  *                            layout (4x4, 2x2, one picture)
  *   everything else          decoded from the client's code by B1141
- *                            (docs/spellsnew_format.md) but NOT used by
- *                            fable yet.
+ *                            (docs/spellsnew_format.md); B1145 (#465): the
+ *                            EDD is read by SpellsNewEddReader (edd()),
+ *                            which also decodes the timing / emission
+ *                            words (spells_new_edd_reader.h).
  */
 
 #ifndef EQT_SPELLS_NEW_EFF_READER_H
@@ -47,15 +49,17 @@
 #include <string>
 #include <vector>
 
+#include "client/spell/spells_new_edd_reader.h"
+
 namespace EQ {
 
 constexpr size_t kSpellsNewEffRecordSize = 268;
 constexpr size_t kSpellsNewEffNameBytes = 64;
 constexpr size_t kSpellsNewEffStageBytes = 68;
 constexpr size_t kSpellsNewEffSlotsPerStage = 4;
-constexpr size_t kSpellsNewEddHeaderBytes = 8;
-constexpr size_t kSpellsNewEddEntrySize = 416;
-constexpr size_t kSpellsNewEddFramesOffset = 0x130;
+constexpr size_t kSpellsNewEddHeaderBytes = kSpellsNewEddMagicBytes;
+constexpr size_t kSpellsNewEddEntrySize = kSpellsNewEddEntryBytes;
+constexpr size_t kSpellsNewEddFramesOffset = kEddFrameCountOffset;
 
 // slot +8 (eqgame 0x495cc3): which actor a slot's emitter is placed on.
 enum class SpellsNewEffAnchor : int32_t {
@@ -150,6 +154,9 @@ public:
     // (spells_us.txt names records up to 3411; the shipped file has 418).
     const SpellsNewEffRecord* getRecord(int32_t index) const;
     const SpellsNewEddEntry* getEmitter(int32_t index) const;
+    // B1145 (#465): the spellsnew.edd reader behind getEmitter(): the entry
+    // bytes and the timing / emission words of every emitter.
+    const SpellsNewEddReader& edd() const { return m_eddReader; }
 
     // The textures of stage `stage` (0 Source, 1 Middle, 2 Target), one per
     // non-empty slot, in slot order (a texture named by two slots appears
@@ -169,6 +176,7 @@ public:
 private:
     std::vector<SpellsNewEffRecord> m_records;
     std::vector<SpellsNewEddEntry> m_edd;
+    SpellsNewEddReader m_eddReader;
     bool m_loaded = false;
     std::string m_error;
 };

@@ -635,6 +635,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/spell/buff_cancel_request.cpp
     src/client/spell/spells_eff_reader.cpp
     src/client/spell/spells_new_eff_reader.cpp
+    src/client/spell/spells_new_edd_reader.cpp
     src/client/spell/spells_new_edd_colour.cpp
     # Skill system sources
     src/client/skill/behind_target.cpp
@@ -1392,6 +1393,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/spell/spell_database.cpp
         src/client/spell/spells_eff_reader.cpp
         src/client/spell/spells_new_eff_reader.cpp
+        src/client/spell/spells_new_edd_reader.cpp
         src/client/spell/spells_new_edd_colour.cpp
         src/client/graphics/spell_visual_fx.cpp
         src/client/graphics/spell_visual_fx_nodes.cpp

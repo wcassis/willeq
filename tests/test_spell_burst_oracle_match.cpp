@@ -336,10 +336,15 @@ TEST_F(SpellBurstOracleMatch, TheSourceCloudRatesAreTheCalibratedOnes) {
     EXPECT_FLOAT_EQ(spray(41).config.spawnRate, 330.0f);  // record 20
     EXPECT_FLOAT_EQ(glow(253).config.spawnRate, 1950.0f); // record 35
     EXPECT_FLOAT_EQ(glow(458).config.spawnRate, 65.0f);   // record 33
-    // B1131: the onset is the spells.eff RECORD's (B1130 survey), not a style
-    // key: 93 = record 0 (BC+0.46), 54 = 23 (0.42), 253 = 35 (0.42), 458 = 33 (0.38).
+    // B1131 put each RECORD's measured onset here (93 = record 0 BC+0.46, 54 =
+    // 23 0.42, 253 = 35 0.42, 458 = 33 0.38). B1145: the Source starts at the
+    // stage's measured latency (the default row's 0.41, the median of the 40)
+    // plus each slot's +0x8C, which is 0 on the first slot of every measured
+    // record; the per-record values are tests/spell_fx_timing_oracle.h's band.
     const auto& cfg = SpellEffectsConfig::instance();
-    const std::pair<uint32_t, float> kOnset[] = {{93u, 0.46f}, {54u, 0.42f}, {253u, 0.42f}, {458u, 0.38f}};
+    const float latency = cfg.sourceStageLatency();
+    EXPECT_FLOAT_EQ(latency, 0.41f);
+    const std::pair<uint32_t, float> kOnset[] = {{93u, latency}, {54u, latency}, {253u, latency}, {458u, latency}};
     for (const auto& [id, onset] : kOnset) {
         const auto src = SpellPresets::SourceForSpell(glm::vec4(1.0f), id, cfg.overrideRecord(id), false,
                                                       3.6f, 1.0f);

@@ -35,6 +35,9 @@
 #include "client/graphics/environment/spell_effects_config.h"
 #include "spell_pool.h"
 #include "spell_anim_rows.h"
+#include "spell_fx_timing_oracle.h"
+
+#include <algorithm>
 
 #include <cmath>
 #include <fstream>
@@ -115,9 +118,18 @@ TEST_F(TargetRecordRows, ThePortAndDisciplineRowsAreTheObserversNumbers) {
     EXPECT_NEAR(port.hi, 1.67f, 1e-3f);
     EXPECT_NEAR(port.halfWidth, 0.615f, 1e-3f);
     EXPECT_NEAR(port.centroid, 0.87f, 1e-3f);
-    EXPECT_NEAR(port.onset, 0.07f, 1e-3f);
-    EXPECT_NEAR(port.end, 0.73f, 1e-3f);
-    EXPECT_LT(port.end, 1.0f) << "the port landing ends with the caster, not ~6 s later";
+    // B1145 (#465): a landing's timing is its spellsnew.edd slots' (record 78's
+    // run 6 s); the observer's onset 0.07 / end 0.73 -- the caster zones out
+    // 0.16 s after OP_Action and its landing goes with it -- are kept as the
+    // measured band (tests/spell_fx_timing_oracle.h), not config keys.
+    EXPECT_EQ(port.onset, 0.0f);
+    EXPECT_EQ(port.end, 0.0f);
+    const auto it = std::find_if(spell_fx_timing_oracle::Rows().begin(), spell_fx_timing_oracle::Rows().end(),
+                                 [](const spell_fx_timing_oracle::Row& r) { return r.row == 40; });
+    ASSERT_NE(it, spell_fx_timing_oracle::Rows().end());
+    EXPECT_NEAR(it->rowTargetOnset, 0.07f, 1e-3f);
+    EXPECT_NEAR(it->rowTargetEnd, 0.73f, 1e-3f);
+    EXPECT_LT(it->rowTargetEnd, 1.0f) << "the port landing ends with the caster, not ~6 s later";
     const auto& disc = cfg.targetRecord(51);
     EXPECT_FALSE(disc.unmeasured);
     EXPECT_EQ(disc.anchor, TAnchor::Caster);
