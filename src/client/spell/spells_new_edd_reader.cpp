@@ -33,12 +33,10 @@ SpellsNewEddSprite decodeSpellsNewEddSprite(const uint8_t* e) {
     s.multiplier = eddFloat(e, kEddSizeMultiplierOffset);
     s.sameRandom = eddInt(e, kEddSameRandomOffset) == 1;
     s.scaleSizes = eddInt(e, kEddScaleSizesOffset) == 1;
-    s.scaleShape = eddInt(e, kEddScaleShapeOffset) == 1;
     s.growIn = eddFloat(e, kEddGrowInOffset);
     s.shrinkOut = eddFloat(e, kEddShrinkOutOffset);
     s.heightShrink = eddFloat(e, kEddHeightShrinkOffset);
     s.widthShrink = eddFloat(e, kEddWidthShrinkOffset);
-    s.lodDistance = eddFloat(e, kEddLodDistanceOffset);
     return s;
 }
 

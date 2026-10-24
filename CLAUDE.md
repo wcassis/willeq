@@ -406,24 +406,22 @@ name `spellsnew.edd` emitters, each names a texture file, and the particle is it
 texels, and picks the measured row (`animRecords`, B1137). Field 123's GEN names
 serve spells with no field 145. Field 85 RESISTTYPE is not painted with: `SpellPresets::applyStageSpriteNames()`
 drops the resist tint to white (T441), then `applyStageEmitterColours()` gives each
-texture region its emitter's start->end RGB (`docs/spellsnew_format.md`); the
-client's fade x peak alpha and +0x68 blend stay off (`clientAlpha`,
-`refactor/B1146/README.md`). `resistColors` and `colorForVocabulary()` serve only
+texture region its emitter's start->end RGB and (B1149) the client's fade x
+peak alpha and +0x68 blend (`docs/spellsnew_format.md`). `resistColors` and `colorForVocabulary()` serve only
 spells with no usable record. All three stages route their
 names: Source → cast glow and spellComplete, Middle → projectile trail, Target →
 impact. The landing is a VOLUME, not a disc (B1120). Source and Target are drawn
 per spellsnew.eff SLOT (B1144): minLevel <= caster level (NPC 1), on its anchor
-at its attach point; no Target slot, no landing; no OP_BeginCast, no Source.
-B1131/B1132 rows give shape and size; `tests/test_spell_slot_rules.cpp`. `spellOverrides` holds
-measured values only (B1120/B1122 shapes; **sizes match the oracle FIRST**:
-caster-ROI p90, `review/B1119/scripts/fx_sprite_roi.py` vs
-`review/B1120/measure_oracle/roi_oracle.txt`; coverage follows from the pool,
-#443 note 7118); **an unmeasured spell resolves to the plain style: an
-invented override is the guess Will forbids.**
+at its attach point; no Target slot, no landing; no OP_BeginCast, no Source;
+each emits its EDD burst/ticks and sprite size (B1149); the
+B1131/B1132 rows give shape only; `tests/test_spell_slot_rules.cpp`. `spellOverrides` holds
+measured values only (B1120/B1122 shapes; sizes are gated on the caster-ROI
+p90, `review/B1119/scripts/fx_sprite_roi.py`); **an unmeasured spell resolves
+to the plain style: an invented override is the guess Will forbids.**
 **The particle pool is ONE preset key**, `spellParticlePool` in
 `config/constrained_presets.json` (desktop 8192, sbc 4096; B1130's survey demand
-fits both); every landing population derives from it by one rule
-(`SpellEffectsConfig::applyPool`, B1123).
+fits both); a spell with no field-145 record derives its landing from it by
+one rule (`SpellEffectsConfig::applyPool`, B1123).
 **Fable FX gates run in `tools/model_viewer --spell-test --plan`** (B1138, the
 client's cast sequence surfaceless); lane 5 is for oracle legs.
 `tests/test_spell_colour_and_overrides.cpp` pins both halves and the negatives.

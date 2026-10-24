@@ -27,7 +27,7 @@ cast-animation term of the Source duration (`0x47ddd4`, model data) is MEASURED:
 +0x80 burst, then +0x84 per tick at +0x88 ticks/s (`EmitterConfig::ticksPerSecond`) -- and draws its sprite
 size: a world-unit quad +0xCC..+0x184 wide, +0x17C..+0x180 tall (+0x18C one draw), times +0x16C, with
 +0x98/+0x9C/+0x190/+0x194 over the life (`SpellsNewEddSprite`, `SpellPresets::applySlotEmitter()`,
-`refactor/B1149/README.md`). The +0x6C/+0x19C attach scale is passed as 1: the client's s is model data
+`refactor/B1149/README.md`). The +0x6C attach scale is passed as 1 (+0x19C is B1150's): the client's s is model data
 (actor +0x10 x the root actor's sub-object +0x64 float +0x60, EQGraphicsDX9 0x1006090d..0x1006094a; its
 writer 0x1016be70 is not traced). The +0xA0 density distance (80 on most entries) does not bite at the
 harness/lane camera (29 units). Shape, offsets and motion are still not wired (B1150/B1151).

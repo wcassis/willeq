@@ -31,13 +31,14 @@
  *                   (0x100608b5: actor +0x10 x the model's vtbl+0x84 scale)
  *   +0x98  float s  size grow-in: w,h *= age / D98 while age < D98 (0x1006326c)
  *   +0x9C  float s  size shrink-out: w,h *= remaining / D9C (0x1006328f)
- *   +0xA0  float    full-density distance: counts *= D_A0 / distance beyond it
+ *   (+0xA0, the full-density distance, is not decoded: 80 on most entries, and the
+ *   harness/lane camera sits 29 units away, where the count factor is 1)
  *   +0xCC, +0x184   sprite width min, max: w = CC + (184 - CC) * rand (0x100612a0)
  *   +0x16C float    size multiplier: w,h *= s * D16C (0x1006325e)
  *   +0x17C, +0x180  sprite height min, max: h = 17C + (180 - 17C) * rand (0x10061268)
  *   +0x18C int      1 = width uses the height's random draw (0x10061279)
  *   +0x190 / +0x194 float s  height / width shrink-out (0x100632b1 / 0x100632d2)
- *   +0x19C int      1 = shape and offsets scale with the attach scale
+ *   (+0x19C, shape and offsets times the attach scale, is B1150's: not decoded here)
  * A mode-0 sprite is a screen-facing quad w wide and h tall in WORLD units at
  * the particle (half-width w*s*D16C*0.5/depth times the camera's projection
  * scale, 0x1006335a..0x1006336f).
@@ -69,7 +70,6 @@ constexpr size_t kEddFrameCountOffset = 0x130;
 constexpr size_t kEddScaleSizesOffset = 0x6C;
 constexpr size_t kEddGrowInOffset = 0x98;
 constexpr size_t kEddShrinkOutOffset = 0x9C;
-constexpr size_t kEddLodDistanceOffset = 0xA0;
 constexpr size_t kEddWidthMinOffset = 0xCC;
 constexpr size_t kEddSizeMultiplierOffset = 0x16C;
 constexpr size_t kEddHeightMinOffset = 0x17C;
@@ -78,7 +78,6 @@ constexpr size_t kEddWidthMaxOffset = 0x184;
 constexpr size_t kEddSameRandomOffset = 0x18C;
 constexpr size_t kEddHeightShrinkOffset = 0x190;
 constexpr size_t kEddWidthShrinkOffset = 0x194;
-constexpr size_t kEddScaleShapeOffset = 0x19C;
 
 // Little-endian words of an entry (the files are x86 dumps).
 inline int32_t eddInt(const uint8_t* entry, size_t offset) {
@@ -122,12 +121,10 @@ struct SpellsNewEddSprite {
     float multiplier = 1.0f;      // +0x16C
     bool sameRandom = false;      // +0x18C == 1
     bool scaleSizes = false;      // +0x6C == 1
-    bool scaleShape = false;      // +0x19C == 1
     float growIn = 0.0f;          // +0x98, s
     float shrinkOut = 0.0f;       // +0x9C, s
     float heightShrink = 0.0f;    // +0x190, s
     float widthShrink = 0.0f;     // +0x194, s
-    float lodDistance = 0.0f;     // +0xA0
 
     // The width and height of one sprite for the random draws u (height)
     // and v (width; u again when sameRandom), times the multiplier and the
