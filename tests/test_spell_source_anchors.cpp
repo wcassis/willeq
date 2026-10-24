@@ -27,6 +27,8 @@
 #include <gtest/gtest.h>
 
 #include "client/graphics/environment/spell_effects_config.h"
+#include "client/spell/spell_fx_timing.h"
+#include "spell_fx_timing_oracle.h"
 #include "spell_pool.h"
 #include "spell_anim_rows.h"
 
@@ -86,9 +88,13 @@ TEST_F(SourceRecordRows, EverySurveyedRecordHasItsMeasuredRow) {
         EXPECT_EQ(row.record, r) << "record " << r << " has no row";
         EXPECT_TRUE(row.hasShape) << r;
         ++classes[row.anchor];
-        EXPECT_GE(row.onset, 0.37f) << r;
-        EXPECT_LE(row.onset, 0.80f) << r;  // record 30's 0.80 is the survey's one outlier
-        if (r != 51) EXPECT_NEAR(row.holdSelf, kHoldSelf, 1e-4f) << r;
+        // B1145 (#465): the rows carry no measured timing any more: every
+        // row starts at the stage latency (the default row's onset) and holds
+        // the computed cast-animation term; the measured onsets (0.37..0.80)
+        // and holds are tests/spell_fx_timing_oracle.h's bands.
+        EXPECT_NEAR(row.onset, cfg.sourceStageLatency(), 1e-6f) << r;
+        EXPECT_NEAR(row.holdSelf, EQ::kSpellFxCastAnimationSeconds, 1e-6f) << r;
+        EXPECT_NEAR(row.holdOther, EQ::kSpellFxCastAnimationSeconds, 1e-6f) << r;
         EXPECT_GT(row.spawnRate, 0.0f) << r;
     }
     EXPECT_EQ(classes[Anchor::Hands], 8);
@@ -108,18 +114,16 @@ TEST_F(SourceRecordRows, EverySurveyedRecordHasItsMeasuredRow) {
     EXPECT_NEAR(d.hi, 0.74f, 1e-3f);
     EXPECT_NEAR(d.halfWidth, 0.345f, 1e-3f);
     EXPECT_NEAR(d.centroid, 0.21f, 1e-3f);
-    EXPECT_NEAR(d.onset, 0.70f, 1e-3f);
-    EXPECT_NEAR(d.holdSelf, 8.16f, 1e-3f);
-    EXPECT_NEAR(d.holdOther, d.holdSelf, 1e-4f) << "self-only: the loader's holdOther = holdSelf";
-    // The records whose Source holds >= 4 s past OP_Action with another target.
-    // B1130 counted 16; record 35's (253) arcs are seen apart only to Act+1.1
-    // (f7351-f7375) and its later caster-ROI run is the NPC's frame-filling
-    // whirl, so it carries the measured lower bound 1.1, as records 21/33/26.
+    // Its measured onset (Act+0.7 after a 0-ms OP_BeginCast) and hold (8.16 s)
+    // were B1134's; B1145 times the discipline records from the file too.
+    // B1131's measured holds: 15 rows held >= 4 s past OP_Action with another
+    // target (record 35 a lower bound of 1.1) -- now the band the computed
+    // Source end must cover (SpellFxTimingFiles.EveryMeasuredSourceHoldIs-
+    // InsideTheComputedSourceEnd).
     int longHolds = 0;
-    for (int r : surveyed)
-        if (r != 51 && cfg.sourceRecord(r).holdOther >= 4.0f) ++longHolds;
+    for (const auto& o : spell_fx_timing_oracle::Rows())
+        if (o.rowHoldOther >= 4.0f) ++longHolds;
     EXPECT_EQ(longHolds, 15);
-    EXPECT_NEAR(cfg.sourceRecord(35).holdOther, 1.1f, 1e-3f);
 }
 
 TEST_F(SourceRecordRows, TheRepresentativesCarryTheOraclesNumbers) {
@@ -127,8 +131,12 @@ TEST_F(SourceRecordRows, TheRepresentativesCarryTheOraclesNumbers) {
     for (const auto& o : kReps) {
         const auto& row = cfg.sourceRecord(o.record);
         EXPECT_EQ(row.anchor, o.anchor) << o.record;
-        EXPECT_NEAR(row.onset, o.onset, 0.005f) << o.record;
-        EXPECT_NEAR(row.holdOther, o.holdOther, 0.005f) << o.record;
+        // B1145: the measured onset is within 0.06 s of the stage latency the
+        // row now starts at, and the computed hold covers the measured one.
+        EXPECT_NEAR(row.onset, o.onset, 0.06f) << o.record;
+        // (the hold is the emission's end; the measured one is the last lit
+        // frame, up to a sprite life later: SpellFxTimingFiles checks it per slot)
+        EXPECT_LE(o.holdOther, row.holdOther + 1.5f) << o.record;
         EXPECT_NEAR(row.lo, o.lo, 0.005f) << o.record;
         EXPECT_NEAR(row.hi, o.hi, 0.005f) << o.record;
         EXPECT_NEAR(row.centroid, o.centroid, 0.005f) << o.record;
@@ -373,9 +381,12 @@ TEST_F(SourceAnchors, EachRecordIsShapedLikeTheOraclesRow) {
     }
 }
 
-// ONSET: nothing before the record's onset, sprites within 0.1 s of it.
-// RED on b8c1719f: 0.25 for every record.
-TEST_F(SourceAnchors, EachRecordStartsAtItsMeasuredOnset) {
+// ONSET (B1145): nothing before the stage latency + the first slot's +0x8C
+// (0 on every measured record), sprites within 0.1 s of it, and that start
+// within 0.1 s of the record's measured onset (the band; B1131 started each
+// record at its own measured onset, RED on b8c1719f: 0.25 for every record).
+TEST_F(SourceAnchors, EachRecordStartsAtTheStageLatencyInsideItsMeasuredOnset) {
+    const float latency = SpellEffectsConfig::instance().sourceStageLatency();
     for (const auto& o : kReps) {
         SetUp();
         if (::testing::Test::IsSkipped()) return;
@@ -386,32 +397,37 @@ TEST_F(SourceAnchors, EachRecordStartsAtItsMeasuredOnset) {
             Pump();
             if (!Live().empty()) first = t_;
         }
-        EXPECT_GE(first, o.onset - 1.0f / 60.0f) << o.record;
-        EXPECT_LE(first, o.onset + 0.1f) << o.record;
+        EXPECT_GE(first, latency - 1.0f / 60.0f) << o.record;
+        EXPECT_LE(first, latency + 0.1f) << o.record;
+        EXPECT_NEAR(first, o.onset, 0.1f) << o.record << ": outside the measured onset";
         TearDown();
     }
 }
 
-// HOLD: OP_Action releases the Source; it keeps FEEDING for the record's hold
-// -- holdOther when the target is another entity, holdSelf when it is the
-// caster -- then its sprites finish their life. RED on b8c1719f: 0.33 s
-// whatever the target (the caster's Source was gone 4-6 s early on 16
-// records).
+// HOLD: this seam draws the rows without spellsnew.eff (no field-145
+// vocabulary), the path of a spell with no record: OP_Action releases the
+// Source, which keeps FEEDING for its row's hold, then its sprites finish
+// their life. B1145 (#465): a row's hold is the computed cast-animation term
+// (EQ::kSpellFxCastAnimationSeconds) whatever the target -- the file's
+// Source duration does not depend on it; B1131's measured holdOther /
+// holdSelf are SpellFxTimingFiles' bands. (A spellsnew.eff Source is not
+// released at all: SlotRules.ASpellsNewSourceRunsItsSlotsDurations.)
 TEST_F(SourceAnchors, TheSourceHoldsItsRecordsTimePastTheAction) {
+    const auto& cfg = SpellEffectsConfig::instance();
     for (const auto& o : kReps) {
         for (bool self : {false, true}) {
             SetUp();
             if (::testing::Test::IsSkipped()) return;
             Note(o);
+            ASSERT_FALSE(fx_->stageSlots(o.spell, EQ::kSpellsNewEffSource, 60).fromFile);
             fx_->createCastGlow(kCaster, o.spell, 3000);
             PumpFor(1.5f);
             fx_->releaseCastGlow(kCaster, o.spell, self ? kCaster : kOther);  // OP_Action
-            const float hold = self ? kHoldSelf : o.holdOther;
-            if (hold > 0.2f) {
-                PumpFor(hold - 0.1f);
-                EXPECT_GT(Young(0.2f), 0u) << o.record << (self ? " self" : " other")
-                                           << ": stopped feeding before Act+" << hold;
-            }
+            const float hold = cfg.sourceHold(fx_->sourceRecordOf(o.spell), self);
+            EXPECT_NEAR(hold, EQ::kSpellFxCastAnimationSeconds, 1e-6f) << o.record;
+            PumpFor(hold - 0.1f);
+            EXPECT_GT(Young(0.2f), 0u) << o.record << (self ? " self" : " other")
+                                       << ": stopped feeding before Act+" << hold;
             PumpFor(0.35f);
             EXPECT_EQ(Young(0.2f), 0u) << o.record << (self ? " self" : " other")
                                        << ": still feeding after Act+" << hold;

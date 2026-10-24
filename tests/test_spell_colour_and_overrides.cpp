@@ -591,7 +591,11 @@ TEST_P(SpellPoolRule, TheRuleKeepsEachLandingsSchedule) {
 TEST_P(SpellPoolRule, WhirlingWindIsASteadyFrameFillingField) {
     const float total = steady(impact(253)) + steady(complete(253));
     const float largest = live(93);
-    EXPECT_GE(total, 1500.0f) << "a field, not a trickle; fable holds " << total;
+    // B1145 (#465): record 35's held Source is now the computed cast-animation
+    // term (4.35 s past OP_Action; B1131's 1.1 s was a lower bound: its arcs are
+    // seen apart only to Act+1.1), so on the 4096 pool the field shares the
+    // half pool with a held 1950/s Source for longer: 1076 there (1500+ on 8192).
+    EXPECT_GE(total, pool() >= 8192 ? 1500.0f : 1000.0f) << "a field, not a trickle; fable holds " << total;
     EXPECT_LE(total + largest, pool() * 1.002f)
         << "253's field (" << total << ") plus a record-0 landing (" << largest
         << ") must fit the pool (" << pool() << ")";

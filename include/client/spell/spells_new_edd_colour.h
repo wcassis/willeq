@@ -23,9 +23,9 @@
  * SELECTARG1 sites, 0x10074a80 and 0x10088e80, restore MODULATE after), so
  * the vertex colour multiplies the sprite texel in RGB and in alpha.
  *
- * This is B1146's own decode of those words; the orchestrator folds it into
- * the shared spellsnew.edd reader once B1144 lands (the 416-byte entry is
- * read directly here, not through spells_new_eff_reader).
+ * B1145 (#465): the files are read through the shared spellsnew.edd reader
+ * (spells_new_edd_reader.h, via SpellsNewEffReader); this header keeps only
+ * the colour words' meaning and their decode.
  */
 
 #ifndef EQT_SPELLS_NEW_EDD_COLOUR_H

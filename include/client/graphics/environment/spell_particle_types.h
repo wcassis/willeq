@@ -3,6 +3,7 @@
 #include "unified_particle.h"
 #include "spell_effects_config.h"
 #include "client/spell/spells_new_edd_colour.h"
+#include "client/spell/spell_fx_timing.h"
 #include <vector>
 #include <string>
 #include <cstdint>
@@ -163,6 +164,32 @@ namespace SpellPresets {
     void applyStageEmitterColours(SpellEffectDef& def,
                                   const std::vector<EQ::SpellsNewEddColour>& colours,
                                   bool clientAlpha = false);
+
+    // B1145 (#465): one spellsnew.eff slot's TIMING, from its spellsnew.edd
+    // emitter (EQ::SpellFxSlotTiming, include/client/spell/spell_fx_timing.h),
+    // installed on every emitter of `def` (a definition built for that slot):
+    //   - the emitter starts `stageLatency` + the slot's +0x8C delay after the
+    //     effect is created (stageLatency: the stage's measured delay from the
+    //     packet to the first particle, SpellEffectsConfig);
+    //   - it emits for the slot's window (run - delay), then stops;
+    //   - every particle lives the slot's +0x7C lifetime L. The motion is
+    //     time-scaled by (old mean life / L) so a particle still covers the
+    //     measured row's extent in its life (shapes and motion are B1147's);
+    //   - the emission ENVELOPE is the file's: a burst (+0x80) then a steady
+    //     stream (+0x84 x +0x88), scaled so the slot's most-alive count equals
+    //     what the definition peaked at before (the B1144 share of the B1123
+    //     population: counts are B1147's).
+    // A slot that emits nothing (window < 0, or L <= 0) gets no particles.
+    void applySlotTiming(SpellEffectDef& def, const EQ::SpellFxSlotTiming& timing, float stageLatency);
+    // B1145: the most sprites alive at once over every emitter of `defs`,
+    // each from its trigger (spell_population_model.h's expected counts).
+    float CombinedPeakLive(const std::vector<const SpellEffectDef*>& defs);
+    // B1145: scale every emitter's burst and rates so the stage's combined
+    // peak is `targetPeak` -- the stage's slots no longer peak together once
+    // each runs its own timing, and the B1123 population rule (a landing
+    // peaks at half the pool, a Source at its record's rate) is on the
+    // stage, not on each slot.
+    void ScaleToCombinedPeak(const std::vector<SpellEffectDef*>& defs, float targetPeak);
 }
 
 } // namespace Environment

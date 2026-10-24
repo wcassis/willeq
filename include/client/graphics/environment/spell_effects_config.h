@@ -154,6 +154,15 @@ public:
         float discLo = 0.0f, discHi = 0.0f, discHalfWidth = 0.0f, discShare = 0.0f;
         float coverage = 0.0f;      // the oracle's Source peak coverage, caster heights^2
         float spawnRate = 0.0f;     // `population` rule (0 = the style's rate)
+        // B1145 (#465): a spellsnew.eff Source takes its timing from the file
+        // per slot (SpellPresets::applySlotTiming), so the rows carry no
+        // onset or hold: they inherit the default row's onset (the stage's
+        // measured latency, sourceStageLatency()) and the computed hold, the
+        // cast-animation term EQ::kSpellFxCastAnimationSeconds a caller-
+        // duration slot emits past OP_Action (the pool rule's overlap). The
+        // measured values are tests/spell_fx_timing_oracle.h's bands. The
+        // DEFAULT row's own measured onset / holds stay: a spell with no
+        // spellsnew.eff record (field 145 = 0) draws them.
         float onset = 0.0f;         // seconds after BeginCast
         float holdOther = 0.0f;     // seconds emitting past OP_Action, target = another entity
         float holdSelf = 0.0f;      // ... target = the caster
@@ -171,6 +180,15 @@ public:
     const SourceScale& sourceScale() const { return sourceScale_; }
     /** The hold past OP_Action for this record and target. */
     float sourceHold(int record, bool targetIsSelf) const;
+    /**
+     * B1145: the stages' measured start -- the delay from the packet to the
+     * first emission, which no spellsnew.edd word holds (the first slot of
+     * every measured record has +0x8C = 0): the Source from OP_BeginCast is
+     * the default row's onset (the median of the 40 B1130 onsets), the Target
+     * from OP_Action the landing styles' triggerDelay (B1121/B1123).
+     */
+    float sourceStageLatency() const { return sourceDefault_.onset; }
+    float targetStageLatency() const;
     /** True when spellOverrides gives this spell's Source style its own geometry. */
     bool hasSourceShapeOverride(uint32_t spellId, const std::string& styleName) const;
     /** True when spellOverrides gives this spell's Source style its own rate. */
@@ -201,6 +219,9 @@ public:
         float halfWidth = 0.0f;     // lateral half-span (p5..p95 / 2), target heights
         float centroid = 0.0f;      // landing run centroid, target heights
         float coverage = 0.0f;      // the oracle's landing coverage
+        // B1145 (#465): onset / end are no longer config keys: a landing's
+        // timing is its slots' (spellsnew.edd); the measured values are the
+        // bands in tests/spell_fx_timing_oracle.h. 0 unless a row sets them.
         float onset = 0.0f;         // Act+ s the oracle's landing rises (RISE rule)
         float faceOnset = 0.0f;     // Head: Act+ s the glow lights the face (0 = none)
         float end = 0.0f;           // Act+ s the oracle's landing ends

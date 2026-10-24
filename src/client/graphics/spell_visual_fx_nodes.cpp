@@ -88,6 +88,9 @@ void SpellVisualFX::releaseCastGlow(uint16_t caster_id, uint32_t spell_id, uint1
 {
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
+        // B1145 (#465): a spellsnew.eff Source runs its slots' own durations
+        // (createCastGlow): OP_Action does not end it.
+        if (stageSlots(spell_id, kSpellsNewEffSource, kMeasuredCasterLevel).fromFile) return;
         const bool self = target_id == 0 || target_id == caster_id;
         const float hold = EQT::Graphics::Environment::SpellEffectsConfig::instance().sourceHold(
             sourceRecordOf(spell_id), self);

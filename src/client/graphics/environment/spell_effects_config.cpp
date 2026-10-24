@@ -3,6 +3,7 @@
 #include "client/graphics/environment/spell_sprite_atlas.h"
 #include "client/graphics/environment/spell_population_model.h"
 #include "client/spell/spells_eff_reader.h"
+#include "client/spell/spell_fx_timing.h"
 #include "client/data_paths.h"
 #include "common/logging.h"
 #include <json/json.h>
@@ -603,18 +604,26 @@ void SpellEffectsConfig::loadSourceRecords(const Json::Value& root) {
         r.discHalfWidth = j.get("discHalfWidth", 0.0).asFloat();
         r.discShare = j.get("discShare", 0.0).asFloat();
         r.coverage = j.get("coverage", 0.0).asFloat();
-        r.onset = j.get("onset", 0.0).asFloat();
-        r.holdSelf = j.get("holdSelf", 0.0).asFloat();
+        if (j.isMember("onset")) r.onset = j["onset"].asFloat();
+        if (j.isMember("holdSelf")) r.holdSelf = j["holdSelf"].asFloat();
         // A self-only spell has no other-target hold: its Source never has another target.
-        r.holdOther = j.isMember("holdOther") ? j["holdOther"].asFloat() : r.holdSelf;
+        if (j.isMember("holdOther")) r.holdOther = j["holdOther"].asFloat();
+        else if (j.isMember("holdSelf")) r.holdOther = r.holdSelf;
         r.measuredAs = j.get("measuredAs", -1).asInt();
     };
     readRow(sr["default"], sourceDefault_);
     sourceDefault_.hasShape = false;  // the default is the style's own cloud
 
+    // B1145 (#465): a row is a spellsnew.eff record's Source, whose timing is
+    // its slots' (spellsnew.edd): the stage starts at the default row's onset
+    // and a caller-duration slot emits the cast-animation term past
+    // OP_Action. A row that still names an onset/hold keeps it (none does).
+    SourceRecord rowBase;
+    rowBase.onset = sourceDefault_.onset;
+    rowBase.holdOther = rowBase.holdSelf = EQ::kSpellFxCastAnimationSeconds;
     const Json::Value& recs = sr["records"];
     for (const auto& key : recs.getMemberNames()) {
-        SourceRecord r;
+        SourceRecord r = rowBase;
         readRow(recs[key], r);
         r.record = std::stoi(key);
         sourceRecords_[r.record] = r;
@@ -634,6 +643,11 @@ void SpellEffectsConfig::loadSourceRecords(const Json::Value& root) {
     LOG_INFO(MOD_GRAPHICS, "SpellEffectsConfig: {} Source records (B1131), default onset {:.2f} s, "
              "hold other/self {:.2f}/{:.2f} s", sourceRecordCount(), sourceDefault_.onset,
              sourceDefault_.holdOther, sourceDefault_.holdSelf);
+}
+
+float SpellEffectsConfig::targetStageLatency() const {
+    auto it = styles_.find("spellComplete");
+    return it != styles_.end() && it->second.hasTriggerDelay ? it->second.triggerDelay : 0.0f;
 }
 
 const SpellEffectsConfig::SourceRecord& SpellEffectsConfig::sourceRecord(int record) const {

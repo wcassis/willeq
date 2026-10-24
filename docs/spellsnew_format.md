@@ -18,7 +18,13 @@ path yet), no landing without a Target slot (`SpellVisualFX::stageSlots`, `refac
 Of the EDD entry it reads the texture, the frame count and, since B1146, the colour words +0x68, +0x90,
 +0x94, +0xA4 and +0xD4..+0xE8 (`include/client/spell/spells_new_edd_colour.h`, applied per texture
 region by `SpellPresets::applyStageEmitterColours()`: the RGB is drawn, the alpha and blend words wait
-behind its `clientAlpha`, `refactor/B1146/README.md`); nothing else below is wired into fable's FX yet.
+behind its `clientAlpha`, `refactor/B1146/README.md`). Since B1145 (#465) the EDD is read by ONE reader,
+`include/client/spell/spells_new_edd_reader.h`, which also decodes +0x78..+0x8C, and every drawn slot is
+timed from them (`include/client/spell/spell_fx_timing.h`, `SpellPresets::applySlotTiming()`,
+`refactor/B1145/README.md`): start = the stage's measured latency + +0x8C, emission for the run minus the
+delay at the file's burst/stream envelope, each particle +0x7C. The cast-animation term of the Source
+duration (`0x47ddd4`, model data) is MEASURED: 4.35 s (`review/B1145/cast_anim/`). Shape, motion and
+sizes below are still not wired (B1147).
 
 ## Who does what
 

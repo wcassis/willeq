@@ -179,6 +179,24 @@ TEST_F(FxHarness, AnOtherTargetLandingLightsTheTargetAndNotTheCaster) {
     };
     irr::video::IImage* base = load(frame(kBegin - 0.1));  // pre-cast, idle pose running
     ASSERT_NE(base, nullptr);
+    // B1145 (#465): the caster's spellsnew.eff Source now runs its file
+    // duration (cast + the cast-animation term, ~Act+4.35 s + life), so the
+    // caster box holds the Source through the landing window. The reference
+    // is the same cast whose OP_Action falls past the window (cast 9000 ms):
+    // the same Source at the same age, no landing; the landing must add
+    // nothing on the caster beyond that (a caster landing adds thousands).
+    const fs::path ref = runPlan("srcref", std::to_string(kBegin) + "\t201\tother\t14\t9000\t60\tbegincast\n", 4.0);
+    ASSERT_FALSE(ref.empty()) << "the reference harness run failed";
+    irr::video::IImage* refBase = load(ref / frame(kBegin - 0.1).filename());
+    ASSERT_NE(refBase, nullptr);
+    int sourcePeak = 0;
+    for (double t = kAction + 1.4; t <= kAction + 1.95; t += 1.0 / kFps) {
+        irr::video::IImage* img = load(ref / frame(t).filename());
+        ASSERT_NE(img, nullptr) << frame(t);
+        sourcePeak = std::max(sourcePeak, lit(img, refBase, scene.at("caster")));
+        img->drop();
+    }
+    refBase->drop();
     int targetPeak = 0, casterPeak = 0;
     for (double t = kAction + 1.4; t <= kAction + 1.95; t += 1.0 / kFps) {
         irr::video::IImage* img = load(frame(t));
@@ -188,10 +206,15 @@ TEST_F(FxHarness, AnOtherTargetLandingLightsTheTargetAndNotTheCaster) {
         img->drop();
     }
     base->drop();
-    EXPECT_GE(targetPeak, 3000) << "the landing did not light the target";
+    // B1145: record 112's slots now run their file envelopes (482's one-sprite
+    // burst lives to Act+1.83, 483/23 stream to Act+2.33): 2,677 px in this
+    // window at seed 1 (3,000+ on the B1121 schedule). A presence check.
+    EXPECT_GE(targetPeak, 2000) << "the landing did not light the target";
     // 400 = 2.3x the measured idle-animation maximum (176); a caster landing
     // puts thousands there (7,816 in the mutation check).
-    EXPECT_LE(casterPeak, 400) << "the landing (or a half of it) is on the caster of an other-target cast";
+    EXPECT_LE(casterPeak, sourcePeak + sourcePeak / 10 + 400)
+        << "the landing (or a half of it) is on the caster of an other-target cast (Source alone: "
+        << sourcePeak << ")";
     if (!HasFailure()) fs::remove_all(dir);
 }
 

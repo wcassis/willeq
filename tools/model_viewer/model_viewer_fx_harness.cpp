@@ -708,6 +708,9 @@ int runScriptedHarness() {
             t + 1e-9 >= lastAction + harnessOpts.targetDespawnAfterAction) {
             fxTargetGone = true;
             targetAnimatedNode->setVisible(false);
+            // B1145: the production OP_DeleteSpawn hook (a corpse once the
+            // target died: its attached spell emitters go 3.5 s later).
+            spellVisualFX->onSpawnDeleted(targetEntityId, targetDied, 0);
             std::printf("[fx-harness] target despawned at t %.3f\n", t);
         }
         // The scene's own clock: drawAll() animates every node off the device
