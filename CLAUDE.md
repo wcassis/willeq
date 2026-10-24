@@ -392,11 +392,10 @@ per particle life.
 its seam census disagrees) and the particle holds that cell all life.
 
 A grid's playback rate is therefore `16 / lifetime`, set by
-`config/spell_effects.json`. That lifetime is per PARTICLE, not the landing's
-duration: a landing is FED (`spawnWindow`, then `sustainRate` to
-`emitterLifetime`, B1121), so lengthen emission, never life. Its end is
-measured, not summed: `review/B1121/scripts/b1120_measure.sh <leg> <out>`
-(`LANDING ... end`); no cells/s rate is measured (T422).
+`config/spell_effects.json`. **A spellsnew.eff slot is timed by its EDD words**
+(B1145, `spell_fx_timing.h`): +0x8C delay, run (fixed |+0x78| or the stage's
+duration), +0x7C life, burst/stream; B1121's fed schedule serves spells with
+no record. Ends: `review/B1121/scripts/b1120_measure.sh <leg> <out>` (T422).
 `tests/test_spell_burst_oracle_match.cpp` pins both.
 
 **A spell particle is its sprite x its EDD emitter's colour words** (B1146).
@@ -414,7 +413,7 @@ names: Source → cast glow and spellComplete, Middle → projectile trail, Targ
 impact. The landing is a VOLUME, not a disc (B1120). Source and Target are drawn
 per spellsnew.eff SLOT (B1144): minLevel <= caster level (NPC 1), on its anchor
 at its attach point; no Target slot, no landing; no OP_BeginCast, no Source.
-B1131/B1132 rows give shape, size and timing; `tests/test_spell_slot_rules.cpp`. `spellOverrides` holds
+B1131/B1132 rows give shape and size; `tests/test_spell_slot_rules.cpp`. `spellOverrides` holds
 measured values only (B1120/B1122 shapes; **sizes match the oracle FIRST**:
 caster-ROI p90, `review/B1119/scripts/fx_sprite_roi.py` vs
 `review/B1120/measure_oracle/roi_oracle.txt`; coverage follows from the pool,

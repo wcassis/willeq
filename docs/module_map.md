@@ -219,7 +219,8 @@ Beside it in `src/client/spell/`, the spell VISUAL data readers (no `SpellManage
 
 | TU | Lines | Contents |
 |---|---|---|
-| spells_new_edd_colour.cpp | 138 | B1146: `EQ::SpellsNewEddColourTable` -- spellsnew.eff + spellsnew.edd read for the colour words only (+0x68 additive, +0x90/+0x94 fades, +0xA4 peak, +0xD4..+0xE8 start/end RGB; `docs/spellsnew_format.md`), `stageColours()` in `SpellsNewEffReader::stageTextures()` order; the alpha formula `eddParticleAlpha()` is inline in the header, shared with `UnifiedParticle::eddAlpha()` |
+| spells_new_edd_reader.cpp | 98 | B1145: `EQ::SpellsNewEddReader` -- the one reader of spellsnew.edd's 416-byte entries (magic, entry bytes, name, texture, frame count) and the timing / emission words per entry (`SpellsNewEddTiming`: +0x78 duration, +0x7C lifetime, +0x80 burst, +0x84 per tick, +0x88 ticks/s, +0x8C delay); `SpellsNewEffReader` (`edd()`) and the colour table read through it. The timing rules are header-only in `include/client/spell/spell_fx_timing.h` (`SpellFxSlotTimingFor`, `SpellFxCallerDurationMs`, the measured `kSpellFxCastAnimationSeconds`) |
+| spells_new_edd_colour.cpp | 87 | B1146: `EQ::SpellsNewEddColourTable` -- the colour words (+0x68 additive, +0x90/+0x94 fades, +0xA4 peak, +0xD4..+0xE8 start/end RGB; `docs/spellsnew_format.md`) decoded per emitter, read through `SpellsNewEffReader`/`SpellsNewEddReader` (B1145), `stageColours()` in `SpellsNewEffReader::stageTextures()` order; the alpha formula `eddParticleAlpha()` is inline in the header, shared with `UnifiedParticle::eddAlpha()` |
 
 ## Renderer — IrrlichtRenderer class (`include/client/graphics/irrlicht_renderer.h`)
 
