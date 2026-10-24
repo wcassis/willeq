@@ -201,7 +201,8 @@ TEST_F(FxHarness, AnOtherTargetLandingLightsTheTargetAndNotTheCaster) {
 // 4499 Defensive Discipline's record 326 has no Target stage, so no landing.
 // The observer drew no sprite (B1134 record 51). The harness's action-only
 // packets must therefore draw NOTHING: every frame equals the frame of a run
-// whose only cast lies past the end (zero lit px, byte-identical frames).
+// whose only cast lies past the end (no lit px beyond the two processes'
+// pre-cast noise).
 // RED on fb6d6481: B1105's 2 s action-only glow and the spellComplete half.
 TEST_F(FxHarness, ADisciplineWithoutBeginCastDrawsNothing) {
     const fs::path disc = runPlan("disc", "0.5\t4499\tself\t0\t0\t60\taction\n", 3.0);
@@ -210,6 +211,21 @@ TEST_F(FxHarness, ADisciplineWithoutBeginCastDrawsNothing) {
     ASSERT_FALSE(none.empty()) << "the reference harness run failed";
     EXPECT_TRUE(slotRows(disc).empty()) << "a /disc drew a spellsnew.eff slot";
     const Box whole{0, 0, 1279, 799};
+    // Two harness processes differ by 0-4 px at the caster's held orb from
+    // frame 0, before any packet (measured on 9d37d807: (662..667, 463..468),
+    // max channel delta 152..203, the idle cycle's period). A drawn Source or
+    // landing is thousands (93's Source above: 34,483 summed). The bound is
+    // that pre-cast noise, measured in the same two runs, plus 16 px.
+    int noise = 0;
+    for (int f = 0; f < 15; ++f) {
+        irr::video::IImage* a = load(frameAt(disc, f));
+        irr::video::IImage* b = load(frameAt(none, f));
+        ASSERT_NE(a, nullptr);
+        ASSERT_NE(b, nullptr);
+        noise = std::max({noise, lit(a, b, whole), lit(b, a, whole)});
+        a->drop();
+        b->drop();
+    }
     int peak = 0;
     for (int f = 15; f < 90; ++f) {  // Act-0.0 .. Act+2.5 s
         irr::video::IImage* a = load(frameAt(disc, f));
@@ -220,8 +236,9 @@ TEST_F(FxHarness, ADisciplineWithoutBeginCastDrawsNothing) {
         a->drop();
         b->drop();
     }
-    std::printf("[fx-gate] /disc 4499 (OP_Action only): peak lit px vs the no-cast run %d\n", peak);
-    EXPECT_EQ(peak, 0) << "an OP_Action without OP_BeginCast drew something";
+    std::printf("[fx-gate] /disc 4499 (OP_Action only): peak lit px vs the no-cast run %d (pre-cast noise %d)\n",
+                peak, noise);
+    EXPECT_LE(peak, noise + 16) << "an OP_Action without OP_BeginCast drew something";
     cleanDirs();
 }
 

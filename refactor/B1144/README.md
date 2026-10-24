@@ -76,9 +76,11 @@ pick of the four); the 5-seed variant with the pre-B1144 art lists reads 2.925..
 ### Harness: `/disc` and level gates (`tests/test_fx_harness.cpp`)
 
 - `FxHarness.ADisciplineWithoutBeginCastDrawsNothing`: 4499 Defensive Discipline as OP_Action only (plan column
-  `action`): every frame Act-0..Act+2.5 equals a no-cast run's (peak lit px 0), no slot in `slots.tsv`.
+  `action`): every frame Act-0..Act+2.5 against a no-cast run lights no pixel beyond the two processes' own
+  pre-cast noise (0 px on some runs; 3-4 px at the caster's held orb on others, present from frame 0, before any
+  packet), bound noise + 16; no slot in `slots.tsv`.
 - `FxHarness.ALevelOneCasterDrawsOnlyItsLevelZeroSlots`: 93 at level 1 draws Source slots 0-1 and Target slots
-  0-1 (record 80's level-0 slots), at level 60 all eight; caster-box Source pixels BC+0.6..Act: level 1 34,483, level 60 49,189 (`review/B1144/tests/fx_harness_gates.txt`); the /disc run peaks at 0 lit px.
+  0-1 (record 80's level-0 slots), at level 60 all eight; caster-box Source pixels BC+0.6..Act: level 1 34,483, level 60 49,189 (`review/B1144/tests/fx_harness_gates*.txt`).
 
 ### Lane 5: 93 at level 1 and level 60, the observer recording (`review/B1144/oracle/l1_l60_93/`)
 
@@ -121,10 +123,14 @@ durations are the rows' (B1145).
   `attachPointEntityId`, 4-argument `createCastGlow`, `fxGateLevel`; `review/B1144/tests/red_fb6d6481_compile.txt`);
   on its code a level-1 93 draws all four Source slots' row (two hand emitters at full row rate), 4499 draws a
   spellComplete landing and an action-only cast arms B1105's glow.
-- Builds and suites (`review/B1144/tests/`): whole tree with the CI flags at d91a5def, `cmake --build build-ci -j 4 -- -k`,
-  BUILD_EXIT=0, 0 `error:` lines (`build_ci_whole.log`); `ctest -R "Spell|Bridge|Particle|FxHarness|ConfigKeyReachability|Oracle|SlotRules|SourceAnchors|SourceRecordRows|TargetRecordRows|TargetLanding|Landing|CasterOwn"`
-  877/877 (41 skips on absent EQ client paths; `ctest_targeted.log`); `ctest -L hygiene` 51/51 (`ctest_hygiene.log`).
-  CLAUDE.md 59,953 bytes.
+- Builds and suites (`review/B1144/tests/`), after the rebase onto fable 510abc39 (B1146 merged): whole tree with
+  the CI flags, `cmake --build build-ci -j 6 -- -k`, BUILD_EXIT=0, 0 `error:` lines (`build_ci_whole_rebased.log`);
+  `ctest -R "Spell|Bridge|Particle|FxHarness|ConfigKeyReachability|Oracle|SlotRules|SourceAnchors|SourceRecordRows|TargetRecordRows|TargetLanding|Landing|CasterOwn"`
+  886/886 (41 skips on absent EQ client paths; `ctest_targeted_rebased.log`); `ctest -L hygiene` 51/51. Before the
+  rebase (d91a5def): the same build exit 0, 877/877, 51/51. The harness runs and the lane leg ran on the
+  pre-rebase code (no B1146 colour). After the rebase the per-slot defs take B1146's colour words of their own
+  slot emitter(s) (`SpellVisualFX::applySlotEddColours`).
+  CLAUDE.md 59,920 bytes.
 
 ## Files
 
