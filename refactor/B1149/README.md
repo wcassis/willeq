@@ -1,6 +1,6 @@
 # B1149 (#469) FX-SIM-1 populations: file counts, sprite sizes, the client's alpha
 
-Branch `task/B1149-fx-sim-populations` (wt/b1149), cut from fable 94ac58cd, rebased onto 50af6150 (B1142).
+Branch `task/B1149-fx-sim-populations` (wt/b1149), cut from fable 94ac58cd, rebased onto 50af6150 (B1142) and then 7bdf14a4 (B1148).
 First leg of B1147 (#467). Evidence: `/mnt/projects/fable/review/B1149/` (`README.md`, `progress.log`, `runs/`,
 `strips/`, `scripts/`, `pool_census.tsv`, `gates_r2.tsv`, `sweep_table.tsv`, build/ctest logs). No lane used.
 Source of truth: `docs/spellsnew_format.md`, `review/B1141/edd_fields_from_code.tsv`, and the EQGraphicsDX9
@@ -70,28 +70,32 @@ Source 3746 + Target 1168 = 4914 -- inside the desktop 8192, OVER the sbc 4096 b
 The client has no global rule (per-emitter rings, 100000 cap); fable applies the client's ring-full rule at its one
 pool: new particles are dropped while the pool is full. No count is scaled.
 
-## 5. Gates (harness, `--camera b1118` = unoccluded since B1142, pool 8192; `review/B1149/gates_r2.tsv`)
+## 5. Gates (harness, `--camera b1118` = unoccluded since B1142, pool 8192; `review/B1149/gates_r3.tsv`)
 
-Lane = B1142's new fable-on-lane table (pre-B1149 populations); oracle = its oracle columns (the B1118 tour).
+On the tree rebased onto 7bdf14a4 (B1148: the per-caster Source term from the caster's skeleton track -- 4.10 s for
+the harness caster, char 67's Dark Elf female -- and the corpse fade). `gates_r2.tsv` holds the same runs on
+50af6150 (term 4.35): every coverage/ROI number identical, only the ends moved. Lane = B1142's fable-on-lane table
+(pre-B1149 populations); oracle = its oracle columns (the B1118 tour).
 
-| spell | land_cov (seeds) | lane | oracle | end (Act+) | lane | oracle | roi_l (band) | roi_s (band) |
-|---|---|---|---|---|---|---|---|---|
-| 93 dying, s1-5 | 4.226 3.952 3.722 3.853 3.729 (mean 3.896) | 3.049 (4 caps 2.990..3.140) | 5.847 | 4.833 4.800 4.800 4.900 4.867 | 4.898 | 4.867 | 0.036..0.040 (0.064-0.086) | 0.044..0.057 (0.071-0.097) |
-| 93 live | 4.233 | | | 6.467 | | (B1130 alive 6.67) | | |
-| 38 dying | 3.873 | 2.650 | 3.889 | 4.800 | 4.831 | 4.85 | 0.038 (0.059-0.079) | 0.047 (0.063-0.085) |
-| 54 dying | 1.058 | 1.696 | 2.461 | 4.967 | 5.054 | 5.103 | 0.030 (0.037-0.051) | 0.028 in |
-| 656 dying | 1.086 | 0.957 | 2.493 | 4.983 | 4.905 | 5.004 | 0.028 (0.030-0.040) | 0.028 in |
-| 41 live | 2.750 | 2.666 | 4.154 | 6.133 | 6.253 | 6.224 | 0.084 (0.086-0.116) | 0.089 (0.096-0.130) |
-| 458 live | 0.612 | 1.732 | 1.242 | 5.467 | 4.989 | 4.942 | 0.054 (0.086-0.116) | 0.031 (0.037-0.049) |
-| 253 self | 9.465 | 5.028 | 7.281 | abs 7.583 | 6.538 | 6.522 | 0.072 (0.079-0.107) | 0.121 (0.151-0.205) |
+| spell | land_cov (seeds) | lane | oracle | end Act+ (r3) | r2 (4.35 term) | lane | oracle | roi_l (band) | roi_s (band) |
+|---|---|---|---|---|---|---|---|---|---|
+| 93 dying, s1-5 | 4.225 3.952 3.722 3.853 3.726 (mean 3.896) | 3.049 (2.990..3.140) | 5.847 | 4.600 4.567 4.633 4.500 4.533 | 4.800..4.900 | 4.898 | 4.867 | 0.036..0.040 (0.064-0.086) | 0.044..0.057 (0.071-0.097) |
+| 93 live | 4.233 | | | 6.433 | 6.467 | | (B1130 alive 6.67) | | |
+| 38 dying | 3.873 | 2.650 | 3.889 | 4.500 | 4.800 | 4.831 | 4.85 | 0.038 (0.059-0.079) | 0.047 (0.063-0.085) |
+| 54 dying | 1.052 | 1.696 | 2.461 | 4.700 | 4.967 | 5.054 | 5.103 | 0.031 (0.037-0.051) | 0.028 in |
+| 656 dying | 1.085 | 0.957 | 2.493 | 4.750 | 4.983 | 4.905 | 5.004 | 0.030 in (0.030-0.040) | 0.028 in |
+| 41 live | 2.750 | 2.666 | 4.154 | 6.133 | 6.133 | 6.253 | 6.224 | 0.084 (0.086-0.116) | 0.089 (0.096-0.130) |
+| 458 live | 0.612 | 1.732 | 1.242 | 5.433 | 5.467 | 4.989 | 4.942 | 0.054 (0.086-0.116) | 0.031 (0.037-0.049) |
+| 253 self | 9.465 | 5.028 | 7.281 | abs 7.583 | 7.583 | 6.538 | 6.522 | 0.072 (0.079-0.107) | 0.121 (0.151-0.205) |
 
 Base (94ac58cd, same rig, `runs/base_s1..5`): 93 dying 2.402..2.445, end +5.167..+5.200, roi_l 0.073..0.076.
 
-Separated target (`runs/r2_sep_box_end.txt`, B1145's box_end.py): level 60 landing ends Act+6.267, level 1
-Act+2.200 (observer 2.61/2.65; B1145 2.667), caster Source Act+4.667 (oracle r51 caster box 4.908).
+Separated target (`runs/r3_sep_box_end.txt`, B1145's box_end.py): level 60 landing ends Act+6.400, level 1
+Act+2.200 (observer 2.61/2.65; B1145 2.667); the caster's Source box ends Act+4.333 (level 60) / 4.133 (level 1)
+with its emission stopping at Act+4.10.
 
 Disciplines (`review/B1146/plans/discs.tsv`, B1130 anchor.py LANDING on the caster, halfw 0.7, exactly as B1134
-measured the observer; `runs/r2_discs_anchor.txt`, strip `strips/r2_discs_act3.png`):
+measured the observer; `runs/r3_discs_anchor.txt`, strip `strips/r2_discs_act3.png`):
 
 | record (spell) | oracle RUN cov / peak / end | harness RUN cov / peak / end | B1146 (clientAlpha on, fitted rows) |
 |---|---|---|---|
@@ -105,21 +109,28 @@ this card and was not investigated.
 
 ### Verdicts
 
-- **93 coverage vs lane +-3 %: NOT met, and not meetable by construction.** The lane rows are fable's own draw
-  with the B1123 fitted populations (that is what B1149 replaces); with the file's counts the harness reads
-  +28 % over the lane mean and -33 % under the oracle tour (5.847). 38, same record 80, reads 3.873 against the
-  oracle's 3.889 (-0.4 %).
-- **93 dying end: met against the oracle (4.867) and B1142's lane (4.898) within +-0.1 s on all 5 seeds
-  (4.800..4.900); against the card's 4.938 +-0.1, 3 of 5 seeds (4.800 twice: -0.138).** The B1145 interim
-  (+5.17..5.20, the equal-share Source tail) is gone. Live 6.467 (card 6.5).
-- **253 / 458 ends:** 253 +7.583 vs oracle 6.522 (+1.06; base +8.117); 458 +5.467 vs 4.942 (+0.53; base +5.833).
-- **Discs: met** -- RUN coverage 0.89..0.97 of the oracle's on all four, ends within 0.13 s.
-- **ROI p90: NOT met** on 13 of 14 rows (all short, 0.5..0.95 of the band's low edge; 54/656 Source in band).
-  The quads are the file's world sizes at s = 1; what is missing is the client's attach scale s (+0x6C x
-  actor +0x10 x the root actor's +0x64 sub-object float +0x60): its writer 0x1016be70 is a sub-object vtable
-  slot with no actor thunk, and the eqgame code that sets it was not traced. Also not wired and plausibly in the
-  lit diameter: the texture frame animation (+0x130/+0x134, B1151; fable plays one cycle per life) and the atlas'
-  32 px cells (the client samples the 64/256 px files).
+- **Discs: met** -- RUN coverage 0.89..0.97 of the oracle's on all four, ends within 0.13 s (B1146: ~1/20).
+- **93 coverage vs lane +-3 %: NOT met, by construction.** The lane rows are fable's own draw with B1123's fitted
+  populations, the thing this card replaces; with the file's counts the harness reads +28 % over the lane mean and
+  -33 % under the oracle tour (5.847). 38 (same record 80) reads 3.873 against the oracle's 3.889 (-0.4 %).
+- **93 dying end within +-0.1 s of 4.938: NOT met** (4.500..4.633, -0.31..-0.44; also short of the oracle's
+  4.867). Measured cause: after the corpse cut at Act+4.536 only the caster's Source tail is left, and fable's
+  tail is far fainter than the oracle's -- lit px after the cut 956 -> 69 at Act+4.53..4.67 (r3 s1,
+  `runs/r3_93_die_s1/measure/fable_93/lit80.tsv`) against the oracle's 8,330 at Act+4.71 and 1,095 at 4.87
+  (B1145 sec. 5a). Separately, the caster's Source box ends 0.23 s after its emission stops (Act+4.10 -> 4.333),
+  where the oracle's Dark Elf female ends 0.66 s after (B1148 leg C1: 4.10 -> Act+4.764). The file's own counts
+  and alpha (276 fades from birth: +0x94 1.2 s > its 1 s life) leave fewer lit pixels per sprite than the oracle
+  shows; the word/rule fable lacks that scales a sprite is the +0x6C attach scale s (below). Not tuned.
+  Before the B1148 rebase (term 4.35) the same populations read 4.800..4.900 (met against 4.867/4.898).
+- **93 live end 6.433** (card 6.5; B1130 alive 6.67). 253 +7.583 vs oracle 6.522 (base +8.117); 458 +5.433 vs
+  4.942 (base +5.833).
+- **ROI p90: NOT met** on 11 of 14 rows (all short, 0.5..0.97 of the band's low edge; 54/656 Source and 656
+  landing in band). The quads are the file's world sizes at s = 1. Missing rule: the client's attach scale for
+  +0x6C (s = actor +0x10 x the root actor's +0x64 sub-object float +0x60; getter 0x1016bd90 = sub-object vtable
+  +0x3C, exposed as actor vtbl +0x84/+0xA0; setter 0x1016be70 = sub-object vtable +0x54 (vtable 0x101cea98), not
+  exposed through the actor vtable; its caller -- and the value eqgame gives a player model -- was NOT traced).
+  Also not wired and possibly in the lit diameter: the texture frame animation (+0x130/+0x134, B1151; fable plays
+  one cycle per life) and the atlas' 32 px cells.
 - **The 40 records:** sec. 6.
 
 ## 6. The 40 records (`review/B1149/sweep_table.tsv`)
