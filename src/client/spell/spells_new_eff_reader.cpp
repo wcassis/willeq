@@ -149,4 +149,30 @@ std::vector<std::string> SpellsNewEffReader::stageTextures(int32_t record, int s
     return out;
 }
 
+std::vector<SpellsNewEffDrawnSlot> SpellsNewEffReader::drawnSlots(int32_t record, int stage,
+                                                                  int casterLevel) const {
+    std::vector<SpellsNewEffDrawnSlot> out;
+    const SpellsNewEffRecord* rec = getRecord(record);
+    if (!rec || stage < 0 || stage > 2) return out;
+    const auto& slots = rec->stages[static_cast<size_t>(stage)].slots;
+    for (size_t k = 0; k < slots.size(); ++k) {
+        if (!slots[k].drawnAtLevel(casterLevel)) continue;
+        SpellsNewEffDrawnSlot d;
+        d.index = static_cast<int>(k);
+        d.slot = slots[k];
+        if (const SpellsNewEddEntry* e = getEmitter(slots[k].emitter)) d.texture = e->texture;
+        out.push_back(std::move(d));
+    }
+    return out;
+}
+
+size_t SpellsNewEffReader::emitterSlotCount(int32_t record, int stage) const {
+    const SpellsNewEffRecord* rec = getRecord(record);
+    if (!rec || stage < 0 || stage > 2) return 0;
+    size_t n = 0;
+    for (const auto& sl : rec->stages[static_cast<size_t>(stage)].slots)
+        if (sl.hasEmitter()) ++n;
+    return n;
+}
+
 }  // namespace EQ

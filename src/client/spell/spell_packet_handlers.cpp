@@ -17,6 +17,7 @@
  */
 
 #include "client/spell/spell_manager.h"
+#include "client/spell/spells_new_eff_reader.h"  // B1144: SpellsNewEffGateLevel
 #include "client/eq.h"
 #include "client/combat.h"
 #include "client/bridge/game_state_bridge.h"
@@ -29,6 +30,18 @@ namespace EQ {
 // ============================================================================
 // Packet Handlers
 // ============================================================================
+
+// B1144 (#464): the level eqgame 0x495cc3 gates spellsnew.eff slots with --
+// the caster spawn's level (Spawn_Struct @151, kept current by
+// OP_LevelUpdate for the player), 1 for an NPC (Spawn_Struct @83 != 0) or a
+// caster this client has no spawn for.
+static int fxGateLevelOf(const EverQuest* eq, uint16_t caster_id)
+{
+    const auto& entities = eq->GetEntities();
+    const auto it = entities.find(caster_id);
+    if (it == entities.end()) return EQ::SpellsNewEffGateLevel(false, false, 0);
+    return EQ::SpellsNewEffGateLevel(true, it->second.npc_type != 0, it->second.level);
+}
 
 void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32_t cast_time_ms)
 {
@@ -73,6 +86,7 @@ void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32
             // handed this one (game-thread-owned, unsynchronised LRU), so the
             // visual vocabulary is copied by value here.
             if (spell) d.spellVisual = spell->visualVocabulary();
+            d.fxGateLevel = fxGateLevelOf(m_eq, caster_id);  // B1144
             m_bridge->pushEvent(eqt::state::GameEvent(
                 eqt::state::GameEventType::SpellCastVisualStarted, std::move(d)));
         }
@@ -111,6 +125,7 @@ void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32
             d.isPlayerCast = false;
             d.isTargetCast = isTargetCast;
             if (spell) d.spellVisual = spell->visualVocabulary();  // T381 (B160)
+            d.fxGateLevel = fxGateLevelOf(m_eq, caster_id);  // B1144
             m_bridge->pushEvent(eqt::state::GameEvent(
                 eqt::state::GameEventType::SpellCastVisualStarted, std::move(d)));
         }
@@ -182,6 +197,7 @@ void SpellManager::handleAction(const EQT::SpellActionInfo& action)
         d.isTargetCast = isTargetCast;
         d.completionAnim = completion_anim;
         if (spell) d.spellVisual = spell->visualVocabulary();  // T381 (B160)
+        d.fxGateLevel = fxGateLevelOf(m_eq, caster_id);  // B1144
         m_bridge->pushEvent(eqt::state::GameEvent(
             eqt::state::GameEventType::SpellCastVisualComplete, std::move(d)));
     }
@@ -351,6 +367,7 @@ void SpellManager::publishOwnCastReleased()
     if (const SpellData* spell = m_spell_db.getSpell(m_current_spell_id)) {
         d.spellVisual = spell->visualVocabulary();  // T381 (B160)
     }
+    d.fxGateLevel = fxGateLevelOf(m_eq, d.casterId);  // B1144
     m_bridge->pushEvent(eqt::state::GameEvent(
         eqt::state::GameEventType::SpellCastVisualComplete, std::move(d)));
 }

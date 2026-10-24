@@ -91,6 +91,39 @@ public:
     static uint16_t headEntityId(uint16_t caster_id) { return (caster_id & 0x3FFF) | 0x4000; }
     static bool isHeadBoneId(uint16_t id) { return (id & 0xC000) == 0x4000; }
 
+    // B1144 (#464): the point fable follows for a spellsnew.eff slot's attach
+    // point (slot +12) on `entity`: LHAND / RHAND -> the hand bones; HEAD and
+    // the face points LEYE / REYE / MOUTH -> the head bone (fable's head bone
+    // sits at the face, B1132; it has no eye or mouth point); every other
+    // point -> the entity itself: DEFAULT, whose height on a model is model
+    // data (the measured rows place what follows it), CHEST / LFOOT / RFOOT
+    // (the client falls back to DEFAULT on a model without the point, and
+    // fable resolves none of them), none / origin / floor-under-chest.
+    // The caller falls back to the entity when the bone does not resolve.
+    static uint16_t attachPointEntityId(uint16_t entity, int32_t attachPoint);
+
+    // B1144: the caster level every oracle capture behind the measured
+    // Source/Target rows was taken at (`#level 60` in the B1118/B1127/B1130
+    // plans): at it every slot of a record is drawn (minLevel is 0, 24 or 39).
+    // A direct caller that passes no level draws what those captures drew;
+    // the bridge always passes the payload's gate level.
+    static constexpr int kMeasuredCasterLevel = 60;
+
+    // B1144: the slots of `stage` (kSpellsNewEff{Source,Target}) a cast of
+    // this spell draws at `casterLevel`. `fromFile` is false when the spell
+    // has no spellsnew.eff record (field 145 = 0, an empty record, or the
+    // files absent): the official client then plays its spells.eff record
+    // (eqgame 0x49b260) and fable keeps the measured row's own anchor.
+    // `measured` = the stage's emitter slots at any level, the set the
+    // `#level 60` captures drew; each drawn slot carries 1/measured of the
+    // row's population.
+    struct StageSlots {
+        bool fromFile = false;
+        std::vector<SpellsNewEffDrawnSlot> drawn;
+        size_t measured = 0;
+    };
+    StageSlots stageSlots(uint32_t spell_id, int stage, int casterLevel) const;
+
     SpellVisualFX(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
                    const std::string& eqClientPath = "");
 
@@ -160,7 +193,10 @@ public:
 
     // Create casting glow around caster (auto-selects spray vs smolder by school)
     // Returns effect ID for later removal
-    uint32_t createCastGlow(uint16_t caster_id, uint32_t spell_id, uint32_t duration_ms);
+    // B1144: `casterLevel` is the slot gate's level (SpellsNewEffGateLevel);
+    // a spellsnew.eff record's Source draws one emitter per slot it passes.
+    uint32_t createCastGlow(uint16_t caster_id, uint32_t spell_id, uint32_t duration_ms,
+                            int casterLevel = kMeasuredCasterLevel);
 
     // Create projectile traveling from caster to target
     void createProjectile(uint16_t caster_id, uint16_t target_id, uint32_t spell_id);
@@ -178,7 +214,15 @@ public:
     // records) or when there is no target. Never on the caster of an
     // other-target cast otherwise (B1131 FOLLOW-UP 1). Returns the entity the
     // landing follows (the head pseudo-entity for a head row), 0 when none.
-    uint16_t createLanding(uint16_t caster_id, uint16_t target_id, uint32_t spell_id);
+    // B1144 (#464): for a spell with a spellsnew.eff record the landing is
+    // that record's Target slots the caster's level passes, one emitter pair
+    // per slot on the slot's anchor actor (caster or target) at its attach
+    // point; NO slot drawn = no landing at all (record 326, a /disc). The row
+    // (B1132) still gives the shape class, sizes and timing; the impact half
+    // draws the slot's own texture, the spellComplete half the textures of the
+    // Source slots the same level draws (T441).
+    uint16_t createLanding(uint16_t caster_id, uint16_t target_id, uint32_t spell_id,
+                           int casterLevel = kMeasuredCasterLevel);
 
     // ========================================================================
     // Effect Removal
@@ -312,6 +356,12 @@ private:
     void createProjectileNode(SpellFXInstance& effect);
     void createImpactNode(SpellFXInstance& effect);
 
+#ifdef EQT_HAS_GLES2
+    // B1144: createLanding's spellsnew.eff path (one emitter pair per Target slot).
+    uint16_t createLandingFromSlots(uint16_t caster_id, uint16_t target_id, uint32_t spell_id,
+                                    int record, const StageSlots& slots, int casterLevel);
+#endif
+
     // Update individual effect types
     void updateProjectile(SpellFXInstance& effect, float delta_time,
                           std::vector<std::pair<uint16_t, uint32_t>>& pendingImpacts);
@@ -367,6 +417,9 @@ private:
     // B1146 (#466): the colour words of spellsnew.edd's emitters.
     SpellsNewEddColourTable m_spells_new_edd_colour;
 #ifdef EQT_HAS_GLES2
+    // B1144: the colour words of these emitters, one per texture region.
+    void applySlotEddColours(EQT::Graphics::Environment::SpellEffectDef& def,
+                             const std::vector<int32_t>& emitters) const;
     // Installs stage `stage`'s (0 Source, 1 Middle, 2 Target) colour words on
     // `def` when that stage came from spellsnew.eff.
     void applyStageEddColours(EQT::Graphics::Environment::SpellEffectDef& def,

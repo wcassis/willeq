@@ -600,6 +600,19 @@ void eqt::entities::EntitiesComponent::ZoneProcessSpawnAppearance(const EQ::Net:
 		spawn_id, type, parameter);
 
 	switch (type) {
+	case AT_WHO_LEVEL:
+		// B1144 (#464): the spawn's level. The official client writes it to the
+		// spawn's level byte (eqgame.exe 0x45242f: type 1 -> spawn +0x24c, spawn
+		// id 0 = the local player), the byte its spellsnew.eff slot gate reads
+		// (0x495cc3); eqemu sends it to every client on #level / a level-up. The
+		// B1144 lane-5 observer drew a caster's level-24/39 slots only after it.
+		{
+			const uint16_t id = spawn_id != 0 ? spawn_id : ctx_.self.MySpawnId();
+			auto it = ctx_.entities.find(id);
+			if (it != ctx_.entities.end()) it->second.level = static_cast<uint8_t>(parameter);
+		}
+		break;
+
 	case AT_ANIMATION:
 		// Animation update - set the entity's animation
 		{

@@ -3,7 +3,8 @@
 `model_viewer --spell-test --plan <tsv>` drives the client's own cast sequence
 (`src/client/bridge/spell_cast_fx.cpp`) through the production
 SpellVisualFX -> ParticleManager -> SimulationWorker chain, surfaceless, on a
-scripted clock, and writes `frame_%05d.png`, `timing.tsv` and `scene.tsv`.
+scripted clock, and writes `frame_%05d.png`, `timing.tsv`, `scene.tsv` and
+`slots.tsv`.
 Options and code: `tools/model_viewer/model_viewer_fx_harness.h`. Reports:
 `refactor/B1138/README.md` (the harness), `refactor/B1139/README.md` (its
 calibration against lane 5).
@@ -14,7 +15,13 @@ model_viewer --spell-test --client /mnt/projects/EverQuestP1999 \
     --frames-dir out/ --fps 30 --seconds 13.2 --headless --camera b1118
 ```
 
-Plan rows: `t_begin_s  spell_id  self|other  distance_units  [cast_ms]`.
+Plan rows: `t_begin_s  spell_id  self|other  distance_units  [cast_ms
+[caster_level [begincast|action]]]` (`-` = the default). B1144 (#464):
+`caster_level` is the caster's spellsnew.eff slot-gate level (default
+`--caster-level`, 60: the `#level 60` of every oracle capture the rows come
+from); `action` publishes OP_Action alone at `t_begin_s + cast_ms`, the `/disc`
+path (no OP_BeginCast, so no Source). `slots.tsv` lists the slots each packet
+draws (`SpellVisualFX::stageSlots`).
 Measure a run with `review/B1139/scripts/harness_measure.py <frames> <out>` (the
 lane-5 measurement scripts of `review/B1132/scripts/`, unchanged; cast times
 from `timing.tsv`).
@@ -88,4 +95,8 @@ channel exceeds 175 (where an additive sprite's rise can stay under 80).
   93's landing reads hue 25 on both the harness and lane leg B; the discipline
   records 326/329/328 read the oracle's hue within 20 deg
   (`refactor/B1146/README.md`).
+- **Slot rules** (B1144, `tests/test_fx_harness.cpp`): a `/disc` plan
+  (4499, `action`) draws zero lit px against a no-cast run, and a level-1
+  93 draws only record 80's level-0 slots (`slots.tsv`) and fewer Source
+  pixels than a level-60 one.
 - Oracle legs (the official client) are lane 5 only.

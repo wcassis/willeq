@@ -11,18 +11,21 @@ from pixel correlation. Binaries (copied read-only from the oracle client, lane 
 Addresses are virtual addresses (eqgame base 0x400000, EQGraphicsDX9 base 0x10000000). The full per-word
 tables with every read site, the Ghidra 12.1.4 project, the scripts and the cross-check against the 40
 oracle-measured records are in `review/B1141/README.md` (`edd_fields_from_code.tsv`,
-`eff_fields_from_code.tsv`, `crosscheck.tsv`). Fable reads only the texture, the frame count and the
-emitter slots (`include/client/spell/spells_new_eff_reader.h`) and, since B1146, the colour words
-+0x68, +0x90, +0x94, +0xA4 and +0xD4..+0xE8 (`include/client/spell/spells_new_edd_colour.h`, applied
-per texture region by `SpellPresets::applyStageEmitterColours()`: the RGB is drawn, the alpha and blend
-words wait behind its `clientAlpha`, `refactor/B1146/README.md`); nothing else below is wired into
-fable's FX yet.
+`eff_fields_from_code.tsv`, `crosscheck.tsv`). Fable reads the EFF record whole
+(`include/client/spell/spells_new_eff_reader.h`) and, since B1144 (#464), draws by its slot words: the
+level gate, the anchor and the attach point, Source only from a begin-cast, Middle never (no missile
+path yet), no landing without a Target slot (`SpellVisualFX::stageSlots`, `refactor/B1144/README.md`).
+Of the EDD entry it reads the texture, the frame count and, since B1146, the colour words +0x68, +0x90,
++0x94, +0xA4 and +0xD4..+0xE8 (`include/client/spell/spells_new_edd_colour.h`, applied per texture
+region by `SpellPresets::applyStageEmitterColours()`: the RGB is drawn, the alpha and blend words wait
+behind its `clientAlpha`, `refactor/B1146/README.md`); nothing else below is wired into fable's FX yet.
 
 ## Who does what
 
 - eqgame `0x44d773` reads SpellsNew.eff whole (records of 0x10c bytes); a spell's record is
   spells_us.txt field 145 (`0x44dbf0`, used only when the record name is non-empty).
-- eqgame `0x49b260` plays one stage: 0 Source (from begin-cast, `0x49b39d`), 1 Middle (ONLY from the
+- eqgame `0x49b260` plays one stage: 0 Source (from begin-cast, `0x49b39d`; the only other stage-0
+  call, `0x4bfe0f`, plays a Source `0x49b39d` deferred: no begin-cast, no Source), 1 Middle (ONLY from the
   missile spawner `0x476b12`: a spell with no missile never plays its Middle stage), 2 Target
   (`0x47f5e1`, `0x45448b`). `0x495cc3` walks the stage's four slots and calls the particle manager's
   vtable +0x14 = EQGraphicsDX9 `0x1005e1d0` once per slot.

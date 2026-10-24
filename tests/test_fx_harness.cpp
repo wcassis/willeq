@@ -100,8 +100,54 @@ protected:
             }
         return n;
     }
+    // B1144: runs one plan (its rows after the header) for `seconds`; the
+    // frames directory, or empty when the harness failed (see run.log).
+    fs::path runPlan(const std::string& name, const std::string& rows, double seconds,
+                     const std::string& extra = "") {
+        const fs::path dir = fs::temp_directory_path() /
+                             ("willeq_fx_harness_" + name + "_" + std::to_string(::getpid()));
+        fs::remove_all(dir);
+        fs::create_directories(dir);
+        dirs_.push_back(dir);
+        {
+            std::ofstream f(dir / "plan.tsv");
+            f << "t_begin_s\tspell_id\ttarget\tdistance_units\tcast_ms\tcaster_level\tpackets\n" << rows;
+        }
+        const fs::path frames = dir / "frames";
+        const std::string cmd = std::string("cd '") + WILLEQ_REPO_ROOT + "' && '" + bin_ +
+                                "' --spell-test --client " + kClient + " --eqe1 " + kPack + " --plan '" +
+                                (dir / "plan.tsv").string() + "' --frames-dir '" + frames.string() +
+                                "' --fps 30 --seconds " + std::to_string(seconds) +
+                                " --headless --camera b1118 --seed 1 " + extra + " > '" +
+                                (dir / "run.log").string() + "' 2>&1";
+        return std::system(cmd.c_str()) == 0 ? frames : fs::path();
+    }
+    static fs::path frameAt(const fs::path& frames, int f) {
+        char name[32];
+        std::snprintf(name, sizeof(name), "frame_%05d.png", f);
+        return frames / name;
+    }
+    // slots.tsv as "stage:slot" in file order.
+    static std::vector<std::string> slotRows(const fs::path& frames) {
+        std::vector<std::string> out;
+        std::ifstream f(frames / "slots.tsv");
+        std::string line;
+        std::getline(f, line);
+        while (std::getline(f, line)) {
+            std::istringstream ss(line);
+            std::string c[7];
+            for (auto& x : c) std::getline(ss, x, '\t');
+            out.push_back(c[5] + ":" + c[6]);
+        }
+        return out;
+    }
+    void cleanDirs() {
+        if (HasFailure()) return;
+        for (const auto& d : dirs_) fs::remove_all(d);
+    }
     irr::IrrlichtDevice* device_ = nullptr;
     std::string bin_;
+    std::vector<fs::path> dirs_;
 };
 
 TEST_F(FxHarness, AnOtherTargetLandingLightsTheTargetAndNotTheCaster) {
@@ -147,6 +193,91 @@ TEST_F(FxHarness, AnOtherTargetLandingLightsTheTargetAndNotTheCaster) {
     // puts thousands there (7,816 in the mutation check).
     EXPECT_LE(casterPeak, 400) << "the landing (or a half of it) is on the caster of an other-target cast";
     if (!HasFailure()) fs::remove_all(dir);
+}
+
+// B1144 (#464): a /disc is OP_CastSpell slot 10 -> OP_Action with NO
+// OP_BeginCast (B1134 leg P4b's pcap), and the official client plays a
+// record's Source from its begin-cast handler only (eqgame.exe 0x49b39d);
+// 4499 Defensive Discipline's record 326 has no Target stage, so no landing.
+// The observer drew no sprite (B1134 record 51). The harness's action-only
+// packets must therefore draw NOTHING: every frame equals the frame of a run
+// whose only cast lies past the end (no lit px beyond the two processes'
+// pre-cast noise).
+// RED on fb6d6481: B1105's 2 s action-only glow and the spellComplete half.
+TEST_F(FxHarness, ADisciplineWithoutBeginCastDrawsNothing) {
+    const fs::path disc = runPlan("disc", "0.5\t4499\tself\t0\t0\t60\taction\n", 3.0);
+    const fs::path none = runPlan("none", "100\t4499\tself\t0\t0\t60\taction\n", 3.0);
+    ASSERT_FALSE(disc.empty()) << "the /disc harness run failed";
+    ASSERT_FALSE(none.empty()) << "the reference harness run failed";
+    EXPECT_TRUE(slotRows(disc).empty()) << "a /disc drew a spellsnew.eff slot";
+    const Box whole{0, 0, 1279, 799};
+    // Two harness processes differ by 0-4 px at the caster's held orb from
+    // frame 0, before any packet (measured on 9d37d807: (662..667, 463..468),
+    // max channel delta 152..203, the idle cycle's period). A drawn Source or
+    // landing is thousands (93's Source above: 34,483 summed). The bound is
+    // that pre-cast noise, measured in the same two runs, plus 16 px.
+    int noise = 0;
+    for (int f = 0; f < 15; ++f) {
+        irr::video::IImage* a = load(frameAt(disc, f));
+        irr::video::IImage* b = load(frameAt(none, f));
+        ASSERT_NE(a, nullptr);
+        ASSERT_NE(b, nullptr);
+        noise = std::max({noise, lit(a, b, whole), lit(b, a, whole)});
+        a->drop();
+        b->drop();
+    }
+    int peak = 0;
+    for (int f = 15; f < 90; ++f) {  // Act-0.0 .. Act+2.5 s
+        irr::video::IImage* a = load(frameAt(disc, f));
+        irr::video::IImage* b = load(frameAt(none, f));
+        ASSERT_NE(a, nullptr);
+        ASSERT_NE(b, nullptr);
+        peak = std::max({peak, lit(a, b, whole), lit(b, a, whole)});
+        a->drop();
+        b->drop();
+    }
+    std::printf("[fx-gate] /disc 4499 (OP_Action only): peak lit px vs the no-cast run %d (pre-cast noise %d)\n",
+                peak, noise);
+    EXPECT_LE(peak, noise + 16) << "an OP_Action without OP_BeginCast drew something";
+    cleanDirs();
+}
+
+// B1144: a slot is drawn only if its minLevel <= the caster's level
+// (eqgame.exe 0x495cc3). 93 Burst of Flame draws record 80: Source LHAND +
+// RHAND at level 0 and DEFAULT at 39 / 24, Target four DEFAULT slots, two at
+// level 0. A level-1 caster draws only the level-0 slots; the lane-5 check of
+// the same cast at level 1 and 60 is review/B1144/README.md.
+TEST_F(FxHarness, ALevelOneCasterDrawsOnlyItsLevelZeroSlots) {
+    const fs::path l1 = runPlan("l1", "0.5\t93\tother\t14\t1500\t1\tbegincast\n", 2.5);
+    const fs::path l60 = runPlan("l60", "0.5\t93\tother\t14\t1500\t60\tbegincast\n", 2.5);
+    const fs::path none = runPlan("ref", "100\t93\tother\t14\t1500\t60\tbegincast\n", 2.5);
+    ASSERT_FALSE(l1.empty());
+    ASSERT_FALSE(l60.empty());
+    ASSERT_FALSE(none.empty());
+    EXPECT_EQ(slotRows(l1), (std::vector<std::string>{"Source:0", "Source:1", "Target:0", "Target:1"}));
+    EXPECT_EQ(slotRows(l60), (std::vector<std::string>{"Source:0", "Source:1", "Source:2", "Source:3",
+                                                       "Target:0", "Target:1", "Target:2", "Target:3"}));
+    // The Source during the cast (BC+0.6..Act): the level-1 caster's two hand
+    // slots light fewer caster pixels than the level-60 caster's four slots.
+    const auto scene = readScene(l1 / "scene.tsv");
+    ASSERT_EQ(scene.count("caster"), 1u);
+    long sum1 = 0, sum60 = 0;
+    for (int f = 33; f < 60; ++f) {
+        irr::video::IImage* r = load(frameAt(none, f));
+        irr::video::IImage* a = load(frameAt(l1, f));
+        irr::video::IImage* b = load(frameAt(l60, f));
+        ASSERT_TRUE(r && a && b) << f;
+        sum1 += lit(a, r, scene.at("caster"));
+        sum60 += lit(b, r, scene.at("caster"));
+        r->drop();
+        a->drop();
+        b->drop();
+    }
+    std::printf("[fx-gate] 93 Source, caster box lit px summed BC+0.6..Act: level 1 %ld, level 60 %ld\n", sum1,
+                sum60);
+    EXPECT_GT(sum1, 0) << "the level-1 caster's hand slots drew nothing";
+    EXPECT_LT(sum1, sum60) << "the level-1 caster drew as much Source as the level-60 caster";
+    cleanDirs();
 }
 
 }  // namespace

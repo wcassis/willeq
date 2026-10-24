@@ -151,11 +151,13 @@ struct ObserverHarness {
 };
 
 // Drive the production event-routing gate with events from real packet
-// dispatch; no Irrlicht device or renderer is needed.
+// dispatch; no Irrlicht device or renderer is needed. `creates` counts the
+// Sources the route starts, `releases` the OP_Action releases the FX body
+// issues (spell_cast_fx.cpp releases on every completion).
 struct GlowRouteProbe {
     eqt::bridge::CastGlowRoute route;
     int creates = 0;
-    int removes = 0;
+    int releases = 0;
 
     void Apply(const std::vector<eqt::state::GameEvent>& events) {
         for (const auto& event : events) {
@@ -164,16 +166,19 @@ struct GlowRouteProbe {
                 if (route.onBeginCast(d.casterId, d.spellId, d.castTimeMs)) ++creates;
             } else if (event.type == eqt::state::GameEventType::SpellCastVisualComplete) {
                 const auto& d = std::get<eqt::state::SpellCastVisualCompleteData>(event.data);
-                const auto decision = route.onComplete(d.casterId, d.spellId,
-                                                       d.isCastAnimation, d.isSuccess);
-                if (decision.remove) ++removes;
-                if (decision.create) ++creates;
+                route.onComplete(d.casterId, d.spellId, d.isSuccess);
+                ++releases;
             }
         }
     }
 };
 
-TEST(SpellImpactVisualProducer, ActionOnlyLocalCastCreatesOneSourceGlow) {
+// B1144 (#464): an OP_Action with no OP_BeginCast draws NO Source. The
+// official client plays a record's Source from its begin-cast handler only
+// (eqgame.exe 0x49b39d; cast_glow_route.h), and B1134's observer saw no
+// sprite for a real /disc (record 51). B1105 had armed a 2 s action-only
+// glow here; this test was its RED/GREEN pin and now pins the opposite.
+TEST(SpellImpactVisualProducer, ActionOnlyLocalCastCreatesNoSourceGlow) {
     ObserverHarness h;
     ASSERT_TRUE(h.Ready());
     ReplayZone(h.eq, HC_OP_Action,
@@ -182,16 +187,13 @@ TEST(SpellImpactVisualProducer, ActionOnlyLocalCastCreatesOneSourceGlow) {
                              kSpellEffectAction, kAnimationPacket));
     GlowRouteProbe probe;
     probe.Apply(h.bridge.drainEvents());
-    EXPECT_EQ(probe.creates, 1);
-    EXPECT_EQ(probe.removes, 1);  // pre-existing completion removal point
-
+    EXPECT_EQ(probe.creates, 0);
     ReplayZone(h.eq, HC_OP_Action,
                ActionPayload(kMySpawn, kMySpawn, 50,
                              static_cast<uint16_t>(kBurstOfFlame),
                              kSpellEffectAction, kLandedPacket));
     probe.Apply(h.bridge.drainEvents());
-    EXPECT_EQ(probe.creates, 1);
-    EXPECT_EQ(probe.removes, 1);  // the success repeat leaves the new glow alive
+    EXPECT_EQ(probe.creates, 0);
 }
 
 TEST(SpellImpactVisualProducer, BeginCastThenActionCreatesOneSourceGlow) {
@@ -205,7 +207,7 @@ TEST(SpellImpactVisualProducer, BeginCastThenActionCreatesOneSourceGlow) {
     GlowRouteProbe probe;
     probe.Apply(h.bridge.drainEvents());
     EXPECT_EQ(probe.creates, 1);
-    EXPECT_EQ(probe.removes, 1);  // BeginCast glow still ends on action
+    EXPECT_EQ(probe.releases, 1);  // the BeginCast Source is released on the action
 }
 
 TEST(SpellImpactVisualProducer, SuccessOnlyDoesNotCreateSourceGlow) {
@@ -228,31 +230,29 @@ TEST(SpellImpactVisualProducer, NpcBeginCastPathStillCreatesOnce) {
     GlowRouteProbe probe;
     probe.Apply(h.bridge.drainEvents());
     EXPECT_EQ(probe.creates, 1);
-    EXPECT_EQ(probe.removes, 1);
+    EXPECT_EQ(probe.releases, 1);
 }
 
-TEST(SpellImpactVisualProducer, RepeatedAnimationForSameCastDoesNotRecreateGlow) {
+TEST(SpellImpactVisualProducer, RepeatedBeginCastForSameCastDoesNotRecreateGlow) {
     ObserverHarness h;
     ASSERT_TRUE(h.Ready());
+    h.eq.GetSpellManager()->handleBeginCast(kRemoteCaster, kBurstOfFlame, 2500);
+    h.eq.GetSpellManager()->handleBeginCast(kRemoteCaster, kBurstOfFlame, 2500);
     h.Deliver(kAnimationPacket);
-    h.Deliver(kAnimationPacket);
+    h.Deliver(kAnimationPacket);  // another target copy
     GlowRouteProbe probe;
     probe.Apply(h.bridge.drainEvents());
     EXPECT_EQ(probe.creates, 1);
-    EXPECT_EQ(probe.removes, 1);
     h.Deliver(kLandedPacket);
-    h.Deliver(kAnimationPacket);  // another target copy after success
     probe.Apply(h.bridge.drainEvents());
-    EXPECT_EQ(probe.creates, 1);
     h.eq.GetSpellManager()->handleBeginCast(kRemoteCaster, kBurstOfFlame, 2500);
     probe.Apply(h.bridge.drainEvents());
-    EXPECT_EQ(probe.creates, 2);
+    EXPECT_EQ(probe.creates, 2) << "a BeginCast after the success repeat is a new cast";
 }
 
-// B1105 RED: an action-only local cast reaches the Complete arm, not Started.
-// Until that arm calls the Source-stage entry point, the packet cannot draw
-// the glow even though it carries the cast-animation flag and vocabulary.
-TEST(SpellImpactVisualProducer, LocalActionOnlyHasSourceStageRoute) {
+// B1144: the Complete arm (spell_cast_fx.cpp) never creates a Source, and both
+// arms pass the payload's slot-gate level to SpellVisualFX.
+TEST(SpellImpactVisualProducer, OnlyTheBeginCastArmCreatesASource) {
     ObserverHarness h;
     ASSERT_TRUE(h.Ready());
     ReplayZone(h.eq, HC_OP_Action,
@@ -262,7 +262,6 @@ TEST(SpellImpactVisualProducer, LocalActionOnlyHasSourceStageRoute) {
     auto events = h.Complete();
     ASSERT_EQ(events.size(), 1u);
     ASSERT_TRUE(events[0].isCastAnimation);
-    ASSERT_TRUE(events[0].isPlayerCast);
 
     std::ifstream source(std::string(WILLEQ_REPO_ROOT) +
                          "/src/client/bridge/irrlicht_bridge.cpp");
@@ -272,18 +271,69 @@ TEST(SpellImpactVisualProducer, LocalActionOnlyHasSourceStageRoute) {
     const auto end = body.find("case state::GameEventType::SpellCastVisualInterrupted:", begin);
     ASSERT_NE(begin, std::string::npos);
     ASSERT_NE(end, std::string::npos);
-    // B1138: the arm's FX half is ApplySpellCastCompleteFx (spell_cast_fx.cpp,
-    // shared with tools/model_viewer's FX harness); the action-only Source is
-    // armed there.
     EXPECT_NE(body.substr(begin, end - begin).find("ApplySpellCastCompleteFx("), std::string::npos);
     std::ifstream fxSource(std::string(WILLEQ_REPO_ROOT) + "/src/client/bridge/spell_cast_fx.cpp");
     ASSERT_TRUE(fxSource.good());
     const std::string fx(std::istreambuf_iterator<char>{fxSource}, {});
+    const auto sb = fx.find("void ApplySpellCastStartedFx(");
     const auto fb = fx.find("void ApplySpellCastCompleteFx(");
     const auto fe = fx.find("void ApplySpellCastInterruptedFx(", fb);
+    ASSERT_NE(sb, std::string::npos);
     ASSERT_NE(fb, std::string::npos);
     ASSERT_NE(fe, std::string::npos);
-    EXPECT_NE(fx.substr(fb, fe - fb).find("createCastGlow("), std::string::npos);
+    const std::string started = fx.substr(sb, fb - sb), complete = fx.substr(fb, fe - fb);
+    EXPECT_EQ(complete.find("createCastGlow("), std::string::npos)
+        << "an OP_Action must not create a Source (no BeginCast = no Source)";
+    EXPECT_NE(started.find("createCastGlow(d.casterId, d.spellId, d.castTimeMs, d.fxGateLevel)"),
+              std::string::npos);
+    EXPECT_NE(complete.find("createLanding(d.casterId, d.targetId, d.spellId, d.fxGateLevel)"),
+              std::string::npos);
+}
+
+// B1144 (#464): the payloads carry the level the client's spellsnew.eff slot
+// gate compares (eqgame 0x495cc3): the caster spawn's Spawn_Struct level
+// (@151) for a player, 1 for an NPC (@83 != 0) or an unknown caster.
+TEST(SpellImpactVisualProducer, ThePayloadsCarryTheCastersSlotGateLevel) {
+    ObserverHarness h;
+    ASSERT_TRUE(h.Ready());
+    constexpr uint16_t kPlayer = 600, kNpc = 601, kUnknown = 602;
+    ReplayZone(h.eq, HC_OP_NewSpawn, NewSpawnPayloadAt(kPlayer, "Otherplayer", 0, 15, 0, /*level=*/60,
+                                                       /*npc_type=*/0));
+    ReplayZone(h.eq, HC_OP_NewSpawn, NewSpawnPayloadAt(kNpc, "a_gnoll", 0, 25, 0, /*level=*/60,
+                                                       /*npc_type=*/1));
+    h.bridge.drainEvents();
+    for (uint16_t caster : {kPlayer, kNpc, kUnknown}) {
+        h.eq.GetSpellManager()->handleBeginCast(caster, kBurstOfFlame, 1500);
+        ReplayZone(h.eq, HC_OP_Action,
+                   ActionPayload(caster, caster, 60, static_cast<uint16_t>(kBurstOfFlame),
+                                 kSpellEffectAction, kAnimationPacket));
+    }
+    std::vector<int> started, complete;
+    for (const auto& e : h.bridge.drainEvents()) {
+        if (e.type == eqt::state::GameEventType::SpellCastVisualStarted)
+            started.push_back(std::get<eqt::state::SpellCastVisualStartedData>(e.data).fxGateLevel);
+        if (e.type == eqt::state::GameEventType::SpellCastVisualComplete)
+            complete.push_back(std::get<eqt::state::SpellCastVisualCompleteData>(e.data).fxGateLevel);
+    }
+    EXPECT_EQ(started, (std::vector<int>{60, 1, 1}));
+    EXPECT_EQ(complete, (std::vector<int>{60, 1, 1}));
+
+    // A level change of ANOTHER player reaches this client as OP_SpawnAppearance
+    // type 1 (AT_WhoLevel; the B1144 lane-5 pcap: spawn 259 type 1 value 60 to
+    // the observer after #level 60), which the official client writes to the
+    // spawn's level byte (eqgame.exe 0x45242f) -- the byte its gate reads.
+    ReplayZone(h.eq, HC_OP_SpawnAppearance, BuildPayload(10, [&](EQ::Net::DynamicPacket& p) {
+                   p.PutUInt16(2, kPlayer);
+                   p.PutUInt16(4, 1);
+                   p.PutUInt32(6, 24);
+               }));
+    h.bridge.drainEvents();
+    h.eq.GetSpellManager()->handleBeginCast(kPlayer, kBurstOfFlame, 1500);
+    int after = -1;
+    for (const auto& e : h.bridge.drainEvents())
+        if (e.type == eqt::state::GameEventType::SpellCastVisualStarted)
+            after = std::get<eqt::state::SpellCastVisualStartedData>(e.data).fxGateLevel;
+    EXPECT_EQ(after, 24) << "OP_SpawnAppearance AT_WhoLevel did not reach the caster's spawn level";
 }
 
 // The packet EVERY client in range receives must be the one that arms the

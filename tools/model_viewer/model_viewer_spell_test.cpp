@@ -173,7 +173,7 @@ void triggerSpellTestCast() {
               << getResistTypeName(spell->resist_type) << ")" << std::endl;
 
     placeHarnessTarget(spellTestSelfMode, harnessOpts.interactiveDistance);
-    harnessBeginCast(*spell, spellTestSelfMode, spell->cast_time_ms,
+    harnessBeginCast(*spell, spellTestSelfMode, spell->cast_time_ms, harnessOpts.casterLevel,
                      eqt::bridge::CastGlowRoute::Clock::now());
 }
 
@@ -183,7 +183,7 @@ void completeSpellTestCast() {
     const auto* spell = spellTestCurrentSpell;
     std::cout << "Cast complete: " << spell->name << std::endl;
 
-    harnessAction(*spell, spellTestSelfMode, eqt::bridge::CastGlowRoute::Clock::now());
+    harnessAction(*spell, spellTestSelfMode, harnessOpts.casterLevel, eqt::bridge::CastGlowRoute::Clock::now());
 
     // Play cast animation once, then return to idle
     if (animatedNode && useAnimatedMesh) {

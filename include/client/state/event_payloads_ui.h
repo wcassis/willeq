@@ -132,6 +132,10 @@ struct SpellCastVisualStartedData {
     // game thread's own SpellDatabase in SpellManager::handleBeginCast.
     // `known == false` means the id was not in the database.
     EQ::SpellVisualVocabulary spellVisual;
+    // B1144 (#464): the level the client's spellsnew.eff slot gate compares
+    // (eqgame 0x495cc3): the caster spawn's level, 1 for an NPC or a caster
+    // this client does not know (EQ::SpellsNewEffGateLevel).
+    int fxGateLevel = 1;
 };
 
 struct SpellCastVisualCompleteData {
@@ -156,6 +160,7 @@ struct SpellCastVisualCompleteData {
     // (createSpellComplete / createImpact) needs the same vocabulary, and a
     // cast can land without this client having seen its BeginCast.
     EQ::SpellVisualVocabulary spellVisual;
+    int fxGateLevel = 1;  // B1144: see SpellCastVisualStartedData
 };
 
 struct SpellCastVisualInterruptedData {

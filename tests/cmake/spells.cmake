@@ -281,6 +281,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_target_anchors DISCOVERY_TIMEOUT 120)
 
+# B1144 (#464): SpellVisualFX draws a spellsnew.eff record slot by slot (level
+# gate, anchor, attach point; no Target slot = no landing) on the shipped client
+# files. The seam needs graphics + GLES2; the reader half is
+# test_spells_new_eff_reader (database.cmake), which runs everywhere.
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(test_spell_slot_rules
+        test_spell_slot_rules.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_spell_slot_rules GTest::gtest_main willeq_core)
+    IF(IRRLICHT_LIBRARY)
+        TARGET_INCLUDE_DIRECTORIES(test_spell_slot_rules PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    ENDIF()
+    GTEST_DISCOVER_TESTS(test_spell_slot_rules DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B1137 (#457): the measured Source/Target row is chosen by the spell's
 # spellsnew.eff record (field 145), not its spells.eff record (field 123).
 # Config rows run everywhere; the SpellVisualFX key check needs graphics.
