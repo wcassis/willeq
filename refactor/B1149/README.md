@@ -109,33 +109,129 @@ this card and was not investigated.
 
 ### Verdicts
 
-- **Discs: met** -- RUN coverage 0.89..0.97 of the oracle's on all four, ends within 0.13 s (B1146: ~1/20).
-- **93 coverage vs lane +-3 %: NOT met, by construction.** The lane rows are fable's own draw with B1123's fitted
-  populations, the thing this card replaces; with the file's counts the harness reads +28 % over the lane mean and
-  -33 % under the oracle tour (5.847). 38 (same record 80) reads 3.873 against the oracle's 3.889 (-0.4 %).
-- **93 dying end within +-0.1 s of 4.938: NOT met** (4.500..4.633, -0.31..-0.44; also short of the oracle's
-  4.867). Measured cause: after the corpse cut at Act+4.536 only the caster's Source tail is left, and fable's
-  tail is far fainter than the oracle's -- lit px after the cut 956 -> 69 at Act+4.53..4.67 (r3 s1,
+Re-stated at the tip (b611c7ae, rbuild rc 0 on every targeted run) against `review/B1142/gate/regression_table.tsv`
+(the lane reference, "new" columns = unoccluded since B1142) and its oracle columns. The card's "four-capture
+mean 3.079" is not in the lane tables copied to this host -- the unoccluded capture B is 3.049 and that is what
+is cited; the other unoccluded 93 captures (Bon 2.942, G93 3.136, G93N 3.140, N93 2.990, `measure_*.log`) bracket
+it, so 3.049 is the lane number, not 2.938 (B1132's OLD rig).
+
+- **Discs: MET.** RUN coverage 0.89..0.97 of the oracle's on all four, ends within 0.13 s (B1146: ~1/20).
+- **93 landing coverage vs the lane 3.049 +/- 3 %: NOT met, by construction.** The lane rows are fable's draw
+  with B1123's fitted populations -- the thing this card replaces -- so the file's counts read higher: 5-seed
+  mean 3.896 (3.722..4.225), +28 % over the lane, -33 % under the oracle tour 5.847. Same record (80) as 38:
+  3.873 against the oracle's 3.889 (-0.4 %). Owner of the residual: the attach scale s (+0x6C), B1151-TRACE
+  (t_a6d12b79) -- the oracle's 5.847 vs the harness 3.896 is the per-sprite diameter, not the count.
+- **93 dying end within +/- 0.1 s of the lane 4.898: NOT met** (4.500..4.633, -0.27..-0.40; also short of the
+  oracle's 4.867). Measured cause: after the corpse cut at Act+4.536 only the caster's Source tail is left, and
+  fable's tail is far fainter than the oracle's -- lit px after the cut 956 -> 69 at Act+4.53..4.67 (r3 s1,
   `runs/r3_93_die_s1/measure/fable_93/lit80.tsv`) against the oracle's 8,330 at Act+4.71 and 1,095 at 4.87
-  (B1145 sec. 5a). Separately, the caster's Source box ends 0.23 s after its emission stops (Act+4.10 -> 4.333),
-  where the oracle's Dark Elf female ends 0.66 s after (B1148 leg C1: 4.10 -> Act+4.764). The file's own counts
-  and alpha (276 fades from birth: +0x94 1.2 s > its 1 s life) leave fewer lit pixels per sprite than the oracle
-  shows; the word/rule fable lacks that scales a sprite is the +0x6C attach scale s (below). Not tuned.
-  Before the B1148 rebase (term 4.35) the same populations read 4.800..4.900 (met against 4.867/4.898).
-- **93 live end 6.433** (card 6.5; B1130 alive 6.67). 253 +7.583 vs oracle 6.522 (base +8.117); 458 +5.433 vs
-  4.942 (base +5.833).
-- **ROI p90: NOT met** on 11 of 14 rows (all short, 0.5..0.97 of the band's low edge; 54/656 Source and 656
-  landing in band). The quads are the file's world sizes at s = 1. Missing rule: the client's attach scale for
-  +0x6C (s = actor +0x10 x the root actor's +0x64 sub-object float +0x60; getter 0x1016bd90 = sub-object vtable
-  +0x3C, exposed as actor vtbl +0x84/+0xA0; setter 0x1016be70 = sub-object vtable +0x54 (vtable 0x101cea98), not
-  exposed through the actor vtable; its caller -- and the value eqgame gives a player model -- was NOT traced).
-  Also not wired and possibly in the lit diameter: the texture frame animation (+0x130/+0x134, B1151; fable plays
-  one cycle per life) and the atlas' 32 px cells.
-- **The 40 records:** sec. 6.
+  (B1145 sec. 5a). Separately the caster's Source box ends 0.23 s after its emission stops (Act+4.10 -> 4.333)
+  where the oracle's Dark Elf female ends 0.66 s after (B1148 leg C1: 4.10 -> Act+4.764). Owner: the per-sprite
+  Source tail -- the +0x6C attach scale (B1151-TRACE, t_a6d12b79). Not tuned.
+- **93 live end 6.433** (card 6.5; B1130 alive 6.67; lane B1145 6.467) -- within the file's own life, no lane
+  row to beat; reported.
+- **ROI p90: NOT met** on 11 of 14 rows (54/656 Source and 656 landing in band; 41's Source in band but its
+  landing 0.084 short of 0.086). The quads are the file's world sizes at s = 1. Owner: the client's attach
+  scale for +0x6C (B1151-TRACE, t_a6d12b79) -- s = actor +0x10 x the root actor's +0x64 sub-object float +0x60
+  (getter 0x1016bd90, setter 0x1016be70, neither exposed through the actor vtable; its eqgame caller -- and
+  the value a player model gets -- was NOT traced). Also unwired and possibly in the lit diameter: the
+  texture frame animation (+0x130/+0x134, B1151; fable plays one cycle per life) and the atlas' 32 px cells.
+- **253 self 9.465 vs lane 5.028 / oracle 7.281; end +7.583 vs oracle 6.522; 458 0.612 vs 1.242; end +5.433 vs
+  4.942** (base +5.833): reported, the pool and the file's counts (sec. 4) are the mechanism, owner B1151-TRACE
+  (sizes) / the record's own stream end (the +0x78 run per B1145).
+- **The 40 records: sec. 6** -- 40 rows, no `missing`, medians source ratio 1.21 / landing ratio 0.64 / end
+  delta -0.12 s; the outlier clusters name the attach-scale (B1151-TRACE), frame-animation (B1151) and shape
+  (B1150) mechanisms, no new theories.
+
+### What this leaves for B1150-B1153
+
+1. **B1151-TRACE (t_a6d12b79, in parallel):** the +0x6C attach scale s -- the ROI gate (11/14 tour rows short)
+   and the 93 dying-end Source tail both wait on it.
+2. **B1151:** texture frame animation (+0x130/+0x134), sprite modes 1/2, spin -- the rows where roi_l reads
+   above the file's p90 (373/310/313/3) are its absence; also the 32 px atlas cells on the large sprites.
+3. **B1150:** shapes/offsets (+0x19C) -- decide the lit shape and part of the coverage the attach scale does not.
+4. **B1153:** retire the spellOverrides' rate/size/lifetime/alpha keys for the six spells that have records
+   (38/41/54/253/458/656).
 
 ## 6. The 40 records (`review/B1149/sweep_table.tsv`)
 
-SWEEP_PLACEHOLDER
+`scripts/sweep_table.py` over the 2026-10-24 23:48Z re-run (40 rows, no `missing`; the instruments' geometry
+differs as the script's header says -- B1130 fixed_npc vs the harness tour -- so the ratios are reported, not
+banded). Harness = `--camera b1118` unoccluded, pool 8192, caster level 60. Oracle = review/B1130's fixed-capture
+columns (source_cov / landing_cov / landing_end_s / sprite p90); roi_* = the harness's measured sprite diameter.
+
+| row | spell | src cov oracle/harness (ratio) | land cov oracle/harness (ratio) | end oracle/harness (delta s) | p90 src oracle/roi | p90 land oracle/roi |
+|---|---|---|---|---|---|---|
+| 0 | 93 | 0.170 / 0.224 (1.32) | 3.945 / 4.233 (1.07) | +6.67 / +6.433 (−0.24) | 0.087 / 0.044 | 0.061 / 0.040 |
+| 1 | 200 | 0.290 / 0.237 (0.82) | 3.050 / 1.598 (0.52) | +6.58 / +6.433 (−0.15) | 0.061 / 0.068 | 0.112 / 0.086 |
+| 2 | 202 | 0.147 / 0.149 (1.01) | 2.250 / 0.865 (0.38) | +5.48 / +4.933 (−0.55) | 0.077 / 0.057 | 0.117 / 0.093 |
+| 3 | 377 | 0.076 / 0.052 (0.68) | 11.688 / 8.053 (0.69) | +9.00 / +6.400 (−2.60) | 0.065 / 0.048 | 0.043 / 2.196 |
+| 4 | 50 | 1.349 / 2.598 (1.93) | 3.250 / 3.297 (1.01) | +6.78 / +6.533 (−0.25) | 0.187 / 0.234 | 0.139 / 0.148 |
+| 5 | 80 | 0.180 / 0.134 (0.74) | 0.559 / 0.224 (0.40) | +4.53 / +4.300 (−0.23) | 0.040 / 0.034 | 0.042 / 0.038 |
+| 6 | 722 | 0.380 / 0.372 (0.98) | 0.762 / 0.809 (1.06) | +6.26 / +6.433 (+0.17) | 0.112 / 0.099 | 0.097 / 0.105 |
+| 7 | 40 | 0.390 / 0.444 (1.14) | 3.077 / 2.603 (0.85) | +6.81 / +6.667 (−0.14) | 0.238 / 0.083 | 0.102 / 0.104 |
+| 8 | 346 | 0.439 / 0.562 (1.28) | 6.271 / 3.397 (0.54) | +3.78 / +3.867 (+0.09) | 0.052 / 0.040 | 0.048 / 0.044 |
+| 9 | 375 | 0.861 / 0.699 (0.81) | 1.999 / 1.338 (0.67) | +7.64 / +7.533 (−0.11) | 0.044 / 0.039 | 0.038 / 0.036 |
+| 10 | 590 | 1.322 / 1.325 (1.00) | 5.476 / 4.500 (0.82) | +5.72 / +6.900 (+1.18) | 0.189 / 0.115 | 0.101 / 0.113 |
+| 11 | 285 | 0.115 / 0.103 (0.90) | 0.997 / 0.520 (0.52) | +5.51 / +5.533 (+0.02) | 0.051 / 0.043 | 0.058 / 0.052 |
+| 12 | 208 | 1.096 / 1.331 (1.21) | 5.788 / 4.346 (0.75) | +7.04 / +7.800 (+0.76) | 0.106 / 0.107 | 0.107 / 0.174 |
+| 13 | 209 | 0.296 / 0.685 (2.31) | 3.264 / 2.211 (0.68) | +6.39 / +6.267 (−0.12) | 0.086 / 0.105 | 0.108 / 0.113 |
+| 14 | 373 | 0.083 / 0.060 (0.72) | 3.995 / 5.278 (1.32) | +8.60 / +8.467 (−0.13) | 0.066 / 0.063 | 0.135 / 1.750 |
+| 15 | 289 | 0.806 / 0.767 (0.95) | 2.904 / 1.250 (0.43) | +6.57 / +6.333 (−0.24) | 0.124 / 0.077 | 0.065 / 0.033 |
+| 16 | 242 | 0.169 / 0.570 (3.37) | 1.343 / 0.842 (0.63) | +5.70 / +5.500 (−0.20) | 0.105 / 0.103 | 0.076 / 0.030 |
+| 17 | 237 | 0.663 / 0.803 (1.21) | 3.655 / 2.317 (0.63) | +5.16 / +4.767 (−0.39) | 0.119 / 0.086 | 0.097 / 0.080 |
+| 18 | 378 | 0.296 / 0.303 (1.02) | 4.042 / 1.759 (0.44) | +5.36 / +5.300 (−0.06) | 0.128 / 0.080 | 0.132 / 0.153 |
+| 19 | 359 | 1.325 / 1.164 (0.88) | 2.332 / 1.505 (0.65) | +5.58 / +5.500 (−0.08) | 0.049 / 0.041 | 0.037 / 0.032 |
+| 20 | 341 | 0.631 / 1.054 (1.67) | 4.679 / 2.771 (0.59) | +6.26 / +6.133 (−0.13) | 0.113 / 0.106 | 0.107 / 0.083 |
+| 21 | 218 | 0.825 / 1.050 (1.27) | 5.976 / 4.246 (0.71) | +5.90 / +5.700 (−0.20) | 0.066 / 0.064 | 0.068 / 0.071 |
+| 22 | 201 | 0.256 / 0.348 (1.36) | 4.636 / 2.708 (0.58) | +4.83 / +4.667 (−0.16) | 0.039 / 0.051 | 0.040 / 0.041 |
+| 23 | 372 | 0.429 / 0.410 (0.96) | 2.320 / 0.873 (0.38) | +6.48 / +6.400 (−0.08) | 0.029 / 0.032 | 0.052 / 0.031 |
+| 24 | 348 | 0.703 / 1.037 (1.48) | 3.839 / 2.191 (0.57) | +6.40 / +6.350 (−0.05) | 0.059 / 0.065 | 0.100 / 0.089 |
+| 25 | 14 | 0.284 / 0.388 (1.37) | 4.847 / 3.091 (0.64) | +6.64 / +6.467 (−0.17) | 0.165 / 0.118 | 0.092 / 0.058 |
+| 26 | 310 | 0.405 / 0.618 (1.53) | 8.003 / 7.139 (0.89) | +5.05 / +5.233 (+0.18) | 0.094 / 0.095 | 0.038 / 1.977 |
+| 27 | 290 | 0.179 / 0.198 (1.11) | 0.747 / 0.492 (0.66) | +6.55 / +6.700 (+0.15) | 0.072 / 0.055 | 0.037 / 0.028 |
+| 28 | 73 | 0.612 / 1.129 (1.84) | 2.332 / 1.421 (0.61) | +7.62 / +6.300 (−1.32) | 0.137 / 0.162 | 0.115 / 0.125 |
+| 29 | 286 | 0.148 / 0.218 (1.47) | 2.033 / 1.052 (0.52) | +7.34 / +7.467 (+0.13) | 0.097 / 0.077 | 0.114 / 0.112 |
+| 30 | 231 | 0.074 / 0.092 (1.24) | 5.939 / 2.938 (0.49) | +6.65 / +6.300 (−0.35) | 0.060 / 0.050 | 0.060 / 0.096 |
+| 31 | 313 | 0.887 / 0.843 (0.95) | 3.668 / 4.566 (1.24) | +6.32 / +6.217 (−0.10) | 0.174 / 0.075 | 0.194 / 1.911 |
+| 32 | 374 | 0.535 / 0.874 (1.63) | 6.547 / 5.157 (0.79) | +8.80 / +7.850 (−0.95) | 0.066 / 0.042 | 0.035 / 0.043 |
+| 33 | 382 | 0.051 / 0.048 (0.94) | 2.522 / 0.588 (0.23) | +5.26 / +5.550 (+0.29) | 0.045 / 0.040 | 0.072 / 0.056 |
+| 34 | 340 | 0.435 / 0.497 (1.14) | 3.285 / 1.900 (0.58) | +7.15 / +7.033 (−0.12) | 0.093 / 0.091 | 0.103 / 0.077 |
+| 35 | 253 | 1.142 / 6.803 (5.96) | 7.283 / 9.454 (1.30) | +6.95 / +7.450 (+0.50) | 0.158 / 0.117 | 0.080 / 0.068 |
+| 40 | 602 | 1.353 / 1.537 (1.14) | 0.157 / 1.533 (9.76) | +0.73 / +4.167 (+3.44) | 0.149 / 0.188 | − / 0.076 |
+| 41 | 703 | 0.150 / 0.191 (1.27) | 1.892 / 0.852 (0.45) | +2.75 / +5.567 (+2.82) | 0.074 / 0.075 | 0.167 / 0.144 |
+| 42 | 700 | 0.077 / 0.104 (1.35) | 0.686 / 0.309 (0.45) | +5.49 / +5.367 (−0.12) | 0.064 / 0.099 | 0.074 / 0.131 |
+| 43 | 720 | 0.196 / 0.412 (2.10) | 1.176 / 0.885 (0.75) | +4.43 / +5.633 (+1.20) | 0.090 / 0.046 | 0.126 / 0.068 |
+
+Medians (n 40): source coverage ratio **1.21** (p25..p75 0.95..1.48); landing coverage ratio **0.64**
+(0.52..0.81); landing end harness − oracle **−0.12 s** (−0.22..0.14). Rows 36-39 are not in
+review/B1130/record_table.tsv (the 40 sweep plans come from its 41 records minus record 51), so the table has
+40 rows with gaps there; every row present has all columns filled.
+
+Outlier clusters, mechanisms from this README's own sections (no new theories):
+
+- **Source ratio > 2: 209 (2.31, undead-target), 242 (3.37, single), 720 (2.10, self), 253 (5.96, single).**
+  The harness draws the Source at the caster (char 67's Dark Elf female, B1148) and B1130 at its own fixed
+  rig, so the ratio is a caster/rig difference, not a rule change; 720/253 additionally read the pool rule in
+  sec. 4 (253's class-level peak 4914 > sbc 4096, inside desktop 8192 -- not clamped in this sweep).
+- **Landing ratio < 0.5: 382 (0.23), 202 (0.38), 372 (0.38), 80 (0.40), 289 (0.43), 378 (0.44), 703 (0.45),
+  700 (0.45), 231 (0.49)** -- the harness landing lands below the oracle's on small-sprite single-targets and
+  PBAE/othered records; the same +0x6C attach-scale s (sec. 5) and the unwired texture frame animation
+  (B1151) that hold the tour's ROI rows short (sec. 5) hold these too, plus B1130's own box vs the tour's
+  geometry. **602 (9.76, end +3.44 s)** is the group-teleport record: B1130's oracle landing is the
+  teleport's near-zero p90 (0.157, roi --), the harness draws the record's full landing -- a geometry
+  difference, not a rule.
+- **|d_end| > 1: 377 (−2.60), 73 (−1.32), 703 (+2.82), 720 (+1.20), 590 (+1.18), 602 (+3.44).** 602 is the
+  group-teleport row above (oracle end +0.73 s is the teleport flash, not the record's run). 703/720
+  (PBAE/self): B1130's fixed-capture box stopped before the record's full run (the +0x8C delay + +0x78 run
+  per B1145 extends past it). 377/73 (targeted-AE) short by ~1.3-2.6 s: the oracle's box stays lit by the
+  per-sprite Source tail past the file's end (the +0x6C attach scale, sec. 5, keeps the oracle's sprites
+  larger than the harness's s=1 quads longer). 590 (self) runs +1.18 s long: its file's end is the stream's
+  own run, which the fixed capture stopped earlier.
+- **ROI p90 vs the file's world size:** roi_l short of its p90 on 6 of 39 rows and roi_s on 8 (93 0.51, 40 0.35,
+  590 0.61, 289 0.62, 378 0.62, 313 0.43, 374 0.64, 720 0.51) -- the same +0x6C attach-scale s missing rule as
+  sec. 5; a handful of rows read roi_l > p90_l (373 1.75, 310 1.98, 313 1.91, 3 2.20) where the sprite's
+  grow/shape (+0x130 frames, B1151; shapes +0x19C, B1150) magnify past the p90 the oracle box caught.
 
 ## 7. Tests
 
