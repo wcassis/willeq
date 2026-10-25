@@ -1,3 +1,25 @@
-leg	spell	travel	rec	middle_edd	middle_name	middle_minLvl	middle_anchor	middle_life_s	bc1_v	act1_v	death1_v
-M1_38	Lightning Bolt	3	80	279	SFofSeukor_S2-1	0	2	0.250	470.285	472.817	472.817
-M2_54	Frost Bolt	3	82	-	-	-	-	-	456.133	457.175	-
+# B1152 missile_oracle.tsv — per-leg cast/act/death + flight/Middle/arrival, with video frame indices.
+#
+# fps = 30  (ffprobe r_frame_rate=30/1 on BOTH m1_rig38/video.mp4 and m2_rig54/video.mp4;
+#            the calibration file's marker_frame is the 10 Hz t0 marker, NOT the video fps).
+# t_video = (event epoch - calibrated_t0), seconds   [all-opcodes.tsv + video.calibration.tsv]
+# frame   = round(t_video * fps)                     [frame index into the 30 fps video.mp4]
+#
+# Column provenance (each value traceable to a stated formula):
+#   bc1_v/act1_v/death1_v  = OP_BeginCast / OP_Action / OP_Death ticks, video-relative
+#                            (exact; re-derive from all-opcodes.tsv + video.calibration.tsv).
+#   *_frame                = round(_v * 30).
+#   flight_start/end       = first / last video frame the in-flight missile is visible in the
+#                            caster<->target gap (per-frame brightness census of video.mp4,
+#                            deep-gap box x660-760 y440-620, >=180 grayscale, pre-cast baseline).
+#   middle_onset           = flight_start (the visible missile IS the Middle emitter).
+#   middle_end             = middle_onset + middle_life_s  (M1 edd 279 life = 0.250 s).
+#   arrival_onset          = first video frame the target impact burst is visible (per-frame
+#                            census; the Target-stage emitters). The server-authoritative
+#                            resolution is act1_v (OP_Action), which precedes the visible
+#                            burst by render latency.
+#   M2 (spell 54, record 82, 0 Middle stages): no in-flight missile and no Middle stage, so
+#   flight_* and middle_* are "-"; its only gap event is the arrival frost burst at the target.
+leg	spell	travel	rec	middle_edd	middle_name	middle_minLvl	middle_anchor	middle_life_s	bc1_v	bc1_frame	act1_v	act1_frame	death1_v	death1_frame	flight_start_v	flight_start_frame	flight_end_v	flight_end_frame	middle_onset_v	middle_onset_frame	middle_end_v	middle_end_frame	arrival_onset_v	arrival_onset_frame
+M1_38	Lightning Bolt	3	80	279	SFofSeukor_S2-1	0	2	0.250	470.285	14109	472.817	14185	472.817	14185	472.333	14170	472.633	14179	472.333	14170	472.583	14177	472.933	14188
+M2_54	Frost Bolt	3	82	-	-	-	-	-	456.133	13684	457.175	13715	-	-	-	-	-	-	-	-	-	-	457.633	13729
