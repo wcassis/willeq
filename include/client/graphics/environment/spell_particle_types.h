@@ -4,6 +4,7 @@
 #include "spell_effects_config.h"
 #include "client/spell/spells_new_edd_colour.h"
 #include "client/spell/spell_fx_timing.h"
+#include "client/spell/spells_new_edd_reader.h"
 #include <vector>
 #include <string>
 #include <cstdint>
@@ -149,47 +150,41 @@ namespace SpellPresets {
     // peak, additive (+0x68) blended SRC_ALPHA, ONE. An ACTIVE region's
     // particle takes the RGB; with `clientAlpha` also that alpha and blend.
     //
-    // Production passes clientAlpha = false (review/B1146/README.md): the
-    // client's alpha belongs to the client's own particle counts, sizes and
-    // lifetimes, and fable's emitters are measured rows fitted to the
-    // style's alpha and ONE, ONE. On those rows it left the discipline
-    // records 1/20 of the oracle's lit pixels while their white sibling kept
-    // its brightness; the RGB alone puts all four on the oracle's hue at the
-    // white sibling's brightness.
+    // B1149 (#469): production passes clientAlpha = true for every
+    // spellsnew.eff emitter (the per-slot emitters carry the client's own
+    // counts, sizes and lifetimes), and with it EVERY region is active, white
+    // ones too: a spellsnew.eff particle never draws the style's alpha ramp
+    // or its ONE, ONE blend. clientAlpha = false keeps B1146's RGB-only
+    // setting (white inactive), for tests.
     //
-    // A white emitter (both triples 255) stays inactive and draws exactly as
-    // before; so does every region when `colours` is empty or its count
+    // Every region stays inactive when `colours` is empty or its count
     // differs from the regions the stage installed (no texture/colour
     // pairing to trust).
     void applyStageEmitterColours(SpellEffectDef& def,
                                   const std::vector<EQ::SpellsNewEddColour>& colours,
-                                  bool clientAlpha = false);
+                                  bool clientAlpha = true);
 
-    // B1145 (#465): one spellsnew.eff slot's TIMING, from its spellsnew.edd
-    // emitter (EQ::SpellFxSlotTiming, include/client/spell/spell_fx_timing.h),
-    // installed on every emitter of `def` (a definition built for that slot):
-    //   - the emitter starts `stageLatency` + the slot's +0x8C delay after the
-    //     effect is created (stageLatency: the stage's measured delay from the
-    //     packet to the first particle, SpellEffectsConfig);
-    //   - it emits for the slot's window (run - delay), then stops;
-    //   - every particle lives the slot's +0x7C lifetime L. The motion is
-    //     time-scaled by (old mean life / L) so a particle still covers the
-    //     measured row's extent in its life (shapes and motion are B1147's);
-    //   - the emission ENVELOPE is the file's: a burst (+0x80) then a steady
-    //     stream (+0x84 x +0x88), scaled so the slot's most-alive count equals
-    //     what the definition peaked at before (the B1144 share of the B1123
-    //     population: counts are B1147's).
+    // B1149 (#469): one spellsnew.eff slot drawn from its spellsnew.edd
+    // emitter, over the definitions that carry the slot's (still measured)
+    // geometry -- one for a Source slot (two for a head row's disc and
+    // column), the spellComplete + impact halves for a landing slot:
+    //   - timing (B1145): every emitter starts `stageLatency` + the slot's
+    //     +0x8C delay after the effect is created, emits for the slot's window
+    //     (run - delay), and each particle lives the slot's +0x7C lifetime L
+    //     (the motion time-scaled by old mean life / L so a particle still
+    //     covers the measured extent in its life; motion is B1151's);
+    //   - population: the FILE's -- the burst (+0x80) on the first frame,
+    //     then +0x84 particles per tick at +0x88 ticks/s (EmitterConfig::
+    //     ticksPerSecond / tickParticles), divided over the definitions'
+    //     emitters in the ratio of their measured peaks (the geometry split
+    //     the row was measured with), so the slot as a whole emits exactly
+    //     the file's count;
+    //   - sprite: when `sprite` is given, the file's width/height ranges times
+    //     +0x16C (and `attachScale` when +0x6C is set), grow-in/shrink-out,
+    //     drawn as world-unit quads (EmitterConfig::eddSprite).
     // A slot that emits nothing (window < 0, or L <= 0) gets no particles.
-    void applySlotTiming(SpellEffectDef& def, const EQ::SpellFxSlotTiming& timing, float stageLatency);
-    // B1145: the most sprites alive at once over every emitter of `defs`,
-    // each from its trigger (spell_population_model.h's expected counts).
-    float CombinedPeakLive(const std::vector<const SpellEffectDef*>& defs);
-    // B1145: scale every emitter's burst and rates so the stage's combined
-    // peak is `targetPeak` -- the stage's slots no longer peak together once
-    // each runs its own timing, and the B1123 population rule (a landing
-    // peaks at half the pool, a Source at its record's rate) is on the
-    // stage, not on each slot.
-    void ScaleToCombinedPeak(const std::vector<SpellEffectDef*>& defs, float targetPeak);
+    void applySlotEmitter(const std::vector<SpellEffectDef*>& slotDefs, const EQ::SpellFxSlotTiming& timing,
+                          const EQ::SpellsNewEddSprite* sprite, float stageLatency, float attachScale = 1.0f);
 }
 
 } // namespace Environment

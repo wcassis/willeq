@@ -15,9 +15,10 @@
 // Pinned here: the decode (synthetic entry and the shipped file), the alpha
 // formula, the preset that installs a stage's words per texture region, and
 // the particle path (SimulationWorker::computeOnce): an active region's
-// particle carries the interpolated RGB over the style's alpha (shipped), or
-// with clientAlpha also the client's fade x peak and its blend; a WHITE
-// emitter's particle is exactly what it was before B1146.
+// particle carries the interpolated RGB and, on the client's alpha (shipped
+// since B1149), the client's fade x peak and its blend, white emitters too;
+// RGB-only (B1146's setting) keeps the style's alpha and a white emitter's
+// particle exactly as the style draws it.
 
 #include <gtest/gtest.h>
 
@@ -178,15 +179,16 @@ TEST(SpellEddColourPresets, EachRegionTakesItsEmittersWordsAndWhiteStaysInactive
     EXPECT_EQ(def.emitters[0].config.colorStart, glm::vec4(1.0f, 1.0f, 1.0f, 0.8f));
     SpellPresets::applyStageEmitterColours(
         def, {colour(255, 0, 0, 255, 0, 0, true, 0.5f), colour(255, 255, 255, 255, 255, 255, true, 1.0f),
-              colour(0, 255, 0, 0, 0, 255, false, 0.1f, 0.5f, 0.25f)});
+              colour(0, 255, 0, 0, 0, 255, false, 0.1f, 0.5f, 0.25f)},
+        /*clientAlpha=*/false);
     const EmitterConfig& c = def.emitters[0].config;
     ASSERT_EQ(c.textureRegionCount, 3);
     EXPECT_TRUE(c.regionColours[0].active);
-    EXPECT_FALSE(c.regionColours[0].clientAlpha) << "production keeps the style's alpha";
+    EXPECT_FALSE(c.regionColours[0].clientAlpha) << "RGB-only (B1146's setting, now test-only)";
     EXPECT_EQ(c.regionColours[0].start, glm::vec3(1.0f, 0.0f, 0.0f));
     EXPECT_TRUE(c.regionColours[0].additive);
     EXPECT_FLOAT_EQ(c.regionColours[0].peakOpacity, 0.5f);
-    EXPECT_FALSE(c.regionColours[1].active) << "a white emitter keeps today's draw";
+    EXPECT_FALSE(c.regionColours[1].active) << "RGB-only: a white emitter keeps the style's draw";
     EXPECT_TRUE(c.regionColours[2].active);
     EXPECT_FALSE(c.regionColours[2].additive);
     EXPECT_EQ(c.regionColours[2].end, glm::vec3(0.0f, 0.0f, 1.0f));
@@ -199,6 +201,17 @@ TEST(SpellEddColourPresets, EachRegionTakesItsEmittersWordsAndWhiteStaysInactive
     SpellPresets::applyStageSpriteNames(other, {"glowflare02.tga", "glowflare02.tga"});
     SpellPresets::applyStageEmitterColours(other, {colour(255, 0, 0, 255, 0, 0, true, 0.5f)});
     for (const auto& rc : other.emitters[0].config.regionColours) EXPECT_FALSE(rc.active);
+
+    // B1149 (#469): the production default is the client's alpha, and with it
+    // every region is the client's, white included.
+    SpellEffectDef prod = oneEmitter();
+    SpellPresets::applyStageSpriteNames(prod, {"glowflare02.tga", "glowflare02.tga"});
+    SpellPresets::applyStageEmitterColours(
+        prod, {colour(255, 0, 0, 255, 0, 0, true, 0.5f), colour(255, 255, 255, 255, 255, 255, true, 1.0f)});
+    for (int k = 0; k < 2; ++k) {
+        EXPECT_TRUE(prod.emitters[0].config.regionColours[k].active) << k;
+        EXPECT_TRUE(prod.emitters[0].config.regionColours[k].clientAlpha) << k;
+    }
 
     // Re-installing a stage's sprites clears the previous stage's words.
     SpellPresets::applyStageSpriteNames(def, {"glowflare02.tga"});
@@ -243,12 +256,13 @@ SpellEffectDef burstDef() {
     return def;
 }
 
-// The shipped setting: the colour words' RGB over the style's alpha and blend.
+// B1146's RGB-only setting (test-only since B1149): the colour words' RGB over
+// the style's alpha and blend.
 TEST(SpellEddColourParticles, AnActiveRegionDrawsTheInterpolatedColourOverTheStylesAlpha) {
     SpellEffectDef plain = burstDef();
     SpellEffectDef def = burstDef();
     SpellPresets::applyStageEmitterColours(
-        def, {colour(255, 0, 0, 0, 0, 255, false, 0.5f, 0.0f, 0.4f)});
+        def, {colour(255, 0, 0, 0, 0, 255, false, 0.5f, 0.0f, 0.4f)}, /*clientAlpha=*/false);
     const auto a = burst(plain, 31);
     const auto b = burst(def, 31);
     ASSERT_EQ(a.size(), b.size());
@@ -297,23 +311,31 @@ TEST(SpellEddColourParticles, OnTheClientsAlphaTheParticleTakesFadeTimesPeakAndT
     }
 }
 
-TEST(SpellEddColourParticles, AWhiteEmitterDrawsExactlyAsBefore) {
+// B1149 (#469): on the client's alpha a WHITE emitter is the client's too: its
+// particles keep the white texel colour (vertex RGB 1,1,1) and take the
+// client's fade x peak and blend, never the style's alpha ramp. RGB-only
+// (clientAlpha false) leaves a white emitter exactly as the style draws it.
+TEST(SpellEddColourParticles, AWhiteEmitterIsOnTheClientsAlphaToo) {
     SpellEffectDef plain = burstDef();
     SpellEffectDef white = burstDef();
-    SpellPresets::applyStageEmitterColours(white, {colour(255, 255, 255, 255, 255, 255, true, 0.5f)},
-                                           /*clientAlpha=*/true);
-    const auto a = burst(plain, 31);
+    SpellPresets::applyStageEmitterColours(white, {colour(255, 255, 255, 255, 255, 255, true, 0.5f)});
     const auto b = burst(white, 31);
-    ASSERT_EQ(a.size(), b.size());
-    ASSERT_FALSE(a.empty());
+    ASSERT_FALSE(b.empty());
+    for (const auto& p : b) {
+        EXPECT_TRUE(p.hasEddColour());
+        EXPECT_EQ(glm::vec3(p.color), glm::vec3(1.0f));
+        EXPECT_FLOAT_EQ(p.color.a, 0.5f) << "the peak, not the style's 0.8 -> 0 ramp";
+    }
+    SpellEffectDef rgbOnly = burstDef();
+    SpellPresets::applyStageEmitterColours(rgbOnly, {colour(255, 255, 255, 255, 255, 255, true, 0.5f)},
+                                           /*clientAlpha=*/false);
+    const auto a = burst(plain, 31);
+    const auto c = burst(rgbOnly, 31);
+    ASSERT_EQ(a.size(), c.size());
     for (size_t i = 0; i < a.size(); ++i) {
-        EXPECT_FALSE(b[i].hasEddColour());
-        EXPECT_EQ(a[i].color, b[i].color);
-        EXPECT_EQ(a[i].position, b[i].position);
-        EXPECT_EQ(a[i].textureIndex, b[i].textureIndex);
-        EXPECT_EQ(a[i].flags, b[i].flags);
-        // The style's colour and fade, untouched.
-        EXPECT_EQ(glm::vec3(b[i].color), glm::vec3(0.2f, 0.4f, 0.6f));
+        EXPECT_FALSE(c[i].hasEddColour());
+        EXPECT_EQ(a[i].color, c[i].color);
+        EXPECT_EQ(a[i].flags, c[i].flags);
     }
 }
 

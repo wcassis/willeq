@@ -17,14 +17,20 @@ level gate, the anchor and the attach point, Source only from a begin-cast, Midd
 path yet), no landing without a Target slot (`SpellVisualFX::stageSlots`, `refactor/B1144/README.md`).
 Of the EDD entry it reads the texture, the frame count and, since B1146, the colour words +0x68, +0x90,
 +0x94, +0xA4 and +0xD4..+0xE8 (`include/client/spell/spells_new_edd_colour.h`, applied per texture
-region by `SpellPresets::applyStageEmitterColours()`: the RGB is drawn, the alpha and blend words wait
-behind its `clientAlpha`, `refactor/B1146/README.md`). Since B1145 (#465) the EDD is read by ONE reader,
+region by `SpellPresets::applyStageEmitterColours()`; since B1149 the alpha and blend words too, on every
+spellsnew.eff emitter, white included). Since B1145 (#465) the EDD is read by ONE reader,
 `include/client/spell/spells_new_edd_reader.h`, which also decodes +0x78..+0x8C, and every drawn slot is
-timed from them (`include/client/spell/spell_fx_timing.h`, `SpellPresets::applySlotTiming()`,
-`refactor/B1145/README.md`): start = the stage's measured latency + +0x8C, emission for the run minus the
-delay at the file's burst/stream envelope, each particle +0x7C. The cast-animation term of the Source
-duration (`0x47ddd4`, model data) is MEASURED: 4.35 s (`review/B1145/cast_anim/`). Shape, motion and
-sizes below are still not wired (B1147).
+timed from them (`include/client/spell/spell_fx_timing.h`, `refactor/B1145/README.md`): start = the
+stage's measured latency + +0x8C, emission for the run minus the delay, each particle +0x7C. The
+cast-animation term of the Source duration (`0x47ddd4`, model data) is MEASURED: 4.35 s
+(`review/B1145/cast_anim/`). Since B1149 (#469) every drawn slot also emits the FILE's population -- the
++0x80 burst, then +0x84 per tick at +0x88 ticks/s (`EmitterConfig::ticksPerSecond`) -- and draws its sprite
+size: a world-unit quad +0xCC..+0x184 wide, +0x17C..+0x180 tall (+0x18C one draw), times +0x16C, with
++0x98/+0x9C/+0x190/+0x194 over the life (`SpellsNewEddSprite`, `SpellPresets::applySlotEmitter()`,
+`refactor/B1149/README.md`). The +0x6C attach scale is passed as 1 (+0x19C is B1150's): the client's s is model data
+(actor +0x10 x the root actor's sub-object +0x64 float +0x60, EQGraphicsDX9 0x1006090d..0x1006094a; its
+writer 0x1016be70 is not traced). The +0xA0 density distance (80 on most entries) does not bite at the
+harness/lane camera (29 units). Shape, offsets and motion are still not wired (B1150/B1151).
 
 ## Who does what
 

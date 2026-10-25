@@ -76,9 +76,6 @@ const MapNode kDataKeyedMaps[] = {
      "settings again; SpellEffectsConfig::loadSpellOverrides enumerates "
      "root.getMemberNames() and std::stoul's each one, so no source names "
      "93, 41 or 253 as a literal"},
-    {"spell_effects.json", "landingPopulation.exceptions",
-     "B1123 (#443): SPELL IDS again; SpellEffectsConfig::applyPopulationRule "
-     "enumerates exceptions.getMemberNames() and std::stoul's each one"},
     {"spell_effects.json", "sourceRecords.records",
      "B1131 (#451): spells.eff RECORD numbers; SpellEffectsConfig::loadSourceRecords "
      "enumerates records.getMemberNames() and std::stoi's each one"},

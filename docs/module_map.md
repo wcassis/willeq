@@ -219,7 +219,7 @@ Beside it in `src/client/spell/`, the spell VISUAL data readers (no `SpellManage
 
 | TU | Lines | Contents |
 |---|---|---|
-| spells_new_edd_reader.cpp | 98 | B1145: `EQ::SpellsNewEddReader` -- the one reader of spellsnew.edd's 416-byte entries (magic, entry bytes, name, texture, frame count) and the timing / emission words per entry (`SpellsNewEddTiming`: +0x78 duration, +0x7C lifetime, +0x80 burst, +0x84 per tick, +0x88 ticks/s, +0x8C delay); `SpellsNewEffReader` (`edd()`) and the colour table read through it. The timing rules are header-only in `include/client/spell/spell_fx_timing.h` (`SpellFxSlotTimingFor`, `SpellFxCallerDurationMs`, B1148's `SpellCastAnimationCode` -- eqgame's CastingAnim id -> track code table -- and the measured fallback `kSpellFxCastAnimationSeconds`); the caster's track length comes from `CastAnimationTrackMs()` (`spell_fx_bone_anchor.h`) |
+| spells_new_edd_reader.cpp | 123 | B1145: `EQ::SpellsNewEddReader` -- the one reader of spellsnew.edd's 416-byte entries (magic, entry bytes, name, texture, frame count) and the timing / emission words per entry (`SpellsNewEddTiming`: +0x78 duration, +0x7C lifetime, +0x80 burst, +0x84 per tick, +0x88 ticks/s, +0x8C delay) and, B1149, the sprite-size words (`SpellsNewEddSprite`: +0xCC/+0x184 width, +0x17C/+0x180 height, +0x16C, +0x18C, +0x6C, +0x98/+0x9C/+0x190/+0x194); `SpellsNewEffReader` (`edd()`) and the colour table read through it. The timing rules are header-only in `include/client/spell/spell_fx_timing.h` (`SpellFxSlotTimingFor`, `SpellFxCallerDurationMs`, B1148's `SpellCastAnimationCode` -- eqgame's CastingAnim id -> track code table -- and the measured fallback `kSpellFxCastAnimationSeconds`); the caster's track length comes from `CastAnimationTrackMs()` (`spell_fx_bone_anchor.h`) |
 | spells_new_edd_colour.cpp | 87 | B1146: `EQ::SpellsNewEddColourTable` -- the colour words (+0x68 additive, +0x90/+0x94 fades, +0xA4 peak, +0xD4..+0xE8 start/end RGB; `docs/spellsnew_format.md`) decoded per emitter, read through `SpellsNewEffReader`/`SpellsNewEddReader` (B1145), `stageColours()` in `SpellsNewEffReader::stageTextures()` order; the alpha formula `eddParticleAlpha()` is inline in the header, shared with `UnifiedParticle::eddAlpha()` |
 
 ## Renderer — IrrlichtRenderer class (`include/client/graphics/irrlicht_renderer.h`)
@@ -401,7 +401,7 @@ retired by P30/P32 and no supported build parsed it.
 
 | TU | Lines | Contents |
 |---|---|---|
-| sim_particles.cpp | 1,168 | Particle system + spell VFX |
+| sim_particles.cpp | 1,269 | Particle system + spell VFX |
 | sim_boids.cpp | 743 | Boids + tumbleweeds |
 | sim_visibility.cpp | 710 | Regions, PVS, portals, occlusion, light selection, frustum helper |
 | simulation_worker.cpp | 561 | Lifecycle core: ctor, start/stop, data intake, workerLoop, computeAll dispatch |

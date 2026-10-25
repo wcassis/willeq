@@ -4,6 +4,7 @@
 #include "client/graphics/environment/spell_sprite_atlas.h"
 #include "client/core/gem_owner_census.h"  // B972: GemTag for the VBO's census row
 #include "common/logging.h"
+#include <cmath>
 #include <cstring>
 #include <chrono>
 #include <cstddef>
@@ -128,6 +129,66 @@ void main() {
 }
 )";
 
+// B1149 (#469): the spellsnew.edd sprite -- a screen-facing QUAD w wide and h
+// tall in world units at the particle (EQGraphicsDX9 0x1006335a..: half-width
+// w * 0.5 / depth times the projection scale), as the official client draws a
+// mode-0 sprite. A point sprite cannot: its size is one number, square, and
+// clamped (100 px here, the GPU's range beyond that). The corners are built on
+// the CPU from the view's right/up axes; aTexCoord0 carries the corner's
+// texture coordinate (0..1, top-left origin like gl_PointCoord).
+static const char* QUAD_VS = R"(
+precision highp float;
+
+attribute vec3 aPosition;
+attribute vec4 aColor;
+attribute vec2 aTexCoord0;
+attribute vec2 aTexCoord1;
+
+uniform mat4 uProj;
+uniform mat4 uView;
+uniform float uFogStart;
+uniform float uFogEnd;
+
+varying vec4 vColor;
+varying float vFogFactor;
+varying vec2 vAtlasOffset;
+varying vec2 vCorner;
+
+void main() {
+    vec4 eyePos = uView * vec4(aPosition, 1.0);
+    gl_Position = uProj * eyePos;
+    float fogDist = length(eyePos.xyz);
+    vFogFactor = clamp((uFogEnd - fogDist) / (uFogEnd - uFogStart), 0.0, 1.0);
+    vColor = aColor;
+    vAtlasOffset = aTexCoord1;
+    vCorner = aTexCoord0;
+}
+)";
+
+static const char* QUAD_FS = R"(
+precision mediump float;
+
+uniform sampler2D uTexture;
+uniform sampler2D uAlphaTexture;
+uniform vec4 uFogColor;
+uniform vec2 uAtlasRegionSize;
+
+varying vec4 vColor;
+varying float vFogFactor;
+varying vec2 vAtlasOffset;
+varying vec2 vCorner;
+
+void main() {
+    vec2 uv = vAtlasOffset + clamp(vCorner, 0.0, 1.0) * uAtlasRegionSize;
+    vec4 texColor = texture2D(uTexture, uv);
+    texColor.a *= texture2D(uAlphaTexture, uv).r;
+    vec4 color = texColor * vColor;
+    color.rgb *= vFogFactor;
+    if (color.a < 0.004) discard;
+    gl_FragColor = color;
+}
+)";
+
 // === Implementation ===
 
 UnifiedParticleRenderer::UnifiedParticleRenderer() = default;
@@ -136,6 +197,10 @@ UnifiedParticleRenderer::~UnifiedParticleRenderer() {
     if (program_ != 0) {
         glDeleteProgram(program_);
         program_ = 0;
+    }
+    if (quad_.program != 0) {  // B1149
+        glDeleteProgram(quad_.program);
+        quad_.program = 0;
     }
     if (opaqueAlphaFallback_ != 0) {   // T411
         glDeleteTextures(1, &opaqueAlphaFallback_);
@@ -254,6 +319,29 @@ bool UnifiedParticleRenderer::init(irr::video::IVideoDriver* driver) {
     uAtlasRegionSize_ = glGetUniformLocation(program_, "uAtlasRegionSize");
     uScreenHeight_ = glGetUniformLocation(program_, "uScreenHeight");
 
+    // B1149: the spellsnew.edd sprite quads' program (same attribute slots).
+    {
+        GLuint qvs = compileShader(GL_VERTEX_SHADER, QUAD_VS);
+        GLuint qfs = qvs ? compileShader(GL_FRAGMENT_SHADER, QUAD_FS) : 0;
+        if (qvs && qfs) quad_.program = linkProgram(qvs, qfs);
+        if (qvs) glDeleteShader(qvs);
+        if (qfs) glDeleteShader(qfs);
+        if (quad_.program == 0) {
+            LOG_ERROR(MOD_GRAPHICS, "UnifiedParticleRenderer: Failed to build the sprite-quad program");
+            glDeleteProgram(program_);
+            program_ = 0;
+            return false;
+        }
+        quad_.uProj = glGetUniformLocation(quad_.program, "uProj");
+        quad_.uView = glGetUniformLocation(quad_.program, "uView");
+        quad_.uFogStart = glGetUniformLocation(quad_.program, "uFogStart");
+        quad_.uFogEnd = glGetUniformLocation(quad_.program, "uFogEnd");
+        quad_.uFogColor = glGetUniformLocation(quad_.program, "uFogColor");
+        quad_.uTexture = glGetUniformLocation(quad_.program, "uTexture");
+        quad_.uAlphaTexture = glGetUniformLocation(quad_.program, "uAlphaTexture");
+        quad_.uAtlasRegionSize = glGetUniformLocation(quad_.program, "uAtlasRegionSize");
+    }
+
     // T411: 1x1 opaque-white companion fallback (see the header). Created here
     // rather than lazily in render() because render() saves/restores unit 0's
     // binding around itself and a lazy glGenTextures there would have to be
@@ -324,6 +412,12 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     spriteAlphaVerts_.clear();
     additiveSrcAlphaVerts_.clear();
     spriteAdditiveSrcAlphaVerts_.clear();
+    for (auto& q : quadVerts_) q.clear();  // B1149
+
+    // B1149: the view's right and up axes in world space (Irrlicht's view
+    // matrix holds them in its first two columns: M[0],M[4],M[8] / M[1],M[5],M[9]).
+    const glm::vec3 viewRight(viewMatrix[0], viewMatrix[4], viewMatrix[8]);
+    const glm::vec3 viewUp(viewMatrix[1], viewMatrix[5], viewMatrix[9]);
 
     for (int i = 0; i < count; ++i) {
         const UnifiedParticle& p = particles[i];
@@ -400,6 +494,34 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         v.atlasU = atlasU;
         v.atlasV = atlasV;
 
+        if (p.hasEddSprite()) {
+            // B1149: six vertices of the world-unit quad, corners rotated by
+            // the particle's spin in the screen plane; batch index as below.
+            const int b = onSpriteSheet ? (srcAlphaAdditive ? 5 : additive ? 2 : 3)
+                                        : (srcAlphaAdditive ? 4 : additive ? 0 : 1);
+            const float hw = 0.5f * p.size, hh = 0.5f * p.height;
+            const float cs = std::cos(p.rotation), sn = std::sin(p.rotation);
+            const glm::vec3 c(p.position.x, p.position.y, p.position.z);
+            auto corner = [&](float sx, float sy, float u, float t) {
+                const float dx = sx * hw, dy = sy * hh;
+                const glm::vec3 w = c + viewRight * (dx * cs - dy * sn) + viewUp * (dx * sn + dy * cs);
+                PointSpriteVertex q = v;
+                q.x = w.x;
+                q.y = w.y;
+                q.z = w.z;
+                q.pointSize = u;  // aTexCoord0 = the corner's texture coordinate
+                q.rotation = t;
+                quadVerts_[b].push_back(q);
+            };
+            corner(-1.0f, 1.0f, 0.0f, 0.0f);
+            corner(1.0f, 1.0f, 1.0f, 0.0f);
+            corner(1.0f, -1.0f, 1.0f, 1.0f);
+            corner(-1.0f, 1.0f, 0.0f, 0.0f);
+            corner(1.0f, -1.0f, 1.0f, 1.0f);
+            corner(-1.0f, -1.0f, 0.0f, 1.0f);
+            continue;
+        }
+
         if (onSpriteSheet) {
             (srcAlphaAdditive ? spriteAdditiveSrcAlphaVerts_
                               : additive ? spriteAdditiveVerts_ : spriteAlphaVerts_).push_back(v);
@@ -409,9 +531,11 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         }
     }
 
+    bool anyQuad = false;
+    for (const auto& q : quadVerts_) anyQuad = anyQuad || !q.empty();
     if (additiveVerts_.empty() && alphaVerts_.empty() &&
         spriteAdditiveVerts_.empty() && spriteAlphaVerts_.empty() &&
-        additiveSrcAlphaVerts_.empty() && spriteAdditiveSrcAlphaVerts_.empty()) {
+        additiveSrcAlphaVerts_.empty() && spriteAdditiveSrcAlphaVerts_.empty() && !anyQuad) {
         return;
     }
 
@@ -510,6 +634,22 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     if (uTexture_ >= 0) glUniform1i(uTexture_, 0);
     if (uAlphaTexture_ >= 0) glUniform1i(uAlphaTexture_, 1);
 
+    // B1149: the same per-frame uniforms on the sprite-quad program.
+    if (anyQuad) {
+        glUseProgram(quad_.program);
+        if (quad_.uProj >= 0) glUniformMatrix4fv(quad_.uProj, 1, GL_FALSE, projMatrix);
+        if (quad_.uView >= 0) glUniformMatrix4fv(quad_.uView, 1, GL_FALSE, viewMatrix);
+        if (quad_.uFogStart >= 0) glUniform1f(quad_.uFogStart, fogStart);
+        if (quad_.uFogEnd >= 0) glUniform1f(quad_.uFogEnd, fogEnd);
+        if (quad_.uFogColor >= 0) {
+            const float black[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+            glUniform4fv(quad_.uFogColor, 1, fogColor ? fogColor : black);
+        }
+        if (quad_.uTexture >= 0) glUniform1i(quad_.uTexture, 0);
+        if (quad_.uAlphaTexture >= 0) glUniform1i(quad_.uAlphaTexture, 1);
+        glUseProgram(program_);
+    }
+
     auto t3 = std::chrono::steady_clock::now();
 
     // B972-FT (alternative shape): pack the frame's non-empty batches into
@@ -530,13 +670,14 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         pack(packedVerts_, spriteAdditiveVerts_);
         pack(packedVerts_, spriteAdditiveSrcAlphaVerts_);
         pack(packedVerts_, spriteAlphaVerts_);
+        for (const auto& q : quadVerts_) pack(packedVerts_, q);  // B1149: batches 0..5 as quads
         if (useVbo_ && !packedVerts_.empty()) packVbo = uploadPackedVerts();
     }
     const PointSpriteVertex* pv = packVbo ? packedVerts_.data() : nullptr;
     size_t cursor = 0;
     bool packedBound = false;
     auto drawWindow = [&](const std::vector<PointSpriteVertex>& src, UnifiedBlendMode mode,
-                          int batchIdx) -> size_t {
+                          int batchIdx, GLenum primitive = GL_POINTS) -> size_t {
         (void)batchIdx;  // the batch identity, kept for the draw order and log
         const size_t start = cursor;
         cursor += src.size();
@@ -549,7 +690,7 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
             // flag, or the real batch would draw with stale pointers).
             const bool bindAndPointers = packVbo && !packedBound;
             renderBatch(packVbo ? pv : src.data(), packVbo ? start : 0,
-                        src.size(), mode, batchIdx, bindAndPointers);
+                        src.size(), mode, batchIdx, bindAndPointers, primitive);
             if (bindAndPointers) packedBound = true;
         }
         return start;
@@ -589,6 +730,35 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         drawWindow(spriteAdditiveVerts_, UnifiedBlendMode::ADDITIVE, 2);
         drawWindow(spriteAdditiveSrcAlphaVerts_, UnifiedBlendMode::ADDITIVE_SRC_ALPHA, 5);
         drawWindow(spriteAlphaVerts_, UnifiedBlendMode::ALPHA, 3);
+    }
+
+    // ── B1149: the spellsnew.edd sprite quads, both sheets ──────────────
+    // Packed after every point batch, in batch order 0..5 (the cursor walks
+    // the pack in that order).
+    if (anyQuad) {
+        glUseProgram(quad_.program);
+        static const UnifiedBlendMode kMode[6] = {
+            UnifiedBlendMode::ADDITIVE, UnifiedBlendMode::ALPHA, UnifiedBlendMode::ADDITIVE,
+            UnifiedBlendMode::ALPHA, UnifiedBlendMode::ADDITIVE_SRC_ALPHA, UnifiedBlendMode::ADDITIVE_SRC_ALPHA};
+        for (int b = 0; b < 6; ++b) {
+            const bool sprite = (b == 2 || b == 3 || b == 5);
+            if (!quadVerts_[b].empty()) {
+                if (quad_.uAtlasRegionSize >= 0) {
+                    if (sprite)
+                        glUniform2f(quad_.uAtlasRegionSize, 1.0f / SpellSpriteAtlas::kColumns,
+                                    1.0f / SpellSpriteAtlas::kRows);
+                    else
+                        glUniform2f(quad_.uAtlasRegionSize, 0.25f, 0.25f);
+                }
+                glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_2D, sprite ? (spriteAlphaCompanion ? spriteAlphaCompanion
+                                                                            : opaqueAlphaFallback_)
+                                                    : (alphaCompanion ? alphaCompanion : opaqueAlphaFallback_));
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, sprite ? spriteTexture : atlasTexture);
+            }
+            drawWindow(quadVerts_[b], kMode[b], 6 + b, GL_TRIANGLES);
+        }
     }
 
     auto t5 = std::chrono::steady_clock::now();
@@ -648,7 +818,7 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
 
 void UnifiedParticleRenderer::renderBatch(const PointSpriteVertex* verts, size_t start,
                                           size_t count, UnifiedBlendMode blendMode,
-                                          int batchIdx, bool bindAndPointers) {
+                                          int batchIdx, bool bindAndPointers, GLenum primitive) {
     if (count == 0) return;
     const PointSpriteVertex* v = verts + start;
     (void)batchIdx;  // the batch identity for the timing log (uploadPackedVerts)
@@ -685,7 +855,7 @@ void UnifiedParticleRenderer::renderBatch(const PointSpriteVertex* verts, size_t
             glEnableVertexAttribArray(4);
             glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const GLvoid*>(36));
         }
-        glDrawArrays(GL_POINTS, static_cast<GLsizei>(start),
+        glDrawArrays(primitive, static_cast<GLsizei>(start),
                      static_cast<GLsizei>(count));
         (void)v;
     } else {
@@ -708,7 +878,7 @@ void UnifiedParticleRenderer::renderBatch(const PointSpriteVertex* verts, size_t
         glEnableVertexAttribArray(4);
         glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, base + 36);
 
-        glDrawArrays(GL_POINTS, static_cast<GLsizei>(start),
+        glDrawArrays(primitive, static_cast<GLsizei>(start),
                      static_cast<GLsizei>(count));
     }
 }

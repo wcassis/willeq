@@ -71,7 +71,7 @@ struct SpellsNewEddColour {
     float peakOpacity = 1.0f;  // +0xA4
 
     // Both triples 255,255,255: the vertex colour leaves the texel's RGB as
-    // it is (fable keeps such an emitter on today's draw, see
+    // it is (on the client's alpha it still takes the fade x peak, see
     // SpellPresets::applyStageEmitterColours()).
     bool isWhite() const {
         for (size_t i = 0; i < 3; ++i) {

@@ -28,10 +28,13 @@
 
 #include "client/graphics/environment/spell_effects_config.h"
 #include "client/spell/spell_fx_timing.h"
+#include "spell_fx_population_oracle.h"
 #include "spell_fx_timing_oracle.h"
 #include "spell_pool.h"
 #include "spell_anim_rows.h"
 
+#include <algorithm>
+#include <iterator>
 #include <cmath>
 #include <map>
 #include <string>
@@ -95,7 +98,12 @@ TEST_F(SourceRecordRows, EverySurveyedRecordHasItsMeasuredRow) {
         EXPECT_NEAR(row.onset, cfg.sourceStageLatency(), 1e-6f) << r;
         EXPECT_NEAR(row.holdSelf, EQ::kSpellFxCastAnimationSeconds, 1e-6f) << r;
         EXPECT_NEAR(row.holdOther, EQ::kSpellFxCastAnimationSeconds, 1e-6f) << r;
-        EXPECT_GT(row.spawnRate, 0.0f) << r;
+        // B1149 (#469): no row population; the measured coverage is a band.
+        const auto band = std::find_if(std::begin(spell_fx_population_oracle::kRows),
+                                       std::end(spell_fx_population_oracle::kRows),
+                                       [r](const spell_fx_population_oracle::RecordRow& o) { return o.row == r; });
+        ASSERT_NE(band, std::end(spell_fx_population_oracle::kRows)) << r;
+        EXPECT_GT(band->sourceCoverage, 0.0f) << r;
     }
     EXPECT_EQ(classes[Anchor::Hands], 8);
     EXPECT_EQ(classes[Anchor::FeetRing], 5);  // 1, 16, 31, 32 + 51 (B1134)

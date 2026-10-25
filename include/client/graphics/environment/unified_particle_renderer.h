@@ -134,7 +134,8 @@ private:
     // pointers capture the VBO, the run-381 pattern) before any draw reads
     // it.
     void renderBatch(const PointSpriteVertex* verts, size_t start, size_t count,
-                     UnifiedBlendMode blendMode, int batchIdx, bool bindAndPointers);
+                     UnifiedBlendMode blendMode, int batchIdx, bool bindAndPointers,
+                     GLenum primitive = GL_POINTS);
 
     // B972-FT (alternative shape): grow the ring row's VBO and write the
     // frame's PACKED vertices (packedVerts_: the non-empty batches
@@ -215,6 +216,18 @@ private:
     // GL_SRC_ALPHA, GL_ONE (UnifiedBlendMode::ADDITIVE_SRC_ALPHA).
     std::vector<PointSpriteVertex> additiveSrcAlphaVerts_;
     std::vector<PointSpriteVertex> spriteAdditiveSrcAlphaVerts_;
+
+    // B1149 (#469): spellsnew.edd sprites (UnifiedParticle::hasEddSprite())
+    // as world-unit quads, six vertices each, per batch 0..5 (0 atlas
+    // additive, 1 atlas alpha, 2 sheet additive, 3 sheet alpha, 4 atlas
+    // SRC_ALPHA/ONE, 5 sheet SRC_ALPHA/ONE), drawn GL_TRIANGLES with their own
+    // program from the same packed VBO.
+    std::vector<PointSpriteVertex> quadVerts_[6];
+    struct QuadProgram {
+        GLuint program = 0;
+        GLint uProj = -1, uView = -1, uFogStart = -1, uFogEnd = -1, uFogColor = -1;
+        GLint uTexture = -1, uAlphaTexture = -1, uAtlasRegionSize = -1;
+    } quad_;
 };
 
 } // namespace Environment

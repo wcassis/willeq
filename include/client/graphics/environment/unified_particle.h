@@ -74,7 +74,7 @@ struct UnifiedParticle {
     // Metadata — 8 bytes
     uint16_t emitterID = 0;         // Which emitter owns this particle
     uint16_t textureIndex = 0;      // Region within atlas (UV offset selector)
-    uint8_t flags = 0;              // Bit 0: alive, Bit 1: blend mode (0=additive, 1=alpha), Bits 2-3: family (B995), Bit 4: EDD colour (B1146)
+    uint8_t flags = 0;              // Bit 0: alive, Bit 1: blend mode (0=additive, 1=alpha), Bits 2-3: family (B995), Bit 4: EDD colour (B1146), Bit 5: EDD sprite (B1149)
     MotionType motionType = MotionType::LINEAR;
     uint16_t padding = 0;
 
@@ -87,6 +87,20 @@ struct UnifiedParticle {
     float eddFadeIn = 0.0f;         // +0x90, s
     float eddFadeOut = 0.0f;        // +0x94, s
     float eddPeakOpacity = 1.0f;    // +0xA4
+
+    // B1149 (#469): a spellsnew.edd sprite (hasEddSprite()) is a
+    // screen-facing quad `size` wide and `height` tall in WORLD units at the
+    // particle (EQGraphicsDX9 0x1006335a..: half-width w * 0.5 / depth times
+    // the camera's projection scale), not a point sprite; its base width is
+    // sizeStart (== sizeEnd), its base height eddBaseHeight, and the client's
+    // grow-in / shrink-out times scale both over the particle's life
+    // (eddSpriteSize()).
+    float height = 0.0f;            // current height, world units
+    float eddBaseHeight = 0.0f;     // h drawn at spawn (+0x17C..+0x180)
+    float eddGrowIn = 0.0f;         // +0x98, s
+    float eddShrinkOut = 0.0f;      // +0x9C, s
+    float eddHeightShrink = 0.0f;   // +0x190, s
+    float eddWidthShrink = 0.0f;    // +0x194, s
 
     bool isAlive() const { return (flags & 0x01) != 0; }
     void setAlive(bool alive) { if (alive) flags |= 0x01; else flags &= ~0x01; }
@@ -113,6 +127,25 @@ struct UnifiedParticle {
     void setEddColour(bool on) { if (on) flags |= 0x10; else flags &= ~0x10; }
     float eddAlpha() const {
         return EQ::eddParticleAlpha(age, maxLifetime - age, eddFadeIn, eddFadeOut, eddPeakOpacity);
+    }
+
+    // B1149: the particle is a spellsnew.edd sprite (a world-unit quad).
+    bool hasEddSprite() const { return (flags & 0x20) != 0; }
+    void setEddSprite(bool on) { if (on) flags |= 0x20; else flags &= ~0x20; }
+    // The client's size over life (0x1006326c..0x100632e9): w and h times
+    // age / grow-in while younger than it and remaining / shrink-out while
+    // less than it is left; the height and width shrink-outs scale their own
+    // side only. A time <= 0 never scales.
+    void eddSpriteSize() {
+        const float remaining = maxLifetime - age;
+        float k = 1.0f;
+        if (eddGrowIn > 0.0f && age < eddGrowIn) k *= age / eddGrowIn;
+        if (eddShrinkOut > 0.0f && remaining < eddShrinkOut) k *= remaining / eddShrinkOut;
+        float kw = k, kh = k;
+        if (eddHeightShrink > 0.0f && remaining < eddHeightShrink) kh *= remaining / eddHeightShrink;
+        if (eddWidthShrink > 0.0f && remaining < eddWidthShrink) kw *= remaining / eddWidthShrink;
+        size = sizeStart * (kw < 0.0f ? 0.0f : kw);
+        height = eddBaseHeight * (kh < 0.0f ? 0.0f : kh);
     }
 
     // Get normalized age (0 = just spawned, 1 = about to die)
@@ -171,12 +204,13 @@ struct EmitterConfig {
     // B1146 (#466): the spellsnew.edd colour words of the emitter that names
     // textureRegions[k] (SpellPresets::applyStageEmitterColours()). A region
     // whose `active` is false keeps the config's colorStart/colorEnd and
-    // blendMode -- every white emitter and every non-spellsnew emitter.
+    // blendMode -- every non-spellsnew emitter (B1149: a spellsnew.eff
+    // emitter's regions are all active and on the client's alpha).
     struct RegionColour {
         bool active = false;
         // The client's fade x peak alpha and +0x68 blend as well as its RGB
         // (UnifiedParticle::hasEddColour()); false keeps the style's alpha
-        // and blend -- the shipped setting, review/B1146/README.md.
+        // and blend (B1146's RGB-only setting; B1149 ships true).
         bool clientAlpha = false;
         bool additive = true;            // +0x68
         glm::vec3 start{1.0f};           // +0xD4..+0xDC / 255
@@ -186,6 +220,31 @@ struct EmitterConfig {
         float peakOpacity = 1.0f;        // +0xA4
     };
     RegionColour regionColours[4];
+
+    // B1149 (#469): a spellsnew.edd emitter's sprite (SpellPresets::
+    // applySlotEmitter()): each particle draws its height u in [hMin, hMax]
+    // and its width in [wMin, wMax] (from u again when sameRandom), times
+    // `scale` (+0x16C x the attach scale when +0x6C is set), and is drawn as
+    // a world-unit quad (UnifiedParticle::hasEddSprite()). Inactive: the
+    // style's point-sprite sizes above.
+    struct EddSprite {
+        bool active = false;
+        float widthMin = 0.0f, widthMax = 0.0f;    // +0xCC, +0x184
+        float heightMin = 0.0f, heightMax = 0.0f;  // +0x17C, +0x180
+        float scale = 1.0f;
+        bool sameRandom = true;                    // +0x18C
+        float growIn = 0.0f, shrinkOut = 0.0f;     // +0x98, +0x9C
+        float heightShrink = 0.0f, widthShrink = 0.0f;  // +0x190, +0x194
+    };
+    EddSprite eddSprite;
+
+    // B1149 (#469): the client's emission ticks (CParticleSystem::Render
+    // 0x10060ea4..0x10060ffd): tick n falls at emitter age n / ticksPerSecond
+    // and each new tick emits tickParticles (the slot's +0x84 share carried
+    // by this emitter; fractions accumulate); the burst (burstCount) is the
+    // first frame's. 0 = the rate path (spawnRate) above.
+    float ticksPerSecond = 0.0f;
+    float tickParticles = 0.0f;
 
     // Spell motion parameters (ORBITAL / RADIAL_EXPAND)
     float orbitalRadius = 1.0f;           // ORBITAL: orbit radius
@@ -223,6 +282,7 @@ struct ActiveEmitter {
     uint16_t attachEntityID = 0;     // Entity to follow (0 = static)
     glm::vec3 attachOffset{0.0f};    // Offset from entity position (Irrlicht Y-up)
     bool isBurstSpawned = false;     // BURST: prevent re-spawning after initial burst
+    int lastTick = 0;                // B1149: the last emission tick emitted (config.ticksPerSecond)
 
     // Dynamic velocity direction (spray effects — updated each frame via callback)
     bool useDynamicDirection = false;
