@@ -1,17 +1,38 @@
 # action	target	hold_ms	still_name
-# B1143 item 2 (lane 5, observer rig): 93 Burst of Flame, caster at B1130's exact caster pose
-# (-67.6,434.4, :98 llvmpipe) on a #spawned TrollF NPC at the TrollF spot (-74,428) x2 and on
-# Oraclewatch (the player, #set pvp on) standing at the same spot x2. The OBSERVER camera
-# (Oraclewatch, :99 NVIDIA, video.mp4) is at the TrollF spot facing the caster, so it records BOTH
-# the Source (on the caster, in front) and the landing (on the target, co-located with it). The
-# caster's own :98 view is also grabbed (video-caster.mp4) as a B1130-framing cross-check.
-# Caster heading 225 (facing the observer) deviates from B1130's 160 ONLY so the caster's hand
-# flames are visible in the observer's view; the POSITION is B1130's exact pose.
+# B1143 item 2 (lane 5, observer rig): 93 Burst of Flame, NPC-vs-player target A/B.
+# GEOMETRY = the B1134 P2b rig exactly (trusted, review/B1134/README.md "The rig"):
+# caster (Testcaster, char 67, class 6 for the leg, :98 Xvfb/mesa) at the TrollF spot
+# (-74,428,3.75, h160); observer (Oraclewatch, :99 NVIDIA = video.mp4) at B1130 r51's
+# caster pose (-67.6,434.4,3.75, h160), F9 x3 = B1130's fixed camera, so the caster
+# sits at B1130 r51's fixed_npc frame position (9.05 world units, ~1.4 caster heights).
+# TrollF000 is #spawned at the caster's position (eqemu #spawn has no coordinates),
+# so the NPC landing is co-located with the caster (frame centre) -- B1130 r51 row 0's
+# landing geometry (a target 9.05 units in the fixed camera's centre). The player
+# target IS the observer (camera position) -- B1134 P2's player-landing geometry.
+# Bands: B1130 r51 row 0 (B1134 README "Rig check" table).
+#
+# FIXES vs the p3_rig93.fix leg (2 OP_BeginCast / 0 OP_Action, nothing measured):
+#  1. `#target <name>` is NOT a GM command on this eqemu build: the server answered
+#     `Command '#target TrollF000' not recognized` (S->C OP_SpecialMesg 14:27:46.355,
+#     7001/51876), so the caster never had a target and the client refused all four
+#     /cast 1 locally -- the pcap has NO C->S cast packet at the /cast steps and no
+#     OP_BeginCast/OP_Action/OP_Effect anywhere. The client-side `/target <name>`
+#     (B1130 r51 line 26, B1134 P2 line 26) is the working form.
+#  2. `#stun <name> <ms>` is not valid: `Usage: #stun [Duration]` (14:26:34.290).
+#     #stun takes a duration and stuns the CURRENT target -- /target first (B1130 r51
+#     lines 26-27), re-stunned before each cast (B1130 r51 lines 31, 39).
+#  3. `#goto -67.6,434.4,3.75,225` (comma form) is not valid: `Player -67.6,434.4,
+#     3.75,225 could not be found.` (14:26:38.496) -- the comma string was parsed as a
+#     player name, so in that leg the caster never left its pose= position and all
+#     three actors co-located at -74,428. No #goto is needed at all: the header
+#     pose=/observer-pose= directives place both clients (the driver feature,
+#     docs/oracle_driver.md), and TrollF000 spawns at the caster's position.
+#
 # fps=30
 # caster-video=1
 # observer=Oraclewatch
 # pose=-74,428,3.75,160
-# observer-pose=-74,428,3.75,448
+# observer-pose=-67.6,434.4,3.75,160
 login	Testcaster	0	char_select
 obs	login	Oraclewatch	0	obs_char_select
 zone	qeynos2	0	in_world
@@ -26,8 +47,9 @@ command	#reload rules global	0	rules
 command	#level 60	0	lvl
 command	#mana	0	mana
 command	#spawn TrollF 1 1 0 30000	0	spawn
-command	#stun TrollF000 120000	0	stun
-command	#goto -67.6,434.4,3.75,225	0	gotopose
+wait	3000	0	spawn_settle
+command	/target TrollF000	0	tgt_npc0
+command	#stun 120000	0	stun0
 press	F9	0	cam1
 press	F9	0	cam2
 press	F9	0	cam3
@@ -36,12 +58,14 @@ obs	press	F9	0	obs_cam2
 obs	press	F9	0	obs_cam3
 obs	wait	3000	0	obs_cam_settle
 wait	36000	0	time_settle
-command	#target TrollF000	0	tgt_npc_a
+command	/target TrollF000	0	tgt_npc_a
+command	#stun 120000	0	stun_a
 wait	1500	0	tgt_npc_a_settle
 command	/cast 1	0	cast_npc_a
 wait	15500	0	fx_npc_a
 command	#mana	0	mana_b
-command	#target TrollF000	0	tgt_npc_b
+command	/target TrollF000	0	tgt_npc_b
+command	#stun 120000	0	stun_b
 wait	1500	0	tgt_npc_b_settle
 command	/cast 1	0	cast_npc_b
 wait	15500	0	fx_npc_b
@@ -49,12 +73,12 @@ command	#kill TrollF000	0	kill
 wait	2000	0	kill_settle
 command	#set pvp on	0	pvp_self
 obs	command	#set pvp on	0	pvp_obs
-command	#target Oraclewatch	0	tgt_obs_a
+command	/target Oraclewatch	0	tgt_obs_a
 wait	1500	0	tgt_obs_a_settle
 command	/cast 1	0	cast_obs_a
 wait	15500	0	fx_obs_a
 command	#mana	0	mana_c
-command	#target Oraclewatch	0	tgt_obs_b
+command	/target Oraclewatch	0	tgt_obs_b
 wait	1500	0	tgt_obs_b_settle
 command	/cast 1	0	cast_obs_b
 wait	15500	0	fx_obs_b
