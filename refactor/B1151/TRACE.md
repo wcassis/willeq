@@ -535,8 +535,10 @@ decompile decodes the same gate with exactly that sense, case 7,
 FUN_1005d3e0() ... }` — the `== 0.0` branch is the single-u (main) path and
 the else branch is the two-u (alternate) path. The identical instruction
 sequence also guards shapes 8 and 9: `fld [0x101cbd40]; fld [edi+0xb0];
-fucompp; fnstsw ax; test ah,0x44; jp` at 0x10061ec2..0x10061eca and
-0x10061fa5..0x10061fb1. (The per-axis 0.0 gates of shapes 1/2/3 at
+fucompp; fnstsw ax; test ah,0x44; jp` at 0x10061ec2..0x10061ed6 (jp @0x10061ed5
+-> 0x10061f07) and 0x10061fa5..0x10061fb9 (jp @0x10061fb8 -> 0x10061fcd). (The
+per-axis 0.0 gates in the COMMON per-particle pre-dispatch code -- before the
+shape switch at 0x10061753, so they run for every shape -- at
 0x100612bf/0x1006132b/0x10061397/0x10061403 compare [edi+0xb8/0xbc/0xc0/
 0xc4] against 0.0 and take `jnp` — the INVERSE of the parity, taken when the
 field == 0.0 (0x100612c6/0x10061332/0x1006139e/0x1006140a) — so the axis
