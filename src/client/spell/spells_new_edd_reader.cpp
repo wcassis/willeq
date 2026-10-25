@@ -116,6 +116,10 @@ const SpellsNewEddShape* SpellsNewEddReader::shape(int32_t index) const {
     return &m_shape[static_cast<size_t>(index)];
 }
 
+const SpellsNewEddShape& SpellsNewEddReader::shapeAt(size_t zeroBasedEntry) const {
+    return m_shape[zeroBasedEntry];
+}
+
 std::string SpellsNewEddReader::name(int32_t index) const {
     const uint8_t* e = entryBytes(index);
     if (!e) return {};

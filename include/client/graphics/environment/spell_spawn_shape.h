@@ -159,6 +159,11 @@ EddShapePoint computeEddShapePoint(const EddShapeParams& p, int i, int n, Draw d
     // (x, y, z) in the POST-tilt basis: x = r*cos(theta), y = r*sin(theta).
     float x = 0.0f, y = 0.0f, z = 0.0f;
     bool hasNormal = false;
+    // Shape 6's outward normal is the FACE normal (axis-aligned in the shape
+    // frame), not the radial direction the other normal-bearing shapes use.
+    // +0x110 reads it to orient the sprite on the surface it sits on.
+    glm::vec3 nloc(0.0f);
+    bool hasFaceNormal = false;
     switch (p.shape) {
         case 0:  // point (0x10061769)
             break;
@@ -215,13 +220,14 @@ EddShapePoint computeEddShapePoint(const EddShapeParams& p, int i, int n, Draw d
             const float ex = B0;  // the Y half-extent (+0xB0 or AC)
             const float ez = p.dimZ != 0.0f ? p.dimZ : AC;  // the Z half-extent
             switch (face) {
-                case 0:  x = -AC; y = x0 * ex; z = y0 * ez; break;
-                case 1:  x = AC;  y = x0 * ex; z = y0 * ez; break;
-                case 2:  x = x0 * AC; y = -ex; z = y0 * ez; break;
-                case 3:  x = x0 * AC; y = ex;  z = y0 * ez; break;
-                case 4:  x = x0 * AC; y = y0 * ex; z = -ez; break;
-                default: x = x0 * AC; y = y0 * ex; z = ez; break;
+                case 0:  x = -AC; y = x0 * ex; z = y0 * ez; nloc = glm::vec3(-1.0f, 0.0f, 0.0f); break;
+                case 1:  x = AC;  y = x0 * ex; z = y0 * ez; nloc = glm::vec3(1.0f, 0.0f, 0.0f); break;
+                case 2:  x = x0 * AC; y = -ex; z = y0 * ez; nloc = glm::vec3(0.0f, -1.0f, 0.0f); break;
+                case 3:  x = x0 * AC; y = ex;  z = y0 * ez; nloc = glm::vec3(0.0f, 1.0f, 0.0f); break;
+                case 4:  x = x0 * AC; y = y0 * ex; z = -ez; nloc = glm::vec3(0.0f, 0.0f, -1.0f); break;
+                default: x = x0 * AC; y = y0 * ex; z = ez; nloc = glm::vec3(0.0f, 0.0f, 1.0f); break;
             }
+            hasFaceNormal = true;
             hasNormal = true;
             break;
         }
@@ -233,13 +239,18 @@ EddShapePoint computeEddShapePoint(const EddShapeParams& p, int i, int n, Draw d
             z = u1 * p.dimZ;
             break;
         }
-        case 8: {  // torus (0x10061e7d)
+        case 8: {  // torus (0x10061e7d; the B0 != 0 branch at 0x10061e93)
+            // r = AC + cos(phi)*B4, height = sin(phi)*B4: unaff_ESI is the
+            // untracked +0xc draw (cos) that pairs with the tracked +8 draw
+            // (sin) in fStack_44c (decompile lines 68988-68998), so the tube
+            // cross-section is the circle (cos, sin) -- a standard torus, major
+            // AC, minor B4.
             const float phi = kTwoPi * draw();
             const float th = kTwoPi * draw();
             const float mx = AC * std::cos(th);
             const float my = B0 * std::sin(th);
             const float thp = std::atan2(my, mx);
-            const float r = std::hypot(mx, my) + std::sin(phi) * p.dimZ;
+            const float r = std::hypot(mx, my) + std::cos(phi) * p.dimZ;
             x = r * std::cos(thp);
             y = r * std::sin(thp);
             z = std::sin(phi) * p.dimZ;
@@ -263,9 +274,11 @@ EddShapePoint computeEddShapePoint(const EddShapeParams& p, int i, int n, Draw d
     EddShapePoint out;
     out.point = origin + b1 * (s * z) + b2 * (s * x) + b3 * (s * y);
     if (hasNormal) {
-        const float rl = std::hypot(x, y);
-        if (rl != 0.0f || z != 0.0f) {
-            out.normal = glm::normalize(b1 * z + b2 * x + b3 * y);
+        // The shape-frame normal: the face normal for shape 6, else the radial
+        // (r, z) direction. Shape-frame (nx, ny, nz) -> b1*nz + b2*nx + b3*ny.
+        const glm::vec3 nl = hasFaceNormal ? nloc : glm::vec3(x, y, z);
+        if (nl.x * nl.x + nl.y * nl.y + nl.z * nl.z > 0.0f) {
+            out.normal = glm::normalize(b1 * nl.z + b2 * nl.x + b3 * nl.y);
             out.hasNormal = true;
         }
     }

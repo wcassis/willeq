@@ -231,6 +231,12 @@ public:
     const SpellsNewEddSprite* sprite(int32_t index) const;
     // B1150: the spawn-geometry words; nullptr like timing().
     const SpellsNewEddShape* shape(int32_t index) const;
+    // B1150 census: the decoded words for the zero-BASED file entry
+    // (0..emitterCount()-1), unlike the 1-based shape()/timing()/sprite() slot
+    // accessors. spellsnew.eff's slot numbers are 1-based and its "empty slot"
+    // is 0, so the 1-based accessors reject 0 -- but the census counts every
+    // file entry, entry 0 included (it is a real shape-0 point, the 297th).
+    const SpellsNewEddShape& shapeAt(size_t zeroBasedEntry) const;
 
     // +0x00 name; +0x40 texture as a lower-case basename with the one shipped
     // entry's trailing '.' padding trimmed ("gena20.bmp......." -> gena20.bmp);
