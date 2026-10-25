@@ -1,7 +1,7 @@
 # B1151 trace: five CEmitterDef fields in CParticleSystem::Render — bytes to C++
 
 Target: `EQGraphicsDX9.dll` (Ti 5.9.255, B1141 decompile + disassembly).
-The particle render is `CParticleSystem::Render` (`FUN_100605b0`, decompile line 68358).
+The particle render is `CParticleSystem::Render` (`FUN_100605b0`, decompile line 68017).
 Register map (confirmed from the prologue):
 - `edi` = `CEmitterDef*` (the 416-byte emitter descriptor)
 - `ebp` = the emitter/attach context (holds the attach object at +0x68, bone at +0x6c, track at +0x70)
@@ -12,25 +12,36 @@ and fable's `config/race_models.json` + `entityScaleForServerSize`.
 
 ## 0. The 8-byte header and the raw-file == in-memory CEmitterDef
 
-`spellsnew.edd` = 8-byte header (`45 44 44 00 11 30 00 00`, "EDD\0" + version 0x110)
-followed by 2,118 × 416-byte `CEmitterDef` records. Total = 881,096 bytes = exact
-file size. With this header accounted for, the raw-file census matches B1141's
+`spellsnew.edd` = 8-byte header (`45 44 44 00 31 31 30 00` = "EDD\0" + ASCII
+"110\0") followed by 2,118 × 416-byte `CEmitterDef` records. Total = 881,096
+bytes = exact file size.
+```
+$ head -c 8 spellsnew.edd | od -An -tx1
+ 45 44 44 00 31 31 30 00
+```
+With this header accounted for, the raw-file census matches B1141's
 in-memory census **exactly** for every field below. The CONV function
 (0x1005eef0, decompile line 67132) copies record words into the def array and
 rewrites a subset of fields; +0x6C, +0x70, +0x74, +0xA8, +0x130, +0x134, +0x178
 are **not** rewritten, so the file value is the value `Render` reads.
 
 Record layout (first fields): name at +0x00 (64 bytes), texture at +0x40 (64 bytes),
-then the fields traced below. Records 2114/2115 are the last two
-(`VetRewards_Y1_a` / `VetRewards_Y1_b`).
+then the fields traced below. Records 0-based **2116/2117 are the last two**
+(`VetRewards_Y2_a` / `VetRewards_Y7_a`); `VetRewards_Y1_a` / `VetRewards_Y1_b`
+are 2114/2115 (the two D178 records).
 
 ## (a) +0x6C — the attach-scale flag: read path, multiplier, value
 
-**The flag.** `Render` reads D6C (`mov eax, [edi+0x6c]`) at four sites:
-0x100608b5, 0x1006091c, 0x100609e1, 0x10060ae0. It is a byte (0 or 1).
-When D6C == 1 the particle dimensions are multiplied by the attach object's scale;
-when 0 the scale stays 1.0 (initialized `fld 0x3f800000` at 0x100608bf,
-0x10060970, 0x10060a5b).
+**The flag.** `Render` reads D6C at four sites:
+0x100608b5 (`mov ecx,[edi+0x6c]`), 0x1006091c (`mov eax,[edi+0x6c]`),
+0x100609e1 and 0x10060ae0 (`cmp [edi+0x6c],ebx`) — each compared against 1.
+There is no `fld 0x3f800000` anywhere in Render. Instead, three stack slots are
+seeded with the float literal 1.0f (`0x3f800000`) before the scale reads:
+`mov [esp+0x30],0x3f800000` (0x100608bf), `mov [esp+0x48],0x3f800000`
+(0x100608c7), `mov [esp+0xa0],0x3f800000` (0x100608cf); the scale reads that
+run overwrite the slots with the attach/attached-object scale, so when D6C == 0
+(the reads are skipped) the factor stays 1.0. When D6C == 1 the particle
+dimensions are multiplied by the attach object's scale.
 
 **The read path (verified, 0x10060906..0x10060955).** Two stages:
 
@@ -59,23 +70,50 @@ Stage 2 (only when D6C == 1, 0x10060928):
 0x10060951  fstp [esp+0x30]            ; final scale factor
 ```
 
-The attached object is the **0xb8-byte sub-object** (created by
-`operator_new(0xb8)` at decompile line 93264, vtable **0x101cea98**). Its
-vtable slots (verified by raw dump):
+The attached object's vtable is **not pinned** by this trace, and it is **not**
+the 0xb8 sub-object vtable. The 0xb8-byte sub-object does exist — created in
+`FUN_100878c0` (decompile line 93247) by `operator_new(0xb8)` (line 93264) with
+`*puVar1 = &PTR_LAB_101cea98` (line 93269; a second ctor, `FUN_100852b0`, stores
+the same vtable at line 91240) — and its vtable's low slots (verified by raw
+dump) are:
 
 | vtable offset | function | body |
 |---|---|---|
 | +0x3C (slot 15) | 0x1016bd90 | `fld [ecx+0x60]; ret` — scale GETTER (float) |
 | +0x54 (slot 21) | 0x1016be70 | `mov eax,[esp+4]; mov [ecx+0x60],eax; ret 4` — scale SETTER |
-| +0x84 (slot 33) | 0x1016bed0 | returns a float from the sub-object (the value read at 0x10060944) |
+| +0x84 (slot 33) | 0x1016bed0 | `add ecx,0x30; jmp 0x101a6020` — **pointer thunk, not a float getter** |
 
-The scale is stored as a **float** at sub-object offset +0x60. The setter
-(0x1016be70) is called from the model-load / actor-scale-change path, **not**
-from `Render`. A raw scan of the DLL disassembly found **zero** `fstp`/`mov`
-stores to sub-object+0x60 in any render or update function — the write happens
-in the model-load initialization (0x10087930, decompile line 78262) or the
-actor-scale-change path, which the decompile does not isolate as a single
-addressable `fstp` instruction.
+0x101a6020 (the thunk target) returns a **pointer**:
+```
+101a6020  push esi
+101a6021  mov esi, ecx              ; esi = this+0x30
+101a6023  mov eax, [esi]            ; child object's vtable
+101a6025  test eax, eax
+101a6027  jne 0x101a6030
+101a6029  mov eax, [0x1021a2b4]     ; static default
+101a602e  pop esi
+101a602f  ret
+...
+101a6050  lea eax, [esi + 0x14]     ; else: the child object
+101a6053  pop esi
+101a6054  ret
+```
+The stage-2 call 0x10060944 (`call [edx+0x84]`) is immediately followed by
+`fmul [esp+0x2a8]` (0x1006094a) with **no float load in between**, so the call
+must return its float in st(0) on the FPU stack. The 0x1016bed0 thunk touches
+no FPU register and returns a pointer — therefore the attached object on the
+stage-2 path is **not** the 0xb8 sub-object, and the vtable actually consulted
+at +0x84 (the one of whatever `vtbl+0x258` = GetAttachedObject returns at
+runtime) is not pinned statically. The **stage-2 slot is a float getter by
+consumption** (proven), the **object and its vtable are not pinned** (PARTIAL).
+
+The scale is stored as a **float** at sub-object offset +0x60 (getter/setter
+above, raw-verified). The setter (0x1016be70) is called from the model-load /
+actor-scale-change path, **not** from `Render`. A raw scan of the DLL
+disassembly found **zero** `fstp`/`mov` stores to sub-object+0x60 in any render
+or update function — the write happens in the model-load initialization
+(FUN_10087930, decompile line 93281) or the actor-scale-change path, which the
+decompile does not isolate as a single addressable `fstp` instruction.
 
 **Mode-2 variant (0x10060a40..0x10060a91).** When the emitter is attached to an
 actor and D6C==1, the mode-2 path reads the attached object's scale via
@@ -171,9 +209,11 @@ quad in the attach plane, locking the quad's orientation to the attach
 object's chosen axis rather than the camera.
 
 **Census.** Raw spellsnew.edd: +0x178 = 0 for 2,116, 3 for 1
-(`e2115 VetRewards_Y1b`), 6 for 1 (`e2114 VetRewards_Y1a`). Only the last two
-records use axis alignment. They pin opposite axes (C-positive and C-negative)
-on the same texture (`Retro_Y1.dds`), consistent with two quads facing each
+(`e2115 VetRewards_Y1b`), 6 for 1 (`e2114 VetRewards_Y1a`). Only these two
+records use axis alignment (they are NOT the last two; 0-based 2116/2117 are
+the last records). They pin opposite axes (C-positive and C-negative)
+on the same texture (`blueglobesp501.dds` — re-derived by
+`python3 refactor/B1151/edd_census.py`), consistent with two quads facing each
 other. The B1141 OLD hypothesis ("1,2 = A,B; default=3; 4,5,6 = A-,B-,C-")
 is **correct**: values 1-3 select positive A/B/C, values 4-6 select negated
 A/B/C, value >6 defaults to positive C.
@@ -227,10 +267,17 @@ per frame. The per-frame spin is not isolated in the disassembly windows
 extracted for this trace (it is in the particle-update loop, not the draw
 block).
 
-**Census.** Raw spellsnew.edd: +0x130 = 16 for 1,064, 1 for 855, 4 for 199,
-2 for 121, 32 for 82, … (matches B1141 in-memory exactly). +0x134 = 16.0 for
-1,320, 1.0 for 217, 22.0 for 124, … The dominant configuration is 16 frames /
-16 fps (1,064 records): a 4×4 strip at one frame per 1/16 s.
+**Census.** Raw spellsnew.edd (full distributions, each sums to 2118; re-derived
+by `python3 refactor/B1151/edd_census.py`):
+
++0x130 — exactly three values present: 16 for 1,064, 1 for 855, 4 for 199.
+
++0x134 (fps, full): 0:59, 1:217, 2:2, 4:22, 6:4, 7:1, 8:67, 9:7, 10:6, 11:106,
+12:96, 13:2, 14:2, 14.3125:1, 16:1320, 16.8:1, 18:12, 20:2, 22:124, 24:5, 26:2,
+32:13, 33:29, 44:7, 64:3, 66:1, 116:1, 128:1, 256:5.
+
+The dominant configuration is 16 frames / 16 fps (1,064 records): a 4×4 strip
+at one frame per 1/16 s.
 
 ## (d) +0x70 — three sprite modes: billboard, streak, world-oriented quad
 
@@ -368,26 +415,27 @@ would need two independent uniforms). A second, independent u2 (512-table) is
 the base offset along the cone's axis. The particle spawns at
 `origin + axis × (u2 × h) + radial(u1 × r)`.
 
-**Census.** Raw spellsnew.edd: +0xA8 = 7 for 9 records. Full distribution:
-0:297, 1:202, 2:132, 3:125, 4:275, 5:808, 6:95, 7:9, 8:9, 9:366. Matches B1141
+**Census.** Raw spellsnew.edd: +0xA8 = 7 for 9 records. Full distribution (sums
+to 2118; re-derived by `python3 refactor/B1151/edd_census.py`):
+0:297, 1:202, 2:13, 3:125, 4:275, 5:808, 6:5, 7:9, 8:18, 9:366. Matches B1141
 in-memory exactly.
 
 ## Addresses cross-referenced (all verified against the disassembly)
 
 | VA | meaning |
 |---|---|
-| 0x100605b0 | CParticleSystem::Render (decompile line 68358) |
+| 0x100605b0 | CParticleSystem::Render (decompile line 68017) |
 | 0x100608b5 / 0x1006091c / 0x100609e1 / 0x10060ae0 | the four D6C reads |
 | 0x1006090f | `call [vtbl+0x1b4]` on attach object — base scale |
 | 0x1006092d | `call [vtbl+0x258]` on attach object — GetAttachedObject() |
-| 0x10060944 | `call [vtbl+0x84]` on attached object — sub-object scale |
+| 0x10060944 | `call [vtbl+0x84]` on attached object — result consumed as float (fmul, 0x1006094a); vtable not pinned (see (a)) |
 | 0x10060a49 | `call [vtbl+0x268]` — mode-2 attach check |
 | 0x10060a58 | `call [vtbl+0x54]` — mode-2 position vector |
 | 0x10060a7d | `call [vtbl+0x1b4]` on attached object — mode-2 scale |
 | 0x1016bd90 | scale getter: `fld [ecx+0x60]; ret` (sub-object vtbl +0x3C) |
 | 0x1016be70 | scale setter: `mov [ecx+0x60],eax; ret 4` (sub-object vtbl +0x54) |
-| 0x1016bed0 | +0x84 float getter (sub-object vtbl +0x84) |
-| 0x101cea98 | the 0xb8 sub-object's vtable (refs at file 0x852b2/0x87910) |
+| 0x1016bed0 | vtbl 0x101cea98 +0x84: `add ecx,0x30; jmp 0x101a6020` — pointer thunk (NOT the stage-2 scale getter) |
+| 0x101cea98 | the 0xb8 sub-object's vtable (refs at file 0x852b2/0x87910) — NOT the attached object on the stage-2 path |
 | 0x1006235f / 0x1006246f / 0x100634d7 | the D178 reads |
 | 0x10062486/0x24a0/0x255c/0x24ba/0x24f2/0x2527 | the 6 axis-alignment columns |
 | 0x100640b4 | the +0x178 dispatch table (6 entries) |
@@ -421,9 +469,26 @@ in-memory exactly.
 | 0x101c7410 | 1/32768 (shuffle index scale) |
 | 0x101c6eac | 1000.0 (1000-table shuffle scale) |
 | 0x1005eef0 | the CONV function (record → CEmitterDef, decompile line 67132) |
-| 0x10087930 | the model-load init (sub-object creation, decompile line 78262) |
+| 0x100878c0 | the 0xb8 sub-object alloc (operator_new(0xb8) at line 93264, vtable store at 93269; decompile header line 93247) |
+| 0x10087930 | FUN_10087930, model-load path (decompile header line 93281; the 0xb8 alloc is in the PRECEDING FUN_100878c0) |
 | 0x102347a0 / 0x10234fa0 | the two random float tables (runtime-initialized) |
 | 0x10235f4c / 0x10235f54 | the two random counters |
+
+## Regenerating every census quoted in this document
+
+One command (run from the repo root):
+
+```
+scp thinkpad:/mnt/projects/EverQuestP1999/spellsnew.edd /tmp/spellsnew.edd \
+  && python3 refactor/B1151/edd_census.py /tmp/spellsnew.edd
+```
+
+It prints the 8-byte header, the full distribution of +0x6C / +0x70 / +0xA8 /
++0x130 / +0x134 / +0x178 over all 2,118 records (each summing to 2,118), the
+names/textures of records 2114..2117, every record with D178 ≠ 0, and every
+record with D70 == 2. `spellsnew.edd` lives on the ThinkPad oracle client
+copy (path recorded above; `find / -name spellsnew.edd` on `ssh thinkpad`
+finds the same bytes at three locations there).
 
 ## fable mirror
 
@@ -439,11 +504,25 @@ multiplier is exactly this value.
 
 ## PARTIAL rows (what this trace did NOT fully resolve)
 
-- **The exact setter call-site for sub-object+0x60.** The model-load path
-  (0x10087930) creates the sub-object; the per-race value is set by the setter
-  (0x1016be70) when the actor's scale changes. The float store does not appear
-  as an isolated `fstp` in the `.dis` — the write-site is not pinned. The read
-  path and the value are proven.
+- **The attached object's vtable on the stage-2 (+0x6C == 1) scale read.**
+  Stage 2's `call [vtbl+0x84]` (0x10060944) returns a float by consumption,
+  but the object it is called on is whatever the attach object's `vtbl+0x258`
+  (GetAttachedObject) returns at runtime; its vtable is not pinned statically.
+  Proven negative: it is NOT the 0xb8 sub-object vtable 0x101cea98 — that
+  vtable's +0x84 slot (0x1016bed0) is `add ecx,0x30; jmp 0x101a6020`, a
+  pointer-returning thunk (0x101a6020 returns a child object / static default
+  and touches no FPU register), incompatible with the `fmul [esp+0x2a8]` that
+  immediately follows the call. Missing piece: dump the runtime vtable of the
+  object GetAttachedObject returns (e.g. via the oracle client) and read its
+  +0x84 slot.
+- **The exact setter call-site for sub-object+0x60.** FUN_100878c0
+  (decompile line 93247) allocates the 0xb8 sub-object; FUN_10087930
+  (decompile line 93281) is the model-load path where the per-race value is
+  suspected to be written via the setter (0x1016be70) when the actor's scale
+  changes. The float store does not appear as an isolated `fstp` in the
+  `.dis` — the write-site is not pinned. The stage-1 read path and the value
+  (fable mirror) are proven; the stage-2 read is PROVEN by consumption, the
+  stage-2 object is PARTIAL (above).
 - **The per-frame spin (+0x138) array layout.** The CONV function rewrites it
   and the render loop reads it, but the record's per-frame spin words (count,
   offset) are not isolated in the disassembly windows extracted here.
