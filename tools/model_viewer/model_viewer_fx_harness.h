@@ -48,7 +48,7 @@ struct HarnessCast {
 struct HarnessOptions {
     std::string planPath;
     std::string framesDir;
-    std::string cameraPreset;          // "" (the interactive framing) or "b1118"
+    std::string cameraPreset;          // "" (the interactive framing) or "b1118", or B1155's "b1130" / "b1130-self"
     std::string backdropPath;          // optional image drawn behind the scene
     std::string eqe1Path = "/mnt/projects/EverQuest_ETC1/willeq.eqe1";
     std::string eqe1Dir = "/mnt/projects/EverQuest_ETC1";  // the model packs (T207 resolver)

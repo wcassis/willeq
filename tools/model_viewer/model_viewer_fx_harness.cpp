@@ -14,6 +14,8 @@
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/environment/spell_effects_config.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -95,9 +97,12 @@ core::vector3df targetRightOfCaster() {
 struct PresetGeometry {
     float pitchDeg = 12.0f;
     float feetX = 640.0f, feetY = 605.0f, casterPx = 235.0f;
+    // B1155 b1130: the fixed_npc target's recorded screen facts (feet column,
+    // feet row, pixel height) from review/B1130/README.md "Geometry".
+    float targetFeetX = 0.0f, targetFeetY = 0.0f, targetPx = 0.0f;
 };
 
-void fitFaceOnCamera(const PresetGeometry& g) {
+void fitFaceOnCamera(const PresetGeometry& g, const char* name) {
     const float w = static_cast<float>(harnessOpts.width), h = static_cast<float>(harnessOpts.height);
     const float aspect = w / h;
     const float fovY = firstPersonVerticalFovRadians(aspect);
@@ -186,11 +191,118 @@ void fitFaceOnCamera(const PresetGeometry& g) {
         dist *= px / g.casterPx;
     }
     if (targetAnimatedNode) targetAnimatedNode->setVisible(targetWasVisible);
-    std::printf("[fx-harness] camera b1118: dist %.3f look %.3f above the pose-box feet, pitch %.1f, "
+    std::printf("[fx-harness] camera %s: dist %.3f look %.3f above the pose-box feet, pitch %.1f, "
                 "pose-box height %.3f -> rendered caster rows %d..%d (%d px, feet row %d), "
                 "column centroid %.1f\n",
-                dist, lookH, g.pitchDeg, head.Y - feet.Y, top, bottom, bottom - top + 1, bottom, cx);
+                name, dist, lookH, g.pitchDeg, head.Y - feet.Y, top, bottom, bottom - top + 1, bottom, cx);
     std::fflush(stdout);
+    return top >= 0;  // the fit rendered the caster (the caller's test asserts the pixels)
+}
+
+// B1155 b1130: the solved target placement (world units), set by
+// fitFixedNpcTarget and used by placeHarnessTarget.
+float b1130TargetX = 0.0f, b1130TargetZ = 0.0f;
+
+// B1155: b1130's fixed_npc target. review/B1130/README.md "Geometry": the
+// B1118 opening pose with the caster #goto -67.6,434.4 so the #spawn TrollF
+// stands ~1.4 caster heights to her right -- the settle stills (oracle
+// cal_r35/15_time_settle.png) record the caster 209 px with feet (640,598) and
+// the NPC 325 px with feet (940,652). The b1130 camera is already fitted to
+// the caster; this solves the target's world offset (x, z) from the two feet
+// pixels and then MEASURES its rendered height, so the 325 px (race 9 scale
+// 1.4, config/race_models.json races/9, at its nearer depth) is a consistency
+// check, never a hand-tuned input.
+//
+// Screen right for a camera looking along -kCasterFacing is world -X
+// (targetRightOfCaster), so the target at column 940 sits at x < 0, and its
+// lower feet row (652 > 598) and larger pixel height put it CLOSER to the
+// camera than the caster: z > 0.
+bool fitFixedNpcTarget(const PresetGeometry& g) {
+    if (!targetAnimatedNode || !camera) return false;
+    const video::SColor clear(255, 50, 50, 80);
+    const core::vector3df look = camera->getTarget();
+    // The target's silhouette alone (any pixel off the clear colour):
+    // {column centroid, bottom row, pixel height}.
+    auto measure = [&](float x, float z) -> std::array<float, 3> {
+        targetAnimatedNode->setVisible(true);
+        targetAnimatedNode->setPosition(core::vector3df(x, 0.0f, z));
+        targetAnimatedNode->updateAbsolutePosition();
+        camera->setTarget(look);
+        driver->beginScene(true, true, clear);
+        smgr->drawAll();
+        driver->endScene();
+        video::IImage* img = driver->createScreenShot();
+        if (!img) return {1e9f, -1e9f, 0.0f};
+        int top = -1, bottom = -1;
+        double sx = 0;
+        int nx = 0;
+        const auto dim = img->getDimension();
+        for (u32 y = 0; y < dim.Height; ++y)
+            for (u32 x = 0; x < dim.Width; ++x) {
+                const video::SColor c = img->getPixel(x, y);
+                if (std::abs(int(c.getRed()) - 50) + std::abs(int(c.getGreen()) - 50) +
+                        std::abs(int(c.getBlue()) - 80) <= 12)
+                    continue;
+                if (top < 0) top = static_cast<int>(y);
+                bottom = static_cast<int>(y);
+                sx += x;
+                ++nx;
+            }
+        img->drop();
+        if (nx == 0) return {1e9f, -1e9f, 0.0f};
+        return {static_cast<float>(sx / nx), static_cast<float>(bottom),
+                static_cast<float>(bottom - top + 1)};
+    };
+    // Hide the caster while fitting (its silhouette would be a second
+    // off-clear blob).
+    const bool casterWasVisible = animatedNode && animatedNode->isVisible();
+    if (animatedNode) animatedNode->setVisible(false);
+
+    // Newton on the two feet-pixel residuals (finite-difference Jacobian),
+    // damped. Starts on the caster's right and closer to the camera.
+    float x = -2.0f, z = 2.0f;
+    std::array<float, 3> m{1e9f, -1e9f, 0.0f};
+    for (int iter = 0; iter < 24; ++iter) {
+        m = measure(x, z);
+        if (m[0] < 1e8f) {
+            const float r0 = m[0] - g.targetFeetX, r1 = m[1] - g.targetFeetY;
+            std::printf("[fx-harness]   tgt fit %d: (x %.3f, z %.3f) -> feet row %.1f at column %.1f, %d px\n",
+                        iter, x, z, m[1], m[0], static_cast<int>(m[2]));
+            if (std::fabs(r0) < 0.5f && std::fabs(r1) < 0.5f) break;
+            const float d = 0.05f;
+            const auto mx = measure(x + d, z);
+            const auto mz = measure(x, z + d);
+            if (mx[0] < 1e8f && mz[0] < 1e8f) {
+                const float j00 = (mx[0] - m[0]) / d, j01 = (mz[0] - m[0]) / d;
+                const float j10 = (mx[1] - m[1]) / d, j11 = (mz[1] - m[1]) / d;
+                const float det = j00 * j11 - j01 * j10;
+                if (std::fabs(det) > 1e-6f) {
+                    const float dx = (j11 * (-r0) - j01 * (-r1)) / det;
+                    const float dz = (-j10 * (-r0) + j00 * (-r1)) / det;
+                    const float step = std::min(1.0f, 6.0f / std::max(std::fabs(dx), std::fabs(dz)));
+                    x += dx * step;
+                    z += dz * step;
+                    continue;
+                }
+            }
+            // singular Jacobian: nudge toward the target pixels
+            x -= 0.2f * std::copysign(1.0f, r0);  // column right = world -X
+            z += 0.2f * std::copysign(1.0f, r1);  // feet row down = closer
+        }
+    }
+    if (animatedNode) animatedNode->setVisible(casterWasVisible);
+    const bool ok = m[0] < 1e8f && std::fabs(m[0] - g.targetFeetX) < 1.0f &&
+                    std::fabs(m[1] - g.targetFeetY) < 1.0f;
+    std::printf("[fx-harness] camera b1130: target (x %.3f, 0, z %.3f) -> rendered target feet row %.1f at "
+                "column %.1f, %d px head top to feet (B1130 fixed: %d at %d, %d px)\n",
+                x, z, m[1], m[0], static_cast<int>(m[2]), static_cast<int>(g.targetFeetY),
+                static_cast<int>(g.targetFeetX), static_cast<int>(g.targetPx));
+    std::fflush(stdout);
+    if (ok) {
+        b1130TargetX = x;
+        b1130TargetZ = z;
+    }
+    return ok;
 }
 
 // scene.tsv: each visible entity's screen box (its pose bounding box's eight
@@ -266,10 +378,14 @@ bool parseHarnessPlan(const std::string& path, std::vector<HarnessCast>& out, st
 }
 
 void applyHarnessPresetDefaults() {
-    if (harnessOpts.cameraPreset != "b1118") return;
+    if (harnessOpts.cameraPreset != "b1118" && harnessOpts.cameraPreset != "b1130" &&
+        harnessOpts.cameraPreset != "b1130-self")
+        return;
+    const bool b1130 = harnessOpts.cameraPreset == "b1130" || harnessOpts.cameraPreset == "b1130-self";
     harnessOpts.width = 1280;
     harnessOpts.height = 800;
-    // char 67 Testcaster (lane 5): race 6 dark elf, gender 1 (fable.log
+    // All three presets share the b1118 char-67 caster: char 67 Testcaster
+    // (lane 5): race 6 dark elf, gender 1 (fable.log
     // "Updating appearance for entity 258 (Testcaster) to race 6 gender 1"),
     // server size 6 (buildEntityMesh[Testcaster] ... (6.00/6) = 1.00).
     if (!harnessOpts.casterGiven) {
@@ -286,12 +402,23 @@ void applyHarnessPresetDefaults() {
         const uint32_t equip[9] = {0, 10, 1, 23, 1, 1, 1, 0, 72};
         std::copy(equip, equip + 9, harnessOpts.casterEquipment);
     }
-    // `#spawn TrollF`: eqemu's default #spawn is a level-1 human male
-    // (the leg's chat: "Race | Human (1)", "Gender | Male (0)").
     if (!harnessOpts.targetGiven) {
-        harnessOpts.targetRace = 1;
-        harnessOpts.targetGender = 0;
-        harnessOpts.targetSize = 6.0f;
+        if (b1130) {
+            // b1130 / b1130-self: the B1130 fixed-geometry target, a TrollF --
+            // race 9 (Troll), gender 1, server size 6 (config/race_models.json
+            // races/9 scale 1.4: that 1.4, at its nearer depth, is why the
+            // stills record 325 px vs the caster's 209).
+            harnessOpts.targetRace = 9;
+            harnessOpts.targetGender = 1;
+            harnessOpts.targetSize = 6.0f;
+        } else {
+            // b1118: `#spawn TrollF`: eqemu's default #spawn is a level-1
+            // human male (the leg's chat: "Race | Human (1)", "Gender | Male
+            // (0)").
+            harnessOpts.targetRace = 1;
+            harnessOpts.targetGender = 0;
+            harnessOpts.targetSize = 6.0f;
+        }
     }
     // B1142 (#462): no UI occluder by default. B1139 drew the fable Tip of the
     // Day window (920,243..1280,543) here because every lane-5 leg up to B1127
@@ -305,7 +432,9 @@ void applyHarnessPresetDefaults() {
     // Testcaster stands 228 px head top to feet (rows 377..605 of that leg's
     // tail frame, review/B1138/backdrop/), not B1118's 235.
     if (harnessOpts.simHz <= 0) harnessOpts.simHz = 60;
-    if (!harnessOpts.casterPxGiven) harnessOpts.casterPx = 228.0f;
+    if (!harnessOpts.casterPxGiven)
+        harnessOpts.casterPx =
+            (harnessOpts.cameraPreset == "b1130" || harnessOpts.cameraPreset == "b1130-self") ? 209.0f : 228.0f;
 }
 
 bool initHarnessTextureCache() {
@@ -535,11 +664,21 @@ void harnessInterrupt(const EQ::SpellData& spell) {
 
 void placeHarnessTarget(bool self, float distance) {
     if (!targetAnimatedNode || !animatedNode) return;
+    // B1155: b1130-self is the caster alone (B1130's fixed_self stills); the
+    // target stands where fitFixedNpcTarget solved it for b1130.
+    if (harnessOpts.cameraPreset == "b1130-self") {
+        targetAnimatedNode->setVisible(false);
+        return;
+    }
     targetAnimatedNode->setVisible(!self);
     if (self) return;
-    const core::vector3df right = harnessOpts.cameraPreset.empty() ? core::vector3df(1, 0, 0)
-                                                                   : targetRightOfCaster();
-    targetAnimatedNode->setPosition(animatedNode->getPosition() + right * distance);
+    if (harnessOpts.cameraPreset == "b1130") {
+        targetAnimatedNode->setPosition(core::vector3df(b1130TargetX, 0.0f, b1130TargetZ));
+    } else {
+        const core::vector3df right = harnessOpts.cameraPreset.empty() ? core::vector3df(1, 0, 0)
+                                                                       : targetRightOfCaster();
+        targetAnimatedNode->setPosition(animatedNode->getPosition() + right * distance);
+    }
     targetAnimatedNode->updateAbsolutePosition();
 }
 
@@ -586,12 +725,27 @@ void setupSpellTestCamera() {
         device->getTimer()->stop();
         device->getTimer()->setTime(1000);
     }
-    if (harnessOpts.cameraPreset == "b1118") {
+    if (harnessOpts.cameraPreset == "b1118" || harnessOpts.cameraPreset == "b1130" ||
+        harnessOpts.cameraPreset == "b1130-self") {
         PresetGeometry g;
         g.casterPx = harnessOpts.casterPx;
-        fitFaceOnCamera(g);
+        if (harnessOpts.cameraPreset != "b1118") {
+            // B1155: B1130's fixed stills (review/B1130/README.md "Geometry"):
+            // the B1118 opening pose, caster 209 px with feet row 598 at
+            // column 640 (the B1118 tour's own numbers are row 605 / 235 px).
+            g.feetX = 640.0f;
+            g.feetY = 598.0f;
+        }
+        if (!fitFaceOnCamera(g, harnessOpts.cameraPreset.c_str())) return false;
+        if (harnessOpts.cameraPreset == "b1130") {
+            // The fixed_npc target: 325 px with feet (940,652).
+            g.targetFeetX = 940.0f;
+            g.targetFeetY = 652.0f;
+            g.targetPx = 325.0f;
+            if (!fitFixedNpcTarget(g)) return false;
+        }
         if (harnessOpts.ground) addGroundPlane();
-        return;
+        return true;
     }
     // The interactive framing: the midpoint between caster (0,0,0) and target.
     const float mid = harnessOpts.interactiveDistance * 0.5f;
