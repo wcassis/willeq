@@ -2,6 +2,7 @@
 #include "client/graphics/portal_system.h"
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/environment/unified_particle.h"
+#include "client/graphics/environment/spell_spawn_shape.h"
 #include "client/graphics/environment/spell_particle_types.h"
 #include "client/hc_map.h"
 #include "common/logging.h"
@@ -406,8 +407,10 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
             if (emitter.config.burstCount > 0 && !emitter.isBurstSpawned) {
                 const int burst = Environment::scaledCount(emitter.config.burstCount, density);
                 for (int s = 0; s < burst; ++s) {
+                    // B1150: s/burst is the batch index/size (shapes 1/2 are per-batch deterministic).
                     spawnSpellParticle(emitter.config, emitter.emitterID,
-                                       emitter.position + emitter.attachOffset, dirPtr, emitter.family);
+                                       emitter.position + emitter.attachOffset, dirPtr, emitter.family,
+                                       s, burst);
                 }
                 emitter.isBurstSpawned = true;
             }
@@ -429,8 +432,10 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
                     const int toSpawn = static_cast<int>(emitter.spawnAccumulator);
                     emitter.spawnAccumulator -= static_cast<float>(toSpawn);
                     for (int s = 0; s < toSpawn; ++s) {
+                        // B1150: s/toSpawn is the batch index/size (shapes 1/2).
                         spawnSpellParticle(emitter.config, emitter.emitterID,
-                                           emitter.position + emitter.attachOffset, dirPtr, emitter.family);
+                                           emitter.position + emitter.attachOffset, dirPtr, emitter.family,
+                                           s, toSpawn);
                     }
                 }
                 continue;
@@ -444,8 +449,10 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
                 int toSpawn = static_cast<int>(emitter.spawnAccumulator);
                 emitter.spawnAccumulator -= static_cast<float>(toSpawn);
                 for (int s = 0; s < toSpawn; ++s) {
+                    // B1150: s/toSpawn is the batch index/size (shapes 1/2).
                     spawnSpellParticle(emitter.config, emitter.emitterID,
-                                       emitter.position + emitter.attachOffset, dirPtr, emitter.family);
+                                       emitter.position + emitter.attachOffset, dirPtr, emitter.family,
+                                       s, toSpawn);
                 }
             }
         }
@@ -869,7 +876,7 @@ void SimulationWorker::spawnWeatherParticle(const EmitterConfig& cfg, uint16_t e
 
 void SimulationWorker::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emitterID,
                                            const glm::vec3& emitterPos, const glm::vec3* dynamicDir,
-                                           ParticleFamily family) {
+                                           ParticleFamily family, int batchIndex, int batchSize) {
     int idx = allocateParticle();
     if (idx < 0) return;
 
@@ -877,7 +884,45 @@ void SimulationWorker::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emi
     p.flags = 0;  // B1149: a reused slot keeps no EDD colour/sprite bit of its last particle
 
     p.position = emitterPos;
-    if (cfg.spawnShape == SpawnShape::BOX) {
+    if (cfg.eddShape.active) {
+        // B1150 (#470): the spellsnew.edd +0xA8 shape (spell_spawn_shape.h: the
+        // ten official cases, each with its Render address). The emitter frame
+        // is the actor's: EDD axis 1 = the shape's height/"up" axis = the world
+        // up; EDD axis 2 = the actor's facing (horizontal); EDD axis 3 = the
+        // horizontal perpendicular (the attach matrix the client gives a
+        // model-attached emitter; a level actor is un-tilted). The record's
+        // offsets/tilts/shape words place the particle in that frame; the
+        // config's spawnShape/spawnExtents are NOT read for a record emitter.
+        // (spell_spawn_shape.h's abstract point: x along EDD axis 1, y along
+        // axis 2, z along axis 3.)
+        Environment::EddShapeParams sp;
+        sp.shape = cfg.eddShape.shape;
+        sp.dimX = cfg.eddShape.dimX;
+        sp.dimY = cfg.eddShape.dimY;
+        sp.dimZ = cfg.eddShape.dimZ;
+        sp.offX = cfg.eddShape.offX;
+        sp.offY = cfg.eddShape.offY;
+        sp.offZ = cfg.eddShape.offZ;
+        sp.tiltA = cfg.eddShape.tiltA;
+        sp.tiltB = cfg.eddShape.tiltB;
+        sp.scale = cfg.eddShape.scale;
+        const Environment::EddShapePoint sppt = Environment::computeEddShapePoint(
+            sp, batchIndex, batchSize > 0 ? batchSize : 1,
+            [this]() { return particleRandomFloat(0.0f, 1.0f); });
+        glm::vec3 e1(0.0f, 1.0f, 0.0f);  // EDD axis 1 -> world up
+        glm::vec3 e2(1.0f, 0.0f, 0.0f);  // EDD axis 2 -> the facing
+        glm::vec3 e3(0.0f, 0.0f, 1.0f);  // EDD axis 3 -> the perpendicular
+        if (dynamicDir) {
+            glm::vec3 d(dynamicDir->x, 0.0f, dynamicDir->z);
+            if (glm::length(d) > 0.01f) {
+                e2 = glm::normalize(d);
+                e3 = glm::normalize(glm::cross(e1, e2));
+            }
+        }
+        p.position += e1 * sppt.point.x + e2 * sppt.point.y + e3 * sppt.point.z;
+        // +0xD0: the renderer subtracts it from the view depth (0x10063069/0x10063198).
+        p.eddDepthBias = cfg.eddShape.depthBias;
+    } else if (cfg.spawnShape == SpawnShape::BOX) {
         p.position.x += particleRandomFloat(-cfg.spawnExtents.x, cfg.spawnExtents.x);
         p.position.y += particleRandomFloat(-cfg.spawnExtents.y, cfg.spawnExtents.y);
         p.position.z += particleRandomFloat(-cfg.spawnExtents.z, cfg.spawnExtents.z);

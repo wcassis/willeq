@@ -471,20 +471,37 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         const bool additive = p.getBlendMode() == UnifiedBlendMode::ADDITIVE;
         const bool srcAlphaAdditive = additive && p.hasEddColour();
 
+        // B1150 (#470): the +0xD0 view-depth bias (EQGraphicsDX9 0x10063069 /
+        // 0x10063198: the view depth has D_D0 subtracted BEFORE the near/far
+        // cull and the 1.0/depth perspective divide). This renderer projects
+        // in the vertex shader (clipPos = uProj * uView * pos), so the bias
+        // is applied by translating the world position along r -- the view
+        // matrix's rotated row 3, the unit vector from scene toward camera
+        // (r . viewDir = -1) -- by D: that changes view.z by exactly D, i.e.
+        // the depth (front-of-camera) by -D, and the shader's cull, divide
+        // and point-size scale all see the biased depth.
+        glm::vec3 pos(p.position);
+        if (p.eddDepthBias != 0.0f) {
+            const glm::vec3 r(viewMatrix[8], viewMatrix[9], viewMatrix[10]);
+            pos += r * p.eddDepthBias;
+        }
+
         // B995: the family's Options opacity / near clip (identity by default).
         // The Options opacity is the client's SpellParticleOpacity, which
         // multiplies the alpha (0x10063a85); a ONE, ONE particle has no alpha
         // in its blend, so it takes the opacity in its RGB instead.
+        // B1150: the near clip sees the biased position (the client culls on
+        // the biased depth).
         glm::vec4 color = p.color;
         if (!applyParticleKnobs(knobs_, p.getFamily(), additive && !srcAlphaAdditive,
-                                p.position, cameraPos_, color)) {
+                                pos, cameraPos_, color)) {
             continue;
         }
 
         PointSpriteVertex v;
-        v.x = p.position.x;
-        v.y = p.position.y;
-        v.z = p.position.z;
+        v.x = pos.x;
+        v.y = pos.y;
+        v.z = pos.z;
         v.r = color.r;
         v.g = color.g;
         v.b = color.b;
@@ -501,7 +518,7 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
                                         : (srcAlphaAdditive ? 4 : additive ? 0 : 1);
             const float hw = 0.5f * p.size, hh = 0.5f * p.height;
             const float cs = std::cos(p.rotation), sn = std::sin(p.rotation);
-            const glm::vec3 c(p.position.x, p.position.y, p.position.z);
+            const glm::vec3 c(pos.x, pos.y, pos.z);
             auto corner = [&](float sx, float sy, float u, float t) {
                 const float dx = sx * hw, dy = sy * hh;
                 const glm::vec3 w = c + viewRight * (dx * cs - dy * sn) + viewUp * (dx * sn + dy * cs);

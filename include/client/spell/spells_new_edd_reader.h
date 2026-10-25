@@ -38,11 +38,39 @@
  *   +0x17C, +0x180  sprite height min, max: h = 17C + (180 - 17C) * rand (0x10061268)
  *   +0x18C int      1 = width uses the height's random draw (0x10061279)
  *   +0x190 / +0x194 float s  height / width shrink-out (0x100632b1 / 0x100632d2)
- *   (+0x19C, shape and offsets times the attach scale, is B1150's: not decoded here)
+ *
+ * B1150 (#470): the spawn-geometry words (SpellsNewEddShape). The shape switch
+ * itself is CParticleSystem's per-particle step at 0x10061157 (decompile line
+ * 68775), one case per shape; the words are read there and just before it:
+ *   +0xA8  int      the shape (0..9): 0 point; 1 ring evenly spaced per batch;
+ *                   2 stacked rings over +0xB4 (count table 0x10061826);
+ *                   3 cylinder surface; 4 filled disc (rejection, 0x101c5948=1.0);
+ *                   5 sphere/ellipsoid surface (z uniform, r=sqrt(1.0-z^2)*AC);
+ *                   6 box surface (face = u*6.0, 0x101cc274); 7 line/cone (one
+ *                   u: r=u*AC, z=u*B4); 8 torus (major AC, minor B4);
+ *                   9 ring random angle
+ *   +0xAC  float    dim X: the circle radius AC / box half-extent / torus major
+ *   +0xB0  float    dim Y: 0.0 (0x101cbd40) = "same as AC" (circle, not ellipse);
+ *                   else the ellipse's Y semi-axis
+ *   +0xB4  float    dim Z: cylinder/stacked/cone height, torus minor, sphere/box
+ *                   Z half-extent (0 = AC there)
+ *   +0xB8/+0xBC/+0xC0 float  spawn OFFSETS along the emitter basis axes 1/2/3,
+ *                   origin += basis_i * (s19c * off_i) (0x100612b9..0x100613f7)
+ *   +0xC4  float    tilt in EQ 512ths rotating basis (1,2) (0x100613fd..0x100615aa)
+ *   +0xC8  float    tilt in EQ 512ths rotating basis (1,3) (0x100615ab..0x10061752)
+ *   +0xD0  float    view depth bias: the renderer subtracts it from the view
+ *                   depth before cull/divide (B1150, unified_particle_renderer)
+ *   +0x19C int      1 = the attach scale s multiplies r, z and the offsets
+ *                   (fStack_4d8, 0x1006090d..); 0 = attach matrix normalised
+ *                   (s = 1.0); fable passes kSpellFxAttachScale = 1.0 either way
+ * Shapes 5/6 also store the outward normal in the (r,z) plane used by +0x110
+ * (0x1006205b..0x10062097). The random draws are the 512/1000/2000-entry
+ * uniform tables (0x1005d3e0, 0x1005d400, DAT_10232860) -- uniform, so fable
+ * uses particleRandomFloat (refactor/B1150/README.md, section 3).
+ *
  * A mode-0 sprite is a screen-facing quad w wide and h tall in WORLD units at
  * the particle (half-width w*s*D16C*0.5/depth times the camera's projection
  * scale, 0x1006335a..0x1006336f).
- * Shape, offsets and motion are B1150/B1151's.
  */
 
 #ifndef EQT_SPELLS_NEW_EDD_READER_H
@@ -78,6 +106,18 @@ constexpr size_t kEddWidthMaxOffset = 0x184;
 constexpr size_t kEddSameRandomOffset = 0x18C;
 constexpr size_t kEddHeightShrinkOffset = 0x190;
 constexpr size_t kEddWidthShrinkOffset = 0x194;
+// B1150 (#470): the spawn-geometry words.
+constexpr size_t kEddShapeOffset = 0xA8;
+constexpr size_t kEddDimXOffset = 0xAC;
+constexpr size_t kEddDimYOffset = 0xB0;
+constexpr size_t kEddDimZOffset = 0xB4;
+constexpr size_t kEddOffXOffset = 0xB8;
+constexpr size_t kEddOffYOffset = 0xBC;
+constexpr size_t kEddOffZOffset = 0xC0;
+constexpr size_t kEddTiltAOffset = 0xC4;
+constexpr size_t kEddTiltBOffset = 0xC8;
+constexpr size_t kEddDepthOffset = 0xD0;
+constexpr size_t kEddScaleShapesOffset = 0x19C;
 
 // Little-endian words of an entry (the files are x86 dumps).
 inline int32_t eddInt(const uint8_t* entry, size_t offset) {
@@ -140,6 +180,32 @@ struct SpellsNewEddSprite {
 
 SpellsNewEddSprite decodeSpellsNewEddSprite(const uint8_t* entry416);
 
+// B1150 (#470): the spawn-geometry words of one emitter, raw as the file holds
+// them (see the header comment for each word's read site; the shape cases are
+// the switch at 0x10061157, decompile lines 68775-69043).
+struct SpellsNewEddShape {
+    int32_t shape = 0;           // +0xA8: 0..9 (0 point .. 9 ring random angle)
+    float dimX = 0.0f;           // +0xAC: radius AC / box half-extent / torus major
+    float dimY = 0.0f;           // +0xB0: 0.0 = "same as +0xAC" (0x101cbd40 compare)
+    float dimZ = 0.0f;           // +0xB4: height/depth minor; 0 = AC where noted
+    float offX = 0.0f;           // +0xB8: spawn offset along EDD axis 1 (the shape's height/"up" axis)
+    float offY = 0.0f;           // +0xBC: spawn offset along EDD axis 2 (radial plane)
+    float offZ = 0.0f;           // +0xC0: spawn offset along EDD axis 3 (radial plane)
+    float tiltA = 0.0f;          // +0xC4: EQ 512ths, rotates EDD axes 1/2 (0x100613fd)
+    float tiltB = 0.0f;          // +0xC8: EQ 512ths, rotates EDD axes 1/3 (0x100615ab)
+    float depth = 0.0f;          // +0xD0: view depth bias (rendered, not spawned)
+    bool scaleShapes = false;    // +0x19C == 1: r, z and offsets times the attach scale
+
+    // +0xB0 == 0.0 means the shape is a circle/sphere of radius dimX, not an
+    // ellipse (the code compares +0xB0 against 0x101cbd40 = 0.0f, e.g. 0x1006178f).
+    float dimYEffective() const { return dimY != 0.0f ? dimY : dimX; }
+    // +0xB4 == 0.0 means AC for the sphere's Z (LAB_10061dd3) and the box's Z
+    // half-extent (decompile lines 68900-68952); other shapes use dimZ as is.
+    float dimZForSphereBox() const { return dimZ != 0.0f ? dimZ : dimX; }
+};
+
+SpellsNewEddShape decodeSpellsNewEddShape(const uint8_t* entry416);
+
 // B1149: the attach scale s fable passes for +0x6C. The client's s for an
 // actor is the actor's scale word (+0x10) times its model's scale (vtbl+0x84),
 // EQGraphicsDX9 0x1006090d..0x1006094a, and for a bone the bone's (0x10060991..);
@@ -163,6 +229,8 @@ public:
     const SpellsNewEddTiming* timing(int32_t index) const;
     // B1149: the sprite-size words; nullptr like timing().
     const SpellsNewEddSprite* sprite(int32_t index) const;
+    // B1150: the spawn-geometry words; nullptr like timing().
+    const SpellsNewEddShape* shape(int32_t index) const;
 
     // +0x00 name; +0x40 texture as a lower-case basename with the one shipped
     // entry's trailing '.' padding trimmed ("gena20.bmp......." -> gena20.bmp);
@@ -175,6 +243,7 @@ private:
     std::vector<uint8_t> m_bytes;
     std::vector<SpellsNewEddTiming> m_timing;
     std::vector<SpellsNewEddSprite> m_sprite;
+    std::vector<SpellsNewEddShape> m_shape;
     size_t m_count = 0;
     bool m_loaded = false;
     std::string m_error;

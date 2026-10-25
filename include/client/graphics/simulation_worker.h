@@ -1004,7 +1004,8 @@ private:
                               const glm::vec3& windDir, float windStrength);
     void spawnSpellParticle(const Environment::EmitterConfig& cfg, uint16_t emitterID,
                             const glm::vec3& emitterPos, const glm::vec3* dynamicDir = nullptr,
-                            Environment::ParticleFamily family = Environment::ParticleFamily::Environment);
+                            Environment::ParticleFamily family = Environment::ParticleFamily::Environment,
+                            int batchIndex = 0, int batchSize = 0);
     float particleRandomFloat(float minVal, float maxVal);
     int particleRandomInt(int minVal, int maxVal);
 

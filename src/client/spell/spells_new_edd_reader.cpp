@@ -40,6 +40,22 @@ SpellsNewEddSprite decodeSpellsNewEddSprite(const uint8_t* e) {
     return s;
 }
 
+SpellsNewEddShape decodeSpellsNewEddShape(const uint8_t* e) {
+    SpellsNewEddShape s;
+    s.shape = eddInt(e, kEddShapeOffset);
+    s.dimX = eddFloat(e, kEddDimXOffset);
+    s.dimY = eddFloat(e, kEddDimYOffset);
+    s.dimZ = eddFloat(e, kEddDimZOffset);
+    s.offX = eddFloat(e, kEddOffXOffset);
+    s.offY = eddFloat(e, kEddOffYOffset);
+    s.offZ = eddFloat(e, kEddOffZOffset);
+    s.tiltA = eddFloat(e, kEddTiltAOffset);
+    s.tiltB = eddFloat(e, kEddTiltBOffset);
+    s.depth = eddFloat(e, kEddDepthOffset);
+    s.scaleShapes = eddInt(e, kEddScaleShapesOffset) == 1;
+    return s;
+}
+
 bool SpellsNewEddReader::loadFile(const std::string& path) {
     std::ifstream f(path, std::ios::binary);
     if (!f.is_open()) {
@@ -56,6 +72,7 @@ bool SpellsNewEddReader::loadBytes(std::vector<uint8_t> bytes, const std::string
     m_bytes.clear();
     m_timing.clear();
     m_sprite.clear();
+    m_shape.clear();
     m_count = 0;
     if (bytes.size() < kSpellsNewEddMagicBytes ||
         (bytes.size() - kSpellsNewEddMagicBytes) % kSpellsNewEddEntryBytes != 0 ||
@@ -67,10 +84,12 @@ bool SpellsNewEddReader::loadBytes(std::vector<uint8_t> bytes, const std::string
     m_count = (m_bytes.size() - kSpellsNewEddMagicBytes) / kSpellsNewEddEntryBytes;
     m_timing.resize(m_count);
     m_sprite.resize(m_count);
+    m_shape.resize(m_count);
     for (size_t i = 0; i < m_count; ++i) {
         const uint8_t* e = m_bytes.data() + kSpellsNewEddMagicBytes + i * kSpellsNewEddEntryBytes;
         m_timing[i] = decodeSpellsNewEddTiming(e);
         m_sprite[i] = decodeSpellsNewEddSprite(e);
+        m_shape[i] = decodeSpellsNewEddShape(e);
     }
     m_error.clear();
     m_loaded = true;
@@ -90,6 +109,11 @@ const SpellsNewEddTiming* SpellsNewEddReader::timing(int32_t index) const {
 const SpellsNewEddSprite* SpellsNewEddReader::sprite(int32_t index) const {
     if (index <= 0 || static_cast<size_t>(index) >= m_count) return nullptr;
     return &m_sprite[static_cast<size_t>(index)];
+}
+
+const SpellsNewEddShape* SpellsNewEddReader::shape(int32_t index) const {
+    if (index <= 0 || static_cast<size_t>(index) >= m_count) return nullptr;
+    return &m_shape[static_cast<size_t>(index)];
 }
 
 std::string SpellsNewEddReader::name(int32_t index) const {

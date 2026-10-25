@@ -102,6 +102,13 @@ struct UnifiedParticle {
     float eddHeightShrink = 0.0f;   // +0x190, s
     float eddWidthShrink = 0.0f;    // +0x194, s
 
+    // B1150 (#470): the emitter's +0xD0 view-depth bias. The renderer subtracts
+    // it from the particle's view depth before the near/far cull and the
+    // perspective divide (EQGraphicsDX9: `fsub [edi+0xd0]` at 0x10063069 in the
+    // main projection and 0x10063198 in the +0x70 second pass, each followed by
+    // the near/far compares and the 1.0/depth divide).
+    float eddDepthBias = 0.0f;
+
     bool isAlive() const { return (flags & 0x01) != 0; }
     void setAlive(bool alive) { if (alive) flags |= 0x01; else flags &= ~0x01; }
 
@@ -237,6 +244,23 @@ struct EmitterConfig {
         float heightShrink = 0.0f, widthShrink = 0.0f;  // +0x190, +0x194
     };
     EddSprite eddSprite;
+
+    // B1150 (#470): a spellsnew.edd emitter's spawn geometry
+    // (SpellPresets::applySlotEmitter()): every spell with a spellsnew.eff
+    // field-145 record spawns by the record's +0xA8 shape (the ten official
+    // cases, spell_spawn_shape.h, each with its Render address); the config's
+    // spawnShape / spawnExtents are NOT read for such an emitter. Inactive:
+    // those (plus fire/weather emitters, which never have a record).
+    struct EddShape {
+        bool active = false;
+        int shape = 0;                          // +0xA8: 0..9
+        float dimX = 0.0f, dimY = 0.0f, dimZ = 0.0f;   // +0xAC / +0xB0 / +0xB4
+        float offX = 0.0f, offY = 0.0f, offZ = 0.0f;   // +0xB8 / +0xBC / +0xC0
+        float tiltA = 0.0f, tiltB = 0.0f;       // +0xC4 / +0xC8, EQ 512ths
+        float scale = 1.0f;                     // +0x19C: attach scale (1.0 when 0)
+        float depthBias = 0.0f;                 // +0xD0: view depth bias (renderer)
+    };
+    EddShape eddShape;
 
     // B1149 (#469): the client's emission ticks (CParticleSystem::Render
     // 0x10060ea4..0x10060ffd): tick n falls at emitter age n / ticksPerSecond
