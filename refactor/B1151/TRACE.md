@@ -28,7 +28,10 @@ are **not** rewritten, so the file value is the value `Render` reads.
 Record layout (first fields): name at +0x00 (64 bytes), texture at +0x40 (64 bytes),
 then the fields traced below. Records 0-based **2116/2117 are the last two**
 (`VetRewards_Y2_a` / `VetRewards_Y7_a`); `VetRewards_Y1_a` / `VetRewards_Y1_b`
-are 2114/2115 (the two D178 records).
+are 2114/2115 (the two D178 records). Re-derived from the raw file:
+`python3 refactor/B1151/edd_census.py <spellsnew.edd>` prints
+`e2114 VetRewards_Y1_a … e2115 VetRewards_Y1_b … e2116 VetRewards_Y2_a …
+e2117 VetRewards_Y7_a` (records 2114..2117, 0-based, of 2118).
 
 ## (a) +0x6C — the attach-scale flag: read path, multiplier, value
 
@@ -473,6 +476,15 @@ in-memory exactly.
 | 0x10087930 | FUN_10087930, model-load path (decompile header line 93281; the 0xb8 alloc is in the PRECEDING FUN_100878c0) |
 | 0x102347a0 / 0x10234fa0 | the two random float tables (runtime-initialized) |
 | 0x10235f4c / 0x10235f54 | the two random counters |
+
+Decompile-line cites re-derived (not inferred):
+`grep -n "FUNC 100605b0" EQGraphicsDX9.dll.c` → `68017:// FUNC 100605b0
+FUN_100605b0`; `grep -n "FUNC 10087930" EQGraphicsDX9.dll.c` →
+`93281:// FUNC 10087930 FUN_10087930`; `grep -n "FUNC 100878c0"
+EQGraphicsDX9.dll.c` → `93247:// FUNC 100878c0 FUN_100878c0` — and
+`operator_new(0xb8)` (line 93264) plus the vtable store `*puVar1 =
+&PTR_LAB_101cea98` (line 93269) both sit inside FUN_100878c0 (lines 93247..93280),
+i.e. the PRECEDING function, not FUN_10087930.
 
 ## Regenerating every census quoted in this document
 
