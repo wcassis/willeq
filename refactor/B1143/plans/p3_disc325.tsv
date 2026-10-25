@@ -1,0 +1,99 @@
+# B1143 item 3 (issue #463): RECORD 325, the three Shadow Knight disciplines --
+#   4504 Leechcurse Discipline, 6236 Reaper Strike, 6268 Lich Sting.
+# The record id and the names are re-derived from the lane's own spells_us.txt
+# (the first leg's README quoted them wrong); the lane_before probe prints the
+# owning class from the DB (`SELECT id,name,class FROM spells WHERE id IN
+# (4504,6236,6268)`) -- this leg runs it, class 4 (Shadow Knight).
+#
+# Activation = the REAL client path, `/disc <name>` (B1134 P4's working form:
+# /disc sends OP_CastSpell slot 10 -> OP_Action with NO OP_BeginCast; the
+# oracle draws nothing -- the B1144 no-Target-slot gate, which this leg
+# re-verifies). #resetdisc_timer all between casts (B1134 P4b: the single
+# 10-minute reuse timer rejected casts 2..4 of P4). Then the GM path
+# `#castspell <id> 0` (B1134 P5: 0 ms OP_BeginCast -> draws the Source;
+# B1130 e13's GM cast of the target spell 618 targeted the stunned NPC the
+# same way) for the record-325 Source rows: 4504 on self, 6236/6268 on
+# TrollF000 (target spells).
+#
+# Command forms are the .fix leg's findings applied (refactor/B1143/plans/
+# p3_rig93.probe.tsv header): /target (never #target), #stun (no argument)
+# after /target, #kill (no argument) after /target -- `#kill TrollF000`
+# printed usage text in the .fix leg, and the comma-form #goto is invalid.
+#
+# fps=30
+# caster-video=1
+# observer=Oraclewatch
+# pose=-74,428,3.75,160
+# observer-pose=-67.6,434.4,3.75,160
+
+login	Testcaster
+obs	login	Oraclewatch
+zone	qeynos2
+obs	zone	qeynos2
+wait	8000	settle
+obs	click	1229,555	obs_close_tip
+click	1229,555	close_tip
+command	#set time 11 0	noon
+wait	1500	noon_settle
+command	#weather 0	weather
+command	#level 60	lvl
+command	#traindisc 60	traindisc
+wait	3000	traindisc_settle
+command	#spawn TrollF 1 1 0 30000	spawn
+wait	3000	spawn_settle
+obs	press	F9	obs_f9_1
+obs	press	F9	obs_f9_2
+obs	press	F9	obs_f9_3
+obs	wait	3000	obs_cam_settle
+wait	36000	time_settle
+command	/target TrollF000	tgt_a
+wait	1500	tgt_a_settle
+command	#stun 120000	stun_a
+wait	1000	stun_a_settle
+command	/disc Leechcurse Discipline	disc_4504
+wait	14000	fx_4504
+command	#nukebuffs	nuke_0
+command	#resetdisc_timer all	reset_0
+wait	4000	reset_0_settle
+command	/target TrollF000	tgt_b
+wait	1500	tgt_b_settle
+command	#stun 120000	stun_b
+wait	1000	stun_b_settle
+command	/disc Reaper Strike	disc_6236
+wait	14000	fx_6236
+command	#nukebuffs	nuke_1
+command	#resetdisc_timer all	reset_1
+wait	4000	reset_1_settle
+command	/target TrollF000	tgt_c
+wait	1500	tgt_c_settle
+command	#stun 120000	stun_c
+wait	1000	stun_c_settle
+command	/disc Lich Sting	disc_6268
+wait	14000	fx_6268
+command	#nukebuffs	nuke_2
+command	#resetdisc_timer all	reset_2
+wait	4000	reset_2_settle
+command	/target Testcaster	tgt_self
+wait	1500	tgt_self_settle
+command	#castspell 4504 0	gm_4504
+wait	14000	fx_gm_4504
+command	#nukebuffs	nuke_3
+command	/target TrollF000	tgt_d
+wait	1500	tgt_d_settle
+command	#stun 120000	stun_d
+wait	1000	stun_d_settle
+command	#castspell 6236 0	gm_6236
+wait	14000	fx_gm_6236
+command	#nukebuffs	nuke_4
+command	/target TrollF000	tgt_e
+wait	1500	tgt_e_settle
+command	#stun 120000	stun_e
+wait	1000	stun_e_settle
+command	#castspell 6268 0	gm_6268
+wait	14000	fx_gm_6268
+command	#nukebuffs	nuke_5
+command	/target TrollF000	tgt_kill
+command	#kill	kill
+wait	2000	kill_settle
+obs	command	/q	obs_quit
+command	/q	quit

@@ -21,6 +21,10 @@ command	#weather 0	0	clear
 command	#reload rules global	0	rules
 command	#level 60	0	lvl
 command	#mana	0	mana
+command	/target TrollF000	0	leftover_check
+wait	2000	0	leftover_check_settle
+command	#kill	0	kill_leftover
+wait	2000	0	kill_leftover_settle
 command	#spawn TrollF 1 1 0 30000	0	spawn
 wait	3000	0	spawn_settle
 command	/target TrollF000	0	tgt_npc0
@@ -44,7 +48,8 @@ command	#stun 120000	0	stun_b
 wait	1500	0	tgt_npc_b_settle
 command	/cast 1	0	cast_npc_b
 wait	15500	0	fx_npc_b
-command	#kill TrollF000	0	kill
+command	/target TrollF000	0	tgt_kill
+command	#kill	0	kill
 wait	2000	0	kill_settle
 obs	command	/q	0	obs_quit
 command		/q	0	quit

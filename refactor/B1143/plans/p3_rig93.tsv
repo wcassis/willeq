@@ -27,6 +27,15 @@
 #     three actors co-located at -74,428. No #goto is needed at all: the header
 #     pose=/observer-pose= directives place both clients (the driver feature,
 #     docs/oracle_driver.md), and TrollF000 spawns at the caster's position.
+#  4. `#kill TrollF000` (the .fix leg's despawn) printed usage text: `#kill` takes no
+#     argument and kills the CURRENT TARGET (the server: `#kill - Kills your target`),
+#     which the .fix leg never had. Despawn is /target TrollF000 then #kill.
+#  5. PVP phase (B1134 P2's working recipe): the CASTER (GM) `#set pvp on`s itself and
+#     guard faction assist is OFF for the leg (p3_guard_off.sql --pre-sql-file /
+#     p3_guard_on.sql --post-sql-file, B1134 P2's pre/post-SQL verbatim). The observer
+#     is NOT a GM (its `#set pvp on` in the .fix leg failed: "status not high enough")
+#     and does not need it: B1134 P2 landed the player cast with caster-pvp + guard
+#     assist off only.
 #
 # fps=30
 # caster-video=1
@@ -46,6 +55,10 @@ command	#weather 0	0	clear
 command	#reload rules global	0	rules
 command	#level 60	0	lvl
 command	#mana	0	mana
+command	/target TrollF000	0	leftover_check
+wait	2000	0	leftover_check_settle
+command	#kill	0	kill_leftover
+wait	2000	0	kill_leftover_settle
 command	#spawn TrollF 1 1 0 30000	0	spawn
 wait	3000	0	spawn_settle
 command	/target TrollF000	0	tgt_npc0
@@ -69,10 +82,10 @@ command	#stun 120000	0	stun_b
 wait	1500	0	tgt_npc_b_settle
 command	/cast 1	0	cast_npc_b
 wait	15500	0	fx_npc_b
-command	#kill TrollF000	0	kill
+command	/target TrollF000	0	tgt_kill
+command	#kill	0	kill
 wait	2000	0	kill_settle
 command	#set pvp on	0	pvp_self
-obs	command	#set pvp on	0	pvp_obs
 command	/target Oraclewatch	0	tgt_obs_a
 wait	1500	0	tgt_obs_a_settle
 command	/cast 1	0	cast_obs_a
