@@ -88,7 +88,8 @@ the harness caster, char 67's Dark Elf female -- and the corpse fade). `gates_r2
 | 458 live | 0.612 | 1.732 | 1.242 | 5.433 | 5.467 | 4.989 | 4.942 | 0.054 (0.086-0.116) | 0.031 (0.037-0.049) |
 | 253 self | 9.465 | 5.028 | 7.281 | abs 7.583 | 7.583 | 6.538 | 6.522 | 0.072 (0.079-0.107) | 0.121 (0.151-0.205) |
 
-Base (94ac58cd, same rig, `runs/base_s1..5`): 93 dying 2.402..2.445, end +5.167..+5.200, roi_l 0.073..0.076.
+Base (94ac58cd, same rig, `runs/base_s1..5`): 93 dying 2.372..2.445 (per-run land_cov 2.425 / 2.402 / 2.445 /
+2.398 / 2.372, `cat runs/base_s1..5/measure/summary.tsv`), end +5.167..+5.200, roi_l 0.073..0.076.
 
 Separated target (`runs/r3_sep_box_end.txt`, B1145's box_end.py): level 60 landing ends Act+6.400, level 1
 Act+2.200 (observer 2.61/2.65; B1145 2.667); the caster's Source box ends Act+4.333 (level 60) / 4.133 (level 1)
@@ -112,8 +113,14 @@ this card and was not investigated.
 Re-stated at the tip (b611c7ae, rbuild rc 0 on every targeted run) against `review/B1142/gate/regression_table.tsv`
 (the lane reference, "new" columns = unoccluded since B1142) and its oracle columns. The card's "four-capture
 mean 3.079" is not in the lane tables copied to this host -- the unoccluded capture B is 3.049 and that is what
-is cited; the other unoccluded 93 captures (Bon 2.942, G93 3.136, G93N 3.140, N93 2.990, `measure_*.log`) bracket
-it, so 3.049 is the lane number, not 2.938 (B1132's OLD rig).
+is cited; the four unoccluded captures B 3.049, G93 3.136, G93N 3.140, N93 2.990 (mean 3.079;
+`review/B1142/gate/measure_B/G/N93.log`) bracket it, so 3.049 is the lane number, not 2.938 (B1132's OLD rig);
+the OLD-rig Bon run reads 2.942 (review/B1142/README.md:14 "Bon (tour B, OLD rig on dacd9534)";
+gate/progress.log:6 "Bon start (class 6 plan tour_B env FABLE_TIP=on)"; the `tipon` column of the same table).
+The lines read: `measure_B.log` "masked/B/fable_93: unmasked land_cov 3.049 at Act+2.03 (f2628)"; `measure_G.log`
+"masked/G93/fable_93: unmasked land_cov 3.136 at Act+1.99 (f4320)" and "masked/G93N/fable_93: unmasked land_cov
+3.140 at Act+2.04 (f4208)"; `measure_N93.log` "masked/N93/fable_93: unmasked land_cov 2.990 at Act+2.05 (f2110)";
+`measure_BonA.log` "masked/Bon/fable_93: unmasked land_cov 2.942 at Act+2.02 (f2638)".
 
 - **Discs: MET.** RUN coverage 0.89..0.97 of the oracle's on all four, ends within 0.13 s (B1146: ~1/20).
 - **93 landing coverage vs the lane 3.049 +/- 3 %: NOT met, by construction.** The lane rows are fable's draw
@@ -130,8 +137,10 @@ it, so 3.049 is the lane number, not 2.938 (B1132's OLD rig).
   Source tail -- the +0x6C attach scale (B1151-TRACE, t_a6d12b79). Not tuned.
 - **93 live end 6.433** (card 6.5; B1130 alive 6.67; lane B1145 6.467) -- within the file's own life, no lane
   row to beat; reported.
-- **ROI p90: NOT met** on 11 of 14 rows (54/656 Source and 656 landing in band; 41's Source in band but its
-  landing 0.084 short of 0.086). The quads are the file's world sizes at s = 1. Owner: the client's attach
+- **ROI p90: NOT met** on 11 of 14 rows -- the three in-band rows are 54 Source 0.028 in 0.023-0.031, 656 Source
+  0.028 in 0.024-0.032 and 656 landing 0.030 in 0.030-0.040 (sec. 5, the `roi_*_band` columns of
+  `review/B1142/gate/regression_table.tsv`); 41's Source 0.089 also short of 0.096, and its landing 0.084 short
+  of 0.086 (`gates_r3.tsv` r3_41_live_s1). The quads are the file's world sizes at s = 1. Owner: the client's attach
   scale for +0x6C (B1151-TRACE, t_a6d12b79) -- s = actor +0x10 x the root actor's +0x64 sub-object float +0x60
   (getter 0x1016bd90, setter 0x1016be70, neither exposed through the actor vtable; its eqgame caller -- and
   the value a player model gets -- was NOT traced). Also unwired and possibly in the lit diameter: the
