@@ -128,7 +128,7 @@ template <typename Draw>
 EddShapePoint computeEddShapePoint(const EddShapeParams& p, int i, int n, Draw draw) {
     constexpr float kTwoPi = 6.283185307179586f;
     const float AC = p.dimX;
-    const float B0 = p.dimY != 0.0f ? p.dimY : p.dimX;  // +0xB0 == 0.0 -> AC
+    const float B0 = p.dimY != 0.0f ? p.dimY : p.dimX;  // +0xB0 == 0.0 -> AC (the code compares +0xB0 against 0x101cbd40 = 0.0f, e.g. 0x1006178f)
     const float s = p.scale;
 
     // Pre-tilt basis (the abstract orthonormal emitter frame).
@@ -218,7 +218,7 @@ EddShapePoint computeEddShapePoint(const EddShapeParams& p, int i, int n, Draw d
             const float y0 = 2.0f * draw() - 1.0f;
             const int face = std::min(5, static_cast<int>(std::floor(draw() * 6.0f)));  // 0x101cc274 = 6.0
             const float ex = B0;  // the Y half-extent (+0xB0 or AC)
-            const float ez = p.dimZ != 0.0f ? p.dimZ : AC;  // the Z half-extent
+            const float ez = p.dimZ != 0.0f ? p.dimZ : AC;  // the Z half-extent (decompile 68900-68952)
             switch (face) {
                 case 0:  x = -AC; y = x0 * ex; z = y0 * ez; nloc = glm::vec3(-1.0f, 0.0f, 0.0f); break;
                 case 1:  x = AC;  y = x0 * ex; z = y0 * ez; nloc = glm::vec3(1.0f, 0.0f, 0.0f); break;

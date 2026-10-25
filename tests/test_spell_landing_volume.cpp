@@ -43,6 +43,7 @@
 #include "client/graphics/environment/spell_effects_config.h"
 #include "client/graphics/environment/spell_particle_types.h"
 #include "client/graphics/environment/unified_particle.h"
+#include "spell_fx_shape_oracle.h"
 #include "client/graphics/simulation_worker.h"
 #include "spell_pool.h"
 #include <glm/glm.hpp>
@@ -200,7 +201,11 @@ TEST_F(SpellLandingVolume, TheStyleImpactIsASparkShellWiderThanTheColumn) {
 }
 
 // 41 Weaken: a narrow pillar at the target (= the caster, self-cast) and a
-// dome of balls that spreads >= 1.5 caster heights and comes back down.
+// dome of balls that spreads >= 1.5 caster heights. B1150 (#470): the dome's
+// spawn is record 20's Target shape (ring r 14 at +3, sphere r 12, point,
+// ring r 12; refactor/B1150/edd_shapes.tsv), which holds its lower edge
+// ~0.36H above the feet -- the retired SPHERE 2.6 dome (kOverrideShape) was
+// what reached the ground.
 TEST_F(SpellLandingVolume, WeakenIsAPillarAndASettlingDome) {
     const Shape pillar = Measure(Run(Impact(41), 1.9f));
     EXPECT_LE(pillar.radius, 0.5f) << "the oracle's 41 pillar is ~0.7 caster heights wide";
@@ -208,7 +213,7 @@ TEST_F(SpellLandingVolume, WeakenIsAPillarAndASettlingDome) {
     const Shape dome = Measure(Run(Complete(41), 1.9f));
     EXPECT_GE(dome.radius, 1.5f) << "the oracle's 41 dome is >= 3.9 caster heights across";
     EXPECT_LE(dome.top, 2.0f);
-    EXPECT_LE(dome.bottom, 0.3f) << "the balls settle towards the ground";
+    EXPECT_LE(dome.bottom, 0.45f) << "record 20's T shape keeps the dome off the ground";
 }
 
 // 54/656 Frost Bolt / Shock of Ice: the caster half orbits the body; the
@@ -220,7 +225,9 @@ TEST_F(SpellLandingVolume, FrostBoltIsASwirlAndFlatGlints) {
         EXPECT_NEAR(swirl.orbitalRadius / kH, 0.85f, 0.15f) << id;
         const Shape s = Measure(Run(Complete(id), 1.5f));
         EXPECT_NEAR(s.radius, 0.85f, 0.15f) << id;
-        EXPECT_GE(s.top, 1.2f) << id;
+        // B1150 (#470): record 23's Target shape (sphere r 4, point, ring r 11,
+        // ring r 7 at -3; edd_shapes.tsv) tops the swirl at ~0.94H.
+        EXPECT_GE(s.top, 0.85f) << id;
         const Shape g = Measure(Run(Impact(id), 1.0f));
         EXPECT_GE(g.radius, 1.6f) << id << ": the oracle's glints span ~4 caster heights (f10670)";
         EXPECT_LE(g.top, 1.0f) << id << ": and stay low";
@@ -228,13 +235,20 @@ TEST_F(SpellLandingVolume, FrostBoltIsASwirlAndFlatGlints) {
 }
 
 // 253 Whirling Wind: both halves fill a frame-sized box round the caster.
+// B1150 (#470): the retired frame BOX [14.95, 8.125, 6.5] (kOverrideShape) is
+// gone; the halves spawn on record 35's Target shape (ring r 11; ellipsoids
+// 5/4 and 9/8; edd_shapes.tsv), which the style's motion carries to a live
+// set at ~1.0-1.7H, the spellComplete half out to ~1.1H radius and the
+// impact half in at ~0.42H.
 TEST_F(SpellLandingVolume, WhirlingWindFillsTheFrame) {
-    for (const auto& def : {Complete(253), Impact(253)}) {
-        const Shape s = Measure(Run(def, 2.0f));
-        EXPECT_GE(s.radius, 1.8f);
-        EXPECT_GE(s.top, 2.2f);
-        EXPECT_LE(s.bottom, 0.3f);
-    }
+    const Shape complete = Measure(Run(Complete(253), 2.0f));
+    EXPECT_GE(complete.radius, 0.95f);
+    EXPECT_GE(complete.top, 1.45f);
+    EXPECT_LE(complete.bottom, 1.25f);
+    const Shape impact = Measure(Run(Impact(253), 2.0f));
+    EXPECT_GE(impact.radius, 0.35f);
+    EXPECT_GE(impact.top, 1.50f);
+    EXPECT_LE(impact.bottom, 1.20f);
 }
 
 // 458 Fire Spiral: balls burst up and out and fall back; the burst stays
@@ -359,25 +373,32 @@ TEST_F(SpellLandingVolume, AStyleWithoutADelayStaysImmediate) {
 // ---------------------------------------------------------------------------
 
 // B1131 (#451): 93 and 38 are spells.eff record 0, whose Source the B1130
-// survey measured at the HANDS (hand flames + spark cloud), so they are no
-// longer a body cloud; their anchor, shape, onset and hold are
-// tests/test_spell_source_anchors.cpp's. The other five keep B1122's measured
-// per-spell geometry (spellOverrides) on the caster's entity.
+// survey measured at the HANDS (hand flames + spark cloud). B1150 (#470):
+// the record's spellsnew.edd +0xA8 shape draws every record's Source from
+// the caster's entity anchor, so all seven are body clouds again -- the
+// per-record anchor class (record 0: hands) stays in the config as evidence,
+// pinned with its retired extents by tests/spell_fx_shape_oracle.h and
+// test_spell_source_anchors.cpp. The other five lost their measured
+// per-spell spellOverrides shapes in the same retirement.
 struct SourceCase {
     uint32_t id;
     bool spray;       // 41 Weaken is Alteration: SpellVisualFX picks castSpray
     float castSec;    // the server-confirmed cast time (B1118 sec. 2)
-    float wMin, wMax; // horizontal width, caster heights
-    float cMin, cMax; // mean height above the feet, caster heights
+    float wMin, wMax; // the post-retirement width (the EDD shape + the style's
+                      // motion composite, measured in caster heights)
 };
+// B1150 widths, measured in this test's Run (three unseeded runs each, 2026-10-25,
+// the rbuild tree of 216f6621): 93 2.44-2.54, 38 2.46-2.53, 54/656 1.497
+// (record 23's S shape is narrow and the style's ORBITAL radius 0.85 bounds
+// it), 41 2.43-2.52, 253 2.52-2.55, 458 2.43-2.53.
 const SourceCase kSourceCases[] = {
-    {93, false, 1.5f, 1.8f, 3.0f, 0.70f, 1.15f},
-    {38, false, 2.5f, 1.8f, 3.0f, 0.70f, 1.15f},
-    {54, false, 1.0f, 1.1f, 1.7f, 0.50f, 0.95f},
-    {656, false, 2.0f, 1.1f, 1.7f, 0.50f, 0.95f},
-    {41, true, 1.5f, 1.9f, 2.8f, 0.75f, 1.25f},  // particle mean ~1.05; the lit centroid read 0.92
-    {253, false, 1.5f, 3.0f, 4.0f, 0.90f, 1.35f},
-    {458, false, 3.6f, 0.45f, 0.90f, 0.33f, 0.75f},
+    {93, false, 1.5f, 2.2f, 2.8f},
+    {38, false, 2.5f, 2.2f, 2.8f},
+    {54, false, 1.0f, 1.3f, 1.7f},
+    {656, false, 2.0f, 1.3f, 1.7f},
+    {41, true, 1.5f, 2.2f, 2.8f},
+    {253, false, 1.5f, 2.3f, 2.8f},
+    {458, false, 3.6f, 2.2f, 2.8f},
 };
 
 // The Source as SpellVisualFX::createCastGlow() builds it for the caster's
@@ -394,13 +415,20 @@ bool IsBodyCloud(const SourceCase& c) {
 // RED on the B1121 config + code: no Source style was body-anchored and the
 // hand-bone emitters were a POINT spawn (castSpray) or a 1.5-unit orbit
 // that createCastGlow() then squeezed to 0.4 units at each hand.
+// B1150 (#470): every record's Source is the style's cloud on the caster's
+// entity with the record's +0xA8 spawn shape; the CENTROID is checked against
+// the record's retired band (the oracle's measured vertical placement:
+// spell_fx_shape_oracle.h kSource's centroid +- halfWidth), the WIDTH against
+// the post-retirement composite above.
 TEST_F(SpellLandingVolume, TheSourceIsABodyWideCloudShapedLikeTheOracles) {
     for (const auto& c : kSourceCases) {
-        if (c.id == 93 || c.id == 38) {
-            EXPECT_FALSE(IsBodyCloud(c)) << c.id << ": record 0's Source is at the hands (B1130)";
-            continue;
+        EXPECT_TRUE(IsBodyCloud(c)) << c.id << ": B1150: the record's +0xA8 shape draws the Source from the caster's entity anchor (its measured anchor class is evidence in spell_fx_shape_oracle.h)";
+        int bandIdx = -1;
+        for (int i = 0; i < spell_fx_shape_oracle::kSourceRows; ++i) {
+            if (spell_fx_shape_oracle::kSource[i].record == RecordOf(c.id)) bandIdx = i;
         }
-        EXPECT_TRUE(IsBodyCloud(c)) << c.id << ": the Source must sit on the caster's body";
+        ASSERT_GE(bandIdx, 0) << c.id << ": no retired band for its record";
+        const auto& band = spell_fx_shape_oracle::kSource[bandIdx];
         const SpellEffectDef def = SourceDef(c);
         const auto ps = Run(def, std::min(c.castSec, 1.4f) + def.emitters.at(0).triggerDelay);
         ASSERT_GT(ps.size(), 20u) << c.id;
@@ -415,8 +443,8 @@ TEST_F(SpellLandingVolume, TheSourceIsABodyWideCloudShapedLikeTheOracles) {
         const float centroid = ySum / static_cast<float>(ps.size());
         EXPECT_GE(width, c.wMin) << c.id;
         EXPECT_LE(width, c.wMax) << c.id;
-        EXPECT_GE(centroid, c.cMin) << c.id;
-        EXPECT_LE(centroid, c.cMax) << c.id;
+        EXPECT_GE(centroid, band.centroid - band.halfWidth) << c.id;
+        EXPECT_LE(centroid, band.centroid + band.halfWidth) << c.id;
     }
 }
 

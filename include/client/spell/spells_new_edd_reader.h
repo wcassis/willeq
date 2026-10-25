@@ -195,13 +195,6 @@ struct SpellsNewEddShape {
     float tiltB = 0.0f;          // +0xC8: EQ 512ths, rotates EDD axes 1/3 (0x100615ab)
     float depth = 0.0f;          // +0xD0: view depth bias (rendered, not spawned)
     bool scaleShapes = false;    // +0x19C == 1: r, z and offsets times the attach scale
-
-    // +0xB0 == 0.0 means the shape is a circle/sphere of radius dimX, not an
-    // ellipse (the code compares +0xB0 against 0x101cbd40 = 0.0f, e.g. 0x1006178f).
-    float dimYEffective() const { return dimY != 0.0f ? dimY : dimX; }
-    // +0xB4 == 0.0 means AC for the sphere's Z (LAB_10061dd3) and the box's Z
-    // half-extent (decompile lines 68900-68952); other shapes use dimZ as is.
-    float dimZForSphereBox() const { return dimZ != 0.0f ? dimZ : dimX; }
 };
 
 SpellsNewEddShape decodeSpellsNewEddShape(const uint8_t* entry416);
