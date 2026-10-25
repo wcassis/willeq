@@ -87,8 +87,8 @@ Constants are read from the binary at these VAs (float32 unless noted):
 
 | VA | value | role (from the FPU sequence) |
 |---|---|---|
-| `0x6410b8` | `0.02` | ms→per-0.05s scaling on the stage value (`fld`+`fmul` at `00476c36`) |
-| `0x63f4d8` | `0x49C00000` raw | added when the stage value is negative (`fadd`, `00476c30`) |
+| `0x6410b8` | `0.02` | cs→s scale on the stage time-difference (`fldm`… `fmul`, `00476c31`) |
+| `0x63f4d8` | `0x4F800000` = −2⁻⁹ | added when the stage time-difference is negative (`fadd`, `00476c30`) |
 | `0x64757c` | `32.5` | multiplier on the **start offset** (`fmul [esi+0x1c]` etc., `00476c7b`) |
 | `0x647578` | `12` | subtracted from the start Z (`fsub`, `00476c9c`) |
 | `0x647574` | `-72` | base of the time term: `time * (float)(esi+0x28) + (-72)` (`00476ca8`) |
@@ -99,20 +99,23 @@ Constants are read from the binary at these VAs (float32 unless noted):
 Launch math, in order:
 
 ```
-; start position = 32.5 * stageVec  +  startOrigin,  z -= 12          (00476c69-00476ca2)
-[esi+0x10..0x18] = 32.5 * [esi+0x1c..0x24] ; [esi+0x18] -= 12
-; a moving offset term: t * (float)[esi+0x28] - 72, added to z        (00476ca5-00476ccd)
-[esi+0x24] += time * [esi+0x28] + (-72)
-; flat (edi+0x188==3) -> arc term zeroed (00476ce0)
-; else arc = 5.5 * [esi+0x1c]                                            (00476ce8-00476d0f)
-;   then the per-axis velocity  [esi+0x10/14/18]  +=  stageScalar * [esi+0x1c/20/24]
+; stageScalar = float( time() - (stage->+0x50) ), 0x63f4d8 (0x4F800000,
+;   = -2^-9) added only when that difference is negative, then *0.02
+;   (0x6410b8)  -- the 0.02 reads as a centisecond->second scale on the
+;   time() - offset difference (inferred; time() = 0x46d655, a global clock)
+; launch vector: 0x47bf6c(target, 0) -> 3-float attach vector, taken ONLY for
+;   creature types [edi+0x260] in {0x31, 0x6d, 0x26} (00476c3c-00476c52)
+; start position = attachVec + 32.5 * [esi+0x1c..0x24] (0x64757c), z -= 12 (0x647578)
+; a moving offset term: t_now * (float)[esi+0x28] - 72 (0x647574), added to z
 ```
 
-`stageScalar` = `0.02 * (stageValue)` (with the `0x63f4d8` fudge if negative).
-So the projectile's **speed is not a fixed constant** — it is `0.02 × (the
-spell's per-stage "run" value)` applied to a per-axis direction vector, and the
-**arc height is `5.5 × the launch Z term`**. The spell-specific values come from
-the stage record, which is why different spells fly at different speeds even
+So the projectile's **speed is not a fixed constant** — the stage scalar is
+`0.02 × (time() − the stage's +0x50 offset)`, i.e. a scaled elapsed-time
+quantity (the 0.02 scale is the inferred cs→s factor), and the **arc/vertical
+term is `5.5 × [esi+0x1c]`** (0x64263c) applied per-axis as
+`[esi+0x10/14/18] += stageScalar·[esi+0x1c/0x20/0x24]`. The launch origin is the
+target's attach vector (for those three creature types) offset by
+`32.5×` a per-spell direction. Different spells therefore fly differently even
 though they share this one spawner.
 
 The launch helper `FUN_0047bf6c` (`eqgame.dis` line 159400) resolves the
@@ -159,22 +162,41 @@ begins.
   doubles a counter and applies a `0x41a877` step (a homing/seek correction);
 - advances the projectile's stored position.
 
-**Arrival** is not a separate "hit" branch in this code — the projectile stops
-being drawn when its Middle emitter life (0.25 s for spell 38) elapses and the
-descriptor is removed by `0x47789d`. The **damage landing is server-authoritative
-and arrives by packet**, not by the client measuring the missile reaching the
-target: the observer's capture shows `OP_Action` (the spell resolving) at the
-same instant the server applies it, and the client simply plays the Middle-stage
-flight and the Target-stage burst on top.
+**Arrival** is *not* a client hit-test and it is *not* the damage packet
+either — it is the **Target stage (stage = 2) firing through the same
+`FUN_0049b260`**:
+
+- For a normal missile the per-tick flight path
+  (the caller of `FUN_00476f34` at `0x460737` → `0x47f614` → `0x47f4af`,
+  `0047f5eb push 2; call 0x49b260`)
+  recomputes `target_pos − projectile_pos` (`0x47f5a8..0x47f5db`), and once the
+  spell's arrival condition holds (`[esi+0x4c]`-scaled time term, spell
+  classes 0x21/0x23/0x26 handled, `0047f57b..0047f594`) it fires
+  `FUN_0049b260(stage=2)` with the target entity and the current position —
+  i.e. the impact burst (`spelcc/spelcm/spelcf` for record 80) is spawned
+  *where the projectile is*, on the tick the loop decides it has arrived.
+- For spell **54** (and 859) the removal routine has a dedicated branch
+  (`00477959 cmp eax, 0x36 / cmp eax, 0x35b`): it subtracts the descriptor's
+  own offset from its position, resolves the target entity via `0x40cbd6`, and
+  fires `FUN_0049b260(stage=2)` **at removal time** (`00477aa1 push 2; call
+  0x49b260`) — gated by `distance < [0x645ec0] = 40` world units
+  (`004779cb fcomp [0x645ec0]`). That is how Frost Bolt "arrives" with no
+  missile at all: the descriptor's Target stage fires when the (instant)
+  effect is torn down, at the target's position.
+
+Either way the **damage landing is server-authoritative** and arrives by
+`OP_Action` at cast completion (measured §8); the client-side stages are the
+cosmetic on top.
 
 ## 6. Death
 
 `FUN_0047789d` unlinks the descriptor from the active-effect list
 (`[0x905cd0]`), and if the effect's target (`+0x48`) is a live creature
 (`[0x92551c]+0x4c == esi` and `[0x850ccc] == 8`) it tears down that creature's
-effect handle. For a projectile the "death" is just the list unlink plus a
-`0x476ad4` cleanup when the effect's sub-state `+0x63 == 9` and it is the first
-sub-effect (`[esi+0x48]` empty). The Target-stage emitters (record 80: edd 280
+effect handle. The per-spell arrival branch above (54/859) sits inside this
+same routine, just before the unlink. For the descriptor itself "death" is the
+list unlink plus a `0x476ad4` cleanup when the effect's sub-state `+0x63 == 9`
+and it is the first sub-effect. The Target-stage emitters (record 80: edd 280
 life 1.5 s, edd 281 life 1.0 s, edd 282 life 1.5 s, edd 9 life 1.25 s, all
 `delay 0.25 s`) continue playing *at the target* after the missile is gone —
 that is the impact burst the strip shows.
@@ -255,9 +277,11 @@ pixel track). What *is* cleanly visible frame-to-frame is:
    `t·(float)[esi+0x28] − 72` is added to z.
 3. The **Middle stage starts** via `FUN_0049b260(stage=1)` and **ends when the
    Middle emitter's `life` elapses** (spell 38 / edd 279 = **0.25 s**).
-4. **Per tick** (`FUN_00476f34`) the distance-to-target is recomputed and the
-   position advanced; arrival is *not* a client hit-test — damage resolves by
-   `OP_Action` at cast completion.
+4. **Per tick** (`0x460737` → `0x47f614` → `0x47f4af`) the
+   distance-to-target is recomputed and the position advanced; **arrival is the
+   Target stage (stage = 2) firing through `FUN_0049b260`** in that loop — not
+   a client hit-test, not the damage packet. Spells 54/859 get a dedicated
+   at-removal Target-stage fire gated by distance < 40 (0x645ec0).
 5. **Death** = `FUN_0047789d` unlink + `0x476ad4` cleanup; the Target-stage
    emitters (record 80: lives 1.5/1.0/1.5/1.25 s, all `delay 0.25 s`) play the
    impact burst at the target after the missile is gone.
