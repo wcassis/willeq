@@ -120,8 +120,9 @@ decompile does not isolate as a single addressable `fstp` instruction.
 
 **Mode-2 variant (0x10060a40..0x10060a91).** When the emitter is attached to an
 actor and D6C==1, the mode-2 path reads the attached object's scale via
-`vtbl+0x1b4` (0x10060a7d) instead of `vtbl+0x84` — a different slot on the same
-sub-object vtable. It also reads a position vector via `vtbl+0x54` (0x10060a58)
+`vtbl+0x1b4` (0x10060a7d) instead of `vtbl+0x84` — a different slot on the
+attached object's vtable (also not pinned, see above). It also reads a
+position vector via `vtbl+0x54` (0x10060a58)
 and checks a boolean via `vtbl+0x268` (0x10060a49). If the attach object is a
 track (0x10060a96), it reads the matrix via `track->vtbl+4` (0x10060aa3),
 copies it via 0x100369e0, and reads the scale via 0x1005c4c0. If a bone
