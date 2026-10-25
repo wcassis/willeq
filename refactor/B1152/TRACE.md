@@ -278,7 +278,8 @@ video-relative after calibration):
 Note the `OP_Action` (server-side resolution) lands **at cast completion**, and
 for spell 38 the target dies on the same tick — the client-side missile flight is
 a cosmetic that plays *over* an already-resolved hit. M1 one-shot the observer
-(lightning 121 dmg vs the low-level target → corpse visible from ~473.5 s); M2's
+(lightning 121 dmg vs the low-level target → corpse visible from frame 14199,
+473.30 s); M2's
 frost bolt did not kill, so the observer stayed up for the second cast.
 
 **Per-frame missile track** (differential blob detector on the 30 fps frames in
@@ -295,8 +296,10 @@ pixel track). What *is* cleanly visible frame-to-frame is:
   x660-760 y440-620, >=180 grayscale) is visible in the gap in frames 14170-
   14179 (472.33-472.63 s); the target-impact burst (the Target-stage emitters,
   §6) from frame 14188 (472.93 s); the target (Oraclewatch) a corpse from
-  frame 14199 (473.30 s; the chat shows "hit Oraclewatch for 18" at ~472.66 s,
-  "slain" at ~473.27 s). Strip: `strips/m1_38_flight_471.5-473.7.png` (6 cells,
+  frame 14199 (473.30 s) — the 121-damage hit itself lands in the server
+  stream on the same tick as `OP_Action` (`OP_FormattedMessage` string_id 9073,
+  args Testcaster/Oraclewatch/121 at 472.816 s, `all-opcodes.tsv`).
+  Strip: `strips/m1_38_flight_471.5-473.7.png` (6 cells,
   per-cell frame times 471.500 / 472.000 / 472.200 / 472.700 / 473.500 /
   473.700 s = frames 14145 / 14160 / 14166 / 14181 / 14205 / 14211; the
   in-flight missile is visible in the gap in cells 3-4, the impact burst just
