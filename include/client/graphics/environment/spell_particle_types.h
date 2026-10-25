@@ -183,8 +183,16 @@ namespace SpellPresets {
     //     +0x16C (and `attachScale` when +0x6C is set), grow-in/shrink-out,
     //     drawn as world-unit quads (EmitterConfig::eddSprite).
     // A slot that emits nothing (window < 0, or L <= 0) gets no particles.
+    // B1150 (#470): when `shape` is given, every emitter in the definitions
+    // spawns by its spellsnew.edd +0xA8 shape (EmitterConfig::eddShape):
+    // dims +0xAC/+0xB0/+0xB4, offsets +0xB8/+0xBC/+0xC0, tilts +0xC4/+0xC8,
+    // the +0xD0 view-depth bias and the +0x19C attach-scale flag (the
+    // scale is `attachScale` when +0x19C is set, 1.0 otherwise). The config
+    // spawnShape/spawnExtents are NOT read for such an emitter (sim: the
+    // eddShape.active branch precedes every config shape).
     void applySlotEmitter(const std::vector<SpellEffectDef*>& slotDefs, const EQ::SpellFxSlotTiming& timing,
-                          const EQ::SpellsNewEddSprite* sprite, float stageLatency, float attachScale = 1.0f);
+                          const EQ::SpellsNewEddSprite* sprite, float stageLatency, float attachScale = 1.0f,
+                          const EQ::SpellsNewEddShape* shape = nullptr);
 }
 
 } // namespace Environment

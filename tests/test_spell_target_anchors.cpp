@@ -26,6 +26,14 @@
 // -> SimulationWorker, with the caster, the target and the target's head bone
 // at distinct positions fed back each frame.
 //
+// B1150 (#470): the rows' measured SHAPES (lo/hi/halfWidth/centroid/boneAt)
+// are retired -- every record's landing is drawn by its spellsnew.edd +0xA8
+// shape (dims +0xAC/+0xB0/+0xB4, offsets +0xB8..+0xC0, tilts +0xC4/+0xC8,
+// depth +0xD0, +0x19C scale) where the client file is present. The retired
+// values are the bands in tests/spell_fx_shape_oracle.h (the generator:
+// refactor/B1150/scripts/); the anchor classes and faceOnset stay as
+// evidence and are honored by the no-file fallback.
+//
 // RED on fable 4a5246c1 (review/B1132/tests/): its config has no
 // `targetRecords` and its code has no createLanding(); its bridge drew
 // spellComplete on the caster of every cast.
@@ -36,6 +44,7 @@
 #include "spell_pool.h"
 #include "spell_anim_rows.h"
 #include "spell_fx_population_oracle.h"
+#include "spell_fx_shape_oracle.h"
 #include "spell_fx_timing_oracle.h"
 
 #include <algorithm>
@@ -79,7 +88,10 @@ protected:
     }
 };
 
-// All 41 records carry a row, in the survey's class counts.
+// All 41 records carry a row, in the survey's class counts. B1150 (#470):
+// the row's measured extent is retired -- every record is drawn by its
+// spellsnew.edd +0xA8 shape; the extent is the band for the record
+// (tests/spell_fx_shape_oracle.h), and the anchor class stays as evidence.
 TEST_F(TargetRecordRows, EverySurveyedRecordHasItsLandingRow) {
     const auto& cfg = SpellEffectsConfig::instance();
     ASSERT_EQ(cfg.targetRecordCount(), 41u) << "config/spell_effects.json targetRecords.records";
@@ -90,11 +102,21 @@ TEST_F(TargetRecordRows, EverySurveyedRecordHasItsLandingRow) {
     for (int r : all) {
         const auto& row = cfg.targetRecord(r);
         EXPECT_EQ(row.record, r) << r;
+        EXPECT_FALSE(row.hasShape) << r << " B1150: the record's +0xA8 word is the shape";
+        // B1150: the row's retired measured extent is the band for r --
+        // every record except 51 (no Target stage, no extent, B1134).
+        const auto band = std::find_if(std::begin(spell_fx_shape_oracle::kTarget),
+                                       std::end(spell_fx_shape_oracle::kTarget),
+                                       [r](const spell_fx_shape_oracle::TargetBand& b) { return b.record == r; });
+        if (r == 51) {
+            EXPECT_EQ(band, std::end(spell_fx_shape_oracle::kTarget)) << "record 51 has no extent";
+        } else {
+            ASSERT_NE(band, std::end(spell_fx_shape_oracle::kTarget)) << r;
+            EXPECT_EQ(band->anchor, static_cast<int>(row.anchor)) << r;
+        }
         if (row.unmeasured) { ++unmeasured; continue; }
         ++classes[row.anchor];
         if (r == 51) continue;  // no Target stage: no extent (B1134)
-        EXPECT_GT(row.hi, row.lo) << r;
-        EXPECT_GT(row.halfWidth, 0.0f) << r;
     }
     EXPECT_EQ(unmeasured, 0) << "B1134 measured 40 and 51";
     EXPECT_EQ(classes[TAnchor::Body] + classes[TAnchor::Caster], 37) << "whole body, B1130 + 40/51";
@@ -115,10 +137,15 @@ TEST_F(TargetRecordRows, ThePortAndDisciplineRowsAreTheObserversNumbers) {
     const auto& port = cfg.targetRecord(40);
     EXPECT_FALSE(port.unmeasured);
     EXPECT_EQ(port.anchor, TAnchor::Caster);
-    EXPECT_NEAR(port.lo, 0.07f, 1e-3f);
-    EXPECT_NEAR(port.hi, 1.67f, 1e-3f);
-    EXPECT_NEAR(port.halfWidth, 0.615f, 1e-3f);
-    EXPECT_NEAR(port.centroid, 0.87f, 1e-3f);
+    // B1150: the observer's measured extent is the band for 40.
+    const auto band40 = std::find_if(std::begin(spell_fx_shape_oracle::kTarget),
+                                     std::end(spell_fx_shape_oracle::kTarget),
+                                     [](const spell_fx_shape_oracle::TargetBand& b) { return b.record == 40; });
+    ASSERT_NE(band40, std::end(spell_fx_shape_oracle::kTarget));
+    EXPECT_NEAR(band40->lo, 0.07f, 1e-3f);
+    EXPECT_NEAR(band40->hi, 1.67f, 1e-3f);
+    EXPECT_NEAR(band40->halfWidth, 0.615f, 1e-3f);
+    EXPECT_NEAR(band40->centroid, 0.87f, 1e-3f);
     // B1145 (#465): a landing's timing is its spellsnew.edd slots' (record 78's
     // run 6 s); the observer's onset 0.07 / end 0.73 -- the caster zones out
     // 0.16 s after OP_Action and its landing goes with it -- are kept as the
@@ -141,21 +168,33 @@ TEST_F(TargetRecordRows, ThePortAndDisciplineRowsAreTheObserversNumbers) {
     EXPECT_EQ(band->landingCoverage, 0.0f) << "no Target-stage emitter: nothing at OP_Action";
 }
 
+// B1150 (#470): the oracle's per-row extents are the bands; the rows keep
+// their anchors (and record 5's faceOnset).
 TEST_F(TargetRecordRows, EachRecordCarriesTheOraclesAnchorAndExtent) {
     const auto& cfg = SpellEffectsConfig::instance();
     for (const auto& o : kRows) {
         const auto& row = cfg.targetRecord(o.record);
         EXPECT_EQ(row.anchor, o.anchor) << o.record;
-        EXPECT_NEAR(row.lo, o.lo, 0.005f) << o.record;
-        EXPECT_NEAR(row.hi, o.hi, 0.005f) << o.record;
-        EXPECT_NEAR(row.halfWidth, o.halfWidth, 0.005f) << o.record;
-        EXPECT_NEAR(row.centroid, o.centroid, 0.005f) << o.record;
-        const bool shaped = o.anchor == TAnchor::Head || o.anchor == TAnchor::FeetGround ||
-                            o.anchor == TAnchor::Column;
-        EXPECT_EQ(row.hasShape, shaped) << o.record;
+        EXPECT_FALSE(row.hasShape) << o.record << " B1150: the record's +0xA8 word is the shape";
+        // The retired measured extent is the band for the record.
+        const auto band = std::find_if(std::begin(spell_fx_shape_oracle::kTarget),
+                                       std::end(spell_fx_shape_oracle::kTarget),
+                                       [o](const spell_fx_shape_oracle::TargetBand& b) { return b.record == o.record; });
+        ASSERT_NE(band, std::end(spell_fx_shape_oracle::kTarget)) << o.record;
+        EXPECT_EQ(band->anchor, static_cast<int>(o.anchor)) << o.record;
+        EXPECT_NEAR(band->lo, o.lo, 0.005f) << o.record;
+        EXPECT_NEAR(band->hi, o.hi, 0.005f) << o.record;
+        EXPECT_NEAR(band->halfWidth, o.halfWidth, 0.005f) << o.record;
+        EXPECT_NEAR(band->centroid, o.centroid, 0.005f) << o.record;
     }
     EXPECT_NEAR(cfg.targetRecord(5).faceOnset, 0.41f, 1e-3f) << "e5 f8233";
-    EXPECT_NEAR(cfg.targetRecord(5).boneAt, 0.90f, 1e-3f) << "the head row follows the head bone (the face)";
+    // B1150: the head row's boneAt is the band's (the head row follows the
+    // head bone: the face).
+    const auto band5 = std::find_if(std::begin(spell_fx_shape_oracle::kTarget),
+                                    std::end(spell_fx_shape_oracle::kTarget),
+                                    [](const spell_fx_shape_oracle::TargetBand& b) { return b.record == 5; });
+    ASSERT_NE(band5, std::end(spell_fx_shape_oracle::kTarget));
+    EXPECT_NEAR(band5->boneAt, 0.90f, 1e-3f);
     // The vision records the survey checked and found NOT head-anchored.
     EXPECT_NE(cfg.targetRecord(14).anchor, TAnchor::Head) << "Bind Sight class (r35)";
     EXPECT_NE(cfg.targetRecord(7).anchor, TAnchor::Head) << "Insight (r132)";
@@ -303,11 +342,6 @@ protected:
     int pool_ = 0;
 };
 
-float Pct(std::vector<float> v, float q) {
-    std::sort(v.begin(), v.end());
-    return v[static_cast<size_t>(q * static_cast<float>(v.size() - 1))];
-}
-
 // ANCHOR: the point each record's landing follows. RED on 4a5246c1: no
 // createLanding(); its bridge put spellComplete on the caster of every cast.
 TEST_F(TargetAnchors, EachRecordLandsOnItsOwnAnchor) {
@@ -383,11 +417,26 @@ TEST_F(TargetAnchors, ASelfCastLandsOnTheCaster) {
     }
 }
 
-// SHAPE: the live sprites sit where the oracle drew them, in target heights
-// above the target's feet.
-TEST_F(TargetAnchors, EachShapedRecordIsShapedLikeTheOraclesRun) {
+// B1150 (#470): the rows' measured extents are retired -- every record is
+// drawn by its spellsnew.edd +0xA8 shape where the client file is present
+// (the gate: the model_viewer sweep; the retired values are the bands in
+// tests/spell_fx_shape_oracle.h). This seam runs WITHOUT the file, so each
+// record's landing is the style's own volume (spellComplete's box +
+// impact's shell) placed on the record's ANCHOR -- the anchor class is
+// evidence, honored without a shape (TargetAnchorForSpell). What the seam
+// pins now is the anchor: every record lands on its own point, none on the
+// other entity.
+const glm::vec3& AnchorPoint(TAnchor a) {
+    static const glm::vec3 kBody{kTargetPos.x, kTargetPos.y, kTargetPos.z};
+    switch (a) {
+        case TAnchor::Head: return kTargetHead;
+        case TAnchor::Caster: return kCasterPos;
+        default: return kBody;
+    }
+}
+
+TEST_F(TargetAnchors, EachRecordLandsAsTheStyleVolumeOnItsAnchor) {
     for (const auto& o : kRows) {
-        if (o.anchor != TAnchor::Head && o.anchor != TAnchor::FeetGround) continue;
         SetUp();
         if (::testing::Test::IsSkipped()) return;
         Note(o.record, o.spell);
@@ -399,79 +448,70 @@ TEST_F(TargetAnchors, EachShapedRecordIsShapedLikeTheOraclesRun) {
             pooled.insert(pooled.end(), Live().begin(), Live().end());
         }
         ASSERT_GT(pooled.size(), 100u) << o.record;
-        std::vector<float> ys, dx;
-        float ySum = 0.0f;
+        const glm::vec3& pt = AnchorPoint(o.anchor);
+        double dx = 0.0, dy = 0.0, dz = 0.0;
         for (const auto& p : pooled) {
-            const float y = (p.position.y - (kTargetPos.y - kA)) / kH;
-            ys.push_back(y);
-            ySum += y;
-            dx.push_back(std::fabs(p.position.x - kTargetPos.x) / kH);
+            dx += p.position.x - pt.x;
+            dy += p.position.y - pt.y;
+            dz += p.position.z - pt.z;
         }
-        const float centroid = ySum / static_cast<float>(pooled.size());
-        EXPECT_NEAR(centroid, o.centroid, 0.15f) << o.record << ": centroid";
-        EXPECT_GE(Pct(ys, 0.05f), o.lo - 0.15f) << o.record << ": bottom";
-        EXPECT_LE(Pct(ys, 0.95f), o.hi + 0.15f) << o.record << ": top";
-        EXPECT_LE(Pct(dx, 0.95f), o.halfWidth + 0.15f) << o.record << ": width";
-        if (o.anchor == TAnchor::Head)  // nothing below the waist (bands legs 0.01)
-            EXPECT_GE(Pct(ys, 0.05f), 0.5f) << o.record;
+        const float n = static_cast<float>(pooled.size());
+        // The other entity stands 1.4 caster heights away, so a landing on
+        // it would sit well outside these tolerances.
+        EXPECT_NEAR(dx / n / kH, 0.0f, 0.4f) << o.record << ": landing not on its anchor's x";
+        EXPECT_NEAR(dz / n / kH, 0.0f, 0.4f) << o.record << ": landing not on its anchor's z";
+        EXPECT_LE(std::fabs(dy / n) / kH, 1.2f) << o.record << ": landing not on its anchor's height";
         TearDown();
     }
 }
 
-// Record 5 starts AT THE FACE: the first sprites are born at the head bone.
-TEST_F(TargetAnchors, TheVisionLandingStartsAtTheTargetsFace) {
+// B1150: record 5's landing is centred on the target's head bone (the
+// oracle's face-start is the record's EDD shape's, verified by the gate).
+TEST_F(TargetAnchors, TheVisionLandingIsOnTheTargetsHeadBone) {
     Note(5, 80);
     fx_->createLanding(kCaster, kTarget, 80);
-    size_t first = 0, atFace = 0;
-    for (int f = 0; f < 60 && first == 0; ++f) {
+    size_t young = 0, atHead = 0;
+    for (int f = 0; f < 60 * 2; ++f) {
         Pump();
         for (const auto& p : Live()) {
-            ++first;
-            if (glm::length(p.position - kTargetHead) < 0.2f * kH) ++atFace;
+            if (p.age > 0.3f) continue;
+            ++young;
+            if (glm::length(p.position - kTargetHead) < 1.2f * kH) ++atHead;
         }
     }
-    ASSERT_GT(first, 0u);
-    EXPECT_GE(static_cast<float>(atFace) / static_cast<float>(first), 0.3f)
-        << "the oracle's record-5 landing lights the target's face first (e5 f8233)";
+    ASSERT_GT(young, 0u);
+    EXPECT_GE(static_cast<float>(atHead) / static_cast<float>(young), 0.6f)
+        << "record 5's landing sits on the target's head bone";
 }
 
-// Record 16/28: rings on the ground round the target's feet (sprites at the
-// ring radius at the row's bottom).
-TEST_F(TargetAnchors, TheSnareLandingIsRingsAtTheTargetsFeet) {
-    for (int rec : {16, 28}) {
+// B1150: records 16/28 (feet/ground) and 3 (the column above) land on the
+// target's entity anchor (the rings and the falling sheet are the records'
+// EDD shapes', verified by the gate).
+TEST_F(TargetAnchors, TheFeetAndColumnRecordsLandOnTheTargetsAnchor) {
+    for (int rec : {16, 28, 3}) {
         SetUp();
         if (::testing::Test::IsSkipped()) return;
-        const auto& row = SpellEffectsConfig::instance().targetRecord(rec);
-        Note(rec, rec == 16 ? 242u : 73u);
-        fx_->createLanding(kCaster, kTarget, rec == 16 ? 242u : 73u);
-        PumpFor(1.0f);
-        size_t low = 0, ring = 0;
-        for (const auto& p : Live()) {
-            const float y = (p.position.y - (kTargetPos.y - kA)) / kH;
-            if (std::fabs(y - row.lo) > 0.05f) continue;
-            ++low;
-            const float r = std::hypot(p.position.x - kTargetPos.x, p.position.z - kTargetPos.z) / kH;
-            if (std::fabs(r - row.halfWidth) < 0.05f) ++ring;
+        Note(rec, rec == 16 ? 242u : (rec == 28 ? 73u : 377u));
+        fx_->createLanding(kCaster, kTarget, rec == 16 ? 242u : (rec == 28 ? 73u : 377u));
+        PumpFor(1.2f);
+        std::vector<EQT::Graphics::Environment::UnifiedParticle> pooled;
+        for (int k = 0; k < 5; ++k) {
+            if (k) PumpFor(0.2f);
+            pooled.insert(pooled.end(), Live().begin(), Live().end());
         }
-        ASSERT_GT(low, 20u) << rec;
-        EXPECT_GE(static_cast<float>(ring) / static_cast<float>(low), 0.9f) << rec;
+        ASSERT_GT(pooled.size(), 100u) << rec;
+        double dx = 0.0, dy = 0.0, dz = 0.0;
+        for (const auto& p : pooled) {
+            dx += p.position.x - kTargetPos.x;
+            dy += p.position.y - kTargetPos.y;
+            dz += p.position.z - kTargetPos.z;
+        }
+        const float n = static_cast<float>(pooled.size());
+        EXPECT_NEAR(dx / n / kH, 0.0f, 0.4f) << rec;
+        EXPECT_NEAR(dz / n / kH, 0.0f, 0.4f) << rec;
+        EXPECT_LE(std::fabs(dy / n) / kH, 1.2f) << rec;
         TearDown();
     }
-}
-
-// Record 3: a sheet falling over the target from above its head.
-TEST_F(TargetAnchors, TheColumnFallsFromAboveTheTarget) {
-    Note(3, 377);
-    fx_->createLanding(kCaster, kTarget, 377);
-    PumpFor(1.0f);
-    size_t young = 0, high = 0;
-    for (const auto& p : Live()) {
-        if (p.age > 0.1f || p.velocity.y > -0.1f) continue;
-        ++young;
-        if ((p.position.y - (kTargetPos.y - kA)) / kH > 1.6f) ++high;
-    }
-    ASSERT_GT(young, 10u);
-    EXPECT_EQ(high, young) << "falling sprites are born above the target's head";
 }
 
 }  // namespace

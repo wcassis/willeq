@@ -91,8 +91,8 @@ TEST(SpellSpawnShapesReader, DecodesTheShapeWordsAtTheirCodeOffsets) {
     EXPECT_FLOAT_EQ(s.offZ, 2.0f);
     EXPECT_FLOAT_EQ(s.tiltA, 128.0f);
     EXPECT_FLOAT_EQ(s.tiltB, 64.0f);
-    EXPECT_FLOAT_EQ(s.depthBias, -0.25f);
-    EXPECT_EQ(s.attachScale, 1);
+    EXPECT_FLOAT_EQ(s.depth, -0.25f);
+    EXPECT_TRUE(s.scaleShapes);
 }
 
 // ---------------------------------------------------------------------------
@@ -254,7 +254,7 @@ TEST(SpellSpawnShapes, BoxSitsOnItsFaceWithAnOutwardNormal) {
         // On the surface: at least one coordinate is at its half-extent.
         EXPECT_TRUE(near1(std::fabs(q.x) / 2.0f) || near1(std::fabs(q.y) / 1.0f) ||
                     near1(std::fabs(q.z) / 3.0f))
-            << i << glm::to_string(q);
+            << i << " (" << q.x << ", " << q.y << ", " << q.z << ")";
         EXPECT_TRUE(out.hasNormal) << i;
         // The normal is an axis pointing outward from the face it is on.
         EXPECT_NEAR(std::fabs(glm::dot(out.normal, q / glm::vec3(2.0f, 1.0f, 3.0f))), 1.0f, 1e-4f)

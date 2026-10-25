@@ -408,9 +408,11 @@ static SpellEffectsConfig::TargetRecord targetRowForSpell(uint32_t spellId, int 
 
 SpellEffectsConfig::TargetAnchor TargetAnchorForSpell(uint32_t spellId, int record) {
     const auto rec = targetRowForSpell(spellId, record);
-    using T = SpellEffectsConfig::TargetAnchor;
-    if (rec.anchor == T::Caster) return T::Caster;
-    return rec.hasShape ? rec.anchor : T::Body;
+    // B1150 (#470): the anchor class is evidence, honored without a shape --
+    // the row's measured extent is retired (the record's +0xA8..+0xD0 words
+    // draw it), so the anchor stands on its own: record 5 still lands on the
+    // target's head bone, 27/40 round the caster, 16/28/3 on the target.
+    return rec.anchor;
 }
 
 bool TargetHasOverrideShape(uint32_t spellId) {
@@ -499,7 +501,8 @@ void applyStageEmitterColours(SpellEffectDef& def,
 // emitterLifetime is the window; a zero window (a burst-only slot such as
 // 281's) still needs one simulation step to fire its burst, hence the floor.
 void applySlotEmitter(const std::vector<SpellEffectDef*>& slotDefs, const EQ::SpellFxSlotTiming& t,
-                      const EQ::SpellsNewEddSprite* sprite, float stageLatency, float attachScale) {
+                      const EQ::SpellsNewEddSprite* sprite, float stageLatency, float attachScale,
+                      const EQ::SpellsNewEddShape* shape) {
     constexpr float kOneStep = 0.05f;
     const float L = t.lifetime;
     const bool emits = t.emits() && L > 0.0f && t.peakLive() > 0.0f;
@@ -545,6 +548,24 @@ void applySlotEmitter(const std::vector<SpellEffectDef*>& slotDefs, const EQ::Sp
     for (size_t i = 0; i < eds.size(); ++i) {
         SpellEmitterDef& ed = *eds[i];
         auto& c = ed.config;
+        if (shape) {
+            // B1150 (#470): the record's spawn geometry (spell_spawn_shape.h,
+            // one case per +0xA8 word). The config's spawnShape/spawnExtents
+            // below are then dead for this emitter: sim_particles.cpp's
+            // eddShape.active branch precedes them.
+            c.eddShape.active = true;
+            c.eddShape.shape = shape->shape;
+            c.eddShape.dimX = shape->dimX;
+            c.eddShape.dimY = shape->dimY;
+            c.eddShape.dimZ = shape->dimZ;
+            c.eddShape.offX = shape->offX;
+            c.eddShape.offY = shape->offY;
+            c.eddShape.offZ = shape->offZ;
+            c.eddShape.tiltA = shape->tiltA;
+            c.eddShape.tiltB = shape->tiltB;
+            c.eddShape.depthBias = shape->depth;
+            c.eddShape.scale = shape->scaleShapes ? attachScale : 1.0f;
+        }
         const float oldLife = 0.5f * (c.lifetimeMin + c.lifetimeMax);
         const float delay = std::max(stageLatency, 0.0f) + t.start;
         ed.trigger = delay > 0.0f ? SpellTrigger::DELAYED : SpellTrigger::IMMEDIATE;

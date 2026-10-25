@@ -16,9 +16,14 @@
 // THE SEAM is the real one: SpellVisualFX (EDT_NULL device) -> ParticleManager
 // -> SimulationWorker, with entity positions fed back each frame from the same
 // callback production installs (the caster, both hand bones, the head bone).
-// The rows asserted here are the oracle's numbers, typed from anchor_table.tsv
-// / record_table.tsv (fixed camera, caster heights above the feet), so a
-// config edit that drifts from the survey goes red here as well.
+//
+// B1150 (#470) retires the rows' measured SHAPES: every record's Source is
+// drawn by its spellsnew.edd +0xA8 shape (dims +0xAC/+0xB0/+0xB4, offsets
+// +0xB8..+0xC0, tilts +0xC4/+0xC8, depth +0xD0, +0x19C scale) where the
+// client file is present. This seam runs WITHOUT the file, so it pins the
+// no-file fallback (the style's own cloud on the caster's entity) and the
+// anchor evidence; the retired values are the bands in
+// tests/spell_fx_shape_oracle.h (the generator: refactor/B1150/scripts/).
 //
 // RED on fable b8c1719f (review/B1131/tests/): its config has no
 // `sourceRecords` and its createCastGlow() draws every record as the body
@@ -29,6 +34,7 @@
 #include "client/graphics/environment/spell_effects_config.h"
 #include "client/spell/spell_fx_timing.h"
 #include "spell_fx_population_oracle.h"
+#include "spell_fx_shape_oracle.h"
 #include "spell_fx_timing_oracle.h"
 #include "spell_pool.h"
 #include "spell_anim_rows.h"
@@ -78,8 +84,13 @@ protected:
     }
 };
 
-// Every one of the 41 records carries its measured row, in the survey's class
-// counts; 51 is B1134's observer measurement (it used to stand in as record 13).
+// Every one of the 41 records carries its row, in the survey's class counts;
+// 51 is B1134's observer measurement (it used to stand in as record 13).
+// B1150 (#470): the row carries NO shape any more (hasShape false on all 41)
+// -- every row's spell has a spellsnew.eff field-145 record, and the record's
+// +0xA8..+0xD0 words (plus +0x19C) draw its Source. The retired values are
+// the bands in tests/spell_fx_shape_oracle.h; the anchor class stays, as
+// evidence.
 TEST_F(SourceRecordRows, EverySurveyedRecordHasItsMeasuredRow) {
     const auto& cfg = SpellEffectsConfig::instance();
     const int surveyed[] = {4, 2, 7, 51, 1, 9, 10, 12, 20, 40, 25, 18, 16, 0, 14, 5, 17, 6, 19, 23, 43,
@@ -89,7 +100,7 @@ TEST_F(SourceRecordRows, EverySurveyedRecordHasItsMeasuredRow) {
     for (int r : surveyed) {
         const auto& row = cfg.sourceRecord(r);
         EXPECT_EQ(row.record, r) << "record " << r << " has no row";
-        EXPECT_TRUE(row.hasShape) << r;
+        EXPECT_FALSE(row.hasShape) << r << " B1150: the record's +0xA8 word is the shape";
         ++classes[row.anchor];
         // B1145 (#465): the rows carry no measured timing any more: every
         // row starts at the stage latency (the default row's onset) and holds
@@ -104,6 +115,14 @@ TEST_F(SourceRecordRows, EverySurveyedRecordHasItsMeasuredRow) {
                                        [r](const spell_fx_population_oracle::RecordRow& o) { return o.row == r; });
         ASSERT_NE(band, std::end(spell_fx_population_oracle::kRows)) << r;
         EXPECT_GT(band->sourceCoverage, 0.0f) << r;
+        // B1150: the row's retired measured shape is the band for r, with
+        // the row's anchor (the anchor stayed in the config as evidence).
+        const auto shapeBand = std::find_if(std::begin(spell_fx_shape_oracle::kSource),
+                                            std::end(spell_fx_shape_oracle::kSource),
+                                            [r](const spell_fx_shape_oracle::SourceBand& b) { return b.record == r; });
+        ASSERT_NE(shapeBand, std::end(spell_fx_shape_oracle::kSource)) << r;
+        EXPECT_EQ(shapeBand->anchor, static_cast<int>(row.anchor)) << r;
+        EXPECT_EQ(shapeBand->record, r) << r;
     }
     EXPECT_EQ(classes[Anchor::Hands], 8);
     EXPECT_EQ(classes[Anchor::FeetRing], 5);  // 1, 16, 31, 32 + 51 (B1134)
@@ -118,10 +137,14 @@ TEST_F(SourceRecordRows, EverySurveyedRecordHasItsMeasuredRow) {
     const auto& d = cfg.sourceRecord(51);
     EXPECT_EQ(d.measuredAs, -1);
     EXPECT_EQ(d.anchor, Anchor::FeetRing);
-    EXPECT_NEAR(d.lo, -0.05f, 1e-3f);
-    EXPECT_NEAR(d.hi, 0.74f, 1e-3f);
-    EXPECT_NEAR(d.halfWidth, 0.345f, 1e-3f);
-    EXPECT_NEAR(d.centroid, 0.21f, 1e-3f);
+    // B1150: the observer's measured ring extent is the band for 51.
+    const auto& b51 = *std::find_if(std::begin(spell_fx_shape_oracle::kSource),
+                                    std::end(spell_fx_shape_oracle::kSource),
+                                    [](const spell_fx_shape_oracle::SourceBand& b) { return b.record == 51; });
+    EXPECT_NEAR(b51.lo, -0.05f, 1e-3f);
+    EXPECT_NEAR(b51.hi, 0.74f, 1e-3f);
+    EXPECT_NEAR(b51.halfWidth, 0.345f, 1e-3f);
+    EXPECT_NEAR(b51.centroid, 0.21f, 1e-3f);
     // Its measured onset (Act+0.7 after a 0-ms OP_BeginCast) and hold (8.16 s)
     // were B1134's; B1145 times the discipline records from the file too.
     // B1131's measured holds: 15 rows held >= 4 s past OP_Action with another
@@ -134,6 +157,9 @@ TEST_F(SourceRecordRows, EverySurveyedRecordHasItsMeasuredRow) {
     EXPECT_EQ(longHolds, 15);
 }
 
+// B1150 (#470): the representatives' measured shapes are the BANDS; the row
+// keeps its anchor and timing. A band that drifts from the survey's typed
+// numbers goes red here.
 TEST_F(SourceRecordRows, TheRepresentativesCarryTheOraclesNumbers) {
     const auto& cfg = SpellEffectsConfig::instance();
     for (const auto& o : kReps) {
@@ -145,12 +171,20 @@ TEST_F(SourceRecordRows, TheRepresentativesCarryTheOraclesNumbers) {
         // (the hold is the emission's end; the measured one is the last lit
         // frame, up to a sprite life later: SpellFxTimingFiles checks it per slot)
         EXPECT_LE(o.holdOther, row.holdOther + 1.5f) << o.record;
-        EXPECT_NEAR(row.lo, o.lo, 0.005f) << o.record;
-        EXPECT_NEAR(row.hi, o.hi, 0.005f) << o.record;
-        EXPECT_NEAR(row.centroid, o.centroid, 0.005f) << o.record;
-        if (o.anchor != Anchor::Head) EXPECT_NEAR(row.halfWidth, o.halfWidth, 0.005f) << o.record;
+        // B1150: the retired measured shape is the band for the record.
+        const auto band = std::find_if(std::begin(spell_fx_shape_oracle::kSource),
+                                       std::end(spell_fx_shape_oracle::kSource),
+                                       [o](const spell_fx_shape_oracle::SourceBand& b) { return b.record == o.record; });
+        ASSERT_NE(band, std::end(spell_fx_shape_oracle::kSource)) << o.record;
+        EXPECT_EQ(band->anchor, static_cast<int>(o.anchor)) << o.record;
+        EXPECT_NEAR(band->lo, o.lo, 0.005f) << o.record;
+        EXPECT_NEAR(band->hi, o.hi, 0.005f) << o.record;
+        EXPECT_NEAR(band->centroid, o.centroid, 0.005f) << o.record;
+        if (o.anchor != Anchor::Head) EXPECT_NEAR(band->halfWidth, o.halfWidth, 0.005f) << o.record;
     }
-    const auto& halo = cfg.sourceRecord(22);
+    const auto& halo = *std::find_if(std::begin(spell_fx_shape_oracle::kSource),
+                                     std::end(spell_fx_shape_oracle::kSource),
+                                     [](const spell_fx_shape_oracle::SourceBand& b) { return b.record == 22; });
     EXPECT_NEAR(halo.discLo, 0.88f, 1e-3f);
     EXPECT_NEAR(halo.discHi, 1.12f, 1e-3f);
     EXPECT_NEAR(halo.discHalfWidth, 0.43f, 1e-3f);
@@ -284,14 +318,12 @@ protected:
     float t_ = 0.0f;
 };
 
-float Pct(std::vector<float> v, float q) {
-    std::sort(v.begin(), v.end());
-    return v[static_cast<size_t>(q * static_cast<float>(v.size() - 1))];
-}
-
-// ANCHOR CLASS: which point the Source follows. RED on b8c1719f: every record
-// was one body cloud on the caster's entity.
-TEST_F(SourceAnchors, EachClassFollowsItsOwnAnchor) {
+// B1150 (#470): without the client file there is no record, so a record
+// spell's Source is the castGlow style's own cloud -- on the CASTER'S entity,
+// no bones. The record's +0xA8 shape (and the survey's per-record anchor)
+// draw where the file is present; the seam pins that without it the record
+// follows the caster, not the hand/head bones B1131 placed it on.
+TEST_F(SourceAnchors, EachRecordFollowsTheCasterWithoutAFile) {
     for (const auto& o : kReps) {
         SetUp();  // a fresh seam per record
         if (::testing::Test::IsSkipped()) return;
@@ -300,37 +332,25 @@ TEST_F(SourceAnchors, EachClassFollowsItsOwnAnchor) {
         PumpFor(0.7f);
         const auto& e = out_.particleOutput.positionRequestEntities;
         const bool onCaster = e.count(kCaster) > 0;
-        const bool onHands = e.count(EQ::SpellVisualFX::rightHandEntityId(kCaster)) > 0 &&
-                             e.count(EQ::SpellVisualFX::leftHandEntityId(kCaster)) > 0;
+        const bool onHands = e.count(EQ::SpellVisualFX::rightHandEntityId(kCaster)) > 0;
         const bool onHead = e.count(EQ::SpellVisualFX::headEntityId(kCaster)) > 0;
-        switch (o.anchor) {
-            case Anchor::Hands:
-                EXPECT_TRUE(onHands) << o.record << ": not on the two hand bones";
-                EXPECT_FALSE(onCaster) << o.record << ": a hands Source is not a body cloud";
-                break;
-            case Anchor::Head:
-                EXPECT_TRUE(onHead) << o.record << ": not on the head bone";
-                EXPECT_FALSE(onCaster) << o.record;
-                break;
-            default:
-                EXPECT_TRUE(onCaster) << o.record;
-                EXPECT_FALSE(onHands || onHead) << o.record;
-        }
+        EXPECT_TRUE(onCaster) << o.record << ": the no-file record Source must follow the caster";
+        EXPECT_FALSE(onHands) << o.record << ": the hands placement is the record's shape's, not the no-file fallback's";
+        EXPECT_FALSE(onHead) << o.record;
         TearDown();
     }
 }
 
-// SHAPE: the live sprites sit where the oracle drew them, in caster heights
-// above the feet (lit extent lo..hi, half-width, centroid; the sprite's own
-// size is not in a particle position, so the bands are the oracle's).
-TEST_F(SourceAnchors, EachRecordIsShapedLikeTheOraclesRow) {
+// B1150 (#470): the no-file record Source is the style's cloud centred on the
+// caster's entity anchor (rising, as the style rises). The oracle's
+// per-record bands (tests/spell_fx_shape_oracle.h) are the retired values the
+// record's shape replaces where the file is present.
+TEST_F(SourceAnchors, EachRecordSourceIsTheStyleCloudOnTheCaster) {
     for (const auto& o : kReps) {
         SetUp();
         if (::testing::Test::IsSkipped()) return;
         Note(o);
         fx_->createCastGlow(kCaster, o.spell, 3000);
-        // Pool five samples 0.1 s apart (BC+1.4..1.8): one frame of a 40/s
-        // hand spray is too few sprites for a stable percentile.
         PumpFor(1.4f);
         std::vector<EQT::Graphics::Environment::UnifiedParticle> pooled;
         for (int k = 0; k < 5; ++k) {
@@ -338,53 +358,20 @@ TEST_F(SourceAnchors, EachRecordIsShapedLikeTheOraclesRow) {
             pooled.insert(pooled.end(), Live().begin(), Live().end());
         }
         ASSERT_GT(pooled.size(), 75u) << o.record;
-        std::vector<float> ys, dx, rad;
-        float ySum = 0.0f;
-        size_t inDisc = 0;
+        // The cloud follows the caster's entity anchor (kCenter), rising;
+        // its x/z stay over the caster (a hands/head placement would sit 1.0
+        // caster heights to the side, at 0.4 / 0.86 H).
+        double dx = 0.0, dy = 0.0, dz = 0.0;
         for (const auto& p : pooled) {
-            const float y = (p.position.y - (kCenter.y - kA)) / kH;
-            ys.push_back(y);
-            ySum += y;
-            dx.push_back(std::fabs(p.position.x - kCenter.x) / kH);
-            rad.push_back(std::hypot(p.position.x - kCenter.x, p.position.z - kCenter.z) / kH);
-            if (y >= 0.85f && y <= 1.15f) ++inDisc;
+            dx += std::fabs(p.position.x - kCenter.x) / kH;
+            dy += std::fabs(p.position.y - (kCenter.y - kA)) / kH;
+            dz += std::fabs(p.position.z - kCenter.z) / kH;
         }
         const float n = static_cast<float>(pooled.size());
-        const float centroid = ySum / n;
-        EXPECT_NEAR(centroid, o.centroid, 0.2f) << o.record << ": centroid";
-        EXPECT_GE(Pct(ys, 0.05f), o.lo - 0.15f) << o.record << ": bottom";
-        // A hand spray is centred on the measured CENTROID (not the box middle),
-        // so its top may sit up to |centroid - mid| higher than the box's.
-        const float topSlack = 0.2f + (o.anchor == Anchor::Hands
-                                           ? std::fabs(o.centroid - 0.5f * (o.lo + o.hi)) + 0.05f : 0.0f);
-        EXPECT_LE(Pct(ys, 0.95f), o.hi + topSlack) << o.record << ": top";
-        EXPECT_LE(Pct(dx, 0.95f), o.halfWidth + 0.3f) << o.record << ": width";
-        switch (o.anchor) {
-            case Anchor::FeetRing:  // a ring round the feet: every sprite at the radius
-            case Anchor::Orbit:
-                EXPECT_NEAR(Pct(rad, 0.5f), o.halfWidth, 0.1f * o.halfWidth + 0.02f) << o.record;
-                break;
-            case Anchor::Head:      // the halo carries about half the sprites at head height
-                EXPECT_GE(inDisc / n, 0.4f) << o.record << ": no halo disc at head height";
-                EXPECT_LE(Pct(ys, 0.05f), 0.4f) << o.record << ": no column falling down the body";
-                break;
-            case Anchor::Hands: {    // born AT the hands
-                size_t young = 0, atHand = 0;
-                for (const auto& p : Live()) {
-                    if (p.age > 0.05f) continue;
-                    ++young;
-                    const float d = std::min(glm::length(p.position - kRightHand),
-                                             glm::length(p.position - kLeftHand));
-                    if (d < 0.15f * kH) ++atHand;
-                }
-                ASSERT_GT(young, 0u) << o.record;
-                EXPECT_EQ(atHand, young) << o.record << ": sprites born away from the hands";
-                break;
-            }
-            case Anchor::Body:
-                EXPECT_GE(Pct(dx, 0.95f), 0.5f * o.halfWidth) << o.record << ": not body-wide";
-                break;
-        }
+        EXPECT_LE(dx / n, 0.5f) << o.record << ": not over the caster";
+        EXPECT_LE(dz / n, 0.5f) << o.record << ": not over the caster";
+        EXPECT_GT(dy / n, 0.2f) << o.record << ": the cloud sits at the entity anchor, not the feet";
+        EXPECT_LE(dy / n, 2.0f) << o.record << ": the cloud is not orbiting up past the head";
         TearDown();
     }
 }

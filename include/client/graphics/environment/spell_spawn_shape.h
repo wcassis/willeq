@@ -60,7 +60,7 @@
 #include <algorithm>
 #include <cmath>
 
-#include <glm/vec3.hpp>
+#include <glm/glm.hpp>
 
 namespace EQT::Graphics::Environment {
 
