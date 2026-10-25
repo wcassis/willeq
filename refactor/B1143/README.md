@@ -171,19 +171,62 @@ spellsnew.eff record is field 145, `SpellAnim`, line 559):
   record 326; 4505 Deadeye Discipline is record 329; 4506 Trueshot Discipline
   is record 326. Char 67 is class 12 = WIZARD (level 1), not "ninja".
 
-Status: the `/disc` activation leg (`plans/p3_disc325.tsv`, validated) is NOT
-run; rows not yet measured. FOLLOW-UP below.
+Status: the `/disc` + `#castspell` activation leg (`plans/p3_disc325.tsv`,
+class 4, leg `p3_disc325` 2026-10-25 22:08Z) RAN: all three disciplines
+landed (36 473 packets; `#level 60` + `#traindisc 60` = "You have learned 5
+new disciplines!"; chat "Cast Leechcurse Discipline (4504) on yourself",
+"Cast Reaper Strike (6236) on TrollF (262)", "Cast Lich Sting (6268) on
+TrollF (262)"; 3x `OP_BeginCast cast_ms=0`; `OP_Action` spell 4504). Measured
+in the observer view: **none of the three draws a detectable Source or
+Landing** (max coverage <= 0.02 over the Act+10 s window, below threshold) —
+record 325 has no Target-stage content, so the B1144 no-Target-slot gate
+(item 1) suppresses the impact and the source visual is below the ROI
+coverage threshold. This is the live-leg confirmation of the gate on a second
+record. Rows: `refactor/B1143/rows/p3_disc325_325.tsv` (six gate rows).
+**animRecords** (record -> spells, from the field re-derivation above, NOT in
+`config/spell_effects.json`): record 325 = 4504, 6236, 6268, 6299, 6311, 8604,
+8617, 8642 (the three activatable disciplines: 4504/6236/6268); record 1 =
+190 spells incl. 4593 Crippling Strike, 4629 Thunderkick (not manually
+activatable — no `eqstr_us.txt` ability strings).
 
-## Intimidation -> Fear (B1130 row 13) — NOT run
+## Intimidation -> Fear (B1130 row 13) — leg ran, did NOT land (FOLLOW-UP)
 
 B1130 row 13 (e13) is the **field-123** (spells.eff, `SpellAffectIndex`)
 record 13 = 209 Spook the Dead + 229 Fear (the "skull cloud" landing); in the
 spellsnew field the same two spells sit on record 101. The server casts Fear
 229 from a successful Intimidation (`SpellOnTarget(229, who, 0, true, -2000)`),
 so the clients see an `OP_Action` with NO `OP_BeginCast`. The Ti client has NO
-`/intimidate` command — the route is `/doability 1 - 10` or the Combat
-Abilities window (`plans/p3_combat1.tsv` header, with the decompile cites).
-Leg not run. FOLLOW-UP below.
+`/intimidate` command — the intended route is `/doability 1 - 10` or the
+Combat Abilities window (`plans/p3_combat1.tsv` header, with the decompile
+cites).
+
+Leg `p3_combat1` (class 1 Warrior, 2026-10-25 22:32Z, 23 980 packets) RAN but
+did **not** land a Fear:
+
+- **0 `OP_InstillDoubt` (0x389e) and 0 `OP_Action` spell 229** in the whole
+  pcap. The `/doability 1..10` sweep on the stunned TrollF000 (262) never
+  triggered the Intimidation branch — Intimidation is a *skill* (skill_id 71),
+  and none of the ten `/doability` indices maps to it in this client build
+  (or it requires the ability to be equipped / the caster in combat first).
+  The chat has no "intimidate / fear / doubt / cooldown" lines at all.
+- **The pre-SQL was a no-op.** `char 67` had **0 `character_skills` rows**
+  before the leg (the switched-class skill rows are created at LOGIN, after
+  the driver's offline save + class switch), so the pre-SQL
+  `UPDATE character_skills SET value=5000 WHERE skill_id=71` affected 0 rows —
+  Intimidation stayed at its default and the success roll could not be forced.
+  The fix is IN-WORLD: `#set skill 71 5000` (eqemu
+  `zone/gm_commands/set_skill.cpp`: `#set skill [ID] [Value]`, capped at
+  MaxSkill) added to the plan after `#level 60` (now in
+  `plans/p3_combat1.tsv`).
+- The leg exited **rc=65**: the report (`oracle_report.py`) raised
+  `uncaptured step 14_command` — the driver's `timeline.tsv` step marks and the
+  report's step names diverge on this plan (the item-3 plan of the same shape
+  reported clean), so the step table did not close. This is a
+  driver/report step-naming issue on the `/doability` + `alt+c` plan, separate
+  from the no-IntillDoubt finding.
+
+So item 4's Fear landing + no-Source check is **not yet measured**; see the
+FOLLOW-UP for the corrected next steps.
 
 ## Lane state (before == after)
 
@@ -195,22 +238,35 @@ Leg not run. FOLLOW-UP below.
   TrollF000 killed inside the leg (1792953828.697 Z `Killing TrollF (262).`).
   Only drift: the two `last_login` timestamps.
 
-## FOLLOW-UP (items 3-4, exact next commands)
+## FOLLOW-UP (item 4 only — item 3 is complete in this MR)
 
-1. **Item 3** (record 325 + record 1): `EQEMU_LANE=5 bash scripts/eqemu/oracle/oracle_class_leg.sh 5 kb-b1143-rig-residue refactor/B1143/plans/p3_disc325.tsv`
-   (the plan takes the lease, sets char 67 to the owning class via
-   `#level`/`#traindisc 60`, runs `/disc <name>` for 4504/6236/6268 +
-   `#castspell <id> 0` for the record-325 Source rows, observer recording;
-   restore char 67 to class 12 + gems per the B1134 restore rule). Then
-   measure with `refactor/B1143/scripts/obs_measure_b1143.py` against the
-   B1130 e13/e51 rows; rows to `refactor/B1143/rows/p3_disc325_325.tsv`.
-2. **Item 4** (Intimidation -> Fear): `EQEMU_LANE=5 bash scripts/eqemu/oracle/oracle_class_leg.sh 5 kb-b1143-rig-residue refactor/B1143/plans/p3_combat1.tsv`
-   (pre-SQL `refactor/B1143/plans/p3_combat1_skill.sql` sets Intimidation to
-   5000 so the first roll is certain; the leg sweeps `/doability 1..10` on the
-   stunned TrollF000 — the pcap shows which index sends 0x389e
-   `OP_InstillDoubt` — then grabs a Combat-Abilities-window still). Measure the
-   NPC's record-13 landing against B1130 row 13 and confirm NO Source on the
-   intimidator; row to `refactor/B1143/rows/p3_combat1_13.tsv`.
+Item 3 (record 325) is DONE: leg `p3_disc325` ran, rows measured
+(`refactor/B1143/rows/p3_disc325_325.tsv`, six gate rows), animRecords in the
+item-3 section above.
+
+Item 4 (Intimidation -> Fear) needs a corrected leg:
+
+1. **Find the Intimidation trigger.** The `/doability 1..10` sweep sent
+   **zero** `OP_InstillDoubt` (0x389e). Intimidation is a skill (skill_id 71),
+   not one of the ten `/doability` indices in this build. Options to try, in
+   order: (a) the Combat Abilities window — `alt+c`, read the button layout
+   from the still, click the Intimidation button (the window is already in the
+   plan at the `ca_window` step); (b) check whether Intimidation must be
+   EQUIPPED as a combat ability first (the eqemu `combat_abilities` / the
+   client's ability slots); (c) confirm the caster is a client (not NPC) and
+   has a valid NPC target in range at the moment of the click.
+2. **Re-run the corrected plan.** `plans/p3_combat1.tsv` now sets Intimidation
+   in-world (`#set skill 71 5000` after `#level 60`) so the success roll is
+   certain (the pre-SQL alone is a no-op — skill rows are created at login).
+   `EQEMU_LANE=5 bash refactor/B1143/scripts/run_leg.sh p3_combat1 1
+   --pre-sql-file refactor/B1143/plans/p3_combat1_skill.sql`
+3. **Fix the report step-capture.** The leg exited rc=65 on `uncaptured step
+   14_command` (driver `timeline.tsv` marks vs `oracle_report.py` step names
+   diverge on the `/doability` + `alt+c` plan). Confirm the report closes
+   before trusting the measurement.
+4. **Measure** the NPC's record-13 landing against B1130 row 13 (209/229,
+   the "skull cloud") and confirm NO Source on the intimidator; row to
+   `refactor/B1143/rows/p3_combat1_13.tsv`.
 
 `animRecords` (record -> spells, from the field re-derivation above, NOT in
 `config/spell_effects.json`): record 325 = 4504, 6236, 6268, 6299, 6311, 8604,

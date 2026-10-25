@@ -1,0 +1,22 @@
+# B1143 item 3: record 325, the three Shadow Knight disciplines, leg p3_disc325 (2026-10-25 22:08Z, class 4).
+# Activation = the real client path `/disc <name>` (OP_CastSpell slot 10) AND the GM path
+# `#castspell <id> 0` (0 ms OP_BeginCast) -- both landed in the pcap (30 681->36 473 packets;
+# chat: "Cast Leechcurse Discipline (4504) on yourself", "Cast Reaper Strike (6236) on TrollF (262)",
+# "Cast Lich Sting (6268) on TrollF (262)"; 3x OP_BeginCast cast_ms=0; OP_Action spell=4504).
+#
+# RESULT: none of the three draws a detectable SOURCE or LANDING in the observer view.
+# max coverage over the whole Act+10 s window is <= 0.02 (below the instrument's threshold),
+# so every stage row is a NEGATIVE (gate) row: record 325 has no Target-stage content, so
+# the B1144 no-Target-slot gate (item 1, spell_visual_fx.cpp:841-854) suppresses the impact,
+# and the disciplines' source visual is below the observer-ROI coverage threshold.
+# This re-verifies the gate on a second record (item 1 pinned it on the vocabulary/harness;
+# this is the live-leg confirmation).
+# Frame files for every number: /home/user/kb-evidence/kb-b1143-rig-residue/measure/p3_disc325_325/
+# (kept with --keep-png; the max-coverage figure is printed in the measure .txt per rep).
+record	spell	rep	stage	target	target_id	who	onset	centroid	h_p5	h_p95	dx_p5	dx_p95	cov	verdict
+325	4504	1	SOURCE	SELF	260	fable :98	none	none	-	-	-	-	0.000	gate (no Target stage; below thr)
+325	4504	1	LANDING	SELF	260	fable :98	none	none	-	-	-	-	0.0111	gate (no Target stage; below thr)
+325	6236	1	SOURCE	NPC	262	fable :98	none	none	-	-	-	-	0.000	gate (no Target stage; below thr)
+325	6236	1	LANDING	NPC	262	fable :98	none	none	-	-	-	-	0.0055	gate (no Target stage; below thr)
+325	6268	1	SOURCE	NPC	262	fable :98	none	none	-	-	-	-	0.0198	gate (no Target stage; below thr)
+325	6268	1	LANDING	NPC	262	fable :98	none	none	-	-	-	-	0.0053	gate (no Target stage; below thr)

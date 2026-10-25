@@ -13,9 +13,14 @@
 # InstillDoubt) requires an NPC target in combat range and casts spell 229
 # (Fear) unresistably on a successful roll; Handle_OP_InstillDoubt (client
 # _packet.cpp:9095) starts the reuse timer on every OP_InstillDoubt it
-# receives, so ONE failed attempt would burn the cooldown -- the skill is
-# set to 5000 by p3_combat1_skill.sql (pre-SQL) making the first roll
-# certain.
+# receives, so ONE failed attempt would burn the cooldown.
+#
+# The success roll is made certain IN-WORLD with `#set skill 71 5000`
+# (eqemu zone/gm_commands/set_skill.cpp: `#set skill [ID] [Value]`, capped at
+# MaxSkill) AFTER `#level 60` -- the skill rows for the switched class are
+# created at LOGIN, so the pre-SQL (p3_combat1_skill.sql) alone is a NO-OP
+# (char 67 had 0 character_skills rows before the leg). The in-world set is
+# the reliable one; the pre-SQL is kept as a harmless belt-and-braces.
 #
 # This leg: (a) sweeps /doability 1..10 with the stunned TrollF000 targeted
 # (the pcap shows which index, if any, sends 0x389e), then (b) opens the
@@ -47,6 +52,8 @@ command	#set time 11 0	noon
 wait	1500	noon_settle
 command	#weather 0	weather
 command	#level 60	lvl
+command	#set skill 71 5000	set_intim
+wait	1500	set_intim_settle
 command	#spawn TrollF 1 1 0 30000	spawn
 wait	3000	spawn_settle
 obs	press	F9	obs_f9_1
