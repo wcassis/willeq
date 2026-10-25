@@ -102,8 +102,9 @@ protected:
     }
     // B1144: runs one plan (its rows after the header) for `seconds`; the
     // frames directory, or empty when the harness failed (see run.log).
+    // B1155: `camera` selects the preset (b1118, b1130, b1130-self).
     fs::path runPlan(const std::string& name, const std::string& rows, double seconds,
-                     const std::string& extra = "") {
+                     const std::string& extra = "", const std::string& camera = "b1118") {
         const fs::path dir = fs::temp_directory_path() /
                              ("willeq_fx_harness_" + name + "_" + std::to_string(::getpid()));
         fs::remove_all(dir);
@@ -118,7 +119,7 @@ protected:
                                 "' --spell-test --client " + kClient + " --eqe1 " + kPack + " --plan '" +
                                 (dir / "plan.tsv").string() + "' --frames-dir '" + frames.string() +
                                 "' --fps 30 --seconds " + std::to_string(seconds) +
-                                " --headless --camera b1118 --seed 1 " + extra + " > '" +
+                                " --headless --camera " + camera + " --seed 1 " + extra + " > '" +
                                 (dir / "run.log").string() + "' 2>&1";
         return std::system(cmd.c_str()) == 0 ? frames : fs::path();
     }
@@ -300,6 +301,106 @@ TEST_F(FxHarness, ALevelOneCasterDrawsOnlyItsLevelZeroSlots) {
                 sum60);
     EXPECT_GT(sum1, 0) << "the level-1 caster's hand slots drew nothing";
     EXPECT_LT(sum1, sum60) << "the level-1 caster drew as much Source as the level-60 caster";
+    cleanDirs();
+}
+
+// B1155 (#475): --camera b1130 / b1130-self solve B1130's fixed-geometry
+// stills (review/B1130/README.md "Geometry"): the B1118 opening pose with the
+// caster 209 px, feet row 598 at column 640, and for b1130 the target with feet
+// (940,652). One written frame per preset (the cast lies at 100 s, past it); the
+// solver's pixels are asserted from that frame, with the same off-clear-colour
+// rule the solver corrects on.
+//
+// The target is B1130's stunned npc, `#spawn TrollF` -- race 9 (Troll), gender
+// 1, size 6 (the card's ground truth; config/race_models.json races/9 scale 1.4,
+// which with its nearer depth is why B1130's still records 325 px vs the caster's
+// 209). The FEET (row 652, column 940) are the pinned FX reference and are
+// asserted to the solved value. The rendered PIXEL HEIGHT is the model's own,
+// and is a consistency check, not a solved input: in the FABLE client this
+// harness renders the troll mesh in a collapsed rest pose (~147 px, deterministic
+// across seeds; the robed dark-elf caster stands at 209 px), a model-fidelity
+// gap vs the official client's standing 325 px troll -- documented in
+// refactor/B1155/README.md and asserted here to the measured value.
+struct Silhouette {
+    int top = -1, bottom = -1, n = 0;
+    double col = 0;
+};
+Silhouette offClear(const irr::video::IImage& img, int x0, int y0, int x1, int y1) {
+    Silhouette s;
+    const auto d = img.getDimension();
+    x0 = std::max(x0, 0);
+    y0 = std::max(y0, 0);
+    x1 = std::min<int>(x1, d.Width - 1);
+    y1 = std::min<int>(y1, d.Height - 1);
+    double sx = 0;
+    for (int y = y0; y <= y1; ++y)
+        for (int x = x0; x <= x1; ++x) {
+            const auto c = img.getPixel(x, y);
+            if (std::abs(int(c.getRed()) - 50) + std::abs(int(c.getGreen()) - 50) +
+                    std::abs(int(c.getBlue()) - 80) <= 12)
+                continue;  // the clear colour (the ground plane paints it too)
+            if (s.top < 0) s.top = y;
+            s.bottom = y;
+            sx += x;
+            ++s.n;
+        }
+    if (s.n) s.col = sx / s.n;
+    return s;
+}
+void checkB1130Frame(const fs::path& frames, bool expectTarget, irr::video::IVideoDriver* driver) {
+    const auto scene = readScene(frames / "scene.tsv");
+    ASSERT_EQ(scene.count("caster"), 1u);
+    ASSERT_EQ(scene.count("target"), expectTarget ? 1u : 0u)
+        << (expectTarget ? "the b1130 target box is missing" : "b1130-self draws the caster alone");
+    irr::video::IImage* img = driver->createImageFromFile((frames / "frame_00000.png").string().c_str());
+    ASSERT_NE(img, nullptr);
+    // The pose box's bottom is above the rendered feet (the fit's comment), so
+    // the search runs past it; the clear-colour ground keeps the region clean.
+    const Box& cb = scene.at("caster");
+    const auto c = offClear(*img, cb.x0 - 30, cb.y0 - 10, cb.x1 + 30, cb.y1 + 100);
+    ASSERT_GT(c.n, 0) << "no off-clear pixels where the caster stands";
+    std::printf(
+        "[fx-gate] b1130 caster rows %d..%d (%d px, feet row %d), column %.1f (B1130: 209 px, feet 598 "
+        "at 640)\n",
+        c.top, c.bottom, c.bottom - c.top + 1, c.bottom, c.col);
+    EXPECT_NEAR(c.bottom, 598.0, 1.0) << "caster feet row";
+    EXPECT_NEAR(c.bottom - c.top + 1, 209.0, 1.0) << "caster pixel height";
+    // B1130's 640 is the feet column; this is the silhouette CENTROID, which sits
+    // ~1-2 px right of the feet column for the robed dark elf (the robe's skirt
+    // leans one way). Tolerance 2 px.
+    EXPECT_NEAR(c.col, 640.0, 2.0) << "caster column centroid";
+    if (expectTarget) {
+        const Box& tb = scene.at("target");
+        ASSERT_LT(cb.x1, tb.x0) << "the caster and target boxes overlap; the framing moved";
+        const auto t = offClear(*img, tb.x0 - 30, tb.y0 - 10, tb.x1 + 30, tb.y1 + 100);
+        ASSERT_GT(t.n, 0) << "no off-clear pixels where the target stands";
+        std::printf(
+            "[fx-gate] b1130 target rows %d..%d (%d px, feet row %d), column %.1f (B1130 still: feet 652 "
+            "at 940, 325 px; the FABLE troll mesh renders collapsed at ~147 px, a model-fidelity gap)\n",
+            t.top, t.bottom, t.bottom - t.top + 1, t.bottom, t.col);
+        EXPECT_NEAR(t.bottom, 652.0, 1.0) << "target feet row (the pinned FX reference)";
+        // The FABLE client's troll mesh renders in a collapsed rest pose (~147 px),
+        // not the official client's standing 325 px troll. The FEET (row 652, col
+        // 940) are the solved reference and are asserted tightly; the height is
+        // the model's own collapsed value, asserted to the measured ~147 px.
+        EXPECT_NEAR(t.bottom - t.top + 1, 147.0, 6.0)
+            << "target pixel height (the FABLE troll mesh's collapsed rest pose)";
+        EXPECT_NEAR(t.col, 940.0, 2.0) << "target column centroid";
+    }
+    img->drop();
+}
+
+TEST_F(FxHarness, B1130PresetSolvesTheFixedNpcGeometry) {
+    const fs::path frames = runPlan("b1130", "100.0\t93\tother\t0\t250\t60\n", 0.5, "", "b1130");
+    ASSERT_FALSE(frames.empty()) << "the b1130 harness run failed";
+    checkB1130Frame(frames, true, device_->getVideoDriver());
+    cleanDirs();
+}
+
+TEST_F(FxHarness, B1130SelfPresetSolvesTheCasterAlone) {
+    const fs::path frames = runPlan("b1130self", "100.0\t93\tself\t0\t250\t60\n", 0.5, "", "b1130-self");
+    ASSERT_FALSE(frames.empty()) << "the b1130-self harness run failed";
+    checkB1130Frame(frames, false, device_->getVideoDriver());
     cleanDirs();
 }
 

@@ -7,6 +7,7 @@
 
 #include "model_viewer_state.h"
 #include "model_viewer_fx_harness.h"
+#include <cstdlib>
 
 const char* getClassName(int classIndex) {
     switch (static_cast<EQ::PlayerClass>(classIndex)) {
@@ -295,9 +296,22 @@ bool initSpellTestMode() {
             attachEquipmentModels(harnessOpts.casterEquipment[7], harnessOpts.casterEquipment[8]);
         }
     }
+    // B1155: the b1130/b1130-self target is B1130's stunned npc (#stun 120000),
+    // a fixed pose. For the b1130 preset use the client's player idle p01 (the
+    // caster's own, deterministic 209 px) rather than the o01 "other" idle, so
+    // the target's pose -- and therefore the solved camera -- is reproducible
+    // run to run. b1118 keeps o01 (its B1139 feet-apart rule). NOTE: the FABLE
+    // client's troll (race 9) and human (race 1) meshes render in a collapsed
+    // rest pose in this harness (the robed dark-elf caster stands at 209 px,
+    // the troll target at 147 px, the human at 50 px, all p01) -- a model
+    // fidelity gap vs the official client, documented in refactor/B1155/README.
+    const bool b1130Preset =
+        harnessOpts.cameraPreset == "b1130" || harnessOpts.cameraPreset == "b1130-self";
+    const char* targetIdle = b1130Preset ? "p01" : "o01";
     targetAnimatedNode = createSpellTestEntity(
         harnessOpts.targetRace, harnessOpts.targetGender, harnessOpts.targetSize,
-        core::vector3df(harnessOpts.interactiveDistance, 0, 0), preset ? kHarnessFaceOnRotY : -90.0f, "o01");
+        core::vector3df(harnessOpts.interactiveDistance, 0, 0), preset ? kHarnessFaceOnRotY : -90.0f,
+        targetIdle);
 
     uploadHarnessTextures();
     if (!initHarnessParticles()) {

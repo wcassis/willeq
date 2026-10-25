@@ -156,7 +156,7 @@ void harnessInterrupt(const EQ::SpellData& spell);
 void placeHarnessTarget(bool self, float distance);
 
 // The spell-test camera (the preset's fitted pose, else the default framing).
-void setupSpellTestCamera();
+bool setupSpellTestCamera();
 
 // The scripted run; returns the process exit code (0 ok, 2 bad plan/options,
 // 3 could not start the FX chain, 4 a frame failed to write).

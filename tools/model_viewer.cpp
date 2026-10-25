@@ -28,6 +28,8 @@
 #include "model_viewer/model_viewer_state.h"
 #include "model_viewer/model_viewer_fx_harness.h"
 
+#include <cstdio>
+
 int main(int argc, char* argv[]) {
     // T270: race codes/scales/archives are served only from WilleqDatabase
     // (race_codes.cpp's pre-JSON hardcoded switch is deleted), so the viewer
@@ -130,7 +132,13 @@ int main(int argc, char* argv[]) {
 
     // Add camera
     if (spellTestMode) {
-        setupSpellTestCamera();  // B1138: --camera preset, else caster/target midpoint
+        // B1155: a preset that does not solve to its recorded pixels is a
+        // framing defect, not something to render through.
+        if (!setupSpellTestCamera()) {
+            std::fprintf(stderr, "[fx-harness] the --camera preset did not solve to its recorded geometry\n");
+            device->drop();
+            return 2;
+        }
     } else {
         camera = smgr->addCameraSceneNode(
             nullptr, core::vector3df(0, 5, -cameraDistance), core::vector3df(0, 0, 0));

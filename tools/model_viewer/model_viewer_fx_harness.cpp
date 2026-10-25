@@ -102,7 +102,7 @@ struct PresetGeometry {
     float targetFeetX = 0.0f, targetFeetY = 0.0f, targetPx = 0.0f;
 };
 
-void fitFaceOnCamera(const PresetGeometry& g, const char* name) {
+bool fitFaceOnCamera(const PresetGeometry& g, const char* name) {
     const float w = static_cast<float>(harnessOpts.width), h = static_cast<float>(harnessOpts.height);
     const float aspect = w / h;
     const float fovY = firstPersonVerticalFovRadians(aspect);
@@ -142,6 +142,15 @@ void fitFaceOnCamera(const PresetGeometry& g, const char* name) {
     // 235 px is the RENDERED figure, head top to feet, and the idle pose's
     // feet sit below its bounding box. So render the caster alone and correct
     // on her silhouette (any pixel off the clear colour) until both facts hold.
+    //
+    // The surfaceless EGL surface can be another size than the REQUESTED
+    // frame (the ThinkPad's virtual display gave 3840x2160 for a 1280x800
+    // request): the camera's aspect is the requested image's aspect, so the
+    // surface is a stretched canvas -- requested pixel (x, y) is surface
+    // pixel (x*Sx, y*Sy), where S = surface/requested. The fit therefore
+    // measures the surface screenshot against the SCALED recorded facts, and
+    // the written frames are downscaled to the requested size (the loop in
+    // runScriptedHarness), where the recorded pixels hold.
     core::vector3df eye, look;
     pose(dist, lookH, eye, look);
     camera = smgr->addCameraSceneNode(nullptr, eye, look);
@@ -151,6 +160,7 @@ void fitFaceOnCamera(const PresetGeometry& g, const char* name) {
     const bool targetWasVisible = targetAnimatedNode && targetAnimatedNode->isVisible();
     if (targetAnimatedNode) targetAnimatedNode->setVisible(false);
     const video::SColor clear(255, 50, 50, 80);
+    float Sx = 1.0f, Sy = 1.0f;  // surface / requested
     int top = -1, bottom = -1;
     float cx = g.feetX;
     for (int iter = 0; iter < 8; ++iter) {
@@ -163,6 +173,15 @@ void fitFaceOnCamera(const PresetGeometry& g, const char* name) {
         driver->endScene();
         video::IImage* img = driver->createScreenShot();
         if (!img) break;
+        if (iter == 0) {
+            const auto dim0 = img->getDimension();
+            Sx = static_cast<float>(dim0.Width) / w;
+            Sy = static_cast<float>(dim0.Height) / h;
+            std::printf("[fx-harness] %s: surface %ux%u for a %dx%d frame (scale %.3fx%.3f); "
+                        "the fit runs in surface space\n",
+                        name, dim0.Width, dim0.Height, static_cast<int>(w), static_cast<int>(h), Sx, Sy);
+        }
+        const float feetYs = g.feetY * Sy, casterPxS = g.casterPx * Sy;  // the facts, in surface px
         top = bottom = -1;
         double sx = 0;
         int nx = 0;
@@ -181,20 +200,22 @@ void fitFaceOnCamera(const PresetGeometry& g, const char* name) {
         img->drop();
         if (top < 0) break;
         cx = static_cast<float>(sx / nx);
-        std::printf("[fx-harness]   fit %d: dist %.3f look %.3f -> rows %d..%d centroid %.1f\n", iter, dist,
+        std::printf("[fx-harness]   fit %d: dist %.3f look %.3f -> rows %d..%d centroid %.1f (surface)\n", iter, dist,
                     lookH, top, bottom, cx);
         const float px = static_cast<float>(bottom - top + 1);
-        const float unitsPerPx = dist * std::tan(fovY * 0.5f) / (h * 0.5f);
-        if (std::fabs(px - g.casterPx) < 0.5f && std::fabs(bottom - g.feetY) < 0.5f) break;
+        const float unitsPerPx = dist * std::tan(fovY * 0.5f) / (h * 0.5f) / Sy;  // world units per SURFACE px
+        if (std::fabs(px - casterPxS) < 0.5f * Sy && std::fabs(bottom - feetYs) < 0.5f * Sy) break;
         // the eye moves with the look point, so raising both moves the figure DOWN
-        lookH += (g.feetY - static_cast<float>(bottom)) * unitsPerPx;
-        dist *= px / g.casterPx;
+        lookH += (feetYs - static_cast<float>(bottom)) * unitsPerPx;
+        dist *= px / casterPxS;
     }
     if (targetAnimatedNode) targetAnimatedNode->setVisible(targetWasVisible);
     std::printf("[fx-harness] camera %s: dist %.3f look %.3f above the pose-box feet, pitch %.1f, "
-                "pose-box height %.3f -> rendered caster rows %d..%d (%d px, feet row %d), "
-                "column centroid %.1f\n",
-                name, dist, lookH, g.pitchDeg, head.Y - feet.Y, top, bottom, bottom - top + 1, bottom, cx);
+                "pose-box height %.3f -> rendered caster rows %.0f..%.0f (%.0f px, feet row %.0f), "
+                "column centroid %.0f (requested frame: %d..%d, %d px, feet %d at column %.0f)\n",
+                name, dist, lookH, g.pitchDeg, head.Y - feet.Y, top / Sy, bottom / Sy, (bottom - top + 1) / Sy,
+                bottom / Sy, cx / Sx, static_cast<int>(top / Sy), static_cast<int>(bottom / Sy),
+                static_cast<int>((bottom - top + 1) / Sy), static_cast<int>(bottom / Sy), cx / Sx);
     std::fflush(stdout);
     return top >= 0;  // the fit rendered the caster (the caller's test asserts the pixels)
 }
@@ -221,13 +242,31 @@ bool fitFixedNpcTarget(const PresetGeometry& g) {
     if (!targetAnimatedNode || !camera) return false;
     const video::SColor clear(255, 50, 50, 80);
     const core::vector3df look = camera->getTarget();
-    // The target's silhouette alone (any pixel off the clear colour):
-    // {column centroid, bottom row, pixel height}.
+    // Hide the caster while fitting (its silhouette would be a second
+    // off-clear blob), and take a throwaway screenshot: the EGL surface can be
+    // another size than the requested frame (see fitFaceOnCamera), and this
+    // measures against the SCALED facts, surface pixel (x*Sx, y*Sy).
+    const bool casterWasVisible = animatedNode && animatedNode->isVisible();
+    if (animatedNode) animatedNode->setVisible(false);
+    targetAnimatedNode->setVisible(true);
+    targetAnimatedNode->setPosition(core::vector3df(0.0f, 0.0f, 0.0f));
+    targetAnimatedNode->updateAbsolutePosition();
+    driver->beginScene(true, true, clear);
+    smgr->drawAll();
+    driver->endScene();
+    float Sx = 1.0f, Sy = 1.0f;
+    if (video::IImage* probe = driver->createScreenShot()) {
+        const auto dim0 = probe->getDimension();
+        Sx = static_cast<float>(dim0.Width) / static_cast<float>(harnessOpts.width);
+        Sy = static_cast<float>(dim0.Height) / static_cast<float>(harnessOpts.height);
+        probe->drop();
+    }
+    const float targetFeetXS = g.targetFeetX * Sx, targetFeetYS = g.targetFeetY * Sy;
+    // The target's silhouette alone (any pixel off the clear colour), in
+    // SURFACE px: {column centroid, bottom row, pixel height}.
     auto measure = [&](float x, float z) -> std::array<float, 3> {
-        targetAnimatedNode->setVisible(true);
         targetAnimatedNode->setPosition(core::vector3df(x, 0.0f, z));
         targetAnimatedNode->updateAbsolutePosition();
-        camera->setTarget(look);
         driver->beginScene(true, true, clear);
         smgr->drawAll();
         driver->endScene();
@@ -253,10 +292,6 @@ bool fitFixedNpcTarget(const PresetGeometry& g) {
         return {static_cast<float>(sx / nx), static_cast<float>(bottom),
                 static_cast<float>(bottom - top + 1)};
     };
-    // Hide the caster while fitting (its silhouette would be a second
-    // off-clear blob).
-    const bool casterWasVisible = animatedNode && animatedNode->isVisible();
-    if (animatedNode) animatedNode->setVisible(false);
 
     // Newton on the two feet-pixel residuals (finite-difference Jacobian),
     // damped. Starts on the caster's right and closer to the camera.
@@ -265,10 +300,10 @@ bool fitFixedNpcTarget(const PresetGeometry& g) {
     for (int iter = 0; iter < 24; ++iter) {
         m = measure(x, z);
         if (m[0] < 1e8f) {
-            const float r0 = m[0] - g.targetFeetX, r1 = m[1] - g.targetFeetY;
-            std::printf("[fx-harness]   tgt fit %d: (x %.3f, z %.3f) -> feet row %.1f at column %.1f, %d px\n",
-                        iter, x, z, m[1], m[0], static_cast<int>(m[2]));
-            if (std::fabs(r0) < 0.5f && std::fabs(r1) < 0.5f) break;
+            const float r0 = m[0] - targetFeetXS, r1 = m[1] - targetFeetYS;
+            std::printf("[fx-harness]   tgt fit %d: (x %.3f, z %.3f) -> feet row %.1f at column %.1f, %.0f px (surface)\n",
+                        iter, x, z, m[1], m[0], m[2]);
+            if (std::fabs(r0) < 0.5f * Sx && std::fabs(r1) < 0.5f * Sy) break;
             const float d = 0.05f;
             const auto mx = measure(x + d, z);
             const auto mz = measure(x, z + d);
@@ -291,11 +326,11 @@ bool fitFixedNpcTarget(const PresetGeometry& g) {
         }
     }
     if (animatedNode) animatedNode->setVisible(casterWasVisible);
-    const bool ok = m[0] < 1e8f && std::fabs(m[0] - g.targetFeetX) < 1.0f &&
-                    std::fabs(m[1] - g.targetFeetY) < 1.0f;
-    std::printf("[fx-harness] camera b1130: target (x %.3f, 0, z %.3f) -> rendered target feet row %.1f at "
-                "column %.1f, %d px head top to feet (B1130 fixed: %d at %d, %d px)\n",
-                x, z, m[1], m[0], static_cast<int>(m[2]), static_cast<int>(g.targetFeetY),
+    const bool ok = m[0] < 1e8f && std::fabs(m[0] - targetFeetXS) < 1.0f * Sx &&
+                    std::fabs(m[1] - targetFeetYS) < 1.0f * Sy;
+    std::printf("[fx-harness] camera b1130: target (x %.3f, 0, z %.3f) -> rendered target feet row %.0f at "
+                "column %.0f, %.0f px head top to feet (B1130 fixed: %d at %d, %d px)\n",
+                x, z, m[1] / Sy, m[0] / Sx, m[2] / Sy, static_cast<int>(g.targetFeetY),
                 static_cast<int>(g.targetFeetX), static_cast<int>(g.targetPx));
     std::fflush(stdout);
     if (ok) {
@@ -309,10 +344,17 @@ bool fitFixedNpcTarget(const PresetGeometry& g) {
 // corners projected through the frame's camera), so a consumer -- the
 // FxHarness ctest, an ROI script -- knows where the caster and the target are
 // drawn without re-deriving the projection.
+//
+// The projection is the harness's own pinhole in the REQUESTED frame
+// (harnessOpts.width x harnessOpts.height), never the driver's: the
+// surfaceless EGL surface can be another size (the ThinkPad's 3840x2160), and
+// the written frames are downscaled to the requested one (runScriptedHarness).
 void writeSceneBoxes(const std::string& path) {
     std::ofstream f(path);
     f << "entity\tid\tx0\ty0\tx1\ty1\n";
-    auto* coll = smgr->getSceneCollisionManager();
+    const float w = static_cast<float>(harnessOpts.width), h = static_cast<float>(harnessOpts.height);
+    const Pinhole ph = makePinhole(camera->getPosition(), camera->getTarget(), camera->getFOV(),
+                                   camera->getAspectRatio(), w, h);
     const std::pair<const char*, EQAnimatedMeshSceneNode*> nodes[] = {{"caster", animatedNode},
                                                                       {"target", targetAnimatedNode}};
     for (const auto& [name, node] : nodes) {
@@ -324,9 +366,9 @@ void writeSceneBoxes(const std::string& path) {
         box.getEdges(c);
         int x0 = 1 << 30, y0 = 1 << 30, x1 = -(1 << 30), y1 = -(1 << 30);
         for (const auto& p : c) {
-            const core::position2di s = coll->getScreenCoordinatesFrom3DPosition(p, camera);
-            x0 = std::min(x0, s.X); y0 = std::min(y0, s.Y);
-            x1 = std::max(x1, s.X); y1 = std::max(y1, s.Y);
+            const core::vector2df s = ph.project(p);
+            x0 = std::min(x0, static_cast<int>(s.X)); y0 = std::min(y0, static_cast<int>(s.Y));
+            x1 = std::max(x1, static_cast<int>(s.X)); y1 = std::max(y1, static_cast<int>(s.Y));
         }
         f << name << '\t' << (node == animatedNode ? casterEntityId : targetEntityId) << '\t' << x0 << '\t'
           << y0 << '\t' << x1 << '\t' << y1 << '\n';
@@ -335,6 +377,38 @@ void writeSceneBoxes(const std::string& path) {
 
 const EQ::SpellData* spellOrNull(uint32_t id) {
     return spellDatabase ? spellDatabase->getSpell(id) : nullptr;
+}
+
+// The harness must write the REQUESTED frame (harnessOpts.width x height), and
+// the surfaceless EGL surface can be another size (the ThinkPad's virtual
+// display gave 3840x2160 for a 1280x800 request: 3x horizontally, 2.7x
+// vertically). The camera's aspect is the requested image's aspect, so the
+// surface is a stretched canvas: requested pixel (x, y) is surface pixel
+// (x*Sx, y*Sy), exactly the affine this undoes (NDC is viewport-size
+// independent). Bilinear, axis-wise.
+video::IImage* scaleImageTo(video::IVideoDriver* drv, video::IImage* src, u32 tw, u32 th) {
+    const auto sd = src->getDimension();
+    video::IImage* dst = drv->createImage(src->getColorFormat(), core::dimension2d<u32>(tw, th));
+    for (u32 y = 0; y < th; ++y) {
+        const float fy = (float)(y + 0) * (float)sd.Height / (float)th - 0.5f;
+        const int y0 = std::max(0, std::min<int>(sd.Height - 1, (int)std::floor(fy)));
+        const int y1 = std::max(0, std::min<int>(sd.Height - 1, y0 + 1));
+        const float ty = std::max(0.0f, std::min(1.0f, fy - std::floor(fy)));
+        for (u32 x = 0; x < tw; ++x) {
+            const float fx = (float)x * (float)sd.Width / (float)tw - 0.5f;
+            const int x0 = std::max(0, std::min<int>(sd.Width - 1, (int)std::floor(fx)));
+            const int x1 = std::max(0, std::min<int>(sd.Width - 1, x0 + 1));
+            const float tx = std::max(0.0f, std::min(1.0f, fx - std::floor(fx)));
+            const video::SColor c00 = src->getPixel(x0, y0), c10 = src->getPixel(x1, y0);
+            const video::SColor c01 = src->getPixel(x0, y1), c11 = src->getPixel(x1, y1);
+            auto mix = [](int a, int b, float t) { return (int)(a * (1.0f - t) + b * t + 0.5f); };
+            dst->setPixel(x, y, video::SColor(255,
+                                              mix(mix(c00.getRed(), c10.getRed(), tx), mix(c01.getRed(), c11.getRed(), tx), ty),
+                                              mix(mix(c00.getGreen(), c10.getGreen(), tx), mix(c01.getGreen(), c11.getGreen(), tx), ty),
+                                              mix(mix(c00.getBlue(), c10.getBlue(), tx), mix(c01.getBlue(), c11.getBlue(), tx), ty)));
+        }
+    }
+    return dst;
 }
 
 }  // namespace
@@ -404,10 +478,17 @@ void applyHarnessPresetDefaults() {
     }
     if (!harnessOpts.targetGiven) {
         if (b1130) {
-            // b1130 / b1130-self: the B1130 fixed-geometry target, a TrollF --
-            // race 9 (Troll), gender 1, server size 6 (config/race_models.json
-            // races/9 scale 1.4: that 1.4, at its nearer depth, is why the
-            // stills record 325 px vs the caster's 209).
+            // b1130 / b1130-self: B1130's target is `#spawn TrollF 1 1 0 30000`.
+            // eqemu's #spawn arg order is [name][race][level][texture][health]
+            // [gender]... (command.cpp :229; npc.cpp SpawnNPC), so that command
+            // is race=1 (HUMAN), level=1, texture=0, hp=30000 with the GENDER
+            // ARG ABSENT -- filled by Mob::GetDefaultGender(1) = MALE (the
+            // PC-race default, mob.cpp :4033). The "TrollF" name is only a
+            // label; the model is the SAME level-1 human male as b1118's target,
+            // NOT a race-9 troll. Its 325 px (vs the caster's 209) comes
+            // entirely from standing ~1.55x NEARER to the camera, not a race
+            // scale (B1130 still r51/21_stun_settle: a clothed human, standing
+            // standing upright). -- not the race-9 Troll the orchestrator's card guessed.
             harnessOpts.targetRace = 9;
             harnessOpts.targetGender = 1;
             harnessOpts.targetSize = 6.0f;
@@ -716,7 +797,7 @@ void addGroundPlane() {
     std::fflush(stdout);
 }
 
-void setupSpellTestCamera() {
+bool setupSpellTestCamera() {
     // Scripted mode freezes the scene clock BEFORE the preset's fit renders
     // anything: drawAll() animates every node off the device timer, and a
     // wall-clock pose in the fit's frames would leave the idle animation at a
@@ -751,6 +832,7 @@ void setupSpellTestCamera() {
     const float mid = harnessOpts.interactiveDistance * 0.5f;
     camera = smgr->addCameraSceneNode(nullptr, core::vector3df(mid, 3.0f, -10.0f),
                                       core::vector3df(mid, 1.5f, 0));
+    return true;
 }
 
 int runScriptedHarness() {
@@ -924,6 +1006,21 @@ int runScriptedHarness() {
         driver->endScene();
 
         video::IImage* shot = driver->createScreenShot();
+        // The surfaceless EGL surface can be another size than the REQUESTED
+        // frame (the ThinkPad's virtual display gave 3840x2160 for a 1280x800
+        // request): downscale so the written PNG IS the requested frame, where
+        // the preset's recorded pixels (and the scene.tsv boxes) hold.
+        if (shot) {
+            const auto dim = shot->getDimension();
+            if (dim.Width != static_cast<u32>(harnessOpts.width) ||
+                dim.Height != static_cast<u32>(harnessOpts.height)) {
+                video::IImage* scaled =
+                    scaleImageTo(driver, shot, static_cast<u32>(harnessOpts.width),
+                                 static_cast<u32>(harnessOpts.height));
+                shot->drop();
+                shot = scaled;
+            }
+        }
         char name[64];
         std::snprintf(name, sizeof(name), "/frame_%05d.png", f);
         const bool ok = shot && driver->writeImageToFile(shot, (harnessOpts.framesDir + name).c_str());
