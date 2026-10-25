@@ -286,6 +286,9 @@ protected:
         pi.deltaTime = 1.0f / 60.0f;
         pi.unifiedRendererInitialized = true;
         pi.poolSize = pool_;
+        // B1138: a fixed particle-RNG seed makes the pooled means below
+        // bit-stable across hosts and runs (0 would seed from random_device).
+        pi.rngSeed = 1150u;
         for (uint16_t id : requested_) {
             glm::vec3 p;
             if (pm_->resolveEntityPosition(id, p)) pi.entityPositions[id] = p;
@@ -342,9 +345,16 @@ TEST_F(SourceAnchors, EachRecordFollowsTheCasterWithoutAFile) {
 }
 
 // B1150 (#470): the no-file record Source is the style's cloud centred on the
-// caster's entity anchor (rising, as the style rises). The oracle's
-// per-record bands (tests/spell_fx_shape_oracle.h) are the retired values the
-// record's shape replaces where the file is present.
+// caster's entity anchor (rising, as the style rises): with the rows' shape
+// words retired, SourceAnchorForSpell returns the Body anchor for every
+// record (spell_emitter_presets.cpp:296-299, hasShape false on all 41 rows),
+// so every record's no-file Source is the same castGlow cloud on the entity.
+// The pooled means below are that cloud's own spread, pinned seeded
+// (Pump's rngSeed, B1138): the cloud is elongated along x (0.67H pooled
+// |dx|) and tighter along z (0.32H) -- the style's motion, not a placement;
+// placement itself is pinned by EachRecordFollowsTheCasterWithoutAFile's
+// positionRequestEntities counts. Measured 2026-10-25, x86 ThinkPad
+// (build/test_spell_source_tree_8), 380 pooled particles per record.
 TEST_F(SourceAnchors, EachRecordSourceIsTheStyleCloudOnTheCaster) {
     for (const auto& o : kReps) {
         SetUp();
@@ -358,9 +368,6 @@ TEST_F(SourceAnchors, EachRecordSourceIsTheStyleCloudOnTheCaster) {
             pooled.insert(pooled.end(), Live().begin(), Live().end());
         }
         ASSERT_GT(pooled.size(), 75u) << o.record;
-        // The cloud follows the caster's entity anchor (kCenter), rising;
-        // its x/z stay over the caster (a hands/head placement would sit 1.0
-        // caster heights to the side, at 0.4 / 0.86 H).
         double dx = 0.0, dy = 0.0, dz = 0.0;
         for (const auto& p : pooled) {
             dx += std::fabs(p.position.x - kCenter.x) / kH;
@@ -368,10 +375,21 @@ TEST_F(SourceAnchors, EachRecordSourceIsTheStyleCloudOnTheCaster) {
             dz += std::fabs(p.position.z - kCenter.z) / kH;
         }
         const float n = static_cast<float>(pooled.size());
-        EXPECT_LE(dx / n, 0.5f) << o.record << ": not over the caster";
-        EXPECT_LE(dz / n, 0.5f) << o.record << ": not over the caster";
+        // Placement: the pooled window's position requests are the caster's
+        // entity only -- no hand or head bone (a Bone placement would request
+        // its own entity id; the Body anchor is the no-file path's only
+        // anchor now that the rows carry no shape).
+        const auto& req = out_.particleOutput.positionRequestEntities;
+        EXPECT_EQ(req.count(kCaster) > 0, true) << o.record << ": the cloud follows the caster's entity";
+        EXPECT_EQ(req.count(EQ::SpellVisualFX::rightHandEntityId(kCaster)), 0u) << o.record;
+        EXPECT_EQ(req.count(EQ::SpellVisualFX::leftHandEntityId(kCaster)), 0u) << o.record;
+        EXPECT_EQ(req.count(EQ::SpellVisualFX::headEntityId(kCaster)), 0u) << o.record;
+        EXPECT_NEAR(dx / n, 0.6655f, 0.01f) << o.record << ": the style cloud's lateral spread";
+        EXPECT_NEAR(dz / n, 0.3173f, 0.01f) << o.record << ": the style cloud's lateral spread";
+        // The cloud sits above the feet (at the entity anchor, rising), not
+        // at the feet and not orbiting up past the head.
         EXPECT_GT(dy / n, 0.2f) << o.record << ": the cloud sits at the entity anchor, not the feet";
-        EXPECT_LE(dy / n, 2.0f) << o.record << ": the cloud is not orbiting up past the head";
+        EXPECT_NEAR(dy / n, 0.9775f, 0.01f) << o.record;
         TearDown();
     }
 }
