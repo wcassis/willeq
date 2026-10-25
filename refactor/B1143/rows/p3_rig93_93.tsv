@@ -1,0 +1,16 @@
+# B1143 item 2: 93 Burst of Flame, 4 landed casts, leg p3_rig93 (2026-10-25 18:30Z).
+# Bands = B1130 r51 row 0 (NPC reference): onset+-0.10, centroid+-0.15, h lo/hi+-0.15, lateral+-0.2.
+# SOURCE onset in BC+; LANDING onset is RISE Act+; cov: SOURCE=peak(cast), LANDING=RUN.
+# LANDING end = landing end Act+ (r51 ref 6.67); verdict = onset/centroid/hlo/hhi/end.
+# In this rig the NPC target spawns ON the caster, so the NPC LANDING h-hi/cov are inflated by
+# the co-located source glow; the clean NPC discriminator is the landing END (duration).
+# Frame files for every number: /home/user/kb-evidence/kb-b1143-rig-residue/measure/p3_rig93_93_<rep>_{npc,player}/
+record	spell	rep	stage	target	target_id	who	onset	centroid	h_p5	h_p95	dx_p5	dx_p95	cov	verdict
+51	93	1	SOURCE	NPC	262	fable :98	+0.463	+0.61	-0.15	+1.23	-0.66	+0.55	0.110	in/in/OUT/in
+51	93	1	LANDING	NPC	262	fable :98	+0.582	+0.90	-0.04	+1.84	-0.59	+0.58	1.763	in/in/OUT/OUT/in end+6.65
+51	93	2	SOURCE	NPC	262	fable :98	+0.442	+0.67	+0.16	+1.31	-0.48	+0.54	0.136	in/in/in/in
+51	93	2	LANDING	NPC	262	fable :98	+0.175	+0.90	-0.01	+1.86	-0.59	+0.54	1.723	OUT/in/OUT/OUT/OUT end+7.34
+51	93	3	SOURCE	PLAYER	261	fable :98	+0.455	+0.65	+0.18	+1.33	-0.60	+0.44	0.136	in/in/in/in
+51	93	3	LANDING	PLAYER	261	fable :98	+0.577	+0.50	+0.09	+1.02	-0.64	+0.49	0.126	in/OUT/OUT/OUT/OUT end+5.08
+51	93	4	SOURCE	PLAYER	261	fable :98	+0.450	+0.71	+0.13	+1.35	-0.51	+0.53	0.132	in/in/in/in
+51	93	4	LANDING	PLAYER	261	fable :98	+0.573	+0.49	+0.09	+1.02	-0.64	+0.46	0.361	in/OUT/OUT/OUT/OUT end+4.54

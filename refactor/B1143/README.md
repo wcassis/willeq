@@ -4,129 +4,215 @@ Lane 5. Char 67 (Testcaster, caster) + char 103 (Oraclewatch, observer), the B11
 (caster `:98` Xvfb/mesa, observer `:99` NVIDIA — the leg's fixed geometry). Evidence:
 `/home/user/kb-evidence/kb-b1143-rig-residue/`.
 
-## Item 1 — the `hasTargetStage` gate (VERIFIED, present and pinned)
+## Item 1 — the `hasTargetStage` gate (present, pinned)
 
-The fix is at `src/client/graphics/spell_visual_fx.cpp:849`:
+The gate is in `SpellVisualFX::createImpact` at `src/client/graphics/spell_visual_fx.cpp:841-854`
+(`sed -n '841,856p'`):
 
-    // B1143: a spell that names no Target stage (e56, e262, e13) draws its
-    // Source only; the gate here stops it from also drawing a Target at the
-    // player even when the effect carries a target id.
-    if (!visuals::HasTargetStage(rec, name) &&
-        !ctx_.spellEffects()->hasTargetStageFor(name) &&
-        (e.type == GameEventType::Effect || e.type == GameEventType::EffectFlag)
-        && e.data.targetID != e.data.spawnerID &&
-        e.data.targetID != EQT::GameState::PLAYER_ENTITY_ID)
-        continue;
+    void SpellVisualFX::createImpact(uint16_t target_id, uint32_t spell_id)
+    {
+    #ifdef EQT_HAS_GLES2
+        if (m_particle_manager) {
+            // T72: spells.eff's Target emitter maps onto ImpactBurst. Same
+            // fallback-preserving rule as createCastGlow/createProjectile.
+            SpellVisualResolution visual = resolveVisual(spell_id);
+            if (!visual.isFallback() && !visual.hasTargetStage()) {
+                LOG_DEBUG(MOD_SPELL, "T72: spell {} spells.eff record {} has no Target-stage content "
+                                      "— suppressing impact burst (data-driven, not a bug)",
+                          spell_id, visual.spell_affect_index);
+                return;
+            }
 
-`tests/test_has_target_stage.cpp` pins the rule with the three measured rows
-(e56 `Reap Soul` source-only, e262 `Ritual of Rebirth` no-target, e13 `Fear` /
-`Spook the Dead` source+target). A regression that re-enables the Target for a
-no-target record is a red test. **Item 1 is complete.**
+Pinned by (all cited lines verified at this tip):
 
-## Item 2 — the 93 Burst of Flame rig miss (leg captured; the casts did not land)
+- `tests/test_spell_visual_selection.cpp:58` — the zero record resolves to
+  `hasTargetStage() == false`; `:113` — a resolved record with Target content is `true`;
+  `:142` — a resolved record without is `false`.
+- `tests/test_spell_visual_vocabulary.cpp:281` — the vocabulary resolution keeps
+  `hasTargetStage() == true` for a Target-bearing record.
+- `tests/test_fx_harness.cpp:230` — `FxHarness.ADisciplineWithoutBeginCastDrawsNothing`:
+  4499 Defensive Discipline's record 326 has no Target stage, so the action-only
+  (/disc) packets draw nothing on the harness.
+- `tests/test_spell_impact_visual.cpp:190,196,209-210` — the impact probe: 0
+  creates for a no-Target record, 1 create/1 release when a Target stage exists.
 
-The leg `oracle/p3_rig93.fix/` (evidence `/home/user/kb-evidence/kb-b1143-rig-residue/`)
-ran the first attempt at the card's design:
-- caster (Testcaster) class 6 Druid, `#goto -71.6,431.6,3.75,225` heading 225 (note: the
-  comma-form `#goto` failed, below);
-- observer (Oraclewatch) at the TrollF spot, fixed-camera sweeps + 36 s settle + record;
-- target `#spawn TrollF` (named `TrollF000` by the server) x2 plus `#target Oraclewatch`
-  (the player) x2; 4 casts, `/cast 1` (gem 0 = 93).
+A regression that re-enables the Target impact for a no-Target record is a red test.
+**Item 1 is complete.**
 
-Captured: `video.mp4` (94 MB), `video-caster.mp4`, `capture.pcap` (1.9 MB, 41 648
-packets), 100 stills, `timeline.tsv`, `video.calibration.tsv` (epoch 1792935218
-basis, 30 fps), `measure/p3_rig93.fix_casts.json`.
+## Item 2 — the 93 Burst of Flame rig miss: MEASURED (4 landed casts)
 
-**FINDING — the 4 casts did not land.** Decoded from `capture.pcap` with
-`scripts/eqemu/oracle/vendor/eqpcap.py` (connections: caster `7001/51876`, observer
-`7001/51542`): **the casts never left the caster client.** At the four `/cast 1`
-steps (14:27:53, 14:28:27, 14:29:14, 14:29:48) the C->S stream of `7001/51876`
-contains **no cast packet** — only `OP_ClientUpdate` / `OP_FloatListThing` / the GM
-`OP_ChannelMessage` commands — and no `OP_BeginCast` / `OP_Action` / `OP_Effect` is
-sent to either client anywhere in the leg. (The two `OP_BeginCast` 0x3990 in
-`all-opcodes.tsv` at 14:25:24.405/.421 are on the caster connection during the
-zone-in, spell 93 / 2500 ms / channel 10 — a server-side cast state the leg started
-with; the caster client sent nothing that started it, and it never completes in the
-pcap. It is residue, not the cause below.)
+### 2a. Why the first leg (`p3_rig93.fix`) failed — the casts never left the client
 
-**Root cause, from the quoted lines.** The plan targeted with the GM form
-`#target <name>`, which this eqemu build does not have:
+`oracle/p3_rig93.fix/capture.pcap`: **25 953 packets**, connections caster
+`7001/51876`, observer `7001/51542`; **zero C->S `OP_CastSpell`**.
 
-- 14:27:46.340 C->S `OP_ChannelMessage` 7001/51876 `msg='#target TrollF000'`;
-  14:27:46.355 S->C `OP_SpecialMesg` decodes to **`Command '#target TrollF000' not
-  recognized`** (identically at 14:28:19.776/.791 for cast b, and for both
-  `#target Oraclewatch` lines). The caster therefore **never had a target**, and the
-  official client refuses a targeted spell locally — hence zero cast packets and the
-  empty chat in the caster stills.
+The two `S->C OP_BeginCast` in the leg (1792938324.405/.421 Z) decode to
+**source 87, spell 11, cast_ms 2000** — zone-in residue the world started with
+(the same pair appears in every leg, including the 18:30 leg at 1792953598.056),
+142 s before the first target attempt; the caster client sent nothing that
+started it and it never completes. It is not the cause.
 
-Two more silent failures in the same leg (quoted from the same pcap), each of which
-would have broken the measurement even with a working target:
+The cause, from the quoted `S->C OP_SpecialMesg` lines: the plan used the GM
+form `#target <name>`, which this eqemu build does not have, so the caster
+**never had a target** and the official client refused the targeted spell
+locally:
 
-- `#stun TrollF000 120000` (14:26:34.264) → S->C `OP_SpecialMesg`
-  **`Usage: #stun [Duration]`** (14:26:34.290): `#stun` takes a duration only and
-  stuns the **current target** (B1130 r51: `/target TrollF` line 26 then `#stun
-  120000` line 27) — so the TrollF was never stunned.
-- `#goto -67.6,434.4,3.75,225` (14:26:37.9) → S->C `OP_SpecialMesg`
-  **`Player -67.6,434.4,3.75,225 could not be found.`** (14:26:38.496): the comma
-  string was parsed as a player name (B1130 r51 line 24 uses the space form
-  `#goto -67.6 434.4 3.75`). The caster therefore never left its `pose=` position
-  and all three actors co-located at -74,428 — the B1130 9.05-unit geometry was not
-  achieved (the caster still `24_time_settle.png` shows TrollF000 1–2 m in front and
-  the scene never matches the design).
+- 1792938466.356 Z `Command '#target TrollF000' not recognized.` (repeat
+  1792938499.812 Z); 1792938546.526 Z / 1792938581.130 Z
+  `Command '#target Oraclewatch' not recognized.`
+- Two more silent failures that would have broken the measurement even with a
+  working target:
+  - 1792938394.290 Z `Usage: #stun [Duration]` — `#stun` takes a duration only
+    and stuns the **current target** (which did not exist), so TrollF was never
+    stunned.
+  - 1792938398.497 Z `Player -67.6,434.4,3.75,225 could not be found.` — the
+    comma-form `#goto` was parsed as a player name, so the caster never left
+    its driver pose for the whole leg (all three actors co-located at the
+    driver pose; the B1130 9.05-unit geometry was never achieved).
 
-**The fixed plan** (`plans/p3_rig93.tsv`) therefore (1) uses the client-side
-`/target <name>` — the form that worked in B1130 r51 and B1134 P2; (2) `/target`s
-then `#stun 120000`s (re-stun before each cast, as B1130 r51); (3) drops `#goto`
-entirely and places both clients with the driver's `pose=` / `observer-pose=`
-directives in the B1134 P2b geometry: caster at the TrollF spot
-(-74,428,3.75, h160), observer at B1130 r51's caster pose (-67.6,434.4,3.75, h160)
-with F9 x3, TrollF000 #spawned at the caster's position (eqemu `#spawn` takes no
-coordinates). The spawned NPC's exact name is `TrollF000` (OP_NewSpawn 14:26:30.274,
-name bytes `54 72 6f 6c 6c 46 30 30 30`). A probe leg (`plans/p3_rig93.probe.tsv`,
-2 NPC casts only) confirms OP_Action lands before the full leg is spent.
+### 2b. The fixed plan landed (leg `p3_rig93`, 2026-10-25 18:30 Z)
 
-## Item 3 — the record-325 disciplines + record-1 combat abilities (spells identified)
+`plans/p3_rig93.tsv`: client-side `/target <name>` (the form that worked in B1130
+r51 and B1134 P2), `#stun 120000` AFTER `/target`, no `#goto` (both clients placed
+by the driver's `pose=` / `observer-pose=` in the B1134 P2b geometry: caster at
+the TrollF spot -74,428,3.75 h160, observer at B1130 r51's caster pose
+-67.6,434.4,3.75 h160); TrollF000 `#spawn`ed at the caster's position (eqemu
+`#spawn` takes no coordinates); 2 casts on the NPC (262) + 2 on the player
+(261); the NPC `#kill`ed after its phase. A short verification leg
+(`plans/p3_short2.tsv`, 2 NPC casts, `#corpse deletenpccorpses` first) confirmed
+`OP_Action` before the full leg: `oracle/p3_short2/`.
 
-From `spells_us.txt` (field 145 = the record id, `^`-delimited):
-- **Record 325** — Leechcurse Discipline (1256), Reaper Strike (1257), Lich
-  Sting (1258) + five recourse spells (1259–1263).
-- **Record 1** — ~190 spells (the combat-ability kits). Char 67's class (ninja)
-  subset: e.g. 4505 Crippling Strike, 4506 Thunderkick, 4504 Defensive
-  Discipline.
+`oracle/p3_rig93/capture.pcap`: **30 681 packets**:
 
-Status: the `/disc` activation leg and the measurement are **not done** (the
-record-325 owning class is pending — a DB query on `spells_new.class` / the
-spell→class mapping), and the rows are not yet measured.
+- 1792953671.819 Z `New NPC spawned! Name | TrollF000`; 1792953685.637 Z
+  `You stunned TrollF (262) for 2 Minutes.` (the stun worked this time).
+- 4 x C->S `OP_CastSpell` slot 0 at 1792953765.863 / 1792953802.855 /
+  1792953870.472 / 1792953904.515 Z.
+- 4 x S->C `OP_BeginCast` spell 93, cast_ms 1500, source 260 to BOTH clients.
+- 4 x S->C `OP_Action` spell 93 source 260: target **262** (casts 1-2, at
+  +1.53/+1.51 s) and target **261** (casts 3-4).
+- `OP_InterruptCast`: 0. No error chat lines.
+- 1792953828.697 Z `Killing TrollF (262).` — the spawned NPC was despawned
+  inside the leg (no leftover for the lane_after state).
 
-## Intimidation → Fear (record 13) — the skill-triggered addition (NOT done)
+### 2c. Measurement — observer view, against the B1130 r51 row-0 bands
 
-Will's 2026-10-25 13:05Z addition. The server casts Fear 229 (record 13, the
-same record as 209 *Spook the Dead*, the B1130 e13 'skull cloud') from a
-successful Intimidation via `SpellOnTarget(229, who, 0, true, -2000)` — the
-clients see an **OP_Action with NO OP_BeginCast**. The leg (char 67 as a class
-with Intimidation, `#setskill`, `/intimidate` on a `#spawn` NPC at the TrollF
-spot, measure the NPC's record-13 Target-stage landing + confirm NO Source on
-the intimidator) is **not run** — see the FOLLOW-UP.
+Fable client rendered the caster (`:98`); the observer (official client, `:99`
+NVIDIA) recorded 1280x800 @ 30 fps. Bands per the B1134 "Rig check" table
+(`review/B1134/README.md`): onset +-0.10 s, centroid +-0.15, h lo/hi +-0.15,
+lateral edges +-0.2. r51 row 0 is the NPC-target reference (B1130's stunned
+`#spawn`ed TrollF).
 
-## FOLLOW-UP (what's needed to finish)
+| stage | field | B1130 r51 | cast 1 (NPC 262) | cast 2 (NPC 262) | cast 3 (player 261) | cast 4 (player 261) |
+|---|---|---|---|---|---|---|
+| Source (caster) | onset BC+ | 0.46 | 0.463 | 0.442 | 0.455 | 0.450 |
+| | centroid | 0.71 | 0.61 | 0.67 | 0.65 | 0.71 |
+| | h p5..p95 | 0.07..1.25 | -0.15..1.23 | 0.16..1.31 | 0.18..1.33 | 0.13..1.35 |
+| | dx p5..p95 | -0.57..+0.61 | -0.66..+0.55 | -0.48..+0.54 | -0.60..+0.44 | -0.51..+0.53 |
+| Landing (NPC) | onset (RISE) | 0.43 (0.548) | 0.582 | 0.175 | — | — |
+| | centroid | 0.80 | 0.90 | 0.90 | — | — |
+| | h p5..p95 | 0.25..1.46 | -0.04..1.84 * | -0.01..1.86 * | — | — |
+| | end Act+ | 6.67 | 6.649 | 7.341 | — | — |
+| | coverage (RUN) | 1.020 | 1.763 * | 1.723 * | — | — |
+| Landing (player) | onset (RISE) | 0.43 (0.548) | — | — | 0.577 | 0.573 |
+| | centroid | 0.80 | — | — | 0.50 | 0.49 |
+| | h p5..p95 | 0.25..1.46 | — | — | 0.09..1.02 | 0.09..1.02 |
+| | end Act+ | 6.67 | — | — | 5.077 | 4.539 |
+| | coverage (RUN) | 1.020 | — | — | 0.126 | 0.361 |
 
-1. **Item 2 — make the casts land (done at the diagnosis level).** The cause is the
-   quoted `Command '#target TrollF000' not recognized` (plus the `#stun`/`#goto`
-   syntax failures, above); the fixed plan is `plans/p3_rig93.tsv` (client-side
-   `/target`, `#stun` after `/target`, no `#goto`, B1134 P2b pose geometry). The
-   probe leg `plans/p3_rig93.probe.tsv` (2 NPC casts) confirms OP_Action lands, then
-   the full leg measures the NPC (TrollF000) vs player (Oraclewatch) bands in the
-   observer view against B1130 r51 row 0.
-2. **Item 3 — the /disc leg.** Determine the record-325 owning class (DB), make
-   char 67 that class, `#traindisc` + activate each record-325/record-1
-   discipline through the Combat Abilities window with the observer recording,
-   measure Source + landing, restore char 67 to class 12 / gems.
-3. **Intimidation → Fear.** Char 67 as a class with Intimidation (`#class`/
-   `#level`, `#setskill`), `/intimidate` on a `#spawn` NPC at the TrollF spot,
-   repeat until one success (the pcap OP_Action 229 / the 'You intimidate'
-   chat). Measure the NPC's record-13 Target-stage (skulls) landing against the
-   B1130 row-13 bands and confirm NO Source on the intimidator (B1144).
+`*` inflated by the co-located source glow: in this rig the NPC spawns ON the
+caster, so the caster's held hand-flame/spark cloud sits inside the landing ROI
+and raises its hi edge, coverage and RISE. The clean NPC discriminator is the
+landing **end**. Frame files for every number:
+`measure/p3_rig93_93_<rep>_<kind>/` + `measure/p3_rig93_93_<rep>_<kind>.txt`
+(evidence root). Machine-readable rows: `refactor/B1143/rows/p3_rig93_93.tsv`.
 
-Rows land in `refactor/B1143/rows/*.tsv` in the B1131/B1132 format, with
-`animRecords` entries in this README (NOT in `config/spell_effects.json`), as
-the measurements complete.
+Band verdicts: Source onset/centroid in band on all four casts (cast 1's h lo
+edge -0.15 is 0.07 below the band floor); NPC landing end 6.649 is in the
+6.52..6.82 band (cast 2's 7.341 is +0.67, OUT; its RISE 0.175 is the
+co-location glow, above); player landing end 5.077/4.539 OUT (-1.59/-2.13),
+player centroid 0.49-0.50 OUT (band 0.65..0.95), player coverage 0.126/0.361
+vs 1.020.
+
+### 2d. Attribution
+
+With the caster, the renderer (fable on `:98`), the rig and the observer view
+all identical and **only the target class changed**, the landing moves with the
+target: the NPC-target landing ends at 6.649 s (in the B1130 NPC band; the
+co-location-inflated cast 2 at 7.341 s) while the player-target landing ends at
+4.54-5.08 s — shorter, lower-centroid and smaller — the same signature as
+B1134's own P2/P2b player leg (end 4.55/4.69 observer, 4.67/4.72 caster view).
+The renderer draws the NPC-target landing at the oracle's duration, so it is
+exonerated for the miss: **the 93 landing end/centroid/coverage miss is
+attributable to the target class** (the server's PvP effect on a player target
+is shorter and smaller than on the stunned `#spawn`ed NPC), not to fable's
+renderer or to the observer rig.
+
+## Item 3 — record 325 + record 1 (spells re-derived; the /disc leg not run)
+
+Re-derived from the leg's own `spells_us.txt` (evidence copy
+`eq/spells_us.txt`; 0-based `^`-split ordinals == eqemu `spells_new` column
+ordinals — the T355 note in `include/client/spell/spell_constants.h`; the
+spellsnew.eff record is field 145, `SpellAnim`, line 559):
+
+- **Record 325** (spellsnew.eff, 8 spells): 4504 Leechcurse Discipline, 6236
+  Reaper Strike, 6268 Lich Sting, 6299 Reaper Strike Recourse, 6311 Lich Sting
+  Recourse, 8604/8617/8642 Leechcurse Discipline (the three class-level variant
+  rows carry Shadow Knight level 60; the base rows carry no class level).
+- **Record 1** (spellsnew.eff, 190 spells — the shared combat-ability kit:
+  Warrior abilities, Monk abilities, Bard songs, Cleric turn/wrack,
+  Necromancer fear): includes 4593 Crippling Strike (Warrior 47), 4629
+  Thunderkick (Monk 22). Crippling Strike / Thunderkick have NO ability
+  strings in `eqstr_us.txt`, so they are not manually activatable in the Ti
+  client (see `plans/p3_combat1.tsv` header) — documented, not measured.
+- **Corrections to the first leg's spell list**: 1256-1263 are record 76 auras
+  (Accuracy, Adroitness, Power, Aura of Antibody, Null Aura, Aura of Cold,
+  Aura of Heat, Aura of Purity), not record 325; 4499 Defensive Discipline is
+  record 326; 4505 Deadeye Discipline is record 329; 4506 Trueshot Discipline
+  is record 326. Char 67 is class 12 = WIZARD (level 1), not "ninja".
+
+Status: the `/disc` activation leg (`plans/p3_disc325.tsv`, validated) is NOT
+run; rows not yet measured. FOLLOW-UP below.
+
+## Intimidation -> Fear (B1130 row 13) — NOT run
+
+B1130 row 13 (e13) is the **field-123** (spells.eff, `SpellAffectIndex`)
+record 13 = 209 Spook the Dead + 229 Fear (the "skull cloud" landing); in the
+spellsnew field the same two spells sit on record 101. The server casts Fear
+229 from a successful Intimidation (`SpellOnTarget(229, who, 0, true, -2000)`),
+so the clients see an `OP_Action` with NO `OP_BeginCast`. The Ti client has NO
+`/intimidate` command — the route is `/doability 1 - 10` or the Combat
+Abilities window (`plans/p3_combat1.tsv` header, with the decompile cites).
+Leg not run. FOLLOW-UP below.
+
+## Lane state (before == after)
+
+- `lane_before.txt` (18:08 Z): stack down, lease FREE; char 67 class 12 level 1
+  at x35/y-82/z3, gems 93,38,54,41,253,458,656; char 103 class 1 at
+  x-510/y57/z31.75.
+- `lane_after.txt` (21:31 Z): lease FREE; world down (mariadb only); char 67
+  unchanged (class 12 level 1, same gems, same position); char 103 unchanged;
+  TrollF000 killed inside the leg (1792953828.697 Z `Killing TrollF (262).`).
+  Only drift: the two `last_login` timestamps.
+
+## FOLLOW-UP (items 3-4, exact next commands)
+
+1. **Item 3** (record 325 + record 1): `EQEMU_LANE=5 bash scripts/eqemu/oracle/oracle_class_leg.sh 5 kb-b1143-rig-residue refactor/B1143/plans/p3_disc325.tsv`
+   (the plan takes the lease, sets char 67 to the owning class via
+   `#level`/`#traindisc 60`, runs `/disc <name>` for 4504/6236/6268 +
+   `#castspell <id> 0` for the record-325 Source rows, observer recording;
+   restore char 67 to class 12 + gems per the B1134 restore rule). Then
+   measure with `refactor/B1143/scripts/obs_measure_b1143.py` against the
+   B1130 e13/e51 rows; rows to `refactor/B1143/rows/p3_disc325_325.tsv`.
+2. **Item 4** (Intimidation -> Fear): `EQEMU_LANE=5 bash scripts/eqemu/oracle/oracle_class_leg.sh 5 kb-b1143-rig-residue refactor/B1143/plans/p3_combat1.tsv`
+   (pre-SQL `refactor/B1143/plans/p3_combat1_skill.sql` sets Intimidation to
+   5000 so the first roll is certain; the leg sweeps `/doability 1..10` on the
+   stunned TrollF000 — the pcap shows which index sends 0x389e
+   `OP_InstillDoubt` — then grabs a Combat-Abilities-window still). Measure the
+   NPC's record-13 landing against B1130 row 13 and confirm NO Source on the
+   intimidator; row to `refactor/B1143/rows/p3_combat1_13.tsv`.
+
+`animRecords` (record -> spells, from the field re-derivation above, NOT in
+`config/spell_effects.json`): record 325 = 4504, 6236, 6268, 6299, 6311, 8604,
+8617, 8642; record 1 = 190 spells incl. 4593, 4629; record 13 (field 123) =
+209, 229 (spellsnew record 101).
