@@ -1,0 +1,89 @@
+# B1143 item 4 (+ item 3 record-1 recon): WARRIOR (class 1) on TrollF000.
+#
+# Intimidation -> Fear (229, record 101): the Ti client's command table
+# (eqgame.exe strings: 359 commands) has NO /intimidate, /useskill or
+# /taunt -- the only chat ability route is `/doability 1 - 10` (eqstr_us.txt
+# 13256 "Format: /doability 1 - 10") plus the Combat Abilities window
+# (CMD_TOGGLE_COMBAT_ABILITY_WIN). The decompiled command dispatch
+# (review/B1141/ghidra/out/eqgame.exe.c:28448-28471) shows the intimidate
+# branch: no target -> eqstr 0x306e ("You must have a target to
+# intimidate!", eqstr 12398), self -> 0x3193 ("You can't intimidate
+# yourself!", 12691), else send 0x389e (OP_InstillDoubt; fable's
+# eq_opcodes.h HC_OP_InstillDoubt = 0x389e). The server (special_attacks.cpp
+# InstillDoubt) requires an NPC target in combat range and casts spell 229
+# (Fear) unresistably on a successful roll; Handle_OP_InstillDoubt (client
+# _packet.cpp:9095) starts the reuse timer on every OP_InstillDoubt it
+# receives, so ONE failed attempt would burn the cooldown -- the skill is
+# set to 5000 by p3_combat1_skill.sql (pre-SQL) making the first roll
+# certain.
+#
+# This leg: (a) sweeps /doability 1..10 with the stunned TrollF000 targeted
+# (the pcap shows which index, if any, sends 0x389e), then (b) opens the
+# Combat Abilities window (alt+c, per the .fix leg's in-world still) for a
+# still so the Intimidation button's pixel can be read for the follow-up
+# click leg (p3_combat1b). Crippling Strike / Thunderkick (record 1) have NO
+# ability strings in eqstr_us.txt (only the "Crippling Blow" crit message,
+# 1021) -- they are not manually activatable in the Ti client; the record-1
+# finding is documented, not measured.
+#
+# Command forms are the .fix leg's findings (p3_rig93.probe.tsv header):
+# /target (never #target), #stun after /target, #kill (no argument) after
+# /target.
+#
+# fps=30
+# caster-video=1
+# observer=Oraclewatch
+# pose=-74,428,3.75,160
+# observer-pose=-67.6,434.4,3.75,160
+
+login	Testcaster
+obs	login	Oraclewatch
+zone	qeynos2
+obs	zone	qeynos2
+wait	8000	settle
+obs	click	1229,555	obs_close_tip
+click	1229,555	close_tip
+command	#set time 11 0	noon
+wait	1500	noon_settle
+command	#weather 0	weather
+command	#level 60	lvl
+command	#spawn TrollF 1 1 0 30000	spawn
+wait	3000	spawn_settle
+obs	press	F9	obs_f9_1
+obs	press	F9	obs_f9_2
+obs	press	F9	obs_f9_3
+obs	wait	3000	obs_cam_settle
+wait	36000	time_settle
+command	/target TrollF000	tgt_a
+wait	1500	tgt_a_settle
+command	#stun 120000	stun_a
+wait	1000	stun_a_settle
+command	/doability 1	doa_1
+wait	2500	doa_1_settle
+command	/doability 2	doa_2
+wait	2500	doa_2_settle
+command	/doability 3	doa_3
+wait	2500	doa_3_settle
+command	/doability 4	doa_4
+wait	2500	doa_4_settle
+command	/doability 5	doa_5
+wait	2500	doa_5_settle
+command	/doability 6	doa_6
+wait	2500	doa_6_settle
+command	/doability 7	doa_7
+wait	2500	doa_7_settle
+command	/doability 8	doa_8
+wait	2500	doa_8_settle
+command	/doability 9	doa_9
+wait	2500	doa_9_settle
+command	/doability 10	doa_10
+wait	2500	doa_10_settle
+command	#stun 120000	stun_b
+wait	1000	stun_b_settle
+press	alt+c	ca_window
+wait	2500	ca_window_still
+command	/target TrollF000	tgt_kill
+command	#kill	kill
+wait	2000	kill_settle
+obs	command	/q	obs_quit
+command	/q	quit
