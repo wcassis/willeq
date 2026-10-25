@@ -85,7 +85,12 @@ wait	15500	0	fx_npc_b
 command	/target TrollF000	0	tgt_kill
 command	#kill	0	kill
 wait	2000	0	kill_settle
-command	#set pvp on	0	pvp_self
+command	/target Oraclewatch	0	tgt_obs_pvp
+wait	1500	0	tgt_obs_pvp_settle
+command	#set pvp on	0	pvp_1
+command	/target Testcaster	0	tgt_self_pvp
+wait	1500	0	tgt_self_pvp_settle
+command	#set pvp on	0	pvp_2
 command	/target Oraclewatch	0	tgt_obs_a
 wait	1500	0	tgt_obs_a_settle
 command	/cast 1	0	cast_obs_a
@@ -96,4 +101,4 @@ wait	1500	0	tgt_obs_b_settle
 command	/cast 1	0	cast_obs_b
 wait	15500	0	fx_obs_b
 obs	command	/q	0	obs_quit
-command		/q	0	quit
+command	/q	0	quit
