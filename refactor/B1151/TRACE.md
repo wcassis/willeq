@@ -131,13 +131,19 @@ copies it via 0x100369e0, and reads the scale via 0x1005c4c0. If a bone
 
 **The value.** On the fable side, the scale is
 `entityScaleForServerSize(getRaceScale(race), serverSize / 6.0f)`
-(`include/client/graphics/entity_renderer.h:100`,
-`src/client/graphics/eq/race_codes.cpp:170`). For the two named races:
+(`include/client/graphics/entity_renderer.h:110`,
+`src/client/graphics/eq/race_codes.cpp:178` —
+`grep -n "entityScaleForServerSize"
+include/client/graphics/entity_renderer.h` → `110:inline float
+entityScaleForServerSize(float raceScale, float serverSize) {`;
+`grep -n "getRaceScale" src/client/graphics/eq/race_codes.cpp` →
+`178:float getRaceScale(uint16_t raceId) {`). For the two races, keyed by
+their `config/race_models.json` race id:
 
-| race (models.json) | raceScale | server size | **entityScaleForServerSize** |
-|---|---|---|---|
-| Dark Elf female (char 67) | 1.0 | 6 | **1.0** |
-| Troll female (char 109) | 1.4 | 6 | **1.4** |
+| race (models.json key) | raceScale | female_code | server size | **entityScaleForServerSize** |
+|---|---|---|---|---|
+| Dark Elf (`races/6`) | 1.0 | DAF | 6 | **1.0** |
+| Troll (`races/9`) | 1.4 | TRF | 6 | **1.4** |
 
 The official client multiplies every particle dimension (quad half-extent,
 offset, velocity integration step) by this value. A Troll's `OoW Gate02`
@@ -203,8 +209,12 @@ is selected:
    for translation, [eax+0x18] for the perspective divide at 0x101c5948=1.0).
 4. Compute the 2D screen-space angle between the projected axis and the
    particle's screen position (atan2 via 0x101ab6f0, 0x100626a7).
-5. If the angle is too close to 0 or π (within epsilon 0x101c593c ≈ 1.2e-7 of
-   the depth clamp 0x101c5940 = 20000), zero it out (degenerate case).
+5. If the projected length (the fsqrt at 0x1006263f) is inside the ±2^-23
+   pair — `fcom [0x101c5940]` (0xB4000000 = -1.1920929e-07) at 0x10062641,
+   `fcom [0x101c593c]` (0x34000000 = +1.1920929e-07) at 0x1006264e — the
+   angle components esp+0x100/0x104 are zeroed (degenerate case). A
+   near-zero gate on the projected length, not a depth clamp: 20000.0f
+   (0x469C4000) sits at 0x101c5944, which this block never references.
 6. Convert to degrees (× 0x101cc268 = 0.15915 = 1/2π, × 0x101c9954 = 512.0),
    negate if negative, store as a 0..511 angle index at esp+0xb0.
 
@@ -233,8 +243,11 @@ A/B/C, value >6 defaults to positive C.
 0x10063b95  mov  [esp+0x78], 0x3f800000  ; w (init 1.0)
 0x10063ba8  mov  [esp+0x68], 0x3f800000  ; y offset (init 1.0)
 0x10063bb0  jne  0x10063bd5             ; N != 1: compute frame
-0x10063bb2  fld  [0x101cbd40]           ; N == 1: whole texture
-...
+0x10063bb2  fld  [0x101cbd40]           ; N == 1: load 0.0 (0x00000000)
+0x10063bb8  mov  [esp+0x60], 0          ;   x0 = 0 (0x00000000 = 0.0f)
+0x10063bc0  mov  [esp+0x78], 0x3f800000  ;   w = 1.0f
+0x10063bc8  mov  [esp+0x68], 0x3f800000  ;   y seed 1.0f
+0x10063bd0  jmp  0x10063d03
 0x10063bd5  fld  [esp+0x14]             ; age (the particle's own age)
 0x10063be0  fmul [edi+0x134]           ; age * fps (D134)
 0x10063be8  fstp [esp]
@@ -250,11 +263,37 @@ own age** (since its birth), not the emitter clock. The strip loops over the
 particle's lifetime: a 16-frame strip at 16 fps advances one frame per
 particle second.
 
+**What the N == 1 path does with the 0.0 (verified, 0x10063bb2..0x10063d1a).**
+0x101cbd40 holds 0.0f, not 1.0f
+(`od -An -tx1 -j 0x1cbd40 -N 4 EQGraphicsDX9.dll` → `00 00 00 00`). The fld
+leaves it on the FPU stack; the rect slots seeded for N == 1 are raw movs
+(x0 = 0 at 0x10063bb8, w = 1.0f at 0x10063bc0, y seed 1.0f at 0x10063bc8),
+and the path joins the common confluence at 0x10063d03:
+```
+0x10063d03  mov  al, [esp+0x51c]
+0x10063d0a  test al, al
+0x10063d0c  je   0x10063d1e
+0x10063d0e  fstp [esp+0x38]             ; store the stacked value (0.0 here)
+0x10063d12  mov  eax, [esp+0x38]        ; its 32-bit bit pattern
+0x10063d16  fld  [esp+0x68]             ; the y slot (1.0f seed)
+0x10063d1a  mov  [esp+0x68], eax        ; overwrite the y slot with the pattern
+```
+When the byte at esp+0x51c is set, the 0.0's bit pattern (0x00000000) is
+copied as a raw dword into esp+0x68, zeroing the y slot; otherwise esp+0x68
+keeps its 0x3f800000 seed. So "N == 1: whole texture" stands for x0 = 0 and
+w = 1.0f (the mov seeds) with y = 0.0 from the 0x101cbd40 constant under
+that flag. The grid paths (N ≤ 16) leave the FPU stack empty, so only the
+paths that push a value — N == 1 (this 0.0) and N > 16
+(`fld [esp+0x210]` at 0x10063cfc) — can feed the conditional store. The rect
+slots are consumed by the vertex construction (esp+0x60 → +0x18 of two
+vertices, esp+0x78 → +0x18 of the other two, esp+0x68 → +0x1c of one;
+0x10063d56..0x10063e29).
+
 **The atlas rect (verified, 0x10063c03..0x10063cfc).** Row-major, inferred from N:
 
 | N | grid | cell size | constants used |
 |---|---|---|---|
-| 1 | whole texture | (0, 0, 1, 1) | — |
+| 1 | whole texture | x0 = 0, w = 1.0f (mov seeds); y = 0.0 (0x101cbd40) when [esp+0x51c] is set | 0.0 (0x101cbd40) |
 | 2-4 | 2×2 | 0.5 × 0.5 | 0x101c594c = 0.5 |
 | 5-8 | 4 cols × 2 rows | 0.25 × 0.5 | 0x101c59d0 = 0.25, 0x101c594c = 0.5 |
 | 9-16 | 4×4 | 0.25 × 0.25 | 0x101c59d0 = 0.25 |
@@ -370,8 +409,9 @@ Both tables are **arrays of pre-computed floats in [0,1)**, filled with
 i/N and shuffled once at init by FUN_1005d2a0 (verified,
 0x1005d2a0..0x1005d3cf, called from 0x1005de21). The init:
 1. Fills 0x102347a0 with 512 floats (i/512 for i=0..511), then shuffles them
-   with swap index = `rand() × 2^-15 × 512.0` (0x101c7410 = 1/32768,
-   0x101c9954 = 512.0).
+   with swap index = `rand() × 0x38000100f × 512.0` (0x101c7410 = 0x38000100
+   = 2^-15 + 2^-30 ≈ 3.0518509e-05, 0x101c9954 = 512.0;
+   `od -An -tx1 -j 0x1c7410 -N 4 EQGraphicsDX9.dll` → `00 01 00 38`).
 2. Fills 0x10234fa0 with 1000 floats (i/1000 for i=0..999), then shuffles
    with swap index = `rand() × 2^-15 × 1000.0` (0x101c6eac = 1000.0).
 3. Also builds and shuffles two intermediate tables (0x10232860, 2048
@@ -387,13 +427,13 @@ community description "permutation of 0..999" is imprecise: the table holds
 **The shape-7 geometry (verified, 0x10061d9c..0x10061e00).**
 
 ```
-0x10061d9c  fld  [0x101cbd40]           ; 1.0
+0x10061d9c  fld  [0x101cbd40]           ; 0.0 (0x00000000; od → `00 00 00 00`)
 0x10061da2  fld  [edi+0xb0]             ; D_B0 (a size parameter)
-0x10061da8  fucompp
+0x10061da8  fucompp                     ; C3 = D_B0 > 0.0, C2 = D_B0 == 0.0
 0x10061daa  fnstsw ax
 0x10061dac  test ah, 0x44
-0x10061daf  jp   0x10061de1             ; if D_B0 < 1.0: alternate path
-; --- main path (D_B0 >= 1.0): ---
+0x10061daf  jp   0x10061de1             ; D_B0 <= 0.0: alternate path
+; --- main path (D_B0 > 0.0): ---
 0x10061db1  call 0x1005d400            ; u1 = float from 1000-table
 0x10061db6  fstp [esp+0x10]
 0x10061dba  call 0x1005d3e0            ; u2 = float from 512-table
@@ -405,7 +445,7 @@ community description "permutation of 0..999" is imprecise: the table holds
 0x10061dd3  fmul [edi+0xb4]            ; height = u1 × D_B4
 0x10061dd9  fstp [esi+0x38]
 0x10061ddc  jmp  0x10062051
-; --- alternate path (D_B0 < 1.0): ---
+; --- alternate path (D_B0 <= 0.0): ---
 0x10061de1  call 0x1005d3e0            ; u2 from 512-table
 0x10061de6  fstp [esp+0x24]
 0x10061df7  call [edx+0x0c]            ; virtual: get some parameter
@@ -451,13 +491,13 @@ in-memory exactly.
 | 0x101ab6f0 | atan2 wrapper |
 | 0x101cc268 | 0.15915 (1/2π) |
 | 0x101c9954 | 512.0 |
-| 0x101c593c | 1.19e-7 (epsilon) |
-| 0x101c5940 | 20000.0 (depth clamp) |
-| 0x101c5944 | -1.0 |
+| 0x101c593c | +1.1920929e-07 (0x34000000 = +2^-23, near-zero gate) |
+| 0x101c5940 | -1.1920929e-07 (0xB4000000 = -2^-23, near-zero gate) |
+| 0x101c5944 | 20000.0 (0x469C4000; never referenced in the traced path — the -1.0f negate multiplier is 0x101cbd44) |
 | 0x101c5948 | 1.0 |
 | 0x101c594c | 0.5 (half-extent constant) |
 | 0x101c59d0 | 0.25 (4-column atlas cell width) |
-| 0x101cbd40 | 1.0 |
+| 0x101cbd40 | 0.0 (0x00000000; shape-7/8/9 threshold at 0x10061d9c/0x10061ec2/0x10061fa5, angle sign threshold at 0x100626b3, N == 1 frame constant at 0x10063bb2) |
 | 0x101cbd44 | -1.0 |
 | 0x10063b7a..0x10063d002 | the frame block (D130/D134/atlas rect) |
 | 0x10003ba0 | ftol |
@@ -470,13 +510,51 @@ in-memory exactly.
 | 0x1005d400 | the 1000-entry float random helper (table 0x10234fa0, ctr 0x10235f54) |
 | 0x1005d3e0 | the 512-entry float random helper (table 0x102347a0, ctr 0x10235f4c) |
 | 0x1005d2a0 | the Fisher-Yates init (rand()-based, called from 0x1005de21) |
-| 0x101c7410 | 1/32768 (shuffle index scale) |
+| 0x101c7410 | 0x38000100 = 2^-15 + 2^-30 ≈ 3.0518509e-05 (shuffle index scale) |
 | 0x101c6eac | 1000.0 (1000-table shuffle scale) |
 | 0x1005eef0 | the CONV function (record → CEmitterDef, decompile line 67132) |
 | 0x100878c0 | the 0xb8 sub-object alloc (operator_new(0xb8) at line 93264, vtable store at 93269; decompile header line 93247) |
 | 0x10087930 | FUN_10087930, model-load path (decompile header line 93281; the 0xb8 alloc is in the PRECEDING FUN_100878c0) |
 | 0x102347a0 / 0x10234fa0 | the two random float tables (runtime-initialized) |
 | 0x10235f4c / 0x10235f54 | the two random counters |
+
+**Every constant row above, re-verified from the raw DLL in one listed
+command.** The evidence copy is byte-identical to the ThinkPad oracle copy
+(sha256 `3d66ac959f3163bc5f8da3e49020e83d11f55edd7932cca2cedebc9251b5fc15`
+at both `ssh thinkpad: /mnt/projects/EverQuestP1999/EQGraphicsDX9.dll` and
+`/mnt/projects/fable/review/B1141/bin/EQGraphicsDX9.dll`; 2,318,336 bytes).
+PE section table: ImageBase 0x10000000, `.rdata` vaddr 0x1c5000 == roff,
+chars 0x40000040 — so file offset == RVA == VA - 0x10000000, and plain `od`
+offsets read the constant directly:
+
+```
+python3 refactor/B1151/rdata_constants.py /mnt/projects/fable/review/B1141/bin/EQGraphicsDX9.dll
+```
+
+```
+# /mnt/projects/fable/review/B1141/bin/EQGraphicsDX9.dll (2318336 bytes)
+0x101cc268  83 f9 22 3e  bits=0x3e22f983  0.159155    ; 0.15915 (1/2pi)
+0x101c9954  00 00 00 44  bits=0x44000000  512         ; 512.0
+0x101c593c  00 00 00 34  bits=0x34000000  1.19209e-07 ; near-zero gate upper (+2**-23)
+0x101c5940  00 00 00 b4  bits=0xb4000000  -1.19209e-07; near-zero gate lower (-2**-23)
+0x101c5944  00 40 9c 46  bits=0x469c4000  20000       ; 20000.0 (not referenced in the traced path)
+0x101c5948  00 00 80 3f  bits=0x3f800000  1           ; 1.0
+0x101c594c  00 00 00 3f  bits=0x3f000000  0.5         ; 0.5 (half-extent constant)
+0x101c59d0  00 00 80 3e  bits=0x3e800000  0.25        ; 0.25 (atlas cell width)
+0x101cbd40  00 00 00 00  bits=0x00000000  0           ; 0.0 (shape-7/8/9 threshold, sign threshold, N==1 frame)
+0x101cbd44  00 00 80 bf  bits=0xbf800000  -1          ; -1.0 (negate multiplier)
+0x101c7410  00 01 00 38  bits=0x38000100  3.05185e-05 ; shuffle index scale (0x38000100 = 2**-15 + 2**-30)
+0x101c6eac  00 00 7a 44  bits=0x447a0000  1000        ; 1000.0 (1000-table shuffle scale)
+```
+
+The corrected constants in the exact `od` form:
+`od -An -tx1 -j 0x1cbd40 -N 8 EQGraphicsDX9.dll` →
+`00 00 00 00 00 00 80 bf` (0x101cbd40 = 0.0, 0x101cbd44 = 0xbf800000 = -1.0);
+`od -An -tx1 -j 0x1c593c -N 12 EQGraphicsDX9.dll` →
+`00 00 00 34  00 00 00 b4  00 40 9c 46` (0x101c593c = +2^-23, 0x101c5940 =
+-2^-23, 0x101c5944 = 0x469c4000 = 20000.0);
+`od -An -tx1 -j 0x1c7410 -N 4 EQGraphicsDX9.dll` → `00 01 00 38`
+(0x101c7410 = 0x38000100).
 
 Decompile-line cites re-derived (not inferred):
 `grep -n "FUNC 100605b0" EQGraphicsDX9.dll.c` → `68017:// FUNC 100605b0
