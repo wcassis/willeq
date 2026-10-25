@@ -130,12 +130,21 @@ copies it via 0x100369e0, and reads the scale via 0x1005c4c0. If a bone
 0x1005c4f0.
 
 **The value.** On the fable side, the scale is
-`entityScaleForServerSize(getRaceScale(race), serverSize / 6.0f)`
-(`include/client/graphics/entity_renderer.h:110`,
+`entityScaleForServerSize(getRaceScale(race), serverSize)` — every call site
+passes `serverSize` directly
+(`grep -rn "entityScaleForServerSize(" src/` →
+`src/client/graphics/entity_size.cpp:45: float scale =
+entityScaleForServerSize(raceScale, serverSize);`,
+`src/client/graphics/entity_build_step.cpp:340: scale =
+entityScaleForServerSize(scale, vis.serverSize);`,
+`src/client/graphics/entity_mesh_build.cpp:224: scale =
+entityScaleForServerSize(scale, serverSize);`); the /6.0 happens INSIDE the
+function, not at the call site: `include/client/graphics/entity_renderer.h:105`
+`constexpr float kReferenceServerSize = 6.0f;`, applied at :111
+`return (serverSize > 0.0f) ? raceScale * (serverSize /
+kReferenceServerSize)` (signature at `entity_renderer.h:110`
+`inline float entityScaleForServerSize(float raceScale, float serverSize) {`;
 `src/client/graphics/eq/race_codes.cpp:178` —
-`grep -n "entityScaleForServerSize"
-include/client/graphics/entity_renderer.h` → `110:inline float
-entityScaleForServerSize(float raceScale, float serverSize) {`;
 `grep -n "getRaceScale" src/client/graphics/eq/race_codes.cpp` →
 `178:float getRaceScale(uint16_t raceId) {`). For the two races, keyed by
 their `config/race_models.json` race id:
@@ -282,10 +291,28 @@ When the byte at esp+0x51c is set, the 0.0's bit pattern (0x00000000) is
 copied as a raw dword into esp+0x68, zeroing the y slot; otherwise esp+0x68
 keeps its 0x3f800000 seed. So "N == 1: whole texture" stands for x0 = 0 and
 w = 1.0f (the mov seeds) with y = 0.0 from the 0x101cbd40 constant under
-that flag. The grid paths (N ≤ 16) leave the FPU stack empty, so only the
-paths that push a value — N == 1 (this 0.0) and N > 16
-(`fld [esp+0x210]` at 0x10063cfc) — can feed the conditional store. The rect
-slots are consumed by the vertex construction (esp+0x60 → +0x18 of two
+that flag. The FPU stack is NOT empty at the 0x10063d03 join — every feeding
+path leaves exactly one value, and the conditional store
+(`fstp [esp+0x38]` at 0x10063d0e) pops whatever it left:
+
+- N == 1: the 0.0 pushed by `fld [0x101cbd40]` at 0x10063bb2, at
+  `jmp 0x10063d03` (0x10063bd0);
+- 2-4 grid: `fild [esp+0x38]` 0x10063c43 (the row index stored at
+  0x10063c31) → `fmul [0x101c594c]` 0x10063c47 (row×0.5) →
+  `fld [0x101c594c]` 0x10063c4d → `fadd st(1)` 0x10063c53 (row×0.5+0.5) →
+  `fstp [esp+0x68]` 0x10063c55 pops the sum, leaving ST(0) = row×0.5 at
+  `jmp 0x10063d03` (0x10063c59);
+- 5-8 grid: reaches the same lines via `fild [esp+0x38]` 0x10063ca1 +
+  `jmp 0x10063c47` 0x10063ca5 — same residual row×0.5;
+- 9-16 grid: `fild [esp+0x38]` 0x10063ce4 → `fmul [0x101c59d0]` 0x10063ce8
+  (row×0.25) → `fld [0x101c59d0]` 0x10063cee → `fadd st(1)` 0x10063cf4 →
+  `fstp [esp+0x68]` 0x10063cf6 pops the sum, leaving ST(0) = row×0.25 at
+  `jmp 0x10063d03` (0x10063cfa);
+- N > 16: `[esp+0x210]` (`fld [esp+0x210]` at 0x10063cfc).
+
+So the grid paths (N ≤ 16) CAN feed the conditional store too — they leave a
+residual y value, and the store pops it. The rect slots are consumed by the
+vertex construction (esp+0x60 → +0x18 of two
 vertices, esp+0x78 → +0x18 of the other two, esp+0x68 → +0x1c of one;
 0x10063d56..0x10063e29).
 
@@ -424,16 +451,16 @@ distribution is uniform with no repeat until the counter wraps. The
 community description "permutation of 0..999" is imprecise: the table holds
 **floats in [0,1)** (the shuffled i/N values), not integer indices.
 
-**The shape-7 geometry (verified, 0x10061d9c..0x10061e00).**
+**The shape-7 geometry (verified, 0x10061d9c..0x10061e78).**
 
 ```
 0x10061d9c  fld  [0x101cbd40]           ; 0.0 (0x00000000; od → `00 00 00 00`)
 0x10061da2  fld  [edi+0xb0]             ; D_B0 (a size parameter)
-0x10061da8  fucompp                     ; C3 = D_B0 > 0.0, C2 = D_B0 == 0.0
+0x10061da8  fucompp                     ; compare st0 = D_B0 with st1 = 0.0
 0x10061daa  fnstsw ax
 0x10061dac  test ah, 0x44
-0x10061daf  jp   0x10061de1             ; D_B0 <= 0.0: alternate path
-; --- main path (D_B0 > 0.0): ---
+0x10061daf  jp   0x10061de1             ; D_B0 != 0.0: alternate path
+; --- main path (D_B0 == 0.0): fall-through at 0x10061db1 ---
 0x10061db1  call 0x1005d400            ; u1 = float from 1000-table
 0x10061db6  fstp [esp+0x10]
 0x10061dba  call 0x1005d3e0            ; u2 = float from 512-table
@@ -445,12 +472,91 @@ community description "permutation of 0..999" is imprecise: the table holds
 0x10061dd3  fmul [edi+0xb4]            ; height = u1 × D_B4
 0x10061dd9  fstp [esi+0x38]
 0x10061ddc  jmp  0x10062051
-; --- alternate path (D_B0 <= 0.0): ---
-0x10061de1  call 0x1005d3e0            ; u2 from 512-table
-0x10061de6  fstp [esp+0x24]
-0x10061df7  call [edx+0x0c]            ; virtual: get some parameter
-0x10061dfa  fmul [edi+0xac]            ; × D_AC
+; --- alternate path (D_B0 != 0.0): target of the jp at 0x10061daf ---
+0x10061de1  call 0x1005d3e0             ; u2 from 512-table
+0x10061de6  fstp dword ptr [esp + 0x24]
+0x10061dea  mov ecx, dword ptr [0x102326f8]
+0x10061df0  mov ebx, dword ptr [esp + 0x24]
+0x10061df4  mov edx, dword ptr [ecx]
+0x10061df6  push ebx
+0x10061df7  call dword ptr [edx + 0xc]
+0x10061dfa  fmul dword ptr [edi + 0xac]
+0x10061e00  mov ecx, dword ptr [0x102326f8]
+0x10061e06  mov eax, dword ptr [ecx]
+0x10061e08  push ebx
+0x10061e09  fstp dword ptr [esp + 0x18]
+0x10061e0d  call dword ptr [eax + 8]
+0x10061e10  fmul dword ptr [edi + 0xb0]
+0x10061e16  fstp dword ptr [esp + 0x10]
+0x10061e1a  call 0x1005d400
+0x10061e1f  mov ecx, dword ptr [0x102326f8]
+0x10061e25  fstp dword ptr [esp + 0x18]
+0x10061e29  mov edx, dword ptr [ecx]
+0x10061e2b  lea eax, [esp + 0x3b8]
+0x10061e32  push eax
+0x10061e33  mov eax, dword ptr [esp + 0x18]
+0x10061e37  push eax
+0x10061e38  mov eax, dword ptr [esp + 0x18]
+0x10061e3c  push eax
+0x10061e3d  call dword ptr [edx + 0x18]
+0x10061e40  fstp dword ptr [esi + 0x30]
+0x10061e43  fld dword ptr [esp + 0x10]
+0x10061e47  mov ecx, dword ptr [0x102326f8]
+0x10061e4d  fmul dword ptr [esp + 0x10]
+0x10061e51  mov edx, dword ptr [ecx]
+0x10061e53  fld dword ptr [esp + 0x14]
+0x10061e57  push ecx
+0x10061e58  fmul dword ptr [esp + 0x18]
+0x10061e5c  faddp st(1)
+0x10061e5e  fstp dword ptr [esp]
+0x10061e61  call dword ptr [edx + 0x10]
+0x10061e64  fmul dword ptr [esp + 0x18]
+0x10061e68  fstp dword ptr [esi + 0x34]
+0x10061e6b  fld dword ptr [esp + 0x18]
+0x10061e6f  fmul dword ptr [edi + 0xb4]
+0x10061e75  fstp dword ptr [esi + 0x38]
+0x10061e78  jmp 0x10062051
 ```
+
+**The gate sense (x87, derived).** `fucompp` compares st0 (D_B0, pushed at
+0x10061da2) against st1 (0.0, pushed at 0x10061d9c) and pops both: equal →
+C3 set; less → C0 set; greater → neither (unordered → C2|C3 set). `fnstsw
+ax` stores the status word in AX, so C0 = bit 8, C2 = bit 10 and C3 = bit 14
+land in AH as 0x01, 0x04 and 0x40; `test ah, 0x44` tests C3|C2, and `jp`
+jumps on EVEN parity of that byte — C3 and C2 both clear (ordered, not
+equal) or both set (unordered). So the `jp` at 0x10061daf (→ 0x10061de1) is
+taken when D_B0 < 0.0, D_B0 > 0.0 or unordered — i.e. D_B0 != 0.0 — and
+the fall-through at 0x10061db1 is C3 set alone, i.e. D_B0 == 0.0. The
+decompile decodes the same gate with exactly that sense, case 7,
+`EQGraphicsDX9.dll.c:68962`
+(`grep -n "iVar9 + 0xb0) == _DAT_101cbd40" EQGraphicsDX9.dll.c` →
+68802, 68825, 68857, 68881, 68939, 68962, 68993, 69020):
+`if (*(float *)(iVar9 + 0xb0) == _DAT_101cbd40) { ... FUN_1005d400() ...
+FUN_1005d3e0() ... }` — the `== 0.0` branch is the single-u (main) path and
+the else branch is the two-u (alternate) path. The identical instruction
+sequence also guards shapes 8 and 9: `fld [0x101cbd40]; fld [edi+0xb0];
+fucompp; fnstsw ax; test ah,0x44; jp` at 0x10061ec2..0x10061eca and
+0x10061fa5..0x10061fb1. (The per-axis 0.0 gates of shapes 1/2/3 at
+0x100612bf/0x1006132b/0x10061397/0x10061403 compare [edi+0xb8/0xbc/0xc0/
+0xc4] against 0.0 and take `jnp` — the INVERSE of the parity, taken when the
+field == 0.0 (0x100612c6/0x10061332/0x1006139e/0x1006140a) — so the axis
+scaling there is the fall-through and runs when the field != 0.0: the same
+main-vs-alternate division, with the branch written the other way.)
+
+**What the alternate path computes (as far as the listing shows).** One
+`call 0x1005d3e0` (0x10061de1) draws u2 from the 512-table (→ esp+0x24);
+one `call 0x1005d400` (0x10061e1a) draws u1 from the 1000-table (→ esp+0x18,
+0x10061e25). Four vtable calls off `*DAT_102326f8` — targets **PARTIAL,
+unpinned**: `[edx+0xc]` (0x10061df7) whose result is scaled by D_AC
+(0x10061dfa, stored esp+0x18 at 0x10061e09); `[eax+8]` (0x10061e0d) whose
+result is scaled by D_B0 (0x10061e10, stored esp+0x10 at 0x10061e16, then
+squared at 0x10061e4d); `[edx+0x18]` (0x10061e3d) whose result lands in the
+base-offset slot esi+0x30 (0x10061e40); and `[edx+0x10]` (0x10061e61), which
+receives A² + B×u1 (A = the [+8] result at esp+0x10; B = the value at
+[esp+0x14] loaded at 0x10061e53, set outside this listing) and whose result
+× u1 (0x10061e64) lands in the radius slot esi+0x34 (0x10061e68). The path
+then continues: esi+0x38 (height slot) = u1 × D_B4 (0x10061e6b/0x10061e6f/
+0x10061e75), `jmp 0x10062051` (0x10061e78).
 
 Shape 7 is a **line/cone**: a single random u1 (1000-table) drives BOTH the
 radius (`r = u1 × D_AC`) and the height (`h = u1 × D_B4`) — that's what makes
