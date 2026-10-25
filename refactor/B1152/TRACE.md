@@ -300,10 +300,19 @@ pixel track). What *is* cleanly visible frame-to-frame is:
   stream on the same tick as `OP_Action` (`OP_FormattedMessage` string_id 9073,
   args Testcaster/Oraclewatch/121 at 472.816 s, `all-opcodes.tsv`).
   Strip: `strips/m1_38_flight_471.5-473.7.png` (6 cells,
-  per-cell frame times 471.500 / 472.000 / 472.200 / 472.700 / 473.500 /
-  473.700 s = frames 14145 / 14160 / 14166 / 14181 / 14205 / 14211; the
-  in-flight missile is visible in the gap in cells 3-4, the impact burst just
-  after cell 4, the corpse in cells 5-6).
+  per-cell frame times 471.500 / 472.000 / 472.500 / 473.000 / 473.500 /
+  473.700 s = frames 14145 / 14160 / 14175 / 14190 / 14205 / 14211; the
+  in-flight missile in cell 3, the impact burst in cell 4, the corpse in
+  cells 5-6). Per-cell gap-box census (>=180 grayscale) of those frames:
+  16 / 0 / 38 / 42 / 67 / 66 (raw frames 14166 and 14181 read 0, so the
+  missile is in cell 3 only). Regenerate the strip and re-run the census:
+  `python3 ~/kb-evidence/kb-b1152-trace/strip_regen.py
+  ~/kb-evidence/kb-b1152-trace/oracle/m1_rig38/video.mp4
+  14145,14160,14175,14190,14205,14211
+  refactor/B1152/strips/m1_38_flight_471.5-473.7.regen.png
+  refactor/B1152/strips/m1_38_flight_471.5-473.7.png`
+  (cells 1-5 come out byte-identical to the committed strip, cell 6 within
+  56 px; the box and grayscale formula are encoded in the script).
 - **spell 54**: cast glow around the caster only, **no projectile in the gap**
   (the deep-gap census stays at the pre-cast baseline through the whole window),
   then a frost burst at the target from frame 13729 (457.63 s) — consistent
@@ -311,8 +320,16 @@ pixel track). What *is* cleanly visible frame-to-frame is:
   (6 cells, per-cell frame times 456.000 / 456.500 / 457.000 / 457.500 /
   457.633 / 458.000 s = frames 13680 / 13695 / 13710 / 13725 / 13729 / 13740;
   the arrival frost burst in cell 5, the previously solid-black last cell
-  replaced by frame 13740). The ~458 s corpse visible in the strip is Nixx
-  Darkpaw's, from an unrelated ~338 s death.
+  replaced by frame 13740). Per-cell gap-box census (>=180 grayscale) of
+  those frames: 0 / 0 / 0 / 0 / 1226 / 181. Regenerate and re-run:
+  `python3 ~/kb-evidence/kb-b1152-trace/strip_regen.py
+  ~/kb-evidence/kb-b1152-trace/oracle/m2_rig54/video.mp4
+  13680,13695,13710,13725,13729,13740
+  refactor/B1152/strips/m2_54_cast_456.0-458.0.regen.png
+  refactor/B1152/strips/m2_54_cast_456.0-458.0.png`
+  (all six cells come out byte-identical to the committed strip). The ~458 s
+  corpse visible in the strip is Nixx Darkpaw's, from an unrelated ~338 s
+  death.
 
 ## 9. Summary of the mechanism (what a future FX unit needs)
 
