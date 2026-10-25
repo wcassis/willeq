@@ -2,10 +2,18 @@
 # B1150 (#470): copy of review/B1149/scripts/run_scene.sh, paths only.
 # Differences from the B1149 copy:
 #   - the model_viewer is THIS branch's rbuild tree on the ThinkPad
-#     (/home/user/willeq-builds/kb-b1150-shapes, built by rbuild from the
-#     shared worktree /home/user/src/willeq-wt/kb-b1150-shapes);
+#     (/home/user/willeq-builds/kb-b1150-shapes/build, built by rbuild from
+#     the shared worktree /home/user/src/willeq-wt/kb-b1150-shapes);
 #   - the runs land under refactor/B1150/ (this card's evidence dir);
-#   - the frames live in /tmp/b1150-frames on the ThinkPad.
+#   - the frames live in /tmp/b1150-frames on the ThinkPad;
+#   - WILLEQ_DRM_DEVICE is pointed at a nonexistent card: the b1118 rig is
+#     calibrated to the SURFACELESS 1280x800 render (B1139), and the
+#     ThinkPad's /dev/dri is now world-accessible, so auto-selection would
+#     grab the 3840x2160 GBM mode and the calibrated camera misses the
+#     caster (rendered rows -1..-1, flat-clear frames). B1149's own runs
+#     fell back to surfaceless the hard way ("failed to open
+#     /dev/dri/renderD128: Permission denied" in their run.logs); the env
+#     override makes the same fallback explicit.
 # usage: run_scene.sh <name> <fps> [model_viewer args...]
 # env: TREE (build dir, default the rbuild tree), FRAMES (default
 #      /tmp/b1150-frames), PLAN, SECONDS_ (1.5 + cast_ms/1000 + 11.5)
@@ -20,7 +28,8 @@ n=$1 fps=$2; shift 2
 O=$R/runs/$n; mkdir -p "$O" "$F"
 rm -rf "$F/$n" "$F/${n}_30"
 echo "$(date -u +%FT%TZ) render $n fps=$fps $*" >> $R/progress.log
-( cd "$WT" && "$T/bin/model_viewer" --spell-test --client /mnt/projects/EverQuestP1999 \
+( cd "$WT" && WILLEQ_DRM_DEVICE=/dev/dri/no-such-card \
+  "$T/bin/model_viewer" --spell-test --client /mnt/projects/EverQuestP1999 \
     --eqe1 "$PACK" --plan "$PLAN" --frames-dir "$F/$n" --fps "$fps" --seconds ${SECONDS_:-13.2} \
     --headless --camera b1118 "$@" > "$O/run.log" 2>&1 )
 rc=$?
