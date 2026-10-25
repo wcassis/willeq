@@ -1,0 +1,62 @@
+# action	target	hold_ms	still_name
+# B1143 item 2 (lane 5, observer rig): 93 Burst of Flame, caster at B1130's exact caster pose
+# (-67.6,434.4, :98 llvmpipe) on a #spawned TrollF NPC at the TrollF spot (-74,428) x2 and on
+# Oraclewatch (the player, #set pvp on) standing at the same spot x2. The OBSERVER camera
+# (Oraclewatch, :99 NVIDIA, video.mp4) is at the TrollF spot facing the caster, so it records BOTH
+# the Source (on the caster, in front) and the landing (on the target, co-located with it). The
+# caster's own :98 view is also grabbed (video-caster.mp4) as a B1130-framing cross-check.
+# Caster heading 225 (facing the observer) deviates from B1130's 160 ONLY so the caster's hand
+# flames are visible in the observer's view; the POSITION is B1130's exact pose.
+# fps=30
+# caster-video=1
+# observer=Oraclewatch
+# pose=-74,428,3.75,160
+# observer-pose=-74,428,3.75,448
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#reload rules global	0	rules
+command	#level 60	0	lvl
+command	#mana	0	mana
+command	#spawn TrollF 1 1 0 30000	0	spawn
+command	#stun TrollF000 120000	0	stun
+command	#goto -67.6,434.4,3.75,225	0	gotopose
+press	F9	0	cam1
+press	F9	0	cam2
+press	F9	0	cam3
+obs	press	F9	0	obs_cam1
+obs	press	F9	0	obs_cam2
+obs	press	F9	0	obs_cam3
+obs	wait	3000	0	obs_cam_settle
+wait	36000	0	time_settle
+command	#target TrollF000	0	tgt_npc_a
+wait	1500	0	tgt_npc_a_settle
+command	/cast 1	0	cast_npc_a
+wait	15500	0	fx_npc_a
+command	#mana	0	mana_b
+command	#target TrollF000	0	tgt_npc_b
+wait	1500	0	tgt_npc_b_settle
+command	/cast 1	0	cast_npc_b
+wait	15500	0	fx_npc_b
+command	#kill TrollF000	0	kill
+wait	2000	0	kill_settle
+command	#set pvp on	0	pvp_self
+obs	command	#set pvp on	0	pvp_obs
+command	#target Oraclewatch	0	tgt_obs_a
+wait	1500	0	tgt_obs_a_settle
+command	/cast 1	0	cast_obs_a
+wait	15500	0	fx_obs_a
+command	#mana	0	mana_c
+command	#target Oraclewatch	0	tgt_obs_b
+wait	1500	0	tgt_obs_b_settle
+command	/cast 1	0	cast_obs_b
+wait	15500	0	fx_obs_b
+obs	command	/q	0	obs_quit
+command		/q	0	quit
