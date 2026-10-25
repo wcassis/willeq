@@ -3,7 +3,7 @@
  *
  * The ten spawn shapes the official client decodes from spellsnew.edd +0xA8
  * (EQGraphicsDX9.dll). Every case was read from the per-particle shape switch
- * at 0x10061157 (decompile line 68775; jump table at 0x101c408c, cases
+ * at 0x10061753 (decompile line 68775; jump table at 0x1006408c, cases
  * 0x10061769 .. 0x10061fa5+):
  *
  *   0 point            case 0x10061769: (0, 0, 0)
@@ -43,11 +43,15 @@
  *                      passes kSpellFxAttachScale = 1.0 (B1149's ruling), so
  *                      s19c is 1.0 either way -- the flag still selects it.
  *
- * The random draws are the client's 512/1000/2000-entry uniform tables
- * (0x1005d3e0, 0x1005d400, DAT_10232860; trig via the 512-entry SIN/COS
- * table lookups at 0x10184500/0x10184520). They are uniform, so fable draws
- * from particleRandomFloat() -- stated once here, the tables are not
- * emulated (refactor/B1150/README.md, section 3).
+ * The random draws are the client's uniform tables (verified in this unit):
+ * the 512-table (0x102347a0, counter 0x10235f4c, FUN_1005d3e0) is a
+ * permutation of the 512THS angle indices 0..511 (fill 0x1005d2a6, shuffle
+ * 0x1005d2c1) feeding the 512-entry SIN/COS lookups at 0x10184500/0x10184520;
+ * the 1000-table (0x10234fa0) a permutation of 0..999 scaled /1000 where
+ * needed; the 2000-table (0x10232860, fill 0x1005d302: i*0.001 - 1.0, i.e. a
+ * permutation of [-1, 1)) for the disc/sphere draws. All are uniform, so
+ * fable draws from particleRandomFloat() -- stated once here, the tables are
+ * not emulated (refactor/B1150/README.md, section 3).
  */
 
 #ifndef EQT_SPELL_SPAWN_SHAPE_H
@@ -90,12 +94,13 @@ struct EddShapePoint {
     bool hasNormal = false;
 };
 
-// The shape 2 count table (decompile lines 68595-68642, 0x10061826): for a
-// batch of m particles, R rings of N = m/R particles each (N = 16 fixed when
-// m < 9; the last tier is R = 100 for m >= 7296, R = 60 for 3201..7295).
+// The shape 2 count table (decompile lines 68595-68642, .dis 0x10061002..
+// 0x10061155): for a batch of m particles, R z-levels of N = m/R particles
+// each (R = 8, N = 16 fixed when m < 9; the last tier is R = 100 for m >=
+// 7200, R = 60 for 3201..7199).
 inline void eddStackedRingCounts(int m, int& rings, int& perRing) {
     if (m < 9) {
-        rings = 1;
+        rings = 8;
         perRing = 16;
         return;
     }
