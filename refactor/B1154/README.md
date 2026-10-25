@@ -29,8 +29,8 @@ oracle-vs-fable strip, the measure scripts, and the logs — including the harne
    above the 0.197 compression floor; a vision check of the tail frames finds a coherent
    figure, not noise), held until the model is removed at +3.5. The stored fade alpha
    (the client's curve) is exactly 0.0 in that window (the floor constant 0x63f4cc is
-   0.0f, re-verified), so the residual is a behaviour of the official renderer's D3D draw
-   between stored-alpha-zero and removal, not of the fade-alpha curve. fable's
+   0.0f, re-verified), so the model is drawn faintly by the oracle renderer at stored alpha 0 (the
+   exact D3D rule is un-traced — FOLLOW-UP 2), not by the fade-alpha curve. fable's
    `ApplyCorpseFadeAlpha` writes the mesh's vertex alpha from the fade alpha (byte =
    alpha·255), so it is fully transparent at +3.300 and does **not** reproduce the
    residual tail. **No constant is fitted to the frames** (Will's standing rule): the
@@ -71,8 +71,8 @@ still pass (sec. 5).
 | eqgame 0x401100 | the fade-list stamp: `call 0x46d655` (clock, ms), `+0xc = +0x10 = now`. Called from 0x401346 when the corpse's list entry is created (the death → fade-list add path, B1148 sec. 2), i.e. at list entry, not a later event. |
 | eqgame 0x401127 | the per-corpse walk: `t = now − stamp` (0x401140/0x401149, the walk's `ebx` is the clock arg, `+0xc` the stamp). `t ≤ 0x3e8 (1000 ms)`: nothing (0x401152/0x401154). `1000 < t ≤ 0x514 (1300)`: arm the one-shot 0x5e windows (hands/chest/feet, via the actor's vtbl +0x134/+0x1a4). `t > 1300`: `alpha = 0x63f4d0 (1.0) − (t − 0x514) x 0x63f4d4 (0.0005)`, clamped to `[0x63f4cc (0.0), 1.0]` (0x401162–0x4011a8), then `call [actor->vtbl + 0x1b0]` with the alpha (0x4011b0). |
 | DLL 0x10040110 (actor vtbl +0x1b0 = slot 108) | the store thunk: `add ecx, 0x64; jmp 0x1018fc20` — the actor (the fade entry's object at `entry+0x8`) reaches its model instance at `actor+0x64`. |
-| DLL 0x1018fc20 | the model fade-alpha setter: `mov eax, [esp+4]; mov [ecx+0x88], eax; ret 4` — **the fade alpha is stored at `model+0x88`**. Its getter is the sibling thunk 0x10040120 → 0x1018fc10 (reads `model+0x88`). |
-| eqgame 0x4012bb / 0x4012db–0x4012e7 | the list walk: runs 0x401127 per entry, then `now − stamp ≥ 0xdac` (**3500 ms**) → 0x401110 → **0x439a46 (the delete)** (0x4012e3 `cmp eax, 0xdac`; 0x4012e7 `jb`, i.e. delete once age ≥ 0xdac; the second branch 0x401316 is the same test on the second list). The fable harness's own log confirms the constant: "corpse removed at t 6.033 (3500 ms after despawn)" (`logs/harness_run.log`). |
+| DLL 0x1018fc20 | the model fade-alpha setter: `mov eax, [esp+4]; mov [ecx+0x88], eax; ret 4` — **the fade alpha is stored at `model+0x88`**. Its getter is the sibling thunk 0x10040120 → 0x1018fc10 (reads `model+0x88`). `model+0x88` is a shared field — the model-update path also writes it at 0x1001d6d7 (`fstp [esi+0x88]`, from the template's const) — so the vtbl[108] setter deliberately targets the same field. |
+| eqgame 0x4012bb / 0x4012db–0x4012e7 | the list walk: runs 0x401127 per entry, then `now − stamp ≥ 0xdac` (**3500 ms**) → 0x401110 → **0x439a46 (the delete)** (0x4012de `cmp eax, 0xdac`; 0x4012e3 `jb` 0x4012fc; 0x4012e7 `call 0x401110`, i.e. delete once age ≥ 0xdac; the second list at 0x401307 is cleared unconditionally — 0x401316 `call 0x401110` has no `cmp 0xdac` age gate). The fable harness's own log confirms the constant: "corpse removed at t 6.033 (3500 ms after despawn)" (`logs/harness_run.log`). The despawn that starts this timer is the server's OP_DeleteSpawn; in fable it lands on `zone_dispatch.cpp:799` (`HC_OP_DeleteSpawn = 0x55bc`, `eq_opcodes.h:66`) → `EntitiesComponent::ZoneProcessDeleteSpawn` (`entities_component_appearance.cpp:62`). |
 
 **Correction to B1148's store:** B1148 sec. 2 said the alpha "is copied to the model
 instance's per-frame alpha `+0x94`." That is not what the .dis shows. The fade walk's
@@ -96,7 +96,7 @@ stack temporaries.
 | address | what (re-verified in the .dis this unit) |
 |---|---|
 | DLL 0x1005c9f0 | the per-draw block the card named: it initialises a 4x4 identity (0x3f800000 = 1.0f on the diagonal, 0x1005ca01–0x1005ca2a) in the descriptor and then builds the world matrix from a per-frame global (0x102326f8) via its vtable (0x1005ca49/0x1005ca62/0x1005ca7a/0x1005ca92, negating the `+0x18` term). It is a **matrix builder**, not the vertex-format / blend-stage / alpha-test setup, and not the site where the fade alpha becomes a pixel alpha. |
-| (downstream mesh draw) | the actual pixel-alpha application — the D3D material/vertex-format/blend-stage/alpha-test state and the mesh `Draw*` call that samples `model+0x88` — is split across the DLL's mesh-draw functions, which the decompilation does not present as a single traceable body. This unit searched the traced region for a multiply-alpha floor (`and reg, 0xff00ff` + `shl reg, 0x10` + loop-back: **0 candidates**; the DLL's only 0xff00ff sites are 0x100b35ab/0x1011d647, texture-format constants) and found none. So no floor/threshold/quantisation is **visible in the traced region**, but the final pixel rule sits in the opaque downstream draw and is not resolvable to a single instruction from the text decompiles. |
+| (downstream mesh draw) | the actual pixel-alpha application — the D3D material/vertex-format/blend-stage/alpha-test state and the mesh `Draw*` call that samples `model+0x88` — is split across the DLL's mesh-draw functions, which the decompilation does not present as a single traceable body. This unit searched the traced region for a multiply-alpha floor (`and reg, 0xff00ff` + `shl reg, 0x10` + loop-back: **0 candidates**; the DLL has 7 lines with a 0xff00ff prefix — 0x10019bd4 `push 0xff00ff00`; 0x1008907f `push 0xff00ffff`; 0x100927ad `and esi, 0xff00ff00`; 0x100b35ab `mov eax, 0xff00ff`; 0x100b36f0 `mov edx, 0xff00ff`; 0x1011d647 `and eax, 0xff00ff00`; 0x1011d64c `cmp eax, 0xff00ff00` — and none of the 7 is an `and reg, 0xff00ff` multiply mask) and found none. So no floor/threshold/quantisation is **visible in the traced region**, but the final pixel rule sits in the opaque downstream draw and is not resolvable to a single instruction from the text decompiles. |
 
 **Mechanism statement (acceptance A):** the stamp is taken at fade-list entry (eqgame
 0x401100/0x401346); the per-frame walk (0x401127) computes `alpha = 1.0 − (t−1300) x
@@ -212,8 +212,8 @@ of review flagged as unexplained. The evidence:
 capture/display latency would shift *both* boundaries by the same amount, but the onset
 and the delete each match the code within one capture frame (3.2), so no uniform lag is
 present. The stored fade alpha (the client curve) is 0.0 in the window (the 0x63f4cc floor
-constant), so the residual is not the fade curve. It is a behaviour of the official
-renderer's D3D draw between stored-alpha-zero and removal. Its exact rule (a
+constant), so the residual is not the fade curve. It is the model drawn faintly by the oracle renderer at stored alpha 0 (the exact
+D3D rule is un-traced — FOLLOW-UP 2). Its exact rule (a
 minimum-opacity floor, a delayed/extended fade, or a second pass) is in the downstream
 mesh-draw (2.3), which the text decompiles do not present as a single traceable body and
 which this unit found no multiply-alpha floor in. Reproducing the residual in
