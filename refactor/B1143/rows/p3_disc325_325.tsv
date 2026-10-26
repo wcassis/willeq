@@ -1,22 +1,67 @@
 # B1143 item 3: record 325, the three Shadow Knight disciplines, leg p3_disc325 (2026-10-25 22:08Z, class 4).
-# Activation = the real client path `/disc <name>` (OP_CastSpell slot 10) AND the GM path
-# `#castspell <id> 0` (0 ms OP_BeginCast) -- both landed in the pcap (30 681->36 473 packets;
-# chat: "Cast Leechcurse Discipline (4504) on yourself", "Cast Reaper Strike (6236) on TrollF (262)",
-# "Cast Lich Sting (6268) on TrollF (262)"; 3x OP_BeginCast cast_ms=0; OP_Action spell=4504).
 #
-# RESULT: none of the three draws a detectable SOURCE or LANDING in the observer view.
-# max coverage over the whole Act+10 s window is <= 0.02 (below the instrument's threshold),
-# so every stage row is a NEGATIVE (gate) row: record 325 has no Target-stage content, so
-# the B1144 no-Target-slot gate (item 1, spell_visual_fx.cpp:841-854) suppresses the impact,
-# and the disciplines' source visual is below the observer-ROI coverage threshold.
-# This re-verifies the gate on a second record (item 1 pinned it on the vocabulary/harness;
-# this is the live-leg confirmation).
-# Frame files for every number: /home/user/kb-evidence/kb-b1143-rig-residue/measure/p3_disc325_325/
-# (kept with --keep-png; the max-coverage figure is printed in the measure .txt per rep).
-record	spell	rep	stage	target	target_id	who	onset	centroid	h_p5	h_p95	dx_p5	dx_p95	cov	verdict
-325	4504	1	SOURCE	SELF	260	fable :98	none	none	-	-	-	-	0.000	gate (no Target stage; below thr)
-325	4504	1	LANDING	SELF	260	fable :98	none	none	-	-	-	-	0.0111	gate (no Target stage; below thr)
-325	6236	1	SOURCE	NPC	262	fable :98	none	none	-	-	-	-	0.000	gate (no Target stage; below thr)
-325	6236	1	LANDING	NPC	262	fable :98	none	none	-	-	-	-	0.0055	gate (no Target stage; below thr)
-325	6268	1	SOURCE	NPC	262	fable :98	none	none	-	-	-	-	0.0198	gate (no Target stage; below thr)
-325	6268	1	LANDING	NPC	262	fable :98	none	none	-	-	-	-	0.0053	gate (no Target stage; below thr)
+# Activation: the real client path `/disc <name>` was sent 3x (driver steps
+# 25/34/43_command, windows 1792965698.432..701.596 / 1792965748.955..751.792 /
+# 1792965799.628..802.349) and produced NOTHING on the wire: each step's own
+# opcode file (oracle/p3_disc325/25|34|43_command.opcodes.tsv) contains only
+# C->S keepalive traffic (OP_ClientUpdate / OP_FloatListThing) -- no
+# OP_CastSpell, no OP_ChannelMessage; the whole-pcap C->S OP_CastSpell census
+# is 0. The next S->C chat line after each /disc step is the
+# `#resetdisc_timer all` echo "Reset all Discipline timers for yourself."
+# (1792965723.746 / 1792965774.276 / 1792965824.828): no cast, no rejection, no
+# error line anywhere in the pcap -- the client swallowed the command silently
+# on class 4. Only the GM path `#castspell <id> 0` landed: 3x S->C
+# OP_BeginCast cast_ms=0 (source 260, at 1792965843.533 / 1792965883.298 /
+# 1792965922.966) + OP_Action (all three carry first-8 wire bytes
+# `040104013c000a00`: o0=260, o2=260) + the server's chat lines "Cast
+# Leechcurse Discipline (4504) on yourself", "Cast Reaper Strike (6236) on
+# TrollF (262)", "Cast Lich Sting (6268) on TrollF (262)" -- so the gate
+# conclusion rests on the GM path alone. The server's chat names TrollF (262)
+# as the 6236/6268 target, but the ACT id fields read 260/260: TrollF was
+# #spawned at the caster's pose (plans/p3_disc325.tsv), target and source are
+# co-located at 950,650.
+#
+# RESULT (observer view): no ground-level Source or Landing is drawn. The
+# SOURCE ROI (feet 950,650 = the cast's target: 4504 on self; 6236/6268 on
+# TrollF #spawned at the caster's position) shows UNATTRIBUTED
+# above-threshold activity: 4504 max coverage 0.041 (39 frames above the 647
+# px threshold, Act+0.51..+4.31; per-frame max f20242); 6236 max 0.040 (33
+# frames above the 1577 px threshold; per-frame max f21435); the peak-frame
+# band rows show it body-band dominated (peak torso 0.60 / 0.59, ground 0.00)
+# -- the standing model co-located at the ROI is the leading candidate, but
+# the instrument cannot attribute the blob (the model does not judge a frame).
+# The LANDING was re-measured AT THE CAST'S TARGET (the original LANDING
+# sections used the script's default anchor, the OBSERVER's feet 675,614):
+# 4504 (self; caster anchor 950,650 278px) a 119-frame body-band run
+# Act+0.41..+4.35 (peak f20242, cov 0.041); 6236 (TrollF anchor 950,648 228px)
+# a 119-frame run Act+0.41..+4.34 (peak f21435, cov 0.061); 6268 (same anchor)
+# a 3-frame transient Act+1.95..+2.01 (peak f22611, cov 0.030). The ground
+# band is 0.00 in every row: no ground-level landing content is measured.
+# Record 325 has no Target-stage content, so the B1144 no-Target-slot gate
+# (item 1, spell_visual_fx.cpp:841-854) suppresses the impact: the live leg
+# measures no ground-level FX on a second record (the above-threshold
+# activity is unattributed, not a measured FX).
+#
+# Columns: review/B1132/rep_table.tsv's 18 (record spell rep who onset_act
+# centroid h_p5 h_p95 dx_p5 dx_p95 cov ground legs torso shoulders head above
+# verdict) + B1143's stage/target/target_id (kept after rep: the item-2/3
+# NPC-vs-player-vs-self attribution needs them). The six band columns are the
+# instrument's own peak-frame rows (SOURCE: per-frame-max frame; LANDING: PEAK
+# frame of the at-target run). cov: SOURCE=per-frame max, LANDING=PEAK of the
+# at-target run (the instrument prints no RUN aggregate for these short runs).
+# 6268 LANDING: 3-frame run (f22611-f22613); the row's cells are the instrument's
+# exact PEAK row f22611 (the per-frame table samples every 3rd frame, so the
+# PEAK/RUN aggregate rows are the exact ones).
+# Frame files for every number (regenerate with the leg's own instrument):
+#   SOURCE rows:    <dir>.txt SOURCE tables (anchor.py, ROI 950,650 278px)
+#   LANDING rows:   <dir>.target (anchor.py at the target anchor; the original
+#                   observer-foot sections are the untouched <dir>.txt LANDING)
+# where <dir> = /home/user/kb-evidence/kb-b1143-rig-residue/measure/p3_disc325_325/<spell>_1_player
+# pcap: /home/user/kb-evidence/kb-b1143-rig-residue/oracle/p3_disc325/capture.pcap
+record	spell	rep	stage	target	target_id	who	onset_act	centroid	h_p5	h_p95	dx_p5	dx_p95	cov	ground	legs	torso	shoulders	head	above	verdict
+325	4504	1	SOURCE	SELF	260	fable :98	+0.51	0.56	0.29	0.88	-0.20	+0.04	0.041	0.00	0.30	0.60	0.08	0.02	0.00	unattributed above-thr (39 frames, peak f20242); body-band (torso 0.60), ground 0.00 -- no ground-level FX
+325	4504	1	LANDING	SELF	260	fable :98	+0.41	0.57	0.29	0.89	-0.20	+0.04	0.041	0.00	0.30	0.60	0.08	0.03	0.00	at-target body-band run (119 frames, peak f20242), ground 0.00 -- unattributed; no ground-level landing
+325	6236	1	SOURCE	NPC	262	fable :98	+0.61	0.56	0.29	0.88	-0.20	+0.04	0.040	0.00	0.31	0.59	0.08	0.02	0.00	unattributed above-thr (33 frames, peak f21435); body-band (torso 0.59), ground 0.00 -- no ground-level FX
+325	6236	1	LANDING	NPC	262	fable :98	+0.41	0.69	0.35	1.08	-0.24	+0.05	0.061	0.00	0.17	0.43	0.28	0.09	0.03	at-target body-band run (119 frames, peak f21435), ground 0.00 -- unattributed; no ground-level landing
+325	6268	1	SOURCE	NPC	262	fable :98	none	0.64	0.33	0.96	-0.14	+0.06	0.0198	0.00	0.24	0.42	0.15	0.15	0.04	none above thr (max 0.0198 < the 1693 px threshold; peak frame f22667)
+325	6268	1	LANDING	NPC	262	fable :98	+1.95	0.90	0.58	1.39	-0.29	+0.33	0.030	0.00	0.03	0.28	0.33	0.04	0.31	at-target 3-frame run (peak f22611), ground 0.00 -- unattributed; no ground-level landing

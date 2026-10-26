@@ -48,7 +48,7 @@ A regression that re-enables the Target impact for a no-Target record is a red t
 
 The two `S->C OP_BeginCast` in the leg (1792938324.405/.421 Z) decode to
 **source 87, spell 11, cast_ms 2000** — zone-in residue the world started with
-(the same pair appears in every leg, including the 18:30 leg at 1792953598.056),
+(the same pair appears in every leg, including the 18:30 leg at 1792953598.057),
 142 s before the first target attempt; the caster client sent nothing that
 started it and it never completes. It is not the cause.
 
@@ -87,12 +87,16 @@ the TrollF spot -74,428,3.75 h160, observer at B1130 r51's caster pose
 - 1792953671.819 Z `New NPC spawned! Name | TrollF000`; 1792953685.637 Z
   `You stunned TrollF (262) for 2 Minutes.` (the stun worked this time).
 - 4 x C->S `OP_CastSpell` slot 0 at 1792953765.863 / 1792953802.855 /
-  1792953870.472 / 1792953904.515 Z.
+  1792953870.473 / 1792953904.515 Z.
 - 4 x S->C `OP_BeginCast` spell 93, cast_ms 1500, source 260 to BOTH clients.
-- 4 x S->C `OP_Action` spell 93 source 260: target **262** (casts 1-2, at
-  +1.53/+1.51 s) and target **261** (casts 3-4).
+- 4 x S->C `OP_Action` spell 93: casts 1-2 carry first-8 wire bytes
+  `060104013c000a00` (o0=262 target, o2=260 source; the ACTs at +1.53/+1.51 s
+  after the C->S casts) and casts 3-4 carry `050105013c000a00` — o0=261 and
+  o2=261, **both 16-bit id fields are the player target 261; the packets
+  contain no 260** (the server reports the PvP landing with 261 in both id
+  fields).
 - `OP_InterruptCast`: 0. No error chat lines.
-- 1792953828.697 Z `Killing TrollF (262).` — the spawned NPC was despawned
+- 1792953828.698 Z `Killing TrollF (262).` — the spawned NPC was despawned
   inside the leg (no leftover for the lane_after state).
 
 ### 2c. Measurement — observer view, against the B1130 r51 row-0 bands
@@ -148,7 +152,7 @@ attributable to the target class** (the server's PvP effect on a player target
 is shorter and smaller than on the stunned `#spawn`ed NPC), not to fable's
 renderer or to the observer rig.
 
-## Item 3 — record 325 + record 1 (spells re-derived; the /disc leg not run)
+## Item 3 — record 325 + record 1 (spells re-derived; the /disc leg RAN 2026-10-25 22:08Z, GM-path lands only)
 
 Re-derived from the leg's own `spells_us.txt` (evidence copy
 `eq/spells_us.txt`; 0-based `^`-split ordinals == eqemu `spells_new` column
@@ -172,17 +176,52 @@ spellsnew.eff record is field 145, `SpellAnim`, line 559):
   is record 326. Char 67 is class 12 = WIZARD (level 1), not "ninja".
 
 Status: the `/disc` + `#castspell` activation leg (`plans/p3_disc325.tsv`,
-class 4, leg `p3_disc325` 2026-10-25 22:08Z) RAN: all three disciplines
-landed (36 473 packets; `#level 60` + `#traindisc 60` = "You have learned 5
-new disciplines!"; chat "Cast Leechcurse Discipline (4504) on yourself",
-"Cast Reaper Strike (6236) on TrollF (262)", "Cast Lich Sting (6268) on
-TrollF (262)"; 3x `OP_BeginCast cast_ms=0`; `OP_Action` spell 4504). Measured
-in the observer view: **none of the three draws a detectable Source or
-Landing** (max coverage <= 0.02 over the Act+10 s window, below threshold) —
-record 325 has no Target-stage content, so the B1144 no-Target-slot gate
-(item 1) suppresses the impact and the source visual is below the ROI
-coverage threshold. This is the live-leg confirmation of the gate on a second
-record. Rows: `refactor/B1143/rows/p3_disc325_325.tsv` (six gate rows).
+class 4, leg `p3_disc325` 2026-10-25 22:08Z, 36 473 packets) RAN. The REAL
+client path — `/disc Leechcurse Discipline` / `/disc Reaper Strike` /
+`/disc Lich Sting` (driver steps 25/34/43_command) — produced **zero**
+`C->S OP_CastSpell`: each step's own opcode file
+(`oracle/p3_disc325/25|34|43_command.opcodes.tsv`) carries only keepalive
+traffic (OP_ClientUpdate / OP_FloatListThing), and the next S->C chat line
+after each /disc is the `#resetdisc_timer all` echo ("Reset all Discipline
+timers for yourself.", 1792965723.746 / 1792965774.276 / 1792965824.828) —
+no cast, no rejection, no error line anywhere in the pcap. The disciplines
+WERE trained in-world (`#level 60` + `#traindisc 60` = "You have learned 5
+new disciplines!" at 1792965609.812), but the Ti client swallowed `/disc`
+silently on class 4. Only the GM path landed them on the wire: 3x
+`#castspell <id> 0` -> S->C `OP_BeginCast cast_ms=0` (source 260, at
+1792965843.533 / 1792965883.298 / 1792965922.966) + `OP_Action` (spells
+4504/6236/6268, all three carry first-8 wire bytes `040104013c000a00`:
+o0=260, o2=260) + the chat "Cast Leechcurse Discipline (4504) on yourself" /
+"Cast Reaper Strike (6236) on TrollF (262)" / "Cast Lich Sting (6268) on
+TrollF (262)". **The gate conclusion therefore rests on the GM path alone**
+(the client-path `/disc` never reached the server); the FOLLOW-UP names the
+class-ownership leg that would make `/disc` itself fire (B1134 P4 fired its
+own class's disciplines via `/disc`).
+
+Measured in the observer view: **no ground-level Source or Landing is
+drawn** (the ground band is 0.00 in every row). The SOURCE ROI (feet 950,650
+= the cast's target: 4504 on self; 6236/6268 on TrollF, #spawned at the
+caster's pose) shows **unattributed above-threshold body-band activity**:
+4504, 39 frames above the 647px threshold (Act+0.51..+4.31 s), max per-frame
+coverage 0.041 (f20242); 6236, 33 frames above the 1577px threshold, max
+0.040 (f21435); 6268 drew nothing (max 0.0198 < the 1693px threshold). The
+leading candidate is the standing model co-located at the ROI, but the
+instrument cannot attribute the blob (a model does not judge a frame). The
+LANDING was re-measured AT THE CAST'S TARGET — the script's default anchor
+was the OBSERVER's feet 675,614, the wrong anchor (the original
+observer-foot LANDING sections read NONE: max cov 0.0111/0.0055/0.0053) — and
+at the target anchor (4504 self: 950,650 278px; 6236/6268 TrollF: 950,648
+228px) the same body-band activity is measured: 4504 a 119-frame run
+Act+0.41..+4.35 (peak f20242 cov 0.041), 6236 a 119-frame run
+Act+0.41..+4.34 (peak f21435 cov 0.061), 6268 a 3-frame transient
+Act+1.95..+2.01 (peak f22611 cov 0.030) — ground band 0.0 throughout. Record
+325 has no Target-stage content, so the B1144 no-Target-slot gate (item 1)
+suppresses the impact and the measured activity is the co-located model, not
+FX — the live-leg confirmation of the gate on a second record. Rows (the
+B1132 18 columns + stage/target/target_id):
+`refactor/B1143/rows/p3_disc325_325.tsv` (six rows); frame files
+`measure/p3_disc325_325/<spell>_1_player.txt` (SOURCE tables; the original
+observer-foot LANDING) and `.target` (the at-target re-measure).
 **animRecords** (record -> spells, from the field re-derivation above, NOT in
 `config/spell_effects.json`): record 325 = 4504, 6236, 6268, 6299, 6311, 8604,
 8617, 8642 (the three activatable disciplines: 4504/6236/6268); record 1 =
@@ -230,19 +269,43 @@ FOLLOW-UP for the corrected next steps.
 
 ## Lane state (before == after)
 
-- `lane_before.txt` (18:08 Z): stack down, lease FREE; char 67 class 12 level 1
-  at x35/y-82/z3, gems 93,38,54,41,253,458,656; char 103 class 1 at
-  x-510/y57/z31.75.
-- `lane_after.txt` (21:31 Z): lease FREE; world down (mariadb only); char 67
-  unchanged (class 12 level 1, same gems, same position); char 103 unchanged;
-  TrollF000 killed inside the leg (1792953828.697 Z `Killing TrollF (262).`).
-  Only drift: the two `last_login` timestamps.
+- `lane_before.txt` (18:08 Z): stack down (as found), lease FREE; char 67
+  class 12 level 1 at x35/y-82/z3, gems 93,38,54,41,253,458,656; char 103
+  class 1 at x-510/y57/z31.75.
+- `lane_after.txt` (22:36 Z, final, post item-3 `p3_disc325` + item-4
+  `p3_combat1` legs): lease FREE; all containers removed (the `p3_combat1`
+  leg's cleanup ran `down.sh`, which tore down the whole stack — the lane
+  starts DOWN, so this is the as-found state). Char 67 RESTORED by the
+  driver's post-SQL (world-down) and verified in the leg's after-census:
+  "char 67 restored: class 12, gems 93,38,54,41,253,458,656", with
+  `character_skills` / `character_disciplines` back to 0 rows and timers back
+  to 2 (the as-found state; class 12 WIZARD, level 1, position and gems as
+  found). Char 103 untouched (class 1 as found). Spawned NPCs: none —
+  TrollF000 was `#kill`ed inside EACH leg that spawned it, three pcap
+  timestamps (`Killing TrollF (262).`, S->C): `p3_rig93` 1792953828.698 Z,
+  `p3_disc325` 1792965950.078 Z, `p3_combat1` 1792967453.571 Z. Only drift
+  across the whole card: the two `last_login` timestamps.
 
-## FOLLOW-UP (item 4 only — item 3 is complete in this MR)
+## FOLLOW-UP (the /disc client path + item 4 — item 3's measurement is complete in this MR)
 
-Item 3 (record 325) is DONE: leg `p3_disc325` ran, rows measured
-(`refactor/B1143/rows/p3_disc325_325.tsv`, six gate rows), animRecords in the
-item-3 section above.
+Item 3 (record 325) is MEASURED: leg `p3_disc325` ran, rows measured
+(`refactor/B1143/rows/p3_disc325_325.tsv`, six rows), animRecords in the
+item-3 section above; the GM-path landing + the no-Target-slot gate are
+confirmed in the live leg. The one open thread on item 3 is the CLIENT path:
+
+0. **Make `/disc` itself fire (class ownership).** The Ti client's `/disc`
+   fired in B1134 P4 (class 1 = WAR, `#level 60` + `#traindisc 60`,
+   `review/B1134/plans/p4_discs.tsv` — its own class's disciplines 4499/4498/
+   4670/4721 sent `OP_CastSpell`), but in this leg (class 4) it sent ZERO
+   packets for the record-325 disciplines despite `#traindisc 60` training
+   them: the client gates `/disc` on the caster's class owning the
+   discipline in the client's own data (the record-325 class-level variant
+   rows 8604/8617/8642 carry Shadow Knight level 60, `eq/spells_us.txt`
+   fields 105..120). The next leg: set the caster to the class the Ti client
+   associates with record 325 (verify the class id and, if needed, the
+   Combat Abilities window state first), keep the B1134 P4 recipe, and run
+   `/disc <name>` instead of `#castspell`. Until it lands, the gate
+   conclusion rests on the GM path (stated in the item-3 section).
 
 Item 4 (Intimidation -> Fear) needs a corrected leg:
 
