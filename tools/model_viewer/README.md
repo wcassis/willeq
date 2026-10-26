@@ -50,6 +50,33 @@ OP_DeleteSpawn, 1.027 s, which a B1133 client obeys), `--backdrop <png>` (the
 leg's own tail frame above the horizon), `--worker-latency 1` (draw the worker
 output of the previous step, as the client does).
 
+## The b1130 / b1130-self presets are B1130's fixed-geometry stills (B1155)
+
+`--camera b1130` (a caster + a stunned idle target to her right) and
+`--camera b1130-self` (the caster alone) reproduce the framing B1130 used for
+every record in its 40-cast survey, so a sweep on them bands against
+`review/B1130/record_table.tsv` instead of against the tour. Both are the
+B1118 opening pose (same FOV, pitch 12, the char-67 caster); only the fitted
+numbers and the target differ, all from `review/B1130/README.md` "Geometry":
+
+| default | source | override |
+|---|---|---|
+| 1280x800, caster 209 px, feet row 598 at column 640 | the settle stills `oracle/cal_r35/15_time_settle.png` (the B1118 opening pose, `#stun 120000`, camera F9 x3) | `--caster-px` |
+| caster = the b1118 char-67 appearance | the same char 67 Testcaster | `--caster`, `--caster-appearance` |
+| b1130: target race 1 (human), gender 0 (male), size 6 -- eqemu's `#spawn [name][race][level][texture][health][gender]...`: `#spawn TrollF 1 1 0 30000` is race=1, level=1, texture=0, hp=30000 with the GENDER arg absent -> `Mob::GetDefaultGender(1)` = MALE; "TrollF" is only a label | the same command; caster `#goto -67.6,434.4` puts it ~1.4 caster heights to her right | `--target` |
+| b1130: target 325 px, feet (940,652) | the same settle still; the 325 is that human's NEARER depth (~1.55x closer to the camera than the caster), not a race scale -- a consistency check, not an input (the FABLE rest-pose fit renders it as a 50 px strip; `refactor/B1155/README.md`) | -- |
+
+The camera is fitted to the caster exactly as b1118's is (`fitFaceOnCamera`,
+209 px / row 598); the target's world offset (x, z) is then SOLVED from its
+two feet pixels (Newton on the rendered silhouette, `fitFixedNpcTarget`), and
+the solve is printed like the b1118 block. A preset that does not solve within
+1 px exits 2. Pinned by `tests/test_fx_harness.cpp`
+(`B1130PresetSolvesTheFixedNpcGeometry`, `B1130SelfPresetSolvesTheCasterAlone`).
+The target idles (no death unless `--target-death`). Measure a run with
+`refactor/B1155/scripts/harness_measure_b1130.py <frames> <out> <fixed_npc|fixed_self>`
+and band the sweep with `refactor/B1155/scripts/band_table.py`
+(`refactor/B1155/README.md`).
+
 ## What each factor moves (spell 93, leg B, pool 8192; `refactor/B1139/README.md`)
 
 Landing coverage (lane 5: 2.938 on B1132's capture, 2.929 on B1127's, which

@@ -48,7 +48,7 @@ struct HarnessCast {
 struct HarnessOptions {
     std::string planPath;
     std::string framesDir;
-    std::string cameraPreset;          // "" (the interactive framing) or "b1118"
+    std::string cameraPreset;          // "" (the interactive framing) or "b1118", or B1155's "b1130" / "b1130-self"
     std::string backdropPath;          // optional image drawn behind the scene
     std::string eqe1Path = "/mnt/projects/EverQuest_ETC1/willeq.eqe1";
     std::string eqe1Dir = "/mnt/projects/EverQuest_ETC1";  // the model packs (T207 resolver)
@@ -156,7 +156,7 @@ void harnessInterrupt(const EQ::SpellData& spell);
 void placeHarnessTarget(bool self, float distance);
 
 // The spell-test camera (the preset's fitted pose, else the default framing).
-void setupSpellTestCamera();
+bool setupSpellTestCamera();
 
 // The scripted run; returns the process exit code (0 ok, 2 bad plan/options,
 // 3 could not start the FX chain, 4 a frame failed to write).
