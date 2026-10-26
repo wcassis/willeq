@@ -18,10 +18,14 @@ Sources (all measured; see ledger_lib.py for where each number comes from):
                     worker/oracle leg video; for p3_rig93 the video leg is the
                     ONE whose calibration puts the measured cast inside the
                     file). These are oracle-only: the gate never renders them.
-  missile legs      review/B1152/worker/missile_oracle.tsv (M1_38, M2_54) over
-                    review/B1152/worker/oracle/<leg>/video.mp4; the willeq side
-                    is a <gate>/measure/<leg>/ run (or LEDGER_EXTRA_MEASURE
-                    dirs, colon-separated) when one exists, else oracle-only.
+  missile legs      review/B1152/worker/missile_oracle.tsv (M1_38, M2_54; LEDGER_MISSILE_TSV
+                  overrides the tsv path) over review/B1152/worker/oracle/<leg>/video.mp4;
+                  the B1159 b-rows (M1b_38, M2b_54, M3b_93) share the ONE surviving-
+                  observer leg video m_b1159_rig (review/B1159/worker/oracle/ or the
+                  worker evidence dir) and reuse the original m1_rig38/m2_rig54 harness
+                  runs (M3b_93: the new m3_rig93 render) for the willeq side; the
+                  willeq side is a <gate>/measure/<leg>/ run (or LEDGER_EXTRA_MEASURE
+                  dirs, colon-separated) when one exists, else oracle-only.
 
 Video files that the hermes-ext copy of /mnt/projects/fable lacks (text-only
 for B1134/B1143/B1152) are read from the ThinkPad-NFS fetch mirror
@@ -42,7 +46,11 @@ B1130 = "/mnt/projects/fable/review/B1130"
 B1134 = "/mnt/projects/fable/review/B1134"
 B1143 = "/mnt/projects/fable/review/B1143/worker"
 B1152 = "/mnt/projects/fable/review/B1152/worker"
+B1159 = "/mnt/projects/fable/review/B1159/worker"
 MIRROR = os.path.expanduser("~/kb-evidence/kb-b1158-visual-ledger/sources")
+# the B1159 leg's capture lives in the worker's evidence dir (the orchestrator
+# copies it to the NFS review dir at hand-back; both are tried, either wins)
+B1159_LOCAL = os.path.expanduser("~/kb-evidence/kb-b1159-missile-recapture")
 
 SPELL_NAMES = {  # names outside record_table.tsv (quoted from the leg READMEs)
     1628: "Evacuate", 562: "North Portal", 4499: "Defensive Discipline",
@@ -257,9 +265,21 @@ def observer_specs():
     return specs
 
 
+def b1159_b_dirs(spell):
+    """Oracle leg dirs + mirrors for a B1159 b-row (M1b/M2b/M3b): ONE shared
+    leg video m_b1159_rig (the surviving-observer re-capture; the original
+    rows' m1_rig38/m2_rig54 stay the death-on-landing reference)."""
+    base = os.path.join(B1159, "oracle", "m_b1159_rig")
+    loc = os.path.join(B1159_LOCAL, "oracle", "m_b1159_rig")
+    dirs = [d for d in (base, loc) if os.path.isdir(d)]
+    if not dirs:
+        return None
+    return dirs[0], [d for d in (base, loc) if d != dirs[0]]
+
+
 def missile_specs(gate):
     specs = []
-    tsv = os.path.join(B1152, "missile_oracle.tsv")
+    tsv = os.environ.get("LEDGER_MISSILE_TSV") or os.path.join(B1152, "missile_oracle.tsv")
     if not os.path.exists(tsv):
         return specs
     extra_dirs = [d for d in os.environ.get("LEDGER_EXTRA_MEASURE", "").split(":") if d]
@@ -277,25 +297,46 @@ def missile_specs(gate):
             leg = c[0]
             spell = int(leg.split("_", 1)[1])     # M1_38 -> 38, M2_54 -> 54
             name = c[col["spell"]]                # the spell NAME column
-            # the oracle leg dir is named m{n}_rig<spell> (m1_rig38, m2_rig54)
-            obase = os.path.join(B1152, "oracle")
-            odir = None
-            for d in os.listdir(obase):
-                if re.fullmatch(rf"m\d+_rig{spell}", d):
-                    odir = os.path.join(obase, d)
-                    break
-            if odir is None:
-                raise SystemExit(f"B1152 {leg}: no oracle leg dir matching m*_rig{spell}")
+            # oracle leg dir: the original rows are m1_rig38/m2_rig54; the
+            # B1159 b-rows (M1b/M2b/M3b) share ONE leg video, m_b1159_rig
+            if leg.split("_", 1)[0].endswith("b"):
+                pair = b1159_b_dirs(spell)
+                if pair is None:
+                    raise SystemExit(f"B1159 {leg}: no m_b1159_rig oracle leg dir "
+                                     f"(review or {B1159_LOCAL})")
+                odir, omir = pair
+            else:
+                obase = os.path.join(B1152, "oracle")
+                odir = None
+                for d in os.listdir(obase):
+                    if re.fullmatch(rf"m\d+_rig{spell}", d):
+                        odir = os.path.join(obase, d)
+                        break
+                if odir is None:
+                    raise SystemExit(f"B1152 {leg}: no oracle leg dir matching m*_rig{spell}")
+                omir = None
+            if not os.path.exists(os.path.join(odir, "video.calibration.tsv")):
+                raise SystemExit(f"{leg}: {odir} has no video.calibration.tsv")
             t0 = L.read_calibration(odir)["calibrated_t0"]
-            video = L.find_video(os.path.join(odir, "video.mp4"),
-                                 mirror("B1152", os.path.basename(odir)))
+            if omir:
+                video = L.find_video(os.path.join(odir, "video.mp4"), omir)
+            else:
+                video = L.find_video(os.path.join(odir, "video.mp4"),
+                                     mirror("B1152", os.path.basename(odir)))
             bc_v, act_v = float(c[col["bc1_v"]]), float(c[col["act1_v"]])
             if not cast_in_video(video, t0, t0 + bc_v):
                 raise SystemExit(f"B1152 {leg}: measured cast not in the video")
             w = None
+            # the b-rows reuse the ORIGINAL harness runs (the willeq side does
+            # not depend on the observer's survival); M3b_93 is the NEW
+            # m3_rig93 harness render (refactor/B1159/scripts/plans).
+            if leg.split("_", 1)[0].endswith("b"):
+                n = leg.split("_", 1)[0][1]          # M1b -> 1
+                wnames = [f"m{n}_rig{spell}", leg.lower(), leg]
+            else:
+                wnames = [os.path.basename(odir), leg.lower(), leg]
             for base in [os.path.join(gate, "measure")] + extra_dirs:
-                for cand in (os.path.join(base, os.path.basename(odir)),
-                             os.path.join(base, leg.lower()), os.path.join(base, leg)):
+                for cand in (os.path.join(base, w) for w in wnames):
                     if not os.path.isdir(cand):
                         continue
                     if os.path.exists(os.path.join(cand, "video.mkv")):
@@ -310,15 +351,22 @@ def missile_specs(gate):
                         break
                 if w:
                     break
+            is_b = leg.split("_", 1)[0].endswith("b")
             specs.append({
                 "id": leg, "group": "missile",
-                "title": f"missile {leg} | {spell} {name} | rig (rec {c[col['rec']]})",
-                "oracle": {"video": video, "mirrors": mirror("B1152", os.path.basename(odir)),
+                "title": (f"missile {leg} | {spell} {name} | rig (rec {c[col['rec']]})"
+                          + (" | SURVIVING observer (B1159)" if is_b
+                             else " | death-on-landing (level-1 target)")),
+                "oracle": {"video": video,
+                           "mirrors": omir if omir else mirror("B1152", os.path.basename(odir)),
                            "t0": t0, "bc_epoch": t0 + bc_v, "act_epoch": t0 + act_v,
-                           "label": f"B1152 {os.path.basename(odir)} (30 fps)"},
+                           "label": (f"B1159 {os.path.basename(odir)} (30 fps)" if is_b
+                                     else f"B1152 {os.path.basename(odir)} (30 fps)")},
                 "willeq": w,
                 "verdicts": MISSILE_VERDICTS.get(spell, []),
-                "note": MISSILE_NOTES.get(spell, ""),
+                "note": (MISSILE_NOTES.get(spell, "")
+                         + ("  B1159: target survives every cast (pcap: 0 OP_Death, 6 OP_Action)"
+                            if is_b else "")),
             })
     return specs
 
