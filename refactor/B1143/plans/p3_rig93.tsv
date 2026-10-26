@@ -13,7 +13,7 @@
 #
 # FIXES vs the p3_rig93.fix leg (2 OP_BeginCast / 0 OP_Action, nothing measured):
 #  1. `#target <name>` is NOT a GM command on this eqemu build: the server answered
-#     `Command '#target TrollF000' not recognized` (S->C OP_SpecialMesg 14:27:46.355,
+#     `Command '#target TrollF000' not recognized` (S->C OP_SpecialMesg 14:27:46.356,
 #     7001/51876), so the caster never had a target and the client refused all four
 #     /cast 1 locally -- the pcap has NO C->S cast packet at the /cast steps and no
 #     OP_BeginCast/OP_Action/OP_Effect anywhere. The client-side `/target <name>`
@@ -22,7 +22,7 @@
 #     #stun takes a duration and stuns the CURRENT target -- /target first (B1130 r51
 #     lines 26-27), re-stunned before each cast (B1130 r51 lines 31, 39).
 #  3. `#goto -67.6,434.4,3.75,225` (comma form) is not valid: `Player -67.6,434.4,
-#     3.75,225 could not be found.` (14:26:38.496) -- the comma string was parsed as a
+#     3.75,225 could not be found.` (14:26:38.497) -- the comma string was parsed as a
 #     player name, so in that leg the caster never left its pose= position and all
 #     three actors co-located at -74,428. No #goto is needed at all: the header
 #     pose=/observer-pose= directives place both clients (the driver feature,

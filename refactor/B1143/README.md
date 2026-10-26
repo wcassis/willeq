@@ -33,8 +33,10 @@ Pinned by (all cited lines verified at this tip):
 - `tests/test_fx_harness.cpp:230` — `FxHarness.ADisciplineWithoutBeginCastDrawsNothing`:
   4499 Defensive Discipline's record 326 has no Target stage, so the action-only
   (/disc) packets draw nothing on the harness.
-- `tests/test_spell_impact_visual.cpp:190,196,209-210` — the impact probe: 0
-  creates for a no-Target record, 1 create/1 release when a Target stage exists.
+- `tests/test_spell_impact_visual.cpp:190,196,209-210` — the impact probe on
+  kBurstOfFlame (record 51, a record WITH a Target stage): 0 creates without an
+  `OP_BeginCast` (action-only, `ActionOnlyLocalCastCreatesNoSourceGlow`), 1
+  create/1 release with a BeginCast (`BeginCastThenActionCreatesOneSourceGlow`).
 
 A regression that re-enables the Target impact for a no-Target record is a red test.
 **Item 1 is complete.**
@@ -46,7 +48,7 @@ A regression that re-enables the Target impact for a no-Target record is a red t
 `oracle/p3_rig93.fix/capture.pcap`: **25 953 packets**, connections caster
 `7001/51876`, observer `7001/51542`; **zero C->S `OP_CastSpell`**.
 
-The two `S->C OP_BeginCast` in the leg (1792938324.405/.421 Z) decode to
+The two `S->C OP_BeginCast` in the leg (1792938324.406/.421 Z) decode to
 **source 87, spell 11, cast_ms 2000** — zone-in residue the world started with
 (the same pair appears in every leg, including the 18:30 leg at 1792953598.057),
 142 s before the first target attempt; the caster client sent nothing that
@@ -62,7 +64,7 @@ locally:
   `Command '#target Oraclewatch' not recognized.`
 - Two more silent failures that would have broken the measurement even with a
   working target:
-  - 1792938394.290 Z `Usage: #stun [Duration]` — `#stun` takes a duration only
+  - 1792938394.291 Z `Usage: #stun [Duration]` — `#stun` takes a duration only
     and stuns the **current target** (which did not exist), so TrollF was never
     stunned.
   - 1792938398.497 Z `Player -67.6,434.4,3.75,225 could not be found.` — the
@@ -84,7 +86,7 @@ the TrollF spot -74,428,3.75 h160, observer at B1130 r51's caster pose
 
 `oracle/p3_rig93/capture.pcap`: **30 681 packets**:
 
-- 1792953671.819 Z `New NPC spawned! Name | TrollF000`; 1792953685.637 Z
+- 1792953671.819 Z `New NPC spawned! Name | TrollF000`; 1792953685.638 Z
   `You stunned TrollF (262) for 2 Minutes.` (the stun worked this time).
 - 4 x C->S `OP_CastSpell` slot 0 at 1792953765.863 / 1792953802.855 /
   1792953870.473 / 1792953904.515 Z.
@@ -180,10 +182,14 @@ class 4, leg `p3_disc325` 2026-10-25 22:08Z, 36 473 packets) RAN. The REAL
 client path — `/disc Leechcurse Discipline` / `/disc Reaper Strike` /
 `/disc Lich Sting` (driver steps 25/34/43_command) — produced **zero**
 `C->S OP_CastSpell`: each step's own opcode file
-(`oracle/p3_disc325/25|34|43_command.opcodes.tsv`) carries only keepalive
-traffic (OP_ClientUpdate / OP_FloatListThing), and the next S->C chat line
-after each /disc is the `#resetdisc_timer all` echo ("Reset all Discipline
-timers for yourself.", 1792965723.746 / 1792965774.276 / 1792965824.828) —
+(`oracle/p3_disc325/25|34|43_command.opcodes.tsv`) carries only the server's
+state traffic, none of it a cast packet: step 25 = {0x14cb OP_ClientUpdate,
+0x6a1b OP_FloatListThing, 0x700d OP_MoveDoor}; step 34 = {0x14cb, 0x6a1b,
+0x3bcf OP_HPUpdate, 0x4839 OP_ManaChange}; step 43 = {0x14cb, 0x6a1b, 0x700d}.
+The next S->C chat line after each /disc is the `#nukebuffs` echo ("Faded all
+buffs for TrollF (262).", 1792965720.063 / 1792965770.357 / 1792965820.881),
+then the `#resetdisc_timer all` echo ("Reset all Discipline timers for
+yourself.", 1792965723.746 / 1792965774.276 / 1792965824.828) —
 no cast, no rejection, no error line anywhere in the pcap. The disciplines
 WERE trained in-world (`#level 60` + `#traindisc 60` = "You have learned 5
 new disciplines!" at 1792965609.812), but the Ti client swallowed `/disc`
@@ -262,7 +268,7 @@ did **not** land a Fear:
   report's step names diverge on this plan (the item-3 plan of the same shape
   reported clean), so the step table did not close. This is a
   driver/report step-naming issue on the `/doability` + `alt+c` plan, separate
-  from the no-IntillDoubt finding.
+  from the no-InstillDoubt finding.
 
 So item 4's Fear landing + no-Source check is **not yet measured**; see the
 FOLLOW-UP for the corrected next steps.
@@ -295,13 +301,19 @@ confirmed in the live leg. The one open thread on item 3 is the CLIENT path:
 
 0. **Make `/disc` itself fire (class ownership).** The Ti client's `/disc`
    fired in B1134 P4 (class 1 = WAR, `#level 60` + `#traindisc 60`,
-   `review/B1134/plans/p4_discs.tsv` — its own class's disciplines 4499/4498/
-   4670/4721 sent `OP_CastSpell`), but in this leg (class 4) it sent ZERO
+   `review/B1134/plans/p4_discs.tsv` sends its own class's four /disc 4499/
+   4498/4670/4721, of which ONLY the first, 4499, sent `OP_CastSpell` — the
+   P4 pcap holds exactly one C->S OP_CastSpell, 1792785667.296; the other
+   three were refused by the client's own reuse timer, "You can use the
+   ability Aggressive Discipline again in 9 minute(s) 59 seconds", no packet,
+   per review/B1134/README.md "Record 51: disciplines"), but in this leg
+   (class 4) it sent ZERO
    packets for the record-325 disciplines despite `#traindisc 60` training
    them: the client gates `/disc` on the caster's class owning the
    discipline in the client's own data (the record-325 class-level variant
-   rows 8604/8617/8642 carry Shadow Knight level 60, `eq/spells_us.txt`
-   fields 105..120). The next leg: set the caster to the class the Ti client
+   rows 8604/8617/8642 carry level 60 at `eq/spells_us.txt` field 108 and
+   class 13 = Shadow Knight at field 121, 0-based ^-split; the base rows
+   4504/6236/6268 carry the 13 at field 121 with no level). The next leg: set the caster to the class the Ti client
    associates with record 325 (verify the class id and, if needed, the
    Combat Abilities window state first), keep the B1134 P4 recipe, and run
    `/disc <name>` instead of `#castspell`. Until it lands, the gate
