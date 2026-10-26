@@ -300,21 +300,9 @@ void SpellVisualFX::createGlowNode(SpellFXInstance& effect)
     }
 }
 
-void SpellVisualFX::createProjectileNode(SpellFXInstance& effect)
-{
-    if (!m_smgr) return;
-
-    // Create a billboard for the projectile
-    effect.billboard = m_smgr->addBillboardSceneNode(nullptr,
-        irr::core::dimension2df(5.0f, 5.0f),
-        effect.source_pos);
-
-    if (effect.billboard) {
-        effect.billboard->setColor(effect.color);
-        effect.billboard->setMaterialFlag(irr::video::EMF_LIGHTING, false);
-        effect.billboard->setMaterialType(irr::video::EMT_TRANSPARENT_ADD_COLOR);
-    }
-}
+// B1152 (#472): createProjectileNode() is REMOVED with createProjectile() --
+// the missile flies through the particle manager (SpellAttach::PROJECTILE_PATH),
+// not a billboard scene node.
 
 void SpellVisualFX::createImpactNode(SpellFXInstance& effect)
 {
@@ -367,39 +355,9 @@ void SpellVisualFX::createImpactNode(SpellFXInstance& effect)
 // Update Functions
 // ============================================================================
 
-void SpellVisualFX::updateProjectile(SpellFXInstance& effect, float delta_time,
-                                      std::vector<std::pair<uint16_t, uint32_t>>& pendingImpacts)
-{
-    if (!effect.billboard) return;
-
-    // Get current and target positions
-    irr::core::vector3df current = effect.billboard->getPosition();
-
-    // Update target position if tracking an entity
-    if (effect.target_entity != 0 && m_entity_pos_callback) {
-        m_entity_pos_callback(effect.target_entity, effect.target_pos);
-    }
-
-    irr::core::vector3df direction = effect.target_pos - current;
-    float distance = direction.getLength();
-
-    if (distance < 3.0f) {
-        // Reached target - queue impact creation and remove projectile
-        // Don't create impact directly to avoid vector invalidation
-        pendingImpacts.emplace_back(effect.target_entity, effect.spell_id);
-        effect.active = false;
-        return;
-    }
-
-    // Move toward target
-    direction.normalize();
-    float move_distance = PROJECTILE_SPEED * delta_time;
-    if (move_distance > distance) {
-        move_distance = distance;
-    }
-
-    effect.billboard->setPosition(current + direction * move_distance);
-}
+// B1152 (#472): updateProjectile() is REMOVED with createProjectile() -- the
+// missile's per-tick advance is the particle manager's PROJECTILE_PATH lerp
+// plus the missile actor's schedule (SpellVisualFX::updateMissiles).
 
 void SpellVisualFX::updateGlow(SpellFXInstance& effect, float delta_time)
 {
@@ -478,9 +436,7 @@ void SpellVisualFX::applyWorkerResults(const EQT::Graphics::SimulationOutput& re
             case SpellFXType::CastGlow:
                 createGlowNode(effect);
                 break;
-            case SpellFXType::ProjectileTravel:
-                createProjectileNode(effect);
-                break;
+            // B1152: ProjectileTravel's node path is gone (createProjectileNode removed).
             default:
                 break;
         }

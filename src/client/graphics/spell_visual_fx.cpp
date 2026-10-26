@@ -439,12 +439,16 @@ void SpellVisualFX::update(float delta_time)
         }
     }
 
+    // B1152 (#472): advance the missile actor. Its launches and arrivals are
+    // FX-layer scheduling (m_fx_time), so they run in BOTH worker-driven and
+    // direct modes; only the Middle emitter's travel is the particle manager's.
+    m_fx_time += delta_time;
+#ifdef EQT_HAS_GLES2
+    updateMissiles(delta_time);
+#endif
+
     // Worker-driven path: update math runs on SimulationWorker thread
     if (m_worker_driven) return;
-
-    // Collect pending impacts to create after the update loop
-    // (to avoid vector invalidation when createImpact adds to m_effects)
-    std::vector<std::pair<uint16_t, uint32_t>> pendingImpacts;
 
     // Update each effect and remove expired ones
     for (size_t i = 0; i < m_effects.size(); ) {
@@ -463,11 +467,9 @@ void SpellVisualFX::update(float delta_time)
             continue;
         }
 
-        // Type-specific updates
+        // Type-specific updates (B1152: ProjectileTravel's node path is gone;
+        // the missile flies through the particle manager, not a scene node).
         switch (effect.type) {
-            case SpellFXType::ProjectileTravel:
-                updateProjectile(effect, delta_time, pendingImpacts);
-                break;
             case SpellFXType::CastGlow:
                 updateGlow(effect, delta_time);
                 break;
@@ -509,7 +511,7 @@ int32_t SpellVisualFX::castAnimationMs(uint16_t caster_id, int castAnim) const
 }
 
 uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, uint32_t duration_ms,
-                                      int casterLevel, int castAnim)
+                                      int casterLevel, int castAnim, uint16_t targetId)
 {
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
@@ -553,6 +555,36 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         const float durSec = duration_ms / 1000.0f;
         const float cap = durSec + cfg.sourceRecord(record).maxHold();
         const float A = cfg.sourceScale().anchorAboveFeet;
+        // B1152 (#472): the missile actor (eqgame FUN_00476b12,
+        // refactor/B1152/TRACE.md sec. 2-5). A spell whose spellsnew.eff record
+        // has a Middle stage drawn at the caster's level gets a missile, on its
+        // first live tick (this call): it launches at the caster's cast-animation
+        // end (castAnimationMs; the cast time when that does not resolve), flies
+        // caster -> targetId, and fires the record's Target stage on arrival
+        // (update() -> fireMissileLanding). NO Middle stage = NO missile (spells
+        // 54/859: the Target stage fires at removal in createLanding, as before),
+        // and a caster with no target (targetId == 0) has no destination.
+        {
+            const StageSlots middle = stageSlots(spell_id, kSpellsNewEffMiddle, casterLevel);
+            if (targetId != 0 && middle.fromFile && !middle.drawn.empty()) {
+                const int32_t launchMs = castAnimationMs(caster_id, castAnim);
+                Missile m;
+                m.spellId = spell_id;
+                m.casterId = caster_id;
+                m.targetId = targetId;
+                m.gateLevel = casterLevel;
+                // The cast-animation end, or the cast end when it does not resolve.
+                m.launchAt = m_fx_time + (launchMs >= 0 ? launchMs : static_cast<int32_t>(duration_ms)) / 1000.0;
+                // A fresh cast: this spell+caster's landing is the missile's, not
+                // createLanding's (clears a previous cast's "already landed" mark).
+                m_missileLanded.erase({spell_id, caster_id});
+                m_missiles.push_back(m);
+                LOG_INFO(MOD_SPELL, "B1152 missile: caster={} spell={} record={} -> target={} "
+                         "launch@+{:.3f}s (castAnim track {} ms)",
+                         caster_id, spell_id, record, targetId,
+                         (launchMs >= 0 ? launchMs : static_cast<int32_t>(duration_ms)) / 1000.0, launchMs);
+            }
+        }
         // T441 (board B398): the Source draws its resolved stage's own sprites
         // (and so its own colour); applyStageSpriteNames() drops the tint.
         const std::vector<std::string> stageNames =
@@ -748,98 +780,12 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
     return m_next_effect_id++;
 }
 
-void SpellVisualFX::createProjectile(uint16_t caster_id, uint16_t target_id, uint32_t spell_id)
-{
-#ifdef EQT_HAS_GLES2
-    if (m_particle_manager) {
-        // T72: spells.eff's middle/travel emitter maps onto ProjectileTravel.
-        // Same fallback-preserving rule as createCastGlow: only a Resolved
-        // record with a provably-absent Middle stage suppresses this.
-        SpellVisualResolution visual = resolveVisual(spell_id);
-        if (!visual.isFallback() && !visual.hasTravelStage()) {
-            LOG_DEBUG(MOD_SPELL, "T72: spell {} spells.eff record {} has no Middle-stage content "
-                                  "— suppressing projectile travel (data-driven, not a bug)",
-                      spell_id, visual.spell_affect_index);
-            return;
-        }
-
-        auto scolor = getSpellColor(spell_id);
-        glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
-                     scolor.getBlue() / 255.0f, 1.0f);
-        auto def = EQT::Graphics::Environment::SpellPresets::Projectile(c, spell_id);
-        // T441 (board B398): the travel trail draws the Middle stage's own
-        // sprites, and therefore its own colour. Same rule as the Source and
-        // Target stages.
-        if (visual.hasTravelStage()) {
-            EQT::Graphics::Environment::SpellPresets::applyStageSpriteNames(
-                def,
-                std::vector<std::string>(visual.middle_stage.sprite_names.begin(),
-                                         visual.middle_stage.sprite_names.end()),
-                spell_id);
-        }
-        applyStageEddColours(def, visual, 1);  // B1146
-
-        // Compute travel duration from distance
-        irr::core::vector3df srcPos, tgtPos;
-        if (m_entity_pos_callback) {
-            m_entity_pos_callback(caster_id, srcPos);
-            m_entity_pos_callback(target_id, tgtPos);
-        }
-        float dist = (tgtPos - srcPos).getLength();
-        float travelDuration = std::max(0.1f, dist / PROJECTILE_SPEED);
-
-        // Set trail emitter lifetime to match travel duration
-        if (!def.emitters.empty()) {
-            def.emitters[0].config.emitterLifetime = travelDuration;
-        }
-
-        m_particle_manager->createSpellEffect(
-            def, caster_id, target_id, travelDuration + 1.0f,
-            false, travelDuration);
-        return;
-    }
-#endif
-    if (m_worker_driven) {
-        auto color = getSpellColor(spell_id);
-        uint32_t eid = m_next_effect_id++;
-        EQT::Graphics::SpellVFXCommandData cmd;
-        cmd.type = EQT::Graphics::SpellVFXCommand::CreateEffect;
-        cmd.effectId = eid;
-        cmd.fxType = static_cast<uint8_t>(SpellFXType::ProjectileTravel);
-        cmd.spellId = spell_id;
-        cmd.sourceEntity = caster_id;
-        cmd.targetEntity = target_id;
-        cmd.lifetime = DEFAULT_PROJECTILE_DURATION;
-        cmd.colorA = color.getAlpha();
-        cmd.colorR = color.getRed();
-        cmd.colorG = color.getGreen();
-        cmd.colorB = color.getBlue();
-        // Positions resolved by worker from entity data
-        m_pending_commands.push_back(cmd);
-        return;
-    }
-
-    SpellFXInstance effect;
-    effect.type = SpellFXType::ProjectileTravel;
-    effect.spell_id = spell_id;
-    effect.source_entity = caster_id;
-    effect.target_entity = target_id;
-    effect.color = getSpellColor(spell_id);
-    effect.lifetime = DEFAULT_PROJECTILE_DURATION;
-    effect.active = true;
-
-    // Get positions
-    if (m_entity_pos_callback) {
-        m_entity_pos_callback(caster_id, effect.source_pos);
-        m_entity_pos_callback(target_id, effect.target_pos);
-    }
-
-    createProjectileNode(effect);
-    m_effects.push_back(effect);
-
-    LOG_TRACE(MOD_SPELL, "Created projectile from {} to {} spell {}",
-              caster_id, target_id, spell_id);
-}
+// B1152 (#472): createProjectile() is REMOVED. The legacy spell-visual
+// projectile (PROJECTILE_SPEED node / the T72 Middle-suppression gate) is
+// replaced by the missile actor: the spell's Middle-stage emitter flies
+// caster -> target through the particle manager (launchMissile) and the
+// record's Target stage fires on arrival (fireMissileLanding). See the
+// Missile struct in the header and update() -> updateMissiles().
 
 void SpellVisualFX::createImpact(uint16_t target_id, uint32_t spell_id)
 {
@@ -899,6 +845,18 @@ uint16_t SpellVisualFX::createLanding(uint16_t caster_id, uint16_t target_id, ui
 {
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
+        // B1152 (#472): a missile spell's landing fires on ARRIVAL, not on
+        // OP_Action. If this spell+caster still has a missile pending or in
+        // flight, defer: the missile's fireMissileLanding() draws the Target
+        // stage when it reaches the target (the oracle: 38's arrival burst is
+        // at Act+0.116, after this OP_Action at Act). A missile that already
+        // fired (m_missileLanded) is skipped too, so the landing draws once.
+        if (missileInFlight(spell_id, caster_id) ||
+            m_missileLanded.count({spell_id, caster_id})) {
+            LOG_INFO(MOD_SPELL, "createLanding: caster={} spell={}: deferring to the in-flight missile "
+                     "(arrival fires the Target stage)", caster_id, spell_id);
+            return 0;
+        }
         namespace Presets = EQT::Graphics::Environment::SpellPresets;
         using Cfg = EQT::Graphics::Environment::SpellEffectsConfig;
         using Anchor = Cfg::TargetAnchor;
@@ -995,7 +953,13 @@ uint16_t SpellVisualFX::createLandingFromSlots(uint16_t caster_id, uint16_t targ
     std::vector<Pending> pending;
     for (const auto& d : slots.drawn) {
         const auto anchor = d.slot.anchorKind();
-        if (anchor == SpellsNewEffAnchor::Missile) continue;  // fable has no missile (B1128/B1147)
+        // B1152 (#472): the missile exists now. A Target slot anchored to the
+        // missile (anchor 2) plays at the missile's arrival point -- the
+        // target, since the missile flies caster -> target (eqgame sec. 5:
+        // arrival classes place it at the target entity). It resolves through
+        // the same `entity` line as the Target anchor below (target, or the
+        // caster when there is no target). (Was a hard skip: "fable has no
+        // missile", B1128/B1147.)
         const uint16_t entity =
             (anchor == SpellsNewEffAnchor::Caster || target_id == 0) ? caster_id : target_id;
         uint16_t follow = (ownShape || anchor == SpellsNewEffAnchor::World)
@@ -1146,5 +1110,135 @@ void SpellVisualFX::createSpellComplete(uint16_t caster_id, uint32_t spell_id)
 
     LOG_TRACE(MOD_SPELL, "Created spell complete effect for entity {} spell {}", caster_id, spell_id);
 }
+
+#ifdef EQT_HAS_GLES2
+// ============================================================================
+// B1152 (#472): the missile actor (eqgame FUN_00476b12, refactor/B1152/
+// TRACE.md sec. 2-6)
+// ============================================================================
+
+const SpellVisualFX::Missile* SpellVisualFX::missileFor(uint32_t spell_id, uint16_t caster_id) const
+{
+    for (const auto& m : m_missiles)
+        if (m.spellId == spell_id && m.casterId == caster_id) return &m;
+    return nullptr;
+}
+
+bool SpellVisualFX::missileInFlight(uint32_t spell_id, uint16_t caster_id) const
+{
+    return missileFor(spell_id, caster_id) != nullptr;
+}
+
+void SpellVisualFX::updateMissiles(float delta_time)
+{
+    // The schedule is measured against m_fx_time (advanced by update() just
+    // before this), so delta_time is only here for the signature.
+    (void)delta_time;
+    if (!m_particle_manager || m_missiles.empty()) return;
+    for (size_t i = 0; i < m_missiles.size();) {
+        auto& m = m_missiles[i];
+        if (!m.launched && m_fx_time >= m.launchAt) {
+            launchMissile(m);  // sets m.launched (and, if there is no
+            // destination, m.arrived too so it is removed below)
+        }
+        if (m.launched && !m.arrived && m_fx_time >= m.arriveAt) {
+            fireMissileLanding(m);  // sets m.arrived
+        }
+        if (m.arrived) {
+            m_missiles.erase(m_missiles.begin() + static_cast<long>(i));
+            continue;
+        }
+        ++i;
+    }
+}
+
+void SpellVisualFX::launchMissile(Missile& m)
+{
+    namespace Presets = EQT::Graphics::Environment::SpellPresets;
+    using E = EQT::Graphics::Environment;
+    // The flight's end point: the target (eqgame FUN_0047bf6c, sec. 3).
+    glm::vec3 start(0.0f), end(0.0f);
+    const bool hasStart = m_particle_manager->resolveEntityPosition(m.casterId, start);
+    (void)hasStart;
+    if (!m_particle_manager->resolveEntityPosition(m.targetId, end)) {
+        // No destination resolvable (the target despawned): the missile cannot
+        // fly. Mark it landed so createLanding takes the Target stage over on
+        // OP_Action (the 54/859 at-removal rule) rather than drawing nothing.
+        m.launched = true;
+        m.arrived = true;
+        m_missileLanded.insert({m.spellId, m.casterId});
+        LOG_INFO(MOD_SPELL, "B1152 missile: caster={} spell={}: target unresolvable, no flight",
+                 m.casterId, m.spellId);
+        return;
+    }
+    const float dist = (hasStart ? (end - start).length() : 0.0f);
+    // sec. 3: the flight time is the distance over the spell's speed. eqgame's
+    // speed is 0.02 x the in-memory "run" value (not in the raw files); fable
+    // uses one calibrated speed (kMissileSpeed) -- record 80's oracle: 9.05
+    // units in 0.60 s = 15.1 u/s. A per-record speed is B1153's.
+    m.flightTime = std::max(0.1f, dist / kMissileSpeed);
+    m.arriveAt = m_fx_time + m.flightTime;
+
+    // The Middle stage's emitter(s) -- one per drawn slot -- ride the moving
+    // missile (SpellAttach::PROJECTILE_PATH: the particle manager lerps each
+    // emitter caster -> target over the flight, sim_particles.cpp). Each slot
+    // keeps its own texture, colour (applySlotEddColours) and timing (the
+    // emitter's run, as the Target stage does with caller duration 0).
+    auto scolor = getSpellColor(m.spellId);
+    const glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
+                      scolor.getBlue() / 255.0f, 1.0f);
+    const int record = sourceRecordOf(m.spellId);
+    const StageSlots slots = stageSlots(m.spellId, kSpellsNewEffMiddle, m.gateLevel);
+    int made = 0;
+    for (const auto& d : slots.drawn) {
+        if (d.slot.anchorKind() != SpellsNewEffAnchor::Missile) continue;  // the Middle
+        // stage is the missile itself: only its Missile-anchored slots fly.
+        auto def = Presets::SourceForSpell(c, m.spellId, record, false, 0.0f, 1.0f);
+        def.name = "MissileMiddle";
+        if (!d.texture.empty()) {
+            Presets::applyStageSpriteNames(def, {d.texture}, m.spellId);
+            applySlotEddColours(def, {d.slot.emitter});  // B1146
+        }
+        // PROJECTILE_PATH: the emitter travels caster -> target over the flight.
+        if (!def.emitters.empty()) def.emitters[0].attach = E::SpellAttach::PROJECTILE_PATH;
+        float slotCap = m.flightTime + 0.5f;
+        SpellFxSlotTiming timing;
+        if (slotTiming(d.slot.emitter,
+                       SpellFxCallerDurationMs(SpellFxStage::Middle, 0, 0), timing)) {
+            Presets::applySlotEmitter(
+                {&def}, timing, m_spells_new_eff.edd().sprite(d.slot.emitter),
+                0.0f,  // the Middle plays from the launch, no stage latency
+                kSpellFxAttachScale,
+                m_spells_new_eff.edd().shape(d.slot.emitter),  // B1150
+                m_spells_new_eff.edd().motion(d.slot.emitter));  // B1151
+            slotCap = std::max(slotCap, timing.end() + 0.1f);
+        }
+        m_particle_manager->createSpellEffect(def, m.casterId, m.targetId, slotCap, false,
+                                              m.flightTime);
+        ++made;
+    }
+    m.launched = true;
+    LOG_INFO(MOD_SPELL, "B1152 missile launch: caster={} spell={} target={} dist={:.2f} "
+             "flight={:.3f}s slots={} arrive@+{:.3f}s",
+             m.casterId, m.spellId, m.targetId, dist, m.flightTime, made, m.arriveAt);
+}
+
+void SpellVisualFX::fireMissileLanding(Missile& m)
+{
+    // ARRIVAL = the record's Target stage (eqgame FUN_0049b260(stage=2) in the
+    // tick loop, sec. 5) -- not a hit-test, not the damage packet. Reuse the
+    // spellsnew.eff Target-slot landing; the Missile-anchored slots resolve to
+    // the arrival point (the target) there.
+    const int record = sourceRecordOf(m.spellId);
+    const StageSlots slots = stageSlots(m.spellId, kSpellsNewEffTarget, m.gateLevel);
+    if (slots.fromFile) {
+        createLandingFromSlots(m.casterId, m.targetId, m.spellId, record, slots);
+    }
+    m.arrived = true;
+    m_missileLanded.insert({m.spellId, m.casterId});
+    LOG_INFO(MOD_SPELL, "B1152 missile arrival: caster={} spell={} target={} -> Target stage fired",
+             m.casterId, m.spellId, m.targetId);
+}
+#endif
 
 } // namespace EQ

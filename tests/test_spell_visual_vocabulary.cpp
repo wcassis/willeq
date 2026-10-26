@@ -290,46 +290,50 @@ TEST_F(SpellVisualVocabularyTest, ASpellWithAnAffectIndexReachesResolved) {
 }
 
 #ifdef EQT_HAS_GLES2
-// The three T72 stage-suppression gates live inside the ParticleManager
-// branch of createCastGlow()/createProjectile()/createImpact() and all read
-// `!visual.isFallback() && !visual.hasXStage()`. With B160 in place none of
-// them could ever be true. Measured against the shipped data, only the
-// TRAVEL gate has a non-empty population (6,250 of the 7,105 resolving
-// spells reference a record with no Middle stage; every referenced record
-// has a Source and a Target stage) -- see this unit's Review and board B165.
-//
-// Observed without a GL context: the gate returns BEFORE the entity-position
-// callback is consulted, so the callback is the branch witness.
-TEST_F(SpellVisualVocabularyTest, TravelStageGateFiresForARecordWithNoMiddleStage) {
+// B1152 (#472): createProjectile() is gone, so its old witness (the travel-stage
+// gate returning before the position callback) is replaced by the missile
+// actor's own qualification rule: a spell whose spellsnew.eff record has a
+// Middle stage drawn at the caster's level spawns a missile in createCastGlow,
+// and only when the caster has a target to fly to (targetId != 0). Summon
+// Corpse's record 83 has no Middle stage; Burst of Flame's record 80 has one.
+TEST_F(SpellVisualVocabularyTest, AMiddleStageRecordSpawnsAMissile) {
     if (!std::filesystem::exists(eqClientPath() + "/spells.eff")) {
         GTEST_SKIP() << "spells.eff not present under " << eqClientPath();
     }
     EQT::Graphics::Environment::ParticleManager pm(device_->getSceneManager(),
                                                    device_->getVideoDriver());
     fx_->setParticleManager(&pm);
-
-    int positionLookups = 0;
     fx_->setEntityPositionCallback(
-        [&positionLookups](uint16_t, irr::core::vector3df& out) -> bool {
-            ++positionLookups;
+        [](uint16_t, irr::core::vector3df& out) -> bool {
             out = irr::core::vector3df(0.0f, 0.0f, 0.0f);
             return true;
         });
 
     // B1127: the stages are field 145's (spellsnew.eff). Summon Corpse's
-    // record 83 has no Middle emitter; Burst of Flame's record 80 has one
-    // (Ignite Blood's record 89 has none, so it no longer serves here).
+    // record 83 has no Middle emitter; Burst of Flame's record 80 has one.
     castThroughTheBridge(kSummonCorpse);
     castThroughTheBridge(kBurstOfFlame);
     ASSERT_EQ(fx_->resolveVisual(kSummonCorpse).source, SpellVisualSource::Resolved);
     ASSERT_FALSE(fx_->resolveVisual(kSummonCorpse).hasTravelStage());
     ASSERT_TRUE(fx_->resolveVisual(kBurstOfFlame).hasTravelStage());
 
-    fx_->createProjectile(1, 2, kSummonCorpse);
-    EXPECT_EQ(positionLookups, 0) << "the travel-stage gate did not suppress";
+    ASSERT_EQ(fx_->missileCount(), 0u);
 
-    fx_->createProjectile(1, 2, kBurstOfFlame);
-    EXPECT_GT(positionLookups, 0) << "a record WITH a Middle stage must not be gated";
+    // A record WITH a Middle stage, given a target: a missile spawns.
+    fx_->createCastGlow(1, kBurstOfFlame, 1000, 60, 0, /*targetId=*/2);
+    EXPECT_EQ(fx_->missileCount(), 1u)
+        << "a record WITH a Middle stage must spawn a missile";
+
+    // A record with NO Middle stage: no missile, even with a target.
+    fx_->createCastGlow(1, kSummonCorpse, 1000, 60, 0, /*targetId=*/2);
+    EXPECT_EQ(fx_->missileCount(), 1u)
+        << "a record with NO Middle stage must not spawn a missile";
+
+    // A Middle-stage spell with no target (targetId == 0): no destination,
+    // so no missile.
+    fx_->createCastGlow(1, kBurstOfFlame, 1000, 60, 0, /*targetId=*/0);
+    EXPECT_EQ(fx_->missileCount(), 1u)
+        << "a Middle-stage spell with no target must not spawn a missile";
 
     fx_->setParticleManager(nullptr);
 }
