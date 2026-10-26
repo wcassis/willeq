@@ -1,0 +1,17 @@
+{
+ "video": "/tmp/b1152-frames/b1152_r43_720.measure/video.mkv",
+ "offset": 0.0,
+ "t_begincast": 1.5,
+ "t_action": 4.5,
+ "t_end": 14.5,
+ "crop": [
+  170,
+  0,
+  1060,
+  650
+ ],
+ "threshold": 45,
+ "n_frames": 426,
+ "baseline_frames": 30,
+ "label": "fable720"
+}

@@ -1,0 +1,2 @@
+/tmp/b1152-frames/b1152_r30_231.measure/fable_231 SOURCE ROI pooled 53 frames: p90 0.052 median 0.030 blobs 2395
+/tmp/b1152-frames/b1152_r30_231.measure/fable_231 LANDING ROI pooled 19 frames: p90 0.105 median 0.010 blobs 2365
