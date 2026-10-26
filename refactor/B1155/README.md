@@ -8,7 +8,12 @@ the sim, the reader or `spell_visual_fx.cpp` (B1150 owns them).
 ## Why the new presets
 
 `review/B1149/scripts/run_sweep.sh` measured the harness on `--camera b1118` (the lane
-TOUR framing: the target at the caster, a 235 px model) and could only report
+TOUR framing: the target at the caster. The b1118 preset STATES a 235 px model
+(`model_viewer_fx_harness.cpp:93-99`, the original B1118 framing), but the sweep's
+per-record runner `review/B1149/scripts/run_scene.sh` passes no `--caster-px`, so the
+runs rendered the harness default of 228 px -- `model_viewer_fx_harness.cpp:517-520`,
+and e.g. `review/B1149/runs/sw_r16_242/run.log` prints "rendered caster rows 378..605
+(228 px, feet row 605)") and could only report
 harness/oracle RATIOS against B1130's oracle, because B1130 captured every record with
 its OWN fixed geometry: the NPC ~1.4 caster heights to the caster's right (`fixed_npc`)
 or the caster alone (`fixed_self`), the caster 209 px, the NPC 325 px. The same spell
@@ -86,10 +91,23 @@ The target's FEET (row 652, column 940) are the solved FX reference and hold to
 The fit frame is the model's REST POSE, which the FABLE client renders as a
 collapsed 50 px strip (head top to feet) at the solved feet (row 652, column
 940); the ctest pins that 50 px rest pose and the feet to 1 px. In the running
-frames the same human stands at ~317 px (measured from the same frames the sweep
-measures: feet row ~782, column ~953, `measure_b1155_target.py` over the
-`solve_r1` frames) -- within ~3 % of the oracle's 325 px, so the standing height
-of the shared human model agrees. The 50 px is only the rest pose the solver fits on; the running-frame standing
+frames the same human stands at 315-316 px (head top 466-467 -> feet 782, column
+centroid 952.7) -- within ~3 % of the oracle's 325 px, so the standing height
+of the shared human model agrees. Measured by
+`refactor/B1155/scripts/measure_b1155_target.py` over the `solve_r1` frames, the
+same frames the sweep measures (default frames 10-90 and 179; the target's dark
+run in the window columns 850-1080, threshold 60, B1130's feet-minus-head
+convention -- its caster 209 px is feet 598 minus head top 389):
+
+```
+$ python3 refactor/B1155/scripts/measure_b1155_target.py /home/user/kb-evidence/kb-b1155-b1130-camera/solve_r1
+frame  10: head top 467 -> feet 782 = 315 px, column centroid 952.7
+...   # 82 lines total, one per frame
+frame 179: head top 466 -> feet 782 = 316 px, column centroid 952.7
+range over 82 frames: head top 466-467, feet 782-782, height 315-316 px, column centroid 952.7-952.7
+```
+
+The 50 px is only the rest pose the solver fits on; the running-frame standing
 figure sits at a slightly different feet row than the rest-pose bottom because the
 standing pose extends lower (the re-run's landing columns below are the arbiter of
 the measurement box's coverage). This is a model-rest-pose detail of the FABLE
@@ -225,7 +243,7 @@ oracle, per cell. This does NOT edit B1149's README.
 - The b1130 target is the level-1 human male the oracle rendered (race 1, the
   card's withdrawn race-9 guess). The solver fits the model's REST POSE (50 px,
   feet row 652 / column 940); in the running frames the same human stands at
-  ~317 px -- within ~3 % of the oracle's 325 px -- but with its feet at row ~782,
+  315-316 px -- within ~3 % of the oracle's 325 px -- but with its feet at row 782,
   not 652, because the rest pose's bottom is not the standing pose's feet, so the
   fit places the standing figure slightly nearer the camera. A future unit that
   wants the target's OWN standing box at the oracle's still (feet 652, 325 px)
@@ -233,5 +251,6 @@ oracle, per cell. This does NOT edit B1149's README.
   measurement is unaffected (measured in the crop, in caster heights; the re-run
   landing columns are the arbiter).
 - The per-miss owner mechanism (B1150 shapes / B1151 frames-scale-modes / B1152
-  missile-Middle / B1153 retire / unattributed) is assigned per missed cell in the
-  banded table above.
+  missile-Middle / B1153 retire / unattributed) is assigned per column in the
+  **Owner mechanism per miss.** paragraph above -- the banded table itself carries
+  no owner column (oracle/harness/verdict per cell only).
