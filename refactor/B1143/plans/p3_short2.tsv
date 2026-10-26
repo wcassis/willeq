@@ -1,0 +1,59 @@
+# B1143 short verification leg: the fixed p3_rig93 plan end-to-end minus the
+# player-cast phase (2 casts on TrollF000 only). Proves the committed plan
+# completes (rc=0, no uncaptured step -- the 18:30 leg died on the /q row) and
+# that the fixed /q + 4-column wait rows parse in the live driver.
+# The full 4-cast measurement evidence is the 18:30 leg (oracle/p3_rig93/),
+# whose plan differed only in the rows this commit fixes.
+# action	target	hold_ms	still_name
+# fps=30
+# caster-video=1
+# observer=Oraclewatch
+# pose=-74,428,3.75,160
+# observer-pose=-67.6,434.4,3.75,160
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#corpse deletenpccorpses	0	corpse_clear_npc
+wait	1500	0	corpse_clear_settle
+command	#reload rules global	0	rules
+command	#level 60	0	lvl
+command	#mana	0	mana
+command	/target TrollF000	0	leftover_check
+wait	2000	0	leftover_check_settle
+command	#kill	0	kill_leftover
+wait	2000	0	kill_leftover_settle
+command	#spawn TrollF 1 1 0 30000	0	spawn
+wait	3000	0	spawn_settle
+command	/target TrollF000	0	tgt_npc0
+command	#stun 120000	0	stun0
+press	F9	0	cam1
+press	F9	0	cam2
+press	F9	0	cam3
+obs	press	F9	0	obs_cam1
+obs	press	F9	0	obs_cam2
+obs	press	F9	0	obs_cam3
+obs	wait	3000	0	obs_cam_settle
+wait	36000	0	time_settle
+command	/target TrollF000	0	tgt_npc_a
+command	#stun 120000	0	stun_a
+wait	1500	0	tgt_npc_a_settle
+command	/cast 1	0	cast_npc_a
+wait	15500	0	fx_npc_a
+command	#mana	0	mana_b
+command	/target TrollF000	0	tgt_npc_b
+command	#stun 120000	0	stun_b
+wait	1500	0	tgt_npc_b_settle
+command	/cast 1	0	cast_npc_b
+wait	15500	0	fx_npc_b
+command	/target TrollF000	0	tgt_kill
+command	#kill	0	kill
+wait	2000	0	kill_settle
+obs	command	/q	0	obs_quit
+command	/q	0	quit
