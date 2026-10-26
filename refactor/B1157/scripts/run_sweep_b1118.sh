@@ -58,24 +58,28 @@ render_and_measure() {
           WILLEQ_DRM_DEVICE=/dev/dri/no-such-card '$BIN' --spell-test --client '$CLIENT' --eqe1 '$PACK' \
           --plan '$TP_BASE/plans/$tag.plan' --frames-dir '$run' --fps $FPS --seconds $secs \
           --seed $SEED --headless --camera b1118 > '$run/run.log' 2>&1" </dev/null \
-      && rsync -a "thinkpad:$run/" "$EV/frames/$tag/"; }; then
+      && rsync -a "thinkpad:$run/" "$EV/frames/$tag/" </dev/null; }; then
     :
   else
     echo "[$tag] RENDER FAILED (see $EV/frames/$tag/run.log)" >> "$EV/sweep.log"
-    rsync -a "thinkpad:$run/run.log" "$EV/frames/$tag/" 2>/dev/null || true
+    rsync -a "thinkpad:$run/run.log" "$EV/frames/$tag/" </dev/null 2>/dev/null || true
     return 1
   fi
   echo "[$tag] measuring..." >> "$EV/sweep.log"
   mkdir -p "$mroot"
   # fx_measure.py is launched as plain `python3` inside harness_measure.py,
-  # so the venv (numpy/cv2) goes first on PATH.
-  if ! FX_KEEP=1 PATH=/home/user/.venvs/b1155/bin:$PATH "$PY3" "$RM" "$EV/frames/$tag" "$mroot" > "$mroot/measure.log" 2>&1; then
+  # so the venv (numpy/cv2) goes first on PATH. FX_SPELLS=auto: b1123_summary
+  # otherwise lists its B1118 tour set (93 38 54 656 41 253 458) and a
+  # record run's summary.tsv carries no row for its own spell. The stdin
+  # redirect is REQUIRED: the measure's child processes (fx_*.py) would
+  # otherwise read the loop's stdin (the plan list) and eat its rows.
+  if ! FX_KEEP=1 FX_SPELLS=auto PATH=/home/user/.venvs/b1155/bin:$PATH "$PY3" "$RM" "$EV/frames/$tag" "$mroot" < /dev/null > "$mroot/measure.log" 2>&1; then
     echo "[$tag] MEASURE FAILED (see $mroot/measure.log)" >> "$EV/sweep.log"
     return 1
   fi
   # B1151's motion signatures (the gate's source/landing anatomy), rig b1118.
   for st in SOURCE LANDING; do
-    "$PYV" "$ANCHOR" "$mroot/fable_${sid}" 640,605 235 $st > "$mroot/anchor_${st}.tsv" 2>&1 \
+    "$PYV" "$ANCHOR" "$mroot/fable_${sid}" 640,605 235 $st < /dev/null > "$mroot/anchor_${st}.tsv" 2>&1 \
         || echo "[$tag] anchor_$st FAILED" >> "$EV/sweep.log"
   done
   echo "[$tag] done -> $(awk -F'\t' -v s="$sid" '$1 == s {print $2, $3, $5, $9, $10, $11}' "$mroot/summary.tsv")" >> "$EV/sweep.log"

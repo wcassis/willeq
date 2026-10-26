@@ -1,0 +1,41 @@
+record	kind	b1155_source_cov	b1157_source_cov	delta_source_cov	v55_source_cov	v57_source_cov	b1155_landing_cov	b1157_landing_cov	delta_landing_cov	v55_landing_cov	v57_landing_cov	b1155_landing_end_s	b1157_landing_end_s	delta_landing_end_s	v55_landing_end_s	v57_landing_end_s	owner
+0	fixed_npc	0.055	0.210	+0.155	short	over	1.070	0.358	-0.712	short	short	4.367	4.700	+0.333	short	short	model/animation (cast pose owns the Source window)
+1	fixed_npc	0.052	0.090	+0.038	short	short	0.422	0.237	-0.185	short	short	5.300	3.533	-1.767	short	short	model/animation (cast pose owns the Source window)
+2	fixed_npc	0.153	0.274	+0.121	over	over	0.399	0.356	-0.043	short	short	4.967	5.067	+0.100	short	short	model/animation (cast pose owns the Source window)
+3	fixed_npc	0.044	0.077	+0.033	short	PASS	6.652	6.605	-0.047	short	short	6.400	4.000	-2.400	short	short	unattributed
+4	fixed_self	0.096	0.123	+0.027	short	short	0.075	nan		short	n-a	4.433	nan		short	n-a	cast-anim (B1157), residual: source_cov
+5	fixed_npc	0.087	0.137	+0.050	short	short	0.094	nan		short	n-a	4.500	nan		PASS	n-a	cast-anim (B1157), residual: source_cov
+6	fixed_self	0.100	0.098	-0.002	short	short	0.188	0.142	-0.046	short	short	4.967	1.200	-3.767	short	short	model/animation (cast pose owns the Source window)
+7	fixed_npc	0.122	0.231	+0.109	short	short	2.423	0.358	-2.065	short	short	6.767	4.467	-2.300	PASS	short	model/animation (cast pose owns the Source window)
+8	fixed_self	0.044	0.083	+0.039	short	short	0.939	0.885	-0.054	short	short	3.567	3.600	+0.033	short	short	model/animation (cast pose owns the Source window)
+9	fixed_self	0.362	0.536	+0.174	short	short	0.718	0.709	-0.009	short	short	5.333	4.833	-0.500	short	short	model/animation (cast pose owns the Source window)
+10	fixed_self	0.440	0.379	-0.061	short	short	1.972	0.177	-1.795	short	short	5.267	3.900	-1.367	short	short	model/animation (cast pose owns the Source window)
+11	fixed_self	0.013	0.053	+0.040	short	short	0.331	0.069	-0.262	short	short	5.567	2.000	-3.567	PASS	short	model/animation (cast pose owns the Source window)
+12	fixed_npc	0.370	0.397	+0.027	short	short	1.661	0.723	-0.938	short	short	7.700	6.767	-0.933	over	short	model/animation (cast pose owns the Source window)
+13	fixed_npc	0.231	0.269	+0.038	short	short	0.708	0.375	-0.333	short	short	5.767	4.300	-1.467	short	short	model/animation (cast pose owns the Source window)
+14	fixed_self	0.036	0.087	+0.051	short	over	0.832	0.360	-0.472	short	short	5.933	5.667	-0.266	short	short	model/animation (cast pose owns the Source window)
+15	fixed_npc	0.056	0.162	+0.106	short	short	0.381	nan		short	n-a	4.400	nan		short	n-a	cast-anim (B1157), residual: source_cov
+16	fixed_npc	0.015	0.095	+0.080	short	short	0.123	nan		short	n-a	5.367	nan		short	n-a	cast-anim (B1157), residual: source_cov
+17	fixed_self	0.219	0.195	-0.024	short	short	0.410	nan		short	n-a	4.767	nan		short	n-a	model/animation (cast pose owns the Source window)
+18	fixed_npc	0.153	0.282	+0.129	short	short	1.095	0.553	-0.542	short	short	5.300	4.133	-1.167	PASS	short	model/animation (cast pose owns the Source window)
+19	fixed_self	0.153	0.158	+0.005	short	short	0.149	nan		short	n-a	4.600	nan		short	n-a	cast-anim (B1157), residual: source_cov
+20	fixed_npc	0.049	0.109	+0.060	short	short	1.154	0.298	-0.856	short	short	4.367	4.333	-0.034	short	short	model/animation (cast pose owns the Source window)
+21	fixed_npc	0.345	0.259	-0.086	short	short	1.134	0.553	-0.581	short	short	5.500	5.567	+0.067	short	short	model/animation (cast pose owns the Source window)
+22	fixed_npc	0.085	0.140	+0.055	short	short	0.348	nan		short	n-a	4.633	nan		short	n-a	cast-anim (B1157), residual: source_cov
+23	fixed_npc	0.132	0.152	+0.020	short	short	0.450	nan		short	n-a	4.700	nan		short	n-a	cast-anim (B1157), residual: source_cov
+24	fixed_npc	0.840	0.865	+0.025	over	over	2.259	1.504	-0.755	short	short	5.350	5.050	-0.300	short	short	model/animation (cast pose owns the Source window)
+25	fixed_npc	0.022	0.119	+0.097	short	short	1.311	0.674	-0.637	short	short	4.200	4.467	+0.267	short	short	model/animation (cast pose owns the Source window)
+26	fixed_npc	0.305	0.199	-0.106	short	short	5.697	nan		short	n-a	5.667	nan		over	n-a	model/animation (cast pose owns the Source window)
+27	fixed_npc	0.144	0.168	+0.024	short	short	0.182	nan		short	n-a	4.433	nan		short	n-a	cast-anim (B1157), residual: source_cov
+28	fixed_npc	1.149	0.798	-0.351	over	over	1.344	1.524	+0.180	short	short	6.433	6.033	-0.400	short	short	model/animation (cast pose owns the Source window)
+29	fixed_npc	0.006	0.091	+0.085	short	short	0.214	0.095	-0.119	short	short	7.567	7.267	-0.300	over	PASS	model/animation (cast pose owns the Source window)
+30	fixed_npc	0.090	0.141	+0.051	over	over	1.948	2.121	+0.173	short	short	6.200	6.167	-0.033	short	short	model/animation (cast pose owns the Source window)
+31	fixed_npc	0.441	0.556	+0.115	short	short	4.938	2.524	-2.414	over	short	6.183	6.217	+0.034	short	short	cast-anim (B1157), residual: source_cov/landing_cov/landing_end_s
+32	fixed_npc	0.752	0.588	-0.164	over	over	5.722	4.414	-1.308	short	short	7.917	7.150	-0.767	short	short	model/animation (cast pose owns the Source window)
+33	fixed_npc	0.045	0.104	+0.059	short	over	0.318	0.099	-0.219	short	short	5.683	5.117	-0.566	over	short	model/animation (cast pose owns the Source window)
+34	fixed_npc	0.184	0.238	+0.054	short	short	2.298	1.418	-0.880	short	short	7.100	5.367	-1.733	PASS	short	model/animation (cast pose owns the Source window)
+35	fixed_npc	0.755	0.953	+0.198	short	short	2.636	1.791	-0.845	short	short	6.950	5.217	-1.733	PASS	short	model/animation (cast pose owns the Source window)
+40	fixed_self	0.864	0.967	+0.103	short	short	1.150	0.624	-0.526	over	over	4.167	4.167	+0.000	over	over	cast-anim (B1157), residual: source_cov/landing_cov/landing_end_s
+41	fixed_npc	0.093	0.120	+0.027	short	short	0.542	0.680	+0.138	short	short	5.600	3.633	-1.967	over	over	cast-anim (B1157), residual: source_cov/landing_cov/landing_end_s
+42	fixed_self	0.101	0.056	-0.045	over	short	0.236	0.183	-0.053	short	short	4.900	4.900	+0.000	short	short	model/animation (cast pose owns the Source window)
+43	fixed_self	0.330	0.302	-0.028	over	over	0.465	nan		short	n-a	4.700	nan		over	n-a	cast-anim (B1157), residual: source_cov

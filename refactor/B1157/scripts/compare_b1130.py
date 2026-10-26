@@ -21,16 +21,14 @@ repo = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), 
 band = os.path.join(repo, 'B1155', 'scripts', 'band_table.py')
 after = out + '.after.tsv'
 # band_table.py reads <EV>/measure/<kind>_r<rec>/; this sweep's dirs carry a
-# b1157_ prefix, so hand it a symlink farm of the same names.
-farm = out + '.farm'
-if os.path.exists(farm):
-    for p in os.listdir(farm):
-        os.remove(os.path.join(farm, p))
-else:
-    os.makedirs(farm)
+# b1157_ prefix, so hand it an EV dir whose measure/ is a symlink farm. The
+# farm is absolute-path symlinks into <ev> -- ephemeral, never committed.
+import tempfile
+farm = tempfile.mkdtemp(prefix='b1157_farm_')
+os.makedirs(os.path.join(farm, 'measure'))
 for d in sorted(os.listdir(os.path.join(ev, 'measure'))):
     if d.startswith('b1157_') and os.path.exists(os.path.join(ev, 'measure', d, 'b1130_rows.tsv')):
-        os.symlink(os.path.join(ev, 'measure', d), os.path.join(farm, d[6:]))
+        os.symlink(os.path.join(ev, 'measure', d), os.path.join(farm, 'measure', d[6:]))
 subprocess.run([sys.executable, band, farm, after], check=True)
 
 def f(x):
