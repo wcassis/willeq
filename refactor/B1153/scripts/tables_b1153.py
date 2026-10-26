@@ -73,7 +73,13 @@ def summary(run_tag):
     if not os.path.exists(p):
         return None
     rows = list(csv.DictReader(open(p), delimiter="\t"))
-    return rows[0] if rows else None
+    # the summary lists every tour spell; pick THIS run's spell (the tag's
+    # last component) and skip its "missing" rows
+    spell = run_tag.rsplit("_", 1)[-1]
+    for r in rows:
+        if r.get("spell") == spell and r.get("land_cov") not in (None, "missing"):
+            return r
+    return None
 
 
 def b1130_rows(tag):
@@ -137,7 +143,7 @@ for spell in ("38", "41", "54", "93", "253", "458", "656"):
         peak = None
         try:
             for l in open(f"{REPO}/refactor/B1153/runs/{tag_prefix}{spell}/measure/fable_{spell}/shape.txt"):
-                m = re.search(r"PEAK f\d+ Act+[\d.]+ cov ([\d.]+)", l)
+                m = re.search(r"PEAK f\d+ Act\+[\d.]+ cov ([\d.]+)", l)
                 if m:
                     peak = float(m.group(1))
         except OSError:
@@ -149,6 +155,7 @@ for spell in ("38", "41", "54", "93", "253", "458", "656"):
         ratio = land / oracle_land if (land is not None and oracle_land) else None
         row[f"{label}_land"] = land
         row[f"{label}_end"] = end
+        row[f"{label}_end_v"] = "info"  # end is context (the stack moved every end; B1150)
         row[f"{label}_roi_l"] = roi_l
         row[f"{label}_roi_s"] = roi_s
         row[f"{label}_ratio"] = ratio
@@ -302,40 +309,56 @@ for d in os.listdir(mev):
     link = f"{stage}/measure/{m.group(1)}_r{int(m.group(2))}"
     if not os.path.lexists(link):
         os.symlink(f"{mev}/{d}", link)
+new_rows, new_header = {}, []
 try:
     subprocess.run([sys.executable, band_py, stage, new_banded], check=True)
-    new_rows = {l.split("\t")[0]: l.rstrip("\n").split("\t")
-                for l in open(new_banded) if l and not l.startswith("#") and l.split("\t")[0] != "oracle_source_cov"}
-except Exception as e:  # noqa: BLE001
-    new_rows = {}
-    print(f"gate_c: band_table.py failed: {e}", file=sys.stderr)
-
-old_rows = {}
-if os.path.exists(B1155_BANDED):
-    for l in open(B1155_BANDED):
-        if l.startswith("#") or l.startswith("record\t"):
+    for l in open(new_banded):
+        if l.startswith("#"):
             continue
         c = l.rstrip("\n").split("\t")
-        if c:
+        if c and c[0] == "oracle_source_cov":
+            new_header = [h for h in c if h]
+        elif c and c[0].strip():
+            new_rows[c[0]] = c
+except Exception as e:  # noqa: BLE001
+    print(f"gate_c: band_table.py failed: {e}", file=sys.stderr)
+
+old_rows, old_header = {}, []
+if os.path.exists(B1155_BANDED):
+    for l in open(B1155_BANDED):
+        if l.startswith("#"):
+            continue
+        c = l.rstrip("\n").split("\t")
+        if c and c[0] == "oracle_source_cov":
+            old_header = [h for h in c if h]
+        elif c and c[0].strip():
             old_rows[c[0]] = c
 
+# gate_c.tsv = the clean copy (gate_c_banded.tsv, band_table.py's own output)
+# with a real header row and a per-row changed_vs_B1155 column: the verdict
+# columns whose verdict flipped vs refactor/B1155/banded_table.tsv, compared
+# by column NAME (the two tables are not guaranteed to be index-aligned).
+# The data rows carry two leading cells (record id, kind) that the header
+# row does not name, so a named column sits at 2 + its header index. An empty
+# flag means the row's verdicts are unchanged; it is set per changed row,
+# not just the first.
 gate_c = []
-if new_rows:
-    header = [c for c in new_rows[[k for k in new_rows][0]]]
-    # find the verdict column index for each measured column (pattern: <col>, <col>_v)
-    verdict_idx = {i: header[i] for i, h in enumerate(header) if h.endswith("_v")}
+if new_rows and new_header and old_header:
+    new_idx = {h: i + 2 for i, h in enumerate(new_header)}
+    old_idx = {h: i + 2 for i, h in enumerate(old_header)}
+    verdict_cols = [h for h in new_header if h.startswith("verdict_")]
     for rec in sorted(new_rows, key=lambda x: int(re.sub(r"\D", "", x) or 0)):
         row = list(new_rows[rec])
         old = old_rows.get(rec)
-        changed = ""
-        if old and len(old) == len(row):
-            diffs = [header[i] for i in range(len(row))
-                     if row[i] != old[i] and i in verdict_idx]
-            changed = "; ".join(diffs)
-        gate_c.append(row + [changed])
-    cols = header + ["changed_vs_B1155"]
+        changed = []
+        if old:
+            for h in verdict_cols:
+                ni, oi = new_idx[h], old_idx[h]
+                if ni < len(row) and oi < len(old) and row[ni] != old[oi]:
+                    changed.append(h[len("verdict_"):])
+        gate_c.append(row + ["; ".join(changed)])
     with open(f"{OUT}/gate_c.tsv", "w") as fp:
-        fp.write("\t".join(cols) + "\n")
+        fp.write("\t".join(["record", "kind"] + new_header + ["changed_vs_B1155"]) + "\n")
         for row in gate_c:
             fp.write("\t".join(str(x) for x in row) + "\n")
 

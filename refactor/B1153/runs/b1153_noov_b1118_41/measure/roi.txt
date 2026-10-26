@@ -1,0 +1,2 @@
+/home/user/kb-evidence/kb-b1153-retire/frames/b1153_noov_b1118_41.measure/fable_41 SOURCE ROI pooled 35 frames: p90 0.095 median 0.022 blobs 6131
+/home/user/kb-evidence/kb-b1153-retire/frames/b1153_noov_b1118_41.measure/fable_41 LANDING ROI pooled 19 frames: p90 0.097 median 0.013 blobs 4235

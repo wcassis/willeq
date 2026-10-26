@@ -239,8 +239,11 @@ B1151 tip and the B1152 tip.
 `refactor/B1155/scripts/band_table.py` over `b1130_evidence/` (the B1130
 oracle, `review/B1130/record_table.tsv`), staged through
 `tables/stage_b1155/measure/` (the after-run tags mapped to band_table's
-expected names). Per-column band verdict counts (PASS = inside the B1155
-band), raw lines `tables/gate_c.tsv`:
+expected names). `tables/gate_c_banded.tsv` is the clean copy (band_table's
+own output, header and all); `tables/gate_c.tsv` is the same rows with a
+real header and a per-row `changed_vs_B1155` column (the verdict columns
+that flipped vs `refactor/B1155/banded_table.tsv`; 40/40 rows changed).
+Per-column band verdict counts (PASS = inside the B1155 band):
 
 | column | PASS | short | over | n-a |
 |---|---|---|---|---|
@@ -249,16 +252,17 @@ band), raw lines `tables/gate_c.tsv`:
 | landing_end | 2 | 35 | 2 | 1 |
 | p90_src | 10 | 10 | 20 | 0 |
 | p90_land | 8 | 11 | 19 | 2 |
-| landing_onset | 36 | 1 | 3 | 0 |
+| source_onset_s | 36 | 1 | 3 | 0 |
 | source_centroid | 20 | 2 | 18 | 0 |
 | src_h_lo | 14 | 1 | 25 | 0 |
 | src_h_hi | 14 | 16 | 10 | 0 |
 
 **vs `refactor/B1155/banded_table.tsv`: 124 of 360 verdict cells changed**
 (b1155 → b1153): source_cov 1/40, landing_cov 2/40, landing_end 12/40,
-p90_src 18/40, p90_land 15/40, landing_onset 4/40, source_centroid 25/40,
+p90_src 18/40, p90_land 15/40, source_onset_s 4/40, source_centroid 25/40,
 src_h_lo 22/40, src_h_hi 25/40 — `python3
-/home/user/.hermes/profiles/dev/cache/scratch/gc_diff.py` reproduces the
+refactor/B1153/scripts/gate_c_diff.py` (run from the repo root; compares
+gate_c_banded.tsv against B1155's table by column name) reproduces the
 per-row list. The coverage columns barely moved (1-2/40) while the
 timing/shape columns shifted — the B1152 missile-path signature (its
 README: arrival-shift moved the source-stage timing, 36/40 rows in its
@@ -277,9 +281,10 @@ Records 0 (93), 40 (602), 51 (4499) on b1130
 (`after_fixed_npc_r0` / `after_fixed_self_r40` / `after_fixed_self_r51`)
 vs the B1134 observer rows (`review/B1134/README.md`) and the B1143 rows
 (`refactor/B1143/rows/`). Raw lines `tables/gate_d.tsv` (bands: onset
-±0.10 s, centroid/hi/lo ±0.15 s, the B1131/B1132 method; cov/p90 are
-info — the observer rig's crop differs, so they are cross-checked by the
-sprite leg, sec. 4, not banded here):
+±0.10 s, centroid/hi/lo ±0.15 s, the B1131/B1132 method; landing_cov is
+info — the observer rig's crop differs — and p90 is banded when the
+observer ref has p90: record 0 p90_src 0.113 vs ref 0.0375 "over",
+p90_land 0.043 vs 0.056 "in"; n-a where the ref has none, e.g. record 40):
 
 | rec | spell | in band | out of band | owner |
 |---|---|---|---|---|

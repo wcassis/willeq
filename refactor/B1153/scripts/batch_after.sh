@@ -198,7 +198,7 @@ one_job() {
         # Hermes python3 runs the harness with every sub-instrument dying
         # "No module named cv2" (the 42 failed after-measures of 14:26).
         rm -rf "$lf.measure"
-        ( PATH=/home/user/.venvs/b1155/bin:$PATH FX_KEEP=1 /home/user/.venvs/b1155/bin/python -I "$H1118" "$lf" "$lf.measure" > "$out.measure" 2>&1 ) || mrc=1
+        ( PATH=/home/user/.venvs/b1155/bin:$PATH FX_KEEP=1 FX_SPELLS=auto /home/user/.venvs/b1155/bin/python -I "$H1118" "$lf" "$lf.measure" > "$out.measure" 2>&1 ) || mrc=1
         if [ "$mrc" = 0 ]; then
             cp "$lf.measure/summary.tsv" "$mroot/summary.tsv"
             cp -r "$lf.measure/fable_"* "$mroot/" 2>/dev/null
