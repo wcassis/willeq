@@ -206,23 +206,44 @@ private:
     GLint uAtlasRegionSize_ = -1;
     GLint uScreenHeight_ = -1;
 
-    // CPU-side vertex arrays (reused each frame). Four, not two: blend mode
-    // splits the draw, and so does the sheet (T417).
-    std::vector<PointSpriteVertex> additiveVerts_;
-    std::vector<PointSpriteVertex> alphaVerts_;
-    std::vector<PointSpriteVertex> spriteAdditiveVerts_;
-    std::vector<PointSpriteVertex> spriteAlphaVerts_;
+    // B1151 (#471): the +0x64 depth-write word (EQGraphicsDX9
+    // 0x1005f7a8/0x1005f82c): the official client's EDD emitter draw runs
+    // with ZWRITEENABLE=1 (depth write ON) by default, and for a record with
+    // +0x64 == 1 the client sets it to 0 before the draw and restores it to
+    // 1 after. GLES2 has no per-vertex depth write, so each draw window
+    // holds TWO sub-windows: .on (record particles with +0x64 == 0) draws
+    // with the mask ON, .off draws with it OFF. Every non-record particle
+    // (config presets, weather, ...) goes to .off, keeping fable's
+    // long-standing global-off state. Each sub-window keeps its internal
+    // order; the official client interleaves the two classes per emitter
+    // instead -- additive windows are order-invariant, alpha windows differ
+    // only in the blend interleaving across the two sub-populations.
+    struct DepthWindow {
+        std::vector<PointSpriteVertex> on;
+        std::vector<PointSpriteVertex> off;
+        void clear() { on.clear(); off.clear(); }
+        bool any() const { return !on.empty() || !off.empty(); }
+        size_t total() const { return on.size() + off.size(); }
+    };
+
+    // CPU-side vertex arrays (reused each frame). Two dimensions split the
+    // draw: the sheet (T417) and the blend mode, and since B1151 each
+    // window's two depth-write sub-windows.
+    DepthWindow winAdditive_;
+    DepthWindow winAlpha_;
+    DepthWindow winSpriteAdditive_;
+    DepthWindow winSpriteAlpha_;
     // B1146: additive particles with spellsnew.edd colour words, drawn
     // GL_SRC_ALPHA, GL_ONE (UnifiedBlendMode::ADDITIVE_SRC_ALPHA).
-    std::vector<PointSpriteVertex> additiveSrcAlphaVerts_;
-    std::vector<PointSpriteVertex> spriteAdditiveSrcAlphaVerts_;
+    DepthWindow winAdditiveSrcAlpha_;
+    DepthWindow winSpriteAdditiveSrcAlpha_;
 
     // B1149 (#469): spellsnew.edd sprites (UnifiedParticle::hasEddSprite())
     // as world-unit quads, six vertices each, per batch 0..5 (0 atlas
     // additive, 1 atlas alpha, 2 sheet additive, 3 sheet alpha, 4 atlas
     // SRC_ALPHA/ONE, 5 sheet SRC_ALPHA/ONE), drawn GL_TRIANGLES with their own
     // program from the same packed VBO.
-    std::vector<PointSpriteVertex> quadVerts_[6];
+    DepthWindow winQuad_[6];
     struct QuadProgram {
         GLuint program = 0;
         GLint uProj = -1, uView = -1, uFogStart = -1, uFogEnd = -1, uFogColor = -1;

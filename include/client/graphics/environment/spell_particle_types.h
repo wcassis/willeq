@@ -190,9 +190,18 @@ namespace SpellPresets {
     // scale is `attachScale` when +0x19C is set, 1.0 otherwise). The config
     // spawnShape/spawnExtents are NOT read for such an emitter (sim: the
     // eddShape.active branch precedes every config shape).
+    // B1151 (#471): when `motion` is given (the record's emitter, the same
+    // call that passes `shape`), every emitter takes the record's motion
+    // words (EmitterConfig::eddMotion): +0xEC..+0x12C, +0x138/+0x188,
+    // +0x174, +0x178, +0x130/+0x134 and the flags +0x60/+0x64/+0x70/+0x74/
+    // +0x198, with s = `attachScale` when the record's +0x6C is set (the
+    // TRACE.md (a) read path), 1.0 otherwise. And the B1145 motion
+    // time-scaling (oldLife / L) is NOT applied: the file's motion drives
+    // the extents now.
     void applySlotEmitter(const std::vector<SpellEffectDef*>& slotDefs, const EQ::SpellFxSlotTiming& timing,
                           const EQ::SpellsNewEddSprite* sprite, float stageLatency, float attachScale = 1.0f,
-                          const EQ::SpellsNewEddShape* shape = nullptr);
+                          const EQ::SpellsNewEddShape* shape = nullptr,
+                          const EQ::SpellsNewEddMotion* motion = nullptr);
 }
 
 } // namespace Environment

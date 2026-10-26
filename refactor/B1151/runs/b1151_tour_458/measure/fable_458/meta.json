@@ -1,0 +1,17 @@
+{
+ "video": "/tmp/b1151-frames/b1151_tour_458.measure/video.mkv",
+ "offset": 0.0,
+ "t_begincast": 1.5,
+ "t_action": 4.65,
+ "t_end": 14.65,
+ "crop": [
+  170,
+  0,
+  1060,
+  650
+ ],
+ "threshold": 45,
+ "n_frames": 430,
+ "baseline_frames": 30,
+ "label": "fable458"
+}

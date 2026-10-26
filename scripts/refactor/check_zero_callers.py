@@ -853,6 +853,11 @@ EXEMPT_TESTS_GROUPS = {
     # 1-based with 0 = empty slot). test_spell_spawn_shapes's
     # CensusOfTheShapeWord counts all 2118 entries through it.
     ("SpellsNewEddReader", "shapeAt"): "observer",
+    # B1151 (#471): the census test's observation window onto every file entry
+    # (zero-based, entry 0 included -- the 1-based slot accessors reject 0 by
+    # design). test_spell_edd_motion's CensusOfTheMotionWords counts all 2118
+    # entries through it (the B1150 shapeAt pattern).
+    ("SpellsNewEddReader", "motionAt"): "observer",
     # B1083 (#403): the test's window onto which pack served an (archive, name)
     # EQE1 request. Its production WRITER is recordEQE1Request()/dumpEQE1RequestLog()
     # at zone load (T214); the reader is test_eqe1_source_archive, which asserts

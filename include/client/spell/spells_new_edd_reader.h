@@ -95,6 +95,7 @@ constexpr size_t kEddPerTickOffset = 0x84;
 constexpr size_t kEddTicksPerSecondOffset = 0x88;
 constexpr size_t kEddDelayOffset = 0x8C;
 constexpr size_t kEddFrameCountOffset = 0x130;
+constexpr size_t kEddFrameRateOffset = 0x134;
 constexpr size_t kEddScaleSizesOffset = 0x6C;
 constexpr size_t kEddGrowInOffset = 0x98;
 constexpr size_t kEddShrinkOutOffset = 0x9C;
@@ -199,6 +200,60 @@ struct SpellsNewEddShape {
 
 SpellsNewEddShape decodeSpellsNewEddShape(const uint8_t* entry416);
 
+// B1151 (#471): the motion / spin / frame / flag words. TSV rows in
+// review/B1141/edd_fields_from_code.tsv (all PROVEN-BY-CODE except +0x178,
+// PARTIAL on which attach-matrix row is which: FUN_100399f0). The per-frame
+// integration and its decompile addresses are in refactor/B1151/README.md.
+constexpr size_t kEddOrientOffset = 0x60;
+constexpr size_t kEddNoDepthWriteOffset = 0x64;
+constexpr size_t kEddSpriteModeOffset = 0x70;
+constexpr size_t kEddFollowOffset = 0x74;
+constexpr size_t kEddUpMinOffset = 0xEC;
+constexpr size_t kEddUpMaxOffset = 0xF0;
+constexpr size_t kEddUpAccelOffset = 0xF4;
+constexpr size_t kEddAxis2MinOffset = 0xF8;
+constexpr size_t kEddAxis2MaxOffset = 0xFC;
+constexpr size_t kEddAxis2AccelOffset = 0x100;
+constexpr size_t kEddAxis3MinOffset = 0x104;
+constexpr size_t kEddAxis3MaxOffset = 0x108;
+constexpr size_t kEddAxis3AccelOffset = 0x10C;
+constexpr size_t kEddRadialMinOffset = 0x110;
+constexpr size_t kEddRadialMaxOffset = 0x114;
+constexpr size_t kEddRadialAccelOffset = 0x118;
+constexpr size_t kEddSwirlMinOffset = 0x11C;
+constexpr size_t kEddSwirlMaxOffset = 0x120;
+constexpr size_t kEddSwirlAccelOffset = 0x124;
+constexpr size_t kEddGravityOffset = 0x128;
+constexpr size_t kEddDriftXOffset = 0x12C;
+constexpr size_t kEddRandomStartSpinOffset = 0x174;
+constexpr size_t kEddSpinMinOffset = 0x138;
+constexpr size_t kEddSpinMaxOffset = 0x188;
+constexpr size_t kEddSpinAlignOffset = 0x178;
+constexpr size_t kEddDrawNegativeRadiusOffset = 0x198;
+
+// The record's motion words (one per entry), raw as the file holds them.
+struct SpellsNewEddMotion {
+    bool orientToAttach = false;     // +0x60: orient the basis to the attached object each frame
+    bool noDepthWrite = false;       // +0x64: depth write OFF for the emitter's draw
+    int32_t spriteMode = 0;          // +0x70: 0 billboard, 1 streak, 2 world-oriented quad
+    bool follow = false;             // +0x74: particles follow the emitter
+    float upMin = 0.0f, upMax = 0.0f, upAccel = 0.0f;          // +0xEC/+0xF0/+0xF4
+    float axis2Min = 0.0f, axis2Max = 0.0f, axis2Accel = 0.0f; // +0xF8/+0xFC/+0x100
+    float axis3Min = 0.0f, axis3Max = 0.0f, axis3Accel = 0.0f; // +0x104/+0x108/+0x10C
+    float radialMin = 0.0f, radialMax = 0.0f, radialAccel = 0.0f;  // +0x110/+0x114/+0x118
+    float swirlMin = 0.0f, swirlMax = 0.0f, swirlAccel = 0.0f;    // +0x11C/+0x120/+0x124, 512ths/s
+    float gravity = 0.0f;            // +0x128, u/s^2 (EQ world z up; the z OFFSET -= g*s*dt)
+    float driftX = 0.0f;             // +0x12C, u/s (world +X only)
+    bool randomStartSpin = false;    // +0x174: start angle = rand()/32767*1000 (512ths), else 0
+    float spinMin = 0.0f, spinMax = 0.0f;  // +0x138/+0x188, 512ths/s
+    int32_t spinAlign = 0;           // +0x178
+    int32_t frameCount = 1;          // +0x130
+    float frameRate = 0.0f;          // +0x134
+    bool drawNegativeRadius = false; // +0x198 == 1: r < 0 still drawn
+};
+
+SpellsNewEddMotion decodeSpellsNewEddMotion(const uint8_t* entry416);
+
 // B1149: the attach scale s fable passes for +0x6C. The client's s for an
 // actor is the actor's scale word (+0x10) times its model's scale (vtbl+0x84),
 // EQGraphicsDX9 0x1006090d..0x1006094a, and for a bone the bone's (0x10060991..);
@@ -224,12 +279,15 @@ public:
     const SpellsNewEddSprite* sprite(int32_t index) const;
     // B1150: the spawn-geometry words; nullptr like timing().
     const SpellsNewEddShape* shape(int32_t index) const;
+    // B1151: the motion / spin / frame / flag words; nullptr like timing().
+    const SpellsNewEddMotion* motion(int32_t index) const;
     // B1150 census: the decoded words for the zero-BASED file entry
     // (0..emitterCount()-1), unlike the 1-based shape()/timing()/sprite() slot
     // accessors. spellsnew.eff's slot numbers are 1-based and its "empty slot"
     // is 0, so the 1-based accessors reject 0 -- but the census counts every
     // file entry, entry 0 included (it is a real shape-0 point, the 297th).
     const SpellsNewEddShape& shapeAt(size_t zeroBasedEntry) const;
+    const SpellsNewEddMotion& motionAt(size_t zeroBasedEntry) const;
 
     // +0x00 name; +0x40 texture as a lower-case basename with the one shipped
     // entry's trailing '.' padding trimmed ("gena20.bmp......." -> gena20.bmp);
@@ -243,6 +301,7 @@ private:
     std::vector<SpellsNewEddTiming> m_timing;
     std::vector<SpellsNewEddSprite> m_sprite;
     std::vector<SpellsNewEddShape> m_shape;
+    std::vector<SpellsNewEddMotion> m_motion;
     size_t m_count = 0;
     bool m_loaded = false;
     std::string m_error;

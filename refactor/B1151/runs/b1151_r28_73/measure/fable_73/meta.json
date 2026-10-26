@@ -1,0 +1,17 @@
+{
+ "video": "/tmp/b1151-frames/b1151_r28_73.measure/video.mkv",
+ "offset": 0.0,
+ "t_begincast": 1.5,
+ "t_action": 7.4,
+ "t_end": 17.4,
+ "crop": [
+  170,
+  0,
+  1060,
+  650
+ ],
+ "threshold": 45,
+ "n_frames": 513,
+ "baseline_frames": 30,
+ "label": "fable73"
+}
