@@ -27,6 +27,12 @@
 
 #include <irrlicht.h>
 
+#include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/constrained_texture_cache.h"
+#include "client/graphics/entity_renderer.h"
+#include "client/graphics/spell_cast_animation.h"
+#include "client/willeq_database.h"
+
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -40,6 +46,8 @@
 #include <unistd.h>
 
 namespace fs = std::filesystem;
+
+using namespace EQT::Graphics;
 
 namespace {
 
@@ -407,6 +415,104 @@ TEST_F(FxHarness, B1130SelfPresetSolvesTheCasterAlone) {
     const fs::path frames = runPlan("b1130self", "100.0\t93\tself\t0\t250\t60\n", 0.5, "", "b1130-self");
     ASSERT_FALSE(frames.empty()) << "the b1130-self harness run failed";
     checkB1130Frame(frames, false, device_->getVideoDriver());
+    cleanDirs();
+}
+
+// B1157 (#476): the harness caster plays the spell's CastingAnim through the
+// CLIENT's own code (spell_cast_animation.h, the body
+// EntityRenderer::startEntityCast runs on OP_BeginCast) -- started at BeginCast,
+// held through the channel, ended at Action. The pre-B1157 rule (an o01 idle
+// looping during the channel, a guessed t04/t05/t06 once at completion) is
+// gone; every B1149-B1152 gate number was measured on that idle caster.
+//
+// For 93/38/54 the harness's chosen track + start time == the client path's
+// for the same spell: both sides are CALLED here. The client path is an
+// in-process EntityRenderer (EDT_NULL, the Dark Elf female -- the B1130
+// oracle's caster) driven through startEntityCast and read off at the
+// return; the harness path is the binary's own run, whose BeginCast event
+// resolves the track with the same function and logs it, at timing.tsv's
+// BeginCast event time (the plan's t_begin).
+TEST_F(FxHarness, TheCasterPlaysTheSpellCastAnimThroughTheClientCode) {
+    const std::string dbPath = WILLEQ_DB_REAL_PATH;
+    if (!fs::exists(dbPath)) GTEST_SKIP() << "no shipped db at " << dbPath;
+    EQT::WilleqDatabase db;
+    ASSERT_TRUE(db.open(dbPath)) << dbPath;
+    EQT::WilleqDatabase::setGlobalInstance(&db);
+    const fs::path client(kClient);
+    if (!fs::exists(client / "global_chr.s3d")) GTEST_SKIP() << "no client tree with global_chr.s3d at " << client;
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::TNT);
+    auto tex = std::make_unique<ConstrainedTextureCache>(config);
+    tex->setDriver(device_->getVideoDriver());
+    auto ents = std::make_unique<EntityRenderer>(device_->getSceneManager(), device_->getVideoDriver(),
+                                                 device_->getFileSystem());
+    ents->setClientPath(std::string(kClient) + "/");
+    ents->setConstrainedTextureCache(tex.get());
+    if (!ents->loadGlobalCharacters()) GTEST_SKIP() << "global_chr.s3d would not load";
+
+    uint16_t spawn = 6001;
+    for (const uint32_t id : {93u, 38u, 54u}) {
+        const auto info = db.getSpell(id);
+        ASSERT_EQ(info.id, id) << "the row is in the shipped db";
+        ASSERT_EQ(info.castAnim, 44) << "spell " << id << ": the db's field 120";
+        ASSERT_GT(info.castTimeMs, 0u);
+
+        // The client path: the bridge's body on the model, read off at the
+        // return -- the track the spell's CastingAnim names, started at the
+        // packet (the return), for the db's cast time.
+        ASSERT_TRUE(ents->registerEntity(spawn, 6, "Caster", 0.0f, 0.0f, 0.0f, 0.0f, false, 1,
+                                         EntityAppearance(), true, false, 6.0f, 10)) << "spell " << id;
+        ASSERT_TRUE(ents->buildEntityMesh(spawn)) << "spell " << id;
+        ents->startEntityCast(spawn, id, info.name, info.castTimeMs, static_cast<int>(info.castAnim));
+        const auto e = ents->getEntities().find(spawn);
+        ASSERT_NE(e, ents->getEntities().end());
+        const std::string clientTrack = e->second.castAnimCode;
+        ASSERT_EQ(clientTrack, "t06") << "spell " << id << ": the client's track";
+        EXPECT_LT(e->second.animatedNode->getAnimator().getProgress(), 0.05f)
+            << "the client starts the track AT the packet (spell " << id << ")";
+        ents->completeEntityCast(spawn);
+        ++spawn;
+
+        // The harness path: the same spell through the binary, the db's cast
+        // time, level 60, BeginCast at 0.5 s.
+        const std::string rows =
+            "0.5\t" + std::to_string(id) + "\tother\t14\t" + std::to_string(info.castTimeMs) + "\t60\tbegincast\n";
+        const double seconds = 0.5 + info.castTimeMs / 1000.0 + 1.0;
+        const fs::path frames = runPlan("b1157_" + std::to_string(id), rows, seconds);
+        ASSERT_FALSE(frames.empty()) << "the harness run for spell " << id << " failed";
+        const fs::path dir = frames.parent_path();
+
+        std::string log;
+        {
+            std::ifstream f(dir / "run.log");
+            std::string line;
+            while (std::getline(f, line))
+                if (line.rfind("[fx-harness] BeginCast " + std::to_string(id) + ":", 0) == 0) log = line;
+        }
+        ASSERT_FALSE(log.empty()) << "no cast-anim line for spell " << id << " in " << (dir / "run.log").string();
+        EXPECT_NE(log.find(" caster cast-anim " + clientTrack + " (CastingAnim 44)"), std::string::npos)
+            << "the harness's track differs from the client's: " << log;
+
+        // The start time: the harness starts the track at the BeginCast EVENT
+        // (timing.tsv's BeginCast row, t_event == the plan's 0.5 s) -- the
+        // same instant the client starts it at the packet.
+        double beginT = -1.0;
+        {
+            std::ifstream f(frames / "timing.tsv");
+            std::string line;
+            std::getline(f, line);  // header
+            while (std::getline(f, line)) {
+                std::istringstream ss(line);
+                int fr;
+                double t, ev;
+                std::string event, spell, target, dist;
+                uint32_t castMs;
+                if (!(ss >> fr >> t >> event >> spell >> target >> dist >> castMs >> ev)) continue;
+                if (event == "BeginCast" && spell == std::to_string(id)) beginT = ev;
+            }
+        }
+        EXPECT_NEAR(beginT, 0.5, 1e-6) << "the harness's BeginCast fell off the plan time (spell " << id << ")";
+    }
+    EQT::WilleqDatabase::setGlobalInstance(nullptr);
     cleanDirs();
 }
 

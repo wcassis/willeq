@@ -1090,20 +1090,20 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             // (spell_cast_fx.cpp) so the harness draws this exact sequence.
             ApplySpellCastStartedFx(castGlowRoute_, renderer_->getSpellVisualFX(), d,
                                     CastGlowRoute::Clock::now());
+            // B1157 (#476): every casting entity -- the player included --
+            // plays the spell's CastingAnim track on its model (startEntityCast
+            // now animates; the entity cast BAR below it still skips the
+            // player).
+            if (renderer_->getEntityRenderer()) {
+                renderer_->getEntityRenderer()->startEntityCast(
+                    d.casterId, d.spellId, d.spellName, d.castTimeMs, d.castAnim);
+            }
             if (d.isPlayerCast) {
                 // U06d: New UI casting bar
                 renderer_->Frame().castingBarState_.isCasting = true;
                 renderer_->Frame().castingBarState_.spellName = d.spellName;
                 renderer_->Frame().castingBarState_.castTimeMs = d.castTimeMs;
                 renderer_->Frame().castingBarState_.castStartTime = std::chrono::steady_clock::now();
-            } else {
-                // Start entity casting bar (shows above the entity's head)
-                if (renderer_->getEntityRenderer()) {
-                    renderer_->getEntityRenderer()->startEntityCast(
-                        d.casterId, d.spellId, d.spellName, d.castTimeMs);
-                }
-                // If this is our current target, show target casting bar
-                // (target casting bar not yet in new UI)
             }
         }
         break;

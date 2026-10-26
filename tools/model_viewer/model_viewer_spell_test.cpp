@@ -7,6 +7,7 @@
 
 #include "model_viewer_state.h"
 #include "model_viewer_fx_harness.h"
+#include "client/graphics/spell_cast_animation.h"
 #include <cstdlib>
 
 const char* getClassName(int classIndex) {
@@ -153,6 +154,15 @@ void cycleEffect(int direction) {
 // picked createImpact/createRainEffect/createGroundCircle/createBuffAura/...
 // from its own isBoltSpell()/isAESpell() heuristics, which the client never
 // did; those four FX entry points were deleted with it.
+//
+// B1157 (#476): the caster model does what the client does on OP_BeginCast through
+// the client's own code (spell_cast_animation.h, the same functions
+// EntityRenderer::startEntityCast / completeEntityCast / cancelEntityCast
+// run): the spell's CastingAnim track, started at BeginCast, held through the
+// channel, ended at Action / interrupt. The pre-B1157 rule -- an o01 idle
+// looping during the channel and a guessed t04/t05/t06 played once at
+// completion -- is gone; the 18 unattributed Source motion-signature rows of
+// B1151 were the idle caster this replaced.
 // ============================================================================
 void triggerSpellTestCast() {
     if (spellTestSpellList.empty() || !spellVisualFX) return;
@@ -164,9 +174,14 @@ void triggerSpellTestCast() {
     spellTestCastElapsed = 0;
     spellTestCasting = true;
 
-    // Play idle animation looping during cast channeling
+    // The client's cast pose: the spell's own CastingAnim track (the o01 idle
+    // this used to play during the channel is gone).
+    spellTestCastTrack.clear();
     if (animatedNode && useAnimatedMesh) {
-        animatedNode->playAnimation("o01", true, false);
+        spellTestCastTrack = playCastAnim(animatedNode, spell->cast_anim);
+        std::cout << "Caster cast-anim: "
+                  << (spellTestCastTrack.empty() ? "(no track; current stands)" : spellTestCastTrack)
+                  << " (CastingAnim " << spell->cast_anim << ")" << std::endl;
     }
 
     std::cout << "Casting: " << spell->name << " (ID " << spell->id
@@ -186,13 +201,13 @@ void completeSpellTestCast() {
 
     harnessAction(*spell, spellTestSelfMode, harnessOpts.casterLevel, eqt::bridge::CastGlowRoute::Clock::now());
 
-    // Play cast animation once, then return to idle
-    if (animatedNode && useAnimatedMesh) {
-        std::string castAnim = "t06";  // Default: offensive
-        if (spell->is_beneficial) castAnim = "t04";  // Beneficial
-        if (spell->isHealSpell()) castAnim = "t05";  // Heal
-        animatedNode->playAnimation(castAnim, false, false);  // loop=false: play once
+    // OP_Action: the cast state ends, the model takes the idle (the guessed
+    // t04/t05/t06 played here before is gone). Only when the trigger started
+    // the track -- the client's guard.
+    if (!spellTestCastTrack.empty() && animatedNode && useAnimatedMesh) {
+        endCastAnim(animatedNode, "p01");
     }
+    spellTestCastTrack.clear();
 
     spellTestCasting = false;
     spellTestCurrentSpell = nullptr;
@@ -205,10 +220,12 @@ void cancelSpellTestCast() {
         spellTestCurrentSpell = nullptr;
         std::cout << "Cast cancelled" << std::endl;
 
-        // Return to idle
-        if (animatedNode && useAnimatedMesh) {
-            animatedNode->playAnimation("p01", true, false);
+        // Interrupt: the cast state ends, the model takes the idle (only
+        // when the trigger started the track -- the client's guard).
+        if (!spellTestCastTrack.empty() && animatedNode && useAnimatedMesh) {
+            endCastAnim(animatedNode, "p01");
         }
+        spellTestCastTrack.clear();
     }
     // Also clear all lingering effects (Irrlicht scene nodes + GLES2 particles)
     if (spellVisualFX) {

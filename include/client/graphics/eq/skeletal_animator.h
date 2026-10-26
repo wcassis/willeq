@@ -274,10 +274,6 @@ public:
     // Animation Speed Matching (Phase 6.2)
     // ========================================================================
 
-    // Set animation duration to match a specific time (e.g., weapon delay, cast time)
-    // This adjusts playback speed so animation completes in targetDurationMs
-    void setTargetDuration(float targetDurationMs);
-
     // Match animation speed to movement speed
     // baseSpeed: reference movement speed (e.g., walk = 10, run = 23)
     // actualSpeed: current movement speed

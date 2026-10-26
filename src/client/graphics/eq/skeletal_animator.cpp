@@ -499,19 +499,6 @@ float SkeletalAnimator::getBlendProgress() const {
 // Phase 6.2: Animation Speed Matching
 // ============================================================================
 
-void SkeletalAnimator::setTargetDuration(float targetDurationMs) {
-    if (!currentAnim_ || currentAnim_->animationTimeMs <= 0 || targetDurationMs <= 0) {
-        return;
-    }
-
-    // Calculate speed multiplier to make animation complete in target duration
-    float animDuration = static_cast<float>(currentAnim_->animationTimeMs);
-    playbackSpeed_ = animDuration / targetDurationMs;
-
-    LOG_TRACE(MOD_GRAPHICS, "SkeletalAnimator::setTargetDuration - animDuration={}ms target={}ms speed={}",
-              animDuration, targetDurationMs, playbackSpeed_);
-}
-
 void SkeletalAnimator::matchMovementSpeed(float baseSpeed, float actualSpeed) {
     if (baseSpeed <= 0.0f) {
         playbackSpeed_ = 1.0f;

@@ -230,6 +230,25 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_corpse_fade DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1157 (GitLab #476): the caster's cast animation -- on OP_BeginCast every casting
+# entity (the player included) plays the spell's CastingAnim track (field 120
+# through eqgame's code table) on its model, started at the packet, held/looped
+# for the channel, ended at OP_Action / interrupt; the shared helper
+# (spell_cast_animation.h) is the client's and the FX harness's one code path.
+# Device-free half always; the EDT_NULL half skips without the db or the
+# client tree (same gate as test_corpse_fade).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_cast_animation
+        test_cast_animation.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_cast_animation PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_cast_animation GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_cast_animation PRIVATE
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")"
+        "EQ_CLIENT_DATA_PATH=WILLEQ_REPO_PATH(\"data/eq_client\")")
+    GTEST_DISCOVER_TESTS(test_cast_animation DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B973 (GitLab #291): post-load entity build scheduling -- guaranteed progress
 # in every governor state, bounded per-frame work, and B966's create unit
 # promoting materials before the node's first draw. Part 1 is device-free; the

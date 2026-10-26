@@ -587,7 +587,10 @@ EXEMPT_GROUPS = {
     # the table is not allowed to outlive its rows. resumeAnimation below is still
     # unreached and stays listed.
     ("SkeletalAnimator", "removeFrameTrigger"): "B491",
-    ("SkeletalAnimator", "resetPlaybackSpeed"): "B491",
+    # B1157: resetPlaybackSpeed now has a caller (spell_cast_animation.h's
+    # playCastAnim resets the model to speed 1.0 before the cast track), so
+    # its B491 exemption is gone -- the table is not allowed to outlive its
+    # rows.
     ("SkeletalAnimator", "resumeAnimation"): "B491",
     ("SkeletalAnimator", "setBlendDuration"): "B491",
     ("SkeletalAnimator", "setBlendingEnabled"): "B491",

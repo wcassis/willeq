@@ -3,8 +3,10 @@
 `model_viewer --spell-test --plan <tsv>` drives the client's own cast sequence
 (`src/client/bridge/spell_cast_fx.cpp`) through the production
 SpellVisualFX -> ParticleManager -> SimulationWorker chain, surfaceless, on a
-scripted clock, and writes `frame_%05d.png`, `timing.tsv`, `scene.tsv` and
-`slots.tsv`.
+scripted clock, and writes `frame_%05d.png`, `timing.tsv`, `scene.tsv`,
+`slots.tsv` and, since B1157 (#476), `emitter_origin.tsv` (the open emitters'
+world origin + screen position per rendered frame, through the same pinhole as
+`scene.tsv`'s boxes).
 Options and code: `tools/model_viewer/model_viewer_fx_harness.h`. Reports:
 `refactor/B1138/README.md` (the harness), `refactor/B1139/README.md` (its
 calibration against lane 5).
@@ -39,7 +41,7 @@ pcap and fable.log in `review/B1132/gate/fable_B/`), and each one is a
 | caster 228 px head top to feet | leg B tail frame rows 377..605 (B1138) | `--caster-px` |
 | caster race 6 gender 1, face 3, TextureProfile {0,10,1,23,1,1,1,0,72}: the robe (chest 10) and IT72, the orb in her left hand | char 67 Testcaster; OP_ZoneEntry S->C Spawn_Struct offsets 6/197/339 | `--caster`, `--caster-appearance f,t:e0..e8` |
 | target race 1 gender 0 (the `#spawn`) | leg chat | `--target` |
-| caster idle p01, target idle o01 | the client: the local player stands in p01 (`renderer_player_physics.cpp`), an idle NPC in o01 (`entity_updates.cpp`) | -- |
+| caster p01 when idle, and during a cast the spell's own CastingAnim track (B1157) through the client's `spell_cast_animation.h`; target idle o01 | the client: the local player stands in p01 (`renderer_player_physics.cpp`), an idle NPC in o01 (`entity_updates.cpp`); pre-B1157 the caster stayed in p01 (its t04 castbar literal was timing-only, see `refactor/B1157/README.md`) | -- |
 | simulation at 60 Hz, every 2nd step written at `--fps 30` | the lane client runs 60 fps ("FPS: 60" on its frames), x11grab keeps 30 | `--sim-hz` |
 | no UI over the FX field (B1142) | the lane rig starts the client with `[Tips] ShowTOTD=0` (`review/B1142/scripts/fable_leg_remote.sh`); before B1142 every lane-5 leg had fable's Tip of the Day open at 920,243..1280,543, OVER the particles | `--ui-occluder x0,y0,x1,y1` (repeatable; `920,243,1280,543` reproduces a pre-B1142 capture), `--no-ui-occluder` |
 
@@ -132,4 +134,12 @@ channel exceeds 175 (where an additive sprite's rise can stay under 80).
   (4499, `action`) draws zero lit px against a no-cast run, and a level-1
   93 draws only record 80's level-0 slots (`slots.tsv`) and fewer Source
   pixels than a level-60 one.
+- **Caster animation** (B1157, #476): the caster plays the spell's own
+  CastingAnim track -- the same `spell_cast_animation.h` function the client
+  calls on OP_BeginCast (no harness-side mapping) -- held for the channel and
+  ended at OP_Action (a `/disc` plan starts no track and ends nothing, like
+  the client). The `--target` model (b1130's stunned NPC) stays idle, as the
+  oracle's does. `emitter_origin.tsv` is the hand-anchor strip's source
+  (`refactor/B1157/scripts/hand_strip.py`). The re-gate against the pre-B1157
+  idle caster: `refactor/B1157/README.md`.
 - Oracle legs (the official client) are lane 5 only.

@@ -192,6 +192,10 @@ extern float spellTestCastElapsed;
 extern float spellTestCastDuration;
 extern const EQ::SpellData* spellTestCurrentSpell;
 extern bool spellTestCastAnimPlaying;
+// B1157 (#476): the cast track the trigger started (spell_cast_animation.h's
+// playCastAnim; "" when the model has no such track) -- complete/cancel only
+// end a pose that began, the client's guard.
+extern std::string spellTestCastTrack;
 
 // Hand bone indices (FX anchors: SpellVisualFX's pseudo-entities, B1138)
 extern int casterRightHandBoneIdx;
