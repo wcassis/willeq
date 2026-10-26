@@ -424,7 +424,6 @@ void SpellVisualFX::applyWorkerResults(const EQT::Graphics::SimulationOutput& re
         effect.type = static_cast<SpellFXType>(ce.fxType);
         effect.spell_id = ce.spellId;
         effect.source_entity = ce.sourceEntity;
-        effect.target_entity = ce.targetEntity;
         effect.source_pos = irr::core::vector3df(ce.posX, ce.posY, ce.posZ);
         effect.target_pos = irr::core::vector3df(ce.targetPosX, ce.targetPosY, ce.targetPosZ);
         effect.color = irr::video::SColor(ce.colorA, ce.colorR, ce.colorG, ce.colorB);

@@ -58,7 +58,6 @@ struct SpellFXInstance {
     SpellFXType type = SpellFXType::None;
     uint32_t spell_id = 0;
     uint16_t source_entity = 0;
-    uint16_t target_entity = 0;
     irr::core::vector3df source_pos;
     irr::core::vector3df target_pos;
     irr::video::SColor color{255, 255, 255, 255};
@@ -546,7 +545,6 @@ private:
 
     // Default effect durations
     static constexpr float DEFAULT_IMPACT_DURATION = 1.5f;  // Impact particles last 1.5 seconds
-    static constexpr float DEFAULT_PROJECTILE_DURATION = 2.0f;
 };
 
 } // namespace EQ
