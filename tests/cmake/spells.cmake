@@ -449,3 +449,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_edd_colour PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_edd_colour DISCOVERY_TIMEOUT 120)
+
+# B1150 (#470): the TEN spawn shapes the official client decodes from the
+# spellsnew.edd record (+0xA8) -- the reader's shape words at their code
+# offsets, the shipped census (0:297 1:202 2:13 3:125 4:275 5:808 6:5 7:9
+# 8:18 9:366, sum 2118, GTEST_SKIP without the client files, the
+# test_spells_new_eff_reader pattern) and the per-case surface invariants of
+# computeEddShapePoint() (the pure switch in spell_spawn_shape.h: point,
+# ring, stacked rings + count table, cylinder, disc, sphere, box, cone,
+# torus, ring-random; plus the offsets, tilts, +0xB0 fallback and the
+# +0x19C scale). Pure logic -- no renderer, no device, no graphics TUs
+# (the reader is in willeq_core, the shape switch is header-only), so it
+# registers in both the graphics and the build-headless trees.
+ADD_EXECUTABLE(test_spell_spawn_shapes
+    test_spell_spawn_shapes.cpp
+)
+TARGET_LINK_LIBRARIES(test_spell_spawn_shapes GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_spawn_shapes PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_spawn_shapes DISCOVERY_TIMEOUT 120)

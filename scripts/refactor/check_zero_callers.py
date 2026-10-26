@@ -847,6 +847,12 @@ EXEMPT_TESTS_GROUPS = {
     # the noted vocabulary's fallback colour (test_spell_visual_vocabulary).
     ("SpellVisualFX", "createProjectile"): "B1128",
     ("SpellVisualFX", "getSpellColorForSpell"): "observer",
+    # B1150 (#470): the census test's observation window onto every file entry
+    # (zero-based, entry 0 included -- a real shape-0 point that the 1-based
+    # slot accessors reject by design, since spellsnew.eff's slot numbers are
+    # 1-based with 0 = empty slot). test_spell_spawn_shapes's
+    # CensusOfTheShapeWord counts all 2118 entries through it.
+    ("SpellsNewEddReader", "shapeAt"): "observer",
     # B1083 (#403): the test's window onto which pack served an (archive, name)
     # EQE1 request. Its production WRITER is recordEQE1Request()/dumpEQE1RequestLog()
     # at zone load (T214); the reader is test_eqe1_source_archive, which asserts

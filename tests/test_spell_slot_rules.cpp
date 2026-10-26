@@ -68,7 +68,7 @@ const Spell kBurstOfFlame{93, 80, 0, EQ::SpellSchool::Evocation};      // record
 const Spell kFlashOfLight{201, 112, 22, EQ::SpellSchool::Evocation};   // record 112 (B1131 head row)
 const Spell kColorFlux{290, 113, 27, EQ::SpellSchool::Evocation};      // record 113, lands on the caster
 const Spell kDefensive{4499, 326, 51, EQ::SpellSchool::Evocation};     // record 326, no Target stage
-const Spell kFrostBolt{54, 82, 23, EQ::SpellSchool::Evocation};        // record 82, B1122 override shapes
+const Spell kFrostBolt{54, 82, 23, EQ::SpellSchool::Evocation};        // record 82, ElemMastery V2 (the B1122 override shapes are retired, B1150)
 const Spell kNoRecord{93, 0, 0, EQ::SpellSchool::Evocation};           // field 145 = 0
 
 class SlotRules : public ::testing::Test {
@@ -493,15 +493,28 @@ TEST_F(SlotRules, NoTargetStageMeansNoLanding) {
     EXPECT_EQ(Points(Created()), (std::vector<uint16_t>{kCaster, kCaster, kL, kR}));
 }
 
-// An override that gives the Source and the landing their own measured
-// geometry (B1122: 54 Frost Bolt) keeps it on the entity for every slot; the
-// level gate and the per-slot art still apply.
-TEST_F(SlotRules, AnOverridesOwnGeometryStaysOnTheEntity) {
+// 54 (Frost Bolt)'s B1122 override gave the Source and the landing their own
+// measured geometry, kept on the entity. B1150 (#470) retired those shape
+// words (their measurements are the kOverrideShape bands in
+// tests/spell_fx_shape_oracle.h), so the slots draw where the file puts them
+// (eqgame 0x495cc3, docs/spellsnew_format.md): record 82 (ElemMastery V2)
+// draws its Source at the two hands at minLevel 0 (slots 1-2, em292; slots
+// 0/3 need levels 39/24, so a level-1 caster gate draws the hands only), and
+// a level-60 caster's landing draws the Target's chest (slot 0, em294),
+// chest (slot 1, em295, 39), default (slot 2, em296, 24) and head (slot 3,
+// em297, 24) -- three slots on the target's entity, one on its head bone.
+// The record's words: python3 refactor/B1150/scripts/eff_record.py 82.
+TEST_F(SlotRules, ARetiredOverrideSpellDrawsItsFileSlotsOnTheirAttachPoints) {
     Note(kFrostBolt);
-    fx_->createCastGlow(kCaster, 54, 1500, 1);  // record 82: hands at level 0 only
-    EXPECT_EQ(Points(Created()), (std::vector<uint16_t>{kCaster, kCaster}));
+    fx_->createCastGlow(kCaster, 54, 1500, 1);  // the level-1 gate: the two minLevel-0 hands
+    EXPECT_EQ(Points(Created()), (std::vector<uint16_t>{kL, kR}));
     fx_->createLanding(kCaster, kOther, 54, 60);
-    for (const auto& c : Created()) EXPECT_EQ(On(c), kOther);  // slot 3 is HEAD: still the entity
+    // Two commands (the spellComplete and impact halves) per drawn slot:
+    // slots 0-2 on the target's entity, slot 3 on its head bone.
+    EXPECT_EQ(Points(Created()),
+              (std::vector<uint16_t>{kOther, kOther, kOther, kOther, kOther, kOther,
+                                     SpellVisualFX::headEntityId(kOther),
+                                     SpellVisualFX::headEntityId(kOther)}));
 }
 
 // A spell with no spellsnew.eff record keeps the row's own anchor (B1131).

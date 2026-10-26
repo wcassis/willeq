@@ -639,7 +639,8 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
                 SpellFxSlotTiming timing;
                 if (slotTiming(d.slot.emitter, sourceCallerMs, timing)) {
                     Presets::applySlotEmitter({&def}, timing, m_spells_new_eff.edd().sprite(d.slot.emitter),
-                                              sourceLatency, kSpellFxAttachScale);
+                                              sourceLatency, kSpellFxAttachScale,
+                                              m_spells_new_eff.edd().shape(d.slot.emitter));  // B1150
                     slotCap = sourceLatency + timing.end() + 0.1f;
                 }
                 pending.push_back({std::move(def), id, slotCap});
@@ -1026,7 +1027,8 @@ uint16_t SpellVisualFX::createLandingFromSlots(uint16_t caster_id, uint16_t targ
         SpellFxSlotTiming timing;
         if (slotTiming(d.slot.emitter, SpellFxCallerDurationMs(SpellFxStage::Target, 0, 0), timing))
             Presets::applySlotEmitter({&complete, &impact}, timing, m_spells_new_eff.edd().sprite(d.slot.emitter),
-                                      targetLatency, kSpellFxAttachScale);
+                                      targetLatency, kSpellFxAttachScale,
+                                      m_spells_new_eff.edd().shape(d.slot.emitter));  // B1150
         pending.push_back({std::move(complete), follow, 0});
         pending.push_back({std::move(impact), 0, follow});
         if (first == 0) first = follow;

@@ -688,9 +688,13 @@ float startMid(const EmitterConfig& c) { return 0.5f * (c.sizeStartMin + c.sizeS
 
 // B1122 (#442): the Source cloud's GEOMETRY follows the spells.eff record, the
 // same rule B1120 applied to the landing: 93/38 (record 0) are the style, 54
-// and 656 (record 23) share one swirl, 41 (record 20) and 253/458 (records
-// 35/33) carry their own measured shape, and an unmeasured spell is the style
-// (an invented override is the guess Will's ruling forbids).
+// and 656 (record 23) share one swirl, an unmeasured spell is the style
+// (an invented override is the guess Will's ruling forbids). B1150 (#470):
+// the measured per-spell SHAPES (41/253/458 and the 54/656 cloud boxes) are
+// retired with the rows (tests/spell_fx_shape_oracle.h kOverrideShape) -- the
+// records' spellsnew.edd +0xA8 shapes draw them (spell_spawn_shape.h) -- so
+// every override falls back to its style's shape; the motions and sizes the
+// rows still carry are asserted as before.
 TEST_F(SpellStyleOverrides, B1122SourceShapesFollowTheSpellsEffRecord) {
     using EQT::Graphics::Environment::MotionType;
     using EQT::Graphics::Environment::SpawnShape;
@@ -710,9 +714,14 @@ TEST_F(SpellStyleOverrides, B1122SourceShapesFollowTheSpellsEffRecord) {
     EXPECT_EQ(s54.motionType, MotionType::ORBITAL);
     EXPECT_FLOAT_EQ(s54.orbitalRadius, s656.orbitalRadius);
     EXPECT_FLOAT_EQ(s54.spawnRate, s656.spawnRate);
-    EXPECT_NE(castSprayFor(41).spawnExtents, castSprayFor(0).spawnExtents);
-    EXPECT_NE(castGlowFor(253).spawnExtents, style.spawnExtents);
-    EXPECT_NE(castGlowFor(458).spawnExtents, style.spawnExtents);
+    // B1150: the retired rows fall back to the style's shape (their measured
+    // values are the kOverrideShape bands); the motions/sizes they kept stay.
+    EXPECT_EQ(castSprayFor(41).spawnShape, castSprayFor(0).spawnShape);
+    EXPECT_EQ(castSprayFor(41).spawnExtents, castSprayFor(0).spawnExtents);
+    EXPECT_EQ(castGlowFor(253).spawnShape, style.spawnShape);
+    EXPECT_EQ(castGlowFor(253).spawnExtents, style.spawnExtents);
+    EXPECT_EQ(castGlowFor(458).spawnShape, style.spawnShape);
+    EXPECT_EQ(castGlowFor(458).spawnExtents, style.spawnExtents);
     // Sizes are B1123SizesAreTheOraclesRoi's: 253 keeps the size that read in
     // band before the sizes-first shrink of the style.
     EXPECT_NE(startMid(castGlowFor(253)), startMid(style));
