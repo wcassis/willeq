@@ -220,7 +220,7 @@ The landing deltas are the missile unit itself, not instrument variance.
 0/93 (rec 80), 1/200 (rec 73), 2/202 (rec 86), 6/722 (rec 1), 7/40 (rec 88),
 18/378 (rec 84), 25/14 (rec 115), 26/310 (rec 114) — re-derived from the raw
 client files (spellsnew.eff + spells_us.txt field 145; the FX gate is
-`spell_visual_fx.cpp:563-566`, the level rule `drawnAtLevel` in
+`spell_visual_fx.cpp:567-568`, the level rule `drawnAtLevel` in
 `spells_new_eff_reader.h`): `python3 refactor/B1152/scripts/middle_rows.py
 /mnt/projects/EverQuestP1999` prints the 8/40 population with each row's
 record, name and drawn Middle slots. (The missile timing gate above covers
@@ -246,7 +246,7 @@ arrival-shift deltas. None is a source-stage regression.
 B1151 was **2.113** (ratio 0.693 — refactor/B1151/README.md: "93: B1151 2.113
 vs the B1142 reference 3.049 — ratio 0.693"). 0.654 is inside the B1150
 harness/oracle landing-ratio band 0.45..0.72 (refactor/B1150/README.md line
-338): the row's landing moved by the arrival shift, and it stayed in band.
+338-339): the row's landing moved by the arrival shift, and it stayed in band.
 
 ## What replaced createProjectile
 
@@ -272,7 +272,9 @@ harness/oracle landing-ratio band 0.45..0.72 (refactor/B1150/README.md line
   `createProjectile` (tests-only since B1138), so the Middle stage simply had
   no FX body. Now the Middle draws from the spawner (`launchMissile` creates
   the Middle emitter on the missile). `grep -niE 'never drawn|middle.*suppress'
-  src/ tools/` returns nothing to remove (the card's `~:754-759` /
+  src/ tools/` returns only the createProjectile/T72 tombstone
+  (`spell_visual_fx.cpp:801`) and seven unrelated "never drawn" lines -- no live
+  B1144/T72 gate (the card's `~:754-759` /
   `model_viewer_spell_test.cpp` line-30 refs were stale — no such note exists).
 - **createProjectile retired** (above), and its stale `EXEMPT_TESTS` row
   (boarded B1128, which was to WIRE it) is deleted from

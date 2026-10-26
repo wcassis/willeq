@@ -10,7 +10,7 @@ Re-derives it from the raw official-client files:
                     bytes, then 3 stages x 68 bytes, each = 4-byte sound +
                     4 slots x 16 bytes (emitter, minLevel, anchor, attachPoint).
 
-The FX gate (spell_visual_fx.cpp:563-566, SpellVisualFX::stageSlots) is
+The FX gate (spell_visual_fx.cpp:567-568, SpellVisualFX::stageSlots) is
   record = field 145; drawn iff hasContent() && some Middle slot has
   emitter > 0 (hasEmitter) and minLevel <= casterLevel (drawnAtLevel,
   spells_new_eff_reader.h:99-100 -- the client's 0x495cc3 level gate).
