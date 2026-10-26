@@ -116,7 +116,8 @@ Client:
   not pulled back to walk/idle mid-channel (the state machine's already-playing path).
 - `src/client/graphics/eq/skeletal_animator.{h,cpp}` + `scripts/refactor/check_zero_callers.py`
   -- `setTargetDuration` (the stretch mechanism) had zero callers after the replacement and is
-  deleted; its exemption line dropped.
+  deleted (it never had an exemption line in `check_zero_callers.py`); the script's
+  `resetPlaybackSpeed` exemption is dropped because `playCastAnim` now calls it.
 
 Harness:
 

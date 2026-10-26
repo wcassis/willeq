@@ -48,8 +48,10 @@
 //
 // Which track a spell plays is the SPELL's word (CastingAnim, spells.txt
 // field 120), never the caster's class or the spell's type: the db gives
-// every B1149-B1152 re-gated spell (93/38/54/41/201/253/458/656 and the 40
-// B1130 records) CastingAnim 44 = T06.
+// the eight B1149-B1152 b1118 spells (93/38/54/41/201/253/458/656) CastingAnim
+// 44 = T06, and 21 of the 40 B1130 record spells; the other 19 carry 43 (x14),
+// 42 (x2), 39 (x2) or 40 (x1), so the re-gated sweep plays each spell's own
+// code (data/willeq.db spells.cast_anim).
 
 #include <string>
 
