@@ -204,6 +204,46 @@ table by more than its p25..p75 spread without the mechanism named.
 
 <!-- GATE-TABLES -->
 
+## Remaining steps (for the continuation card)
+
+The core (reader, sim, renderer, B1145 removal, 18 unit tests, census) is
+landed and committed (see `git log`). What remains, in order:
+
+1. **Build the gate tree + smoke-test on the ThinkPad**:
+   `rbuild <worktree> --target model_viewer` (rbuild tree =
+   `/home/user/willeq-builds/kb-b1151-frames/build`); on the ThinkPad run one
+   scene via `refactor/B1151/scripts/run_scene.sh b1151_smoke 30 --seed 1`
+   (a tour plan) to confirm the model_viewer + client files + eqe1 pack
+   resolve. The three gate scripts (`run_scene.sh`, `tour7.sh`,
+   `run_sweep.sh`) are copies of the B1150 scripts retargeted to this
+   worktree; fix any path issue there.
+2. **tour-7** (fast): `tour7.sh b1151`; collect
+   `rsync -a thinkpad:/home/user/src/willeq-wt/kb-b1151-frames/refactor/B1151/runs/ ./refactor/B1151/runs/`.
+3. **40-record sweep** (~2 h, start early in the background):
+   `run_sweep.sh b1151`.
+4. **Gate tables + motion signatures**: per record, centroid drift over time
+   and extent growth vs the oracle strips (`review/B1130/strips/record_<N>.png`
+   + `review/B1130/scripts/anchor.py` per-frame rows), banded against
+   `refactor/B1150/README.md` "The gate" (shapes baseline), `review/B1142`
+   (93 reference 3.049) and `review/B1130/record_table.tsv`. Per row: PASS /
+   short / over per column, owner of every miss (B1152 missile, B1153 retire,
+   "unattributed"); no row may regress vs the B1150 table by more than its
+   p25..p75 spread without the mechanism named.
+   `scripts/gate_table_reference.py` is the B1150 gate table (shape bands) —
+   adapt it to emit the motion-signature columns (the render scripts +
+   `harness_measure.py` output are unchanged; only the table assembly differs).
+5. **Paste the gate tables into the README** (replace the `GATE-TABLES` marker).
+6. **Final verification + MR**: `ctest -R 'Spell|Bridge|Particle|FxHarness|ConfigKeyReachability|Oracle'`
+   + hygiene via rbuild; ONE whole-tree CI-flag build; push WITH CI (no
+   `-o ci.skip`); open MR "Closes #471"; confirm pipeline green at head.
+7. **`kanban complete`** first line: "B1151 landed at <full sha>: MR !<iid>
+   pipeline <id> <status>".
+
+Known PARTIALs carried into the gate (see "PARTIAL"): the +0x178
+column→axis-letter convention, mode-1 streak vertex construction, mode-2
+world-quad vertex construction. If the gate shows a band of short/over rows
+sharing a mechanism, name that mechanism (do not tune per-row).
+
 ## FOLLOW-UP (B1152 / B1153)
 
 - **B1152 (missile).** The missile-travel half of the projectile-path emitters
