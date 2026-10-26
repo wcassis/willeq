@@ -1,0 +1,13 @@
+## spell 340 BC 1.500 Act 3.000 (cast 1.500s) end 13.000
+fable340: 381 frames, baseline 30
+# /tmp/b1151-frames/b1151_r34_340.measure/fable_340: floor 304px thr 1217px model 235px
+SOURCE onset f58 BC+0.433s end f89 BC+1.467s peak f88 BC+1.433s coverage 0.388 model^2
+LANDING onset f100 Act+0.333s end f269 Act+5.967s dur 5.63s peak f136 Act+1.533s coverage 1.068 model^2
+# /tmp/b1151-frames/b1151_r34_340.measure/fable_340: grab fps 30.00, stale grabs in Act+0.3..2.3s: 0/60 (max frame gap 34 ms), noise p95 657px, thr 1972px, model 235px
+SOURCE	onset f58 +0.433s	last f89 +1.467s	end10% f89 +1.467s	dur 1.03s (32 active fr)	peak f88 +1.433s n=37385px blobs=254	extent 427x414px = 1.82x1.76 model	meanRGB 102,146,87 peak_hue 110 sat 0.45	
+LANDING	onset f90 +0.000s	last f272 +6.067s	end10% f252 +5.400s	dur 6.07s (183 active fr)	peak f120 +1.000s n=80082px blobs=226	extent 444x649px = 1.89x2.76 model	meanRGB 90,165,86 peak_hue 117 sat 0.49	
+LANDING_RISE	first frame > 2x source tail (37385px): f108 Act+0.600s n=75459
+/tmp/b1151-frames/b1151_r34_340.measure/fable_340 SOURCE colour RGB 118,191,92 hue 104 sat 0.52 val 0.75
+/tmp/b1151-frames/b1151_r34_340.measure/fable_340 SOURCE f75 (BC+1.00s): blobs>=2px 96, diam median 3.7px = 0.016 model, p90 26.5px = 0.113 model, lit px 17189
+/tmp/b1151-frames/b1151_r34_340.measure/fable_340 LANDING colour RGB 109,215,93 hue 112 sat 0.57 val 0.84
+/tmp/b1151-frames/b1151_r34_340.measure/fable_340 LANDING f135 (Act+1.50s): blobs>=2px 109, diam median 2.5px = 0.011 model, p90 16.6px = 0.071 model, lit px 58442

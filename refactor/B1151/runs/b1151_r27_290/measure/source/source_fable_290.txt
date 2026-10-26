@@ -1,0 +1,17 @@
+# exclude [(490, 0, 190, 200), (170, 0, 280, 140)]
+# /tmp/b1151-frames/b1151_r27_290.measure/video.mkv bc 1.500 act 2.500 (cast 1.000s) crop 170,0,1060,650 feet 640,605 model 235px thr 1256px
+frame	t_bc	cov	extent	centroid	rowtop	active
+45	+0.00	0.004	0.27	0.75	0.00	0
+48	+0.10	0.006	0.28	0.76	0.00	0
+52	+0.23	0.006	0.27	0.77	0.00	0
+54	+0.30	0.008	0.27	0.75	0.00	0
+58	+0.43	0.078	1.19	0.57	0.87	1
+60	+0.50	0.079	1.23	0.61	0.75	1
+63	+0.60	0.092	1.27	0.62	0.76	1
+66	+0.70	0.107	1.33	0.64	0.77	1
+70	+0.83	0.128	1.30	0.71	1.46	1
+73	+0.93	0.146	1.28	0.72	1.49	1
+ONSET25 (first frame >= 25% of the peak) f58 BC+0.433
+SOURCE onset f58 BC+0.433 last f74 BC+0.967 active 17/30 frames
+PEAK f73 BC+0.93 cov 0.146 extent 1.28 centroid 0.72 rowtop 1.49
+MEDIAN(active, BC+0.3..Act) cov 0.107 extent 1.30 centroid 0.64 rowtop 0.90 n=17

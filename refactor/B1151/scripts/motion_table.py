@@ -152,6 +152,7 @@ def main():
     print('# Verdict: drift direction and growth direction vs the oracle; short/over per column when they differ.')
     print()
     for stage, tcol in (('SOURCE', 'tb'), ('LANDING', 'ta')):
+        pairs = []
         print(f'### {stage} -- the B1151 harness vs the B1130 oracle (per record)\n')
         print(f'| rec | oracle onset | oracle peak | oracle drift | oracle end drift | oracle growth | harness onset | harness peak | harness drift | harness end drift | harness growth | extent o/h | verdict |')
         print('|---|---|---|---|---|---|---|---|---|---|---|---|---|')
@@ -178,10 +179,23 @@ def main():
                 elif hs['pk']['hp95'] > os_['pk']['hp95'] / 0.7:
                     probs.append('extent over')
                 v = 'PASS' if not probs else ' / '.join(probs)
+                pairs.append((hs, os_, v))
             print(f"| {rec} | {cell(otag, os_, 'onset')} | {cell(otag, os_, 'peak')} | {cell(otag, os_, 'drift')} | {cell(otag, os_, 'end drift')} | "
                   f"{cell(otag, os_, 'growth')} | {cell(htag, hs, 'onset')} | {cell(htag, hs, 'peak')} | {cell(htag, hs, 'drift')} | "
                   f"{cell(htag, hs, 'end drift')} | {cell(htag, hs, 'growth')} | {cell(otag, os_, 'extent')} / {cell(htag, hs, 'extent')} | {v} |")
         print()
+        # the tallies the README quotes (same direction functions as the verdict)
+        n = len(pairs)
+        n_pass = sum(1 for _, _, v in pairs if v == 'PASS')
+        n_drift = sum(1 for hs, os_, _ in pairs if dirdrift(hs['drift_cen']) == dirdrift(os_['drift_cen']))
+        n_grow = sum(1 for hs, os_, _ in pairs if dirgrowth(hs['growth_cov']) == dirgrowth(os_['growth_cov']))
+        # the cast-anim rig pattern: the oracle side falls, the harness side is flat
+        n_pat = sum(1 for hs, os_, _ in pairs
+                    if dirdrift(os_['drift_cen']) == 'falling' and dirdrift(hs['drift_cen']) == 'flat')
+        n_unattr = n - n_pass - n_pat
+        print(f'# {stage} tallies: {n} compared; PASS {n_pass}; drift direction agrees {n_drift}/{n}; '
+              f'growth direction agrees {n_grow}/{n}; cast-anim pattern (oracle falling, harness flat) {n_pat}; '
+              f'unattributed (non-PASS, not the pattern) {n_unattr}')
 
 if __name__ == '__main__':
     main()
