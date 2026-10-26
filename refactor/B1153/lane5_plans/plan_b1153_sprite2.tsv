@@ -1,0 +1,62 @@
+# action	target	hold_ms	still_name
+# B1153 step 4 v2 (sprite leg, re-run): 93 Burst of Flame ON the TrollF at B1130's
+# pose. v1's failure (lane5/oracle_b1153_sprite): the caster's #goto is a full
+# zone transition (OP_RequestClientZoneChange, the client re-logs ~90 s later,
+# 14:46:58); v1 targeted/stunned BEFORE it settled and cast mid-transition, so
+# the client refused both casts (no OP_CastSpell anywhere in v1's capture.pcap,
+# decoded via scripts/eqemu/oracle/vendor/eqpcap.py). v2 follows B1130's proven
+# r131 structure exactly: F9 x3 BEFORE spawn/goto (the fixed 209 px user camera
+# 1, review/B1130/README.md lines 439-442), spawn TrollF at -74,428 (the login
+# pose), #goto -67.6,434.4, /target + #stun, then the 22 s transition settle
+# (r131's `wait 22000 time_settle`), then the casts with a re-target/re-stun
+# before each (the transition kills the old target; TrollF itself survives the
+# same-zone transition -- B1130's c142 leg stunned/targeted it post-goto).
+# Caster (Testcaster, char 67, class 6 DRU for the leg, gem 1 = 93) ends at
+# B1130's caster pose (-67.6,434.4); TrollF at B1130's NPC pose (-74,428); the
+# OBSERVER (Oraclewatch, char 103, second official client on :99 = the grabbed
+# display, B1134 rig position) stands at B1130's camera vantage (-67.6,434.4,
+# heading 160) on user camera 1 (F9 x3). The CASTER's own video is the B1130
+# rig itself (user camera 1 on the caster, the survey's own capture method) and
+# is the primary measurement source; the observer's stills corroborate.
+# fps=30
+# pose=-74,428,3.75,160
+# observer=Oraclewatch
+# observer-pose=-67.6,434.4,3.75,160
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#level 60	0	lvl
+command	#mana	0	mana
+press	F9	0	cam1
+press	F9	0	cam2
+press	F9	0	cam3
+wait	3000	0	cam_settle
+obs	press	F9	0	obs_cam1
+obs	press	F9	0	obs_cam2
+obs	press	F9	0	obs_cam3
+obs	wait	3000	0	obs_cam_settle
+command	#spawn TrollF 1 1 0 30000	0	spawn
+wait	3000	0	spawn_settle
+command	#goto -67.6 434.4 3.75	0	goto
+wait	3000	0	goto_settle
+command	/target TrollF	0	tgt_npc0
+command	#stun 120000	0	stun
+wait	1500	0	stun_settle
+wait	22000	0	time_settle
+command	/cast 1	0	cast_a
+wait	15500	0	fx_a
+command	#mana	0	mana_b
+command	/target TrollF	0	tgt_b
+command	#stun 120000	0	stun_b
+wait	1500	0	tgt_b_settle
+command	/cast 1	0	cast_b
+wait	15500	0	fx_b
+obs	command	/q	0	obs_quit
+command	/q	0	quit

@@ -1,0 +1,48 @@
+# action	target	hold_ms	still_name
+# B1153 step 4 (sprite leg): 93 Burst of Flame ON AN NPC at B1130's pose -- the
+# per-sprite quantity no capture covered (the card). The CASTER (Testcaster,
+# char 67, class 6 DRU so gem 1 = 93) stands at B1130's caster pose: TrollF is
+# #spawn'ed at -74,428 (B1130's NPC pose) and the caster #goto -67.6 434.4 3.75
+# with the stun, B1130's own sequence (review/B1130/legs_commands.tsv rows 10-13).
+# The OBSERVER (Oraclewatch, char 103, a second official client on :99 = the
+# grabbed display) stands at B1130's fixed-camera vantage (-67.6,434.4, heading
+# 160, the same point B1130's caster #goto'd to) on user camera 1 (F9 x3, the
+# B1130 fixed camera), so the NPC frames like the b1130 fixed_npc harness
+# preset (the b1153_after fixed_npc_r0 run). 93 cast ON THE NPC, x2. fps=30.
+# fps=30
+# pose=-74,428,3.75,160
+# observer=Oraclewatch
+# observer-pose=-67.6,434.4,3.75,160
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#level 60	0	lvl
+command	#mana	0	mana
+command	#spawn TrollF 1 1 0 30000	0	spawn
+wait	2000	0	spawn_settle
+command	#goto -67.6 434.4 3.75	0	goto_caster
+wait	2000	0	goto_settle
+command	#stun 120000	0	stun
+command	/target TrollF	0	tgt_npc
+wait	1500	0	tgt_settle
+obs	press	F9	0	obs_cam1
+obs	press	F9	0	obs_cam2
+obs	press	F9	0	obs_cam3
+obs	wait	3000	0	obs_cam_settle
+command	/cast 1	0	cast_a
+wait	15500	0	fx_a
+command	#mana	0	mana_b
+command	#stun 120000	0	stun_b
+command	/target TrollF	0	tgt_b
+wait	1500	0	tgt_b_settle
+command	/cast 1	0	cast_b
+wait	15500	0	fx_b
+obs	command	/q	0	obs_quit
+command	/q	0	quit

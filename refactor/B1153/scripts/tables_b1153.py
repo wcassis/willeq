@@ -92,20 +92,27 @@ def b1130_rows(tag):
 reg = {}
 for line in open(B1142):
     c = line.rstrip("\n").split("\t")
-    if c[0] == "spell" or c[0].startswith("#"):
+    if c[0] != "spell":
+        continue
+    if "b1132_land_cov" not in c:  # the repeated header row
         continue
     reg[c[0]] = c
-# columns: 0 spell, 3 new_land_cov, 7 new_end, 11 new_roi_l, 15 new_roi_s,
-# 27 new_land_cov_masked, 33 oracle_land_cov, 34 oracle_end, 35 roi_l_band, 37 roi_s_band
+# columns (review/B1142/gate/regression_table.tsv header): 0 spell,
+# 4 new_land_cov (the B1142-on fable baseline; 93 = 3.049), 34 oracle_land_cov,
+# 35 oracle_end, 36 roi_l_band, 38 roi_s_band
 gate_a = []
 for spell in ("38", "41", "54", "93", "253", "458", "656"):
-    r = reg.get(spell, [None] * 40)
-    oracle_land = f(r[3]) if len(r) > 3 else None
-    oracle_end = f(r[7]) if len(r) > 7 else None
-    roi_l_band = r[35] if len(r) > 35 else ""
-    roi_s_band = r[37] if len(r) > 37 else ""
+    r = reg.get(spell)
+    if r is None:
+        continue
+    baseline_land = f(r[4])
+    oracle_land = f(r[34])
+    oracle_end = f(r[35])
+    roi_l_band = r[36]
+    roi_s_band = r[38]
     row = {
         "spell": spell,
+        "b1142_new_land": baseline_land,
         "oracle_land": oracle_land,
         "oracle_end": oracle_end,
     }
@@ -155,8 +162,15 @@ with open(f"{OUT}/gate_a.tsv", "w") as fp:
         fp.write("\t".join("" if row[c] is None else str(row[c]) for c in cols) + "\n")
 
 # --------------------------------------------------------------------------
-# gate (b): 40-record sweep b1118 vs the B1151 harness rows
+# gate (b): 40-record sweep b1118 vs the B1151 harness rows.
+# The retirement must not move the harness outside the drift the chain
+# already tolerates vs B1151: verdict PASS iff (after - b1151) is inside the
+# p25..p75 of (before - b1151) over the same 40 rows for that column (before =
+# this tip, pre-retirement config, same binary and rig; B1151's own gate used
+# the same p25..p75-spread rule, refactor/B1151/README.md "The gate").
 # --------------------------------------------------------------------------
+import statistics  # noqa: E402
+
 b1151 = {}
 runs = f"{REPO}/refactor/B1151/runs"
 for d in os.listdir(runs):
@@ -169,32 +183,61 @@ for d in os.listdir(runs):
     if rows:
         b1151[d[len("b1151_"):]] = rows[0]
 
+
+def b1153_run(d):
+    return summary(d)
+
+
 gate_b = []
+COLSB = ("land_cov", "src_cov", "end", "roi_l", "roi_s")
+deltas_before = {c: [] for c in COLSB}
+pre = []
 for d in sorted(os.listdir(f"{REPO}/refactor/B1153/runs"),
-                key=lambda x: int(re.sub(r"\D", "", x.split("_r")[-1].split("_")[0])
-                                  if re.match(r"b1153_after_b1118_r\d", x) else 999)):
-    m = re.match(r"b1153_after_b1118_(r\d+)_(\d+)$", d)
+                key=lambda x: (0, int(x.split("_r")[-1].split("_")[0])) if re.match(r"b1153_(before|after)_b1118_r\d", x) else (1, 0)):
+    m = re.match(r"b1153_(before|after)_b1118_(r\d+)_(\d+)$", d)
     if not m:
         continue
-    rec, sid = m.groups()
-    s = summary(d)
+    side, rec, sid = m.groups()
+    s = b1153_run(d)
     if s is None:
         continue
     b = b1151.get(f"{rec}_{sid}")
-    row = {"row": rec, "spell": sid}
-    for col, tol in (("src_cov", 0.05), ("land_cov", 0.05), ("end", 0.10),
-                     ("roi_l", 0.02), ("roi_s", 0.02)):
-        v = f(s[col])
-        ref = f(b[col]) if b else None
-        row[f"b1153_{col}"] = v
-        row[f"b1151_{col}"] = ref
-        if v is None or ref is None:
-            row[f"{col}_d"] = None
-            row[f"{col}_v"] = "n-a"
+    if b is None:
+        continue
+    row = {"row": rec, "spell": sid, "side": side}
+    for c in COLSB:
+        v = f(s[c])
+        ref = f(b[c])
+        row[f"{side}_{c}"] = v
+        row[f"b1151_{c}"] = ref
+        if v is not None and ref is not None and side == "before":
+            deltas_before[c].append(v - ref)
+    pre.append(row)
+# one table row per record: before+after merged
+byrec = {}
+for row in pre:
+    byrec.setdefault(row["row"], {})[row["side"]] = row
+for rec in sorted(byrec, key=lambda x: int(re.sub(r"\D", "", x) or 0)):
+    sides = byrec[rec]
+    if "after" not in sides:
+        continue
+    row = {"row": rec, "spell": sides["after"]["spell"]}
+    for c in COLSB:
+        row[f"b1151_{c}"] = sides["after"].get(f"b1151_{c}")
+        row[f"before_{c}"] = sides.get("before", {}).get(f"before_{c}")
+        row[f"after_{c}"] = sides["after"][f"after_{c}"]
+        d_after = None
+        if row[f"after_{c}"] is not None and row[f"b1151_{c}"] is not None:
+            d_after = row[f"after_{c}"] - row[f"b1151_{c}"]
+        ds = sorted(deltas_before[c])
+        if ds and d_after is not None:
+            lo = ds[max(0, len(ds) // 4 - 1)]
+            hi = ds[min(len(ds) - 1, (3 * len(ds)) // 4)]
+            row[f"{c}_v"] = "in" if lo <= d_after <= hi else ("short" if d_after < lo else "over")
+            row[f"{c}_band"] = f"{lo:+.3f}..{hi:+.3f}"
         else:
-            dd = v - ref
-            row[f"{col}_d"] = dd
-            row[f"{col}_v"] = "PASS" if abs(dd) <= tol else ("short" if dd < 0 else "over")
+            row[f"{c}_v"] = "n-a"
+            row[f"{c}_band"] = ""
     gate_b.append(row)
 
 with open(f"{OUT}/gate_b.tsv", "w") as fp:
@@ -261,8 +304,19 @@ OBS = {
     "51": (0.70, 0.21, -0.05, 0.74, None, 8.16, None),   # P4/P4b/P5 (4499): row 51
 }
 COLS = ("source_onset_s", "source_centroid", "src_h_lo", "src_h_hi",
-        "landing_onset_s", "landing_end_s", "landing_cov")
+        "landing_onset_s", "landing_end_s", "landing_cov", "p90_src", "p90_land")
 gate_d = []
+# the sprite leg's oracle p90s, measured with the SAME instrument
+# (review/B1132/scripts/fx_sprite_roi.py) on the lane-5 capture; written by
+# the leg's measure step if it ran.
+OROI = {}
+try:
+    for l in open(f"{EV}/lane5/sprite_p90.tsv"):
+        c = l.rstrip("\n").split("\t")
+        if len(c) >= 3 and not l.startswith("#"):
+            OROI[c[0]] = (f(c[1]), f(c[2]))
+except OSError:
+    pass
 for rec, spell, tag in (("0", "93", "after_fixed_npc_r0"),
                         ("40", "602", "after_fixed_self_r40"),
                         ("51", "4499", "after_fixed_self_r51")):
@@ -271,13 +325,15 @@ for rec, spell, tag in (("0", "93", "after_fixed_npc_r0"),
     row = {"record": rec, "spell": spell, "tag": tag}
     for i, col in enumerate(COLS):
         v = f(r[col]) if r else None
-        ref = obs[i]
-        row[f"obs_{col}"] = ref
+        ref = obs[i] if i < len(obs) else (OROI.get("93", (None, None))[i - 8] if col in ("p90_src", "p90_land") and rec == "0" else None)
+        row[f"ref_{col}"] = ref
         row[f"b1130_{col}"] = v
         if col in ("source_onset_s", "landing_onset_s", "landing_end_s"):
             tol = 0.10
         elif col in ("source_centroid", "src_h_lo", "src_h_hi"):
             tol = 0.15
+        elif col in ("p90_src", "p90_land"):
+            tol = None  # the sprite leg reports the ratio, no band yet
         else:
             tol = None
         if v is None or ref is None:
