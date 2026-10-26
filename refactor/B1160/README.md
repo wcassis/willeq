@@ -72,7 +72,7 @@ exactly the reported chain (B1149 config was 4.233, the pre-B1150 reference).
 The fall is **not uniform**: the B1150→B1151 motion switch **drops** 93/38 (−0.629),
 41 (−0.404) and 458 (−0.072) but **raises** 54/656 (+0.205) and holds 253
 (+0.039). So the drift is record-specific EDD motion, not a global sim change.
-The B1151→B1152 step is the missile (93/38 −0.120; 458 −0.133 end). **The current
+The B1151→B1152 step is the missile (93/38 −0.120 land); 458's end moves at the B1152→cur step (+5.183 → +5.050, −0.133), not at the missile step. **The current
 tip (cc85c331) matches `refactor/B1157/b1118_table.tsv` for all seven spells
 (`cur_vs_B1157` = +0.000 land on every row)** — no row regressed at the tip.
 
@@ -84,8 +84,8 @@ move on every other word. It is kept as a local patch
 (`ablation_b1160.patch`, diff at the bottom) — not committed in-tree, and its
 no-op-when-unset is the ablation table's own noise floor (base1 == base2,
 Δ 0.000). Record 80 is EFF "Ignite80ct V2" (B1137 xtab); its **Target** (landing)
-stage is EDD 280 / 281 / 282 / 9 — 280 carries the radial (+0x10E8/+0x10EC:
-radMin 4 → radMax 5), 282 the up (+0x10EC/+0xF0/+0xF4: upMin 8, upMax 3,
+stage is EDD 280 / 281 / 282 / 9 — 280 carries the radial (+0x110/+0x114/+0x118:
+radMin 4 → radMax 5), 282 the up (+0xEC/+0xF0/+0xF4: upMin 8, upMax 3,
 upAccel 2), 281 and 9 are frame-animated and carry no velocity words.
 
 | term | land_cov | Δ vs base | reading |
@@ -111,7 +111,7 @@ the 0.000 noise floor); radial is a minor −0.034; every other term is a no-op.
 Re-reading the owner term against `refactor/B1151/TRACE.md` + the cited
 eqgame.dis / EQGraphicsDX9.dis lines + the record-80 EDD words
 (`review/B1141/edd_fields_from_code.tsv`, `docs/spellsnew_format.md`): the up
-word is PROVEN-BY-CODE as `v1 = rand[+0x10EC,+0xF0]; v1 += dt*+0xF4;
+word is PROVEN-BY-CODE as `v1 = rand[+0xEC,+0xF0]; v1 += dt*+0xF4;
 h += v1*s*dt` (axis-1 / up). `updateEddMotion()` (sim_particles.cpp) implements
 exactly this: `p.eddV1 = particleRandomFloat(upMin, upMax); p.eddV1 += dt*upAccel;
 p.eddH += p.eddV1*s*dt`. The attach scale `s = entityScaleForServerSize(raceScale,
@@ -132,10 +132,11 @@ in lit pixels than the oracle:
   282: 28/s×1.5 s=42, 9: 10/s×1.25 s=12) — the sim spawns well above that. So
   the sparseness is **not** a population shortfall. Source: `popcount_93.txt`.
 - **The geometry matches the oracle.** PEAK landing end +6.633 (d_end +0.166 vs
-  the B1157 baseline; the oracle end is +6.67, d_end −0.04) and the extent is
-  the B1151 9.32 — the column is the right length and footprint.
+  the B1157 baseline; the oracle end is +6.67, d_end −0.04) and the LANDING bbox is
+  771×627 px = 3.28×2.67 model (B1151: 791×612 px = 3.37×2.60; `measure_harness.txt`
+  of `b1160_cur_tour_93` / `b1160_b1151_tour_93`) — the column is the right length and footprint.
 - **The per-particle pixel area is the gap.** 1550 particles, right length, right
-  footprint, yet n_px 1.993 (0.54× the 3.945 oracle, 0.69× the 3.049 b1118 lane
+  footprint, yet n_px 1.993 (0.505× the 3.945 oracle, 0.654× the 3.049 b1118 lane
   reference) means each particle contributes too few lit pixels. The B1149
   sprite-size/depth-bias words (+0xD0 depth bias, +0x19C scale) are the
   next quantity to check: the EDD sprite size vs willeq's rendered per-particle
@@ -230,9 +231,9 @@ index fdb08230..cb7340ae 100644
 additive-blend saturation) on record 80.** The owner motion term (UP, EDD 282) is
 read correctly, so the remaining gap to the oracle's flame column (3.945) is the
 per-particle pixel area, measured here: 1550 active particles at the impact
-(frame 154), PEAK end +6.633 (d_end +0.166 vs B1157) and extent 9.32 — the column
-is the right population, length and footprint, yet n_px 1.993 (0.54× the 3.945
-fixed-camera oracle, 0.69× the 3.049 b1118 lane reference). Next measurement:
+(frame 154), PEAK end +6.633 (d_end +0.166 vs B1157) and a 771×627 px = 3.28×2.67 model
+LANDING bbox (B1151: 3.37×2.60) — the column is the right population, length and footprint,
+yet n_px 1.993 (0.505× the 3.945 fixed-camera oracle, 0.654× the 3.049 b1118 lane reference). Next measurement:
 the EDD sprite-size/depth-bias words (+0xD0, +0x19C scale) vs willeq's rendered
 per-particle pixel area in the impact ROI, and the additive-blend saturation at
 threshold 45. Owner: the FX-sim sprite-size lane (B1149's sprite-size/depth-bias
