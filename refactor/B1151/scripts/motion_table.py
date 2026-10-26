@@ -59,7 +59,7 @@ def parse(path):
         if len(p) < 12:
             continue
         fr = f(p[0])
-        if fr is None or not str(fr).isdigit():
+        if fr is None or not p[0].strip().isdigit():
             break  # summary lines (SOURCE onset ... / PEAK ...) follow
         active = p[-1].strip() == '*'
         if not active:
@@ -67,6 +67,16 @@ def parse(path):
         out.append(dict(frame=int(fr), tb=f(p[1]), ta=f(p[2]), cov=f(p[3]),
                         cen_h=f(p[4]), cen_dx=f(p[5]), hp5=f(p[8]), hp95=f(p[9])))
     return out
+
+def pstage(path, tcol):
+    """parse + rebase 'tb' onto the stage's own time axis (SOURCE: t_bc,
+    LANDING: t_act), so sig()/cell() (which use 'tb') are stage-correct."""
+    rows = parse(path)
+    if rows:
+        for r in rows:
+            r['tb'] = r[tcol]
+    return rows
+
 
 def sig(rows):
     """per-frame rows -> (tag, s): ('missing', None) / ('none', None) / ('ok', s)."""
@@ -146,9 +156,9 @@ def main():
         print(f'| rec | oracle onset | oracle peak | oracle drift | oracle end drift | oracle growth | harness onset | harness peak | harness drift | harness end drift | harness growth | extent o/h | verdict |')
         print('|---|---|---|---|---|---|---|---|---|---|---|---|---|')
         for rec, sid, d in sweep:
-            htag, hs = sig(parse(os.path.join(d, f'anchor_{stage}.tsv')))
+            htag, hs = sig(pstage(os.path.join(d, f'anchor_{stage}.tsv'), tcol))
             od = rig.get(rec)
-            otag, os_ = sig(parse(os.path.join(ora, f'{od}_{stage}.tsv'))) if od else ('missing', None)
+            otag, os_ = sig(pstage(os.path.join(ora, f'{od}_{stage}.tsv'), tcol)) if od else ('missing', None)
             if htag != 'ok' and otag != 'ok':
                 v = 'no rows'
             elif htag != 'ok' or otag != 'ok':
