@@ -5,6 +5,7 @@
 // Coexists with the existing billboard particle path (ambient/environmental effects)
 
 #include <glm/glm.hpp>
+#include <cmath>
 #include <cstdint>
 
 #include "client/graphics/environment/particle_options.h"  // B995: ParticleFamily
@@ -74,7 +75,7 @@ struct UnifiedParticle {
     // Metadata — 8 bytes
     uint16_t emitterID = 0;         // Which emitter owns this particle
     uint16_t textureIndex = 0;      // Region within atlas (UV offset selector)
-    uint8_t flags = 0;              // Bit 0: alive, Bit 1: blend mode (0=additive, 1=alpha), Bits 2-3: family (B995), Bit 4: EDD colour (B1146), Bit 5: EDD sprite (B1149)
+    uint8_t flags = 0;              // Bit 0: alive, Bit 1: blend mode (0=additive, 1=alpha), Bits 2-3: family (B995), Bit 4: EDD colour (B1146), Bit 5: EDD sprite (B1149), Bit 6: EDD motion (B1151)
     MotionType motionType = MotionType::LINEAR;
     uint16_t padding = 0;
 
@@ -108,6 +109,36 @@ struct UnifiedParticle {
     // main projection and 0x10063198 in the +0x70 second pass, each followed by
     // the near/far compares and the 1.0/depth divide).
     float eddDepthBias = 0.0f;
+
+    // B1151 (#471): the record's motion words (hasEddMotion()). Emitter-frame
+    // state: the height coordinate along eddBasis1 (axis 1), the radius and
+    // swirl angle (512ths of a turn) in the eddBasis2/eddBasis3 plane, and
+    // the axis-2/axis-3 offsets the per-axis speeds integrate. The velocities
+    // are the client's per-particle draws (0x100620fd..0x100621a1) plus one
+    // frame of their accels (0x100626f9..0x100628f6); the sim integrates
+    // them (SimulationWorker::updateEddMotion, addresses in refactor/B1151/
+    // README.md). eddGy/eddDx are the world gravity (-z) and +X drift
+    // integrals. Non-motion particles keep every one of these at its default.
+    glm::vec3 eddBasis1{0.0f, 1.0f, 0.0f};  // the POST-tilt world axes
+    glm::vec3 eddBasis2{1.0f, 0.0f, 0.0f};
+    glm::vec3 eddBasis3{0.0f, 0.0f, 1.0f};
+    glm::vec3 eddBase{0.0f};        // the emitter origin (incl. attachOffset) at spawn
+    glm::vec3 eddFrameOffset{0.0f}; // the shape point's world offset (follow: re-expressed from the emitter now)
+    float eddH = 0.0f;              // axis-1 coordinate
+    float eddR = 0.0f;              // radial coordinate
+    float eddTheta512 = 0.0f;       // swirl angle, 512ths of a turn
+    float eddO2 = 0.0f, eddO3 = 0.0f;
+    float eddV1 = 0.0f, eddV2 = 0.0f, eddV3 = 0.0f, eddVr = 0.0f, eddSwirl = 0.0f;
+    float eddGv = 0.0f, eddGy = 0.0f, eddDx = 0.0f;
+    float eddNR = 1.0f, eddNH = 0.0f;  // the spawn normal in (r, h) (the +0x110 rule)
+    float eddSpin = 0.0f;         // 512ths/s, drawn from +0x138..+0x188
+    float eddStart512 = 0.0f;     // the start angle, 512ths (+0x174 rule)
+    int eddAlignWord = 0;         // +0x178 (0 = no alignment)
+    int eddFrameCount = 0;        // +0x130 (0/1 = the sheet's own frame rule)
+    float eddFrameRate = 0.0f;    // +0x134
+    uint8_t eddSpriteMode = 0;    // +0x70: 0 billboard, 1 streak, 2 world-oriented
+    uint8_t eddNoDepthWrite = 0;  // +0x64 (the batch's depth state; see the README)
+    uint8_t eddDrawNegativeRadius = 0;  // +0x198 == 1: r < 0 still drawn
 
     bool isAlive() const { return (flags & 0x01) != 0; }
     void setAlive(bool alive) { if (alive) flags |= 0x01; else flags &= ~0x01; }
@@ -159,6 +190,36 @@ struct UnifiedParticle {
     float getNormalizedAge() const {
         return maxLifetime > 0.0f ? age / maxLifetime : 1.0f;
     }
+
+    // B1151 (#471): the particle is on the record's motion words -- its
+    // position is re-derived every frame from the emitter-frame state above
+    // (SimulationWorker::updateEddMotion), not integrated from velocity.
+    bool hasEddMotion() const { return (flags & 0x40) != 0; }
+    void setEddMotion(bool on) { if (on) flags |= 0x40; else flags &= ~0x40; }
+
+    // +0x198 (TSV row, draw site 0x10062e5c): r < 0 (inward radial motion
+    // past the axis) is NOT drawn unless the word is 1.
+    bool eddDraws() const {
+        return !hasEddMotion() || eddDrawNegativeRadius != 0 || eddR >= 0.0f;
+    }
+
+    // +0x130/+0x134 (TRACE.md (c), 0x10063b7a..0x10063d03): frame =
+    // ftol(age * fps) % N; 2..4 = a 2x2 grid, 5..8 four columns x two rows,
+    // 9..16 a 4x4 grid (row-major), > 16 the whole texture; N <= 1 frame 0.
+    // The sheet packs a sprite's frames into the first N of its 16 cells, so
+    // the frame IS the cell offset.
+    int eddFrame() const {
+        if (eddFrameCount <= 1) return 0;
+        if (eddFrameCount > 16) return 0;  // the whole texture
+        int f = static_cast<int>(std::floor(age * eddFrameRate));
+        f %= eddFrameCount;
+        return f < 0 ? f + eddFrameCount : f;
+    }
+
+    // The spin angle, 512ths of a turn (the +0x138 rule, draws 0x100634c1 /
+    // 0x100638e8): age * spin + start. The +0x178 alignment is added by the
+    // renderer (it is a SCREEN angle, camera-dependent).
+    float eddSpinAngle512() const { return age * eddSpin + eddStart512; }
 };
 
 // === Emitter Configuration ===
@@ -261,6 +322,39 @@ struct EmitterConfig {
         float depthBias = 0.0f;                 // +0xD0: view depth bias (renderer)
     };
     EddShape eddShape;
+
+    // B1151 (#471): a spellsnew.edd emitter's motion words
+    // (SpellPresets::applySlotEmitter()): the per-axis / radial / swirl /
+    // gravity / drift words (+0xEC..+0x12C), the spin range (+0x138/+0x188,
+    // +0x174 random start), the spin alignment (+0x178), the frame rule
+    // (+0x130/+0x134) and the flags (+0x60 orient, +0x64 depth write off,
+    // +0x70 sprite mode, +0x74 follow, +0x198 draw at r < 0). `scale` is s,
+    // the attach scale every word above multiplies by (the +0x6C read path,
+    // TRACE.md (a): entityScaleForServerSize; fable passes 1.0). Inactive:
+    // config/preset emitters (fire, weather, non-record spells), which keep
+    // their existing paths.
+    struct EddMotion {
+        bool active = false;
+        bool orientToAttach = false;   // +0x60
+        bool noDepthWrite = false;     // +0x64
+        int spriteMode = 0;            // +0x70: 0 billboard, 1 streak, 2 world-oriented
+        bool follow = false;           // +0x74
+        float upMin = 0.0f, upMax = 0.0f, upAccel = 0.0f;          // +0xEC/+0xF0/+0xF4
+        float axis2Min = 0.0f, axis2Max = 0.0f, axis2Accel = 0.0f; // +0xF8/+0xFC/+0x100
+        float axis3Min = 0.0f, axis3Max = 0.0f, axis3Accel = 0.0f; // +0x104/+0x108/+0x10C
+        float radialMin = 0.0f, radialMax = 0.0f, radialAccel = 0.0f;  // +0x110/+0x114/+0x118
+        float swirlMin = 0.0f, swirlMax = 0.0f, swirlAccel = 0.0f;    // +0x11C/+0x120/+0x124, 512ths/s
+        float gravity = 0.0f;          // +0x128
+        float driftX = 0.0f;           // +0x12C
+        bool randomStartSpin = false;  // +0x174
+        float spinMin = 0.0f, spinMax = 0.0f;  // +0x138/+0x188, 512ths/s
+        int spinAlign = 0;             // +0x178
+        int frameCount = 1;            // +0x130
+        float frameRate = 0.0f;        // +0x134
+        bool drawNegativeRadius = false;  // +0x198 == 1
+        float scale = 1.0f;            // s
+    };
+    EddMotion eddMotion;
 
     // B1149 (#469): the client's emission ticks (CParticleSystem::Render
     // 0x10060ea4..0x10060ffd): tick n falls at emitter age n / ticksPerSecond

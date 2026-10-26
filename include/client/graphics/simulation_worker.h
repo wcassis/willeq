@@ -1006,6 +1006,12 @@ private:
                             const glm::vec3& emitterPos, const glm::vec3* dynamicDir = nullptr,
                             Environment::ParticleFamily family = Environment::ParticleFamily::Environment,
                             int batchIndex = 0, int batchSize = 0);
+    // B1151 (#471): one frame of the record's motion words for a particle on
+    // eddMotion (the +0xEC..+0x12C integration, the +0x74 follow, the
+    // +0x128 gravity and +0x12C drift). `emitter` is the live ActiveEmitter
+    // so the follow re-copies its current position/attach offset.
+    void updateEddMotion(Environment::UnifiedParticle& p, const Environment::ActiveEmitter& emitter,
+                         float dt);
     float particleRandomFloat(float minVal, float maxVal);
     int particleRandomInt(int minVal, int maxVal);
 

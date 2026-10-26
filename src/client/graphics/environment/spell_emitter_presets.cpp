@@ -502,7 +502,7 @@ void applyStageEmitterColours(SpellEffectDef& def,
 // 281's) still needs one simulation step to fire its burst, hence the floor.
 void applySlotEmitter(const std::vector<SpellEffectDef*>& slotDefs, const EQ::SpellFxSlotTiming& t,
                       const EQ::SpellsNewEddSprite* sprite, float stageLatency, float attachScale,
-                      const EQ::SpellsNewEddShape* shape) {
+                      const EQ::SpellsNewEddShape* shape, const EQ::SpellsNewEddMotion* motion) {
     constexpr float kOneStep = 0.05f;
     const float L = t.lifetime;
     const bool emits = t.emits() && L > 0.0f && t.peakLive() > 0.0f;
@@ -566,6 +566,31 @@ void applySlotEmitter(const std::vector<SpellEffectDef*>& slotDefs, const EQ::Sp
             c.eddShape.depthBias = shape->depth;
             c.eddShape.scale = shape->scaleShapes ? attachScale : 1.0f;
         }
+        if (motion) {
+            // B1151 (#471): the record's motion words (TSV rows in
+            // review/B1141/edd_fields_from_code.tsv). s is the attach scale
+            // the +0x6C read path proved (TRACE.md (a)); fable passes 1.0.
+            auto& em = c.eddMotion;
+            em.active = true;
+            em.orientToAttach = motion->orientToAttach;   // +0x60
+            em.noDepthWrite = motion->noDepthWrite;       // +0x64
+            em.spriteMode = motion->spriteMode;           // +0x70
+            em.follow = motion->follow;                   // +0x74
+            em.upMin = motion->upMin; em.upMax = motion->upMax; em.upAccel = motion->upAccel;
+            em.axis2Min = motion->axis2Min; em.axis2Max = motion->axis2Max; em.axis2Accel = motion->axis2Accel;
+            em.axis3Min = motion->axis3Min; em.axis3Max = motion->axis3Max; em.axis3Accel = motion->axis3Accel;
+            em.radialMin = motion->radialMin; em.radialMax = motion->radialMax; em.radialAccel = motion->radialAccel;
+            em.swirlMin = motion->swirlMin; em.swirlMax = motion->swirlMax; em.swirlAccel = motion->swirlAccel;
+            em.gravity = motion->gravity;                 // +0x128
+            em.driftX = motion->driftX;                   // +0x12C
+            em.randomStartSpin = motion->randomStartSpin; // +0x174
+            em.spinMin = motion->spinMin; em.spinMax = motion->spinMax;  // +0x138/+0x188
+            em.spinAlign = motion->spinAlign;             // +0x178
+            em.frameCount = motion->frameCount;           // +0x130
+            em.frameRate = motion->frameRate;             // +0x134
+            em.drawNegativeRadius = motion->drawNegativeRadius;  // +0x198
+            em.scale = sprite && sprite->scaleSizes ? attachScale : 1.0f;  // s
+        }
         const float oldLife = 0.5f * (c.lifetimeMin + c.lifetimeMax);
         const float delay = std::max(stageLatency, 0.0f) + t.start;
         ed.trigger = delay > 0.0f ? SpellTrigger::DELAYED : SpellTrigger::IMMEDIATE;
@@ -579,7 +604,12 @@ void applySlotEmitter(const std::vector<SpellEffectDef*>& slotDefs, const EQ::Sp
         c.ticksPerSecond = 0.0f;
         c.tickParticles = 0.0f;
         if (!emits) continue;
-        if (oldLife > 0.0f) {
+        // B1145's motion time-scaling (oldLife / L on the config velocities)
+        // applies to non-record spells only: a record's particles move on
+        // the file's own motion words (eddMotion, B1151), which carry the
+        // extents -- scaling the config motion under them would double-drive
+        // anything that still reads it. Non-record spells keep it.
+        if (!shape && oldLife > 0.0f) {
             const float k = oldLife / L;
             c.velocityBase *= k;
             c.velocitySpread *= k;

@@ -56,6 +56,39 @@ SpellsNewEddShape decodeSpellsNewEddShape(const uint8_t* e) {
     return s;
 }
 
+SpellsNewEddMotion decodeSpellsNewEddMotion(const uint8_t* e) {
+    SpellsNewEddMotion m;
+    m.orientToAttach = eddInt(e, kEddOrientOffset) == 1;
+    m.noDepthWrite = eddInt(e, kEddNoDepthWriteOffset) == 1;
+    m.spriteMode = eddInt(e, kEddSpriteModeOffset);
+    m.follow = eddInt(e, kEddFollowOffset) == 1;
+    m.upMin = eddFloat(e, kEddUpMinOffset);
+    m.upMax = eddFloat(e, kEddUpMaxOffset);
+    m.upAccel = eddFloat(e, kEddUpAccelOffset);
+    m.axis2Min = eddFloat(e, kEddAxis2MinOffset);
+    m.axis2Max = eddFloat(e, kEddAxis2MaxOffset);
+    m.axis2Accel = eddFloat(e, kEddAxis2AccelOffset);
+    m.axis3Min = eddFloat(e, kEddAxis3MinOffset);
+    m.axis3Max = eddFloat(e, kEddAxis3MaxOffset);
+    m.axis3Accel = eddFloat(e, kEddAxis3AccelOffset);
+    m.radialMin = eddFloat(e, kEddRadialMinOffset);
+    m.radialMax = eddFloat(e, kEddRadialMaxOffset);
+    m.radialAccel = eddFloat(e, kEddRadialAccelOffset);
+    m.swirlMin = eddFloat(e, kEddSwirlMinOffset);
+    m.swirlMax = eddFloat(e, kEddSwirlMaxOffset);
+    m.swirlAccel = eddFloat(e, kEddSwirlAccelOffset);
+    m.gravity = eddFloat(e, kEddGravityOffset);
+    m.driftX = eddFloat(e, kEddDriftXOffset);
+    m.randomStartSpin = eddInt(e, kEddRandomStartSpinOffset) != 0;
+    m.spinMin = eddFloat(e, kEddSpinMinOffset);
+    m.spinMax = eddFloat(e, kEddSpinMaxOffset);
+    m.spinAlign = eddInt(e, kEddSpinAlignOffset);
+    m.frameCount = eddInt(e, kEddFrameCountOffset);
+    m.frameRate = eddFloat(e, kEddFrameRateOffset);
+    m.drawNegativeRadius = eddInt(e, kEddDrawNegativeRadiusOffset) == 1;
+    return m;
+}
+
 bool SpellsNewEddReader::loadFile(const std::string& path) {
     std::ifstream f(path, std::ios::binary);
     if (!f.is_open()) {
@@ -73,6 +106,7 @@ bool SpellsNewEddReader::loadBytes(std::vector<uint8_t> bytes, const std::string
     m_timing.clear();
     m_sprite.clear();
     m_shape.clear();
+    m_motion.clear();
     m_count = 0;
     if (bytes.size() < kSpellsNewEddMagicBytes ||
         (bytes.size() - kSpellsNewEddMagicBytes) % kSpellsNewEddEntryBytes != 0 ||
@@ -85,11 +119,13 @@ bool SpellsNewEddReader::loadBytes(std::vector<uint8_t> bytes, const std::string
     m_timing.resize(m_count);
     m_sprite.resize(m_count);
     m_shape.resize(m_count);
+    m_motion.resize(m_count);
     for (size_t i = 0; i < m_count; ++i) {
         const uint8_t* e = m_bytes.data() + kSpellsNewEddMagicBytes + i * kSpellsNewEddEntryBytes;
         m_timing[i] = decodeSpellsNewEddTiming(e);
         m_sprite[i] = decodeSpellsNewEddSprite(e);
         m_shape[i] = decodeSpellsNewEddShape(e);
+        m_motion[i] = decodeSpellsNewEddMotion(e);
     }
     m_error.clear();
     m_loaded = true;
@@ -116,8 +152,17 @@ const SpellsNewEddShape* SpellsNewEddReader::shape(int32_t index) const {
     return &m_shape[static_cast<size_t>(index)];
 }
 
+const SpellsNewEddMotion* SpellsNewEddReader::motion(int32_t index) const {
+    if (index <= 0 || static_cast<size_t>(index) >= m_count) return nullptr;
+    return &m_motion[static_cast<size_t>(index)];
+}
+
 const SpellsNewEddShape& SpellsNewEddReader::shapeAt(size_t zeroBasedEntry) const {
     return m_shape[zeroBasedEntry];
+}
+
+const SpellsNewEddMotion& SpellsNewEddReader::motionAt(size_t zeroBasedEntry) const {
+    return m_motion[zeroBasedEntry];
 }
 
 std::string SpellsNewEddReader::name(int32_t index) const {

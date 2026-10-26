@@ -1,6 +1,7 @@
 #ifdef EQT_HAS_GLES2
 
 #include "client/graphics/environment/unified_particle_renderer.h"
+#include "client/graphics/environment/spell_spawn_shape.h"  // B1151: eddAlignAxis / eddAlignAngle512
 #include "client/graphics/environment/spell_sprite_atlas.h"
 #include "client/core/gem_owner_census.h"  // B972: GemTag for the VBO's census row
 #include "common/logging.h"
@@ -422,6 +423,9 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     for (int i = 0; i < count; ++i) {
         const UnifiedParticle& p = particles[i];
         if (!p.isAlive()) continue;
+        // B1151: +0x198 (draw site 0x10062e5c): inward radial motion past the
+        // axis (r < 0) is not drawn unless the word == 1.
+        if (!p.eddDraws()) continue;
 
         // T417 (board B300): an index at or above kBase addresses the spell
         // sprite sheet, anything below it the procedural atlas (4x4 tiles).
@@ -451,8 +455,24 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
             // particle's whole life; stepping it would walk fifteen
             // transparent cells.
             const int sprite = p.textureIndex - SpellSpriteAtlas::kBase;
-            const int cell =
-                SpellSpriteAtlas::cellForAge(sprite, p.getNormalizedAge());
+            int cell;
+            if (p.eddFrameCount > 1) {
+                // B1151 (#471): the record's frame rule (+0x130/+0x134,
+                // TRACE.md (c), 0x10063b7a..0x10063d03): N frames,
+                // frame = ftol(age * fps) % N, row-major in the N-frame grid
+                // (2x2 / 4x2 / 4x4); N > 16 the whole texture (N == 1). The
+                // builder packs a sprite's frames into the first N of its 16
+                // cells, so the frame is the cell offset.
+                cell = SpellSpriteAtlas::cellFor(
+                    sprite,
+                    std::min(p.eddFrame(), SpellSpriteAtlas::framesFor(sprite) - 1));
+            } else {
+                // The record-less path is unchanged (T420/B1124): the
+                // single-image sheets hold their cell all life; only a true
+                // grid sheet animates, once per particle life, by normalized
+                // age.
+                cell = SpellSpriteAtlas::cellForAge(sprite, p.getNormalizedAge());
+            }
             atlasU = (cell % SpellSpriteAtlas::kColumns) *
                      (1.0f / SpellSpriteAtlas::kColumns);
             atlasV = (cell / SpellSpriteAtlas::kColumns) *
@@ -517,11 +537,29 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
             const int b = onSpriteSheet ? (srcAlphaAdditive ? 5 : additive ? 2 : 3)
                                         : (srcAlphaAdditive ? 4 : additive ? 0 : 1);
             const float hw = 0.5f * p.size, hh = 0.5f * p.height;
-            const float cs = std::cos(p.rotation), sn = std::sin(p.rotation);
+            // B1151 (#471): the record's spin (age*spin + start + align; draws
+            // 0x100634c1/0x100638e8) replaces the config rotation for a
+            // record particle; the +0x178 alignment is a SCREEN angle, so it
+            // is measured here, where the camera is (the axis dispatch and
+            // the angle are the pure helpers in spell_spawn_shape.h).
+            float spinAngle = p.rotation;
+            if (p.hasEddMotion()) {
+                float align512 = 0.0f;
+                if (p.eddAlignWord != 0) {
+                    // PARTIAL as the TSV row says: the attach-matrix column
+                    // letters go through FUN_100399f0 (untraced); fable uses
+                    // A = the facing, B = up, C = the perpendicular of the
+                    // particle's own frame (spell_spawn_shape.h eddAlignAxis).
+                    const glm::vec3 axis =
+                        eddAlignAxis(p.eddAlignWord, p.eddBasis2, p.eddBasis1, p.eddBasis3);
+                    align512 = eddAlignAngle512(
+                        axis, p.position - p.eddBase, viewRight, viewUp);
+                }
+                spinAngle = (p.eddSpinAngle512() + align512) * (6.283185307179586f / 512.0f);
+            }
+            const float cs = std::cos(spinAngle), sn = std::sin(spinAngle);
             const glm::vec3 c(pos.x, pos.y, pos.z);
-            auto corner = [&](float sx, float sy, float u, float t) {
-                const float dx = sx * hw, dy = sy * hh;
-                const glm::vec3 w = c + viewRight * (dx * cs - dy * sn) + viewUp * (dx * sn + dy * cs);
+            auto pushCorner = [&](const glm::vec3& w, float u, float t) {
                 PointSpriteVertex q = v;
                 q.x = w.x;
                 q.y = w.y;
@@ -529,6 +567,68 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
                 q.pointSize = u;  // aTexCoord0 = the corner's texture coordinate
                 q.rotation = t;
                 quadVerts_[b].push_back(q);
+            };
+            if (p.hasEddMotion() && p.eddSpriteMode == 2) {
+                // B1151 mode 2 (TSV +0x70 row; listing 0x100634b0..0x10063680):
+                // the WORLD-ORIENTED quad -- NOT screen-facing. axisA/axisB
+                // are the emitter's post-tilt basis 2/3 rotated about basis 1
+                // by the spin angle (the 0x1005dc80 matrix-vector), and the
+                // corners are pos +- (w*s*0.5)*axisA +- (h*s*0.5)*axisB
+                // (0x100635b3..0x100635ba, 0x100635f2..0x10063600, 0.5 at
+                // 0x101c594c). p.size/p.height carry the w*s / h*s products
+                // (B1150's +0x19C scale where the record says so).
+                const glm::vec3 axisA = p.eddBasis2 * cs + p.eddBasis3 * sn;
+                const glm::vec3 axisB = p.eddBasis2 * -sn + p.eddBasis3 * cs;
+                pushCorner(c + axisA * hw + axisB * hh, 0.0f, 0.0f);
+                pushCorner(c - axisA * hw + axisB * hh, 1.0f, 0.0f);
+                pushCorner(c - axisA * hw - axisB * hh, 1.0f, 1.0f);
+                pushCorner(c + axisA * hw + axisB * hh, 0.0f, 0.0f);
+                pushCorner(c - axisA * hw - axisB * hh, 1.0f, 1.0f);
+                pushCorner(c + axisA * hw - axisB * hh, 0.0f, 1.0f);
+                continue;
+            }
+            if (p.hasEddMotion() && p.eddSpriteMode == 1) {
+                // B1151 mode 1 (TSV +0x70 row): the STREAK -- a second point
+                // pos + emitter-axis*(s*h) and a quad stretched between the
+                // two PROJECTED points. The emitter axis is the post-tilt
+                // basis 1 (PARTIAL: the client's axis word is not traced past
+                // "the emitter's axis"); the length is the drawn height
+                // (h*s, the same product the billboard's hh uses). The corners
+                // are built in view space (world-unit X/Y/Z) and mapped back
+                // through the view basis, so the quad projects to the streak.
+                const glm::vec3 r(viewMatrix[8], viewMatrix[9], viewMatrix[10]);
+                auto toView = [&](const glm::vec3& w) {
+                    const glm::vec3 d = w - cameraPos_;
+                    return glm::vec3(glm::dot(viewRight, d), glm::dot(viewUp, d),
+                                     glm::dot(r, d));
+                };
+                auto fromView = [&](const glm::vec3& vv) {
+                    return cameraPos_ + viewRight * vv.x + viewUp * vv.y + r * vv.z;
+                };
+                const glm::vec3 v1 = toView(c);
+                const glm::vec3 v2 = toView(c + p.eddBasis1 * p.height);
+                glm::vec3 longAxis = v2 - v1;
+                if (glm::dot(longAxis, longAxis) < 1e-12f) longAxis = glm::vec3(1.0f, 0.0f, 0.0f);
+                longAxis = glm::normalize(longAxis);
+                glm::vec3 perp(longAxis.y, -longAxis.x, 0.0f);
+                if (glm::dot(perp, perp) < 1e-12f) perp = glm::vec3(0.0f, 1.0f, 0.0f);
+                const glm::vec3 ca = fromView(v1 + perp * hw);
+                const glm::vec3 cb = fromView(v1 - perp * hw);
+                const glm::vec3 cc = fromView(v2 - perp * hw);
+                const glm::vec3 cd = fromView(v2 + perp * hw);
+                // the width axis is the texture v; the streak length the u
+                pushCorner(ca, 0.0f, 0.0f);
+                pushCorner(cb, 0.0f, 1.0f);
+                pushCorner(cc, 1.0f, 1.0f);
+                pushCorner(ca, 0.0f, 0.0f);
+                pushCorner(cc, 1.0f, 1.0f);
+                pushCorner(cd, 1.0f, 0.0f);
+                continue;
+            }
+            auto corner = [&](float sx, float sy, float u, float t) {
+                const float dx = sx * hw, dy = sy * hh;
+                const glm::vec3 w = c + viewRight * (dx * cs - dy * sn) + viewUp * (dx * sn + dy * cs);
+                pushCorner(w, u, t);
             };
             corner(-1.0f, 1.0f, 0.0f, 0.0f);
             corner(1.0f, 1.0f, 1.0f, 0.0f);

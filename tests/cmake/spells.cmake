@@ -469,3 +469,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_spawn_shapes PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_spawn_shapes DISCOVERY_TIMEOUT 120)
+
+# B1151 (#471): the record's motion / spin / frame / flag words
+# (refactor/B1151/README.md). The reader decode + the pure rules (frame
+# banding, the +0x198 draw rule, the spin angle, the +0x178 alignment dispatch)
+# are graphics-independent, but the per-term sim tests drive the real
+# SimulationWorker, so the whole target registers under EQT_GRAPHICS.
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(test_spell_edd_motion
+        test_spell_edd_motion.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_spell_edd_motion GTest::gtest_main willeq_core)
+    IF(IRRLICHT_LIBRARY)
+        TARGET_INCLUDE_DIRECTORIES(test_spell_edd_motion PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    ENDIF()
+    GTEST_DISCOVER_TESTS(test_spell_edd_motion DISCOVERY_TIMEOUT 120)
+ENDIF()

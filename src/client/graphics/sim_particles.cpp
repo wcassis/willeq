@@ -479,6 +479,17 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
         else
             p.size = glm::mix(p.sizeStart, p.sizeEnd, t);
 
+        if (p.hasEddMotion()) {
+            // B1151 (#471): the record's motion words re-derive the position
+            // from the emitter-frame state; the motionType chain below is
+            // the non-record path.
+            auto mIt = particleEmitters_.find(p.emitterID);
+            if (mIt != particleEmitters_.end()) {
+                updateEddMotion(p, mIt->second, deltaTime);
+            }
+            continue;
+        }
+
         if (p.motionType == MotionType::CAMERA_RELATIVE) {
             auto it = particleEmitters_.find(p.emitterID);
             if (it == particleEmitters_.end()) continue;
@@ -874,6 +885,81 @@ void SimulationWorker::spawnWeatherParticle(const EmitterConfig& cfg, uint16_t e
     p.setFamily(ParticleFamily::Environment);  // B995: weather
 }
 
+// B1151 (#471): one frame of the record's motion words. The per-frame
+// integration, each step beside its decompile site (EQGraphicsDX9.dll, TSV
+// rows in review/B1141/edd_fields_from_code.tsv):
+//   accel   v1 += dt*+0xF4 (0x100626f9)   v2 += dt*+0x100 (0x1006271d)
+//           v3 += dt*+0x10C (0x100627cd)  vr += dt*+0x118 (0x1006287d)
+//           w  += dt*+0x124 (0x100628d6)  g  += dt*+0x128 (0x100628f6)
+//   pos     h  += v1*s*dt (0x100620fd)    offset += basis2*v2*s*dt (+0xF8 row)
+//           offset += basis3*v3*s*dt (+0x104 row)
+//           r += vr*dt*n_r*s, h += vr*dt*n_h*s (0x10062172..0x10062181)
+//           theta += w*dt (512ths, 0x10062199..0x100621a1)
+//           world z -= g*s*dt (0x100628f6 row)   world x += s*+0x12C*dt (0x10062917)
+// s is the attach scale (the +0x6C read path, TRACE.md (a)). The position is
+// RE-DERIVED from the emitter-frame state (h, r, theta, the axis offsets and
+// the two world integrals) rather than integrated, so the swirl and the
+// radial motion stay on their circle and the +0x198 rule can read r.
+void SimulationWorker::updateEddMotion(UnifiedParticle& p, const ActiveEmitter& emitter, float dt) {
+    const EmitterConfig::EddMotion& m = emitter.config.eddMotion;
+
+    // +0x60 (orient) / +0x74 (follow): the emitter's frame is re-derived from
+    // its CURRENT direction (the T395 per-frame entity refresh) and the
+    // record's tilts; the particle's basis follows it. A level, static
+    // harness emitter is the identity of this.
+    if (m.orientToAttach || m.follow) {
+        glm::vec3 e1(0.0f, 1.0f, 0.0f), e2(1.0f, 0.0f, 0.0f), e3(0.0f, 0.0f, 1.0f);
+        if (emitter.useDynamicDirection && emitter.attachEntityID != 0) {
+            glm::vec3 d(emitter.dynamicDirection.x, 0.0f, emitter.dynamicDirection.z);
+            if (glm::length(d) > 0.01f) {
+                e2 = glm::normalize(d);
+                e3 = glm::normalize(glm::cross(e1, e2));
+            }
+        }
+        const Environment::EddBasis b = Environment::computeEddBasis(
+            e1, e2, e3, emitter.config.eddShape.tiltA, emitter.config.eddShape.tiltB);
+        p.eddBasis1 = b.b1;
+        p.eddBasis2 = b.b2;
+        p.eddBasis3 = b.b3;
+    }
+
+    // The accel words (the client integrates before it moves).
+    p.eddV1 += dt * m.upAccel;
+    p.eddV2 += dt * m.axis2Accel;
+    p.eddV3 += dt * m.axis3Accel;
+    p.eddVr += dt * m.radialAccel;
+    p.eddSwirl += dt * m.swirlAccel;
+    p.eddGv += dt * m.gravity;
+
+    const float s = m.scale;
+    // Axis 1 (height) and the radial/normal split (0x100620fd, +0x110 row).
+    p.eddH += (p.eddV1 * s + p.eddVr * p.eddNH * s) * dt;
+    p.eddR += p.eddVr * p.eddNR * s * dt;
+    // The per-axis offsets (+0xF8/+0x104 rows).
+    p.eddO2 += p.eddV2 * s * dt;
+    p.eddO3 += p.eddV3 * s * dt;
+    // Swirl (512ths of a turn; 512 = full turn, +0x11C row).
+    p.eddTheta512 += p.eddSwirl * dt;
+    // World gravity (z up, EQ) and +X drift (the world-integral words).
+    p.eddGy += p.eddGv * s * dt;
+    p.eddDx += m.driftX * s * dt;
+
+    // +0x74 (0x10062936): the particle re-copies its origin from the emitter
+    // (the +0xB8.. offsets and +0xC4/+0xC8 tilts re-applied via the basis
+    // above); otherwise it holds the base it spawned from.
+    const glm::vec3 base = m.follow
+        ? emitter.position + emitter.attachOffset + p.eddFrameOffset
+        : p.eddBase;
+
+    const float th = p.eddTheta512 * (6.283185307179586f / 512.0f);
+    const float cs = std::cos(th), sn = std::sin(th);
+    p.position = base
+        + p.eddBasis1 * p.eddH
+        + p.eddBasis2 * (p.eddR * cs + p.eddO2)
+        + p.eddBasis3 * (p.eddR * sn + p.eddO3)
+        + glm::vec3(p.eddDx, -p.eddGy, 0.0f);  // EQ z-up -> Irrlicht y-down
+}
+
 void SimulationWorker::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emitterID,
                                            const glm::vec3& emitterPos, const glm::vec3* dynamicDir,
                                            ParticleFamily family, int batchIndex, int batchSize) {
@@ -919,9 +1005,61 @@ void SimulationWorker::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emi
                 e3 = glm::normalize(glm::cross(e1, e2));
             }
         }
-        p.position += e1 * sppt.point.x + e2 * sppt.point.y + e3 * sppt.point.z;
+        // B1151: the POST-tilt basis (spell_spawn_shape.h computeEddBasis,
+        // the same rotation the shape applied) -- the motion words integrate
+        // along these very axes.
+        const Environment::EddBasis eddBasis =
+            Environment::computeEddBasis(e1, e2, e3, sp.tiltA, sp.tiltB);
+        p.position += eddBasis.b1 * sppt.point.x + eddBasis.b2 * sppt.point.y + eddBasis.b3 * sppt.point.z;
         // +0xD0: the renderer subtracts it from the view depth (0x10063069/0x10063198).
         p.eddDepthBias = cfg.eddShape.depthBias;
+        if (cfg.eddMotion.active) {
+            // B1151 (#471): the record's motion words (TSV rows in
+            // review/B1141/edd_fields_from_code.tsv). Emitter-frame state:
+            // h along basis 1, (r, theta) in the basis 2/3 plane. The shape
+            // point is already in POST-tilt coordinates, so its axis-1
+            // component is the height and (axis 2, axis 3) the radial plane.
+            const EmitterConfig::EddMotion& m = cfg.eddMotion;
+            p.setEddMotion(true);
+            p.velocity = glm::vec3(0.0f);  // the file's motion drives position
+            p.eddBasis1 = eddBasis.b1;
+            p.eddBasis2 = eddBasis.b2;
+            p.eddBasis3 = eddBasis.b3;
+            p.eddBase = emitterPos;
+            p.eddFrameOffset = p.position - emitterPos;
+            p.eddH = sppt.point.x;
+            p.eddR = std::hypot(sppt.point.y, sppt.point.z);
+            p.eddTheta512 = std::atan2(sppt.point.z, sppt.point.y) * (512.0f / 6.283185307179586f);
+            // The +0x110 rule: n = the spawn normal (shapes 5/6, B1150) in
+            // (r, h); else (1, 0) = horizontal. The abstract normal's x
+            // component is the height, (y, z) the radial plane.
+            if (sppt.hasNormal) {
+                p.eddNH = sppt.normal.x;
+                p.eddNR = std::hypot(sppt.normal.y, sppt.normal.z);
+                if (p.eddNR <= 1e-6f && std::fabs(p.eddNH) <= 1e-6f) {
+                    p.eddNR = 1.0f;
+                    p.eddNH = 0.0f;
+                }
+            } else {
+                p.eddNR = 1.0f;
+                p.eddNH = 0.0f;
+            }
+            // The client's per-particle draws (0x100620fd..0x100621a1).
+            p.eddV1 = particleRandomFloat(m.upMin, m.upMax);        // 0x100620fd/0x10062108
+            p.eddV2 = particleRandomFloat(m.axis2Min, m.axis2Max);  // 0x10062124/0x1006212f
+            p.eddV3 = particleRandomFloat(m.axis3Min, m.axis3Max);  // 0x1006214b/0x10062156
+            p.eddVr = particleRandomFloat(m.radialMin, m.radialMax);  // 0x10062172/0x10062181
+            p.eddSwirl = particleRandomFloat(m.swirlMin, m.swirlMax); // 0x10062199/0x100621a1
+            p.eddSpin = particleRandomFloat(m.spinMin, m.spinMax);   // 0x10061239/0x10061241/0x10061250
+            // +0x174 (TSV row): !=0 -> start angle = rand()/32767*1000 (512ths).
+            p.eddStart512 = m.randomStartSpin ? particleRandomFloat(0.0f, 1000.0f) : 0.0f;
+            p.eddAlignWord = m.spinAlign;       // +0x178
+            p.eddFrameCount = m.frameCount;     // +0x130
+            p.eddFrameRate = m.frameRate;       // +0x134
+            p.eddSpriteMode = static_cast<uint8_t>(m.spriteMode);  // +0x70
+            p.eddNoDepthWrite = m.noDepthWrite ? 1 : 0;            // +0x64
+            p.eddDrawNegativeRadius = m.drawNegativeRadius ? 1 : 0;  // +0x198
+        }
     } else if (cfg.spawnShape == SpawnShape::BOX) {
         p.position.x += particleRandomFloat(-cfg.spawnExtents.x, cfg.spawnExtents.x);
         p.position.y += particleRandomFloat(-cfg.spawnExtents.y, cfg.spawnExtents.y);

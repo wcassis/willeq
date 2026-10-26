@@ -118,6 +118,71 @@ inline void eddStackedRingCounts(int m, int& rings, int& perRing) {
     perRing = m / rings;
 }
 
+// B1151 (#471): the emitter's POST-tilt basis in world space — the same
+// rotation computeEddShapePoint applies to its abstract axes (tilts
+// 0x100613fd.. and 0x100615ab..), factored out so the record's motion words
+// (TSV rows +0xF8..+0x12C: offset += basis_i * v_i * s * dt, radial/swirl in
+// the basis-2/basis-3 plane) integrate along the very axes the shape placed
+// the particle on.
+struct EddBasis {
+    glm::vec3 b1, b2, b3;
+};
+
+// B1151 (#471): the +0x178 spin-alignment axis dispatch. The TSV row:
+// "!=0 -> add the screen angle of an axis of the attach matrix (1,2,
+// default=3; 4..6 = negated 1..3)". PARTIAL (the row's own status): which
+// attach-matrix row is which goes through FUN_100399f0, untraced -- fable
+// uses the particle's frame with the actor-frame convention A = X (the
+// facing), B = Y (up), C = Z (the perpendicular).
+inline glm::vec3 eddAlignAxis(int word, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
+    switch (word) {
+        case 1: return a;
+        case 2: return b;
+        case 4: return -a;
+        case 5: return -b;
+        case 6: return -c;
+        default: return c;  // 3 and > 6: the default axis
+    }
+}
+
+// The +0x178 angle itself, 512ths of a turn: the 2D screen-space angle
+// between the projected attach axis and the particle's screen position
+// (0x1006235f/0x1006246f: atan2 at 0x101ab6f0, then fmul 0.15915 = 1/2pi,
+// x 512.0, negated if < 0, stored as the 0..511 index). PARTIAL: the
+// atan2's operand order is not traced in the TSV; the angle is taken
+// axis-relative-to-particle and sign-mirrored as the client does.
+inline float eddAlignAngle512(const glm::vec3& axis, const glm::vec3& local,
+                              const glm::vec3& viewRight, const glm::vec3& viewUp) {
+    const float ax = glm::dot(viewRight, axis), ay = glm::dot(viewUp, axis);
+    const float lx = glm::dot(viewRight, local), ly = glm::dot(viewUp, local);
+    float ang = std::atan2(ax * ly - ay * lx, ax * lx + ay * ly);
+    if (ang < 0.0f) ang = -ang;
+    return ang * (512.0f / 6.283185307179586f);
+}
+
+inline EddBasis computeEddBasis(const glm::vec3& e1, const glm::vec3& e2, const glm::vec3& e3,
+                                float tiltA, float tiltB) {
+    constexpr float kTwoPi = 6.283185307179586f;
+    glm::vec3 b1 = e1, b2 = e2, b3 = e3;
+    if (tiltA != 0.0f) {
+        const float a = tiltA / 512.0f * kTwoPi;
+        const float c = std::cos(a), sn = std::sin(a);
+        const glm::vec3 nb1 = b1 * c + b2 * sn;
+        const glm::vec3 nb2 = b2 * c - b1 * sn;
+        b1 = nb1;
+        b2 = nb2;
+    }
+    if (tiltB != 0.0f) {
+        const float b = tiltB / 512.0f * kTwoPi;
+        const float c = std::cos(b), sn = std::sin(b);
+        const glm::vec3 nb1 = b1 * c + b3 * sn;
+        const glm::vec3 nb3 = b3 * c - b1 * sn;
+        b1 = nb1;
+        b3 = nb3;
+    }
+    return {b1, b2, b3};
+}
+
 // One shape case. i/n is the particle's index within its emission batch
 // (shapes 1/2 are per-batch deterministic: evenly spaced / the count table;
 // the client uses its global emitter counter, which differs only by whole
@@ -137,24 +202,13 @@ EddShapePoint computeEddShapePoint(const EddShapeParams& p, int i, int n, Draw d
     // Offsets (0x100612b9..0x100613f7): along the PRE-tilt basis, times s19c.
     const glm::vec3 origin = b1 * (s * p.offX) + b2 * (s * p.offY) + b3 * (s * p.offZ);
 
-    // Tilt A (0x100613fd..0x100615aa): b1' = c*b1 + s*b2, b2' = c*b2 - s*b1.
-    if (p.tiltA != 0.0f) {
-        const float a = p.tiltA / 512.0f * kTwoPi;
-        const float c = std::cos(a), sn = std::sin(a);
-        const glm::vec3 nb1 = b1 * c + b2 * sn;
-        const glm::vec3 nb2 = b2 * c - b1 * sn;
-        b1 = nb1;
-        b2 = nb2;
-    }
-    // Tilt B (0x100615ab..0x10061752): the same on (b1, b3), using b1'.
-    if (p.tiltB != 0.0f) {
-        const float b = p.tiltB / 512.0f * kTwoPi;
-        const float c = std::cos(b), sn = std::sin(b);
-        const glm::vec3 nb1 = b1 * c + b3 * sn;
-        const glm::vec3 nb3 = b3 * c - b1 * sn;
-        b1 = nb1;
-        b3 = nb3;
-    }
+    // Tilt A (0x100613fd..0x100615aa) then Tilt B (0x100615ab..0x10061752),
+    // both in EQ 512ths: the rotation computeEddBasis applies to a world
+    // frame (B1151 factored it out for the record's motion words).
+    const EddBasis tilted = computeEddBasis(b1, b2, b3, p.tiltA, p.tiltB);
+    b1 = tilted.b1;
+    b2 = tilted.b2;
+    b3 = tilted.b3;
 
     // (x, y, z) in the POST-tilt basis: x = r*cos(theta), y = r*sin(theta).
     float x = 0.0f, y = 0.0f, z = 0.0f;
