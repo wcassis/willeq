@@ -362,7 +362,12 @@ method header.
 - Targeted (via rbuild on the ThinkPad, CI's Release/GLES2 tree):
   `test -R 'WhirlingWind|SpellStyleOverrides|SpellPoolRule|SpellLandingVolume|SpellColourFromSprite|SourceAnchor|spell_fx'` → 39/39 pass; `test -R 'spell|Spell|ConfigKey|DataPath|Census|Band|Reachability'` → everything passes except `GlDriverCensus.RealRunPrintsTheGlDriverLine`, which fails identically on an unrelated 2026-10-19 worker tree (`kb-b1022-weapon-delay`) — a pre-existing rbuild-host environment failure (it spawns a real `willeq`), not this diff.
 - Hygiene: `rbuild hygiene` → 48/48 (one conditional skip, `MemoryCapHuntScript`).
-- ONE whole-tree CI-flag build at the head: <!-- PLACEHOLDER-TESTS -->
+- ONE whole-tree CI-flag build at the head: `rbuild <wt>` (CI's Release/GLES2
+  configure) → 402/402 targets, exit 0; full `rbuild <wt> test` → 6464 tests:
+  6436 pass, 27 skip (conditional), 1 fail = the pre-existing
+  `GlDriverCensus.RealRunPrintsTheGlDriverLine` rbuild-host environment
+  failure (identical on the unrelated 10-19 tree `kb-b1022-weapon-delay`;
+  the x86 CI runners are the arbiter — see the MR pipeline).
 
 ## FOLLOW-UP (proposed, no cards created)
 
