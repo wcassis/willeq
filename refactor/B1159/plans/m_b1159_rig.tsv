@@ -1,0 +1,85 @@
+# action	target	hold_ms	still_name
+# B1159 (#478): the missile legs on a SURVIVING observer -- one lane-5 observer-rig leg,
+# the B1152 m1_rig38 template (B1134 P2 geometry, review/B1134/README.md "The rig"):
+# caster Testcaster (char 67, WIZ class 12, #level 60 in-plan = the B1152 pose) at
+# -74,428; observer Oraclewatch (char 103, level-1 Human Warrior, raised to level 60 by
+# the leg's pre-SQL so that a 121-dmg-class landing (B1152 M1, the OP_Death-on-OP_Action
+# tick) cannot kill it) at -67.6,434.4 -- 9.05 world units ~ 1.4 caster heights apart;
+# observer camera F9 x3 = B1130's fixed camera; x11grab 30 fps; one pcap of both clients
+# (the observer's stream is selected by the client port of its C->S OP_ZoneEntry).
+# Six casts, B1152 spacing (1.5 s target-settle, 15.5 s fx settle between casts; spells
+# 38/54/93 all carry reuse timer 13, 4 s -- the 17 s gap clears it):
+#   38 Lightning Bolt x2 = /cast 2  (gem 2, WIZ min 16, record 80)  -> rows M1b_38
+#   54 Frost Bolt x2     = /cast 3  (gem 3, WIZ min 1, record 82)   -> rows M2b_54
+#   93 Burst of Flame x2 = #castspell 93 0 (the GM server-side cast with the spell's own
+#     cast time, cast on the caster's CURRENT target; a WIZ caster cannot gem-cast 93 --
+#     spells_us.txt WIZ class field = 255 -- so /cast 1 is not an option in this leg;
+#     record 80 = the B1152 TRACE sec. 9 open item, 93 in the observer's band)
+#                                                                    -> rows M3b_93
+# PvP recipe (B1134 P2, proven on this stack): the CASTER #set pvp on (observer + self);
+# guard faction assist OFF for the leg (pre-SQL file, reloaded in-plan with
+# #reload rules global), restored by the post-SQL file.
+# A leftover TrollF from an earlier leg is checked and killed before the casts
+# (B1143's leftover-check form: /target by name, then #kill with no argument).
+# fps=30
+# observer=Oraclewatch
+# pose=-74,428,3.75,160
+# observer-pose=-67.6,434.4,3.75,160
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#reload rules global	0	rules
+command	#level 60	0	lvl
+command	#mana	0	mana
+command	/target TrollF000	0	leftover_check
+wait	2000	0	leftover_check_settle
+command	#kill	0	kill_leftover
+wait	2000	0	kill_leftover_settle
+command	/target Oraclewatch	0	tgt_obs
+command	#set pvp on	0	pvp_obs
+command	/target Testcaster	0	tgt_self
+command	#set pvp on	0	pvp_self
+obs	press	F9	0	obs_cam1
+obs	press	F9	0	obs_cam2
+obs	press	F9	0	obs_cam3
+obs	wait	3000	0	obs_cam_settle
+command	#weather 0	0	clear2
+wait	36000	0	time_settle
+command	/target Oraclewatch	0	tgt_38a
+wait	1500	0	tgt_38a_settle
+command	/cast 2	0	cast_38a
+wait	15500	0	fx_38a
+command	#mana	0	mana_38a
+command	/target Oraclewatch	0	tgt_38b
+wait	1500	0	tgt_38b_settle
+command	/cast 2	0	cast_38b
+wait	15500	0	fx_38b
+command	#mana	0	mana_38b
+command	/target Oraclewatch	0	tgt_54a
+wait	1500	0	tgt_54a_settle
+command	/cast 3	0	cast_54a
+wait	15500	0	fx_54a
+command	#mana	0	mana_54a
+command	/target Oraclewatch	0	tgt_54b
+wait	1500	0	tgt_54b_settle
+command	/cast 3	0	cast_54b
+wait	15500	0	fx_54b
+command	#mana	0	mana_54b
+command	/target Oraclewatch	0	tgt_93a
+wait	1500	0	tgt_93a_settle
+command	#castspell 93 0	0	cast_93a
+wait	15500	0	fx_93a
+command	#mana	0	mana_93a
+command	/target Oraclewatch	0	tgt_93b
+wait	1500	0	tgt_93b_settle
+command	#castspell 93 0	0	cast_93b
+wait	15500	0	fx_93b
+obs	command	/q	0	obs_quit
+command	/q	0	quit
