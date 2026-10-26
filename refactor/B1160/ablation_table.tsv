@@ -1,0 +1,13 @@
+term	land_cov	delta_vs_base	note
+base1	2.113	+0.000	noise floor
+base2	2.113	+0.000	noise floor
+up	1.256	-0.857	OWNER
+ax2	2.113	+0.000	no-op
+ax3	2.113	+0.000	no-op
+radial	2.079	-0.034	minor
+swirl	2.113	+0.000	no-op
+gravity	2.113	+0.000	no-op
+drift	2.113	+0.000	no-op
+spin	2.113	+0.000	no-op
+frames	2.111	-0.002	no-op
+timescale	2.113	+0.000	no-op
