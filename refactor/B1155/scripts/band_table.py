@@ -8,12 +8,19 @@ output, one row per record) and the B1130 oracle table, and writes one row per
 record with, for each of the nine card columns, the oracle value, the harness
 value, the band, and the verdict (PASS / short / over / n-a):
 
-  source_cov, landing_cov      B1130 value +- 3 %          (the B1142 method: percent
-                                                            deviation from the reference,
-                                                            review/B1142/README.md "every
-                                                            land_cov within -0.9..+2.6 %"
-                                                            and its gate/regression_table.tsv
-                                                            pct columns)
+  source_cov, landing_cov      B1130 value +- 3 %          (the +-3 % is the outer
+                                                            edge of B1131's verdict
+                                                            band, "No landing row
+                                                            regresses beyond B1121's
+                                                            +-2-3 % capture spread",
+                                                            review/B1131/README.md:121,
+                                                            applied as a percent
+                                                            deviation from the B1130
+                                                            reference -- the B1142
+                                                            method, refactor/B1142/
+                                                            README.md: "the new
+                                                            captures land within
+                                                            -0.9..+2.6 % of B1127")
   landing_end_s                B1130 value +- 0.10 s       (B1149's verdict method:
                                                             "within +/- 0.1 s of the lane")
   p90_src, p90_land            B1130 value +- 15 %         (the B1142 method: the
@@ -72,6 +79,10 @@ def verdict(metric, o, h):
 
 rows = []
 for rec in sorted(oracle):
+    # record 51 is B1130's not-captured record (run_sweep_b1130.sh skips it:
+    # the sweep runs record_table minus 51) -- the table holds the 40 records
+    # the sweep ran, so the "of 40" counts in the README stay true.
+    if rec == 51: continue
     o = oracle[rec]
     tag = f"{o['kind']}_r{rec}"
     mroot = os.path.join(EV, 'measure', tag, 'b1130_rows.tsv')

@@ -63,8 +63,8 @@ numbers and the target differ, all from `review/B1130/README.md` "Geometry":
 |---|---|---|
 | 1280x800, caster 209 px, feet row 598 at column 640 | the settle stills `oracle/cal_r35/15_time_settle.png` (the B1118 opening pose, `#stun 120000`, camera F9 x3) | `--caster-px` |
 | caster = the b1118 char-67 appearance | the same char 67 Testcaster | `--caster`, `--caster-appearance` |
-| b1130: target race 9 (Troll), gender 1, size 6 -- the `#spawn TrollF`, race_models.json races/9 scale 1.4 | `#spawn TrollF 1 1 0 30000`; caster `#goto -67.6,434.4` puts it ~1.4 caster heights to her right | `--target` |
-| b1130: target 325 px, feet (940,652) | the same settle still; the 325 is the model's own height at the solved depth (1.4 x the 1.11 nearer), a consistency check, not an input | -- |
+| b1130: target race 1 (human), gender 0 (male), size 6 -- eqemu's `#spawn [name][race][level][texture][health][gender]...`: `#spawn TrollF 1 1 0 30000` is race=1, level=1, texture=0, hp=30000 with the GENDER arg absent -> `Mob::GetDefaultGender(1)` = MALE; "TrollF" is only a label | the same command; caster `#goto -67.6,434.4` puts it ~1.4 caster heights to her right | `--target` |
+| b1130: target 325 px, feet (940,652) | the same settle still; the 325 is that human's NEARER depth (~1.55x closer to the camera than the caster), not a race scale -- a consistency check, not an input (the FABLE rest-pose fit renders it as a 50 px strip; `refactor/B1155/README.md`) | -- |
 
 The camera is fitted to the caster exactly as b1118's is (`fitFaceOnCamera`,
 209 px / row 598); the target's world offset (x, z) is then SOLVED from its

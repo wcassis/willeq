@@ -230,9 +230,10 @@ float b1130TargetX = 0.0f, b1130TargetZ = 0.0f;
 // cal_r35/15_time_settle.png) record the caster 209 px with feet (640,598) and
 // the NPC 325 px with feet (940,652). The b1130 camera is already fitted to
 // the caster; this solves the target's world offset (x, z) from the two feet
-// pixels and then MEASURES its rendered height, so the 325 px (race 9 scale
-// 1.4, config/race_models.json races/9, at its nearer depth) is a consistency
-// check, never a hand-tuned input.
+// pixels and then MEASURES its rendered height, so the 325 px -- the oracle's
+// own level-1 human male standing ~1.55x NEARER to the camera than the
+// caster, not a race scale -- is a consistency check, never a hand-tuned
+// input.
 //
 // Screen right for a camera looking along -kCasterFacing is world -X
 // (targetRightOfCaster), so the target at column 940 sits at x < 0, and its
@@ -484,13 +485,14 @@ void applyHarnessPresetDefaults() {
             // is race=1 (HUMAN), level=1, texture=0, hp=30000 with the GENDER
             // ARG ABSENT -- filled by Mob::GetDefaultGender(1) = MALE (the
             // PC-race default, mob.cpp :4033). The "TrollF" name is only a
-            // label; the model is the SAME level-1 human male as b1118's target,
-            // NOT a race-9 troll. Its 325 px (vs the caster's 209) comes
-            // entirely from standing ~1.55x NEARER to the camera, not a race
-            // scale (B1130 still r51/21_stun_settle: a clothed human, standing
-            // standing upright). -- not the race-9 Troll the orchestrator's card guessed.
-            harnessOpts.targetRace = 9;
-            harnessOpts.targetGender = 1;
+            // label: the oracle spawned the SAME level-1 human male as b1118's
+            // target (the settle still r51/21_stun_settle shows a clothed,
+            // standing human male), NOT a race-9 troll. Its 325 px (vs the
+            // caster's 209) comes entirely from standing ~1.55x NEARER to the
+            // camera, not a race scale. b1130 renders that level-1 human male
+            // and lets the solver find its depth from the two feet pixels.
+            harnessOpts.targetRace = 1;
+            harnessOpts.targetGender = 0;
             harnessOpts.targetSize = 6.0f;
         } else {
             // b1118: `#spawn TrollF`: eqemu's default #spawn is a level-1

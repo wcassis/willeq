@@ -297,14 +297,17 @@ bool initSpellTestMode() {
         }
     }
     // B1155: the b1130/b1130-self target is B1130's stunned npc (#stun 120000),
-    // a fixed pose. For the b1130 preset use the client's player idle p01 (the
-    // caster's own, deterministic 209 px) rather than the o01 "other" idle, so
-    // the target's pose -- and therefore the solved camera -- is reproducible
-    // run to run. b1118 keeps o01 (its B1139 feet-apart rule). NOTE: the FABLE
-    // client's troll (race 9) and human (race 1) meshes render in a collapsed
-    // rest pose in this harness (the robed dark-elf caster stands at 209 px,
-    // the troll target at 147 px, the human at 50 px, all p01) -- a model
-    // fidelity gap vs the official client, documented in refactor/B1155/README.
+    // a fixed pose: the level-1 human male the rig spawned (`#spawn TrollF
+    // 1 1 0 30000` is eqemu's name/race/level/... arg order -- "TrollF" is
+    // only a label, model_viewer_fx_harness.cpp). For the b1130 preset use
+    // the client's player idle p01 (the caster's own, deterministic 209 px)
+    // rather than the o01 "other" idle, so the target's pose -- and therefore
+    // the solved camera -- is reproducible run to run. b1118 keeps o01 (its
+    // B1139 feet-apart rule). NOTE: the FABLE client's human (race 1) mesh
+    // renders in a collapsed rest pose in this harness (the robed dark-elf
+    // caster stands at 209 px, the human target at 50 px, all p01) -- a model
+    // fidelity gap vs the official client's standing 325 px, documented in
+    // refactor/B1155/README.md.
     const bool b1130Preset =
         harnessOpts.cameraPreset == "b1130" || harnessOpts.cameraPreset == "b1130-self";
     const char* targetIdle = b1130Preset ? "p01" : "o01";

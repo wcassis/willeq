@@ -311,16 +311,20 @@ TEST_F(FxHarness, ALevelOneCasterDrawsOnlyItsLevelZeroSlots) {
 // solver's pixels are asserted from that frame, with the same off-clear-colour
 // rule the solver corrects on.
 //
-// The target is B1130's stunned npc, `#spawn TrollF` -- race 9 (Troll), gender
-// 1, size 6 (the card's ground truth; config/race_models.json races/9 scale 1.4,
-// which with its nearer depth is why B1130's still records 325 px vs the caster's
-// 209). The FEET (row 652, column 940) are the pinned FX reference and are
-// asserted to the solved value. The rendered PIXEL HEIGHT is the model's own,
-// and is a consistency check, not a solved input: in the FABLE client this
-// harness renders the troll mesh in a collapsed rest pose (~147 px, deterministic
-// across seeds; the robed dark-elf caster stands at 209 px), a model-fidelity
-// gap vs the official client's standing 325 px troll -- documented in
-// refactor/B1155/README.md and asserted here to the measured value.
+// The target is B1130's stunned npc, `#spawn TrollF 1 1 0 30000` -- per
+// eqemu's #spawn arg order that is race=1 (HUMAN), level=1, with the gender
+// arg absent (Mob::GetDefaultGender(1) = MALE); "TrollF" is only a label
+// (model_viewer_fx_harness.cpp). The harness renders that level-1 human male
+// (race 1, gender 0, size 6) -- the oracle's OWN model. The 325 px in
+// B1130's still is DEPTH, not a race scale: the npc stands ~1.55x nearer to
+// the camera than the caster. The FEET (row 652, column 940) are the pinned
+// FX reference and are asserted to the solved value. The rendered PIXEL
+// HEIGHT is the model's own, and is a consistency check, not a solved
+// input: in the FABLE client this harness renders the human mesh in a
+// collapsed rest pose (~50 px, deterministic across seeds; the robed
+// dark-elf caster stands at 209 px) -- a model-fidelity gap vs the official
+// client's standing 325 px human, documented in refactor/B1155/README.md
+// and asserted here to the measured value.
 struct Silhouette {
     int top = -1, bottom = -1, n = 0;
     double col = 0;
@@ -376,15 +380,17 @@ void checkB1130Frame(const fs::path& frames, bool expectTarget, irr::video::IVid
         ASSERT_GT(t.n, 0) << "no off-clear pixels where the target stands";
         std::printf(
             "[fx-gate] b1130 target rows %d..%d (%d px, feet row %d), column %.1f (B1130 still: feet 652 "
-            "at 940, 325 px; the FABLE troll mesh renders collapsed at ~147 px, a model-fidelity gap)\n",
+            "at 940, 325 px -- depth, not a race scale; the FABLE human mesh renders in a collapsed "
+            "rest pose at ~50 px, a model-fidelity gap)\n",
             t.top, t.bottom, t.bottom - t.top + 1, t.bottom, t.col);
         EXPECT_NEAR(t.bottom, 652.0, 1.0) << "target feet row (the pinned FX reference)";
-        // The FABLE client's troll mesh renders in a collapsed rest pose (~147 px),
-        // not the official client's standing 325 px troll. The FEET (row 652, col
-        // 940) are the solved reference and are asserted tightly; the height is
-        // the model's own collapsed value, asserted to the measured ~147 px.
-        EXPECT_NEAR(t.bottom - t.top + 1, 147.0, 6.0)
-            << "target pixel height (the FABLE troll mesh's collapsed rest pose)";
+        // The FABLE client's human mesh renders in a collapsed rest pose (~50 px),
+        // not the official client's standing 325 px human (whose 325 px is the
+        // npc's nearer depth, not a race scale). The FEET (row 652, col 940) are
+        // the solved reference and are asserted tightly; the height is the
+        // model's own collapsed value, asserted to the measured ~50 px.
+        EXPECT_NEAR(t.bottom - t.top + 1, 50.0, 6.0)
+            << "target pixel height (the FABLE human mesh's collapsed rest pose)";
         EXPECT_NEAR(t.col, 940.0, 2.0) << "target column centroid";
     }
     img->drop();
