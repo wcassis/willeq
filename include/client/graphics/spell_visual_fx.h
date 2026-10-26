@@ -91,8 +91,9 @@ public:
         uint16_t casterId = 0;
         uint16_t targetId = 0;
         int gateLevel = kMeasuredCasterLevel;
+        int castMs = 0;          // the cast duration (OP_Action = the hit time)
         double launchAt = 0.0;   // FX-time (s) the Middle emitter starts
-        double arriveAt = 0.0;   // FX-time (s) the Target stage fires
+        double arriveAt = 0.0;   // FX-time (s) the Target stage fires (= the hit)
         float flightTime = 0.0f; // seconds, distance / kMissileSpeed
         bool launched = false;   // Middle emitter created
         bool arrived = false;    // Target stage fired
