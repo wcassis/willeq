@@ -193,16 +193,19 @@ bool SpellEffectsConfig::load(const std::string& path) {
         }
     }
 
-    // Load per-spell overrides
-    if (root.isMember("spellOverrides")) {
-        loadSpellOverrides(root["spellOverrides"]);
-    }
-
     // B1131: the per-record Source rows (anchor, shape, onset, hold).
     loadSourceRecords(root);
     // B1132: the per-record Target (landing) rows (anchor, shape).
     loadTargetRecords(root);
-    loadAnimRecords(root);
+    // B1153 (#473): the six B1120/B1122 spell overrides stay (the file is not
+    // the whole story for them -- refactor/B1153/README.md documents each);
+    // the retired blocks fail loudly if a stale config brings them back
+    // (their evidence is the bands, not the file).
+    if (root.isMember("spellOverrides"))
+        loadSpellOverrides(root["spellOverrides"]);
+    if (root.isMember("animRecords"))
+        LOG_ERROR(MOD_GRAPHICS, "SpellEffectsConfig: `animRecords` is retired (B1153) -- the field-145 "
+                  "record -> row mapping is the band in tests/spell_anim_rows.h; ignoring");
 
     // B1123: landing populations follow the platform pool (applyPool).
     global_.maxParticles = pool_;
@@ -234,8 +237,8 @@ bool SpellEffectsConfig::reload() {
 // 4096 sbc; PROVISIONAL, B1130 re-sizes it) and that populations follow it by
 // ONE rule, so a re-sized pool re-flows them without a config rewrite:
 //
-//   every landing (impact + spellComplete, the style and every spell that
-//   overrides either) PLUS its own held Source peaks at HALF THE POOL.
+//   the style landing (impact + spellComplete) PLUS its own held Source
+//   peaks at HALF THE POOL.
 //
 // Half the pool is B1121/B1123's bound: two overlapping fed landings fit, and
 // so does 253's steady field beside one (it is a landing too).  The B1123 sweep
@@ -303,7 +306,13 @@ void SpellEffectsConfig::applyPopulationRule(const Json::Value& root) {
     // style's (or the spell override's) rate, and then its sprites
     // finish their life.  Which Source a spell draws (castGlow or castSpray)
     // is decided at cast time, so the larger overlap of the two counts.
-    // Computed from the UNSCALED style each spell merges over.
+    // B1153 (#473): the rows are retired. A spell that HAS a spellsnew.eff
+    // record holds the cast-animation term (EQ::kSpellFxCastAnimationSeconds,
+    // B1148) -- what every retired row carried, and what all six override
+    // spells have (their rows 0/20/23/33/35, anims 80/89/82/121/104 in
+    // tests/spell_anim_rows.h); the style landing (id == 0) is the no-record
+    // path and keeps the default row's hold.  Computed from the UNSCALED
+    // style each spell merges over.
     auto resolve = [&](uint32_t id, const char* style) {
         auto st = styles_.find(style);
         StyleSettings r = st != styles_.end() ? st->second : StyleSettings{};
@@ -314,21 +323,14 @@ void SpellEffectsConfig::applyPopulationRule(const Json::Value& root) {
         }
         return r;
     };
-    // B1131: a Source held for seconds can be too large to sit beside its own
-    // landing at all (253's 1950/s cloud is ~95 % of the sbc half pool), and
-    // then the landing would be scaled to nothing.  So where the landing's own
-    // schedule plus the held Source does not fit, the Source scales by that
-    // same factor first (the configured Source:landing ratio is kept) and the
-    // landing then fills the rest.  Every Source that fits keeps its rate.
-    auto factor = [&](uint32_t id, int record, const StyleSettings landing[2], float* peakOut, float* targetOut,
-                      float* sourceScaleOut = nullptr) {
+    auto factor = [&](uint32_t id, const StyleSettings landing[2], float hold, float* peakOut,
+                      float* targetOut, float* sourceScaleOut = nullptr) {
         const std::vector<spell_population::Schedule> halves = {scheduleOf(landing[0]), scheduleOf(landing[1])};
         const float alone = spell_population::PeakLive(halves);
-        const SourceRecord& rec = sourceRecord(record);
         float k = std::numeric_limits<float>::max(), kSource = 1.0f;
         for (const char* src : {"castGlow", "castSpray"}) {
             spell_population::Schedule sch = scheduleOf(resolve(id, src));
-            auto o = spell_population::OverlapOf(halves, landing[0].triggerDelay, sch, rec.maxHold());
+            auto o = spell_population::OverlapOf(halves, landing[0].triggerDelay, sch, hold);
             const float kS = std::min(1.0f, spell_population::ScaleBothToFit(o, bound));
             for (auto& v : o.source) v *= kS;
             kSource = std::min(kSource, kS);
@@ -341,6 +343,7 @@ void SpellEffectsConfig::applyPopulationRule(const Json::Value& root) {
     };
 
     std::vector<uint32_t> ids;
+    spellSourceScale_.clear();
     for (const auto& kv : spellOverrides_) {
         if (kv.second.count(kHalves[0]) || kv.second.count(kHalves[1])) ids.push_back(kv.first);
     }
@@ -350,7 +353,7 @@ void SpellEffectsConfig::applyPopulationRule(const Json::Value& root) {
         Scaled sc{id, {resolve(id, kHalves[0]), resolve(id, kHalves[1])}, 1.0f};
         float alone = 0.0f, target = 0.0f;
         float kSource = 1.0f;
-        sc.k = factor(id, overrideRecord(id), sc.resolved, &alone, &target, &kSource);
+        sc.k = factor(id, sc.resolved, EQ::kSpellFxCastAnimationSeconds, &alone, &target, &kSource);
         if (alone <= 0.0f) continue;
         spellSourceScale_[id] = kSource;
         scaled.push_back(sc);
@@ -359,20 +362,20 @@ void SpellEffectsConfig::applyPopulationRule(const Json::Value& root) {
     }
     float styleAlone = 0.0f, styleTarget = 0.0f;
     float kSourceStyle = 1.0f;
-    const float kStyle = factor(0, -1, base, &styleAlone, &styleTarget, &kSourceStyle);
+    const float kStyle = factor(0, base, sourceDefault_.maxHold(), &styleAlone, &styleTarget, &kSourceStyle);
     recordSourceScale_[-1] = kSourceStyle;
-    // B1131: a spell on the style landing is scaled for its own record's held
-    // Source; the style carries the default row's, so each record stores its
-    // factor relative to that.
-    if (kStyle > 0.0f) {
-        for (const auto& kv : sourceRecords_) {
-            float a = 0.0f, t = 0.0f, kS = 1.0f;
-            const float kRec = factor(0, kv.first, base, &a, &t, &kS);
-            recordLandingScale_[kv.first] = kRec / kStyle;
-            recordSourceScale_[kv.first] = kS;
-            LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: pool {} -> record {} style landing x{:.3f}, "
-                      "held Source x{:.3f} for {:.2f} s", pool_, kv.first, kRec / kStyle, kS, kv.second.maxHold());
-        }
+    // B1153 (#473): the per-record rows (and with them the per-record
+    // factors) are retired: a record's landing draws its slots' FILE
+    // populations (applySlotEmitter, B1149), not the style's scaled rates.
+    // The style's own landing (a spell with no record) carries kStyle, the
+    // six override spells' landings are rescaled above, and a record spell's
+    // style-drawn Source (the ones without a spellsnew.eff Source slot) keeps
+    // its row's factor: the style's overlap at the cast-animation hold --
+    // what B1152's recordSourceScale_[record] carried for every row.
+    {
+        float a = 0.0f, t = 0.0f, kSourceRecord = 1.0f;
+        factor(0, base, EQ::kSpellFxCastAnimationSeconds, &a, &t, &kSourceRecord);
+        recordSourceScale_[0] = kSourceRecord;
     }
 
     for (auto& sc : scaled)
@@ -382,7 +385,7 @@ void SpellEffectsConfig::applyPopulationRule(const Json::Value& root) {
         scaleInto(styleIt1->second, base[1], kStyle);
     }
     LOG_INFO(MOD_GRAPHICS, "SpellEffectsConfig: spell particle pool {} -> a landing and its held Source peak at "
-             "<= {:.0f} (style landing {:.0f} -> {:.0f}; {} spells resolved)",
+             "<= {:.0f} (style landing {:.0f} -> {:.0f}; {} override spells resolved)",
              pool_, bound, styleAlone, styleTarget, scaled.size());
 }
 
@@ -441,6 +444,34 @@ void SpellEffectsConfig::loadStyle(const Json::Value& json, const std::string& n
     LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: Loaded style '{}'", name);
 }
 
+SpellEffectsConfig::StyleSettings SpellEffectsConfig::getStyleSettings(
+        const std::string& styleName, uint32_t spellId, int record) const {
+    // B1153 (#473): no per-record landing scale any more (a record's landing
+    // draws its slots' FILE populations, applySlotEmitter, B1149). The six
+    // B1120/B1122 spell overrides stay -- the measured no-file clouds, sizes
+    // and populations for the spells whose spellsnew file is not the whole
+    // story (refactor/B1153/README.md documents each with its numbers).
+    (void)record;
+    // Find base style
+    auto baseIt = styles_.find(styleName);
+    if (baseIt == styles_.end()) {
+        LOG_WARN(MOD_GRAPHICS, "SpellEffectsConfig: Unknown style '{}', returning empty", styleName);
+        return StyleSettings{};
+    }
+
+    // Check for spell-specific overrides
+    if (spellId != 0) {
+        auto spellIt = spellOverrides_.find(spellId);
+        if (spellIt != spellOverrides_.end()) {
+            auto styleIt = spellIt->second.find(styleName);
+            if (styleIt != spellIt->second.end()) {
+                return mergeOverrides(baseIt->second, styleIt->second);
+            }
+        }
+    }
+    return baseIt->second;
+}
+
 void SpellEffectsConfig::loadSpellOverrides(const Json::Value& root) {
     spellOverrides_.clear();
 
@@ -497,53 +528,18 @@ SpellEffectsConfig::StyleSettings SpellEffectsConfig::mergeOverrides(
     return result;
 }
 
-SpellEffectsConfig::StyleSettings SpellEffectsConfig::getStyleSettings(
-        const std::string& styleName, uint32_t spellId, int record) const {
-    // Find base style
-    auto baseIt = styles_.find(styleName);
-    if (baseIt == styles_.end()) {
-        LOG_WARN(MOD_GRAPHICS, "SpellEffectsConfig: Unknown style '{}', returning empty", styleName);
-        return StyleSettings{};
-    }
-
-    const StyleSettings& base = baseIt->second;
-
-    // Check for spell-specific overrides
-    if (spellId != 0) {
-        auto spellIt = spellOverrides_.find(spellId);
-        if (spellIt != spellOverrides_.end()) {
-            auto styleIt = spellIt->second.find(styleName);
-            if (styleIt != spellIt->second.end()) {
-                return mergeOverrides(base, styleIt->second);
-            }
-        }
-    }
-
-    // B1131: a landing half on the style is scaled for its record's held
-    // Source (applyPopulationRule); the style itself carries the default row's.
-    if (record >= 0 && (styleName == "impact" || styleName == "spellComplete")) {
-        auto k = recordLandingScale_.find(record);
-        if (k != recordLandingScale_.end()) {
-            StyleSettings scaled = base;
-            scaled.spawnRate *= k->second;
-            scaled.sustainRate *= k->second;
-            return scaled;
-        }
-    }
-
-    return base;
-}
-
 // ---------------------------------------------------------------------------
-// B1131 (#451): THE SOURCE PER spells.eff RECORD.  B1122 drew every record's
-// Source as one body cloud from BeginCast+0.25 s, released 0.33 s after
-// OP_Action.  The B1130 survey measured all 41 records the level-1-60 spells
-// use (review/B1130/anchor_table.tsv): hands 8, feet/ground ring 4, orbit 13,
-// whole body 14, head 1 (record 22's halo), record 51 unmeasured; onset
-// BC+0.37-0.50 (median 0.41); and, when the target is another entity, the
-// caster's Source holds 4-6 s past OP_Action on 16 records.  Each row is
-// read here; SpellVisualFX::createCastGlow builds its emitters and
-// releaseCastGlow applies its hold.
+// B1153 (#473): THE SOURCE ROW IS THE DEFAULT ROW.  B1122 drew every record's
+// Source as one body cloud; the B1130 survey measured all 41 records the
+// level-1-60 spells use (review/B1130/anchor_table.tsv); B1149-B1151 retired
+// the rows' words one by one (population, shape, timing) as the
+// spellsnew.edd reader supplied them; B1153 retires the rows themselves --
+// the measured anchor classes and holds are the band in
+// tests/spell_fx_row_oracle.h.  What stays: the NO-RECORD fallback, a spell
+// whose spellsnew.eff field 145 is absent draws this default row (the style's
+// body cloud on the caster, the B1130 median onset, B1122's holds).
+// createCastGlow builds its emitters; releaseCastGlow applies the hold
+// (record spells run their own spellsnew.edd durations, B1145).
 // ---------------------------------------------------------------------------
 static bool parseAnchor(const std::string& a, SpellEffectsConfig::SourceAnchor& out) {
     using A = SpellEffectsConfig::SourceAnchor;
@@ -556,11 +552,7 @@ static bool parseAnchor(const std::string& a, SpellEffectsConfig::SourceAnchor& 
 }
 
 void SpellEffectsConfig::loadSourceRecords(const Json::Value& root) {
-    sourceRecords_.clear();
-    overrideRecords_.clear();
-    recordLandingScale_.clear();
     recordSourceScale_.clear();
-    spellSourceScale_.clear();
     sourceDefault_ = SourceRecord{};
     sourceScale_ = SourceScale{};
     const Json::Value& sr = root["sourceRecords"];
@@ -569,62 +561,34 @@ void SpellEffectsConfig::loadSourceRecords(const Json::Value& root) {
                   "style's body cloud with no onset or hold (B1131)");
         return;
     }
-    LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: Source rule: {} | default: {} | override records: {}",
-              sr["rule"].asString(), sr["defaultWhy"].asString(), sr["overrideRecordsWhy"].asString());
+    LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: Source rule: {} | default: {}",
+              sr["rule"].asString(), sr["defaultWhy"].asString());
     const Json::Value& sc = sr["scale"];
-    if (sc.isMember("casterHeight")) sourceScale_.casterHeight = sc["casterHeight"].asFloat();
     if (sc.isMember("anchorAboveFeet")) sourceScale_.anchorAboveFeet = sc["anchorAboveFeet"].asFloat();
-    if (sc.isMember("orbitAngularVelocity")) sourceScale_.orbitAngularVelocity = sc["orbitAngularVelocity"].asFloat();
-    // Each measured block carries its reason ("why", B1123..B1134); the B1123
-    // exceptions that also did were retired by B1149, so it is logged here.
+    // The measured block carries its reason ("why"); it is logged here.
     if (sc.isMember("why")) LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: Source scale: {}", sc["why"].asString());
 
     auto readRow = [](const Json::Value& j, SourceRecord& r) {
         if (j.isMember("anchor") && !parseAnchor(j["anchor"].asString(), r.anchor))
             LOG_ERROR(MOD_GRAPHICS, "SpellEffectsConfig: unknown Source anchor '{}'", j["anchor"].asString());
-        r.hasShape = j.isMember("lo") && j.isMember("hi") && j.isMember("halfWidth");
-        r.lo = j.get("lo", 0.0).asFloat();
-        r.hi = j.get("hi", 0.0).asFloat();
-        r.halfWidth = j.get("halfWidth", 0.0).asFloat();
-        r.centroid = j.get("centroid", 0.0).asFloat();
-        r.spiral = j.get("spiral", false).asBool();
-        r.discLo = j.get("discLo", 0.0).asFloat();
-        r.discHi = j.get("discHi", 0.0).asFloat();
-        r.discHalfWidth = j.get("discHalfWidth", 0.0).asFloat();
-        r.discShare = j.get("discShare", 0.0).asFloat();
         if (j.isMember("onset")) r.onset = j["onset"].asFloat();
         if (j.isMember("holdSelf")) r.holdSelf = j["holdSelf"].asFloat();
         // A self-only spell has no other-target hold: its Source never has another target.
         if (j.isMember("holdOther")) r.holdOther = j["holdOther"].asFloat();
         else if (j.isMember("holdSelf")) r.holdOther = r.holdSelf;
-        r.measuredAs = j.get("measuredAs", -1).asInt();
     };
     readRow(sr["default"], sourceDefault_);
-    sourceDefault_.hasShape = false;  // the default is the style's own cloud
 
-    // B1145 (#465): a row is a spellsnew.eff record's Source, whose timing is
-    // its slots' (spellsnew.edd): the stage starts at the default row's onset
-    // and a caller-duration slot emits the cast-animation term past
-    // OP_Action. A row that still names an onset/hold keeps it (none does).
-    SourceRecord rowBase;
-    rowBase.onset = sourceDefault_.onset;
-    rowBase.holdOther = rowBase.holdSelf = EQ::kSpellFxCastAnimationSeconds;
-    const Json::Value& recs = sr["records"];
-    for (const auto& key : recs.getMemberNames()) {
-        SourceRecord r = rowBase;
-        readRow(recs[key], r);
-        r.record = std::stoi(key);
-        sourceRecords_[r.record] = r;
-    }
-    // B1149 (#469): the rows' `population` rule (rate = 80/s x coverage /
-    // record 0's) and their `coverage` are retired: a row's record draws its
-    // slots' FILE populations (SpellPresets::applySlotEmitter); the measured
-    // coverages are bands in tests/spell_fx_population_oracle.h.
-    const Json::Value& orr = sr["overrideRecords"];
-    for (const auto& key : orr.getMemberNames())
-        overrideRecords_[static_cast<uint32_t>(std::stoul(key))] = orr[key].asInt();
-    LOG_INFO(MOD_GRAPHICS, "SpellEffectsConfig: {} Source records (B1131), default onset {:.2f} s, "
-             "hold other/self {:.2f}/{:.2f} s", sourceRecordCount(), sourceDefault_.onset,
+    // B1153 (#473): the per-record measured rows (`records`) and the pool
+    // rule's `overrideRecords` are retired: every record is drawn by its
+    // spellsnew.eff record's EDD emitters (B1149-B1151) and the measured
+    // anchor classes / holds are the band in tests/spell_fx_row_oracle.h.
+    // The default row is the only row the runtime carries.
+    if (sr.isMember("records") || sr.isMember("overrideRecords"))
+        LOG_ERROR(MOD_GRAPHICS, "SpellEffectsConfig: `sourceRecords.records` / `overrideRecords` are retired "
+                  "(B1153) -- the bands in tests/spell_fx_row_oracle.h are the source of truth; ignoring them");
+    LOG_INFO(MOD_GRAPHICS, "SpellEffectsConfig: Source default row (B1153: rows retired), onset {:.2f} s, "
+             "hold other/self {:.2f}/{:.2f} s", sourceDefault_.onset,
              sourceDefault_.holdOther, sourceDefault_.holdSelf);
 }
 
@@ -634,13 +598,34 @@ float SpellEffectsConfig::targetStageLatency() const {
 }
 
 const SpellEffectsConfig::SourceRecord& SpellEffectsConfig::sourceRecord(int record) const {
-    auto it = sourceRecords_.find(record);
-    return it != sourceRecords_.end() ? it->second : sourceDefault_;
+    (void)record;  // B1153: the rows are retired -- the default row
+    return sourceDefault_;
 }
 
 float SpellEffectsConfig::sourceHold(int record, bool targetIsSelf) const {
+    // B1153 (#473): the per-record rows are retired. A spell that HAS a
+    // spellsnew.eff record (record > 0) holds its Source for the caster's
+    // cast-animation term past OP_Action (B1148: the Source includes the
+    // caster's CastingAnim track) -- the 4.35 s every retired row carried;
+    // its band is in tests/spell_fx_row_oracle.h. A spell with NO record
+    // (record <= 0) draws the no-record fallback row's measured holds
+    // (B1122: holdOther with another target, holdSelf on the caster).
+    if (record > 0)
+        return EQ::kSpellFxCastAnimationSeconds;
     const SourceRecord& r = sourceRecord(record);
     return targetIsSelf ? r.holdSelf : r.holdOther;
+}
+
+float SpellEffectsConfig::sourcePoolScale(uint32_t spellId, int record) const {
+    // B1153 (#473): a landing override keeps its own factor; otherwise the
+    // factor of the Source the spell draws -- the style's (a spell with no
+    // spellsnew.eff record) or the record's (the style's overlap at the
+    // cast-animation hold, recordSourceScale_[0]).
+    auto sp = spellSourceScale_.find(spellId);
+    if (spellId != 0 && sp != spellSourceScale_.end()) return sp->second;
+    const int key = record > 0 ? 0 : -1;
+    auto r = recordSourceScale_.find(key);
+    return r != recordSourceScale_.end() ? r->second : 1.0f;
 }
 
 bool SpellEffectsConfig::hasSourceShapeOverride(uint32_t spellId, const std::string& styleName) const {
@@ -648,13 +633,6 @@ bool SpellEffectsConfig::hasSourceShapeOverride(uint32_t spellId, const std::str
     if (spellId == 0 || sp == spellOverrides_.end()) return false;
     auto it = sp->second.find(styleName);
     return it != sp->second.end() && it->second.hasSpawnShape;
-}
-
-float SpellEffectsConfig::sourcePoolScale(uint32_t spellId, int record) const {
-    auto sp = spellSourceScale_.find(spellId);
-    if (spellId != 0 && sp != spellSourceScale_.end()) return sp->second;
-    auto r = recordSourceScale_.find(sourceRecords_.count(record) ? record : -1);
-    return r != recordSourceScale_.end() ? r->second : 1.0f;
 }
 
 static bool parseTargetAnchor(const std::string& a, SpellEffectsConfig::TargetAnchor& out) {
@@ -668,7 +646,6 @@ static bool parseTargetAnchor(const std::string& a, SpellEffectsConfig::TargetAn
 }
 
 void SpellEffectsConfig::loadTargetRecords(const Json::Value& root) {
-    targetRecords_.clear();
     targetDefault_ = TargetRecord{};
     const Json::Value& tr = root["targetRecords"];
     if (!tr.isObject()) {
@@ -681,66 +658,23 @@ void SpellEffectsConfig::loadTargetRecords(const Json::Value& root) {
     auto readRow = [](const Json::Value& j, TargetRecord& r) {
         if (j.isMember("anchor") && !parseTargetAnchor(j["anchor"].asString(), r.anchor))
             LOG_ERROR(MOD_GRAPHICS, "SpellEffectsConfig: unknown Target anchor '{}'", j["anchor"].asString());
-        r.lo = j.get("lo", 0.0).asFloat();
-        r.hi = j.get("hi", 0.0).asFloat();
-        r.halfWidth = j.get("halfWidth", 0.0).asFloat();
-        r.centroid = j.get("centroid", 0.0).asFloat();
-        r.onset = j.get("onset", 0.0).asFloat();
-        r.faceOnset = j.get("faceOnset", 0.0).asFloat();
-        r.end = j.get("end", 0.0).asFloat();
-        r.boneAt = j.get("boneAt", 0.0).asFloat();
-        r.unmeasured = j.get("unmeasured", false).asBool();
-        using T = SpellEffectsConfig::TargetAnchor;
-        r.hasShape = (r.anchor == T::Head || r.anchor == T::FeetGround || r.anchor == T::Column) &&
-                     j.isMember("lo") && j.isMember("hi") && j.isMember("halfWidth");
-        LOG_TRACE(MOD_GRAPHICS, "SpellEffectsConfig: Target row: {}", j["capture"].asString());
     };
     readRow(tr["default"], targetDefault_);
-    targetDefault_.hasShape = false;
-    const Json::Value& recs = tr["records"];
-    for (const auto& key : recs.getMemberNames()) {
-        TargetRecord r;
-        readRow(recs[key], r);
-        r.record = std::stoi(key);
-        targetRecords_[r.record] = r;
-    }
-    LOG_INFO(MOD_GRAPHICS, "SpellEffectsConfig: {} Target records (B1132)", targetRecordCount());
+
+    // B1153 (#473): the per-record measured rows (`records`) are retired:
+    // every record lands as its spellsnew.eff Target slots (B1144, B1152) and
+    // the measured anchor classes / extents are the bands in
+    // tests/spell_fx_row_oracle.h and tests/spell_fx_shape_oracle.h.
+    // The default row is the only row the runtime carries.
+    if (tr.isMember("records"))
+        LOG_ERROR(MOD_GRAPHICS, "SpellEffectsConfig: `targetRecords.records` is retired (B1153) -- the "
+                  "bands in tests/spell_fx_row_oracle.h are the source of truth; ignoring it");
+    LOG_INFO(MOD_GRAPHICS, "SpellEffectsConfig: Target default row (B1153: rows retired)");
 }
 
 const SpellEffectsConfig::TargetRecord& SpellEffectsConfig::targetRecord(int record) const {
-    auto it = targetRecords_.find(record);
-    return it != targetRecords_.end() ? it->second : targetDefault_;
-}
-
-void SpellEffectsConfig::loadAnimRecords(const Json::Value& root) {
-    animRows_.clear();
-    const Json::Value& ar = root["animRecords"];
-    if (!ar.isObject()) {
-        LOG_ERROR(MOD_GRAPHICS, "SpellEffectsConfig: no `animRecords` block -- every spell draws the default "
-                  "Source/Target rows (B1137)");
-        return;
-    }
-    LOG_DEBUG(MOD_GRAPHICS, "SpellEffectsConfig: anim rule: {}", ar["rule"].asString());
-    const Json::Value& rows = ar["rows"];
-    for (const auto& key : rows.getMemberNames()) {
-        const int row = rows[key].asInt();
-        if (!sourceRecords_.count(row) || !targetRecords_.count(row))
-            LOG_ERROR(MOD_GRAPHICS, "SpellEffectsConfig: animRecords {} names row {} with no measured "
-                      "Source/Target row", key, row);
-        animRows_[std::stoi(key)] = row;
-    }
-    LOG_INFO(MOD_GRAPHICS, "SpellEffectsConfig: {} spellsnew.eff records carry a measured row (B1137)",
-             animRowCount());
-}
-
-int SpellEffectsConfig::rowForAnim(int spellAnim) const {
-    auto it = animRows_.find(spellAnim);
-    return it != animRows_.end() ? it->second : -1;
-}
-
-int SpellEffectsConfig::overrideRecord(uint32_t spellId) const {
-    auto it = overrideRecords_.find(spellId);
-    return it != overrideRecords_.end() ? it->second : -1;
+    (void)record;  // B1153: the rows are retired -- the default row
+    return targetDefault_;
 }
 
 glm::vec4 SpellEffectsConfig::getResistColor(uint8_t resistType) const {
@@ -807,7 +741,6 @@ void SpellEffectsConfig::setDefaults() {
     resistColors_["corruption"] = glm::vec4(0.4f, 0.1f, 0.5f, 1.0f);
 
     styles_.clear();
-    spellOverrides_.clear();
 
     // castSpray
     {

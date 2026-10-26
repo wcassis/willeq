@@ -1,0 +1,17 @@
+{
+ "video": "/home/user/kb-evidence/kb-b1153-retire/frames/b1153_after_b1118_r30_231.measure/video.mkv",
+ "offset": 0.0,
+ "t_begincast": 1.5,
+ "t_action": 3.6,
+ "t_end": 13.6,
+ "crop": [
+  170,
+  0,
+  1060,
+  650
+ ],
+ "threshold": 45,
+ "n_frames": 399,
+ "baseline_frames": 30,
+ "label": "fable231"
+}

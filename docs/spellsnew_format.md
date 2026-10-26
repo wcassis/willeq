@@ -13,8 +13,10 @@ tables with every read site, the Ghidra 12.1.4 project, the scripts and the cros
 oracle-measured records are in `review/B1141/README.md` (`edd_fields_from_code.tsv`,
 `eff_fields_from_code.tsv`, `crosscheck.tsv`). Fable reads the EFF record whole
 (`include/client/spell/spells_new_eff_reader.h`) and, since B1144 (#464), draws by its slot words: the
-level gate, the anchor and the attach point, Source only from a begin-cast, Middle never (no missile
-path yet), no landing without a Target slot (`SpellVisualFX::stageSlots`, `refactor/B1144/README.md`).
+level gate, the anchor and the attach point, Source only from a begin-cast, Middle as the missile
+(B1152: the flight emitter rides the moving actor and arrival fires the Target stage), no landing
+without a Target slot (`SpellVisualFX::stageSlots`, `refactor/B1144/README.md`,
+`refactor/B1152/README.md`).
 Of the EDD entry it reads the texture, the frame count and, since B1146, the colour words +0x68, +0x90,
 +0x94, +0xA4 and +0xD4..+0xE8 (`include/client/spell/spells_new_edd_colour.h`, applied per texture
 region by `SpellPresets::applyStageEmitterColours()`; since B1149 the alpha and blend words too, on every
@@ -30,7 +32,21 @@ size: a world-unit quad +0xCC..+0x184 wide, +0x17C..+0x180 tall (+0x18C one draw
 `refactor/B1149/README.md`). The +0x6C attach scale is passed as 1 (+0x19C is B1150's): the client's s is model data
 (actor +0x10 x the root actor's sub-object +0x64 float +0x60, EQGraphicsDX9 0x1006090d..0x1006094a; its
 writer 0x1016be70 is not traced). The +0xA0 density distance (80 on most entries) does not bite at the
-harness/lane camera (29 units). Shape, offsets and motion are still not wired (B1150/B1151).
+harness/lane camera (29 units). Since B1150 (#470) the EDD shape and offsets are wired
+(`SpellsNewEddReader::shapeAt`, passed into `SpellPresets::applySlotEmitter()`,
+`refactor/B1150/README.md`), and since B1151 (#471) the motion words
+(`SpellsNewEddReader::motionAt`, the same call, `refactor/B1151/README.md`).
+
+**B1153 (#473) final state:** with every quantity above read from the file, the measured-row system
+is RETIRED. The runtime no longer carries per-record `sourceRecords`/`targetRecords`/`animRecords`
+rows — a record is drawn purely by its spellsnew.eff slots (level gate, anchor, attach point, EDD
+timing, colour, population, sprite size, shape, motion), and the config carries the two default
+rows only. The retired measured words became regression bands in the tests
+(`tests/spell_fx_row_oracle.h`, `tests/spell_fx_shape_oracle.h`,
+`tests/spell_fx_population_oracle.h`, `tests/spell_fx_timing_oracle.h`; the field-145 → record
+mapping is `tests/spell_anim_rows.h`). Six `spellOverrides` STAY — 38/41/54/253/458/656, the
+B1120/B1122 measured clouds where the lane shows the file is not the whole story; each is
+documented with its numbers in `refactor/B1153/README.md`.
 
 ## Who does what
 

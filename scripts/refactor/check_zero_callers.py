@@ -869,6 +869,13 @@ EXEMPT_TESTS_GROUPS = {
     # design). test_spell_edd_motion's CensusOfTheMotionWords counts all 2118
     # entries through it (the B1150 shapeAt pattern).
     ("SpellsNewEddReader", "motionAt"): "observer",
+    # B1153 (#473): the measured rows are retired (the runtime reads
+    # geometry/timing/population from spellsnew.edd); sourceRecordCount() and
+    # targetRecordCount() are the tests' window proving the config carries no
+    # per-record rows any more (test_spell_anim_rows / test_spell_source_anchors /
+    # test_spell_target_anchors assert both return 0).
+    ("SpellEffectsConfig", "sourceRecordCount"): "observer",
+    ("SpellEffectsConfig", "targetRecordCount"): "observer",
     # B1083 (#403): the test's window onto which pack served an (archive, name)
     # EQE1 request. Its production WRITER is recordEQE1Request()/dumpEQE1RequestLog()
     # at zone load (T214); the reader is test_eqe1_source_archive, which asserts

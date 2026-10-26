@@ -517,9 +517,10 @@ TEST_P(SpellPoolRule, EveryLandingPeaksAtTheRuleForThisPool) {
     const float bound = 0.5f * pool();
     const auto& cfg = EQT::Graphics::Environment::SpellEffectsConfig::instance();
     for (uint32_t id : {0u, 93u, 38u, 54u, 656u, 41u, 253u, 458u, 285u}) {
-        // B1131: the held Source is the spell's RECORD's (rate, hold); 0 and 285
-        // stand for a spell whose record is not listed (the default row).
-        const int rec = cfg.overrideRecord(id);
+        // B1153 (#473): the per-record rows and `sourceRecords.overrideRecords`
+        // are retired -- the default row's hold and the style's held-Source
+        // factor (recordSourceScale_[-1]) for every spell.
+        const int rec = -1;
         const auto imp = SpellPresets::Impact(glm::vec4(1.0f), id, rec);
         const auto com = SpellPresets::SpellComplete(glm::vec4(1.0f), id, rec);
         const std::vector<sp::Schedule> halves = {

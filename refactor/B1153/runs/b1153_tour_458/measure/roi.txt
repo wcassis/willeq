@@ -1,0 +1,2 @@
+/home/user/kb-frames/kb-b1153-retire/b1153_tour_458.measure/fable_458 SOURCE ROI pooled 80 frames: p90 0.035 median 0.024 blobs 3932
+/home/user/kb-frames/kb-b1153-retire/b1153_tour_458.measure/fable_458 LANDING ROI pooled 19 frames: p90 0.075 median 0.026 blobs 3021

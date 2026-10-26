@@ -1,0 +1,17 @@
+{
+ "video": "/home/user/kb-evidence/kb-b1153-retire/frames/b1153_noov_b1118_54.measure/video.mkv",
+ "offset": 0.0,
+ "t_begincast": 1.5,
+ "t_action": 3.0,
+ "t_end": 13.0,
+ "crop": [
+  170,
+  0,
+  1060,
+  650
+ ],
+ "threshold": 45,
+ "n_frames": 381,
+ "baseline_frames": 30,
+ "label": "fable54"
+}

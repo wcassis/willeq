@@ -72,23 +72,25 @@ const MapNode kDataKeyedMaps[] = {
      "ConstrainedRendererConfig::loadPresetsFromJson enumerates "
      "presets.getMemberNames() rather than asking for any by literal"},
     {"spell_effects.json", "spellOverrides",
-     "T441 (board B397): SPELL IDS, and the style settings under each are "
-     "settings again; SpellEffectsConfig::loadSpellOverrides enumerates "
-     "root.getMemberNames() and std::stoul's each one, so no source names "
-     "93, 41 or 253 as a literal"},
-    {"spell_effects.json", "sourceRecords.records",
-     "B1131 (#451): spells.eff RECORD numbers; SpellEffectsConfig::loadSourceRecords "
-     "enumerates records.getMemberNames() and std::stoi's each one"},
-    {"spell_effects.json", "sourceRecords.overrideRecords",
-     "B1131 (#451): SPELL IDS; SpellEffectsConfig::loadSourceRecords enumerates "
-     "overrideRecords.getMemberNames() and std::stoul's each one"},
-    {"spell_effects.json", "targetRecords.records",
-     "B1132 (#452): spells.eff RECORD numbers; SpellEffectsConfig::loadTargetRecords "
-     "enumerates records.getMemberNames() and std::stoi's each one"},
-    {"spell_effects.json", "animRecords.rows",
-     "B1137 (#457): spellsnew.eff RECORD numbers (spells_us.txt field 145); "
-     "SpellEffectsConfig::loadAnimRecords enumerates rows.getMemberNames() and "
-     "std::stoi's each one, and rowForAnim() looks them up by the spell's field 145"},
+     "B1153 (#473): SPELL IDS (the six B1120/B1122 measured clouds that stay "
+     "-- the file is not the whole story, refactor/B1153/README.md); the style "
+     "settings under each are settings again; SpellEffectsConfig::loadSpellOverrides "
+     "enumerates root.getMemberNames() and std::stoul's each one, so no source "
+     "names 38, 41 or 253 as a literal"},
+    // B1153 (#473): spell_effects.json's `spellOverrides` block STAYS --
+    // the six B1120/B1122 measured clouds (38/41/54/253/458/656) whose
+    // spellsnew file is not the whole story (refactor/B1153/README.md
+    // documents each with before/after numbers): spell IDs, and the style
+    // settings under each are settings again;
+    // SpellEffectsConfig::loadSpellOverrides enumerates
+    // root.getMemberNames() and std::stoul's each one, so no source names
+    // 38, 41 or 253 as a literal. The ROW blocks it replaced
+    // (`sourceRecords.records` / `overrideRecords`, `targetRecords.records`,
+    // `animRecords.rows`) are RETIRED: the config carries the two default
+    // rows only, and the measured words are the bands in
+    // tests/spell_fx_row_oracle.h / tests/spell_fx_shape_oracle.h /
+    // tests/spell_fx_population_oracle.h / tests/spell_fx_timing_oracle.h
+    // (the field-145 -> row mapping is tests/spell_anim_rows.h).
 };
 
 // Whole files that are DATA TABLES, not settings: every key below the root is

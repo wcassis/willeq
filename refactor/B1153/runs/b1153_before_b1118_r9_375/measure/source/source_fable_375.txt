@@ -1,0 +1,17 @@
+# exclude [(490, 0, 190, 200), (170, 0, 280, 140)]
+# /home/user/kb-frames/kb-b1153-retire/b1153_before_b1118_r9_375.measure/video.mkv bc 1.500 act 2.500 (cast 1.000s) crop 170,0,1060,650 feet 640,605 model 235px thr 408px
+frame	t_bc	cov	extent	centroid	rowtop	active
+45	+0.00	0.001	0.00	0.00	0.00	0
+48	+0.10	0.000	0.00	0.00	0.00	0
+52	+0.23	0.000	0.00	0.00	0.00	0
+54	+0.30	0.001	0.00	0.00	0.00	0
+58	+0.43	0.282	2.13	0.69	1.13	1
+60	+0.50	0.433	1.99	0.71	1.18	1
+63	+0.60	0.479	2.09	0.74	1.44	1
+66	+0.70	0.423	1.92	0.74	1.50	1
+70	+0.83	0.742	2.17	0.78	1.63	1
+73	+0.93	0.766	2.02	0.81	1.66	1
+ONSET25 (first frame >= 25% of the peak) f58 BC+0.433
+SOURCE onset f58 BC+0.433 last f74 BC+0.967 active 17/30 frames
+PEAK f74 BC+0.97 cov 0.833 extent 1.94 centroid 0.84 rowtop 1.67
+MEDIAN(active, BC+0.3..Act) cov 0.479 extent 2.00 centroid 0.75 rowtop 1.50 n=17

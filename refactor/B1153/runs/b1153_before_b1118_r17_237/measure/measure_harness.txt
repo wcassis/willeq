@@ -1,0 +1,13 @@
+## spell 237 BC 1.500 Act 4.500 (cast 3.000s) end 14.500
+fable237: 426 frames, baseline 30
+# /home/user/kb-frames/kb-b1153-retire/b1153_before_b1118_r17_237.measure/fable_237: floor 102px thr 408px model 235px
+SOURCE onset f58 BC+0.433s end f134 BC+2.967s peak f80 BC+1.167s coverage 0.547 model^2
+LANDING onset f151 Act+0.533s end f279 Act+4.800s dur 4.27s peak f184 Act+1.633s coverage 1.240 model^2
+# /home/user/kb-frames/kb-b1153-retire/b1153_before_b1118_r17_237.measure/fable_237: grab fps 30.00, stale grabs in Act+0.3..2.3s: 0/60 (max frame gap 34 ms), noise p95 217px, thr 1500px, model 235px
+SOURCE	onset f58 +0.433s	last f134 +2.967s	end10% f134 +2.967s	dur 2.53s (77 active fr)	peak f80 +1.167s n=54272px blobs=179	extent 453x417px = 1.93x1.77 model	meanRGB 83,82,181 peak_hue 241 sat 0.56	
+LANDING	onset f135 +0.000s	last f280 +4.833s	end10% f270 +4.500s	dur 4.83s (146 active fr)	peak f187 +1.733s n=132905px blobs=176	extent 936x649px = 3.98x2.76 model	meanRGB 79,78,180 peak_hue 244 sat 0.57	
+LANDING_RISE	first frame > 2x source tail (48858px): f156 Act+0.700s n=97919
+/home/user/kb-frames/kb-b1153-retire/b1153_before_b1118_r17_237.measure/fable_237 SOURCE colour RGB 101,101,215 hue 240 sat 0.53 val 0.84
+/home/user/kb-frames/kb-b1153-retire/b1153_before_b1118_r17_237.measure/fable_237 SOURCE f75 (BC+1.00s): blobs>=2px 103, diam median 8.6px = 0.037 model, p90 23.1px = 0.098 model, lit px 25485
+/home/user/kb-frames/kb-b1153-retire/b1153_before_b1118_r17_237.measure/fable_237 LANDING colour RGB 99,92,210 hue 243 sat 0.56 val 0.82
+/home/user/kb-frames/kb-b1153-retire/b1153_before_b1118_r17_237.measure/fable_237 LANDING f180 (Act+1.50s): blobs>=2px 127, diam median 8.1px = 0.034 model, p90 28.6px = 0.122 model, lit px 61435

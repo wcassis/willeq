@@ -346,8 +346,9 @@ TEST_F(SpellBurstOracleMatch, TheSourceCloudRatesAreTheCalibratedOnes) {
     EXPECT_FLOAT_EQ(latency, 0.41f);
     const std::pair<uint32_t, float> kOnset[] = {{93u, latency}, {54u, latency}, {253u, latency}, {458u, latency}};
     for (const auto& [id, onset] : kOnset) {
-        const auto src = SpellPresets::SourceForSpell(glm::vec4(1.0f), id, cfg.overrideRecord(id), false,
-                                                      3.6f, 1.0f);
+        // B1153 (#473): the per-record rows are retired -- the default row's
+        // onset (the median) is every record's no-file Source onset.
+        const auto src = SpellPresets::SourceForSpell(glm::vec4(1.0f), id, -1, false, 3.6f, 1.0f);
         EXPECT_FLOAT_EQ(src.emitters.at(0).triggerDelay, onset) << id;
         EXPECT_EQ(glow(id).trigger, EQT::Graphics::Environment::SpellTrigger::IMMEDIATE)
             << id << ": the style carries no onset of its own";

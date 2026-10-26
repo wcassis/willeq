@@ -1,0 +1,17 @@
+{
+ "video": "/home/user/kb-frames/kb-b1153-retire/b1153_after_b1118_r2_202.measure/video.mkv",
+ "offset": 0.0,
+ "t_begincast": 1.5,
+ "t_action": 3.5,
+ "t_end": 13.5,
+ "crop": [
+  170,
+  0,
+  1060,
+  650
+ ],
+ "threshold": 45,
+ "n_frames": 396,
+ "baseline_frames": 30,
+ "label": "fable202"
+}
