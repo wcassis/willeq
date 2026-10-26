@@ -562,24 +562,20 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         {
             const StageSlots middle = stageSlots(spell_id, kSpellsNewEffMiddle, casterLevel);
             if (targetId != 0 && middle.fromFile && !middle.drawn.empty()) {
-                // B1152 timing (missile_oracle.tsv, sec. 5): the hit (OP_Action)
-                // is at BeginCast + cast_ms; the projectile launches flightTime
-                // before it and flies to the target over that window, so the
-                // arrival (the Target stage) fires at the hit -- the oracle's
-                // flight ends 0.184 s before act1_v and the arrival burst 0.116 s
-                // after (the Target stage's own delay). The flight time is the
-                // endpoint distance over kMissileSpeed when they resolve, else a
-                // default (the particle manager may be unset, e.g. in a test);
-                // launchMissile re-resolves the destination and, if it has
-                // despawned, hands the landing back to createLanding (the 54/859
-                // at-removal rule).
-                float flightTime = 0.3f;
-                glm::vec3 start(0.0f), end(0.0f);
-                if (m_particle_manager &&
-                    m_particle_manager->resolveEntityPosition(caster_id, start) &&
-                    m_particle_manager->resolveEntityPosition(targetId, end)) {
-                    flightTime = std::max(0.1f, (end - start).length() / kMissileSpeed);
-                }
+                // B1152 timing (missile_oracle.tsv, TRACE sec. 5/8): the hit
+                // (OP_Action) is at BeginCast + cast_ms. The flight (the
+                // Middle emitter moving caster -> target) ENDS 0.184 s BEFORE
+                // the hit (kMissileFlightEndOffset) and the Target-stage arrival
+                // burst fires 0.30 s AFTER the flight ends (kMissileLanding
+                // Delay) -- the impact plays over an already-resolved hit, at
+                // the target. The flight time is the record-80 oracle's 0.30 s
+                // (9.05 units at kMissileSpeed, sec. 3/8); a resolved-gap
+                // refinement (the particle manager's positions, not the b1130
+                // rig's ~12 units, so it undershoots) and the per-record "run"
+                // speed are B1153's. launchMissile re-resolves the destination
+                // and, if it has despawned, hands the landing back to
+                // createLanding (the 54/859 at-removal rule).
+                const float flightTime = kMissileFlightDistance / kMissileSpeed;
                 const double hitAt = m_fx_time + duration_ms / 1000.0;  // OP_Action
                 Missile m;
                 m.spellId = spell_id;
@@ -588,16 +584,18 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
                 m.gateLevel = casterLevel;
                 m.castMs = static_cast<int>(duration_ms);
                 m.flightTime = flightTime;
-                m.arriveAt = hitAt;
-                m.launchAt = std::max(m_fx_time, hitAt - flightTime);
+                m.reachAt = hitAt - kMissileFlightEndOffset;  // flight ends pre-hit
+                m.launchAt = std::max(m_fx_time, m.reachAt - flightTime);
+                m.landAt = m.reachAt + kMissileLandingDelay;  // Target stage fires
                 // A fresh cast: this spell+caster's landing is the missile's,
                 // not createLanding's (clears a previous cast's "landed" mark).
                 m_missileLanded.erase({spell_id, caster_id});
                 m_missiles.push_back(m);
                 LOG_INFO(MOD_SPELL, "B1152 missile: caster={} spell={} record={} -> target={} "
-                         "launch@+{:.3f}s arrive@+{:.3f}s (cast {} ms, flight {:.3f}s)",
+                         "launch@{} reach@{} land@{} (cast {} ms, flight {:.3f}s)",
                          caster_id, spell_id, record, targetId,
-                         m.launchAt - m_fx_time, m.arriveAt - m_fx_time, m.castMs, m.flightTime);
+                         m.launchAt - hitAt, m.reachAt - hitAt, m.landAt - hitAt,
+                         m.castMs, m.flightTime);
             }
         }
         // T441 (board B398): the Source draws its resolved stage's own sprites
@@ -1152,13 +1150,16 @@ void SpellVisualFX::updateMissiles(float delta_time)
     for (size_t i = 0; i < m_missiles.size();) {
         auto& m = m_missiles[i];
         if (!m.launched && m_fx_time >= m.launchAt) {
-            launchMissile(m);  // sets m.launched (and, if there is no
-            // destination, m.arrived too so it is removed below)
+            launchMissile(m);  // sets m.launched (and, if the target is gone,
+            // reached + landed too so it is removed below without a landing)
         }
-        if (m.launched && !m.arrived && m_fx_time >= m.arriveAt) {
-            fireMissileLanding(m);  // sets m.arrived
+        if (m.launched && !m.reached && m_fx_time >= m.reachAt) {
+            m.reached = true;  // the flight emitter ends; the missile is gone
         }
-        if (m.arrived) {
+        if (m.reached && !m.landed && m_fx_time >= m.landAt) {
+            fireMissileLanding(m);  // the Target stage fires; sets m.landed
+        }
+        if (m.landed) {
             m_missiles.erase(m_missiles.begin() + static_cast<long>(i));
             continue;
         }
@@ -1171,21 +1172,23 @@ void SpellVisualFX::launchMissile(Missile& m)
     namespace Presets = EQT::Graphics::Environment::SpellPresets;
     namespace E = EQT::Graphics::Environment;
     // B1152 sec. 5: re-resolve the destination now. If the target has despawned,
-    // the missile cannot fly -- remove it (m.arrived) WITHOUT marking this
-    // spell+caster landed, so createLanding fires the Target stage at the hit
-    // (the 54/859 at-removal rule). Otherwise the flight plays.
+    // the missile cannot fly -- remove it (m.reached + m.landed) WITHOUT marking
+    // this spell+caster landed, so createLanding fires the Target stage at the
+    // hit (the 54/859 at-removal rule). Otherwise the flight plays.
     glm::vec3 dest(0.0f);
     if (!m_particle_manager || !m_particle_manager->resolveEntityPosition(m.targetId, dest)) {
         m.launched = true;
-        m.arrived = true;
+        m.reached = true;
+        m.landed = true;
         LOG_INFO(MOD_SPELL, "B1152 missile: caster={} spell={}: target gone at launch, "
                  "createLanding fires the Target stage", m.casterId, m.spellId);
         return;
     }
     // The flight time was resolved at createCastGlow (m.flightTime,
-    // m.arriveAt = the hit). The Middle stage's emitter(s) -- one per drawn
-    // slot -- ride the moving missile (SpellAttach::PROJECTILE_PATH: the
-    // particle manager lerps each emitter caster -> target over the flight,
+    // m.reachAt = the flight end, m.landAt = the Target stage). The Middle
+    // stage's emitter(s) -- one per drawn slot -- ride the moving missile
+    // (SpellAttach::PROJECTILE_PATH: the particle manager lerps each emitter
+    // caster -> target over the flight,
     // sim_particles.cpp). Each slot keeps its own texture, colour
     // (applySlotEddColours) and timing (the emitter's run, as the Target stage
     // does with caller duration 0).
@@ -1224,8 +1227,8 @@ void SpellVisualFX::launchMissile(Missile& m)
     }
     m.launched = true;
     LOG_INFO(MOD_SPELL, "B1152 missile launch: caster={} spell={} target={} "
-             "flight={:.3f}s slots={} arrive@+{:.3f}s",
-             m.casterId, m.spellId, m.targetId, m.flightTime, made, m.arriveAt);
+             "flight={:.3f}s slots={} reach@{:.3f}s",
+             m.casterId, m.spellId, m.targetId, m.flightTime, made, m.reachAt);
 }
 
 void SpellVisualFX::fireMissileLanding(Missile& m)
@@ -1239,7 +1242,7 @@ void SpellVisualFX::fireMissileLanding(Missile& m)
     if (slots.fromFile) {
         createLandingFromSlots(m.casterId, m.targetId, m.spellId, record, slots);
     }
-    m.arrived = true;
+    m.landed = true;
     m_missileLanded.insert({m.spellId, m.casterId});
     LOG_INFO(MOD_SPELL, "B1152 missile arrival: caster={} spell={} target={} -> Target stage fired",
              m.casterId, m.spellId, m.targetId);

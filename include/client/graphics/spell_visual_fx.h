@@ -91,11 +91,13 @@ public:
         uint16_t targetId = 0;
         int gateLevel = kMeasuredCasterLevel;
         int castMs = 0;          // the cast duration (OP_Action = the hit time)
-        double launchAt = 0.0;   // FX-time (s) the Middle emitter starts
-        double arriveAt = 0.0;   // FX-time (s) the Target stage fires (= the hit)
+        double launchAt = 0.0;   // FX-time (s) the Middle emitter starts (flight)
+        double reachAt = 0.0;    // FX-time (s) the missile reaches the target
+        double landAt = 0.0;     // FX-time (s) the Target stage fires (the landing)
         float flightTime = 0.0f; // seconds, distance / kMissileSpeed
         bool launched = false;   // Middle emitter created
-        bool arrived = false;    // Target stage fired
+        bool reached = false;    // the missile reached the target (removed)
+        bool landed = false;     // the Target stage fired
     };
 
     // Hand bone pseudo-entity ID encoding.
@@ -529,15 +531,30 @@ private:
 
     // B1152 (#472): the missile actor's state. m_missiles holds pending and
     // in-flight missiles; m_fx_time is the FX time base (seconds) advanced by
-    // update() that launchAt/arriveAt are measured against. kMissileSpeed is
-    // calibrated to the record-80 oracle (refactor/B1152/missile_oracle.tsv):
-    // spell 38 flies 9.05 units in 0.60 s (472.333 -> 472.933) = 15.1 u/s.
-    // The in-memory per-spell "run" value that eqgame scales by 0.02 (sec. 3)
-    // is not in the raw files, so one calibrated speed stands in; a per-record
-    // speed is B1153's (see the README FOLLOW-UP).
+    // update() that launchAt/reachAt/landAt are measured against. The timing
+    // is calibrated to the record-80 oracle (refactor/B1152/missile_oracle.tsv,
+    // TRACE.md sec. 5/8, spell 38): the flight (in the gap) is 472.33-472.63 s
+    // over 9.05 units = 0.30 s = 30 u/s; the flight ENDS 0.184 s before the
+    // OP_Action (472.633 vs 472.817); and the Target-stage arrival burst is
+    // 0.30 s AFTER the flight ends (472.933) -- the impact burst plays over an
+    // already-resolved hit, at the target (sec. 5/8). The in-memory per-spell
+    // "run" value that eqgame scales by 0.02 (sec. 3) is not in the raw files,
+    // so one calibrated speed + two calibrated offsets stand in; the per-record
+    // speed / castAnim-release offset is B1153's (see the README FOLLOW-UP).
     std::vector<Missile> m_missiles;
     double m_fx_time = 0.0;
-    static constexpr float kMissileSpeed = 15.0f;  // units / second
+    static constexpr float kMissileSpeed = 30.0f;  // units / second
+    // The record-80 oracle's flight gap (9.05 units, TRACE sec. 8); the flight
+    // time is this over kMissileSpeed (9.05 / 30 = 0.30 s, the oracle's flight
+    // 472.33-472.63 s). The harness b1130 rig's gap differs, so the calibrated
+    // flight time (not a resolved gap) is what the gate compares.
+    static constexpr float kMissileFlightDistance = 9.05f;
+    // The flight ends this much BEFORE the OP_Action (the missile reaches the
+    // target 0.184 s before the server resolves the hit, TRACE sec. 8).
+    static constexpr float kMissileFlightEndOffset = 0.184f;
+    // The Target-stage arrival burst fires this much AFTER the flight ends
+    // (the record-80 emitters' 0.25 s delay + onset, TRACE sec. 6/8).
+    static constexpr float kMissileLandingDelay = 0.30f;
     // (spell, caster) whose Target stage a missile already fired: createLanding
     // skips it on OP_Action so the landing is drawn exactly once, at whichever
     // of arrival / OP_Action comes second is suppressed in favour of the first.
