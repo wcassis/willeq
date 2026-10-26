@@ -182,7 +182,7 @@ class 4, leg `p3_disc325` 2026-10-25 22:08Z, 36 473 packets) RAN. The REAL
 client path — `/disc Leechcurse Discipline` / `/disc Reaper Strike` /
 `/disc Lich Sting` (driver steps 25/34/43_command) — produced **zero**
 `C->S OP_CastSpell`: each step's own opcode file
-(`oracle/p3_disc325/25|34|43_command.opcodes.tsv`) carries only the server's
+(`oracle/p3_disc325/25|34|43_command.opcodes.tsv`) carries only keepalive and
 state traffic, none of it a cast packet: step 25 = {0x14cb OP_ClientUpdate,
 0x6a1b OP_FloatListThing, 0x700d OP_MoveDoor}; step 34 = {0x14cb, 0x6a1b,
 0x3bcf OP_HPUpdate, 0x4839 OP_ManaChange}; step 43 = {0x14cb, 0x6a1b, 0x700d}.
@@ -312,8 +312,10 @@ confirmed in the live leg. The one open thread on item 3 is the CLIENT path:
    them: the client gates `/disc` on the caster's class owning the
    discipline in the client's own data (the record-325 class-level variant
    rows 8604/8617/8642 carry level 60 at `eq/spells_us.txt` field 108 and
-   class 13 = Shadow Knight at field 121, 0-based ^-split; the base rows
-   4504/6236/6268 carry the 13 at field 121 with no level). The next leg: set the caster to the class the Ti client
+   class 13 = Shadow Knight at field 121, 0-based ^-split; the base row 4504
+   carries the 13 at field 121 with field 108 = 255, no level; the base rows
+   6236/6268 carry field 121 = 0 -- the class-gate hypothesis rests on the
+   variant rows and the GM path). The next leg: set the caster to the class the Ti client
    associates with record 325 (verify the class id and, if needed, the
    Combat Abilities window state first), keep the B1134 P4 recipe, and run
    `/disc <name>` instead of `#castspell`. Until it lands, the gate
