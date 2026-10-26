@@ -90,31 +90,25 @@ namespace SpellPresets {
     // Which point that Source follows (Body for an override's own geometry).
     SpellEffectsConfig::SourceAnchor SourceAnchorForSpell(uint32_t spellId, int record, bool spray);
 
-    // B1132 (#452): one landing half (`complete` = the spellComplete style,
-    // else the impact style) shaped for its spells.eff record's Target row
-    // (SpellEffectsConfig::TargetRecord) -- see the TU. `anchorAboveFeet` is
-    // the followed point's height above the landing entity's feet, world units.
-    // B1144: `followsHeadBone` = the emitter follows the head pseudo-entity
-    // (a head row is then placed from boneAt); false places it from
-    // anchorAboveFeet like every other row (a head row's slot on DEFAULT).
-    SpellEffectDef TargetForRecord(const SpellEffectDef& style,
-                                   const SpellEffectsConfig::TargetRecord& rec,
-                                   float anchorAboveFeet, bool complete,
-                                   bool followsHeadBone = true);
-    // A spell's landing half as SpellVisualFX::createLanding draws it: the
-    // style + the spell's overrides + its record's row (an override that sets
-    // its own spawnShape keeps that geometry).
+    // B1153 (#473): the landing half is the style's own B1120 volume -- the
+    // per-record Target row (the measured shape) is retired with the rows
+    // (tests/spell_fx_row_oracle.h and tests/spell_fx_shape_oracle.h hold the
+    // measured bands); a spell whose spellOverrides set their own spawnShape
+    // (B1120/B1122's measured clouds) draws the override geometry instead
+    // (TargetHasOverrideShape). `anchorAboveFeet` and `followsHeadBone` are
+    // the legacy signature (unused: the anchor class picks the entity only,
+    // TargetAnchorForSpell).
     // B1144: `share` scales its rates and burst (one spellsnew.eff slot's part
     // of the landing).
     SpellEffectDef TargetForSpell(glm::vec4 color, uint32_t spellId, int record, bool complete,
                                   float anchorAboveFeet, float share = 1.0f,
                                   bool followsHeadBone = true);
+    // Which point that landing follows.
+    SpellEffectsConfig::TargetAnchor TargetAnchorForSpell(uint32_t spellId, int record);
     // B1144: true when the spell's spellOverrides give this landing half's
     // style its own spawnShape (B1120/B1122's measured clouds): that geometry
     // stays on the landing entity whatever slot draws it.
     bool TargetHasOverrideShape(uint32_t spellId);
-    // Which point that landing follows.
-    SpellEffectsConfig::TargetAnchor TargetAnchorForSpell(uint32_t spellId, int record);
 
     // T389 (board B162): replace an effect definition's atlas tile choice
     // with the tiles named by a resolved spells.eff stage.

@@ -99,10 +99,12 @@ SpellVisualVocabulary SpellVisualFX::spellVocabulary(uint32_t spell_id) const
 
 int SpellVisualFX::sourceRecordOf(uint32_t spell_id) const
 {
-    // B1137 (#457): the row of the record the oracle draws (field 145), not
-    // of the spells.eff record (field 123) -- SpellEffectsConfig::rowForAnim().
-    return EQT::Graphics::Environment::SpellEffectsConfig::instance().rowForAnim(
-        spellVocabulary(spell_id).spellAnim);
+    // B1137 (#457): the record the oracle draws is the spell's field-145
+    // record (spellsnew.eff), not the spells.eff record (field 123). B1153
+    // (#473): the measured rows it used to select are retired -- the number
+    // identifies the record whose spellsnew.edd emitters draw it (every
+    // row-lookup consumer returns the default row).
+    return spellVocabulary(spell_id).spellAnim;
 }
 
 #ifdef EQT_HAS_GLES2

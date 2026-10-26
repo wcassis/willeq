@@ -402,8 +402,20 @@ const SourceCase kSourceCases[] = {
 };
 
 // The Source as SpellVisualFX::createCastGlow() builds it for the caster's
-// entity (B1131: the spell's override + its spells.eff record's row).
-int RecordOf(uint32_t id) { return SpellEffectsConfig::instance().overrideRecord(id); }
+// entity. B1153 (#473): `sourceRecords.overrideRecords` is retired (the rows
+// are the bands in tests/spell_fx_row_oracle.h); the spell's spells.eff
+// record (spells_us.txt field 123, B1131's table: 93/38 0, 41 20, 54/656 23,
+// 253 35, 458 33) names its band.
+int RecordOf(uint32_t id) {
+    switch (id) {
+        case 93: case 38: return 0;
+        case 41: return 20;
+        case 54: case 656: return 23;
+        case 253: return 35;
+        case 458: return 33;
+        default: return -1;
+    }
+}
 SpellEffectDef SourceDef(const SourceCase& c) {
     return SpellPresets::SourceForSpell(glm::vec4(1.0f), c.id, RecordOf(c.id), c.spray, kA, 1.0f);
 }

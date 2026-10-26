@@ -310,9 +310,10 @@ public:
     // term, or its fixed +0x78) whatever OP_Action does.
     void releaseCastGlow(uint16_t caster_id, uint32_t spell_id, uint16_t target_id);
 
-    // B1131/B1137: the measured Source/Target row of this spell: the row of
-    // its spellsnew.eff record (spells_us.txt field 145 via the vocabulary,
-    // SpellEffectsConfig::rowForAnim), -1 = the default row.
+    // B1131/B1137: the spellsnew.eff record of this spell (spells_us.txt
+    // field 145 via the vocabulary): the record whose spellsnew.edd emitters
+    // draw it. B1153 (#473): the measured rows that number used to select
+    // are retired -- every row-lookup consumer returns the default row.
     int sourceRecordOf(uint32_t spell_id) const;
 
     // Clear all effects

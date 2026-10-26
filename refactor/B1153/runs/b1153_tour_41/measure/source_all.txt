@@ -1,0 +1,6 @@
+41
+  ONSET25 (first frame >= 25% of the peak) f62 BC+0.567
+  SOURCE onset f58 BC+0.433 last f164 BC+3.967 active 107/120 frames
+  PEAK f106 BC+2.03 cov 1.187 extent 2.42 centroid 0.91 rowtop 2.18
+  MEDIAN(active, BC+0.3..Act) cov 1.099 extent 2.42 centroid 0.91 rowtop 2.04 n=107
+  

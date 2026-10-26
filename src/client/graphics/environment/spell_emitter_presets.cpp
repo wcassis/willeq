@@ -180,122 +180,39 @@ SpellEffectDef Impact(glm::vec4 color, uint32_t spellId, int record) {
 SpellEffectDef SourceForRecord(const SpellEffectDef& style,
                                const SpellEffectsConfig::SourceRecord& rec,
                                float anchorAboveFeet, float share) {
-    using A = SpellEffectsConfig::SourceAnchor;
-    const auto& sc = SpellEffectsConfig::instance().sourceScale();
-    const float H = sc.casterHeight;
-    SpellEffectDef def = style;
-    if (def.emitters.empty()) return def;
-    SpellEmitterDef base = def.emitters[0];
+    (void)anchorAboveFeet;
+    const SpellEffectDef styleDef = style;
+    if (styleDef.emitters.empty()) return styleDef;
+    SpellEmitterDef base = styleDef.emitters[0];
     base.trigger = rec.onset > 0.0f ? SpellTrigger::DELAYED : SpellTrigger::IMMEDIATE;
     base.triggerDelay = rec.onset;
     base.config.emitterLifetime = 0.0f;  // emits until releaseCastGlow's hold ends it
     base.config.burstCount = 0;
     base.config.spawnRate *= share;  // B1149: no row population (a record's slots draw the file's)
+    SpellEffectDef def = styleDef;
     def.emitters.assign(1, base);
-    if (!rec.hasShape) return def;  // the default row: the style's own body cloud
-
-    auto& ed = def.emitters[0];
-    auto& c = ed.config;
-    const float life = 0.5f * (c.lifetimeMin + c.lifetimeMax);
-    const float w = rec.halfWidth * H;
-    const float span = (rec.hi - rec.lo) * H;
-    // Height h (caster heights above the feet) relative to the followed point.
-    auto at = [&](float h) { return h * H - anchorAboveFeet; };
-    c.gravity = glm::vec3(0.0f);
-    c.drag = 0.0f;
-    switch (rec.anchor) {
-        case A::Body: {
-            // B1122's cloud over the measured box; its rise is the style's.
-            c.motionType = MotionType::LINEAR;
-            c.spawnShape = SpawnShape::BOX;
-            c.spawnExtents = glm::vec3(w, 0.5f * span, w);
-            ed.positionOffset = glm::vec3(0.0f, at(0.5f * (rec.lo + rec.hi)) - 0.5f * c.velocityBase.y * life, 0.0f);
-            break;
-        }
-        case A::Orbit: {
-            c.motionType = MotionType::ORBITAL;
-            c.spawnShape = SpawnShape::BOX;
-            c.orbitalRadius = w;
-            c.orbitalAngularVelocity = sc.orbitAngularVelocity;
-            c.velocitySpread = glm::vec3(0.0f);
-            if (rec.spiral) {  // born at the bottom, rising to the top over one life
-                c.spawnExtents = glm::vec3(0.0f);
-                c.velocityBase = glm::vec3(0.0f, span / life, 0.0f);
-                ed.positionOffset = glm::vec3(0.0f, at(rec.lo), 0.0f);
-            } else {           // a band over lo..hi
-                c.spawnExtents = glm::vec3(0.0f, 0.5f * span, 0.0f);
-                c.velocityBase = glm::vec3(0.0f);
-                ed.positionOffset = glm::vec3(0.0f, at(0.5f * (rec.lo + rec.hi)), 0.0f);
-            }
-            break;
-        }
-        case A::FeetRing: {
-            // A ring round the feet rising into a curtain up to hi over one life.
-            c.motionType = MotionType::LINEAR;
-            c.spawnShape = SpawnShape::RING;
-            c.spawnExtents = glm::vec3(w, 0.0f, 0.0f);
-            c.velocityBase = glm::vec3(0.0f, span / life, 0.0f);
-            c.velocitySpread = glm::vec3(0.0f);
-            ed.positionOffset = glm::vec3(0.0f, at(rec.lo), 0.0f);
-            break;
-        }
-        case A::Hands: {
-            // Born AT the hand; the spray's mean sits at the measured centroid
-            // and its 5th..95th percentile spans the measured box. A sprite's
-            // offset is (velocity spread U(-s,s)) x (age ~U(0,life)), and the
-            // 95th percentile of a product of two U(0,1) is 0.70, so s is the
-            // half-span over 0.70 x life.
-            constexpr float kP95OfUniformProduct = 0.70f;
-            c.motionType = MotionType::LINEAR;
-            c.spawnShape = SpawnShape::POINT;
-            c.spawnExtents = glm::vec3(0.0f);
-            c.velocityBase = glm::vec3(0.0f, 2.0f * at(rec.centroid) / life, 0.0f);
-            const float k = 1.0f / (kP95OfUniformProduct * life);
-            c.velocitySpread = glm::vec3(w * k, 0.5f * span * k, w * k);
-            ed.positionOffset = glm::vec3(0.0f);
-            break;
-        }
-        case A::Head: {
-            // The halo disc at the head bone, and the column that falls from it.
-            const float discMid = 0.5f * (rec.discLo + rec.discHi);
-            SpellEmitterDef column = ed;
-            c.motionType = MotionType::LINEAR;
-            c.spawnShape = SpawnShape::DISC;
-            c.spawnExtents = glm::vec3(rec.discHalfWidth * H, 0.5f * (rec.discHi - rec.discLo) * H, 0.0f);
-            c.velocityBase = glm::vec3(0.0f);
-            c.velocitySpread = glm::vec3(0.0f);
-            c.spawnRate *= rec.discShare;
-            ed.positionOffset = glm::vec3(0.0f, at(discMid), 0.0f);
-            auto& cc = column.config;
-            cc.motionType = MotionType::LINEAR;
-            cc.spawnShape = SpawnShape::DISC;
-            cc.spawnExtents = glm::vec3(rec.discHalfWidth * H, 0.0f, 0.0f);
-            cc.velocityBase = glm::vec3(0.0f, -(rec.discLo - rec.lo) * H / life, 0.0f);
-            cc.velocitySpread = glm::vec3(0.0f);
-            cc.spawnRate *= (1.0f - rec.discShare);
-            column.positionOffset = glm::vec3(0.0f, at(rec.discLo), 0.0f);
-            def.emitters.push_back(column);
-            break;
-        }
-    }
+    // B1153 (#473): the row's shape switch (hands / feet-ring / orbit / body /
+    // head) is retired with the rows: the default row is the style's own body
+    // cloud, and a record's Source is drawn by its spellsnew.edd emitters
+    // (the measured anchor classes are the band in
+    // tests/spell_fx_row_oracle.h).
     return def;
 }
 
-// The record row a spell's Source is drawn with: a spellOverrides castGlow /
-// castSpray that sets its own spawnShape (B1122's measured 54/656/41/253/458
-// clouds) keeps that geometry on the caster's entity; the anchor class, onset
-// and hold are always the record's.
+// B1153 (#473): the row a spell's Source is drawn with -- the rows are
+// retired, so always the default row (the style's own body cloud on the
+// caster). A record's Source is its spellsnew.edd emitters.
 static SpellEffectsConfig::SourceRecord rowForSpell(uint32_t spellId, int record, bool spray) {
-    const auto& cfg = SpellEffectsConfig::instance();
-    SpellEffectsConfig::SourceRecord rec = cfg.sourceRecord(record);
-    const char* style = spray ? "castSpray" : "castGlow";
-    if (cfg.hasSourceShapeOverride(spellId, style)) rec.hasShape = false;
-    return rec;
+    (void)spellId;
+    (void)spray;
+    return SpellEffectsConfig::instance().sourceRecord(record);
 }
 
 SpellEffectsConfig::SourceAnchor SourceAnchorForSpell(uint32_t spellId, int record, bool spray) {
     const auto rec = rowForSpell(spellId, record, spray);
-    return rec.hasShape ? rec.anchor : SpellEffectsConfig::SourceAnchor::Body;
+    // B1153: the default row's anchor (the measured classes are the band in
+    // tests/spell_fx_row_oracle.h).
+    return rec.anchor;
 }
 
 SpellEffectDef SourceForSpell(glm::vec4 color, uint32_t spellId, int record, bool spray,
@@ -306,115 +223,27 @@ SpellEffectDef SourceForSpell(glm::vec4 color, uint32_t spellId, int record, boo
     return SourceForRecord(style, rowForSpell(spellId, record, spray), anchorAboveFeet, share * k);
 }
 
-// B1132 (#452): one landing half for its spells.eff record's Target row
-// (B1130 survey, config `targetRecords`, target heights above the target's
-// feet). Body and Caster rows are the style's B1120 volume unchanged (its
-// geometry, sizes, lifetimes and the B1123 population); the caller only
-// chooses the entity. The shaped rows keep the style's sprite sizes,
-// lifetimes, alphas, onset delay and emission schedule (sizes-first) and set
-// WHERE the sprites are born and how they move:
-//   Head       the impact half is a glow AT the head bone (the face, where the
-//              oracle's landing starts, e5 f8233); the spellComplete half a
-//              cloud over lo..hi x +-halfWidth round head and shoulders.
-//   FeetGround the impact half swirls as a ring of radius halfWidth at lo (the
-//              rings on the ground round the target); the spellComplete half
-//              is a ring at lo rising to hi over one life (climbing the legs).
-//   Column     the spellComplete half falls from hi to lo over +-halfWidth
-//              (the sheet that sweeps down over the target); the impact half
-//              fills lo..hi (the wash).
-// B1149: the halves carry the style's rates only as the geometry split of
-// their slot's file population (applySlotEmitter).
-SpellEffectDef TargetForRecord(const SpellEffectDef& style,
-                               const SpellEffectsConfig::TargetRecord& rec,
-                               float anchorAboveFeet, bool complete, bool followsHeadBone) {
-    using T = SpellEffectsConfig::TargetAnchor;
-    SpellEffectDef def = style;
-    if (!rec.hasShape || def.emitters.empty()) return def;
-    const auto& sc = SpellEffectsConfig::instance().sourceScale();
-    const float H = sc.casterHeight;
-    auto& ed = def.emitters[0];
-    auto& c = ed.config;
-    const float life = 0.5f * (c.lifetimeMin + c.lifetimeMax);
-    const float w = rec.halfWidth * H;
-    const float span = (rec.hi - rec.lo) * H;
-    // A head row is placed relative to the head bone alone (boneAt = the height
-    // the bone stands for), so the target's own feet and size do not move it.
-    const float followed =
-        (rec.anchor == T::Head && rec.boneAt > 0.0f && followsHeadBone) ? rec.boneAt * H : anchorAboveFeet;
-    auto at = [&](float h) { return h * H - followed; };
-    c.gravity = glm::vec3(0.0f);
-    c.drag = 0.0f;
-    c.expandSpeed = 0.0f;
-    c.velocitySpread = glm::vec3(0.0f);
-    switch (rec.anchor) {
-        case T::Head:
-            c.motionType = MotionType::LINEAR;
-            c.velocityBase = glm::vec3(0.0f);
-            if (complete) {
-                c.spawnShape = SpawnShape::BOX;
-                c.spawnExtents = glm::vec3(w, 0.5f * span, w);
-                ed.positionOffset = glm::vec3(0.0f, at(0.5f * (rec.lo + rec.hi)), 0.0f);
-            } else {  // the face: a small glow at the head bone itself
-                c.spawnShape = SpawnShape::SPHERE;
-                c.spawnExtents = glm::vec3(0.06f * H, 0.0f, 0.0f);
-                ed.positionOffset = glm::vec3(0.0f);
-            }
-            break;
-        case T::FeetGround:
-            if (complete) {
-                c.motionType = MotionType::LINEAR;
-                c.spawnShape = SpawnShape::RING;
-                c.spawnExtents = glm::vec3(w, 0.0f, 0.0f);
-                c.velocityBase = glm::vec3(0.0f, span / life, 0.0f);
-            } else {
-                c.motionType = MotionType::ORBITAL;
-                c.spawnShape = SpawnShape::BOX;
-                c.spawnExtents = glm::vec3(0.0f);
-                c.orbitalRadius = w;
-                c.orbitalAngularVelocity = sc.orbitAngularVelocity;
-                c.velocityBase = glm::vec3(0.0f);
-            }
-            ed.positionOffset = glm::vec3(0.0f, at(rec.lo), 0.0f);
-            break;
-        case T::Column:
-            c.motionType = MotionType::LINEAR;
-            c.spawnShape = SpawnShape::BOX;
-            if (complete) {
-                c.spawnExtents = glm::vec3(w, 0.0f, w);
-                c.velocityBase = glm::vec3(0.0f, -span / life, 0.0f);
-                ed.positionOffset = glm::vec3(0.0f, at(rec.hi), 0.0f);
-            } else {
-                c.spawnExtents = glm::vec3(w, 0.5f * span, w);
-                c.velocityBase = glm::vec3(0.0f);
-                ed.positionOffset = glm::vec3(0.0f, at(0.5f * (rec.lo + rec.hi)), 0.0f);
-            }
-            break;
-        default:
-            break;
-    }
-    return def;
-}
-
+// B1153 (#473): the per-record Target rows (the measured anchor class and
+// extent, B1130/B1132) are retired with the config block: a record's landing
+// is its spellsnew.eff Target slots (B1144, B1152) and the measured shapes
+// are the bands in tests/spell_fx_row_oracle.h and
+// tests/spell_fx_shape_oracle.h. The style's own B1120 volume is the landing,
+// the row's anchor class choosing the entity only (TargetAnchorForSpell).
 static SpellEffectsConfig::TargetRecord targetRowForSpell(uint32_t spellId, int record) {
-    const auto& cfg = SpellEffectsConfig::instance();
-    SpellEffectsConfig::TargetRecord rec = cfg.targetRecord(record);
-    // B1120/B1122's measured landing overrides (54/656/41/253/458) keep their
-    // geometry: none of their records (23, 20, 35, 33) is a shaped row.
-    if (cfg.hasSourceShapeOverride(spellId, "impact") ||
-        cfg.hasSourceShapeOverride(spellId, "spellComplete"))
-        rec.hasShape = false;
-    return rec;
+    (void)spellId;
+    return SpellEffectsConfig::instance().targetRecord(record);
 }
 
 SpellEffectsConfig::TargetAnchor TargetAnchorForSpell(uint32_t spellId, int record) {
     const auto rec = targetRowForSpell(spellId, record);
-    // B1150 (#470): the anchor class is evidence, honored without a shape --
-    // the row's measured extent is retired (the record's +0xA8..+0xD0 words
-    // draw it), so the anchor stands on its own: record 5 still lands on the
-    // target's head bone, 27/40 round the caster, 16/28/3 on the target.
+    // The default row's anchor class (B1150: honored without a shape).
     return rec.anchor;
 }
 
+// B1153 (#473): TargetForRecord (the row's shaped geometry) is deleted with
+// the rows: the landing is the style's B1120 volume (or the spell override's
+// own measured cloud, merged in getStyleSettings), its entity the row's
+// anchor class.
 bool TargetHasOverrideShape(uint32_t spellId) {
     const auto& cfg = SpellEffectsConfig::instance();
     return cfg.hasSourceShapeOverride(spellId, "impact") ||
@@ -423,17 +252,16 @@ bool TargetHasOverrideShape(uint32_t spellId) {
 
 SpellEffectDef TargetForSpell(glm::vec4 color, uint32_t spellId, int record, bool complete,
                               float anchorAboveFeet, float share, bool followsHeadBone) {
-    const SpellEffectDef style = complete ? SpellComplete(color, spellId, record)
-                                          : Impact(color, spellId, record);
-    SpellEffectDef def = TargetForRecord(style, targetRowForSpell(spellId, record), anchorAboveFeet,
-                                         complete, followsHeadBone);
-    if (share != 1.0f) {
-        for (auto& ed : def.emitters) {
-            ed.config.spawnRate *= share;
-            ed.config.sustainRate *= share;
-            ed.config.burstCount =
-                static_cast<int>(std::lround(static_cast<float>(ed.config.burstCount) * share));
-        }
+    (void)anchorAboveFeet;
+    (void)followsHeadBone;
+    SpellEffectDef def = complete ? SpellComplete(color, spellId, record)
+                                  : Impact(color, spellId, record);
+    if (share == 1.0f) return def;
+    for (auto& ed : def.emitters) {
+        ed.config.spawnRate *= share;
+        ed.config.sustainRate *= share;
+        ed.config.burstCount =
+            static_cast<int>(std::lround(static_cast<float>(ed.config.burstCount) * share));
     }
     return def;
 }

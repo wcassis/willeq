@@ -1,0 +1,17 @@
+{
+ "video": "/home/user/kb-frames/kb-b1153-retire/b1153_tour_93.measure/video.mkv",
+ "offset": 0.0,
+ "t_begincast": 1.5,
+ "t_action": 4.0,
+ "t_end": 9.916666666666666,
+ "crop": [
+  170,
+  0,
+  1060,
+  650
+ ],
+ "threshold": 45,
+ "n_frames": 288,
+ "baseline_frames": 30,
+ "label": "fable93"
+}

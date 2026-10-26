@@ -403,7 +403,7 @@ Ends: `review/B1121/scripts/b1120_measure.sh <leg> <out>` (T422).
 **The oracle draws `spellsnew.eff`, not `spells.eff`** (B1127,
 `review/B1127/README.md`): field 145 (`spell_anim`) names the record, its stages
 name `spellsnew.edd` emitters, each names a texture file, and the particle is its
-texels, and picks the measured row (`animRecords`, B1137). Field 123's GEN names
+texels, on the row's bands (`tests/spell_anim_rows.h`, B1137). Field 123's GEN names
 serve spells with no field 145. Field 85 RESISTTYPE is not painted with: `SpellPresets::applyStageSpriteNames()`
 drops the resist tint to white (T441), then `applyStageEmitterColours()` gives each
 texture region its emitter's start->end RGB and (B1149) the client's fade x
@@ -414,7 +414,7 @@ impact. The landing is a VOLUME, not a disc (B1120). Source and Target are drawn
 per spellsnew.eff SLOT (B1144): minLevel <= caster level (NPC 1), on its anchor
 at its attach point; no Target slot, no landing; no OP_BeginCast, no Source;
 each emits its EDD burst/ticks and sprite size (B1149); the
-B1131/B1132 rows give shape only; `tests/test_spell_slot_rules.cpp`. `spellOverrides` holds
+B1131/B1132 measured rows are test bands now (B1153); `tests/test_spell_slot_rules.cpp`. `spellOverrides` holds
 measured values only (B1120/B1122 shapes; sizes are gated on the caster-ROI
 p90, `review/B1119/scripts/fx_sprite_roi.py`); **an unmeasured spell resolves
 to the plain style: an invented override is the guess Will forbids.**

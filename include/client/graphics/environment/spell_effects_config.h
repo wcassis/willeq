@@ -118,9 +118,11 @@ public:
         float triggerDelay = 0.0f;       bool hasTriggerDelay = false;
 
         // B1131: the Source's anchor, onset and hold are per measured row
-        // (B1137: chosen by the spell's field-145 record, rowForAnim())
+        // (B1137: the spell's field-145 record, tests/spell_anim_rows.h)
         // (SourceRecord below), no longer style keys (B1122's `anchor` /
-        // `releaseDelay` were one rule for every record).
+        // `releaseDelay` were one rule for every record). B1153 (#473): the
+        // per-record rows are retired -- the runtime carries the default row
+        // only, and the band is tests/spell_fx_row_oracle.h.
     };
 
     /**
@@ -144,41 +146,34 @@ public:
     enum class SourceAnchor : uint8_t { Body, Hands, FeetRing, Orbit, Head };
     struct SourceRecord {
         SourceAnchor anchor = SourceAnchor::Body;
-        bool hasShape = false;      // false: the castGlow/castSpray style's own geometry
-        float lo = 0.0f, hi = 0.0f; // lit extent, caster heights above the feet
-        float halfWidth = 0.0f;     // lateral half-span (orbit/ring radius), caster heights
-        float centroid = 0.0f;      // lit centroid height, caster heights
-        bool spiral = false;        // orbit: born at lo, rising to hi over one sprite life
-        // head: the halo disc (band discLo..discHi, radius discHalfWidth) gets
-        // discShare of the sprites; the rest fall from it to lo.
-        float discLo = 0.0f, discHi = 0.0f, discHalfWidth = 0.0f, discShare = 0.0f;
-        // B1149 (#469): no population: a row's record draws its slots' file
-        // counts; the measured coverage is a band (tests/spell_fx_population_oracle.h).
+        // B1153 (#473): the survey's per-record measured rows are retired --
+        // the runtime carries the DEFAULT row only, and every record is drawn
+        // by its spellsnew.eff record's EDD emitters (B1149 population/sprite,
+        // B1150 shape, B1151 motion). The retired row words (hasShape,
+        // lo/hi/halfWidth/centroid, spiral, disc*, measuredAs) are gone; the
+        // measured anchor classes and holds are the band in
+        // tests/spell_fx_row_oracle.h, the timings tests/spell_fx_timing_oracle.h.
         // B1145 (#465): a spellsnew.eff Source takes its timing from the file
-        // per slot (SpellPresets::applySlotEmitter), so the rows carry no
-        // onset or hold: they inherit the default row's onset (the stage's
-        // measured latency, sourceStageLatency()) and the computed hold, the
-        // cast-animation term EQ::kSpellFxCastAnimationSeconds a caller-
-        // duration slot emits past OP_Action (the pool rule's overlap). The
-        // measured values are tests/spell_fx_timing_oracle.h's bands. The
-        // DEFAULT row's own measured onset / holds stay: a spell with no
-        // spellsnew.eff record (field 145 = 0) draws them.
+        // per slot (SpellPresets::applySlotEmitter); the default row's own
+        // measured onset / holds stay: a spell with no spellsnew.eff record
+        // (field 145 = 0) draws them.
         float onset = 0.0f;         // seconds after BeginCast
         float holdOther = 0.0f;     // seconds emitting past OP_Action, target = another entity
         float holdSelf = 0.0f;      // ... target = the caster
         int record = -1;            // the row this is (-1 = the default row)
-        int measuredAs = -1;        // an unmeasured record's stand-in (51 -> 13)
         float maxHold() const { return holdOther > holdSelf ? holdOther : holdSelf; }
     };
     struct SourceScale {
-        float casterHeight = 6.5f;       // world units (B1120)
         float anchorAboveFeet = 3.6f;    // entity anchor above the feet, world units
-        float orbitAngularVelocity = 3.0f;
     };
-    /** The record's row, or the default row for a record the survey did not reach. */
+    /** The record's row, or the default row. B1153: the rows are retired, so
+     *  this is always the default row (a spell with no spellsnew.eff record). */
     const SourceRecord& sourceRecord(int record) const;
     const SourceScale& sourceScale() const { return sourceScale_; }
-    /** The hold past OP_Action for this record and target. */
+    /** The hold past OP_Action for this record and target. B1153 (#473): a
+     *  spell that HAS a spellsnew.eff record (record > 0) holds the
+     *  cast-animation term (B1148); a spell with none keeps the default
+     *  row's measured holds (B1122: other target vs the caster). */
     float sourceHold(int record, bool targetIsSelf) const;
     /**
      * B1145: the stages' measured start -- the delay from the packet to the
@@ -189,14 +184,12 @@ public:
      */
     float sourceStageLatency() const { return sourceDefault_.onset; }
     float targetStageLatency() const;
-    /** True when spellOverrides gives this spell's Source style its own geometry. */
-    bool hasSourceShapeOverride(uint32_t spellId, const std::string& styleName) const;
-    /** spells.eff record of a spell with an override/exception row (-1 = not listed). */
-    int overrideRecord(uint32_t spellId) const;
     /** B1131: the pool rule's factor on this spell's held Source (1 = its own rate). */
     float sourcePoolScale(uint32_t spellId, int record) const;
-    /** Number of measured rows loaded (tests). */
-    size_t sourceRecordCount() const { return sourceRecords_.size(); }
+    /** True when spellOverrides gives this spell's Source style its own geometry. */
+    bool hasSourceShapeOverride(uint32_t spellId, const std::string& styleName) const;
+    /** B1153: the measured rows are retired -- 0 rows loaded, always. */
+    size_t sourceRecordCount() const { return 0; }
 
     /**
      * B1132 (#452): the Target (landing) stage of one spells.eff record,
@@ -212,37 +205,26 @@ public:
     enum class TargetAnchor : uint8_t { Body, Caster, Head, FeetGround, Column };
     struct TargetRecord {
         TargetAnchor anchor = TargetAnchor::Body;
-        bool hasShape = false;      // true: Head / FeetGround / Column draw lo..hi x halfWidth
-        float lo = 0.0f, hi = 0.0f; // landing run p5..p95 height, target heights above the feet
-        float halfWidth = 0.0f;     // lateral half-span (p5..p95 / 2), target heights
-        float centroid = 0.0f;      // landing run centroid, target heights
-        // B1145 (#465): onset / end are no longer config keys: a landing's
-        // timing is its slots' (spellsnew.edd); the measured values are the
-        // bands in tests/spell_fx_timing_oracle.h. 0 unless a row sets them.
-        float onset = 0.0f;         // Act+ s the oracle's landing rises (RISE rule)
-        float faceOnset = 0.0f;     // Head: Act+ s the glow lights the face (0 = none)
-        float end = 0.0f;           // Act+ s the oracle's landing ends
-        float boneAt = 0.0f;        // Head: the height the head bone stands for (target heights)
-        bool unmeasured = false;    // 40/51: the default row stands in
+        // B1153 (#473): the survey's per-record measured rows are retired --
+        // the runtime carries the DEFAULT row (the style's volume on the
+        // target), and every record lands as its spellsnew.eff Target slots
+        // (B1144, B1152). The retired row words (hasShape, lo/hi/halfWidth/
+        // centroid, onset, faceOnset, end, boneAt, unmeasured) are gone; the
+        // measured anchor classes and extents are the bands in
+        // tests/spell_fx_row_oracle.h and tests/spell_fx_shape_oracle.h.
         int record = -1;            // -1 = the default row
     };
-    /** The record's landing row, or the default row (the style volume on the target). */
+    /** The record's landing row. B1153: always the default row. */
     const TargetRecord& targetRecord(int record) const;
-    size_t targetRecordCount() const { return targetRecords_.size(); }
+    /** B1153: the measured rows are retired -- 0 rows loaded, always. */
+    size_t targetRecordCount() const { return 0; }
 
     /**
-     * B1137 (#457): the measured row a spell is drawn with, keyed by the record
-     * the official client DRAWS -- its spellsnew.eff record, spells_us.txt field
-     * 145 (`spellAnim`; B1127) -- not by its spells.eff record (field 123). The
-     * B1131/B1132 rows keep their survey ids (the field-123 record of the spell
-     * each was captured on); config `animRecords.rows` names, per field-145
-     * record, the row captured on a spell that draws it. A field-145 record no
-     * row was captured on resolves to -1 (the default row): a field-123 row
-     * was measured on a spell drawing a DIFFERENT field-145 record (1656/14,
-     * 1605/372), so it is not evidence for this one.
+     * B1153 (#473): the measured row a spell is drawn with -- the field-145
+     * record -> row mapping (B1137) -- is retired with the rows: the runtime
+     * carries the default rows only, and the mapping is the band in
+     * tests/spell_anim_rows.h (pinned by test_spell_anim_rows).
      */
-    int rowForAnim(int spellAnim) const;
-    size_t animRowCount() const { return animRows_.size(); }
 
     /**
      * Get global settings.
@@ -286,13 +268,12 @@ private:
 
     void setDefaults();
     void loadStyle(const Json::Value& json, const std::string& name, StyleSettings& settings);
-    void loadSpellOverrides(const Json::Value& root);
-    static StyleSettings mergeOverrides(const StyleSettings& base, const StyleSettings& over);
     void buildTextureNameMap();
     void applyPopulationRule(const Json::Value& root);
     void loadSourceRecords(const Json::Value& root);
     void loadTargetRecords(const Json::Value& root);
-    void loadAnimRecords(const Json::Value& root);
+    void loadSpellOverrides(const Json::Value& root);
+    static StyleSettings mergeOverrides(const StyleSettings& base, const StyleSettings& over);
 
     std::string configPath_;
     bool loaded_ = false;
@@ -300,24 +281,20 @@ private:
 
     GlobalSettings global_;
     std::unordered_map<std::string, StyleSettings> styles_;
-    // spellOverrides_[spellId][styleName] = sparse StyleSettings
-    std::unordered_map<uint32_t, std::unordered_map<std::string, StyleSettings>> spellOverrides_;
     std::unordered_map<std::string, glm::vec4> resistColors_;
     std::unordered_map<std::string, uint8_t> textureNameMap_;
-    // B1131: per-record Source rows, the default row, and the per-record
-    // factor on the style landing (applyPopulationRule).
-    std::unordered_map<int, SourceRecord> sourceRecords_;
+    // B1153 (#473): the per-record ROWS are retired (the bands in
+    // tests/spell_fx_row_oracle.h); the runtime carries the default rows and
+    // the pool rule's factor on the held Source (applyPopulationRule).
+    // The six B1120/B1122 spellOverrides are KEPT (the file is not the whole
+    // story; refactor/B1153/README.md documents each with before/after
+    // numbers) -- spellOverrides_[spellId][styleName] = sparse StyleSettings.
     SourceRecord sourceDefault_;
     SourceScale sourceScale_;
-    std::unordered_map<uint32_t, int> overrideRecords_;
-    std::unordered_map<int, float> recordLandingScale_;
-    std::unordered_map<int, float> recordSourceScale_;      // -1 = the default row
+    std::unordered_map<int, float> recordSourceScale_;      // -1 = no record, 0 = the record's factor
+    std::unordered_map<uint32_t, std::unordered_map<std::string, StyleSettings>> spellOverrides_;
     std::unordered_map<uint32_t, float> spellSourceScale_;  // spells with a landing override
-    // B1132: per-record Target (landing) rows.
-    std::unordered_map<int, TargetRecord> targetRecords_;
     TargetRecord targetDefault_;
-    // B1137: field-145 record -> measured row id (animRecords.rows).
-    std::unordered_map<int, int> animRows_;
 
     ReloadCallback reloadCallback_;
 };
