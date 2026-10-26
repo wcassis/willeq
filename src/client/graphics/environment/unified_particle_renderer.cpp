@@ -372,12 +372,12 @@ bool UnifiedParticleRenderer::init(irr::video::IVideoDriver* driver) {
     maxPointSize_ = pointSizeRange[1];
 
     // Reserve vertex array space
-    additiveVerts_.reserve(1024);
-    alphaVerts_.reserve(256);
-    spriteAdditiveVerts_.reserve(1024);
-    spriteAlphaVerts_.reserve(256);
-    additiveSrcAlphaVerts_.reserve(64);        // B1146
-    spriteAdditiveSrcAlphaVerts_.reserve(256);
+    winAdditive_.on.reserve(1024);
+    winAlpha_.on.reserve(256);
+    winSpriteAdditive_.on.reserve(1024);
+    winSpriteAlpha_.on.reserve(256);
+    winAdditiveSrcAlpha_.on.reserve(64);        // B1146
+    winSpriteAdditiveSrcAlpha_.on.reserve(256);
 
     // B972 (#290) / B972-FT (#326), the ALTERNATIVE shape: the ring's VBOs
     // are created EMPTY and grown on first use in uploadPackedVerts(); the
@@ -407,13 +407,13 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     // Separate particles by SHEET and blend mode, and fill vertex arrays.
     // Both are per-draw state -- the bound texture and uAtlasRegionSize for
     // the sheet, glBlendFunc for the mode -- so each combination is a batch.
-    additiveVerts_.clear();
-    alphaVerts_.clear();
-    spriteAdditiveVerts_.clear();
-    spriteAlphaVerts_.clear();
-    additiveSrcAlphaVerts_.clear();
-    spriteAdditiveSrcAlphaVerts_.clear();
-    for (auto& q : quadVerts_) q.clear();  // B1149
+    winAdditive_.clear();
+    winAlpha_.clear();
+    winSpriteAdditive_.clear();
+    winSpriteAlpha_.clear();
+    winAdditiveSrcAlpha_.clear();
+    winSpriteAdditiveSrcAlpha_.clear();
+    for (auto& q : winQuad_) q.clear();  // B1149
 
     // B1149: the view's right and up axes in world space (Irrlicht's view
     // matrix holds them in its first two columns: M[0],M[4],M[8] / M[1],M[5],M[9]).
@@ -491,6 +491,17 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         const bool additive = p.getBlendMode() == UnifiedBlendMode::ADDITIVE;
         const bool srcAlphaAdditive = additive && p.hasEddColour();
 
+        // B1151 (#471): the +0x64 depth-write word (EQGraphicsDX9
+        // 0x1005f7a8/0x1005f82c): the official client's EDD emitter draw
+        // runs with ZWRITEENABLE=1 (depth write ON) by default and turns it
+        // to 0 before the draw -- and back to 1 after -- for a record whose
+        // +0x64 == 1. A record particle therefore follows its record
+        // (depthOn = hasEddMotion() && +0x64 == 0); every non-record
+        // particle (config presets, weather, ...) keeps fable's
+        // long-standing OFF state (the .off sub-windows, drawn with the
+        // mask FALSE as before).
+        const bool depthOn = p.hasEddMotion() && p.eddNoDepthWrite == 0;
+
         // B1150 (#470): the +0xD0 view-depth bias (EQGraphicsDX9 0x10063069 /
         // 0x10063198: the view depth has D_D0 subtracted BEFORE the near/far
         // cull and the 1.0/depth perspective divide). This renderer projects
@@ -566,7 +577,7 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
                 q.z = w.z;
                 q.pointSize = u;  // aTexCoord0 = the corner's texture coordinate
                 q.rotation = t;
-                quadVerts_[b].push_back(q);
+                (depthOn ? winQuad_[b].on : winQuad_[b].off).push_back(q);  // B1151: +0x64
             };
             if (p.hasEddMotion() && p.eddSpriteMode == 2) {
                 // B1151 mode 2 (TSV +0x70 row; listing 0x100634b0..0x10063680):
@@ -640,19 +651,21 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         }
 
         if (onSpriteSheet) {
-            (srcAlphaAdditive ? spriteAdditiveSrcAlphaVerts_
-                              : additive ? spriteAdditiveVerts_ : spriteAlphaVerts_).push_back(v);
+            DepthWindow& w = srcAlphaAdditive ? winSpriteAdditiveSrcAlpha_
+                              : additive ? winSpriteAdditive_ : winSpriteAlpha_;
+            (depthOn ? w.on : w.off).push_back(v);  // B1151: +0x64
         } else {
-            (srcAlphaAdditive ? additiveSrcAlphaVerts_
-                              : additive ? additiveVerts_ : alphaVerts_).push_back(v);
+            DepthWindow& w = srcAlphaAdditive ? winAdditiveSrcAlpha_
+                              : additive ? winAdditive_ : winAlpha_;
+            (depthOn ? w.on : w.off).push_back(v);  // B1151: +0x64
         }
     }
 
     bool anyQuad = false;
-    for (const auto& q : quadVerts_) anyQuad = anyQuad || !q.empty();
-    if (additiveVerts_.empty() && alphaVerts_.empty() &&
-        spriteAdditiveVerts_.empty() && spriteAlphaVerts_.empty() &&
-        additiveSrcAlphaVerts_.empty() && spriteAdditiveSrcAlphaVerts_.empty() && !anyQuad) {
+    for (const auto& q : winQuad_) anyQuad = anyQuad || q.any();
+    if (!winAdditive_.any() && !winAlpha_.any() &&
+        !winSpriteAdditive_.any() && !winSpriteAlpha_.any() &&
+        !winAdditiveSrcAlpha_.any() && !winSpriteAdditiveSrcAlpha_.any() && !anyQuad) {
         return;
     }
 
@@ -665,10 +678,10 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         LOG_INFO(MOD_GRAPHICS,
                  "UnifiedParticleRenderer DIAG: additive={} alpha={} atlasGL={} "
                  "uProj={} uView={}",
-                 additiveVerts_.size(), alphaVerts_.size(), atlasTexture,
+                 winAdditive_.total(), winAlpha_.total(), atlasTexture,
                  uProj_, uView_);
-        if (!additiveVerts_.empty()) {
-            const auto& v = additiveVerts_[0];
+        if (winAdditive_.any()) {
+            const auto& v = winAdditive_.on.empty() ? winAdditive_.off[0] : winAdditive_.on[0];
             LOG_INFO(MOD_GRAPHICS,
                      "UnifiedParticleRenderer DIAG: first particle world=({:.1f},{:.1f},{:.1f}) "
                      "size={:.2f} color=({:.2f},{:.2f},{:.2f},{:.2f})",
@@ -719,8 +732,11 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     auto t2 = std::chrono::steady_clock::now();
 
     // ===== Set particle rendering state =====
-    // Depth test ON (cull particles behind walls) but depth write OFF
-    // (particles don't occlude each other or later transparent geometry)
+    // Depth test ON (cull particles behind walls). Depth write: OFF is
+    // fable's long-standing default for FX (the .off sub-windows), and the
+    // B1151 +0x64 == 0 record sub-windows (.on) toggle the mask to ON for
+    // their own draws (EQGraphicsDX9 0x1005f7a8/0x1005f82c) -- see
+    // drawDepthWindow below.
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
     glDisable(GL_CULL_FACE);
@@ -777,17 +793,21 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     GLuint packVbo = 0;
     {
         packedVerts_.clear();
-        auto pack = [](std::vector<PointSpriteVertex>& v,
-                       const std::vector<PointSpriteVertex>& src) {
-            v.insert(v.end(), src.begin(), src.end());
+        // B1151: each window packs its .on sub-window first, then .off, in
+        // window order -- the draw side walks the pack in the same order and
+        // sets the depth mask per sub-window.
+        auto packWindow = [](std::vector<PointSpriteVertex>& v,
+                             const DepthWindow& w) {
+            v.insert(v.end(), w.on.begin(), w.on.end());
+            v.insert(v.end(), w.off.begin(), w.off.end());
         };
-        pack(packedVerts_, additiveVerts_);
-        pack(packedVerts_, additiveSrcAlphaVerts_);
-        pack(packedVerts_, alphaVerts_);
-        pack(packedVerts_, spriteAdditiveVerts_);
-        pack(packedVerts_, spriteAdditiveSrcAlphaVerts_);
-        pack(packedVerts_, spriteAlphaVerts_);
-        for (const auto& q : quadVerts_) pack(packedVerts_, q);  // B1149: batches 0..5 as quads
+        packWindow(packedVerts_, winAdditive_);
+        packWindow(packedVerts_, winAdditiveSrcAlpha_);
+        packWindow(packedVerts_, winAlpha_);
+        packWindow(packedVerts_, winSpriteAdditive_);
+        packWindow(packedVerts_, winSpriteAdditiveSrcAlpha_);
+        packWindow(packedVerts_, winSpriteAlpha_);
+        for (const auto& q : winQuad_) packWindow(packedVerts_, q);  // B1149: batches 0..5 as quads
         if (useVbo_ && !packedVerts_.empty()) packVbo = uploadPackedVerts();
     }
     const PointSpriteVertex* pv = packVbo ? packedVerts_.data() : nullptr;
@@ -813,8 +833,29 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         return start;
     };
 
+    // B1151 (#471): draw a window as up to TWO sub-passes with their own
+    // depth-write state: the .on sub-window (record particles whose +0x64
+    // == 0, the official client's ZWRITEENABLE=1 default) first with the
+    // mask ON, then the .off sub-window (everything else -- the official
+    // client's +0x64 == 1 draws, plus all non-record FX) with it OFF, as
+    // before. The official client interleaves the two classes per emitter;
+    // the per-sub-window order is preserved here (additive windows are
+    // order-invariant; alpha windows differ only in the blend interleaving
+    // across the two sub-populations).
+    auto drawDepthWindow = [&](const DepthWindow& w, UnifiedBlendMode mode,
+                               int batchIdx, GLenum primitive = GL_POINTS) {
+        if (!w.on.empty()) {
+            glDepthMask(GL_TRUE);
+            drawWindow(w.on, mode, batchIdx, primitive);
+        }
+        if (!w.off.empty()) {
+            glDepthMask(GL_FALSE);
+            drawWindow(w.off, mode, batchIdx, primitive);
+        }
+    };
+
     // ── Sheet 0: the 4x4 procedural particle atlas ──────────────────────
-    if (!additiveVerts_.empty() || !alphaVerts_.empty() || !additiveSrcAlphaVerts_.empty()) {
+    if (winAdditive_.any() || winAlpha_.any() || winAdditiveSrcAlpha_.any()) {
         if (uAtlasRegionSize_ >= 0) glUniform2f(uAtlasRegionSize_, 0.25f, 0.25f);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D,
@@ -822,9 +863,9 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, atlasTexture);
 
-        drawWindow(additiveVerts_, UnifiedBlendMode::ADDITIVE, 0);
-        drawWindow(additiveSrcAlphaVerts_, UnifiedBlendMode::ADDITIVE_SRC_ALPHA, 4);
-        drawWindow(alphaVerts_, UnifiedBlendMode::ALPHA, 1);
+        drawDepthWindow(winAdditive_, UnifiedBlendMode::ADDITIVE, 0);
+        drawDepthWindow(winAdditiveSrcAlpha_, UnifiedBlendMode::ADDITIVE_SRC_ALPHA, 4);
+        drawDepthWindow(winAlpha_, UnifiedBlendMode::ALPHA, 1);
     }
 
     auto t4 = std::chrono::steady_clock::now();
@@ -832,8 +873,8 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     // ── Sheet 1: the spell sprite sheet (T417, board B300) ──────────────
     // The binning loop already dropped these when spriteTexture is 0, so
     // reaching here with a non-empty batch means the sheet is loaded.
-    if (!spriteAdditiveVerts_.empty() || !spriteAlphaVerts_.empty() ||
-        !spriteAdditiveSrcAlphaVerts_.empty()) {
+    if (winSpriteAdditive_.any() || winSpriteAlpha_.any() ||
+        winSpriteAdditiveSrcAlpha_.any()) {
         if (uAtlasRegionSize_ >= 0) {
             glUniform2f(uAtlasRegionSize_, 1.0f / SpellSpriteAtlas::kColumns,
                         1.0f / SpellSpriteAtlas::kRows);
@@ -844,9 +885,9 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, spriteTexture);
 
-        drawWindow(spriteAdditiveVerts_, UnifiedBlendMode::ADDITIVE, 2);
-        drawWindow(spriteAdditiveSrcAlphaVerts_, UnifiedBlendMode::ADDITIVE_SRC_ALPHA, 5);
-        drawWindow(spriteAlphaVerts_, UnifiedBlendMode::ALPHA, 3);
+        drawDepthWindow(winSpriteAdditive_, UnifiedBlendMode::ADDITIVE, 2);
+        drawDepthWindow(winSpriteAdditiveSrcAlpha_, UnifiedBlendMode::ADDITIVE_SRC_ALPHA, 5);
+        drawDepthWindow(winSpriteAlpha_, UnifiedBlendMode::ALPHA, 3);
     }
 
     // ── B1149: the spellsnew.edd sprite quads, both sheets ──────────────
@@ -859,7 +900,7 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
             UnifiedBlendMode::ALPHA, UnifiedBlendMode::ADDITIVE_SRC_ALPHA, UnifiedBlendMode::ADDITIVE_SRC_ALPHA};
         for (int b = 0; b < 6; ++b) {
             const bool sprite = (b == 2 || b == 3 || b == 5);
-            if (!quadVerts_[b].empty()) {
+            if (winQuad_[b].any()) {
                 if (quad_.uAtlasRegionSize >= 0) {
                     if (sprite)
                         glUniform2f(quad_.uAtlasRegionSize, 1.0f / SpellSpriteAtlas::kColumns,
@@ -874,7 +915,7 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, sprite ? spriteTexture : atlasTexture);
             }
-            drawWindow(quadVerts_[b], kMode[b], 6 + b, GL_TRIANGLES);
+            drawDepthWindow(winQuad_[b], kMode[b], 6 + b, GL_TRIANGLES);
         }
     }
 
@@ -926,9 +967,9 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
                  "(add {} alpha {}) restore={:.1f}ms",
                  totalUs / 1000.0f,
                  us(t0, t1) / 1000.0f, us(t1, t2) / 1000.0f,
-                 us(t2, t3) / 1000.0f, us(t3, t4) / 1000.0f, additiveVerts_.size(),
-                 alphaVerts_.size(), us(t4, t5) / 1000.0f,
-                 spriteAdditiveVerts_.size(), spriteAlphaVerts_.size(),
+                 us(t2, t3) / 1000.0f, us(t3, t4) / 1000.0f, winAdditive_.total(),
+                 winAlpha_.total(), us(t4, t5) / 1000.0f,
+                 winSpriteAdditive_.total(), winSpriteAlpha_.total(),
                  us(t5, t6) / 1000.0f);
     }
 }

@@ -1,0 +1,41 @@
+[ WARN:0@0.015] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006860.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.015] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006861.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.016] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006862.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.016] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006863.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.016] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006864.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.016] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006865.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.016] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006866.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.016] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006867.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.017] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006868.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.017] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006869.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.017] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006870.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.017] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006871.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.018] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006872.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.018] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006873.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.018] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006874.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.018] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006875.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.019] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006876.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.019] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006877.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.019] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006878.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.019] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006879.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.020] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006880.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.020] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006881.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.020] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006882.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.020] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006883.png'): can't open/read file: check file path/integrity
+[ WARN:0@0.020] global loadsave.cpp:278 findDecoder imread_('/mnt/projects/fable/review/B1130/measure/r84_fixed_self/f006884.png'): can't open/read file: check file path/integrity
+Traceback (most recent call last):
+  File "/mnt/projects/fable/review/B1130/scripts/anchor.py", line 23, in <module>
+    base = np.median(np.stack([cv2.imread(f'{d}/f{f:06d}.png') for f in bsel]), axis=0).astype(np.int16)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/.local/lib/python3.12/site-packages/numpy/lib/_function_base_impl.py", line 4000, in median
+    return _ureduce(a, func=_median, keepdims=keepdims, axis=axis, out=out,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/.local/lib/python3.12/site-packages/numpy/lib/_function_base_impl.py", line 3893, in _ureduce
+    r = func(a, **kwargs)
+        ^^^^^^^^^^^^^^^^^
+  File "/home/user/.local/lib/python3.12/site-packages/numpy/lib/_function_base_impl.py", line 4033, in _median
+    part = partition(a, kth, axis=axis)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/.local/lib/python3.12/site-packages/numpy/_core/fromnumeric.py", line 840, in partition
+    a.partition(kth, axis=axis, kind=kind, order=order)
+TypeError: '<' not supported between instances of 'NoneType' and 'NoneType'

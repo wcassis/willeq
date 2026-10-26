@@ -15,8 +15,11 @@
 //
 // The census (every distribution summing to the record count) is a script --
 // refactor/B1151/edd_census.py, output pasted into the README (the B1150
-// edd_shapes.py pattern) -- and the visual gate (tour-7 + the 40-record sweep
-// + the motion signatures) is the end-to-end net; see the README.
+// edd_shapes.py pattern) -- AND a C++ net: CensusOfTheMotionWords walks all
+// 2,118 file entries through the zero-based accessor motionAt(), exactly
+// B1150's CensusOfTheShapeWord walking shapeAt() (test_spell_spawn_shapes).
+// The visual gate (tour-7 + the 40-record sweep + the motion signatures) is
+// the end-to-end net; see the README.
 
 #include <gtest/gtest.h>
 
@@ -123,6 +126,63 @@ TEST(SpellEddMotionReader, ABlankEntryIsAllZero) {
     EXPECT_FLOAT_EQ(m.upMin, 0.0f);
     EXPECT_FLOAT_EQ(m.gravity, 0.0f);
     EXPECT_FLOAT_EQ(m.driftX, 0.0f);
+}
+
+// ---------------------------------------------------------------------------
+// The shipped census -- the zero-based accessor (motionAt) is the census's
+// window onto every file entry (entry 0 included; the 1-based slot
+// accessors reject 0 by design, since spellsnew.eff's slot numbers are
+// 1-based with 0 = empty slot). B1150's pattern: the same test shape as
+// test_spell_spawn_shapes's CensusOfTheShapeWord (shapeAt), the int-word
+// distributions from the README "The census" (edd_census.py over the same
+// file).
+// ---------------------------------------------------------------------------
+
+std::string clientDir() {
+    const char* env = std::getenv("EQ_CLIENT_PATH");
+    return env ? env : "/mnt/projects/EverQuestP1999";
+}
+
+TEST(SpellEddMotionShipped, CensusOfTheMotionWords) {
+    EQ::SpellsNewEddReader reader;
+    if (!reader.loadFile(clientDir() + "/spellsnew.edd"))
+        GTEST_SKIP() << "spellsnew.edd not under " << clientDir();
+
+    int orient[2] = {0, 0}, noDepth[2] = {0, 0}, mode[3] = {0, 0, 0},
+        follow[2] = {0, 0}, frameCount[3] = {0, 0, 0}, startSpin[2] = {0, 0},
+        spinAlign[7] = {0, 0, 0, 0, 0, 0, 0}, drawNeg[2] = {0, 0};
+    for (size_t k = 0; k < reader.emitterCount(); ++k) {
+        const EQ::SpellsNewEddMotion& m = reader.motionAt(k);
+        ++orient[m.orientToAttach ? 1 : 0];
+        ++noDepth[m.noDepthWrite ? 1 : 0];
+        if (m.spriteMode < 0 || m.spriteMode > 2)
+            ADD_FAILURE() << "entry " << k << " spriteMode " << m.spriteMode;
+        else
+            ++mode[m.spriteMode];
+        ++follow[m.follow ? 1 : 0];
+        if (m.frameCount == 1) ++frameCount[0];
+        else if (m.frameCount == 4) ++frameCount[1];
+        else if (m.frameCount == 16) ++frameCount[2];
+        else
+            ADD_FAILURE() << "entry " << k << " frameCount " << m.frameCount;
+        ++startSpin[m.randomStartSpin ? 1 : 0];
+        if (m.spinAlign < 0 || m.spinAlign > 6)
+            ADD_FAILURE() << "entry " << k << " spinAlign " << m.spinAlign;
+        else
+            ++spinAlign[m.spinAlign];
+        ++drawNeg[m.drawNegativeRadius ? 1 : 0];
+    }
+    // README "The census" (edd_census.py); every distribution sums to 2118.
+    EXPECT_EQ(orient[0], 1728);   EXPECT_EQ(orient[1], 390);
+    EXPECT_EQ(noDepth[0], 206);   EXPECT_EQ(noDepth[1], 1912);
+    EXPECT_EQ(mode[0], 1911);     EXPECT_EQ(mode[1], 205);   EXPECT_EQ(mode[2], 2);
+    EXPECT_EQ(follow[0], 1900);   EXPECT_EQ(follow[1], 218);
+    EXPECT_EQ(frameCount[0], 855); EXPECT_EQ(frameCount[1], 199); EXPECT_EQ(frameCount[2], 1064);
+    EXPECT_EQ(startSpin[0], 2098); EXPECT_EQ(startSpin[1], 20);
+    EXPECT_EQ(spinAlign[0], 2116); EXPECT_EQ(spinAlign[3], 1);   EXPECT_EQ(spinAlign[6], 1);
+    EXPECT_EQ(drawNeg[0], 2117);   EXPECT_EQ(drawNeg[1], 1);
+    int sum = orient[0] + orient[1];
+    EXPECT_EQ(sum, 2118);
 }
 
 // ---------------------------------------------------------------------------

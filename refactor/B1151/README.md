@@ -141,9 +141,24 @@ stays inactive and the particle never sets its EDD-motion flag.
   matrix-vector multiply at `0x1005dc80` (TRACE sec. (d), the verified listing
   `0x100634b0..0x10063680`), sized in world units so it shrinks with distance.
   PARTIAL where the TRACE marks the mode-2 geometry PARTIAL.
-- **+0x64 depth write.** The renderer turns depth write OFF for the emitter's
-  draw and restores it after (the TSV +0x64 row: `SetRenderState(ZWRITE, 0)`
-  then restored to 1).
+- **+0x64 depth write.** The official client's EDD emitter draw runs with
+  ZWRITEENABLE=1 (depth write ON) by default: for a record whose +0x64 == 1
+  the client sets it to 0 before the draw and back to 1 after
+  (disassembly `EQGraphicsDX9.dis:136039/136082`, the TSV +0x64 row). The
+  renderer implements it per draw window (`UnifiedParticleRenderer`, the
+  `DepthWindow` comment in the header): each window's vertices split into two
+  sub-windows, drawn in two passes -- the `.on` sub-window (record particles
+  with +0x64 == 0, the official default) with the depth mask ON, then `.off`
+  with it OFF as before. Every non-record particle (config presets, weather)
+  goes to `.off`, keeping fable's long-standing global-off state; the
+  official client's interleaving is per emitter, so additive windows are
+  order-invariant and alpha windows differ only in the blend interleaving
+  across the two sub-populations. Gate impact: 7 of the 40 sweep records have
+  +0x64 == 0 (records 1, 11, 35, 40, 41, 42, 43 -- their rows may shift vs
+  the B1150 baseline, whose global-OFF state drew them with depth write OFF;
+  the mechanism is named in "The gate"), and in the tour spell 253
+  (record 35). Every +0x64 == 1 row draws exactly as B1150's global-off
+  pass did.
 - **Spin angle incl. +0x178 alignment.** The quad rotates by
   `age*spin + start + align` (the `eddAlignAxis`/`eddAlignAngle512` screen
   angle when +0x178 is nonzero).
@@ -165,10 +180,13 @@ below.
 Registered in `tests/cmake/spells.cmake` under `EQT_GRAPHICS` (the per-term sim
 tests drive the real `SimulationWorker`). The gtest suites carry the `SpellEdd`
 prefix so the card's `ctest -R 'Spell|...'` pattern picks them up; run them with
-`ctest -R 'SpellEdd'` (18 tests).
+`ctest -R 'SpellEdd'` (19 tests).
 
 - **Reader decode.** `decodeSpellsNewEddMotion` on a synthetic 416-byte entry:
   every word round-trips; a blank entry is all-zero.
+- **Shipped census.** `CensusOfTheMotionWords` walks all 2,118 file entries
+  through `motionAt()` (skips when `spellsnew.edd` is absent) and asserts the
+  int-word distributions above -- the B1150 `CensusOfTheShapeWord` pattern.
 - **Frame rule.** Each N band (1, 2, 5, 16, >16) and `frame = ftol(age*fps) % N`.
 - **+0x198 draw rule.** Plain drawn; motion r>=0 drawn; motion r<0 word!=1 not
   drawn; motion r<0 word==1 drawn.
