@@ -129,7 +129,7 @@ def main():
     # the 40 records' sweep runs (record, spell)
     import glob
     sweep = []
-    for d in sorted(glob.glob(os.path.join(runs, 'b1151_r*_'))):
+    for d in sorted(glob.glob(os.path.join(runs, 'b1151_r*'))):
         m = re.match(r'b1151_r(\d+)_(\d+)$', os.path.basename(d))
         if m:
             sweep.append((int(m.group(1)), int(m.group(2)), d))

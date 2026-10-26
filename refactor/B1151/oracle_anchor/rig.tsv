@@ -1,4 +1,5 @@
-record\ttargettype\trig\tdir\n4	self	fixed_self	e4_fixed_self
+record	targettype	trig	dir
+4	self	fixed_self	e4_fixed_self
 2	single	fixed_npc	r134_fixed_npc
 7	single	fixed_npc	r132_fixed_npc
 1	single	fixed_npc	r131_fixed_npc
