@@ -1,0 +1,13 @@
+## spell 93 BC 1.500 Act 3.000 (cast 1.500s) end 13.000
+fable93: 381 frames, baseline 30
+# /tmp/b1151-frames/b1151_smoke.x264.measure/fable_93: floor 207px thr 826px model 235px
+SOURCE onset f58 BC+0.433s end f89 BC+1.467s peak f88 BC+1.433s coverage 0.337 model^2
+LANDING onset f108 Act+0.600s end f285 Act+6.500s dur 5.90s peak f160 Act+2.333s coverage 2.116 model^2
+# /tmp/b1151-frames/b1151_smoke.x264.measure/fable_93: grab fps 30.00, stale grabs in Act+0.3..2.3s: 0/60 (max frame gap 34 ms), noise p95 537px, thr 1611px, model 235px
+SOURCE	onset f58 +0.433s	last f89 +1.467s	end10% f89 +1.467s	dur 1.03s (32 active fr)	peak f88 +1.433s n=38324px blobs=227	extent 629x527px = 2.68x2.24 model	meanRGB 143,87,79 peak_hue 8 sat 0.44	
+LANDING	onset f90 +0.000s	last f287 +6.567s	end10% f285 +6.500s	dur 6.57s (198 active fr)	peak f154 +2.133s n=142696px blobs=331	extent 791x617px = 3.37x2.63 model	meanRGB 192,109,81 peak_hue 17 sat 0.60	
+LANDING_RISE	first frame > 2x source tail (38324px): f118 Act+0.933s n=83062
+/tmp/b1151-frames/b1151_smoke.x264.measure/fable_93 SOURCE colour RGB 178,113,83 hue 19 sat 0.53 val 0.70
+/tmp/b1151-frames/b1151_smoke.x264.measure/fable_93 SOURCE f82 (BC+1.23s): blobs>=2px 105, diam median 6.6px = 0.028 model, p90 19.6px = 0.083 model, lit px 15980
+/tmp/b1151-frames/b1151_smoke.x264.measure/fable_93 LANDING colour RGB 222,130,82 hue 21 sat 0.63 val 0.87
+/tmp/b1151-frames/b1151_smoke.x264.measure/fable_93 LANDING f135 (Act+1.50s): blobs>=2px 296, diam median 6.0px = 0.025 model, p90 10.2px = 0.043 model, lit px 97770

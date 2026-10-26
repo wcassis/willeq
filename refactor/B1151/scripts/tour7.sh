@@ -27,6 +27,14 @@ echo "$rows" | while read sid tgt cms; do
   secs=$(python3 -c "print(round(1.5 + $cms/1000.0 + 11.5, 1))")
   n=${tag}_tour_${sid}
   FX_SPELLS=auto NO_X264=1 PLAN=$p SECONDS_=$secs $S/run_scene.sh $n 30 --seed 1 < /dev/null
+  # B1151 motion signatures: per-frame centroid height + lit extent
+  # (review/B1130/scripts/anchor.py) from the FX_KEEP frames; rig b1118
+  # (feet 640,605, model 235).
+  O=$R/runs/$n
+  for st in SOURCE LANDING; do
+    python3 -I /mnt/projects/fable/review/B1130/scripts/anchor.py \
+      "$F/$n.measure/fable_${sid}" 640,605 235 $st > "$O/anchor_${st}.tsv" 2>&1
+  done
   rm -rf "$F/$n" "$F/$n.measure"
 done
 echo tour7 $tag done
