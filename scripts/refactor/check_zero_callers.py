@@ -840,12 +840,20 @@ EXEMPT_GROUPS = {
 
 EXEMPT_TESTS_GROUPS = {
     ("(free)", "ComputeHelpCoverage"): "seam",
-    # B1138 (#458): tools/model_viewer was the one non-test caller of both and
-    # now runs the client's own cast sequence (spell_cast_fx.cpp), which reaches
-    # neither. createProjectile is the never-wired projectile (B165), boarded
-    # as B1128, which wires it; getSpellColorForSpell is T381's test window on
-    # the noted vocabulary's fallback colour (test_spell_visual_vocabulary).
-    ("SpellVisualFX", "createProjectile"): "B1128",
+    # B1138 (#458): tools/model_viewer was the one non-test caller of
+    # getSpellColorForSpell and now runs the client's own cast sequence
+    # (spell_cast_fx.cpp); getSpellColorForSpell is T381's test window on the
+    # noted vocabulary's fallback colour (test_spell_visual_vocabulary).
+    # B1152 (#472): createProjectile is GONE -- the missile actor replaced it,
+    # so its exemption (boarded as B1128, which was to wire it) is retired.
+    # missileCount is the test's observation window on the missile actor
+    # (test_spell_visual_vocabulary.AMiddleStageRecordSpawnsAMissile). The
+    # travel-stage Projectile preset lost its production caller to the missile
+    # (which builds its Middle emitter directly, SourceForSpell +
+    # PROJECTILE_PATH), but test_spell_landing_volume still exercises the
+    # PROJECTILE_PATH emitter it defines.
+    ("(free)", "Projectile"): "seam",
+    ("SpellVisualFX", "missileCount"): "observer",
     ("SpellVisualFX", "getSpellColorForSpell"): "observer",
     # B1150 (#470): the census test's observation window onto every file entry
     # (zero-based, entry 0 included -- a real shape-0 point that the 1-based
