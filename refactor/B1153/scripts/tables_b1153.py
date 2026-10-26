@@ -31,10 +31,8 @@ import os
 import re
 import sys
 
-EV = "/home/user/kb-evidence/hme/h1122"
-EV = "/home/131/hme/h1122"
-EV = "/home/131/kb-evidence/kb-b1153-retire"
-REPO = "/home/131/src/willeq-wt/kb-b1153-retire"
+EV = "/home/user/kb-evidence/kb-b1153-retire"
+REPO = "/home/user/src/willeq-wt/kb-b1153-retire"
 B1142 = "/mnt/projects/fable/review/B1142/gate/regression_table.tsv"
 B1155_BANDED = f"{REPO}/refactor/B1155/banded_table.tsv"
 OUT = sys.argv[sys.argv.index("--out-dir") + 1] if "--out-dir" in sys.argv else f"{REPO}/refactor/B1153/tables"
@@ -92,11 +90,10 @@ def b1130_rows(tag):
 reg = {}
 for line in open(B1142):
     c = line.rstrip("\n").split("\t")
-    if c[0] != "spell":
-        continue
-    if "b1132_land_cov" not in c:  # the repeated header row
-        continue
-    reg[c[0]] = c
+    if c[0] == "spell" and "b1132_land_cov" in c:
+        continue  # the header row
+    if c[0] in ("38", "41", "54", "93", "253", "458", "656"):
+        reg[c[0]] = c
 # columns (review/B1142/gate/regression_table.tsv header): 0 spell,
 # 4 new_land_cov (the B1142-on fable baseline; 93 = 3.049), 34 oracle_land_cov,
 # 35 oracle_end, 36 roi_l_band, 38 roi_s_band

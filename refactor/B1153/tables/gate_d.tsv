@@ -1,0 +1,4 @@
+record	spell	tag	ref_source_onset_s	b1130_source_onset_s	source_onset_s_v	ref_source_centroid	b1130_source_centroid	source_centroid_v	ref_src_h_lo	b1130_src_h_lo	src_h_lo_v	ref_src_h_hi	b1130_src_h_hi	src_h_hi_v	ref_landing_onset_s	b1130_landing_onset_s	landing_onset_s_v	ref_landing_end_s	b1130_landing_end_s	landing_end_s_v	ref_landing_cov	b1130_landing_cov	landing_cov_v	ref_p90_src	b1130_p90_src	p90_src_v	ref_p90_land	b1130_p90_land	p90_land_v
+0	93	after_fixed_npc_r0	0.46	0.433	in	0.71	1.04	over	0.07	0.79	over	1.25	1.26	in	0.43	0.433	in	6.67	4.7	short	1.02	0.358	info		0.113	n-a		0.043	n-a
+40	602	after_fixed_self_r40	0.368	0.433	in	0.66	0.8	in		0.28	n-a		1.41	n-a	0.07	0.4	over	0.73	4.133	over		0.624	n-a		0.258	n-a		0.249	n-a
+51	4499	after_fixed_self_r51	0.7		n-a	0.21		n-a	-0.05		n-a	0.74		n-a			n-a	8.16		n-a			n-a			n-a			n-a
