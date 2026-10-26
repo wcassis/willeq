@@ -295,6 +295,13 @@ struct EntityVisual {
     std::string castSpellName;                // Name of spell being cast
     uint32_t castDurationMs = 0;              // Total cast time in milliseconds
     std::chrono::steady_clock::time_point castStartTime;  // When cast started
+    // B1157 (#476): the model track the spell's CastingAnim id names on this
+    // model (spell_cast_animation.h playCastAnim; "" = the model has no such
+    // track and its current animation stands). The cast pose is held for the
+    // channel and ended at OP_Action / interrupt (completeEntityCast /
+    // cancelEntityCast), and the per-frame state (entity_updates.cpp,
+    // setPlayerEntityAnimation) must not pull it back to walk/idle.
+    std::string castAnimCode;
     irr::scene::IBillboardSceneNode* castBarBillboard = nullptr;  // Casting bar billboard
 
     // B1148 (#468): the corpse-fade list (corpse_fade.h). isFading = this
@@ -676,7 +683,10 @@ public:
     FirstPersonEyeOffset getPlayerFirstPersonEyeOffset() const;
 
     // Entity casting management (for showing casting bars above other entities)
-    void startEntityCast(uint16_t spawnId, uint32_t spellId, const std::string& spellName, uint32_t castTimeMs);
+    // B1157 (#476): castAnimId is the spell's CastingAnim (field 120); the
+    // model plays the track it names on this model (spell_cast_animation.h).
+    void startEntityCast(uint16_t spawnId, uint32_t spellId, const std::string& spellName, uint32_t castTimeMs,
+                         int castAnimId);
     void cancelEntityCast(uint16_t spawnId);
     void completeEntityCast(uint16_t spawnId);
     bool isEntityCasting(uint16_t spawnId) const;

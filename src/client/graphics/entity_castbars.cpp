@@ -4,6 +4,7 @@
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/light_source.h"
+#include "client/graphics/spell_cast_animation.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
@@ -31,24 +32,21 @@ namespace Graphics {
 // Entity Casting Management
 // ============================================================================
 
-void EntityRenderer::startEntityCast(uint16_t spawnId, uint32_t spellId, const std::string& spellName, uint32_t castTimeMs) {
-    // Don't track casting for our own player (handled separately by player casting bar)
-    // Check against stored playerSpawnId_ as primary check (in case isPlayer flag isn't set yet)
-    if (spawnId == playerSpawnId_ && playerSpawnId_ != 0) {
-        return;
-    }
-
+// B1157 (#476): the track the official client plays on OP_BeginCast -- the
+// spell's CastingAnim (field 120) through eqgame's code table onto this
+// model, at speed 1.0, one shot (hold/loop per the model's own looped flag)
+// and held through the channel, ended at OP_Action / interrupt. The
+// pre-B1157 hard-coded "t04" (stretched to 20 % of the cast time) is gone;
+// the player is included (her model is an entity like any other -- the
+// entity cast BAR still skips her, renderEntityCastingBars).
+void EntityRenderer::startEntityCast(uint16_t spawnId, uint32_t spellId, const std::string& spellName,
+                                     uint32_t castTimeMs, int castAnimId) {
     auto it = entities_.find(spawnId);
     if (it == entities_.end()) {
         return;
     }
 
     EntityVisual& visual = it->second;
-
-    // Also check the isPlayer flag as a backup
-    if (visual.isPlayer) {
-        return;
-    }
 
     // Set casting state
     visual.isCasting = true;
@@ -57,19 +55,26 @@ void EntityRenderer::startEntityCast(uint16_t spawnId, uint32_t spellId, const s
     visual.castDurationMs = castTimeMs;
     visual.castStartTime = std::chrono::steady_clock::now();
 
-    // Phase 6.2: Match casting animation speed to cast time
-    // Play cast animation (t04 = cast start, t05 = channeling loop)
-    if (visual.animatedNode) {
-        // Start with cast pullback animation, then it will loop on t05
-        if (visual.animatedNode->hasAnimation("t04")) {
-            visual.animatedNode->playAnimation("t04", false, true);  // playThrough, no loop
-            // Set duration to roughly match cast time (cast start is quick, most time in loop)
-            visual.animatedNode->getAnimator().setTargetDuration(static_cast<float>(castTimeMs) * 0.2f);
-        }
+    // The model: the spell's own track, started at the packet (the client
+    // plays at the packet, no delay -- the FX Source stage's 0.41 s latency
+    // is a particle-emission property, not a model one).
+    visual.castAnimCode = playCastAnim(visual.animatedNode, castAnimId);
+    if (!visual.castAnimCode.empty()) {
+        visual.currentAnimation = visual.castAnimCode;
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) started casting '{}' ({}ms)",
-              spawnId, visual.name, spellName, castTimeMs);
+    LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) started casting '{}' ({}ms, cast-anim track '{}')",
+              spawnId, visual.name, spellName, castTimeMs, visual.castAnimCode);
+}
+
+// OP_Action / interrupt: the casting state ends; the model takes the new
+// state's animation (the idle of a standing caster).
+static void endEntityCastAnim(EntityVisual& visual) {
+    if (visual.animatedNode && !visual.castAnimCode.empty()) {
+        endCastAnim(visual.animatedNode, visual.isPlayer ? "p01" : "o01");
+        visual.currentAnimation = visual.isPlayer ? "p01" : "o01";
+    }
+    visual.castAnimCode.clear();
 }
 
 void EntityRenderer::cancelEntityCast(uint16_t spawnId) {
@@ -89,6 +94,7 @@ void EntityRenderer::cancelEntityCast(uint16_t spawnId) {
     visual.castSpellId = 0;
     visual.castSpellName.clear();
     visual.castDurationMs = 0;
+    endEntityCastAnim(visual);
 }
 
 void EntityRenderer::completeEntityCast(uint16_t spawnId) {
@@ -109,6 +115,7 @@ void EntityRenderer::completeEntityCast(uint16_t spawnId) {
     visual.castSpellId = 0;
     visual.castSpellName.clear();
     visual.castDurationMs = 0;
+    endEntityCastAnim(visual);
 }
 
 bool EntityRenderer::isEntityCasting(uint16_t spawnId) const {
@@ -156,11 +163,13 @@ void EntityRenderer::updateEntityCastingBars(float deltaTime, irr::scene::ICamer
 
         // Give some extra time (500ms) before auto-completing to allow server response
         if (elapsed > visual.castDurationMs + 500) {
-            // Cast timed out without server confirmation - clear state
+            // Cast timed out without server confirmation - clear state (the
+            // cast pose ends with it, the way completeEntityCast does)
             visual.isCasting = false;
             visual.castSpellId = 0;
             visual.castSpellName.clear();
             visual.castDurationMs = 0;
+            endEntityCastAnim(visual);
         }
     }
 }

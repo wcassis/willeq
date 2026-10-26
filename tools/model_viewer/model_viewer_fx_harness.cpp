@@ -11,6 +11,7 @@
 #include "client/graphics/first_person_camera.h"
 #include "client/graphics/corpse_fade.h"
 #include "client/graphics/spell_fx_bone_anchor.h"
+#include "client/graphics/spell_cast_animation.h"
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/environment/spell_effects_config.h"
 
@@ -19,6 +20,7 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <iomanip>
 #include <unordered_map>
 
 HarnessOptions harnessOpts;
@@ -890,6 +892,14 @@ int runScriptedHarness() {
     std::ofstream slotsOut(harnessOpts.framesDir + "/slots.tsv");
     slotsOut << "t_event\tevent\tspell\tanim\tlevel\tstage\tslot\temitter\tmin_level\tanchor\tattach\ttexture\n";
 
+    // B1157 (#476) step 2: the Source-stage emitter ORIGIN per frame (the
+    // hand-anchor strip) -- scene.tsv carries the pose boxes, this carries
+    // where the emitter sits in world and screen space while the caster holds
+    // the cast pose, so it shows the origin tracking the hand bone through
+    // the raised pose.
+    std::ofstream emitterOut(harnessOpts.framesDir + "/emitter_origin.tsv");
+    emitterOut << "frame\tt\tfxid\tkind\twx\tyw\twz\tsx\tsy\n";
+
     if (!harnessOpts.backdropPath.empty()) {
         fxBackdrop = driver->getTexture(harnessOpts.backdropPath.c_str());
         if (!fxBackdrop) std::fprintf(stderr, "[fx-harness] backdrop %s did not load\n", harnessOpts.backdropPath.c_str());
@@ -909,6 +919,16 @@ int runScriptedHarness() {
     bool targetDespawned = false;
     double corpseFadeStart = -1.0;  // B1148: scripted time of a corpse's OP_DeleteSpawn
     float corpseFadeAlpha = 1.0f;
+    // B1157 (#476): the Source-stage emitter ids of the in-flight cast (the
+    // caster's own hands for a hand-anchored spell) -- dumped to
+    // emitter_origin.tsv every frame, cleared at the cast's Action; and the
+    // cast track its BeginCast started ("" when the model has none) -- the
+    // Action only ends a pose that began, the client's guard
+    // (endEntityCastAnim runs on a non-empty castAnimCode): a /disc is
+    // OP_Action with no OP_BeginCast, and the client never switched the
+    // model on that one.
+    std::vector<uint16_t> activeSourceEmitters;
+    std::string activeCastTrack;
     placeHarnessTarget(plan[0].self, plan[0].distance);
     device->getTimer()->stop();  // (already stopped by setupSpellTestCamera)
     // Step g runs at t = g / simHz; every sub-th step is drawn and written as
@@ -927,9 +947,38 @@ int runScriptedHarness() {
             if (!e.action) {
                 placeHarnessTarget(c.self, c.distance);
                 harnessBeginCast(sp, c.self, e.castMs, level, now);
+                // B1157 (#476): the caster model does the client's OP_BeginCast
+                // rule through the client's own code (spell_cast_animation.h,
+                // the body EntityRenderer::startEntityCast runs): the spell's
+                // CastingAnim track, one shot at speed 1.0, held (or looped,
+                // per the model's own looped flag) through the channel. The
+                // o01 idle that looped during the channel before is gone.
+                const std::string track = playCastAnim(animatedNode, sp.cast_anim);
+                activeCastTrack = track;
+                std::printf("[fx-harness] BeginCast %u: caster cast-anim %s (CastingAnim %d)\n", c.spellId,
+                            track.empty() ? "(no track; current stands)" : track.c_str(), sp.cast_anim);
+                // The Source-stage emitter origins to dump (step 2): the
+                // slots' attach points on the caster, the way the FX resolves
+                // them (B1144's attachPointEntityId).
+                activeSourceEmitters.clear();
+                for (const auto& d : spellVisualFX->stageSlots(c.spellId, EQ::kSpellsNewEffSource, level).drawn) {
+                    const uint16_t fxId =
+                        EQ::SpellVisualFX::attachPointEntityId(casterEntityId, d.slot.attachPoint);
+                    if (std::find(activeSourceEmitters.begin(), activeSourceEmitters.end(), fxId) ==
+                        activeSourceEmitters.end())
+                        activeSourceEmitters.push_back(fxId);
+                }
             } else {
                 if (!c.beginCast) placeHarnessTarget(c.self, c.distance);
                 harnessAction(sp, c.self, level, now);
+                // B1157: OP_Action ends the cast state; the model takes the
+                // idle (the guessed t04/t05/t06 played once here before is
+                // gone). Only when a BeginCast started the track -- a /disc
+                // (OP_Action without OP_BeginCast) never did, and the client
+                // never switched the model on that one either.
+                if (!activeCastTrack.empty()) endCastAnim(animatedNode, "p01");
+                activeCastTrack.clear();
+                activeSourceEmitters.clear();
                 lastAction = e.t;
             }
             {
@@ -1044,6 +1093,32 @@ int runScriptedHarness() {
         char row[96];
         std::snprintf(row, sizeof(row), "%d\t%.6f\t-\t-\t-\t-\t-\t-\n", f, t);
         timing << row;
+        if (!activeSourceEmitters.empty()) {
+            // The emitter origin = the slot's attach point on the caster:
+            // the hand/head bone for a pseudo-id (B1144), the node origin for
+            // a plain-entity slot. Screen space through the same pinhole the
+            // scene.tsv boxes use.
+            animatedNode->forceAnimationUpdate();
+            const Pinhole ph = makePinhole(camera->getPosition(), camera->getTarget(), camera->getFOV(),
+                                           camera->getAspectRatio(),
+                                           static_cast<float>(harnessOpts.width),
+                                           static_cast<float>(harnessOpts.height));
+            for (const uint16_t fxId : activeSourceEmitters) {
+                const char* kind = "entity";
+                core::vector3df wp(animatedNode->getAbsolutePosition());
+                if (EQ::SpellVisualFX::isHandBoneId(fxId)) {
+                    kind = EQ::SpellVisualFX::isRightHand(fxId) ? "RHAND" : "LHAND";
+                    resolveSpellFxBonePosition(animatedNode, fxId, wp);
+                } else if (EQ::SpellVisualFX::isHeadBoneId(fxId)) {
+                    kind = "HEAD";
+                    resolveSpellFxBonePosition(animatedNode, fxId, wp);
+                }
+                const core::vector2df s = ph.project(wp);
+                emitterOut << f << '\t' << std::fixed << std::setprecision(6) << t << '\t' << fxId << '\t'
+                           << kind << '\t' << std::setprecision(3) << wp.X << '\t' << wp.Y << '\t' << wp.Z
+                           << '\t' << std::setprecision(1) << s.X << '\t' << s.Y << '\n';
+            }
+        }
     }
     std::printf("[fx-harness] wrote %d frames at %d fps (simulated at %d Hz) to %s\n", frames, harnessOpts.fps,
                 simHz, harnessOpts.framesDir.c_str());

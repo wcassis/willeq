@@ -223,6 +223,16 @@ void EntityRenderer::updatePlayerEntityPosition(float x, float y, float z, float
 void EntityRenderer::setPlayerEntityAnimation(const std::string& animCode, bool loop, float movementSpeed, bool playThrough) {
     for (auto& [spawnId, visual] : entities_) {
         if (visual.isPlayer) {
+            // B1157 (#476): the casting player holds the CastingAnim pose
+            // (the client's state machine does not re-request the idle while
+            // the spawn is casting); idle/walk requests resume it only once
+            // the cast state ends (completeEntityCast / cancelEntityCast).
+            // A play-through request (a swing, a jump) still gets through --
+            // the server ends the cast on it.
+            if (visual.isCasting && !visual.castAnimCode.empty() &&
+                visual.currentAnimation == visual.castAnimCode && !playThrough) {
+                break;
+            }
             if (visual.isAnimated && visual.animatedNode) {
                 // Don't interrupt playThrough animations (combat, skills, jump, etc.)
                 // They must complete before returning to movement/idle animations

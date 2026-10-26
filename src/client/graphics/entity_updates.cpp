@@ -408,6 +408,17 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
     }
     // Skip animation updates for the local player - controlled by setPlayerEntityAnimation()
     if (visual.isAnimated && visual.animatedNode && !visual.isCorpse && !visual.isPlayer) {
+        // B1157 (#476): a casting entity holds the CastingAnim pose. The
+        // client's state machine does not re-request a movement animation
+        // while the spawn is casting (the cast setter stores the id on the
+        // actor and the per-frame no-op path keeps it), so a movement update
+        // arriving mid-channel must not pull the model back to walk/idle --
+        // the pose ends with the cast state (completeEntityCast /
+        // cancelEntityCast), never with a stray server update.
+        if (visual.isCasting && !visual.castAnimCode.empty() &&
+            visual.currentAnimation == visual.castAnimCode) {
+            return;
+        }
         std::string targetAnim;
         bool playThrough = false;  // True for one-shot animations (jumps, attacks, emotes)
         bool loopAnim = true;

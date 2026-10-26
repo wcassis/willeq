@@ -106,6 +106,7 @@ float spellTestCastElapsed = 0;
 float spellTestCastDuration = 0;
 const EQ::SpellData* spellTestCurrentSpell = nullptr;
 bool spellTestCastAnimPlaying = false;
+std::string spellTestCastTrack;  // B1157
 
 // Hand bone indices (the FX anchors are SpellVisualFX's own hand/head
 // pseudo-entities since B1138, resolved by spell_fx_bone_anchor.h)

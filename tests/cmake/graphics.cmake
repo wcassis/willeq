@@ -454,6 +454,8 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY AND TARGET model_viewer)
     ADD_EXECUTABLE(test_fx_harness test_fx_harness.cpp)
     TARGET_INCLUDE_DIRECTORIES(test_fx_harness PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_fx_harness GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_fx_harness PRIVATE
+        "WILLEQ_DB_REAL_PATH=WILLEQ_REPO_PATH(\"data/willeq.db\")")
     ADD_DEPENDENCIES(test_fx_harness model_viewer)
     # The binary by environment, as commands.cmake passes WILLEQ_BIN (an
     # absolute -D would defeat ccache across worktrees, B1090).
