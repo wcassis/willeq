@@ -50,14 +50,25 @@ the never-wired `createProjectile` — now the Middle draws from the spawner).
    the arrival position class {0x21, 0x47, 0x6a, 0x6c} at
    `eqgame.dis 163811-163819`): the distance-to-target is recomputed per tick
    and the position advanced; **arrival = the Target stage (stage 2) firing
-   through `FUN_0049b260`** — not a hit-test, not the damage packet. Spells
-   **54/859** get a dedicated at-removal Target fire gated by distance < 40
-   (`0x477959 cmp eax, 0x36/0x35b`; `0x4779cb fcomp [0x645ec0]=40`).
+   through `FUN_0049b260`** — not a hit-test, not the damage packet. The
+   removal routine (`00477951 call 0x476ad4` cleanup, then the spell id at
+   `[esi+0x5c]`) has a dedicated branch for spell **54** only:
+   `00477959 cmp eax, 0x36` takes `0047795c je 0x477a55` and fires stage 2
+   **unconditionally** at removal — the moving-offset subtract
+   (`00477a55-0x477a6f`), the entity lookup (`00477a9b call 0x40cbd6`),
+   `00477aa1 push 2`, `00477aa3 call 0x49b260` — with no distance check on
+   that path. Spell **859** (`00477962 cmp eax, 0x35b`) does not take it:
+   the `fcomp` gate against `[0x645ec0]` = 40.0 (`004779c6 call 0x439c41`,
+   `004779cb fcomp`, `004779d6 jp 0x477aab`) sits on 859's path only, and
+   859's continuation is the distance-gated `00477a4e call 0x47f614`
+   (`00477a53 jmp 0x477aab`) — not the stage-2 fire.
    Implemented: the missile advances by the particle manager's
    `PROJECTILE_PATH` lerp (caster → target) over the flight; arrival fires the
    Target stage via `fireMissileLanding` (`grep -n 'fireMissileLanding'`); the
-   54/859 at-removal rule is `createLanding` firing the Target stage when there
-   is no missile (no Middle) or the target despawned at launch.
+   54 at-removal rule is `createLanding` firing the Target stage when there
+   is no missile (no Middle) or the target despawned at launch — the
+   unconditional stage-2 fire the disassembly shows. The 859 distance-gated
+   `0x47f614` call is unimplemented (FOLLOW-UP, B1153).
 5. **Death** (sec. 6): `FUN_0047789d` unlink + `0x476ad4` cleanup; the
    Target-stage emitters (record 80: lives 1.5/1.0/1.5/1.25 s, `delay 0.25 s`)
    play the impact burst at the target after the missile is gone. Implemented:
@@ -112,7 +123,7 @@ Middle — record 82 has 0 Middle stages).
 | 93 | 80 | flight start (launch) | −0.484* | −0.486 | −0.002 | PASS |
 | 93 | 80 | flight end (reach) | −0.184* | −0.184 | 0.000 | PASS |
 | 93 | 80 | arrival (Target stage) | +0.116* | +0.116 | 0.000 | PASS |
-| 54 | 82 | (no Middle) | — | no missile | — | PASS (54/859 rule) |
+| 54 | 82 | (no Middle) | — | no missile | — | PASS (spell 54's at-removal rule) |
 | 41 | 20 | (no Middle) | — | no missile | — | PASS (as before) |
 | 458 | 33 | (no Middle) | — | no missile | — | PASS (as before) |
 | 656 | 23 | (no Middle) | — | no missile | — | PASS (as before) |
@@ -149,7 +160,11 @@ rows now draw the Middle — the point of this unit). Run on the ThinkPad:
 only); runs land in `refactor/B1152/runs/`. The comparison against
 B1151 (the baseline tables, `refactor/B1151/README.md`) is regenerated verbatim by
 `python3 refactor/B1152/scripts/sweep_vs_b1151.py` (it reads each run's
-`measure/summary.tsv`: `src_cov` col 10, `land_cov` col 1, `src_cen` col 12):
+`measure/summary.tsv`: `src_cov` col 10, `land_cov` col 1, `src_cen` col 12) —
+the table script for this unit. B1151's gate scripts (`gate_table.py` /
+`gate_analysis.py`) are in `refactor/B1151/scripts/` and expect B1151's
+`b1151_r*` runs; `middle_rows.py` re-derives the Middle-row population the
+regression paragraph cites.
 
 `src_cov` / `land_cov` / `src_cen` per row, B1151 (baseline) vs B1152 (this unit),
 with the delta (B1152 − B1151):
@@ -198,15 +213,40 @@ with the delta (B1152 − B1151):
 | 43 | 720 | 0.283 | 0.283 | +0.000 | 0.389 | 0.389 | +0.000 | 1.16 | 1.16 |
 
 **No regression vs B1151.** The source stage is unchanged: 40/40 rows have
-`src_cov` within 0.028 (max +0.028, row 7/40) and `src_cen` within 0.16 — the
-missile unit only engages the Middle-stage rows (drawn in the missile timing
-gate above), so the non-Middle rows' source rendering is untouched. The landing
-is render-identical for 35/40 rows (`land_cov` d ≤ 0.041); four rows carry a
-small landing-coverage delta — row 26/310 +0.378 (coverage went UP, not a
-regression), rows 0/93 −0.120, 7/40 −0.096, 25/14 +0.095 — within the B1130
-instrument's frame-to-frame variance (the landing onset is measured at the
-harness clock; a sub-frame onset shift moves the sampled frame's coverage).
-None is a source-stage regression, and none is a Middle-stage row.
+`src_cov` within 0.028 (max +0.028, row 7/40) and `src_cen` within 0.16.
+
+The landing deltas are the missile unit itself, not instrument variance.
+**Eight of the 40 sweep rows carry a drawn Middle stage at level 60** — rows
+0/93 (rec 80), 1/200 (rec 73), 2/202 (rec 86), 6/722 (rec 1), 7/40 (rec 88),
+18/378 (rec 84), 25/14 (rec 115), 26/310 (rec 114) — re-derived from the raw
+client files (spellsnew.eff + spells_us.txt field 145; the FX gate is
+`spell_visual_fx.cpp:563-566`, the level rule `drawnAtLevel` in
+`spells_new_eff_reader.h`): `python3 refactor/B1152/scripts/middle_rows.py
+/mnt/projects/EverQuestP1999` prints the 8/40 population with each row's
+record, name and drawn Middle slots. (The missile timing gate above covers
+only the six gem spells — row 0 of the sweep among them, not the eight.)
+Every Middle row spawns a missile in the harness and its Target-stage fire is
+**deferred from OP_Action to missile arrival** — a scheduled +0.116 s onset
+shift (`kMissileLandingDelay` 0.30 − `kMissileFlightEndOffset` 0.184,
+`spell_visual_fx.h:554,557`; the m38/m93 run logs carry `createLanding: …
+deferring to the in-flight missile`). That is exactly the observed signature:
+nonzero landing deltas on precisely the eight Middle rows and +0.000 on all 32
+non-Middle rows — and the deltas are a render change, not instrument variance:
+B1151's own re-run (refactor/B1151/README.md, "The re-measure changed NOTHING:
+all eight scenes' land_cov/end/src_cov/src_ext are identical") shows the
+instrument is deterministic for a given binary + plan. By the table's
+threshold **36 of 40 rows are within |d| ≤ 0.041** (the 32 non-Middle rows at
+exactly 0.000, plus rows 1/2/6/18 at −0.016/−0.013/+0.010/−0.041); the four
+outside it are row 26/310 +0.378 (coverage went UP, not a regression), row
+0/93 −0.120, 7/40 −0.096, 25/14 +0.095 — the four largest of the eight
+arrival-shift deltas. None is a source-stage regression.
+
+93 (row 0, the B1150 lane reference): B1152 landing **1.993** (the row 0
+`land_cov` cell above) vs the B1142 lane-5 reference **3.049** — ratio 0.654;
+B1151 was **2.113** (ratio 0.693 — refactor/B1151/README.md: "93: B1151 2.113
+vs the B1142 reference 3.049 — ratio 0.693"). 0.654 is inside the B1150
+harness/oracle landing-ratio band 0.45..0.72 (refactor/B1150/README.md line
+338): the row's landing moved by the arrival shift, and it stayed in band.
 
 ## What replaced createProjectile
 
@@ -259,6 +299,11 @@ None is a source-stage regression, and none is a Middle-stage row.
   `20.5 / 1.5` spawn-count key (`[record+0x260]` in {0x31, 0x9e, 0xc4}) are in
   the in-memory descriptor, not the raw files — replace the calibrated
   `kMissileSpeed = 30 u/s` with the per-record value.
+- **Spell 859's distance-gated `0x47f614` call — unimplemented.** The
+  removal branch traced in rule 4 (`00477962 cmp eax, 0x35b` → the
+  `fcomp [0x645ec0] = 40` gate → `00477a4e call 0x47f614`) has no fable
+  counterpart: 859 rows go through the ordinary missile/`createLanding`
+  paths, and its removal branch never fires anything.
 - **The castAnim-release offset** (`kMissileFlightEndOffset = 0.184 s`) is
   calibrated to record 80; a distinct-record leg (a spell whose Middle fires at
   a different point in the cast) confirms the offset generalises.

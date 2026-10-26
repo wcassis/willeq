@@ -65,6 +65,11 @@ tests/*_tests.cmake
 !refactor/B1051/evidence/**/*.jpg
 !refactor/B1051/evidence/**/*.log
 
+# B1152 (#472): the two oracle-leg strips (refactor/B1152/TRACE.md sec. 8 cites
+# them as committed evidence; strip_regen.py in the evidence directory
+# regenerates them and re-runs the per-cell census).
+!refactor/B1152/strips/*.png
+
 # H02: golden-frame PNGs are intentionally committed (tests/goldens/manifest.json
 # records what they were blessed under; scripts/ci/visual_gate.sh compares against them)
 !tests/goldens/*.png

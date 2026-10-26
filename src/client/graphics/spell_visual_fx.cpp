@@ -556,9 +556,13 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         // first live tick (this call): it launches at the caster's cast-animation
         // end (castAnimationMs; the cast time when that does not resolve), flies
         // caster -> targetId, and fires the record's Target stage on arrival
-        // (update() -> fireMissileLanding). NO Middle stage = NO missile (spells
-        // 54/859: the Target stage fires at removal in createLanding, as before),
-        // and a caster with no target (targetId == 0) has no destination.
+        // (update() -> fireMissileLanding). NO Middle stage = NO missile: the
+        // Target stage fires on OP_Action in createLanding (spell 54's removal
+        // branch fires stage 2 there UNCONDITIONALLY -- eqgame 0x47795c
+        // je 0x477a55 -> 0x477aa3 call 0x49b260, refactor/B1152/TRACE.md
+        // sec. 5; spell 859's distance-gated 0x47f614 call is unimplemented,
+        // B1153), and a caster with no target (targetId == 0) has no
+        // destination.
         {
             const StageSlots middle = stageSlots(spell_id, kSpellsNewEffMiddle, casterLevel);
             if (targetId != 0 && middle.fromFile && !middle.drawn.empty()) {
@@ -574,7 +578,7 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
                 // rig's ~12 units, so it undershoots) and the per-record "run"
                 // speed are B1153's. launchMissile re-resolves the destination
                 // and, if it has despawned, hands the landing back to
-                // createLanding (the 54/859 at-removal rule).
+                // createLanding (spell 54's unconditional at-removal stage-2 fire).
                 const float flightTime = kMissileFlightDistance / kMissileSpeed;
                 const double hitAt = m_fx_time + duration_ms / 1000.0;  // OP_Action
                 Missile m;
@@ -1174,7 +1178,7 @@ void SpellVisualFX::launchMissile(Missile& m)
     // B1152 sec. 5: re-resolve the destination now. If the target has despawned,
     // the missile cannot fly -- remove it (m.reached + m.landed) WITHOUT marking
     // this spell+caster landed, so createLanding fires the Target stage at the
-    // hit (the 54/859 at-removal rule). Otherwise the flight plays.
+    // hit (spell 54's unconditional at-removal stage-2 fire). Otherwise the flight plays.
     glm::vec3 dest(0.0f);
     if (!m_particle_manager || !m_particle_manager->resolveEntityPosition(m.targetId, dest)) {
         m.launched = true;

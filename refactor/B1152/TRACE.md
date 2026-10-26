@@ -189,14 +189,21 @@ either — it is the **Target stage (stage = 2) firing through the same
   `FUN_0049b260(stage=2)` with the target entity and that position —
   i.e. the impact burst (`spelcc/spelcm/spelcf` for record 80) is spawned
   *where the projectile is*, on the tick the loop decides it has arrived.
-- For spell **54** (and 859) the removal routine has a dedicated branch
-  (`00477959 cmp eax, 0x36 / cmp eax, 0x35b`): it subtracts the descriptor's
-  own offset from its position, resolves the target entity via `0x40cbd6`, and
-  fires `FUN_0049b260(stage=2)` **at removal time** (`00477aa1 push 2; call
-  0x49b260`) — gated by `distance < [0x645ec0] = 40` world units
-  (`004779cb fcomp [0x645ec0]`). That is how Frost Bolt "arrives" with no
-  missile at all: the descriptor's Target stage fires when the (instant)
-  effect is torn down, at the target's position.
+- For spell **54** the removal routine has a dedicated branch:
+  `00477956 mov eax, [esi+0x5c]` (the spell id), `00477959 cmp eax, 0x36`,
+  `0047795c je 0x477a55` — which fires stage 2 **unconditionally at removal
+  time**: the moving-offset subtract (`00477a55-0x477a6f`), the entity lookup
+  (`00477a9b call 0x40cbd6`), `00477aa1 push 2`, `00477aa3 call 0x49b260` —
+  with **no distance check on that path**. That is how Frost Bolt "arrives"
+  with no missile at all: the descriptor's Target stage fires when the
+  (instant) effect is torn down, at the target's position.
+- Spell **859** (`00477962 cmp eax, 0x35b`) does not take that branch: it
+  falls into the distance branch — `004779c6 call 0x439c41`,
+  `004779cb fcomp dword ptr [0x645ec0]` (the constant is 40.0, read from the
+  binary), `004779d6 jp 0x477aab` — distance-gated at < 40 world units, and
+  its continuation is `00477a4e call 0x47f614` (`00477a53 jmp 0x477aab`),
+  not the stage-2 fire. (Not implemented in fable — the B1153 FOLLOW-UP in
+  `refactor/B1152/README.md`.)
 
 Either way the **damage landing is server-authoritative** and arrives by
 `OP_Action` at cast completion (measured §8); the client-side stages are the
@@ -207,7 +214,8 @@ cosmetic on top.
 `FUN_0047789d` unlinks the descriptor from the active-effect list
 (`[0x905cd0]`), and if the effect's target (`+0x48`) is a live creature
 (`[0x92551c]+0x4c == esi` and `[0x850ccc] == 8`) it tears down that creature's
-effect handle. The per-spell arrival branch above (54/859) sits inside this
+effect handle. The per-spell arrival branch above (spell 54's unconditional
+stage-2 fire; 859's distance-gated `0x47f614` call) sits inside this
 same routine, just before the unlink. For the descriptor itself "death" is the
 list unlink plus a `0x476ad4` cleanup when the effect's sub-state `+0x63 == 9`
 and it is the first sub-effect. The Target-stage emitters (record 80: edd 280
@@ -348,8 +356,11 @@ pixel track). What *is* cleanly visible frame-to-frame is:
 4. **Per tick** (`0x460737` → `0x47f614` → `0x47f4af`) the
    distance-to-target is recomputed and the position advanced; **arrival is the
    Target stage (stage = 2) firing through `FUN_0049b260`** in that loop — not
-   a client hit-test, not the damage packet. Spells 54/859 get a dedicated
-   at-removal Target-stage fire gated by distance < 40 (0x645ec0).
+   a client hit-test, not the damage packet. Spell 54 gets a dedicated,
+   **unconditional** at-removal Target-stage fire (`0047795c je 0x477a55` →
+   `0x477aa3 call 0x49b260`); spell 859's removal branch is a distance-gated
+   (< `[0x645ec0]` = 40) `0x47f614` call, not the stage-2 fire (unimplemented
+   in fable — B1153).
 5. **Death** = `FUN_0047789d` unlink + `0x476ad4` cleanup; the Target-stage
    emitters (record 80: lives 1.5/1.0/1.5/1.25 s, all `delay 0.25 s`) play the
    impact burst at the target after the missile is gone.
