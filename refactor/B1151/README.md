@@ -222,8 +222,10 @@ per-frame (`scripts/oracle_anchor.sh`). Compared against
 ### Completion and collection (2026-10-26)
 
 - Launched 02:14:11Z (`progress.log` line 1, `render b1151_tour_93 fps=30
-  --seed 1`); tour-7 done 02:22:53Z (`TOUR7_EXIT=0`); the 40-record sweep
-  done 03:16:34Z (`progress.log` line 81, `measure b1151_r43_720 rc=0`);
+  --seed 1`); tour-7 done 02:30:39Z (`progress.log` line 21, `measure b1151_tour_458
+  rc=0`; `TOUR7_EXIT=0`); the 40-record sweep done 03:57:38Z (`progress.log`
+  line 141, `measure b1151_r26_310 rc=0`, the last row of plans/sweep/list.tsv;
+  lines 142-165 are the eight rerun_depth64.sh scenes);
   `gate_run.log` ends `SWEEP_EXIT=0`. `progress.log` holds 165 lines; 110
   carry `rc=0` and zero carry any other rc (`grep -c 'rc=[^0]' progress.log`
   = 0).
@@ -422,9 +424,13 @@ The B1142 `new_land_cov` for 93 is the 3.049 reference (NOT the old rig's 2.938)
 | 656 | 0.957 | 0.999 | 1.204 | +0.247 | +0.205 | 4.905 | +6.333 | 0.029 (-0.001 of 0.030-0.040) | 0.024 (+0.000 of 0.024-0.032) |
 
 93: B1151 2.113 vs the B1142 reference 3.049 — ratio 0.693, inside the
-B1149 harness/oracle p25..p75 (0.45..0.72, `refactor/B1150/README.md` "The
-under-spread rows"). Every tour row's d vs B1150 (-0.629..+0.205) is inside
-the sweep's d-vs-B1150 p25..p75 (-0.810..-0.065). 253 improved (+0.039 vs
+B1150 harness/oracle landing-ratio p25..p75 (0.45..0.72 over its 40 rows, row 40
+excluded, `refactor/B1150/README.md` line 338; B1149's own ratio p25..p75 is
+0.52..0.81, `review/B1149/sweep_table.tsv` via statistics.quantiles, and 0.693
+is inside both). Every tour row's d vs B1150 (-0.629..+0.205) is inside or
+above the sweep's d-vs-B1150 p25..p75 (-0.810..-0.065): 38/93 (-0.629), 41
+(-0.404) and 458 (-0.072) inside, 54 (+0.205), 253 (+0.039) and 656 (+0.205)
+above p75 (improvements); none below p25. 253 improved (+0.039 vs
 B1150, +0.278 vs B1142): its record's words (em86/em87 upMin=8, swirl
 15..30) now draw what the preset approximated.
 
