@@ -63,7 +63,9 @@ and in `alignments.jsonl`):
 
 * Oracle `B1130/r51` (`review/B1130/record_table.tsv` row 0 → capture `r51`):
   `calibrated_t0 = 1792678587.641`; `OP_BeginCast = 1792678886.463`;
-  `OP_Action = 1792678887.973` (the leg's `all-opcodes.tsv`).
+  `OP_Action = 1792678887.973` (the leg's measure header
+  `review/B1130/measure/r51_fixed_npc.txt`, which `ledger_inventory.py` reads; the
+  `all-opcodes.tsv` row is the same packet at ms precision, `.462`).
   `F_BC = round((1792678886.463 − 1792678587.641) × 25) = 7471`,
   `F_Act = round((1792678887.973 − 1792678587.641) × 25) = 7508`.
 * Willeq gate `fixed_npc_r0` (`timing.tsv`): BeginCast `t = 1.500 s`,
