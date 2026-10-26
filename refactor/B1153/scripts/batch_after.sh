@@ -47,20 +47,25 @@ ssh thinkpad "mkdir -p '$TP_FRAMES/plans'"
 gen_jobs() {
     local out=$1
     : > "$out"
-    # tour b1118: tour7.sh's geometry, SECONDS_=10, no seed (matches tour7.sh)
+    # tour b1118: B1150's tour7.sh geometry EXACTLY (the tour-7 preset):
+    # cast_ms = the record representative's cast_ms (review/B1130/
+    # record_table.tsv: 38 -> record 0 rep 93, 54/656 -> record 23 rep 372,
+    # 41 -> record 20 rep 341, 458 -> record 33 rep 382, 253 self),
+    # target other except 253 self, secs = 1.5 + cast/1000 + 11.5, seed 1.
     local v=$2
     while read spell tgt cast; do
         case "$spell" in \#*) continue ;; esac
         local tag; case "$v" in after) tag=b1153_after_tour_$spell ;; *) tag=b1153_noov_b1118_$spell ;; esac
-        printf '%s\t%s\tb1118\t%s\t%s\t%s\t60\t10.0\t-\t-\n' "$v" "$tag" "$spell" "$tgt" "$cast" >> "$out"
+        local secs; secs=$(python3 -c "print(round(1.5 + $cast/1000.0 + 11.5, 1))")
+        printf '%s\t%s\tb1118\t%s\t%s\t%s\t60\t%s\t-\t-\n' "$v" "$tag" "$spell" "$tgt" "$cast" "$secs" >> "$out"
     done <<'EOF'
-38 other 2500
-41 other 4000
-54 self 2500
-93 other 2500
-253 self 3000
-458 self 3000
-656 self 3000
+93 other 1500
+38 other 1500
+54 other 1500
+656 other 1500
+41 other 1500
+253 self 1750
+458 other 3150
 EOF
     if [ "$v" = noov ]; then
         # the noov half has no 93 (93 has no override; its row comes from the
@@ -112,8 +117,8 @@ PY
     printf 'after\tafter_fixed_self_r51\tb1130-self\t4499\tself\t0\t55\t15.0\t1\tfixed_self\n' >> "$out"
 }
 
-# b1130 override tour: the five override spells NOT in the b1130 sweep
-# (38/41 other; 54/458/656 self), tour geometry (level 60), B1155 seconds
+# b1130 override tour: the six override spells NOT in the b1130 sweep
+# (38/41 other; 54/253/458/656 self), tour geometry (level 60), B1155 seconds
 gen_ovb1130() {
     local out=$1 v=$2 tag
     while read spell tgt cast; do
@@ -125,11 +130,12 @@ gen_ovb1130() {
         printf '%s\t%s\t%s\t%s\t%s\t%s\t60\t%s\t1\t%s\n' \
             "$v" "$tag" "$cam" "$spell" "$tgt" "$cast" "$secs" "$kind" >> "$out"
     done <<'EOF'
-38 other 2500
-41 other 4000
-54 self 2500
-458 self 3000
-656 self 3000
+38 other 1500
+41 other 1500
+54 other 1500
+253 self 1750
+458 other 3150
+656 other 1500
 EOF
 }
 
@@ -196,6 +202,7 @@ one_job() {
         if [ "$mrc" = 0 ]; then
             cp "$lf.measure/summary.tsv" "$mroot/summary.tsv"
             cp -r "$lf.measure/fable_"* "$mroot/" 2>/dev/null
+            cp "$lf.measure/roi.txt" "$mroot/roi.txt" 2>/dev/null
             cp "$lf/timing.tsv" "$lf/scene.tsv" "$R/runs/$tag/" 2>/dev/null
             cp "$lf/run.log" "$R/runs/$tag/run.log" 2>/dev/null
         fi

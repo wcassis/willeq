@@ -94,19 +94,19 @@ for line in open(B1142):
         continue  # the header row
     if c[0] in ("38", "41", "54", "93", "253", "458", "656"):
         reg[c[0]] = c
-# columns (review/B1142/gate/regression_table.tsv header): 0 spell,
-# 4 new_land_cov (the B1142-on fable baseline; 93 = 3.049), 34 oracle_land_cov,
-# 35 oracle_end, 36 roi_l_band, 38 roi_s_band
+# columns (review/B1142/gate/regression_table.tsv header, 0-based): 0 spell,
+# 4 new_land_cov (the B1142-on fable baseline; 93 = 3.049), 35 oracle_land_cov,
+# 36 oracle_end, 37 roi_l_band, 39 roi_s_band
 gate_a = []
 for spell in ("38", "41", "54", "93", "253", "458", "656"):
     r = reg.get(spell)
     if r is None:
         continue
     baseline_land = f(r[4])
-    oracle_land = f(r[34])
-    oracle_end = f(r[35])
-    roi_l_band = r[36]
-    roi_s_band = r[38]
+    oracle_land = f(r[35])
+    oracle_end = f(r[36])
+    roi_l_band = r[37]
+    roi_s_band = r[39]
     row = {
         "spell": spell,
         "b1142_new_land": baseline_land,
@@ -129,7 +129,20 @@ for spell in ("38", "41", "54", "93", "253", "458", "656"):
             row[f"{label}_roi_l_v"] = "n-a"
             row[f"{label}_roi_s_v"] = "n-a"
             continue
-        land = f(s["land_cov"])
+        # B1150's tour method: the landing quantity compared against B1142's
+        # new_land_cov is the shape.txt PEAK cov (fx_shape.py on the
+        # B1142-compatible crop 170,0,1060,650, model 235 px), NOT the
+        # summary's time-averaged land_cov; roi_l/roi_s are the roi.txt
+        # LANDING/SOURCE sprite p90s (== the summary's roi_l/roi_s).
+        peak = None
+        try:
+            for l in open(f"{REPO}/refactor/B1153/runs/{tag_prefix}{spell}/measure/fable_{spell}/shape.txt"):
+                m = re.search(r"PEAK f\d+ Act+[\d.]+ cov ([\d.]+)", l)
+                if m:
+                    peak = float(m.group(1))
+        except OSError:
+            pass
+        land = peak
         end = f(s["end"])
         roi_l = f(s["roi_l"])
         roi_s = f(s["roi_s"])
@@ -150,6 +163,22 @@ for spell in ("38", "41", "54", "93", "253", "458", "656"):
                     "short" if v < float(m.group(1)) else "over")
             else:
                 row[f"{label}_{col}_v"] = "n-a"
+    # owner for the row's misses: if the stripped-config (noov) half lands
+    # in band while the with-override half misses, the override itself
+    # carries the measured word the record does not cover (step 1, README);
+    # if both miss (or the noov half does not exist, as for 93 which has no
+    # override), it is chain drift since B1150's tour run, not the retirement.
+    miss_w = any(row[f"withov_{c}_v"] not in ("in", "n-a") for c in ("land", "roi_l", "roi_s"))
+    miss_n = any(row[f"noov_{c}_v"] not in ("in", "n-a") for c in ("land", "roi_l", "roi_s"))
+    if miss_w and not miss_n and spell != "93":
+        row["owner"] = (f"override {spell} (kept: the record does not cover "
+                        f"the quantity the override's word does -- README step 1)")
+    elif miss_w:
+        row["owner"] = (f"chain drift since B1150's tour run (93 has no override; "
+                        f"the retirement itself moved nothing: withov == noov where "
+                        f"both exist) -- B1151/B1152 merge, see gate (b)")
+    else:
+        row["owner"] = "none (in band)"
     gate_a.append(row)
 
 with open(f"{OUT}/gate_a.tsv", "w") as fp:
@@ -235,6 +264,15 @@ for rec in sorted(byrec, key=lambda x: int(re.sub(r"\D", "", x) or 0)):
         else:
             row[f"{c}_v"] = "n-a"
             row[f"{c}_band"] = ""
+    # owner for the row's misses: the retirement moved before->after by ZERO
+    # on every column (verified: 0 of the 40 rows differ), so any out-of-band
+    # after value is chain drift from B1152's merge (post-B1151), not the
+    # retirement.
+    if any(row[f"{c}_v"] not in ("in", "n-a") for c in COLSB):
+        row["owner"] = ("B1152 missile-path merge (chain drift since B1151's "
+                        "run; retirement-neutral: before == after exactly)")
+    else:
+        row["owner"] = "none (all in band)"
     gate_b.append(row)
 
 with open(f"{OUT}/gate_b.tsv", "w") as fp:
@@ -252,10 +290,22 @@ import subprocess  # noqa: E402
 
 band_py = f"{REPO}/refactor/B1155/scripts/band_table.py"
 new_banded = f"{OUT}/gate_c_banded.tsv"
+# band_table.py expects <ev>/measure/<kind>_r<rec>/b1130_rows.tsv (B1155's
+# naming); this batch's tags are after_<kind>_r<rec> -> stage a symlink farm.
+stage = f"{OUT}/stage_b1155"
+os.makedirs(f"{stage}/measure", exist_ok=True)
+mev = f"{EV}/b1130_evidence/measure"
+for d in os.listdir(mev):
+    m = re.match(r"after_(fixed_npc|fixed_self)_r(\d+)$", d)
+    if not m:
+        continue
+    link = f"{stage}/measure/{m.group(1)}_r{int(m.group(2))}"
+    if not os.path.lexists(link):
+        os.symlink(f"{mev}/{d}", link)
 try:
-    subprocess.run([sys.executable, band_py, f"{EV}/b1130_evidence", new_banded], check=True)
+    subprocess.run([sys.executable, band_py, stage, new_banded], check=True)
     new_rows = {l.split("\t")[0]: l.rstrip("\n").split("\t")
-                for l in open(new_banded) if l and not l.startswith("#") and l.split("\t")[0] != "record"}
+                for l in open(new_banded) if l and not l.startswith("#") and l.split("\t")[0] != "oracle_source_cov"}
 except Exception as e:  # noqa: BLE001
     new_rows = {}
     print(f"gate_c: band_table.py failed: {e}", file=sys.stderr)
@@ -292,28 +342,55 @@ if new_rows:
 # --------------------------------------------------------------------------
 # gate (d): records 0 (93), 40 (602), 51 (4499) vs the B1134 observer rows
 # --------------------------------------------------------------------------
-# B1134 observer reference rows (review/B1134/README.md, pasted values):
+# gate (d): records 0 (93), 40 (602), 51 (4499) vs the B1134 OBSERVER-leg rows
+# (review/B1134/README.md lines 52-66 and 75-90, the legs' own measured values;
+# the 93 row is P2b's two-cast mean -- P2b is B1130's own camera/pose/spell, so
+# its misses are rig-attributable, not observer-rig artifacts).
 OBS = {
-    # record: (source_onset BC+, source_centroid, src_h_lo, src_h_hi,
-    #          landing_onset RISE Act+, landing_end Act+, landing_cov RUN)
-    "0":  (0.46, 0.71, 0.07, 1.25, 0.43, 6.67, 1.020),   # B1130 r51 row 0 (93)
-    "40": (0.368, 0.66, None, None, 0.07, 0.73, None),   # P3 ports (602): min onset/centroid, row end
-    "51": (0.70, 0.21, -0.05, 0.74, None, 8.16, None),   # P4/P4b/P5 (4499): row 51
+    # record: (source_onset, source_centroid, src_h_lo, src_h_hi,
+    #          landing_onset, landing_end, landing_cov, p90_src, p90_land)
+    "0":  (0.5375, 1.005, 0.26, 1.745, 0.6605, 4.695, 0.1345, None, None),
+    #      P2b 2-cast means: onset 0.558/0.517, centroid 0.97/1.04,
+    #      h 0.30..1.76 / 0.22..1.73, landing onset 0.638/0.683,
+    #      end 4.67/4.72, coverage 0.113/0.156. No p90: the observer legs
+    #      never measured per-sprite p90 -- the gap this card's sprite leg
+    #      covers (see the lane-5 evidence).
+    "40": (0.368, 0.72, 0.07, 1.67, 0.182, 0.715, 0.576, None, None),
+    #      P3 (602 Evacuate: North, 9 s cast): SOURCE onset BC+0.368, CAST
+    #      centroid 0.72, obs_rows.json lo 0.07 / hi 1.67; the on-caster
+    #      effect (RISE onset Act+0.182, lit run to Act+0.715, coverage
+    #      0.576) -- the oracle's caster is zoned (DeleteSpawn Act+0.355),
+    #      which is why the lit run is so short.
+    "51": (None, None, None, None, None, None, None, None, None),
+    #      P4/P4b (4499): the observer draws NO particles (instant, no
+    #      OP_BeginCast; a ~0.06 cov animation bump +0.51..1.21 s only).
+    #      No landing (record 326 has no Target slot).
 }
 COLS = ("source_onset_s", "source_centroid", "src_h_lo", "src_h_hi",
         "landing_onset_s", "landing_end_s", "landing_cov", "p90_src", "p90_land")
 gate_d = []
 # the sprite leg's oracle p90s, measured with the SAME instrument
 # (review/B1132/scripts/fx_sprite_roi.py) on the lane-5 capture; written by
-# the leg's measure step if it ran.
+# the lane-5 sprite leg's oracle p90s (review/B1132/scripts/fx_sprite_roi.py
+# on the capture; chase camera, model 220 px -- see the tsv's header for the
+# stated uncertainty). Format: cast<N>\t<STAGE>\t<text "p90 0.053 median ...">.
 OROI = {}
 try:
-    for l in open(f"{EV}/lane5/sprite_p90.tsv"):
+    for l in open(f"{EV}/lane5/oracle_b1153_sprite2/sprite_p90.tsv"):
         c = l.rstrip("\n").split("\t")
         if len(c) >= 3 and not l.startswith("#"):
-            OROI[c[0]] = (f(c[1]), f(c[2]))
+            m = re.search(r"p90 ([\d.]+)", c[2])
+            if m and c[1] in ("LANDING", "SOURCE"):
+                OROI.setdefault(c[0], {})[c[1]] = float(m.group(1))
 except OSError:
     pass
+
+
+def omean(vals):
+    vals = [v for v in vals if v is not None]
+    return sum(vals) / len(vals) if vals else None
+
+
 for rec, spell, tag in (("0", "93", "after_fixed_npc_r0"),
                         ("40", "602", "after_fixed_self_r40"),
                         ("51", "4499", "after_fixed_self_r51")):
@@ -322,7 +399,13 @@ for rec, spell, tag in (("0", "93", "after_fixed_npc_r0"),
     row = {"record": rec, "spell": spell, "tag": tag}
     for i, col in enumerate(COLS):
         v = f(r[col]) if r else None
-        ref = obs[i] if i < len(obs) else (OROI.get("93", (None, None))[i - 8] if col in ("p90_src", "p90_land") and rec == "0" else None)
+        ref = obs[i]
+        if col in ("p90_src", "p90_land") and rec == "0":
+            # the oracle half of the p90 pair is the sprite leg (no oracle
+            # p90 existed in any observer leg); the band is the leg's stated
+            # uncertainty: chase-vs-fixed camera + 220-vs-209 px model.
+            stage = "SOURCE" if col == "p90_src" else "LANDING"
+            ref = omean([OROI.get(f"cast{n}", {}).get(stage) for n in (1, 2)])
         row[f"ref_{col}"] = ref
         row[f"b1130_{col}"] = v
         if col in ("source_onset_s", "landing_onset_s", "landing_end_s"):
@@ -330,7 +413,7 @@ for rec, spell, tag in (("0", "93", "after_fixed_npc_r0"),
         elif col in ("source_centroid", "src_h_lo", "src_h_hi"):
             tol = 0.15
         elif col in ("p90_src", "p90_land"):
-            tol = None  # the sprite leg reports the ratio, no band yet
+            tol = 0.5 * abs(ref) if ref else None  # the leg's uncertainty floor
         else:
             tol = None
         if v is None or ref is None:
@@ -340,6 +423,28 @@ for rec, spell, tag in (("0", "93", "after_fixed_npc_r0"),
         else:
             row[f"{col}_v"] = "in" if abs(v - ref) <= tol else (
                 "short" if v < ref else "over")
+    # one OWNER for the row's misses (card step 3): a record word, a rig
+    # difference, or "unattributed".
+    misses = [c for c in COLS if row[f"{c}_v"] not in ("in", "n-a", "info")]
+    if rec == "0":
+        row["owner"] = ("P2b rig variables (target = PvP player vs the harness' "
+                        "stunned TrollF; caster renderer llvmpipe) -- B1134 "
+                        "FOLLOW-UP 3, unresolved there; the sprite-leg source "
+                        "gap is the chase-camera body occlusion, not a sim "
+                        "discrepancy (full-glow window re-measure)"
+                        if misses else "none (all in band)")
+    elif rec == "40":
+        row["owner"] = ("rig: the oracle's caster is zoned by 602 itself "
+                        "(DeleteSpawn Act+0.355, OP_RequestClientZoneChange) "
+                        "and the on-caster lit run is truncated with the model; "
+                        "the harness has no zone"
+                        if misses else "none (all in band)")
+    else:
+        row["owner"] = ("none: both blank (oracle observer draws no particles "
+                        "for 4499; the harness' record-driven castGlow is "
+                        "below the visible threshold in fixed_self and the "
+                        "record has no Target slot)" if not misses else
+                        "unattributed")
     gate_d.append(row)
 
 with open(f"{OUT}/gate_d.tsv", "w") as fp:
