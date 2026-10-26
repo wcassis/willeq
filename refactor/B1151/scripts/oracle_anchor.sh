@@ -60,8 +60,8 @@ print(e['feet'], e['mpx'])
 PY
 )
   fi
-  python3 -I $A $d 640,598 209 SOURCE > $O/${base}_SOURCE.tsv 2>&1
-  python3 -I $A $d $LF $LM LANDING > $O/${base}_LANDING.tsv 2>&1
+  python3 $A $d 640,598 209 SOURCE > $O/${base}_SOURCE.tsv 2>&1
+  python3 $A $d $LF $LM LANDING > $O/${base}_LANDING.tsv 2>&1
   echo -e "$rec\t$tt\t$kind\t$base" >> $O/rig.tsv
   echo "$(date -u +%FT%TZ) $rec $kind ok" >> $O/log
 done < <(awk -F'\t' 'NR>1 && $1!="51"{print $1"\t"$11"\t"$12"\t"$3}' $B/record_table.tsv)

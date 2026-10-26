@@ -35,7 +35,7 @@ while IFS=$'\t' read rec sid tgt cms; do
   # review/B1139/scripts/harness_measure.py).
   O=$R/runs/$n
   for st in SOURCE LANDING; do
-    python3 -I /mnt/projects/fable/review/B1130/scripts/anchor.py \
+    python3 /mnt/projects/fable/review/B1130/scripts/anchor.py \
       "$F/$n.measure/fable_${sid}" 640,605 235 $st > "$O/anchor_${st}.tsv" 2>&1
   done
   rm -rf "$F/$n" "$F/$n.measure"
