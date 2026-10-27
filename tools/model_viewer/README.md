@@ -146,15 +146,16 @@ channel exceeds 175 (where an additive sprite's rise can stay under 80).
 ## Determinism (B1169, #488)
 
 Two runs of one plan with the same binary, options and render path write
-byte-identical frames (`refactor/B1169/README.md`: 3 consecutive tour-7 runs, 0
-differing frames on every spell, GBM and surfaceless). What holds it:
+byte-identical frames on the measured paths (ThinkPad NVIDIA: GBM 16-bit depth
+and surfaceless 24-bit depth; `refactor/B1169/README.md`: 3 consecutive tour-7
+runs, 0 differing frames on every spell). Not measured, not claimed: llvmpipe. What holds it:
 
 | source | rule | where |
 |---|---|---|
 | particle RNG | `--fx-seed N` (alias `--seed`), default **1**, fixed in every `--spell-test` run; `0` draws from `std::random_device` (the client's path) and is NOT reproducible -- the run log's `determinism (B1169)` line says so | `harnessOpts.seed` -> `SimulationInput::particleInput.rngSeed` (`stepSpellParticles`) |
 | time | the scripted clock: step `1/--sim-hz` s, the device timer stopped and set per step; no wall clock reaches the scene, the FX or the worker | `runScriptedHarness` |
 | worker | `SimulationWorker::computeOnce` on the main thread, no worker thread | `stepSpellParticles` |
-| solid draw order | Irrlicht sorts solid nodes by their material-0 texture POINTER, which ASLR moves; the caster, her held item and a distance-0 target have depth-tied pixels, so the order decided them (the pre-B1169 differences, 20-125 px a frame on 93). `HarnessSolidOrderNode` draws ground, target, held items, caster in that fixed order; the run log prints `solid draw order (fixed, B1169)` | `fixHarnessSolidOrder` |
+| solid draw order | Irrlicht sorts solid nodes by their material-0 texture POINTER, which ASLR moves; the caster, her held item and a distance-0 target have depth-tied pixels, so the order decided them (the pre-B1169 differences, 20-125 px a frame on 93). `HarnessSolidOrderNode` draws ground, target, held items, caster in that fixed order -- a harness convention (the majority order, 13 of 20 pre-fix runs), NOT a client rule: the production client uses the same Irrlicht texture-pointer sort (`CSceneManager.cpp:1485`, patched Irrlicht) and no oracle draw order is established; harness-only, compiled into the `model_viewer` target only (`CMakeLists.txt:1313`); the run log prints `solid draw order (fixed, B1169)` | `fixHarnessSolidOrder` |
 
 How a card proves "identical": render the plan twice (before/after, or the
 same binary twice) with the same options, then

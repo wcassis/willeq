@@ -908,10 +908,14 @@ void logMeshHashes(int frame) {
 // depth test keeps the LATER draw there: the pre-B1169 frame differences
 // (refactor/B1169/README.md). This node takes the ground plane and the
 // models out of the sorted list and draws them, inside the same solid pass,
-// in ONE fixed order: ground, target, the caster's held items, caster -- the
-// order 13 of 20 pre-B1169 runs of 93 drew in (ground's null key always
-// sorted first; the other 7 drew orb < target < caster), so those runs'
-// frames are this order's frames bit for bit. A node or held item with a
+// in ONE fixed order: ground, target, the caster's held items, caster. There is
+// NO client rule to follow: the production client goes through the same
+// Irrlicht texture-pointer sort (CSceneManager.cpp:1485, patched Irrlicht)
+// and no oracle draw order has been established. This is a HARNESS
+// CONVENTION, the majority order (13 of 20 pre-B1169 runs of 93; the other 7
+// split the other way by frame md5), so those runs' frames are this order's
+// frames bit for bit. Harness-only: compiled only into the model_viewer
+// target (CMakeLists.txt:1313); the production client is untouched. A node or held item with a
 // transparent material registers for the transparent pass exactly as its own
 // OnRegisterSceneNode would (AUTOMATIC: the whole model; a mesh node: its
 // transparent buffers), so only the solid order changes.

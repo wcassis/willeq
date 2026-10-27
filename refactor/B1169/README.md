@@ -29,13 +29,20 @@ Measured on spell 93, 20 ASLR-on runs of the pre-fix renderer
 step-1 binary's frames are byte-identical to the fable binary's: `base_b` ==
 `instr_1a`, 0 of 435 differ):
 
-| logged order (by texture address) | runs | frames 0-89 md5 |
+| split by frames 0-89 md5 | runs | frames 0-89 md5 |
 |---|---|---|
-| target < held item < caster | 13 (`base_b`, `instr_*` x5, `hash_b/e`, `nodes_a-e`) | `a614cb1f` |
-| held item < target < caster | 7 (`base_a`, `instr_2a`, `hash_a/c/d/f`, `nodes_f`) | `fe8094ba` |
+| 13 runs (`base_b`, `instr_*` x5, `hash_b/e`, `nodes_a-e`) | 13 | `a614cb1f` |
+| 7 runs (`base_a`, `instr_2a`, `hash_a/c/d/f`, `nodes_f`) | 7 | `fe8094ba` |
 | ASLR off (`setarch x86_64 -R`), 2 runs concurrently | 2 | `a614cb1f` |
 
-In the 6 `nodes_*` runs, which log every node's address, the frame hash follows
+The 13 / 7 split is by the frame md5, not by a logged texture-address order:
+only the 6 `nodes_*` runs logged the held item's address (5 of them
+`target < held item < caster`, `a614cb1f`; `nodes_f` `held item < target <
+caster`, `fe8094ba`); the 12 `instr_*` / `hash_*` runs log `ground < target <
+caster` for both hash groups; `base_*` logged nothing
+(`order_runs_93.tsv`). Summary: split 13 a614cb1f / 7 fe8094ba by frame md5;
+held-item order logged in 6 runs, matching the hash 6 of 6; all 6 fix1 runs
+(forced order) a614cb1f. In the 6 `nodes_*` runs the frame hash follows
 the order 6 of 6 times. The two orders differ on 206 of 435 frames (GBM): first
 frame 1 (1 px at row 450 col 674, a delta of 36), largest frame 60 (49 px,
 rows 406-456 cols 651-676, a delta of 125). Across all 206 frames the differing
@@ -84,8 +91,13 @@ built by `fixHarnessSolidOrder` at `:984`, called once before the frame loop at
 `:1098`) takes the ground, target and caster out of the sorted list
 (reparented under it, identity transform). It registers ONE solid entry and
 draws them inside the same solid pass in a fixed order: ground, target, the
-caster's held items, caster. That is the 13-of-20 order, so those runs' frames
-are this order's frames bit for bit. A node with a transparent material
+caster's held items, caster. There is NO client rule to follow: the production
+client goes through the same Irrlicht texture-pointer sort
+(`CSceneManager.cpp:1485` in the patched Irrlicht) and no oracle draw order has
+been established. This order is a HARNESS CONVENTION, chosen as the majority
+order (13 of 20 pre-fix runs), so those runs' frames are this order's frames
+bit for bit. The fix is harness-only: compiled only into the `model_viewer`
+target (`CMakeLists.txt:1313`); the production client is untouched. A node with a transparent material
 registers for the transparent pass as its own `OnRegisterSceneNode` would, so
 only the solid order is pinned. Each run logs
 `solid draw order (fixed, B1169) at frame 0: ground < target < caster-held-item < caster`
@@ -107,6 +119,12 @@ Frame-diff counts, run 1 against runs 2 and 3 (`frame_identity.txt`):
 | 253 | 444 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 |
 | 458 | 483 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 |
 
+The determinism claim is scoped to the measured paths (ThinkPad NVIDIA: GBM
+16-bit depth and surfaceless 24-bit depth). The dev-u24 llvmpipe surfaceless
+16-bit runs B1165/B1161 saw (93 src_cov 0.384/0.386; 458 differing 191/486;
+diffs from frame 0 in box y 387..604 x 604..714) were NOT re-measured here and
+have a different signature, so the claim does not cover llvmpipe.
+
 The GBM fixed tours ran one after another (`after_gbm.sh`), and the
 surfaceless ones ran 3 at a time (`surf.sh`). Every fixed tour equals one of
 the pre-fix runs bit for bit (`after_vs_each_before.txt`).
@@ -124,7 +142,7 @@ tour rows (`refactor/B1157/b1118_table.tsv`, the `_n` columns), surfaceless:
 |---|---|---|---|
 | 93, 38, 41, 458: land_cov / end / src_cov / src_on25 / src_cen | as B1157 | same | -- |
 | 54, 656 src_cov | 0.415 | 0.416 | pre-existing in all 3 pre-fix runs (tree since B1157), not B1169 |
-| 253 land_cov / src_cov / src_cen | 5.306 / 3.804 / 0.99 | 4.148 / 3.323 / 0.95 | B1161 (#480) retired the 253 override (`refactor/B1161/README.md:287`: 5.326 -> 4.169); the rest pre-exists in all 3 pre-fix runs |
+| 253 land_cov / src_cov / src_cen | 5.306 / 3.804 / 0.99 | 4.148 / 3.323 / 0.95 | land_cov and src_cov are B1161's (#480 retired the 253 override; `refactor/B1161/README.md:287`: land_cov 5.326 -> 4.169, src_cov 3.818 -> 3.331 vs this table's 3.804 -> 3.323); only src_cen 0.99 -> 0.95 stays unowned (pre-exists in all 3 pre-fix runs, not B1169) |
 
 ## 3. The flaky test (acceptance C)
 
