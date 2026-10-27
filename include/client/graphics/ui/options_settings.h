@@ -168,7 +168,9 @@ struct SettingInfo {
      * B995: the oracle keeps some settings as FLOATS (`1.000000`). A Step
      * setting with iniDivisor > 0 persists value / iniDivisor; a Choice
      * setting with iniFloats persists iniFloats[the choice's list index].
-     * Both read back to the nearest value. Neither set = an integer key.
+     * B1165: the slot holds the step / choice the window SHOWS (nearest step;
+     * the combobox rule of choiceForIniFloat); the clamped ini float itself is
+     * the APPLIED value (OptionIniFloats below). Neither set = an integer key.
      */
     float iniDivisor = 0.0f;
     const float* iniFloats = nullptr;
