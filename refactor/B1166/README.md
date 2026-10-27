@@ -1,6 +1,7 @@
 # B1166 (#485): the b1130 target, solved standing at the oracle's measured feet
 
-Branch `task/kb-b1166-target-fit`, cut at fable 4895adc2. The specification is
+Branch `task/kb-b1166-target-fit`, cut at fable 4895adc2; gitlab/fable 9136b7a3 merged in by the
+fix leg (B1162's measure scripts, sec. 5; a merge, not a rebase: the branch was already pushed). The specification is
 `glab issue view 485` (asks 1-4, acceptance A-F), with two orchestrator corrections
 (B1164 reviews, MR !315 notes 7744 and 7754): the anchor is NOT the issue's 652 / 325,
 it is the oracle target as measured here (sec. 1). Evidence: `/mnt/projects/fable/review/B1166/worker/`.
@@ -21,17 +22,23 @@ dev-u24.
   animated pose before it measures (line 267, the same rule the caster fit applies at line
   114), stands the target's pose box on the ground plane the frames draw (lines 268-288), and
   fits the two feet pixels to the ONE anchor `kB1130TargetAnchor`
-  (`tools/model_viewer/fx_target_anchor.h:37`: feet column 940, feet row 615, 288 px), which the
-  preset reads (`tools/model_viewer/model_viewer_fx_harness.cpp:899-901`) and the measure script reads too
-  (`refactor/B1155/scripts/harness_measure_b1130.py:44-48`).
-- **The self-check** (`tools/model_viewer/model_viewer_fx_harness.cpp:797-819`, called on the written frame 0 at
-  line 1154, exit 5 on FAIL): feet row +-1 px and column centroid +-3 px of the anchor; height
-  +-3 px of the standing height the solve rendered, and within 25 % of the oracle's 288 px
-  (tolerances `tools/model_viewer/fx_target_anchor.h:51-54`). After the fix:
-  "rows 378..615 (238 px, feet row 615), column 940.2 ... ratio 0.826 (tol 0.25): PASS"
+  (`tools/model_viewer/fx_target_anchor.h:41`: feet column 940, feet row 615, 288 px), which the
+  preset reads (`tools/model_viewer/model_viewer_fx_harness.cpp:900-902`) and every measure script
+  that needs the b1130 target reads too: `refactor/B1155/scripts/harness_measure_b1130.py:44-48`,
+  `refactor/B1162/scripts/harness_measure_b1130_action.py:49-53`,
+  `refactor/B1162/scripts/harness_measure_b1162_anchor.py:40-44` and
+  `refactor/B1151/scripts/oracle_anchor.sh:38-45`, each with FX_TFEET=940,652 FX_TMPX=325 as the
+  pre-B1166 override. No other copy of 940,652 / 325 or 940,615 / 288 is left in code (sec. 5).
+- **The self-check** (`tools/model_viewer/model_viewer_fx_harness.cpp:797-821`, called on the written frame 0 at
+  line 1155, exit 5 on FAIL): feet row +-1 px and column centroid +-3 px of the anchor; height
+  +-3 px of the standing height the solve rendered; and the standing height itself ratcheted at
+  its measured 238 +-3 px (ratio 0.826 of 288; tolerances `tools/model_viewer/fx_target_anchor.h:66-70`).
+  The first version bounded the height at +-25 % of 288, which a dark-elf female at the anchor
+  passed (sec. 2). Measured value: "rows 378..615 (238 px, feet row 615), column 940.2"
   (`/mnt/projects/fable/review/B1166/worker/probe/after.log:128`). Unit tests offline
-  (`tests/test_fx_harness.cpp:545-605`) plus the harness ctest
-  (`tests/test_fx_harness.cpp:397`) that also requires the run log's PASS line.
+  (`tests/test_fx_harness.cpp:595-708`) plus the harness ctests
+  (`tests/test_fx_harness.cpp:443`, which also requires the run log's PASS line, and `:462`, which
+  requires a dark-elf female target to FAIL it and exit non-zero).
 - **The height is not solvable** (sec. 2): two feet pixels fix (x, z); the FABLE human male at
   the oracle's spot renders 238 px, 0.826x the oracle's 288. That is a model-height gap,
   not a fit error, and no preset value can close it without inventing one (the size is the
@@ -78,18 +85,36 @@ the target-free still is 27 at row 598 and 18-22 at rows 603-612
 (`/mnt/projects/fable/review/B1166/worker/oracle_target/r51_boot_profile_cols936_954.txt:11-28`),
 so any threshold above ~20 ends the figure at 593-601 (B1164's first-pass 265 and its
 "at least 275" are this cut). In the target still itself the boot's colour runs to row 612
-(RGB 75,70,16), darkens through 613-615, and the ring starts at 616 (RGB 57,108,33) (same
-file, lines 25-29). 20 is the lowest threshold whose component stays on the figure (15 and
-below leak into the ground, columns 721..1034). Head top 328 / 329 moves by one row with the
-threshold; the feet do not move between 20 and 10. The video frame (lossy) agrees within
-2 rows. **Anchor: feet row 615, column 940 (the centroid reads 938.9-940.3 at thresholds
+(RGB 75,70,16), darkens through 613-615, and at column 944 the pure ring colour starts at 616
+(RGB 57,108,33) (same file, lines 25-29). 20 is the lowest threshold whose component does not
+leak into the open ground (15 and below run to columns 721..1034). It is not clean either: at 20,
+rows 610-613 also hold ring-edge ground right of the boot -- 13-17 px per row at columns
+952-972 (`/mnt/projects/fable/review/B1166/worker/oracle_target/r51_thr20_feet_rows_cols.txt:17-20`; the boot
+itself is columns 938-951) -- which is why the feet-rows centroid reads 954.3
+(`refactor/B1166/tables/r51_threshold_sweep.txt:19`). It does not change the feet row: that
+ground ends at row 614 (columns 962-964), and the last row with >= 3 px is 615, whose 3 px are
+the boot's (columns 943-945, `/mnt/projects/fable/review/B1166/worker/oracle_target/r51_thr20_feet_rows_cols.txt:22`); nor the head row or the 940
+column (the whole-figure centroid, 938.9-940.3 across thresholds). Head top 328 / 329 moves by
+one row with the threshold; the feet do not move between 20 and 10. The video frame (lossy)
+agrees within 2 rows. **Anchor: feet row 615, column 940 (the centroid reads 938.9-940.3 at thresholds
 20-40; B1130's 940 kept), 288 px.** It is the same in two other fixed_npc captures:
 e13 and e3 both read rows 328..615, 288 px, centroid 938.2 / 940.3
 (`/mnt/projects/fable/review/B1166/worker/oracle_target/other_fixed_npc_captures_thr20.txt:3`, `:7`).
 
 B1130's 325 px / feet (940,652) (`review/B1130/geom/r51.json:8`, `:9`) started at the
-name label's top row; B1164's first pass (265 / 593) used threshold 40; B1164's second pass
-(286, rows 329..614) agrees with this one within a row at each end.
+name label's top row; B1164's first pass (265 / 593) used threshold 40. B1164's second pass
+(286, rows 329..614) differs by one row at each end, for two stated reasons. Head: row 328
+holds 6 px (columns 946-951) at thresholds <= 25 and 1 px at 40
+(`/mnt/projects/fable/review/B1166/worker/oracle_target/r51_thr20_feet_rows_cols.txt:3`; `refactor/B1166/tables/r51_threshold_sweep.txt:5`, `:15`, `:20`), so
+with minpx 3 it is the top here and B1164's threshold-40 head is 329. Feet: row 615 holds
+exactly 3 px = minpx (the boot, columns 943-945); B1164 counts the same "3 px at 615" with its
+boot-colour rule and ends at 614. B1164's "the selection ring starts at 604" is a different
+measurement from this README's 616: B1164 means the row from which its threshold-20 difference
+mask, with no colour removal, is taken over by the ring's green glow across the ring's width;
+here the ring is removed by colour, the >30-green rule finds ring pixels in columns 900..1000
+from row 607 (5 px) on (`/mnt/projects/fable/review/B1166/worker/oracle_target/r51_thr20_feet_rows_cols.txt:14-26`, last field), and 616 is where
+the pure ring colour reaches the boot column 944. Below the boot's last row the two agree: no
+figure pixel from 616.
 
 The target model: r51's capture spawns `TrollF000` race 1, gender 0, size 6.000
 (`/mnt/projects/fable/review/B1166/worker/oracle_target/r51_spawns.txt:187`, decoded by
@@ -110,6 +135,35 @@ nearly the same depth (feet rows 615 vs 598). B1164 saw the same gap on the b111
 the oracle's human 284 px (a lower bound, clipped at the chat window) against willeq's 241
 (`review/B1164/worker/dev3/hostpx.txt:2`, `:13`). Owner: the race-model heights
 (FOLLOW-UP 2), not this harness.
+
+What the self-check can and cannot catch (MR !320 note 7834, finding 3): the +-3 px check
+compares the frame with the solve's own height, so a different model moves both and only the
+height bound speaks for the oracle. The first version's bound (+-25 % of 288 = 216..360 px)
+passed almost any humanoid. Every body below was placed with `--target race:gender:size`,
+solved to the anchor and self-checked by the branch's binary before the fix leg (built for
+8fe62b07's code) and by the fix leg's
+(`/mnt/projects/fable/review/B1166/worker/wrong_model/wrong_model_heights.tsv:2-12`, logs beside it):
+
+| target | rendered | +-25 % of 288 (before) | 238 +-3 (now) |
+|---|---|---|---|
+| human male 1:0:6 (the preset) | 238 px | PASS | PASS |
+| dark-elf female 6:1:6 (the caster's model) | 219 | PASS | FAIL, exit 5 |
+| human female 1:1:6 | 217 | PASS | FAIL, exit 5 |
+| barbarian male 2:0:6 | 285 | PASS | FAIL, exit 5 |
+| troll male 9:0:6 | 324 | PASS | FAIL, exit 5 |
+| human male, size 7 / size 5 | 277 / 199 | PASS / FAIL | FAIL / FAIL |
+| dwarf male 8:0:6 | 169 | FAIL | FAIL |
+| dark-elf male 6:0:6, erudite male 3:0:6, high-elf male 5:0:6 | 238 / 236 / 239 | PASS | pass (same height) |
+
+The ratchet is the measured 238 +-3 px (`tools/model_viewer/fx_target_anchor.h:51-70`); the
+fix-leg runs: dark-elf female "rows 397..615 (219 px ...) ... d -19 (tol 3 ...): FAIL", exit 5
+(`/mnt/projects/fable/review/B1166/worker/wrong_model/new_6_1_6.log:116-117`); the preset "d +0 ... PASS"
+(`/mnt/projects/fable/review/B1166/worker/wrong_model/new_default.log:116`). A body of the same height
+cannot be told apart by height, and the check does not claim to. The harness ctest
+`B1130SelfCheckRejectsAWrongTargetModel` re-runs the dark-elf female every time (it rendered 218 px
+in one ctest run and 219 in the others: a 1-px run-to-run jitter, so the test asserts outside the
+ratchet and inside the old bound, not an exact height), and the offline test
+`TheStandingHeightRatchetRejectsOtherBodies` pins the table's heights.
 
 The ground stand: the ground plane sits at the caster's pose-box bottom (-2.893); the
 human's pose box at y 0 starts at -3.119, so without the stand the plane hid the lowest
@@ -147,7 +201,8 @@ sha256 comparison of every frame). Both sweeps exited 0 (`b1130_*/sweep.log`).
   identical left of column 800 through frame 91 and differ from frame 92 (BC+1.57)
   (`/mnt/projects/fable/review/B1166/worker/b1130_r7_first_left_diff.txt:1`); a re-render
   of the before binary is byte-identical to the first (`/mnt/projects/fable/review/B1166/worker/b1130_r7_rerun_identity.txt:1`),
-  so it is deterministic and caused by the target's placement. Not traced (FOLLOW-UP 3).
+  so it is deterministic and caused by the target's placement. Not traced here; owner
+  **B1173 (#492)**, which asks for the mechanism on both sides (FOLLOW-UP 3).
 - **Why the landing rows are still out of band (owner)**: the sweep plans pass
   `caster_level` = the record table's class level (r0: 1; `/mnt/projects/fable/review/B1166/worker/b1130_after/plans/r0.plan:2`),
   while all 46 B1130 captures were taken after `#level 60` (r51's step 09:
@@ -180,6 +235,41 @@ and length. Frame identity: `refactor/B1166/tables/named_frame_identity.txt`.
 **B1162 4499 (`--camera b1130-self`)**: 480/480 frames byte-identical before/after and
 identical to B1162's evidence frames (`refactor/B1166/tables/named_frame_identity.txt:1`, `:4`). Verdict unchanged
 (no landing, as B1162 measured).
+
+**One anchor in B1162's scripts (MR !320 note 7834, finding 2).** B1162 merged to fable after
+this branch was cut, with two more copies of B1130's 940,652 / 325: the `fixed_npc` GEOM of
+`refactor/B1162/scripts/harness_measure_b1130_action.py` and the PRESET of
+`refactor/B1162/scripts/harness_measure_b1162_anchor.py`. Both now read `kB1130TargetAnchor` as
+B1155's script does (lines 49-53 and 40-44), and so does `refactor/B1151/scripts/oracle_anchor.sh`
+(lines 38-45; its committed B1151 rows were measured at 940,652 / 325, which the override
+reproduces). A grep of the tree for 940,652 / 940,615 and the 325 / 288 pairs finds no other
+definition in code: what is left is history in comments and docstrings, and
+`refactor/B1151/scripts/motion_table.py:15`, `:28`, `:151`, which label the units of B1151's committed
+oracle rows. B1162's 229 / 4499 tables re-run on B1162's own frames
+(`review/B1162/worker/harness/{fear229_b1130,disc4499_b1130self}/frames`, output in
+`/mnt/projects/fable/review/B1166/worker/b1162_rerun/`):
+
+```
+cd <wt>; H=/mnt/projects/fable/review/B1162/worker/harness; O=/mnt/projects/fable/review/B1166/worker/b1162_rerun
+FX_TFEET=940,652 FX_TMPX=325 python3 -P refactor/B1162/scripts/harness_measure_b1162_anchor.py $H/fear229_b1130/frames $O/fear229_anchor_old fixed_npc
+python3 -P refactor/B1162/scripts/harness_measure_b1162_anchor.py $H/fear229_b1130/frames $O/fear229_anchor_shared fixed_npc
+python3 -P refactor/B1162/scripts/harness_measure_b1162_anchor.py $H/disc4499_b1130self/frames $O/disc4499_anchor fixed_self
+FX_TFEET=940,652 FX_TMPX=325 FX_KEEP=1 python3 -P refactor/B1162/scripts/harness_measure_b1130_action.py $H/fear229_b1130/frames $O/fear229_action_old fixed_npc
+FX_KEEP=1 python3 -P refactor/B1162/scripts/harness_measure_b1130_action.py $H/fear229_b1130/frames $O/fear229_action_shared fixed_npc
+FX_KEEP=1 python3 -P refactor/B1162/scripts/harness_measure_b1130_action.py $H/disc4499_b1130self/frames $O/disc4499_action fixed_self
+```
+
+- With the override, and for 4499 (fixed_self, which never reads the target anchor) with no
+  override, all four outputs are byte-identical to B1162's committed tables
+  (`/mnt/projects/fable/review/B1166/worker/b1162_rerun/identity.txt:1-4`). The refactor changes nothing else.
+- With the shared anchor, only the 229 numbers built from the target anchor move, on B1162's
+  pre-fix frames (target at row 782): the anchor table's `preset` row goes from run cov 0.177 /
+  cen_h 0.87 / h 0.25..1.60 / ground 0.00 to 0.221 / 0.86 / 0.16..1.68 / 0.06
+  (`/mnt/projects/fable/review/B1166/worker/b1162_rerun/fear229_anchor_shared/anchor_table.tsv:2`; its
+  `rendered` row is unchanged, line 3); the action row's p90_land goes 0.161 -> 0.162 and its
+  landing_cov 0.927 / end +6.267 do not move
+  (`/mnt/projects/fable/review/B1166/worker/b1162_rerun/fear229_action_shared/b1130_rows.tsv:2`).
+  The like-for-like Fear 229 comparison is the next block, on this branch's re-rendered frames.
 
 **B1162 Fear 229 (`--camera b1130`)**: `refactor/B1166/scripts/measure_anatomy.py`
 (fx_measure.py + landing_onset_abs.py + anchor.py LANDING, unchanged) ->
@@ -259,10 +349,30 @@ runs: landing_cov 2.577 -> 2.243 (oracle 3.945), landing_end +6.667 both (oracle
 
 ## 6. Verification
 
-- `tbuild <wt> test -R 'FxHarness|B1166TargetAnchor'`: 9/9 passed
-  (`/mnt/projects/fable/review/B1166/worker/ctest_fxharness_1.log`), re-run at the final tip
-  (`ctest_final.log`), plus `tbuild <wt> hygiene` (`hygiene_final.log`).
-- Cite check: see the MR.
+- First hand-back (8fe62b07): `tbuild <wt> test -R 'FxHarness|B1166TargetAnchor'` 9/9
+  (`/mnt/projects/fable/review/B1166/worker/ctest_fxharness_1.log`, `ctest_final.log`), hygiene
+  (`hygiene_final.log`).
+- Fix leg (fable 9136b7a3 merged in; `model_viewer` and `test_fx_harness` rebuilt on the ThinkPad,
+  `build_fix1.log`, `build_fix2.log`): the same ctest selection now holds 12 tests (the merge's
+  B1162 Leechcurse test, the wrong-model harness negative and the ratchet unit test) and passes
+  12/12 (`/mnt/projects/fable/review/B1166/worker/ctest_fix2.log:28`); `tbuild <wt> hygiene` 48/48
+  (`/mnt/projects/fable/review/B1166/worker/hygiene_fix.log:100`). One earlier fix-leg run failed the
+  new negative on an exact `(219 px` match when the dark-elf female rendered 218 px
+  (`/mnt/projects/fable/review/B1166/worker/ctest_fix1.log:27-30`); the test now asserts the bounds instead.
+- Cite check: `checked N cites, 0 problems` (the MR note gives the count at the pushed tip).
+
+## Fix leg (MR !320 note 7834)
+
+1. Fear 229 anatomy: excludes are full-frame, asserted by `measure_anatomy.py`; e13 / before /
+   after re-measured (sec. 5); the "inside the observer pair" sentence withdrawn.
+2. One anchor: B1162's two measures and B1151's `oracle_anchor.sh` read `kB1130TargetAnchor`;
+   B1162's 229 / 4499 tables reproduce byte for byte under the pre-B1166 override (sec. 5).
+3. Self-check: the standing height ratcheted at the measured 238 +-3 px; a real wrong-model run
+   (dark-elf female, 219 px) passed the old bound and now exits 5; offline and harness negative
+   tests (sec. 0, sec. 2).
+4. r7 (spell 40) Source move: owner B1173 (#492) (sec. 3, FOLLOW-UP 3).
+5. Anchor-method wording: ring-edge ground at threshold 20, the 1-row differences from B1164
+   and the ring's 604 vs 616 (sec. 1).
 
 ## RULING REQUEST
 
@@ -279,7 +389,7 @@ baseline or `config/constrained_presets.json` value changed.
    heights): the FABLE human at the oracle's spot is 0.826x the oracle's height (238 vs 288
    px); the b1118 camera shows the same direction (241 vs >= 284).
 3. **r7 (spell 40) Source window moves with the target's placement** from BC+1.57
-   (frame 92); deterministic, mechanism not traced.
+   (frame 92); deterministic, mechanism not traced. Owner: **B1173 (#492)**.
 4. **Fear 229 below-the-feet extent** (h_p5 -0.04 vs -0.26..-0.34, ground 0.14 vs
    0.18-0.21): owner candidates the Target-stage spawn volume (B1150 shapes); not proven
    here.
