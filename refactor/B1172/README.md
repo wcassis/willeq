@@ -418,8 +418,10 @@ are README, scripts and a file mode), `RBUILD_HOST=user@gitlab-runner-1 tbuild`:
 - full suite: 6517 / 6517 passed (`review/B1172/worker/fix/ctest_full.log`), the real-mesh tests
   with the client tree linked as CI links it (`data/eq_client`).
 - targeted: `-R 'SelfActorSize|ActorScale|EntitySize'` 23 / 23 (`review/B1172/worker/fix/ctest1.log`);
-  the final tip's targeted run and hygiene are in `review/B1172/worker/fix/ctest_final.log` and
-  `review/B1172/worker/fix/hygiene_final.log`.
+  at 90de12bd (the README tip before this line), targeted `-R
+  'SelfActorSize|ActorScale|EntitySize|EntityRescale|FxHarness|B1166TargetAnchor|HeldItem|Position|ZoneEntry|ZoneInZ|SelfRace|SelfDeath'`
+  182 / 182 (`review/B1172/worker/fix/ctest_final.log`), hygiene 48 / 48
+  (`review/B1172/worker/fix/hygiene_final.log`, DocCitations included).
 - the earlier legs' logs: `review/B1172/worker/ctest_final.log`, `review/B1172/worker/hygiene_final.log`.
 - cite checker: `python3 -I scripts/refactor/cite_check.py refactor/B1172/README.md --tree .
   --extra /mnt/projects/fable --dis .../eqgame.dis --dis .../EQGraphicsDX9.dis`; the result line
