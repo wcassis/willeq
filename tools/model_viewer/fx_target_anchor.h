@@ -54,7 +54,7 @@ constexpr TargetAnchor kB1130TargetAnchor{940.0f, 615.0f, 288.0f};
 //   gender 0, size 6) at 238 px (0.826x) when fable drew it at scale 1.0;
 //   B1172 (#491) draws it at the official client's actor scale, size x 0.2 =
 //   1.2 (include/client/graphics/actor_scale.h), and it renders rows 331..615
-//   = 285 px (review/B1172/worker/wrong_model/default.log, the self-check
+//   = 285 px (review/B1172/worker/wrong_model/default_final.log, the self-check
 //   line; refactor/B1172/README.md sec. 2). This ratchets that measured value
 //   so a model or scale regression fails. At the anchor with `--target`
 //   (review/B1172/worker/wrong_model/*.log): human female 1:1:6 260 px,

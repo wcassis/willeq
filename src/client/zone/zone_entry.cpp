@@ -671,7 +671,13 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 	self_entity.hp_percent = 100;  // We'll get actual HP from spawn or HP update packets
 	self_entity.cur_mana = static_cast<uint16_t>(mana);
 	self_entity.max_mana = static_cast<uint16_t>(mana);  // Will be updated from spawn
-	self_entity.size = size;
+	// B1172 (#491): the entity record carries "size not said" (0), as the
+	// wire does: the S->C OP_ZoneEntry Spawn_Struct's size word reads 0.000 in
+	// every oracle and fable lane capture decoded for B1172, and the client
+	// then uses the race/gender default (actor_scale.h). The local player's
+	// node scale does not read it (entityNodeScale); player().size() keeps 6.0
+	// below because the wire-z conversion was measured with it (T331).
+	self_entity.size = 0.0f;
 	self_entity.animation = 0;
 	self_entity.delta_x = 0;
 	self_entity.delta_y = 0;
