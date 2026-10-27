@@ -13,6 +13,7 @@
 #include "client/graphics/corpse_fade.h"
 #include "client/graphics/spell_fx_bone_anchor.h"
 #include "client/graphics/spell_cast_animation.h"
+#include "client/spell/spell_action_anim.h"
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/environment/spell_effects_config.h"
 
@@ -1127,6 +1128,12 @@ int runScriptedHarness() {
     // the raised pose.
     std::ofstream emitterOut(harnessOpts.framesDir + "/emitter_origin.tsv");
     emitterOut << "frame\tt\tfxid\tkind\twx\tyw\twz\tsx\tsy\n";
+    // B1174 (#493): per written frame, the live spell effects and missiles
+    // (SpellVisualFX's own lists) and the caster's track -- what a /disc
+    // draws is the caster's CastingAnim and no effect, which a whole-frame
+    // pixel diff cannot tell apart.
+    std::ofstream activityOut(harnessOpts.framesDir + "/fx_activity.tsv");
+    activityOut << "frame\tt\tactive_effects\tmissiles\tcaster_anim\n";
 
     if (!harnessOpts.backdropPath.empty()) {
         fxBackdrop = driver->getTexture(harnessOpts.backdropPath.c_str());
@@ -1162,6 +1169,9 @@ int runScriptedHarness() {
     // model on that one.
     std::vector<uint16_t> activeSourceEmitters;
     std::string activeCastTrack;
+    // B1174 (#493): the track an OP_Action started with no cast in progress
+    // (a /disc; EntityRenderer::actionEntityCastAnim's rule), "" = none.
+    std::string actionCastTrack;
     placeHarnessTarget(plan[0].self, plan[0].distance);
     fixHarnessSolidOrder();  // B1169 (#488)
     device->getTimer()->stop();  // (already stopped by setupSpellTestCamera)
@@ -1189,6 +1199,7 @@ int runScriptedHarness() {
                 // o01 idle that looped during the channel before is gone.
                 const std::string track = playCastAnim(animatedNode, sp.cast_anim);
                 activeCastTrack = track;
+                actionCastTrack.clear();
                 std::printf("[fx-harness] BeginCast %u: caster cast-anim %s (CastingAnim %d)\n", c.spellId,
                             track.empty() ? "(no track; current stands)" : track.c_str(), sp.cast_anim);
                 // The Source-stage emitter origins to dump (step 2): the
@@ -1210,7 +1221,20 @@ int runScriptedHarness() {
                 // gone). Only when a BeginCast started the track -- a /disc
                 // (OP_Action without OP_BeginCast) never did, and the client
                 // never switched the model on that one either.
-                if (!activeCastTrack.empty()) endCastAnim(animatedNode, "p01");
+                if (!activeCastTrack.empty()) {
+                    endCastAnim(animatedNode, "p01");
+                } else if (EQ::ActionPlaysSourceCastAnim(/*standing=*/true, sp.spell_affect_index,
+                                                         /*class: the harness caster is no Bard*/ 0, 0)) {
+                    // B1174 (#493): eqgame's OP_Action handler (0x47f4af)
+                    // plays the spell's CastingAnim on its standing source --
+                    // a /disc's only visible effect (the observer's t06
+                    // swing, refactor/B1174/README.md). Played out, the idle
+                    // returns (below, per step).
+                    actionCastTrack = playCastAnim(animatedNode, sp.cast_anim);
+                    std::printf("[fx-harness] Action %u: caster action cast-anim %s (CastingAnim %d)\n", c.spellId,
+                                actionCastTrack.empty() ? "(no track; current stands)" : actionCastTrack.c_str(),
+                                sp.cast_anim);
+                }
                 activeCastTrack.clear();
                 activeSourceEmitters.clear();
                 lastAction = e.t;
@@ -1230,6 +1254,14 @@ int runScriptedHarness() {
                           e.action ? "Action" : "BeginCast", c.spellId, c.self ? "self" : "other",
                           c.distance, e.castMs, e.t);
             timing << row;
+        }
+        if (!actionCastTrack.empty() && actionCastAnimEnded(animatedNode, actionCastTrack)) {
+            const bool playedOut = animatedNode->getAnimator().getCurrentAnimation() == actionCastTrack;
+            if (playedOut && animatedNode->hasAnimation("p01"))
+                animatedNode->playAnimation("p01", /*loop=*/true, /*playThrough=*/false);
+            std::printf("[fx-harness] action cast-anim %s %s at t %.3f\n", actionCastTrack.c_str(),
+                        playedOut ? "played out" : "replaced", t);
+            actionCastTrack.clear();
         }
         // B1139: the lane NPC the tour kills (OP_Death, then OP_DeleteSpawn).
         // The death is ApplyCorpseDeathPose's witnessed branch: stop, then d05
@@ -1337,6 +1369,9 @@ int runScriptedHarness() {
         char row[96];
         std::snprintf(row, sizeof(row), "%d\t%.6f\t-\t-\t-\t-\t-\t-\n", f, t);
         timing << row;
+        activityOut << f << '\t' << std::fixed << std::setprecision(6) << t << '\t'
+                    << spellVisualFX->getActiveEffectCount() << '\t' << spellVisualFX->missileCount() << '\t'
+                    << animatedNode->getAnimator().getCurrentAnimation() << '\n';
         if (!activeSourceEmitters.empty()) {
             // The emitter origin = the slot's attach point on the caster:
             // the hand/head bone for a pseudo-id (B1144), the node origin for

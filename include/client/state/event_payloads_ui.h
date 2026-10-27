@@ -171,6 +171,13 @@ struct SpellCastVisualCompleteData {
     // cast can land without this client having seen its BeginCast.
     EQ::SpellVisualVocabulary spellVisual;
     int fxGateLevel = 1;  // B1144: see SpellCastVisualStartedData
+    // B1174 (#493): what eqgame's OP_Action handler needs to play the spell's
+    // CastingAnim on the source (EQ::ActionPlaysSourceCastAnim,
+    // spell_action_anim.h): field 120, the source spawn's class (0 = unknown)
+    // and the packet's instrument_mod.
+    int castAnim = 0;
+    int sourceClass = 0;
+    uint32_t instrumentMod = 0;
 };
 
 struct SpellCastVisualInterruptedData {

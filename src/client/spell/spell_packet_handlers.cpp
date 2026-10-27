@@ -204,6 +204,15 @@ void SpellManager::handleAction(const EQT::SpellActionInfo& action)
         d.completionAnim = completion_anim;
         if (spell) d.spellVisual = spell->visualVocabulary();  // T381 (B160)
         d.fxGateLevel = fxGateLevelOf(m_eq, caster_id);  // B1144
+        // B1174 (#493): the source's CastingAnim at the packet (eqgame
+        // 0x47f4af, spell_action_anim.h).
+        if (spell) d.castAnim = spell->cast_anim;
+        {
+            const auto& entities = m_eq->GetEntities();
+            const auto src = entities.find(caster_id);
+            if (src != entities.end()) d.sourceClass = src->second.class_id;
+        }
+        d.instrumentMod = action.instrument_mod;
         m_bridge->pushEvent(eqt::state::GameEvent(
             eqt::state::GameEventType::SpellCastVisualComplete, std::move(d)));
     }

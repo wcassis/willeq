@@ -1116,6 +1116,14 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             // harness (spell_cast_fx.cpp).
             ApplySpellCastCompleteFx(castGlowRoute_, renderer_->getSpellVisualFX(), d,
                                      CastGlowRoute::Clock::now());
+            // B1174 (#493): the cast-animation packet plays the spell's
+            // CastingAnim on its standing source (eqgame 0x47f4af) -- before
+            // completeEntityCast, so a source still casting keeps B1157's
+            // end-of-cast rule and only a /disc starts the track.
+            if (d.isCastAnimation && renderer_->getEntityRenderer()) {
+                renderer_->getEntityRenderer()->actionEntityCastAnim(
+                    d.casterId, d.castAnim, d.spellVisual.spellAffectIndex, d.sourceClass, d.instrumentMod);
+            }
             // Complete entity casting bar
             if (renderer_->getEntityRenderer()) {
                 renderer_->getEntityRenderer()->completeEntityCast(d.casterId);

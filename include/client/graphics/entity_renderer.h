@@ -302,6 +302,12 @@ struct EntityVisual {
     // cancelEntityCast), and the per-frame state (entity_updates.cpp,
     // setPlayerEntityAnimation) must not pull it back to walk/idle.
     std::string castAnimCode;
+    // B1174 (#493): the CastingAnim track an OP_Action started on a source
+    // that had no cast in progress (a /disc; actionEntityCastAnim, eqgame
+    // 0x47f4af). It plays once and the per-frame walk returns the model to
+    // the standing idle when it stops (the observer's caster is back in its
+    // idle pose 4.36 s after the packet); "" = none.
+    std::string actionAnimCode;
     irr::scene::IBillboardSceneNode* castBarBillboard = nullptr;  // Casting bar billboard
 
     // B1148 (#468): the corpse-fade list (corpse_fade.h). isFading = this
@@ -690,6 +696,12 @@ public:
                          int castAnimId);
     void cancelEntityCast(uint16_t spawnId);
     void completeEntityCast(uint16_t spawnId);
+    // B1174 (#493): OP_Action (effect_flag 0) plays the spell's CastingAnim on
+    // its standing source (eqgame 0x47f4af, EQ::ActionPlaysSourceCastAnim);
+    // a source still casting keeps its BeginCast track and B1157's end rule.
+    // Returns the track started ("" = none).
+    std::string actionEntityCastAnim(uint16_t spawnId, int castAnimId, int spellAffectIndex, int sourceClass,
+                                     uint32_t instrumentMod);
     bool isEntityCasting(uint16_t spawnId) const;
     float getEntityCastProgress(uint16_t spawnId) const;
 
