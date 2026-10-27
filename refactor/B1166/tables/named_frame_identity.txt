@@ -1,0 +1,4 @@
+disc4499_b1130self frames 480 before 7c8377e853f7fa2f after 7c8377e853f7fa2f differing 0
+fear229_b1130 frames 300 before 2905be0767fb2ff5 after bbc071ce075b9acd differing 300
+t93_b1130 frames 396 before 2886549139016c32 after c215e5b8eaafa8e5 differing 396
+4499 after == B1162's evidence frames

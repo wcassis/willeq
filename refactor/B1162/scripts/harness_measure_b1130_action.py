@@ -14,7 +14,7 @@ usage: harness_measure_b1130.py <frames_dir> <measure_root> <fixed_npc|fixed_sel
 
 Geometry = B1130's fixed cast geometry, per the two geom files
 (review/B1130/geom/r51.json fixed_npc: crop 150,60,990,540, feet 640,598 209 px,
-tfeet 940,652 325 px, halfw 0.7; review/B1130/geom/r131.json fixed_self: crop
+halfw 0.7, target anchor = kB1130TargetAnchor since B1166 (#485), see GEOM; review/B1130/geom/r131.json fixed_self: crop
 150,60,900,540, tfeet = feet, halfw 1.6). The B1130 nameplate --exclude
 rectangles do NOT apply: the harness draws no UI (the oracle's nameplates are
 oracle-side chrome, like the Tip-of-the-Day window B1142 removed).
@@ -40,9 +40,20 @@ import sys, os, re, subprocess, glob
 PY = sys.executable   # the venv python (numpy/cv2/scipy); the B1132 instruments need it
 S = '/mnt/projects/fable/review/B1132/scripts'
 B1130 = '/mnt/projects/fable/review/B1130'
+# B1166 (#485): the fixed_npc TARGET anchor is the one the harness solves to,
+# read from its single definition (tools/model_viewer/fx_target_anchor.h,
+# kB1130TargetAnchor: the oracle r51 target's measured box, see refactor/B1166/README.md
+# sec. 1), exactly as refactor/B1155/scripts/harness_measure_b1130.py reads it.
+# FX_TFEET=940,652 FX_TMPX=325 reproduce the pre-B1166 measure (B1130's geom file,
+# whose extent began at the name label).
+_hdr = open(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', '..',
+                         'tools', 'model_viewer', 'fx_target_anchor.h')).read()
+_a = re.search(r'kB1130TargetAnchor\{([\d.]+)f, ([\d.]+)f, ([\d.]+)f\}', _hdr)
+TFEET = os.environ.get('FX_TFEET', f'{float(_a.group(1)):g},{float(_a.group(2)):g}')
+TMPX = float(os.environ.get('FX_TMPX', _a.group(3)))
 GEOM = {
-    # review/B1130/geom/r51.json (every fixed_npc cast), review/B1130/geom/r131.json (fixed_self).
-    'fixed_npc':  dict(crop='150,60,990,540',  feet='640,598', mpx=209.0, tfeet='940,652', tmpx=325.0, halfw=0.7),
+    # review/B1130/geom/r51.json (every fixed_npc cast; target anchor above), review/B1130/geom/r131.json (fixed_self).
+    'fixed_npc':  dict(crop='150,60,990,540',  feet='640,598', mpx=209.0, tfeet=TFEET, tmpx=TMPX, halfw=0.7),
     'fixed_self': dict(crop='150,60,900,540',  feet='640,598', mpx=209.0, tfeet='640,598', tmpx=209.0, halfw=1.6),
 }
 fd, root, kind = os.path.realpath(sys.argv[1]), os.path.realpath(sys.argv[2]), sys.argv[3]

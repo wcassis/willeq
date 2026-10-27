@@ -8,9 +8,11 @@ usage: harness_measure_b1162_anchor.py <frames_dir> <out_root> <fixed_npc|fixed_
                                         [--anchor x,y,px]   (override the derived rendered anchor)
 
 Two anchors, both printed and both measured:
-  PRESET   = harness_measure_b1130_action.py's GEOM (review/B1130/geom/r51.json fixed_npc:
-             crop 150,60,990,540 = y 60..600, tfeet 940,652 / 325 px; r131.json fixed_self:
-             crop 150,60,900,540, tfeet = feet 640,598 / 209 px). This is the ORACLE's target box.
+  PRESET   = harness_measure_b1130_action.py's GEOM (fixed_npc: crop 150,60,990,540 = y 60..600,
+             tfeet/tpx = kB1130TargetAnchor, the ORACLE's measured target box, read from
+             tools/model_viewer/fx_target_anchor.h since B1166 (#485); B1162 ran it at B1130's
+             940,652 / 325, which FX_TFEET=940,652 FX_TMPX=325 reproduce; r131.json fixed_self:
+             crop 150,60,900,540, tfeet = feet 640,598 / 209 px).
   RENDERED = the target's box as the harness actually drew it in the pre-cast frame N (default 10):
              every pixel that differs from the clear colour at (5,5), split at column 800 (caster
              left, NPC target right; fixed_self has only the caster). feet = (column centroid,
@@ -29,8 +31,19 @@ import sys, os, re, subprocess, glob
 import numpy as np, cv2
 PY = sys.executable
 S = '/mnt/projects/fable/review/B1132/scripts'
+# B1166 (#485): the fixed_npc TARGET anchor is the one the harness solves to,
+# read from its single definition (tools/model_viewer/fx_target_anchor.h,
+# kB1130TargetAnchor: the oracle r51 target's measured box, see refactor/B1166/README.md
+# sec. 1), exactly as refactor/B1155/scripts/harness_measure_b1130.py reads it.
+# FX_TFEET=940,652 FX_TMPX=325 reproduce the pre-B1166 measure (B1130's geom file,
+# whose extent began at the name label).
+_hdr = open(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', '..',
+                         'tools', 'model_viewer', 'fx_target_anchor.h')).read()
+_a = re.search(r'kB1130TargetAnchor\{([\d.]+)f, ([\d.]+)f, ([\d.]+)f\}', _hdr)
+TFEET = os.environ.get('FX_TFEET', f'{float(_a.group(1)):g},{float(_a.group(2)):g}')
+TMPX = float(os.environ.get('FX_TMPX', _a.group(3)))
 PRESET = {
-    'fixed_npc':  dict(crop='150,60,990,540', tfeet='940,652', tpx=325, halfw=0.7),
+    'fixed_npc':  dict(crop='150,60,990,540', tfeet=TFEET, tpx=int(TMPX), halfw=0.7),
     'fixed_self': dict(crop='150,60,900,540', tfeet='640,598', tpx=209, halfw=1.6),
 }
 EXT_CROP = {'fixed_npc': '150,60,990,740', 'fixed_self': '150,60,900,740'}

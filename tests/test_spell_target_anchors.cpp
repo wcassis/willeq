@@ -280,6 +280,7 @@ TEST_F(TargetRecordRows, AnUnsurveyedRecordIsTheStyleVolumeOnTheTarget) {
 #include "client/graphics/environment/spell_particle_types.h"
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/spell_visual_fx.h"
+#include "particle_test_seed.h"
 
 #include <algorithm>
 #include <memory>
@@ -345,6 +346,7 @@ protected:
         auto& pi = input.particleInput;
         pi.deltaTime = 1.0f / 60.0f;
         pi.unifiedRendererInitialized = true;
+        pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
         pi.poolSize = pool_;
         for (uint16_t id : requested_) {
             glm::vec3 p;

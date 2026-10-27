@@ -66,14 +66,20 @@ numbers and the target differ, all from `review/B1130/README.md` "Geometry":
 | 1280x800, caster 209 px, feet row 598 at column 640 | the settle stills `oracle/cal_r35/15_time_settle.png` (the B1118 opening pose, `#stun 120000`, camera F9 x3) | `--caster-px` |
 | caster = the b1118 char-67 appearance | the same char 67 Testcaster | `--caster`, `--caster-appearance` |
 | b1130: target race 1 (human), gender 0 (male), size 6 -- eqemu's `#spawn [name][race][level][texture][health][gender]...`: `#spawn TrollF 1 1 0 30000` is race=1, level=1, texture=0, hp=30000 with the GENDER arg absent -> `Mob::GetDefaultGender(1)` = MALE; "TrollF" is only a label | the same command; caster `#goto -67.6,434.4` puts it ~1.4 caster heights to her right | `--target` |
-| b1130: target 325 px, feet (940,652) | the same settle still; the 325 is that human's NEARER depth (~1.55x closer to the camera than the caster), not a race scale -- a consistency check, not an input (the FABLE rest-pose fit renders it as a 50 px strip; `refactor/B1155/README.md`) | -- |
+| b1130: target feet (940,615), 288 px (B1166) | the r51 settle still `oracle/r51/26_tgt_npc_settle.png` minus a target-free still at r51's camera, diff threshold 20, the selection ring excluded (`refactor/B1166/README.md` sec. 1; B1130's 652/325 began at the name label). The feet are SOLVED; the height is the model's own at that spot (the FABLE human renders 238 px, 0.826x) and is a self-check ratcheted at 238 +-3 px, not an input | -- (`tools/model_viewer/fx_target_anchor.h`) |
 
 The camera is fitted to the caster exactly as b1118's is (`fitFaceOnCamera`,
 209 px / row 598); the target's world offset (x, z) is then SOLVED from its
-two feet pixels (Newton on the rendered silhouette, `fitFixedNpcTarget`), and
-the solve is printed like the b1118 block. A preset that does not solve within
-1 px exits 2. Pinned by `tests/test_fx_harness.cpp`
-(`B1130PresetSolvesTheFixedNpcGeometry`, `B1130SelfPresetSolvesTheCasterAlone`).
+two feet pixels (Newton on the rendered silhouette of its STANDING frame, its
+pose box stood on the ground plane, `fitFixedNpcTarget`), and the solve is
+printed like the b1118 block. A preset that does not solve within 1 px exits 2.
+Frame 0 is then re-measured (`[fx-harness] b1130 target self-check`): feet
++-1 px and column +-3 px of the anchor, height +-3 px of the solved standing
+height and 238 +-3 px (the measured standing height of the FABLE human there, 0.826x the
+oracle's 288 px; `fx_target_anchor.h` kStandingPx), else exit 5 (B1166). A `--target` other than
+a body of that height therefore exits 5 on b1130. Pinned by `tests/test_fx_harness.cpp`
+(`B1130PresetSolvesTheFixedNpcGeometry`, `B1130SelfCheckRejectsAWrongTargetModel`,
+`B1130SelfPresetSolvesTheCasterAlone`).
 The target idles (no death unless `--target-death`). Measure a run with
 `refactor/B1155/scripts/harness_measure_b1130.py <frames> <out> <fixed_npc|fixed_self>`
 and band the sweep with `refactor/B1155/scripts/band_table.py`
@@ -103,11 +109,10 @@ channel exceeds 175 (where an additive sprite's rise can stay under 80).
 
 ## What the harness may gate
 
-- **Fable regressions, harness against harness** (same plan, `--seed`, preset):
-  landing coverage, landing end, landing ROI p90, landing peak time. The
-  frames are deterministic except where two models occupy the same pixels
-  (a distance-0 target: ~50 px per frame inside the figures z-fight between
-  runs), which none of these quantities reads.
+- **Fable regressions, harness against harness** (same plan, `--fx-seed`, preset):
+  landing coverage, landing end, landing ROI p90, landing peak time. Since
+  B1169 the frames are deterministic bit for bit ("Determinism" below), so
+  "before/after identical" is a frame diff, not a judgement.
 - **Parity with lane 5** (B1142's unoccluded rig, `refactor/B1142/README.md`):
   landing coverage -- seeds 1-5 with `--target-death 0 --target-despawn 1.027`
   read 3.111 .. 3.191 (mean 3.151) against four lane captures of 93 at
@@ -143,3 +148,30 @@ channel exceeds 175 (where an additive sprite's rise can stay under 80).
   (`refactor/B1157/scripts/hand_strip.py`). The re-gate against the pre-B1157
   idle caster: `refactor/B1157/README.md`.
 - Oracle legs (the official client) are lane 5 only.
+
+## Determinism (B1169, #488)
+
+Two runs of one plan with the same binary, options and render path write
+byte-identical frames on the measured paths (ThinkPad NVIDIA: GBM 16-bit depth
+and surfaceless 24-bit depth; `refactor/B1169/README.md`: 3 consecutive tour-7
+runs, 0 differing frames on every spell). Not measured, not claimed: llvmpipe. What holds it:
+
+| source | rule | where |
+|---|---|---|
+| particle RNG | `--fx-seed N` (alias `--seed`), default **1**, fixed in every `--spell-test` run; `0` draws from `std::random_device` (the client's path) and is NOT reproducible -- the run log's `determinism (B1169)` line says so | `harnessOpts.seed` -> `SimulationInput::particleInput.rngSeed` (`stepSpellParticles`) |
+| time | the scripted clock: step `1/--sim-hz` s, the device timer stopped and set per step; no wall clock reaches the scene, the FX or the worker | `runScriptedHarness` |
+| worker | `SimulationWorker::computeOnce` on the main thread, no worker thread | `stepSpellParticles` |
+| solid draw order | Irrlicht sorts solid nodes by their material-0 texture POINTER, which ASLR moves; the caster, her held item and a distance-0 target have depth-tied pixels, so the order decided them (the pre-B1169 differences, 20-125 px a frame on 93). `HarnessSolidOrderNode` draws ground, target, held items, caster in that fixed order -- a harness convention (the majority order, 13 of 20 pre-fix runs), NOT a client rule: the production client uses the same Irrlicht texture-pointer sort (`CSceneManager.cpp` line 1485, patched Irrlicht) and no oracle draw order is established; harness-only, compiled into the `model_viewer` target only (`CMakeLists.txt:1313`); the run log prints `solid draw order (fixed, B1169)` | `fixHarnessSolidOrder` |
+
+How a card proves "identical": render the plan twice (before/after, or the
+same binary twice) with the same options, then
+`python3 -P scripts/tools/fx_frame_identity.py <framesA> <framesB>` -- it must
+print `differing 0`; any other count names the first differing frame, its
+pixel count and bounding box. A difference between two runs of ONE binary is
+a determinism defect (`WILLEQ_FX_MESH_HASH=1` logs the posed-mesh hashes and
+the scene tree per run to split CPU geometry from draw order). The render path
+is part of the options: GBM (16-bit depth) and surfaceless
+(`WILLEQ_DRM_DEVICE=/dev/dri/no-such-card`, 24-bit depth, the B1150
+`run_scene.sh` path) are different renders, so compare like with like.
+Particle tests seed the same way (`tests/particle_test_seed.h`, guarded by
+`SpellParticleSeedWiring`).
