@@ -274,6 +274,45 @@ TEST_F(FxHarness, ADisciplineWithoutBeginCastDrawsNothing) {
     cleanDirs();
 }
 
+// B1162 (#481): the same gate on record 325, with the discipline the official
+// client really fired on lane 5: /disc Leechcurse Discipline -> C->S
+// OP_CastSpell slot 10 spell 8604, no OP_BeginCast (leg b1162_disc325_v2,
+// refactor/B1162/README.md "Leg A result"). 8604's spellsnew.eff record
+// (spells_us.txt field 145) is 325, which has no Target stage; the observer
+// drew nothing. The harness's action-only 8604 must draw nothing either.
+TEST_F(FxHarness, TheLeechcurseDisciplineWithoutBeginCastDrawsNothing) {
+    const fs::path disc = runPlan("disc8604", "0.5\t8604\tself\t0\t0\t60\taction\n", 3.0);
+    const fs::path none = runPlan("none8604", "100\t8604\tself\t0\t0\t60\taction\n", 3.0);
+    ASSERT_FALSE(disc.empty()) << "the /disc harness run failed";
+    ASSERT_FALSE(none.empty()) << "the reference harness run failed";
+    EXPECT_TRUE(slotRows(disc).empty()) << "a /disc drew a spellsnew.eff slot";
+    const Box whole{0, 0, 1279, 799};
+    int noise = 0;  // the two processes' pre-cast difference (see the 4499 test)
+    for (int f = 0; f < 15; ++f) {
+        irr::video::IImage* a = load(frameAt(disc, f));
+        irr::video::IImage* b = load(frameAt(none, f));
+        ASSERT_NE(a, nullptr);
+        ASSERT_NE(b, nullptr);
+        noise = std::max({noise, lit(a, b, whole), lit(b, a, whole)});
+        a->drop();
+        b->drop();
+    }
+    int peak = 0;
+    for (int f = 15; f < 90; ++f) {  // Act-0.0 .. Act+2.5 s
+        irr::video::IImage* a = load(frameAt(disc, f));
+        irr::video::IImage* b = load(frameAt(none, f));
+        ASSERT_NE(a, nullptr);
+        ASSERT_NE(b, nullptr);
+        peak = std::max({peak, lit(a, b, whole), lit(b, a, whole)});
+        a->drop();
+        b->drop();
+    }
+    std::printf("[fx-gate] /disc 8604 (OP_Action only): peak lit px vs the no-cast run %d (pre-cast noise %d)\n",
+                peak, noise);
+    EXPECT_LE(peak, noise + 16) << "an OP_Action without OP_BeginCast drew something";
+    cleanDirs();
+}
+
 // B1144: a slot is drawn only if its minLevel <= the caster's level
 // (eqgame.exe 0x495cc3). 93 Burst of Flame draws record 80: Source LHAND +
 // RHAND at level 0 and DEFAULT at 39 / 24, Target four DEFAULT slots, two at
