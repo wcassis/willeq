@@ -85,5 +85,15 @@ Environment::ParticleKnobs particleKnobsFromOptions(const OptionsLayout::OptionV
     return k;
 }
 
+EQ::SpellFxOptions spellFxOptionsFromOptions(const OptionsLayout::OptionValues& v) {
+    EQ::SpellFxOptions o;
+    o.density = Env::densityForChoice(step(v, Setting::SpellParticleDensity));
+    o.opacity = Env::opacityForStep(step(v, Setting::SpellParticleOpacity));
+    o.nearClip = Env::nearClipForChoice(step(v, Setting::SpellParticleNearClip));
+    o.castFilter = step(v, Setting::SpellParticleCastFilter);
+    o.showSpellEffects = step(v, Setting::ShowSpellEffects) != 0;
+    return o;
+}
+
 }  // namespace Graphics
 }  // namespace EQT

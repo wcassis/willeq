@@ -68,6 +68,12 @@ const Choice kCrits[] = {{0, "Show"}, {1, "Show Mine Only"}, {2, "Hide"}};
 // B995: EQUI_OptionsWindow.xml ODP_*ParticlesDensityCombobox / NearClipCombobox <Choices>.
 const Choice kDensity[] = {{0, "Off"}, {1, "Low"}, {2, "Medium"}, {3, "High"}};
 const Choice kNearClip[] = {{0, "Near"}, {1, "Medium"}, {2, "Far"}, {3, "Farthest"}};
+// B1165 (#484): ODP_SpellParticlesFilterCombobox's <Choices> (EQUI_OptionsWindow.xml),
+// each the eqgame value table DAT_00793b4c entry the handler stores
+// (eqgame.exe.c:245181-245185: DAT_0098581c = (&DAT_00793b4c)[index]).
+const Choice kCastFilter[] = {{1, "My spells"},     {2, "Group spells"},  {4, "Raid spells"},
+                              {8, "All PCs"},       {17, "Me + NPC"},     {18, "Group + NPC"},
+                              {20, "Raid + NPC"},   {24, "All spells"}};
 
 #define CHOICES(arr) arr, static_cast<int>(sizeof(arr) / sizeof(arr[0]))
 #define NO_CHOICES nullptr, 0
@@ -157,22 +163,27 @@ const SettingInfo kSettings[kSettingCount] = {
 // [instructions] describe turning the indicator ON (target_ring.h, R5).
 {Setting::TargetRing, Owner::Renderer, ValueKind::Bool, "targetring", "ShowTargetRing", 0, 1, NO_CHOICES, -1, kNoGame,
  "Show 3D Target Ring", "uifiles/default/TargetIndicator.ini; key is fable's (R5)"},
-// --- Display > Particles (B995): eqclient.ini [Options] keys, its floats.
-// Choices are EQUI_OptionsWindow.xml's <Choices>; the floats per choice and
-// the near-clip meaning are assumptions N1/N2 (particle_options.h).
+// --- Display > Particles (B995): eqclient.ini keys, its floats.
+// Choices are EQUI_OptionsWindow.xml's <Choices>; the floats per choice are
+// the decompile's (N1 PROVEN, B1165); the near-clip meaning is still N2
+// (particle_options.h).
 {Setting::ParticlesTab, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "ODP_ParticlesTabs"},
 {Setting::SpellParticleOpacity, Owner::Renderer, ValueKind::Step, "spellparticleopacity", "SpellParticleOpacity", 20, 20, NO_CHOICES, -1, kNoGame,
  "Spell Particle Opacity", "eqclient.ini SpellParticleOpacity=1.000000 (N1)", 20.0f, nullptr},
 {Setting::SpellParticleDensity, Owner::Renderer, ValueKind::Choice, "spellparticledensity", "SpellParticleDensity", 3, 0, CHOICES(kDensity), -1, kNoGame,
  "Spell Particle Density", "eqclient.ini SpellParticleDensity=1.000000 (N1)", 0.0f, Environment::kDensityIniValues},
-{Setting::SpellParticleNearClip, Owner::Renderer, ValueKind::Choice, "spellparticlenearclip", "SpellParticleNearClipPlane", 1, 0, CHOICES(kNearClip), -1, kNoGame,
- "Spell Particle Near Clip", "eqclient.ini SpellParticleNearClipPlane=2.000000 (N1, N2)", 0.0f, Environment::kNearClipIniValues},
+{Setting::SpellParticleNearClip, Owner::Renderer, ValueKind::Choice, "spellparticlenearclip", "SpellParticleNearClipPlane", 0, 0, CHOICES(kNearClip), -1, kNoGame,
+ "Spell Particle Near Clip", "eqclient.ini SpellParticleNearClipPlane=2.000000 = Near (N1 PROVEN, N2)", 0.0f, Environment::kNearClipIniValues},
+{Setting::SpellParticleCastFilter, Owner::Renderer, ValueKind::Choice, "spellparticlecastfilter", "SpellParticleCastFilter", 24, 0, CHOICES(kCastFilter), -1, kNoGame,
+ "Spell Particles On For", "eqclient.ini SpellParticleCastFilter=24; eqgame.exe.c:132638 default 0x18 (B1165)"},
+{Setting::ShowSpellEffects, Owner::Renderer, ValueKind::Bool, "showspelleffects", "ShowSpellEffects", 1, 1, NO_CHOICES, -1, kNoGame,
+ "Show Spell Effects", "eqclient.ini ShowSpellEffects=1; eqgame.exe.c:126007-126011 (B1165)"},
 {Setting::EnvParticleOpacity, Owner::Renderer, ValueKind::Step, "envparticleopacity", "EnvironmentParticleOpacity", 20, 20, NO_CHOICES, -1, kNoGame,
  "Environment Particle Opacity", "eqclient.ini EnvironmentParticleOpacity=1.000000 (N1)", 20.0f, nullptr},
 {Setting::EnvParticleDensity, Owner::Renderer, ValueKind::Choice, "envparticledensity", "EnvironmentParticleDensity", 3, 0, CHOICES(kDensity), -1, kNoGame,
  "Environment Particle Density", "eqclient.ini EnvironmentParticleDensity=1.000000 (N1)", 0.0f, Environment::kDensityIniValues},
-{Setting::EnvParticleNearClip, Owner::Renderer, ValueKind::Choice, "envparticlenearclip", "EnvironmentParticleNearClipPlane", 1, 0, CHOICES(kNearClip), -1, kNoGame,
- "Environment Particle Near Clip", "eqclient.ini EnvironmentParticleNearClipPlane=2.000000 (N1, N2)", 0.0f, Environment::kNearClipIniValues},
+{Setting::EnvParticleNearClip, Owner::Renderer, ValueKind::Choice, "envparticlenearclip", "EnvironmentParticleNearClipPlane", 0, 0, CHOICES(kNearClip), -1, kNoGame,
+ "Environment Particle Near Clip", "eqclient.ini EnvironmentParticleNearClipPlane=2.000000 = Near (N1 PROVEN, N2)", 0.0f, Environment::kNearClipIniValues},
 
 // --- Mouse (B433) --- eqclient.ini [Options], every shipped file:
 // InverseMouse=0 LookSpring=0 MouseActive=1 MouseWheelZoom=1
@@ -358,20 +369,22 @@ bool parseSettingIniText(Setting s, const std::string& text, int& out) {
         } catch (...) {
             return false;
         }
+        // B1165 (#484): the oracle's loader clamps before anything reads the
+        // float (eqgame.exe.c:132608-132637): opacity and density to [0, 1],
+        // the near clip to [1, 8].
         if (info.kind == ValueKind::Step) {
-            const int v = static_cast<int>(std::lround(f * info.iniDivisor));
+            const int v = static_cast<int>(std::lround(Environment::clampUnitIni(f) * info.iniDivisor));
             if (!isValidSettingValue(s, v)) return false;
             out = v;
             return true;
         }
-        int best = -1;
-        float bestD = 0.0f;
-        for (int i = 0; i < info.choiceCount; ++i) {  // the nearest choice
-            const float d = std::fabs(info.iniFloats[i] - f);
-            if (best < 0 || d < bestD) { best = i; bestD = d; }
-        }
-        if (best < 0) return false;
-        out = info.choices[best].value;
+        const bool nearClip = info.iniFloats == Environment::kNearClipIniValues;
+        f = nearClip ? Environment::clampNearClipIni(f) : Environment::clampUnitIni(f);
+        // ... and its combobox shows the first choice whose value is >= the
+        // float (0x53b93f..0x53b985, 0x53b994..0x53b9da), not the nearest.
+        const int i = Environment::choiceForIniFloat(info.iniFloats, info.choiceCount, f);
+        if (i < 0) return false;
+        out = info.choices[i].value;
         return true;
     }
     try {

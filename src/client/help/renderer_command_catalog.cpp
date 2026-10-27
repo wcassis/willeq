@@ -74,6 +74,8 @@ const std::vector<RendererCommandInfo> kCatalog = {
     {"filter", {}, "Toggle a chat filter: /filter <name> (no name lists them)"},
     // B430: every wired Options-window setting, by name.
     {"option", {}, "Show or set an Options-window setting: /option [list | <name> [value]]"},
+    // B1165 (#484): eqgame's /showspelleffects (eqstr 13168-13171).
+    {"showspelleffects", {}, "Turn all spell particle effects on/off: /showspelleffects <ON | OFF>"},
     {"reloadeffects", {"particlereload", "reloadfx", "reloadparticles"}, "Reload environment effect settings"},
     {"reloadweather", {"weatherreload", "weather_reload"}, "Reload weather effect settings"},
     {"spellreload", {"reloadspells", "reloadspellfx"}, "Reload spell effect settings"},

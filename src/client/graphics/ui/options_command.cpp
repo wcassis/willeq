@@ -224,6 +224,24 @@ void runFilter(OptionsPanelState& state, const std::string& args, OptionsCommand
     r.lines.push_back(text + (OptionsLayout::filterHides(s, optionsSettingStep(state, s)) ? " *ON*" : " *OFF*"));
 }
 
+// B1165 (#484): `/showspelleffects <on|off>`, eqgame FUN_004688b3's body
+// (eqgame.exe.c:88027-88054): no argument prints the usage (eqstr 13168,
+// 13169); "off" (eqstr 12946, case-insensitive) turns the switch off and any
+// other argument turns it on; then the state line (13170 ON / 13171 OFF).
+void runShowSpellEffects(OptionsPanelState& state, const std::string& args, OptionsCommandResult& r) {
+    const std::string a = trim(args);
+    if (a.empty()) {
+        r.lines.push_back("FORMAT: /showspelleffects <ON | OFF> (default is ON)");
+        r.lines.push_back("This command allows you to turn on/off all spell particle effects (NOT world or weapon particles).");
+    } else {
+        setOptionsValue(state, Setting::ShowSpellEffects, squash(a) == "off" ? 0 : 1);
+        r.changed.push_back(Setting::ShowSpellEffects);
+    }
+    r.lines.push_back(optionsSettingStep(state, Setting::ShowSpellEffects) != 0
+                          ? "Spell particle effects are currently ON."
+                          : "Spell particle effects are currently OFF.");
+}
+
 }  // namespace
 
 std::string OptionsValueText(const OptionsPanelState& state, Setting setting) {
@@ -247,6 +265,7 @@ OptionsCommandResult RunOptionsCommand(OptionsPanelState& state, const std::stri
     if (!c.empty() && c[0] == '/') c.erase(0, 1);
     if (c == "option") runOption(state, args, r);
     else if (c == "filter") runFilter(state, args, r);
+    else if (c == "showspelleffects") runShowSpellEffects(state, args, r);
     return r;
 }
 

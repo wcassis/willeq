@@ -54,6 +54,7 @@
 #include "client/graphics/ui/color_picker.h"  // B993
 #include "client/chat/chat_text_colors.h"     // B993
 #include "client/graphics/environment/particle_options.h"  // B995
+#include "client/spell/spell_fx_options.h"                  // B1165
 #include "client/state/event_bus.h"
 #include "client/graphics/ui/ui_layout.h"
 
@@ -236,6 +237,9 @@ void renderOptionsParticleTabs(UIRenderer& ui, const UILayout& layout,
                                const OptionsPanelState& state, int i);
 /** The Spell / Env pages' values as the particle systems' knobs (Actor: identity, N3). */
 Environment::ParticleKnobs particleKnobsFromOptions(const OptionsLayout::OptionValues& values);
+/** B1165 (#484): the Spell page + ShowSpellEffects as SpellVisualFX's options
+ *  (density, opacity, near clip, On For, the global switch). */
+EQ::SpellFxOptions spellFxOptionsFromOptions(const OptionsLayout::OptionValues& values);
 
 /** Render the window. Only when optionsWindowIsVisible(). */
 void renderOptionsWindow(UIRenderer& ui, const UILayout& layout,

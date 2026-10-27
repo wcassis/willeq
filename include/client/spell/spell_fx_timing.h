@@ -139,6 +139,33 @@ inline SpellFxSlotTiming SpellFxSlotTimingFor(const SpellsNewEddTiming& w, int32
     return t;
 }
 
+// B1165 (#484): the Spell page's density as CreateEmitter (EQGraphicsDX9
+// 0x1005a430) applies it to the record's counts -- density is that function's
+// third argument (eqgame 0x495f29 pushes SpellParticleDensity; engine vtable
+// +0x14 = 0x1005e1d0 -> 0x1005e0a0 -> 0x1005a430), read ONCE, at creation:
+//   density <= 0: no emitter at all (0x1005a463..0x1005a48e);
+//   burst (+0x80) b -> ftol(b x density), raised to min(b, 16) when that is
+//     below 16 (0x1005a495..0x1005a4bf);
+//   per tick (+0x84) t >= 16: t -> ftol(t x density), the tick rate kept
+//     (0x1005a4c1..0x1005a4e9); t < 16: t kept, the tick rate (+0x88) x
+//     density instead (0x1005a4eb..0x1005a4f5).
+// ftol (0x101a9b60) truncates toward zero. density 1 is the identity.
+inline SpellFxSlotTiming SpellFxSlotTimingAtDensity(SpellFxSlotTiming t, float density) {
+    if (!(density > 0.0f)) {
+        t.burst = 0;
+        t.perTick = 0;
+        t.ticksPerSecond = 0.0f;
+        return t;
+    }
+    const int32_t b = static_cast<int32_t>(static_cast<double>(t.burst) * static_cast<double>(density));
+    t.burst = b < 16 ? std::min<int32_t>(t.burst, 16) : b;
+    if (t.perTick >= 16)
+        t.perTick = static_cast<int32_t>(static_cast<double>(t.perTick) * static_cast<double>(density));
+    else
+        t.ticksPerSecond = t.ticksPerSecond * density;
+    return t;
+}
+
 }  // namespace EQ
 
 #endif  // EQT_SPELL_FX_TIMING_H

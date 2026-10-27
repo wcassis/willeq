@@ -30,8 +30,6 @@ const char* const kPostVeliousEra = "post-Velious feature (#144 era table)";
 const char* const kWillOut = "Will 2026-09-23 ruling on #144: OUT";
 const char* const kNoFade =
     "fable's static panels have no fade or transparency model (#145)";
-const char* const kParticleFilterOwed =
-    "what SpellParticleCastFilter=24 selects is not in the oracle files (a bitmask reading -- me 1, group 2, raid 4, all PCs 8, NPC 16, so 24 = All spells -- is unconfirmed); #145 Leg O";
 const char* const kNoActorParticles =
     "fable has no actor-emitted particles for the Player page to govern (Will 2026-09-23: IN; particle_options.h N3; B995 #315)";
 const char* const kNoMail = "no in-game mail in the era or on this server (#146 era table: all OUT)";
@@ -118,11 +116,11 @@ const ControlClass kClasses[] = {
 {"ODP_ParticlesLabel",               W,  kCaption},
 {"ODP_ParticlesTabs",                W,  "B995: switches the Spell / Env / Player sub-pages (options_particles.cpp)"},
 {"ODP_SpellParticlesNearClipLabel",  W,  kCaption},
-{"ODP_SpellParticlesNearClipCombobox", W, "B995: spell particles nearer the camera are not drawn (particle_options.h N1/N2)"},
+{"ODP_SpellParticlesNearClipCombobox", W, "B995/B1165: Near 2 / Medium 4 / Far 6 / Farthest 8; nearer particles are not drawn (particle_options.h N1, N2)"},
 {"ODP_SpellParticlesDensityLabel",   W,  kCaption},
-{"ODP_SpellParticlesDensityCombobox", W, "B995: scales what spell emitters spawn (SimulationWorker)"},
-{"ODP_SpellParticlesFilterLabel",    AO, kParticleFilterOwed},
-{"ODP_SpellParticlesFilterCombobox", AO, kParticleFilterOwed},
+{"ODP_SpellParticlesDensityCombobox", W, "B995/B1165: scales a spell emitter's counts at creation (SpellFxSlotTimingAtDensity, CreateEmitter 0x1005a463)"},
+{"ODP_SpellParticlesFilterLabel",    W,  kCaption},
+{"ODP_SpellParticlesFilterCombobox", W,  "B1165: which casters' spell particles draw (FUN_00491cff, spell_fx_options.h)"},
 {"ODP_SpellParticlesOpacityLabel",   W,  kCaption},
 {"ODP_SpellParticlesOpacitySlider",  W,  "B995: spell particles' alpha at draw (applyParticleKnobs)"},
 {"ODP_SpellParticlesOpacityValueLabel", W, kCaption},

@@ -94,6 +94,13 @@ enum class Setting : uint8_t {
     SpellParticleOpacity,  // Renderer, 0..20 -> SpellParticleOpacity 0..1
     SpellParticleDensity,  // Renderer, Off/Low/Medium/High
     SpellParticleNearClip, // Renderer, Near/Medium/Far/Farthest
+    // B1165 (#484): "On For:" -- SpellParticleCastFilter, the value table at
+    // eqgame DAT_00793b4c (1/2/4/8/17/18/20/24), decoded by FUN_00491cff
+    // (include/client/spell/spell_fx_options.h).
+    SpellParticleCastFilter,
+    // B1165: [Defaults] ShowSpellEffects, the /showspelleffects switch (no
+    // Options-window control in the oracle either); 0 = no spell particles.
+    ShowSpellEffects,
     EnvParticleOpacity,
     EnvParticleDensity,
     EnvParticleNearClip,

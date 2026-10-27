@@ -41,7 +41,8 @@ struct OptionsCommandResult {
     std::vector<OptionsLayout::Setting> changed;
 };
 
-/** `cmd` is "/option" or "/filter" (case-insensitive, slash optional). */
+/** `cmd` is "/option", "/filter" or (B1165) "/showspelleffects"
+ *  (case-insensitive, slash optional). */
 OptionsCommandResult RunOptionsCommand(OptionsPanelState& state,
                                        const std::string& cmd,
                                        const std::string& args);

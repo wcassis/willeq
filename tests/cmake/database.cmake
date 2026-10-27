@@ -104,3 +104,12 @@ ADD_EXECUTABLE(test_spell_fx_timing
 )
 TARGET_LINK_LIBRARIES(test_spell_fx_timing GTest::gtest_main ${FMT_LIB} dl)
 GTEST_DISCOVER_TESTS(test_spell_fx_timing DISCOVERY_TIMEOUT 120)
+
+# B1165 (#484): the Options > Particles > Spell page's rules -- the On-For
+# filter (FUN_00491cff), the stage gate (FUN_0049b260) and CreateEmitter's
+# density. Header-only, no renderer.
+ADD_EXECUTABLE(test_spell_fx_options
+    test_spell_fx_options.cpp
+)
+TARGET_LINK_LIBRARIES(test_spell_fx_options GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_spell_fx_options DISCOVERY_TIMEOUT 120)
