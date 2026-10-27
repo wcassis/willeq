@@ -46,10 +46,13 @@ server's own Leechcurse Discipline:
 | cast_time | 0 | 0 |
 
 **Why not just set classes5 = 60.** That alone would pass the class gate,
-but it would then cast Bear Claw: a single-target spell with no target,
-since the `/disc` payload's target id is 0. The server's `CastSpell` cancels
-that with SPELL_NEED_TAR (akk-stack `zone/spells.cpp` lines 2038-2043,
-`case ST_Target`), so no `OP_Action` would come.
+but it would then cast Bear Claw: a single-target spell (targettype 5) with
+no target, since the `/disc` payload's target id is 0. The server's
+`CastSpell` refuses that at akk-stack `zone/spells.cpp` lines 196-200:
+`DoCastingChecksOnTarget` returns false at lines 781-783 (no target, and the
+spell is neither ST_Self nor a group spell), and `CastSpell` then calls
+`StopCastSpell`. Were that check skipped, `DoCastSpell` would refuse it at
+lines 395-406 with SPELL_NEED_TAR. Either way no `OP_Action` would come.
 
 **What the leg did instead.** It took the issue's second option and pointed
 the lane's row at the client's own spell. Every column of the server's 4504
@@ -209,15 +212,37 @@ the source spawn (packet word +2). It then asks the source's animation
 manager (`FUN_0047c08e`) for the spell's CastingAnim, `record + 0x186`
 (line 101932: `(**(code **)(*piVar8 + 8))(*(undefined1 *)(iVar5 + 0x186),1,0,0x3f800000,1)`).
 That is the same call `OP_BeginCast` makes (`include/client/graphics/spell_cast_animation.h`,
-B1157). It asks only when all three of these hold:
+B1157).
+
+The handler first returns, before the source lookup and before the Target
+stage, unless all three of these hold (lines 101911-101922):
+
+1. `FUN_0044d0d0(id)` is true: the spell id is in 1..9999. See 0x47f4c2..0x47f4ca;
+   the function at 0x44d0d0 compares the id with 1 and with 0x2710.
+2. `FUN_0040cbd6(id)` is not 0: the client has a record for the id. See
+   0x47f4d7..0x47f4e0.
+3. The record's byte `+0x180` is not 0. See 0x47f4e6..0x47f4ed. The
+   spells_us.txt parser stores that byte at line 69217
+   (`*(undefined1 *)(param_1 + 0x60) = uVar2`, with `param_1` an int pointer,
+   so +0x180), beside +0x181..+0x185. It is field 98, the target type, which
+   fable's db builder stores in its target-type column
+   (`tools/willeq_db/db_loaders_text.cpp:165`, `safeInt(98)`). The oracle's `spells_us.txt`
+   has 43 rows with target type 0, for example 2246 Call of Alarm
+   (CastingAnim 43), 2558 Decession (29) and 3077 Storm Stomp (44): an
+   `OP_Action` for any of them plays no swing. 8604's target type is 6.
+
+It then asks the source only when all three of these hold:
 
 1. The source's stand byte `+0x251` is 'd' (100, standing) or 'f' (102,
    frozen). See 0x47f519..0x47f525.
 2. `FUN_0044ced9(spell) == 0`, called with ecx = the spell record at
    0x47f527. That means the record's `+0x230`, which is `param_1[0x8c]`, the
-   field-123 spells.eff index at line 69381, is not 61..64.
+   field-123 spells.eff index, is not 61..64. The parser stores it at line
+   69247 (`param_1[0x8c] = uVar3;`) and reads it back at line 69382.
 3. The source's class byte `+0x252` is not 8 (Bard), or the packet's int at
-   +6 (instrument_mod) is above 10. See 0x47f53c..0x47f54c.
+   +6 (instrument_mod) is above 10. See 0x47f53c..0x47f54c. The compare is
+   signed (0x47f548 `cmp dword ptr [eax + 6], 0xa` then `jle`), so a mod of
+   0x80000000 or more is negative and a Bard sending it does not swing.
 
 `+0x252` is the class byte. The decompile compares it with 7, 8, 9, 0x0f
 and 0x3e alongside the level at `+0x24c` (for example lines 97322 and
@@ -263,37 +288,78 @@ the Dark Elf female's 4100 ms `t06` (`refactor/B1148/README.md:28`).
 **The fable row.**
 - Before this card, fable drew nothing: no sprite, no swing.
 - Now the harness draws no slot (`frames/slots.tsv` is empty). It draws no
-  effect and no missile in any of its 306 frames (`frames/fx_activity.tsv`).
+  effect and no missile in any of its 300 frames (`frames/fx_activity.tsv`
+has 300 rows).
 - The caster plays `t06` over frames 45..167, Act+0.00..+4.07, then `p01`.
 - The run cov matches the oracle's: 0.052 vs 0.052. Peak cov is 0.065 vs
   0.066.
 
-**These rows are not like-for-like.** The two cameras differ: the observer
-rig against the b1130-self preset. So do the instruments: B1134's
-observer-ROI threshold against B1132's RISE over the crop. That explains the
-onset (+0.10 vs +0.42) and the extent (h_p95 0.91 vs 1.13). No FX verdict is
-drawn from those columns. The verdict is the content: no sprite on either
-side, and the same track from the packet on both.
+**The onset: the observer rig's packet-to-screen delay.** The oracle's whole
+lit run is shifted against the harness's, not only its onset: Act+0.422 to
++4.355 against +0.100 to +3.967. The lengths are the same, 3.93 s against
+3.87 s. A threshold difference would move the onset, not the end as well.
+The observer's screen shows the packet's own effects late:
+- The observer receives only the .118 (and the .135 repeat) `OP_Action` and
+  `OP_Damage` on port 55891 (`review/B1174/worker/pcap_disc_window.txt`
+  lines 8-9 and 16-17).
+- Its chat box prints 8604's cast-on-other line, "Testcaster's skin glows
+  with dark energy." (`spells_us.txt` row 8604: "'s skin glows with dark
+  energy."). The last chat line (x 418..815, y 752..770 of `video.mp4`)
+  first changes at f57756 (924 px change by more than 40, and 0 px in every
+  frame from f57736 to f57755 and from f57757 to f57770). That frame is
+  Act+0.388 in the instrument's own clock
+  (`measure/disc8604/b1174_disc8604_8604_1_npc/frames.tsv` line 49).
+- The swing lights in the next frame, f57757, Act+0.422 (the same file,
+  line 50).
+
+So the +0.39..+0.42 s is the time the observer rig takes from the packet to
+the screen, and the oracle's swing starts with the packet's other effects,
+at the packet, as the code says. The script and the per-frame counts are
+`review/B1174/worker/chat_line/chat_diff.py` and `chat_diff.txt`. The
+height extent (h_p95 0.91 vs 1.13) is a camera difference (the observer rig
+against the b1130-self preset); no FX verdict is drawn from it. The verdict
+is the content: no sprite on either side, and the same track from the
+packet on both.
 
 ## 5. The fable change (ask 3)
 
-- `include/client/spell/spell_action_anim.h:34`, `EQ::ActionPlaysSourceCastAnim`:
-  the three conditions above, as a pure function.
-- `src/client/spell/spell_packet_handlers.cpp:250-256`: `handleAction` puts
-  field 120, the source spawn's class and the packet's `instrument_mod` into
-  `SpellCastVisualCompleteData`, the event the renderer side reads when the packet arrives.
+- `include/client/spell/spell_action_anim.h`, `EQ::ActionPlaysSourceCastAnim`:
+  the six conditions above (the three early returns, then the three source
+  conditions), as a pure function of `EQ::ActionCastAnimInputs`, with
+  `instrument_mod` compared as a signed int.
+- `src/client/spell/spell_packet_handlers.cpp`: `handleAction` puts field
+  120, whether fable's spell table (built from the client's `spells_us.txt`)
+  has the id, its field-98 target type, the source spawn's stand byte and
+  class, and the packet's `instrument_mod` into `SpellCastVisualCompleteData`,
+  the event the renderer side reads when the packet arrives.
+- **The stand byte is an approximation, stated here.** The client keeps
+  `+0x251` per spawn and writes it in many places (`eqgame.dis` has 143
+  references to `+0x251`; for example 0x484de7 stores 0x69, looting, from
+  the client's own code). fable does not port that state machine. It keeps
+  `Entity::stand_state` (`include/client/eq_types.h`), default 100: the
+  stand value the server last sent for the spawn in `OP_SpawnAppearance`
+  AT_Anim (`EQ::SpawnStandStateAfterAppearance`, set in
+  `src/client/entities/entities_component.cpp`), and for the local player
+  the value of the pose fable itself sets
+  (`MovementComponent::ApplyPositionState`, `src/client/movement/movement_state.cpp`).
+  So a source the server puts in 105 (looting), 110, 111 or 115 is not
+  asked. The renderer's `poseState` (Standing/Sitting/Crouching/Lying only)
+  is no longer the input: a looting source counted as Standing there. A
+  client-internal transition fable does not model is not in the byte.
 - `src/client/bridge/irrlicht_bridge.cpp:1124`: on the cast-animation packet
   (effect_flag 0), `actionEntityCastAnim` runs BEFORE `completeEntityCast`.
   A source still casting therefore keeps B1157's end-of-cast rule.
 - `src/client/graphics/entity_castbars.cpp:108`, `EntityRenderer::actionEntityCastAnim`:
-  a non-casting, standing, live source plays the track at speed 1.0, through
+  a non-casting live source for which the gate holds plays the track at speed 1.0, through
   `playCastAnim`, the same body the BeginCast path uses for its own track.
 - `src/client/graphics/entity_updates.cpp:196`: once the one-shot track has
   played out (`actionCastAnimEnded`, `spell_cast_animation.h:93`), the
   per-frame walk returns the model to the idle. The oracle's caster is idle
   again at Act+4.36.
-- `tools/model_viewer/model_viewer_fx_harness.cpp:1267`: the same rule on the
-  harness's action-only cast. Line 1299 returns to the idle. Line 1413 writes
+- `tools/model_viewer/model_viewer_fx_harness.cpp`: the same rule on the
+  harness's action-only cast, with `harnessActionInputs` (the plan's spell
+  id, its record, the record's target type, a standing source that is no
+  Bard). Line 1315 returns to the idle. Line 1429 writes
   a per-frame `fx_activity.tsv` (live effects, missiles, caster track), so a
   test can tell "no sprite" from "the caster moved" without a whole-frame
   pixel diff.
@@ -301,12 +367,21 @@ side, and the same track from the packet on both.
   are corrected.
 
 **Tests.**
-- `tests/test_cast_animation.cpp:68` `CastAnimation.OPActionAsksTheStandingSourceForTheCastingAnim`:
-  the gate's truth table.
-- `:265` `CastAnimationEntity.ADiscActionSwingsTheIdleSourceThenReturnsToIdle`:
+- `tests/test_cast_animation.cpp:88` `CastAnimation.OPActionAsksTheStandingSourceForTheCastingAnim`:
+  the gate's truth table, including the spell id range (0, 1, 9999, 10000),
+  no record, target type 0 (2246, 3077), stand bytes 100/102 against 0, 101,
+  105, 110, 111, 115 and 120, and a Bard at instrument_mod 0x80000000,
+  0xfffffff5 and 0xffffffff (negative, no swing).
+- `:162` `CastAnimation.TheSpawnStandStateFollowsTheServersAppearance`: the stand
+  byte after an AT_Anim value.
+- `:420` `CastAnimationEntity.ALootingSourceOrATargetTypeZeroSpellStartsNothing`:
+  a looting (105) or sitting (110) source starts no track, and 2246 Call of
+  Alarm, read from the shipped db (target type 0, CastingAnim 43), starts
+  none on a standing source.
+- `:355` `CastAnimationEntity.ADiscActionSwingsTheIdleSourceThenReturnsToIdle`:
   8604's db CastingAnim 44 gives `t06` at the packet, `t06` mid-swing, then
   `o01` after the 4.1 s track. The animator is stepped with `OnAnimate`.
-- `:300` `AnActionOnACastingOrBardSourceStartsNothing`: a casting source or a Bard at mod 10 starts no track.
+- `:393` `AnActionOnACastingOrBardSourceStartsNothing`: a casting source or a Bard at mod 10 starts no track.
 - `tests/test_fx_harness.cpp:281` `FxHarness.ADisciplineWithoutBeginCastSwingsTheCasterAndDrawsNoSprite`
   (4499, `s01`) and `:292` `FxHarness.TheLeechcurseDisciplineSwingsT06AndDrawsNoSprite`
   (8604, `t06`) both go through `expectDiscActionSwing` (`:267`): no slot,
@@ -352,20 +427,38 @@ Everything below is in `review/B1174/worker/oracle/b1174_disc8604/`:
 
 ## 8. Gates
 
-- `test -R 'CastAnimation|FxHarness'` on gitlab-runner-1 at 60257a64:
-  18/18 passed. The 8 `CastAnimationEntity` cases skip there (no client
-  tree). See `review/B1174/worker/ctest_targeted.log`.
+**Fix leg (review note 7961, MR !324), at a5930623:**
+- The gate change leaves 8604 as it was: the client's 8604 has target type
+  6, its id is in range, and the harness caster stands. The harness was
+  re-rendered on the ThinkPad with the same plan and camera
+  (`review/B1174/worker/harness/disc8604_b1130self_fix/`, `--camera
+  b1130-self --seed 1 --fps 30 --seconds 10`). All 300 frame PNGs and
+  `fx_activity.tsv` are `cmp`-equal to the d4a23b9b run, and
+  `measure_anchor/anchor_table.tsv` is `cmp`-equal too (+0.100 f48 ..
+  +3.967 f164, run cov 0.052).
+- `test -R 'CastAnimation|FxHarness'` on gitlab-runner-2: 100% of 20
+  passed, with the 9 `CastAnimationEntity` cases skipped there (no client
+  tree). See `review/B1174/worker/ctest_targeted_fix.log`.
 - `test_cast_animation` on the ThinkPad with
-  `EQ_CLIENT_PATH=/mnt/projects/EverQuestP1999`: every case passes, and
-  `AModelWithoutTheTrackKeepsItsCurrentAnimation` skips by design (the
-  Troll has t06). See `review/B1174/worker/test_cast_animation_thinkpad.log`.
+  `EQ_CLIENT_PATH=/mnt/projects/EverQuestP1999`: 11 passed, and
+  `AModelWithoutTheTrackKeepsItsCurrentAnimation` skips by design. See
+  `review/B1174/worker/test_cast_animation_thinkpad_fix.log`.
+- Hygiene on gitlab-runner-2: 100% of 48 passed
+  (`review/B1174/worker/hygiene_fix.log`).
+
+**First leg, at 60257a64:**
+- `test -R 'CastAnimation|FxHarness'` on gitlab-runner-1: 18/18 passed
+  (`review/B1174/worker/ctest_targeted.log`).
+- `test_cast_animation` on the ThinkPad: every case passed but the
+  by-design skip (`review/B1174/worker/test_cast_animation_thinkpad.log`).
 - Hygiene on gitlab-runner-1: 100% of 48 passed
   (`review/B1174/worker/hygiene.log`). The first run failed `ZeroCallers`
   with a stale `EXEMPT_TESTS` row: `SpellVisualFX::missileCount` now has the
   harness as a caller, so the row was retired in `scripts/refactor/check_zero_callers.py`.
-- `scripts/refactor/cite_check.py` over this README: `checked 25 cites,
-  0 problems, 0 address warnings`. The `eqgame.exe.c` lines in sec. 3, which
-  the checker does not parse, were each read by hand.
+
+`scripts/refactor/cite_check.py` over this README: `checked 32 cites,
+0 problems, 0 address warnings`. The `eqgame.exe.c` lines in sec. 3, which
+the checker does not parse, were each read by hand.
 
 ## FOLLOW-UP
 
