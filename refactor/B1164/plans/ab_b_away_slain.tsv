@@ -1,5 +1,5 @@
 # action	target	hold_ms	still_name
-# B1164 A/B (b): r51 with ONE change -- the target is B1118's bare `#spawn TrollF` (Human male, Level 1, Health 1 per the B1118 spawn chat), so it is slain at the landing; same #goto (1.4 caster heights right), one fixed cast. (The first 10 fps try ran with the r51 spawn line unchanged -- a generator slip -- so it is an r51 replica.)
+# B1164 A/B (b): r51 with ONE change -- the target is B1118's bare `#spawn TrollF` (Human male, Level 1, Health 1 per the B1118 spawn chat), so it is slain at the landing; same #goto (1.4 caster heights right), one fixed cast. (The first 10 fps try ran with the r51 spawn line unchanged -- a generator slip -- so it is an r51 replica.) Before the #spawn the caster is #goto-ed to the r51 spot and back once, so `empty_r51cam` is a target-free still at r51's camera (the target height is then measured by difference, refactor/B1164/scripts/b1164_hostpx.py).
 # fps=25
 # pose=-74,428,3.75,160
 # ini-set=Options.Camera2-Distance=11.000000
@@ -20,6 +20,10 @@ press	F9	0	cam1
 press	F9	0	cam2
 press	F9	0	cam3
 wait	3000	0	cam_settle
+command	#goto -67.6 434.4 3.75	0	goto_empty
+wait	3000	0	empty_r51cam
+command	#goto -74 428 3.75	0	goto_back
+wait	3000	0	back_settle
 command	#spawn TrollF	0	spawn
 wait	3000	0	spawn_settle
 command	#goto -67.6 434.4 3.75	0	goto
