@@ -1,5 +1,5 @@
 # action	target	hold_ms	still_name
-# B1164 A/B (b): r51 with ONE change -- the target is B1118's bare `#spawn TrollF` (Human male, Level 1, Health 1 per the B1118 spawn chat), so it is slain at the landing; same #goto (1.4 caster heights right), one fixed cast. (A first try with `#spawn TrollF 1 1 0 1` left it at 99 % after 5 damage: the hp arg is not the hit points.)
+# B1164 A/B (b): r51 with ONE change -- the target is B1118's bare `#spawn TrollF` (Human male, Level 1, Health 1 per the B1118 spawn chat), so it is slain at the landing; same #goto (1.4 caster heights right), one fixed cast. (The first 10 fps try ran with the r51 spawn line unchanged -- a generator slip -- so it is an r51 replica.)
 # fps=25
 # pose=-74,428,3.75,160
 # ini-set=Options.Camera2-Distance=11.000000
@@ -20,7 +20,7 @@ press	F9	0	cam1
 press	F9	0	cam2
 press	F9	0	cam3
 wait	3000	0	cam_settle
-command	#spawn TrollF 1 1 0 30000	0	spawn
+command	#spawn TrollF	0	spawn
 wait	3000	0	spawn_settle
 command	#goto -67.6 434.4 3.75	0	goto
 wait	3000	0	goto_settle
