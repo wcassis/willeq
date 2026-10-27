@@ -220,7 +220,63 @@ Two things the measurement exposes, each owned elsewhere:
   0x1006094a); willeq passes it as 1 (`docs/spellsnew_format.md:32`). That is a candidate,
   not a finding: s's runtime value is not pinned statically (TRACE.md (a) "PARTIAL").
 
-## 4. Instrument (env-gated, local patch — not committed as a default)
+## 4. The attach scale s at runtime (decompile trace)
+
+Record 80's Target stage (spellsnew.eff record 80, stage 2) has four slots, all anchor 3
+(target) and attach point 1 (SPELLPOINT_DEFAULT): `(280,0,3,1) (281,0,3,1) (282,39,3,1)
+(9,24,3,1)` (edd index, min level, anchor, attach point; layout `docs/spellsnew_format.md:72`
+and `docs/spellsnew_format.md:75`; printed by `python3 refactor/B1164/scripts/b1164_eff.py 80`).
+
+**What eqgame passes.** For an attached slot, eqgame `0x495f02` calls the DLL's emitter
+create (`0x1005e0a0` → `0x1005a430`) with the actor, the attach point and a size scale of
+1.0 (12 is the only point that passes the actor scale; `review/B1141/eff_fields_from_code.tsv:10`).
+CreateEmitter hands them to the CEmitter constructor (`0x1005a696` `call 0x1005a0e0`), which
+stores the actor at instance +0x68, the point at +0x6C, a track at +0x70 and its last
+argument at +0x88 (read only for an emitter with nothing attached, row 1 below; which eqgame
+push lands there was not traced here and does not matter for record 80, whose slots are
+point-attached) (`0x1005a17a` `mov [esi+0x88], edx`; `EQGraphicsDX9.dll.c:63311`..`EQGraphicsDX9.dll.c:63313`
+`param_1[0x1a..0x1c]`, `EQGraphicsDX9.dll.c:63272` `param_1[0x22] = param_14`).
+
+**What Render does with +0x6C / +0x19C** (`0x100605b0` CParticleSystem::Render, edi = the
+EDD entry, ebp = the instance). Two scale slots start at 1.0: s6C `[esp+0x30]` and s19C
+`[esp+0x48]` (`0x100608bf`, `0x100608c7`). Then:
+
+| instance attach | s6C (when +0x6C = 1) | s19C (when +0x19C = 1) | address |
+|---|---|---|---|
+| nothing (+0x68 = +0x70 = 0) | the size scale +0x88 | +0x88 | `0x100608ea`, `0x100608fc` |
+| actor only (+0x68) | the attached object's vtbl+0x84 × actor+0x10 (B1151 TRACE (a), not pinned) | the same | `0x10060944`, `0x10060979` |
+| **attach point (+0x6C) — record 80's case** | **‖row 0 of the point's world matrix‖** | **the same** | `0x100609e9`, `0x100609fd` → `0x10039480` |
+| track (+0x70) | ‖matrix row‖ × `0x1005c4f0` | the same | `0x10060ae8`, `0x10060b32` |
+
+The point path runs after the actor path and overwrites it (`0x10060991` tests +0x6C, the
+point's matrix is refreshed by `0x100609bf` `call 0x100398d0` and its position read from
+point+0xD0 at `0x100609c7`). `0x10039480` is `sqrt(m[0xa0]² + m[0xa4]² + m[0xa8]²)`
+(`EQGraphicsDX9.dll.c` FUN_10039480): the length of the first row of the point's 4×4 world
+matrix, i.e. the uniform scale the client renders that model point at — the actor's scale
+as it reaches the DEFAULT bone. There is **no distance, no co-location and no death term**
+in it: the only inputs are the target model's matrices.
+
+**What s multiplies** (each a `fmul` by the slot):
+
+- s6C: the sprite size — `0x1006325e` (`s6C × +0x16C`), the draw half-width at `0x10063364`..`0x1006336c`
+  (× the particle's size `[esi+0x6c]`); the per-step velocity integration
+  (`0x10062705`, h += v1·s·dt, and the rows listed at `src/client/graphics/sim_particles.cpp:899`).
+- s19C: the spawn shape and offsets — `0x100612c8`..`0x100612cf` (`s19C × +0xB8`), the
+  respawn copy at `0x100629bb`, and `[esp+0x2c] = 1/s19C` at `0x10060b8d`.
+
+So for record 80 every landing dimension (sprite size, velocities, shape radius/height,
+offsets) is × s, where s is the target's rendered scale at its DEFAULT point.
+
+**What willeq does.** The EDD path reads both flags and applies them —
+`spell_emitter_presets.cpp:395` (shape: `scaleShapes ? attachScale : 1`),
+`spell_emitter_presets.cpp:420` (motion), `spell_emitter_presets.cpp:462` (sprite: `multiplier ×
+(scaleSizes ? attachScale : 1)`), consumed at `sim_particles.cpp:842`/`sim_particles.cpp:844` (size)
+and `sim_particles.cpp:899` (motion) — but every caller passes the constant
+`kSpellFxAttachScale = 1.0` (`include/client/spell/spells_new_edd_reader.h:262`; the Target
+stage at `spell_visual_fx.cpp:1013`). So willeq draws record 80 at s = 1 for every target.
+Whether that is the gap depends on the target's s in the oracle captures, which §5 measures.
+
+## 6. Instrument (env-gated, local patch — not committed as a default)
 
 - `WILLEQ_FX_COUNT=1` — per-emitter live count + config per frame
   (`sim_particles.cpp`, after `particleActiveCount_`).
