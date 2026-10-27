@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <iomanip>
@@ -848,6 +849,37 @@ bool setupSpellTestCamera() {
     return true;
 }
 
+// B1169 (#488): Irrlicht's solid pass draws its nodes sorted by their
+// material-0 texture POINTER (CSceneManager::DefaultNodeEntry::operator<,
+// TextureValue = getMaterial(0).getTexture(0)): a heap address, so under ASLR
+// the caster/target order is whichever texture the allocator placed lower.
+// On a distance-0 target the two models share pixels whose depths tie (the
+// GBM context is 16-bit depth), and the LEQUAL depth test keeps the LATER
+// draw there -- the pre-B1169 run-to-run pixel differences. Logged at frame 0
+// and on every change, so a run states the order it drew in. (The ground
+// plane is untextured -- a null key -- and always sorts first.)
+static void logSolidDrawOrder(int frame) {
+    static std::string last;
+    struct Entry { const char* name; const void* tex; };
+    std::vector<Entry> es;
+    auto tex0 = [](scene::ISceneNode* n) -> const void* {
+        return n->getMaterialCount() ? static_cast<const void*>(n->getMaterial(0).getTexture(0)) : nullptr;
+    };
+    if (animatedNode && animatedNode->isVisible()) es.push_back({"caster", tex0(animatedNode)});
+    if (targetAnimatedNode && targetAnimatedNode->isVisible() && !fxTargetGone)
+        es.push_back({"target", tex0(targetAnimatedNode)});
+    std::stable_sort(es.begin(), es.end(), [](const Entry& a, const Entry& b) {
+        return reinterpret_cast<uintptr_t>(a.tex) < reinterpret_cast<uintptr_t>(b.tex);
+    });
+    std::string order = "ground";
+    for (const auto& e : es) order += std::string(" < ") + e.name;
+    if (order == last) return;
+    last = order;
+    std::printf("[fx-harness] solid draw order at frame %d: %s", frame, order.c_str());
+    for (const auto& e : es) std::printf(" %s=%p", e.name, e.tex);
+    std::printf("\n");
+}
+
 int runScriptedHarness() {
     std::vector<HarnessCast> plan;
     std::string err;
@@ -1059,6 +1091,7 @@ int runScriptedHarness() {
             driver->draw2DImage(fxBackdrop, core::rect<s32>(0, 0, harnessOpts.width, harnessOpts.height),
                                 core::rect<s32>(0, 0, ts.Width, ts.Height));
         }
+        logSolidDrawOrder(f);
         smgr->drawAll();
         renderSpellParticles();
         for (const auto& r : harnessOpts.uiOccluders)  // the lane client's UI, drawn last
