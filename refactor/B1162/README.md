@@ -739,3 +739,10 @@ Other corrections:
 
 `tests/test_fx_harness.cpp` was checked: its two discipline comments make no
 zone-in or field-121 claim and stay as they are.
+
+**Gates for the fix leg (ThinkPad, tbuild):** `test -R 'Discipline|FxHarness'`
+= 7/7 passed (`review/B1162/worker/ctest_fix_20261027.log`); hygiene = 100% of
+48 passed (`review/B1162/worker/hygiene_fix_20261027.log`);
+`scripts/refactor/cite_check.py` over this README = `checked 14 cites,
+0 problems, 0 address warnings`, and every `eqgame.exe.c` line cited in the
+rewritten text was read by hand.
