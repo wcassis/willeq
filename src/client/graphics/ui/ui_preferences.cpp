@@ -116,10 +116,15 @@ const CameraRigRow kCameraRigKeys[] = {
 // B430: the settings-table half of `[Options]` -- the same anti-drift device
 // as kOptions (one table, walked by parse and serialise), with the table in
 // options_settings.cpp. Persisted = Renderer-owned AND carries an ini key.
+// B1175 (#494): a row the oracle keeps in eqclient.ini [Defaults]
+// (eqclientSection set: the particle keys and ShowSpellEffects) is NOT this
+// file's -- eqclient_ini.cpp owns it, so a per-character `[Options]` line for
+// one of those keys is ignored on read and never written.
 bool IsPersistedSetting(int i) {
     if (i <= 0 || i >= OptionsLayout::kSettingCount) return false;
     const auto& info = OptionsLayout::allSettings()[i];
-    return info.owner == OptionsLayout::Owner::Renderer && info.iniKey != nullptr;
+    return info.owner == OptionsLayout::Owner::Renderer && info.iniKey != nullptr &&
+           info.eqclientSection == nullptr;
 }
 
 // A bool key accepts the oracle's TRUE/FALSE spelling (eqclient.ini
@@ -132,8 +137,10 @@ void ParseSettingKey(const std::string& key, const std::string& value, UiPrefere
         if (key != info.iniKey) continue;
         int v = 0;
         const std::string t = Trim(value);
-        // B1165: a particle float keeps the clamped value the ini gave as the
-        // APPLIED value; the slot holds the choice the window shows.
+        // B1165: a float keeps the clamped value the ini gave as the APPLIED
+        // value; the slot holds the choice the window shows. (B1175: every
+        // float setting is an eqclient.ini one today, so this arm is kept for
+        // a future per-character float key.)
         if (OptionsLayout::isIniFloatSetting(info.setting)) {
             std::optional<float> applied;
             if (!OptionsLayout::parseSettingIniFloat(info.setting, t, v, applied)) return;

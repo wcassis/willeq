@@ -20,7 +20,11 @@
  *   Renderer the value lives in OptionsPanelState::values and is persisted
  *            per character in UI_<Char>_<server>.ini `[Options]` under the
  *            oracle's own key (the same flagged one-writer deviation T434
- *            recorded: the oracle keeps these in eqclient.ini).
+ *            recorded: the oracle keeps these in eqclient.ini) -- EXCEPT a
+ *            row with `eqclientSection` set (B1175, #494: the Display >
+ *            Particles keys and ShowSpellEffects), which is persisted where
+ *            the oracle keeps it: the GLOBAL eqclient.ini, that section
+ *            (eqclient_ini.h).
  *   Game     the SERVER is the authority (player-profile fields). The
  *            renderer asks for a change with GameOptionIntent and shows what
  *            the game thread publishes back; nothing is written locally.
@@ -92,7 +96,7 @@ enum class Setting : uint8_t {
     // B995: Display > Particles (particle_options.h). Spell and Env pages;
     // the Player (Actor) page has no particles behind it (N3).
     ParticlesTab,          // Marker: ODP_ParticlesTabs' sub-tab strip
-    SpellParticleOpacity,  // Renderer, 0..20 -> SpellParticleOpacity 0..1
+    SpellParticleOpacity,  // Renderer, 0..100 x 0.01 -> SpellParticleOpacity (B1175)
     SpellParticleDensity,  // Renderer, Off/Low/Medium/High
     SpellParticleNearClip, // Renderer, Near/Medium/Far/Farthest
     // B1165 (#484): "On For:" -- SpellParticleCastFilter, the value table at
@@ -166,13 +170,17 @@ struct SettingInfo {
     const char* source;
     /**
      * B995: the oracle keeps some settings as FLOATS (`1.000000`). A Step
-     * setting with iniDivisor > 0 persists value / iniDivisor; a Choice
-     * setting with iniFloats persists iniFloats[the choice's list index].
-     * B1165: the slot holds the step / choice the window SHOWS (nearest step;
-     * the combobox rule of choiceForIniFloat); the clamped ini float itself is
-     * the APPLIED value (OptionIniFloats below). Neither set = an integer key.
+     * setting with iniStepValue > 0 persists position x iniStepValue (B1175:
+     * the opacity sliders' handler, eqgame.exe.c:245434, `position *
+     * _DAT_00640038`, 0x640038 = 0x3c23d70a = 0.01f); a Choice setting with
+     * iniFloats persists iniFloats[the choice's list index].
+     * B1165: the slot holds the step / choice the window SHOWS (B1175: the
+     * slider position the client derives from the float,
+     * opacitySliderPosition(); the combobox rule of choiceForIniFloat); the
+     * clamped ini float itself is the APPLIED value (OptionIniFloats below).
+     * Neither set = an integer key.
      */
-    float iniDivisor = 0.0f;
+    float iniStepValue = 0.0f;
     const float* iniFloats = nullptr;
     /**
      * B1165: a Choice setting whose int the oracle keeps RAW from the ini
@@ -181,6 +189,15 @@ struct SettingInfo {
      * list, the LAST entry when it is not listed (0x53b9e9..0x53ba07).
      */
     bool rawIniInt = false;
+    /**
+     * B1175 (#494): the eqclient.ini SECTION the oracle reads and writes this
+     * key in (every particle key and ShowSpellEffects: "Defaults", the loader
+     * at eqgame.exe.c:132608-132638 and :126007, the writers at
+     * :245163-245204 / :245310 / :245434-245446). Non-null = the key lives in
+     * fable's GLOBAL eqclient.ini (eqclient_ini.h), NOT in the per-character
+     * UI_<Char>_<server>.ini; ui_preferences.cpp neither reads nor writes it.
+     */
+    const char* eqclientSection = nullptr;
 };
 
 /** B995: the ini text of `v` for setting `s` (a float in the oracle's format, or an int). */
@@ -228,9 +245,9 @@ int choiceDisplayIndex(Setting s, int v);
 // oracle's handler does (eqgame.exe.c:245163-245204), so it clears the slot.
 using OptionIniFloats = std::array<std::optional<float>, kSettingCount>;
 
-/** Does `s` persist as a float (Step with iniDivisor, Choice with iniFloats)? */
+/** Does `s` persist as a float (Step with iniStepValue, Choice with iniFloats)? */
 bool isIniFloatSetting(Setting s);
-/** The table float of value `v` (step / divisor, or the choice's iniFloats entry). */
+/** The table float of value `v` (position x iniStepValue, or the choice's iniFloats entry). */
 float settingTableFloat(Setting s, int v);
 /** The float the client APPLIES for `s`: `raw` when set, else settingTableFloat(s, v). */
 float appliedSettingFloat(Setting s, int v, const std::optional<float>& raw);
@@ -245,6 +262,26 @@ bool parseSettingIniFloat(Setting s, const std::string& text, int& display,
                           std::optional<float>& applied);
 /** The ini text for `s`: the raw float when set, else settingIniText(s, v). */
 std::string settingIniText(Setting s, int v, const std::optional<float>& raw);
+
+// --- B1175 (#494): the particle opacity sliders, as the oracle builds them ---
+//
+// All three (Spell / Environment / Actor) get 0x65 = 101 positions from
+// CSliderWnd's SetNumTicks (0x5bd180) at 0x541032..0x541060; SetValue
+// (0x5bcd10) clamps a position to [0, ticks - 1] = [0, 100].
+constexpr int kParticleOpacitySliderPositions = 101;
+/** The slider position the client shows for opacity `f`: FUN_0053ac98(f x
+ *  100.0) (eqgame.exe.c:243666, 0x640fc8 = 100.0 as a double) -- floor when
+ *  fmod(x, 1) < 0.5 (0x6410bc), else ceil -- clamped to [0, 100] by SetValue. */
+int opacitySliderPosition(float f);
+/** The float the client's handler stores for position `p`: p x 0.01f
+ *  (eqgame.exe.c:245434 / :245447 / :245460, 0x640038 = 0.01f). */
+float opacityForSliderPosition(int p);
+/** The value label the client writes for position `p`: "%d %c" with '%'
+ *  (format string 0x65944c, eqgame.exe.c:245436), i.e. "<p> %". */
+std::string opacitySliderLabel(int p);
+
+/** B1175: is `s` kept in the global eqclient.ini (eqclientSection set)? */
+bool isEqClientIniSetting(Setting s);
 
 // --- The Filters page ---
 
