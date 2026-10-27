@@ -291,7 +291,21 @@ land and end hold. Owner: the frame change (sec. 3), the client's rule; the b111
 
 ## 6. Verification
 
-VERIFICATION_SECTION
+- Targeted ctests on the merged tip (fable f61fafb4 merged; built on gitlab-runner-2: model_viewer
+  and the ten affected test targets): `100% tests passed, 0 tests failed out of 99`
+  (`/mnt/projects/fable/review/B1167/worker/ctest_merged.log`), including the B1130 harness renders
+  (`FxHarness.B1130*`, verbose run `ctest_fxharness_b1130_v.log`: caster 209 px feet 598, target
+  238 px feet 615, self-check PASS) and the four new tests.
+- Hygiene (`tbuild <wt> hygiene`, runner-2): `100% tests passed, 0 tests failed out of 48`
+  (`/mnt/projects/fable/review/B1167/worker/hygiene_final.log`). The two inserted SlotRules tests
+  moved B1165's anchored cites in `refactor/B1165/README.md`; re-pointed (DocCitations).
+- Cite check: `python3 -I scripts/refactor/cite_check.py refactor/B1167/README.md --tree .
+  --extra /mnt/projects/fable --dis .../eqgame.dis --dis .../EQGraphicsDX9.dis` -> the count is in
+  the MR note; bare addresses hand-checked against `EQGraphicsDX9.dis` (sec. 3's 0x10060b88..0x10060ca8
+  block).
+- The MR pipeline's id and status are in the MR description / note.
+- Bless-only files: none changed (no golden, manifest, baseline, ratchet or
+  `config/constrained_presets.json`); the throwaway instrument worktrees are not part of the branch.
 
 ## RULING REQUEST
 
