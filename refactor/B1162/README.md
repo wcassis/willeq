@@ -255,7 +255,7 @@ reaching this branch, or the caster byte not 'd' at the instant), which the pcap
 cannot show and which no skill/spell/combat pre-SQL can change. Per the HARD RULE
 this is a block (no GM `#castspell` substitution, no FOLLOW-UP).
 
-## Next steps (for the orchestrator) — Leg A is done; Leg B is a block
+## Next steps (for the orchestrator, attempt 2; superseded by the continuation sections below)
 
 1. **`/disc` (record 325/326):** superseded. Leg A's client SENT 8604 because
    8604 was the first prefix match in its list, but the server refused it
