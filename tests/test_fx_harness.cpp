@@ -455,21 +455,24 @@ TEST_F(FxHarness, B1130PresetSolvesTheFixedNpcGeometry) {
 }
 
 // B1166 (MR !320 note 7834 finding 3): a WRONG body at the anchor must fail the
-// harness's own self-check. The caster's model (race 6 dark elf, female, size
-// 6) solved at the anchor renders 261 px at the client's actor scale (B1172,
-// review/B1172/worker/wrong_model/6_1_6.log; 218-219 at 1.0, inside the
-// earlier +-25 %-of-288 bound, which passed it) -- and the run must exit
-// non-zero (5) with a FAIL line.
+// harness's own self-check, and the run must exit non-zero (5) with a FAIL
+// line. B1172: the wrong body is the human male at size 5 -- actor scale
+// 5 x 0.2 = 1.0, i.e. the human exactly as fable drew it before B1172 --
+// which renders 238 px (review/B1172/worker/wrong_model/r1_1_0_5.log), inside
+// the earlier +-25 %-of-288 bound. (B1166 used the dark-elf female 6:1:6; at the
+// client's actor scale her solve does not converge on every renderer -- it
+// exits "did not solve" on gitlab-runner-1, r1_6_1_6.log -- so it no longer
+// reaches the self-check everywhere.)
 TEST_F(FxHarness, B1130SelfCheckRejectsAWrongTargetModel) {
-    const fs::path frames = runPlan("b1130wrong", "100.0\t93\tother\t0\t250\t60\n", 0.5, "--target 6:1:6", "b1130");
-    EXPECT_TRUE(frames.empty()) << "the b1130 run with a dark-elf female target exited 0";
+    const fs::path frames = runPlan("b1130wrong", "100.0\t93\tother\t0\t250\t60\n", 0.5, "--target 1:0:5", "b1130");
+    EXPECT_TRUE(frames.empty()) << "the b1130 run with the size-5 (scale 1.0) human target exited 0";
     std::ifstream log(dirs_.back() / "run.log");
     std::string line, check;
     while (std::getline(log, line))
         if (line.find("b1130 target self-check") != std::string::npos) check = line;
     std::printf("%s\n", check.c_str());
     EXPECT_NE(check.find(": FAIL"), std::string::npos) << "no FAILing self-check line for the wrong model";
-    // Its height (261 px at the actor scale, B1172): outside the ratchet,
+    // Its height (238 px, fable's pre-B1172 drawing): outside the ratchet,
     // inside the old bound.
     int px = 0;
     const auto at = check.find("px, feet row");
@@ -477,7 +480,7 @@ TEST_F(FxHarness, B1130SelfCheckRejectsAWrongTargetModel) {
     const auto open = check.rfind('(', at);
     ASSERT_EQ(std::sscanf(check.c_str() + open, "(%d px", &px), 1) << check;
     EXPECT_GT(std::fabs(px - fxharness::kStandingPx), fxharness::kStandingTolPx) << px << " px";
-    EXPECT_GE(px, 216) << "the dark-elf female left the old +-25 % bound; the negative no longer shows finding 3";
+    EXPECT_GE(px, 216) << "the wrong body left the old +-25 % bound; the negative no longer shows finding 3";
     cleanDirs();
 }
 
