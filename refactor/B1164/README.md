@@ -348,7 +348,7 @@ spot and back before the spawn. **r51's target is 265 px with its boots at row ~
 the 325 px / feet (940,652) of `review/B1130/geom/r51.json:9`** (those rows include the
 "TrollF" name label: the single-still extent of r51's band, `python3
 refactor/B1164/scripts/b1164_figure_rows.py review/B1130/oracle/r51/26_tgt_npc_settle.png 895 1000
-290 660`, reads rows 290..614 = 325 px, from the label's top row to the selection ring). The
+290 660`, reads rows 290..614 = 325 px, starting at the label's top row). The
 oracle draws the human target 1.27–1.35 caster heights tall; willeq's b1118 harness draws
 it 241/228 = 1.057.
 
