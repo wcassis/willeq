@@ -4,7 +4,7 @@
     "densityMultiplier": 1.0
   },
   "landingPopulation": {
-    "rule": "B1123 (#443): every landing (impact + spellComplete) peaks at half the platform pool (constrained_presets.json spellParticlePool), so two overlapping landings, or 253's field beside one, fit; the rates below give each landing's schedule and SpellEffectsConfig::applyPool scales them to the peak. An exception is a landing the oracle fills with FEWER sprites: its peak is min(peakLive, half the pool)."
+    "rule": "B1123 (#443) + B1161 (#480): a spell with NO spellsnew.eff record lands the style (impact + spellComplete), and that style landing plus its own held Source peaks at half the platform pool (constrained_presets.json spellParticlePool), so two overlapping no-record landings fit; the rates below give its schedule and SpellEffectsConfig::applyPool scales them to the peak. A spell WITH a record draws its slots' FILE populations (B1149) and the rule scales none of them: the oracle's pool (EQGraphicsDX9 -- per-emitter rings, ring full drops the rest of the frame's emission, 0x10061180) is a cap, not a scaler, and fable applies that rule at its one pool (new particles dropped while it is full: allocateParticle returns -1, sim_particles.cpp:774, sized from this config at renderer_sim_bridge.cpp:470). The largest record field a class-level 1-60 spell draws is record 35's (spellsnew.eff 104, spell 253): 3746 + 1168 = 4914 peak live (each slot's burst + perTick x tps x min(window, L), summed: an upper bound) -- inside the desktop 8192, over the sbc 4096 by 818, where the pool fills and drops. No count is scaled (refactor/B1149/README.md sec. 4; pinned by SpellPoolRule in tests/test_spell_colour_and_overrides.cpp and SpellLandingPool in tests/test_spell_landing_volume.cpp)."
   },
   "sourceRecords": {
     "rule": "B1153 (#473): the survey's per-record measured rows are retired -- every record is drawn by its spellsnew.eff record's EDD emitters (spellsnew.edd +0xA8 shape, +0xB8..+0xC0 offsets, +0xC4/+0xC8 tilts; B1149 population/sprite, B1150 shape, B1151 motion) and the measured values are regression bands in the tests/spell_fx_*_oracle.h headers (the generator: refactor/B1153/scripts/gen_row_bands.py, run against the pre-retirement config at e83a097d). What the file keeps is the NO-RECORD fallback: a spell whose field 145 is absent draws `default` (the style's body cloud on the caster, the B1130 median onset, B1122's holds), scaled by `scale`.",
@@ -760,101 +760,6 @@
         "sizeStartMax": 1.338,
         "sizeEndMin": 0.334,
         "sizeEndMax": 0.669
-      }
-    },
-    "253": {
-      "impact": {
-        "spawnRate": 600.0,
-        "emitterLifetime": 4.35,
-        "motionType": "LINEAR",
-        "velocityBase": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "velocitySpread": [
-          1.625,
-          1.625,
-          1.625
-        ],
-        "gravity": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "drag": 0.0,
-        "positionOffset": [
-          0.0,
-          5.175,
-          0.0
-        ],
-        "spawnWindow": 0.0,
-        "sustainRate": 0.0,
-        "sizeStartMin": 0.387,
-        "sizeStartMax": 0.605,
-        "sizeEndMin": 0.761,
-        "sizeEndMax": 1.137
-      },
-      "spellComplete": {
-        "spawnRate": 600.0,
-        "emitterLifetime": 4.35,
-        "motionType": "LINEAR",
-        "velocityBase": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "velocitySpread": [
-          1.625,
-          1.625,
-          1.625
-        ],
-        "gravity": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "drag": 0.0,
-        "positionOffset": [
-          0.0,
-          5.175,
-          0.0
-        ],
-        "spawnWindow": 0.0,
-        "sustainRate": 0.0,
-        "sizeStartMin": 0.46,
-        "sizeStartMax": 0.761,
-        "sizeEndMin": 0.919,
-        "sizeEndMax": 1.355
-      },
-      "castGlow": {
-        "motionType": "LINEAR",
-        "velocityBase": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "velocitySpread": [
-          1.625,
-          1.625,
-          1.625
-        ],
-        "gravity": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "drag": 0.0,
-        "positionOffset": [
-          0.0,
-          4.915,
-          0.0
-        ],
-        "spawnRate": 1950,
-        "sizeStartMin": 1.467,
-        "sizeStartMax": 2.2,
-        "sizeEndMin": 0.733,
-        "sizeEndMax": 1.1
       }
     }
   }

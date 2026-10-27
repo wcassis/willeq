@@ -40,13 +40,18 @@ public:
     bool reload();
 
     /**
-     * B1123 (#443): set the spell particle pool (the platform's preset value,
-     * ConstrainedRendererConfig::spellParticlePool) and derive every landing
-     * population from it by the one pool rule (spell_effects_config.cpp,
-     * applyPopulationRule): each landing peaks at half the pool -- two
-     * overlapping landings, or 253's field beside one, fit -- unless
-     * `landingPopulation.exceptions` names a smaller, oracle-measured peak.
-     * Re-reads the loaded file, so it may be called again (a re-sized pool).
+     * B1123 (#443) as re-derived by B1153 (#473) and B1161 (#480): set the
+     * spell particle pool (the platform's preset value,
+     * ConstrainedRendererConfig::spellParticlePool) and derive the landing
+     * populations from it by the one pool rule (spell_effects_config.cpp,
+     * applyPopulationRule).  The oracle's pool is a CAP, not a scaler: a
+     * landing drawn from a spellsnew.eff record (or from one of the five kept
+     * spellOverrides) is emitted at the file's / the override's own counts
+     * and the pool drops the rest once it is full (EQGraphicsDX9's per-
+     * emitter rings, refactor/B1149/README.md sec. 4) -- the rule scales none
+     * of them.  The half-pool bound is the no-record style landing's (two
+     * overlapping ones fit).  Re-reads the loaded file, so it may be called
+     * again (a re-sized pool).
      */
     void applyPool(int pool);
 
@@ -129,10 +134,16 @@ public:
      * Get merged style settings for a given style name and optional spell ID.
      * If spellId is non-zero and has overrides, those fields replace base style values.
      *
-     * B1131: `record` is the spell's spells.eff record (spells_us.txt field
-     * 123, -1 = none). A landing half ("impact" / "spellComplete") the spell
-     * does not override is the style scaled for THAT record's held Source
-     * (applyPool: a landing plus its own held Source peaks at half the pool).
+     * `record` is the spell's spellsnew.eff record (B1137: spells_us.txt
+     * field 145, the vocabulary's spellAnim; 0 = none, -1 = not given; a
+     * record exists only for record > 0). B1153 (#473) retired the per-record
+     * landing scale and B1161 (#480) confirmed the parameter adds nothing to
+     * any style: a record's landing is its spellsnew.edd slots
+     * (applySlotEmitter), and the cast-animation term is the Source stage's
+     * caller duration (spell_fx_timing.h), never a landing's lifetime -- the
+     * client passes a Target stage no duration (eqgame 0x47f5e1). Kept for
+     * the callers' signature; record 0, -1 and any record give the same
+     * settings (SpellStyleOverrides.RecordZeroIsTheNoRecordPath).
      */
     StyleSettings getStyleSettings(const std::string& styleName, uint32_t spellId = 0,
                                    int record = -1) const;

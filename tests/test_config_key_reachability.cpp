@@ -72,19 +72,21 @@ const MapNode kDataKeyedMaps[] = {
      "ConstrainedRendererConfig::loadPresetsFromJson enumerates "
      "presets.getMemberNames() rather than asking for any by literal"},
     {"spell_effects.json", "spellOverrides",
-     "B1153 (#473): SPELL IDS (the six B1120/B1122 measured clouds that stay "
-     "-- the file is not the whole story, refactor/B1153/README.md); the style "
-     "settings under each are settings again; SpellEffectsConfig::loadSpellOverrides "
-     "enumerates root.getMemberNames() and std::stoul's each one, so no source "
-     "names 38, 41 or 253 as a literal"},
+     "B1153 (#473) + B1161 (#480): SPELL IDS (the five measured clouds that "
+     "stay -- 38/41/54/458/656, the file is not the whole story, "
+     "refactor/B1153/README.md; the 253 one was retired by B1161: its words "
+     "live on the record path now); the style settings under each are "
+     "settings again; SpellEffectsConfig::loadSpellOverrides enumerates "
+     "root.getMemberNames() and std::stoul's each one, so no source names "
+     "38, 41 or 458 as a literal"},
     // B1153 (#473): spell_effects.json's `spellOverrides` block STAYS --
-    // the six B1120/B1122 measured clouds (38/41/54/253/458/656) whose
+    // the five B1120/B1122 measured clouds (38/41/54/458/656) whose
     // spellsnew file is not the whole story (refactor/B1153/README.md
-    // documents each with before/after numbers): spell IDs, and the style
-    // settings under each are settings again;
-    // SpellEffectsConfig::loadSpellOverrides enumerates
+    // documents each with before/after numbers); B1161 (#480) retired the
+    // 253 one of them. spell IDs, and the style settings under each are
+    // settings again; SpellEffectsConfig::loadSpellOverrides enumerates
     // root.getMemberNames() and std::stoul's each one, so no source names
-    // 38, 41 or 253 as a literal. The ROW blocks it replaced
+    // 38, 41 or 458 as a literal. The ROW blocks it replaced
     // (`sourceRecords.records` / `overrideRecords`, `targetRecords.records`,
     // `animRecords.rows`) are RETIRED: the config carries the two default
     // rows only, and the measured words are the bands in
