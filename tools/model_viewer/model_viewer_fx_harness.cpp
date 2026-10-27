@@ -335,7 +335,7 @@ bool fitFixedNpcTarget(const PresetGeometry& g) {
     // damped. Starts on the caster's right and closer to the camera.
     float x = -2.0f, z = 2.0f;
     std::array<float, 3> m{1e9f, -1e9f, 0.0f};
-    for (int iter = 0; iter < 24; ++iter) {
+    for (int iter = 0; iter < harnessOpts.targetFitIterations; ++iter) {
         m = measure(x, z);
         if (m[0] < 1e8f) {
             const float r0 = m[0] - targetFeetXS, r1 = m[1] - targetFeetYS;

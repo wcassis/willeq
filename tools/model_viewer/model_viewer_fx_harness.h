@@ -76,6 +76,11 @@ struct HarnessOptions {
     // ("FPS: 60" on its frames) while x11grab writes 30 (B1139).
     int simHz = 0;
     bool ground = true;                // a preset's depth-only ground plane (--no-ground)
+    // B1177 (#496): the b1130 target solve's iteration cap
+    // (--target-fit-iterations, default 24 = B1166's loop). A cap the solve
+    // cannot converge in (1: only the start point is measured) makes the
+    // preset not solve -- the deterministic failure the exit-2 test runs.
+    int targetFitIterations = 24;
     bool casterGiven = false;          // --caster / --target win over a preset
     bool targetGiven = false;
     // B1139 (#459) lane-parity factors, each measured in refactor/B1139/README.md.
