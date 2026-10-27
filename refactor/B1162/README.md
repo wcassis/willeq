@@ -606,3 +606,8 @@ reuse timer was added and removed). Gems are back to 93,38,54,41,253,458,656
 BYTE-IDENTICALLY" x2. The caster INI `before-character.ini` is byte-identical
 to the file at stop (`cmp`). The lease was FREE at the end (`cleanup exit=0
 lane=5 lock=state=FREE`).
+
+**Gates for this step (ThinkPad, tbuild):** `ctest -R Discipline` = both
+FxHarness discipline pins passed (`review/B1162/worker/ctest_disc_20261027.log`);
+hygiene = 100% of 48 passed (`review/B1162/worker/hygiene_20261027.log`);
+`scripts/refactor/cite_check.py` over this README = `checked 14 cites, 0 problems`.
