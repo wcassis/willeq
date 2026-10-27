@@ -100,7 +100,7 @@ jobs, and restores it):
   instrument.
 
 Lane bands: `review/B1142/gate/regression_table.tsv` (lane-5 b1118 captures;
-the harness/oracle landing-ratio band 0.45..0.72 is B1150's p25..p90
+the harness/oracle landing-ratio band 0.45..0.72 is B1150's p25..p75
  over the 40-row survey, `refactor/B1150/README.md`). b1130: the B1155 banded
 table (`refactor/B1155/banded_table.tsv`) — but only spells 38/41/54/253/458/
 656 have a LANE row there (the b1130 preset has no oracle row of its own),
