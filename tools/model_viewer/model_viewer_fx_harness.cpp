@@ -502,13 +502,12 @@ void applyHarnessPresetDefaults() {
     // All three presets share the b1118 char-67 caster: char 67 Testcaster
     // (lane 5): race 6 dark elf, gender 1 (fable.log
     // "Updating appearance for entity 258 (Testcaster) to race 6 gender 1").
-    // B1164 (#483): server size 0 -- the oracle's OP_ZoneEntry carries
-    // size=0.000 for her (refactor/B1164/scripts/b1164_spawns.py on every
-    // B1164 capture) and the lane-5 probe read her actor scale 1.000000, the
-    // race default 5.0 x 0.2 (spell_fx_attach_scale.h). (The 6.00 in fable.log
-    // is fable's own placeholder, zone_entry.cpp's default player size.) The
-    // drawn model is unchanged: entityScaleForServerSize gives 1.0 at size 0
-    // as it did at 6/6.
+    // B1172: size 0 -- her S->C OP_ZoneEntry Spawn_Struct carries size 0.000
+    // in the oracle captures (r51, B1118 oracle_druid) and in fable's lane
+    // legs (B1118 fable_A, B1142 fable_N93), and no AT_Size names her; the
+    // client then draws its race/gender default 5.0 x 0.2 = 1.0
+    // (actor_scale.h). The 6.0 here before was fable's own zone_entry
+    // default, not a wire value.
     if (!harnessOpts.casterGiven) {
         harnessOpts.casterRace = 6;
         harnessOpts.casterGender = 1;
