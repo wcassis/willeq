@@ -78,6 +78,7 @@
 #include "client/graphics/environment/spell_effects_config.h"
 #include "client/graphics/environment/spell_particle_types.h"
 #include "client/graphics/environment/unified_particle.h"
+#include "particle_test_seed.h"
 #endif
 #endif
 
@@ -466,6 +467,7 @@ protected:
         auto& pi = input.particleInput;
         pi.deltaTime = deltaTime;
         pi.unifiedRendererInitialized = true;
+        pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
         pi.poolSize = 1024;
         for (uint16_t id : requested_) {
             if (id == kTarget) pi.entityPositions[kTarget] = kTargetPos;

@@ -112,6 +112,7 @@
 #include <unordered_set>
 #include "spell_landing_population.h"
 #include "spell_pool.h"
+#include "particle_test_seed.h"
 #endif
 
 namespace {
@@ -415,6 +416,7 @@ protected:
             auto& pi = input.particleInput;
             pi.deltaTime = 1.0f / 60.0f;
             pi.unifiedRendererInitialized = true;
+            pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
             pi.poolSize = pool;
             for (uint16_t id : requested) {
                 if (id == kTarget) pi.entityPositions[kTarget] = kTargetPos;
