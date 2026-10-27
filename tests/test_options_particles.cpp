@@ -541,7 +541,7 @@ TEST(OptionsParticlesB1175, EachOpacitySliderIs101PositionsOfPointZeroOne) {
             const auto fam = slider == OL::Setting::SpellParticleOpacity ? Env::ParticleFamily::Spell
                                                                          : Env::ParticleFamily::Environment;
             EXPECT_EQ(knob(k, fam).opacity, expect) << info.name << " position " << p;
-            EXPECT_EQ(OL::opacityForSliderPosition(p), expect) << p;
+            EXPECT_EQ(OL::settingTableFloat(slider, p), expect) << p;
             EXPECT_EQ(optionsSettingText(s, slider), std::to_string(p) + " %") << info.name;
             EXPECT_EQ(OL::opacitySliderLabel(p), std::to_string(p) + " %");
             const std::string ini = OL::settingIniText(slider, p, std::nullopt);

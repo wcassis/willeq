@@ -273,9 +273,9 @@ constexpr int kParticleOpacitySliderPositions = 101;
  *  100.0) (eqgame.exe.c:243666, 0x640fc8 = 100.0 as a double) -- floor when
  *  fmod(x, 1) < 0.5 (0x6410bc), else ceil -- clamped to [0, 100] by SetValue. */
 int opacitySliderPosition(float f);
-/** The float the client's handler stores for position `p`: p x 0.01f
- *  (eqgame.exe.c:245434 / :245447 / :245460, 0x640038 = 0.01f). */
-float opacityForSliderPosition(int p);
+// The float the client's handler stores for position `p` is p x 0.01f
+// (eqgame.exe.c:245434, 0x640038 = 0.01f): settingTableFloat(s, p) of an
+// opacity row (its iniStepValue).
 /** The value label the client writes for position `p`: "%d %c" with '%'
  *  (format string 0x65944c, eqgame.exe.c:245436), i.e. "<p> %". */
 std::string opacitySliderLabel(int p);

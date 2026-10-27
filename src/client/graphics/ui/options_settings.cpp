@@ -488,11 +488,6 @@ int opacitySliderPosition(float f) {
     return p;
 }
 
-float opacityForSliderPosition(int p) {
-    // fild [ebp+0x10]; fmul dword [0x640038]; fstp dword (0x53ee4e..0x53ee5c).
-    return static_cast<float>(p) * kOpacityStep;
-}
-
 std::string opacitySliderLabel(int p) {
     // FUN_005738b0(buf, "%d %c", position, 0x25) (0x53ee5f..0x53ee74).
     char buf[16];
