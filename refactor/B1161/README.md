@@ -134,7 +134,7 @@ spell_effects_config.cpp:504`): a record's landing emitter (`impact` /
 `spellComplete`, `record >= 0`) lives `EQ::kSpellFxCastAnimationSeconds`
 -- the client's constant, not a word from a per-spell block (a kept
 override's own measured `emitterLifetime` still wins,
-`spell_effects_config.cpp:536`). No per-spell constant anywhere: the config
+`spell_effects_config.cpp:537`). No per-spell constant anywhere: the config
 carries no 253 key, and the code names the one shared constant.
 
 Pinned by `SpellStyleOverrides.WhirlingWindLastsAsLongAsTheOracles`
@@ -255,10 +255,12 @@ slot ranges give the run as 5.44 s, i.e. the client's own 1.50 s cast
 minus the 0.41 s stage latency plus the term -- `after/frames/
 b1161_after_tour_253/run.log` `createCastGlow ... slots 0:2@1+0.41..6.85`);
 T = -5.0 is a fixed 5.0 s run (Target: no caller duration). The slot ranges
-the renderer logs: Source `+0.41..6.85/6.85/7.35/7.60`, Target
-`+0.33..8.83/8.33/8.33` (same log, `createLanding ... slots
-0:3/2@1+0.33..8.83 ...`) -- last Source death Act+6.10, last Target death
-Act+8.83; the visible end is the field's fade, earlier on both.
+the renderer logs (each range = stage start..last death of that slot):
+Source `+0.41..6.85/6.85/7.35/7.60` relative to OP_BeginCast (the 0.41 s
+stage latency; last death BC+7.60 = Act+6.10), Target `+0.33..8.83/8.33/
+8.33` relative to OP_Action (the 0.33 s stage latency; last death
+Act+8.83) -- same log, `createLanding ... slots 0:3/2@1+0.33..8.83 ...`.
+The visible end is the field's fade, earlier on both.
 
 ## 6. Verification
 
