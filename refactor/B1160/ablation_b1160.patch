@@ -1,0 +1,57 @@
+diff --git a/src/client/graphics/environment/spell_emitter_presets.cpp b/src/client/graphics/environment/spell_emitter_presets.cpp
+index fdb08230..cb7340ae 100644
+--- a/src/client/graphics/environment/spell_emitter_presets.cpp
++++ b/src/client/graphics/environment/spell_emitter_presets.cpp
+@@ -5,6 +5,8 @@
+ 
+ #include <algorithm>
+ #include <cmath>
++#include <cstdlib>
++#include <string>
+ 
+ namespace EQT {
+ namespace Graphics {
+@@ -590,6 +592,25 @@ void applySlotEmitter(const std::vector<SpellEffectDef*>& slotDefs, const EQ::Sp
+             em.frameRate = motion->frameRate;             // +0x134
+             em.drawNegativeRadius = motion->drawNegativeRadius;  // +0x198
+             em.scale = sprite && sprite->scaleSizes ? attachScale : 1.0f;  // s
++            // B1160: ablation of ONE B1151 motion term, env WILLEQ_FX_ABLATE
++            // (up/ax2/ax3/radial/swirl/gravity/drift/spin/frames); a no-op
++            // when the variable is unset. A record emitter's particles move on
++            // exactly these words (sim_particles.cpp updateEddMotion re-derives
++            // position from them, never from the config velocity), so zeroing a
++            // term removes that term's contribution to the landing and nothing
++            // else. "timescale" is handled at the B1145 guard below.
++            if (const char* abl = std::getenv("WILLEQ_FX_ABLATE")) {
++                std::string a = abl;
++                if (a == "up") { em.upMin = em.upMax = em.upAccel = 0.0f; }
++                else if (a == "ax2") { em.axis2Min = em.axis2Max = em.axis2Accel = 0.0f; }
++                else if (a == "ax3") { em.axis3Min = em.axis3Max = em.axis3Accel = 0.0f; }
++                else if (a == "radial") { em.radialMin = em.radialMax = em.radialAccel = 0.0f; }
++                else if (a == "swirl") { em.swirlMin = em.swirlMax = em.swirlAccel = 0.0f; }
++                else if (a == "gravity") { em.gravity = 0.0f; }
++                else if (a == "drift") { em.driftX = 0.0f; }
++                else if (a == "spin") { em.spinMin = em.spinMax = 0.0f; em.randomStartSpin = false; }
++                else if (a == "frames") { em.frameCount = 1; em.frameRate = 0.0f; }
++            }
+         }
+         const float oldLife = 0.5f * (c.lifetimeMin + c.lifetimeMax);
+         const float delay = std::max(stageLatency, 0.0f) + t.start;
+@@ -609,7 +630,16 @@ void applySlotEmitter(const std::vector<SpellEffectDef*>& slotDefs, const EQ::Sp
+         // the file's own motion words (eddMotion, B1151), which carry the
+         // extents -- scaling the config motion under them would double-drive
+         // anything that still reads it. Non-record spells keep it.
+-        if (!shape && oldLife > 0.0f) {
++        // B1160 ablation: "timescale" re-applies B1145's config-velocity
++        // scaling to a record emitter (reverting B1151's !shape guard) to
++        // measure whether the removal of that scaling moved the landing
++        // density. (For a record the config velocity is not integrated, so
++        // this is expected to be a no-op -- the measurement confirms it.)
++        const bool ablTimescale = [] {
++            const char* e = std::getenv("WILLEQ_FX_ABLATE");
++            return e && std::string(e) == "timescale";
++        }();
++        if ((!shape || ablTimescale) && oldLife > 0.0f) {
+             const float k = oldLife / L;
+             c.velocityBase *= k;
+             c.velocitySpread *= k;
