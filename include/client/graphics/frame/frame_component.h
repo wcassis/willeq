@@ -314,6 +314,9 @@ public:
 	// (particleKnobsFromOptions over optionsState_). The sim bridge hands it
 	// to ParticleManager and the worker every frame.
 	Environment::ParticleKnobs particleOptionKnobs() const;
+	// B1165 (#484): the Spell page + ShowSpellEffects for SpellVisualFX
+	// (spellFxOptionsFromOptions over optionsState_), handed over every frame.
+	EQ::SpellFxOptions spellFxOptions() const;
 	// B433: the Keys page's key capture (renderer_frame_options.cpp); called
 	// first thing in processChatInput(), true while it owns the keyboard.
 	bool processOptionsKeyCapture();

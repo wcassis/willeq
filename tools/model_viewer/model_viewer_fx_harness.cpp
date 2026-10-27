@@ -40,6 +40,7 @@ EQT::Graphics::SimulationWorker fxWorker;
 // Two outputs so --worker-latency 1 can draw the one computed a frame earlier.
 EQT::Graphics::SimulationOutput fxOutputs[2];
 int fxComputed = 0;  // the index computeOnce() last wrote
+float fxSpellDensity = 1.0f;  // B1165: the Spell page density handed to the worker
 bool fxTargetGone = false;  // --target-despawn: the target left the scene
 std::unordered_map<uint16_t, glm::vec3> fxPendingPositions;
 std::unordered_map<uint16_t, glm::vec3> fxPendingDirections;
@@ -705,6 +706,9 @@ void stepSpellParticles(float dt, uint32_t seed) {
     pi.unifiedRendererInitialized = true;
     pi.poolSize = EQT::Graphics::Environment::SpellEffectsConfig::instance().getGlobal().maxParticles;
     pi.rngSeed = seed;
+    // B1165: the Spell page's density for an emitter that did not get it at
+    // creation (EmitterConfig::densityAtCreate), as the client's sim bridge passes it.
+    pi.density[static_cast<size_t>(EQT::Graphics::Environment::ParticleFamily::Spell)] = fxSpellDensity;
     fxComputed ^= 1;
     EQT::Graphics::SimulationOutput& fxOutput = fxOutputs[fxComputed];
     fxWorker.computeOnce(input, fxOutput);
@@ -1091,6 +1095,32 @@ int runScriptedHarness() {
         std::fprintf(stderr, "[fx-harness] the FX chain or the caster model did not start\n");
         return 3;
     }
+    // B1165 (#484): the Spell page the run draws with, printed every run and
+    // pinned to the oracle capture's ini (1.0 / 1.0 / 2.0 / 24, ShowSpellEffects
+    // 1) so a gate always compares like with like.
+    {
+        const EQ::SpellFxOptions& o = harnessOpts.spellFx;
+        const bool capture = EQ::IsOracleCaptureSpellFxOptions(o);
+        std::printf("[fx-harness] particle options: SpellParticleDensity=%f SpellParticleOpacity=%f "
+                    "SpellParticleNearClipPlane=%f SpellParticleCastFilter=%d ShowSpellEffects=%d (%s)\n",
+                    static_cast<double>(o.density), static_cast<double>(o.opacity), static_cast<double>(o.nearClip),
+                    static_cast<int>(o.castFilter), o.showSpellEffects ? 1 : 0,
+                    capture ? "the oracle capture's ini" : "NOT the oracle capture's ini 1.0/1.0/2.0/24/1");
+        std::fflush(stdout);
+        if (!capture && !harnessOpts.particleOptions) {
+            std::fprintf(stderr, "[fx-harness] the particle options differ from the oracle capture's ini "
+                                 "(1.0/1.0/2.0/24/1); pass --particle-options to run anyway\n");
+            return kHarnessExitParticleOptions;
+        }
+        if (spellVisualFX) spellVisualFX->setSpellFxOptions(o);
+        auto knobs = EQT::Graphics::Environment::identityParticleKnobs();
+        auto& sk = knobs[static_cast<size_t>(EQT::Graphics::Environment::ParticleFamily::Spell)];
+        sk.density = o.density;
+        sk.opacity = o.opacity;
+        sk.nearClip = o.nearClip;
+        particleManager->setParticleKnobs(knobs);
+        fxSpellDensity = o.density;
+    }
     struct Event { double t; int cast; bool action; uint32_t castMs; };
     std::vector<Event> events;
     for (size_t i = 0; i < plan.size(); ++i) {
@@ -1123,6 +1153,18 @@ int runScriptedHarness() {
     // B1171 (#490): caster_level (last column, so the index readers keep
     // working) = the slot-gate level each packet was drawn at.
     timing << "frame\tt\tevent\tspell\ttarget\tdistance\tcast_ms\tt_event\tcaster_level\n";
+    // B1165 (#484): the Spell page the run drew with, for the gate scripts
+    // (scripts/tools/fx_particle_options.py pins it to the capture's ini).
+    {
+        const EQ::SpellFxOptions& o = harnessOpts.spellFx;
+        std::ofstream po(harnessOpts.framesDir + "/particle_options.tsv");
+        po << "key\tvalue\n"
+           << "SpellParticleDensity\t" << o.density << "\n"
+           << "SpellParticleOpacity\t" << o.opacity << "\n"
+           << "SpellParticleNearClipPlane\t" << o.nearClip << "\n"
+           << "SpellParticleCastFilter\t" << o.castFilter << "\n"
+           << "ShowSpellEffects\t" << (o.showSpellEffects ? 1 : 0) << "\n";
+    }
     // B1144: the spellsnew.eff slots each packet draws (SpellVisualFX::stageSlots,
     // the rule createCastGlow / createLanding draw by): BeginCast -> Source,
     // the cast-animation Action -> Target. No BeginCast = no Source row.

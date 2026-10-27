@@ -403,7 +403,11 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
             // BURST: one-shot spawn
             // B995: the family's Options density scales both spawn shapes
             // (Environment::scaledCount / a scaled rate); 0 spawns nothing.
-            const float density = pi.density[static_cast<size_t>(emitter.family) % 3];
+            // B1165 (#484): a spellsnew.edd emitter got its density at
+            // creation (CreateEmitter's rule, EmitterConfig::densityAtCreate).
+            const float density = emitter.config.densityAtCreate
+                                      ? 1.0f
+                                      : pi.density[static_cast<size_t>(emitter.family) % 3];
             if (emitter.config.burstCount > 0 && !emitter.isBurstSpawned) {
                 const int burst = Environment::scaledCount(emitter.config.burstCount, density);
                 for (int s = 0; s < burst; ++s) {

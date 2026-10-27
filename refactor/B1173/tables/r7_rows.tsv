@@ -1,0 +1,6 @@
+run	target_point	middle	spell	source_onset_s	source_cov	source_centroid	src_h_lo	src_h_hi	landing_onset_s	landing_end_s	landing_cov	p90_src	p90_land
+tip	solved	on	40	0.100	0.210	0.820	0.430	1.130	+1.100	+6.200	0.576	0.116	0.149
+after_mid	-8.888,0.226,0.924	on	40	0.100	0.210	0.820	0.430	1.130	+1.100	+6.200	0.576	0.116	0.149
+before_mid	-6.702,0,9.732	on	40	0.100	0.231	0.790	0.390	1.140	+1.233	+4.467	0.358	0.117	0.129
+after_nomid	-8.888,0.226,0.924	off	40	0.100	0.142	0.840	0.520	1.110	+0.700	+6.200	0.593	0.125	0.150
+before_nomid	-6.702,0,9.732	off	40	0.100	0.142	0.840	0.520	1.110	+0.667	+5.500	0.213	0.125	0.148
