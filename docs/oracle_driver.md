@@ -112,6 +112,11 @@ the original bytes, records the seeded before/changed after copies, then
 restores the original byte-identically when the client stops. The hotbutton
 plan uses it to make its placement diff reproducible even after an earlier
 session filled that slot.
+The optional `# char-ini-set=Section.Key=VALUE` directive (B1162) sets one
+key in the login character's INI the same way (same backup, same
+byte-identical restore at stop); it and `# ini-unset=` are mutually exclusive.
+B1162 uses `Abilities.Ability1=71` so `/doability 1` reaches the Intimidation
+skill (the Actions-window ability slots live in that INI).
 The optional `# use-luclin-models=true` directive enables the 26 in-era
 per-race Luclin keys in the global `eqclient.ini` before Wine starts. The
 driver saves the original bytes before the toggle and restores them after

@@ -415,8 +415,8 @@ per spellsnew.eff SLOT (B1144): minLevel <= caster level (NPC 1), on its anchor
 at its attach point; no Target slot, no landing; no OP_BeginCast, no Source;
 each emits its EDD burst/ticks and sprite size (B1149); the
 B1131/B1132 measured rows are test bands now (B1153); `tests/test_spell_slot_rules.cpp`. `spellOverrides` holds
-the six measured values (B1120/B1122 shapes; sizes gated on the caster-ROI
-p90, `review/B1119/scripts/fx_sprite_roi.py`), each kept after the B1153 retirement probe with its numbers (B1153 README sec. 1); **an unmeasured spell resolves
+the five measured values (38/41/54/458/656; 253 retired by B1161 #480; B1120/B1122 shapes; sizes gated on the caster-ROI
+p90, `review/B1119/scripts/fx_sprite_roi.py`), each kept after the B1153 probe (B1153); **an unmeasured spell resolves
 to the plain style: an invented override is the guess Will forbids.**
 **The particle pool is ONE preset key**, `spellParticlePool` in
 `config/constrained_presets.json` (desktop 8192, sbc 4096; B1130's survey demand
