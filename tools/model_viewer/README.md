@@ -103,11 +103,10 @@ channel exceeds 175 (where an additive sprite's rise can stay under 80).
 
 ## What the harness may gate
 
-- **Fable regressions, harness against harness** (same plan, `--seed`, preset):
-  landing coverage, landing end, landing ROI p90, landing peak time. The
-  frames are deterministic except where two models occupy the same pixels
-  (a distance-0 target: ~50 px per frame inside the figures z-fight between
-  runs), which none of these quantities reads.
+- **Fable regressions, harness against harness** (same plan, `--fx-seed`, preset):
+  landing coverage, landing end, landing ROI p90, landing peak time. Since
+  B1169 the frames are deterministic bit for bit ("Determinism" below), so
+  "before/after identical" is a frame diff, not a judgement.
 - **Parity with lane 5** (B1142's unoccluded rig, `refactor/B1142/README.md`):
   landing coverage -- seeds 1-5 with `--target-death 0 --target-despawn 1.027`
   read 3.111 .. 3.191 (mean 3.151) against four lane captures of 93 at
@@ -143,3 +142,29 @@ channel exceeds 175 (where an additive sprite's rise can stay under 80).
   (`refactor/B1157/scripts/hand_strip.py`). The re-gate against the pre-B1157
   idle caster: `refactor/B1157/README.md`.
 - Oracle legs (the official client) are lane 5 only.
+
+## Determinism (B1169, #488)
+
+Two runs of one plan with the same binary, options and render path write
+byte-identical frames (`refactor/B1169/README.md`: 3 consecutive tour-7 runs, 0
+differing frames on every spell, GBM and surfaceless). What holds it:
+
+| source | rule | where |
+|---|---|---|
+| particle RNG | `--fx-seed N` (alias `--seed`), default **1**, fixed in every `--spell-test` run; `0` draws from `std::random_device` (the client's path) and is NOT reproducible -- the run log's `determinism (B1169)` line says so | `harnessOpts.seed` -> `SimulationInput::particleInput.rngSeed` (`stepSpellParticles`) |
+| time | the scripted clock: step `1/--sim-hz` s, the device timer stopped and set per step; no wall clock reaches the scene, the FX or the worker | `runScriptedHarness` |
+| worker | `SimulationWorker::computeOnce` on the main thread, no worker thread | `stepSpellParticles` |
+| solid draw order | Irrlicht sorts solid nodes by their material-0 texture POINTER, which ASLR moves; the caster, her held item and a distance-0 target have depth-tied pixels, so the order decided them (the pre-B1169 differences, 20-125 px a frame on 93). `HarnessSolidOrderNode` draws ground, target, held items, caster in that fixed order; the run log prints `solid draw order (fixed, B1169)` | `fixHarnessSolidOrder` |
+
+How a card proves "identical": render the plan twice (before/after, or the
+same binary twice) with the same options, then
+`python3 -P scripts/tools/fx_frame_identity.py <framesA> <framesB>` -- it must
+print `differing 0`; any other count names the first differing frame, its
+pixel count and bounding box. A difference between two runs of ONE binary is
+a determinism defect (`WILLEQ_FX_MESH_HASH=1` logs the posed-mesh hashes and
+the scene tree per run to split CPU geometry from draw order). The render path
+is part of the options: GBM (16-bit depth) and surfaceless
+(`WILLEQ_DRM_DEVICE=/dev/dri/no-such-card`, 24-bit depth, the B1150
+`run_scene.sh` path) are different renders, so compare like with like.
+Particle tests seed the same way (`tests/particle_test_seed.h`, guarded by
+`SpellParticleSeedWiring`).
