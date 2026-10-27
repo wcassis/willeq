@@ -23,8 +23,7 @@ void ApplySpellCastStartedFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
     // B1148 (#468): CastingAnim picks the caster track whose length the
     // Source runs past the cast time.
     // B1165 (#484): the On-For filter's inputs (spell_fx_options.h).
-    fx->createCastGlow(d.casterId, d.spellId, d.castTimeMs, d.fxGateLevel, d.castAnim, d.targetId,
-                       d.casterFx, d.targetFx);
+    fx->createCastGlow(d.casterId, d.spellId, d.castTimeMs, d.fxGateLevel, d.castAnim, d.targetId, d.casterFx, d.targetFx);
 }
 
 void ApplySpellCastCompleteFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
@@ -51,8 +50,7 @@ void ApplySpellCastCompleteFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
     // target; the caster only for a caster-anchored record).
     // B1144: the record's Target slots at the caster's gate level; none = no landing.
     // B1165 (#484): stage 2 on (caster, target).
-    if (d.isCastAnimation)
-        fx->createLanding(d.casterId, d.targetId, d.spellId, d.fxGateLevel, d.casterFx, d.targetFx);
+    if (d.isCastAnimation) fx->createLanding(d.casterId, d.targetId, d.spellId, d.fxGateLevel, d.casterFx, d.targetFx);
 }
 
 void ApplySpellCastInterruptedFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
