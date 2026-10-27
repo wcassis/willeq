@@ -8,6 +8,10 @@
 #   0x10060b82  where every attach path has joined: the final s6C [esp+0x30] and
 #               s19C [esp+0x48], the instance's actor +0x68 / point +0x6C / track +0x70
 #               and the point's whole 4x4 matrix (point+0xA0..+0xDF).
+#   0x10060b27  the TRACK path (+0x70; leg 2 found record 80's slots track-attached): after
+#               `s6C = 0x1005c4f0(track) * sqrt(row0 . row0)`, row0 = [esp+0x3c0..0x3c8] of the
+#               track's matrix (vtbl+4, copied by 0x100369e0 at 0x10060aae); [esp+0x24] = the
+#               sqrt, so 0x1005c4f0's return = s6C / [esp+0x24]. Only when +0x6C = 1.
 # Nothing is written to the inferior except gdb's own int3s, which are removed at
 # detach. Before inserting them the probe checks the bytes at both addresses
 # against the disassembly and refuses (detaches) on a mismatch.
@@ -42,7 +46,8 @@ def reg(r):
 
 
 # fstp dword ptr [esp+0x30] at 0x100609ee; fld dword ptr [0x101c5948] at 0x10060b82
-EXPECT = {0x100609ee + D: bytes.fromhex('d95c2430'), 0x10060b82 + D: bytes.fromhex('d905')}
+EXPECT = {0x100609ee + D: bytes.fromhex('d95c2430'), 0x10060b82 + D: bytes.fromhex('d905'),
+          0x10060b27 + D: bytes.fromhex('399f9c010000')}
 T0 = time.time()
 seen = {}
 hits = [0]
@@ -72,7 +77,16 @@ class Probe(gdb.Breakpoint):
                 return False
             name = cstr(edi, 64)
             tex = cstr(edi + 0x40, 32)
-            if self.addr == 0x100609ee + D:
+            if self.addr == 0x10060b27 + D:
+                norm = f32(esp + 0x24)
+                row = struct.unpack('<3f', mem(esp + 0x3c0, 12))
+                trk = u32(ebp + 0x70)
+                s6c = f32(esp + 0x30)
+                OUT.write('TRK t=%.3f n=%d edd=%s inst=0x%08x track=0x%08x track+0x50=0x%08x row0=%.6f,%.6f,%.6f '
+                          'norm=%.6f s6C=%.6f c4f0=%.6f\n'
+                          % (now, n, name, ebp, trk, u32(trk + 0x50) if trk else 0, row[0], row[1], row[2],
+                             norm, s6c, s6c / norm if norm else float('nan')))
+            elif self.addr == 0x100609ee + D:
                 st0 = float(gdb.parse_and_eval('$st0'))
                 OUT.write('RET t=%.3f n=%d edd=%s tex=%s inst=0x%08x point=0x%08x s=%.6f\n'
                           % (now, n, name, tex, ebp, point, st0))
@@ -103,7 +117,7 @@ for a, b in EXPECT.items():
     ok = ok and got == b
 OUT.write('CHECK 0x10039480+D %s base_delta=0x%x\n' % (mem(0x10039480 + D, 6).hex(), D & 0xffffffff))
 if ok:
-    probes = [Probe(0x100609ee + D), Probe(0x10060b82 + D)]
+    probes = [Probe(0x100609ee + D), Probe(0x10060b82 + D), Probe(0x10060b27 + D)]
     OUT.write('ARMED t=0 tmax=%.0f\n' % TMAX)
     try:
         gdb.execute('continue')
