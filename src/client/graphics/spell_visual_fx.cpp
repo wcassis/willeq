@@ -580,8 +580,10 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
                 // rig's ~12 units, so it undershoots) and the per-record "run"
                 // speed are B1153's. launchMissile re-resolves the destination
                 // and, if it has despawned, hands the landing back to
-                // createLanding (spell 54's unconditional at-removal stage-2 fire).
-                const float flightTime = kMissileFlightDistance / kMissileSpeed;
+                // spell 54's unconditional at-removal stage-2 fire). The
+                // timing rules are the pure B1163 constants (the per-record
+                // "run" speed is runtime-only, so one calibrated speed).
+                const float flightTime = SpellMissileRules::MissileFlightTime();
                 const double hitAt = m_fx_time + duration_ms / 1000.0;  // OP_Action
                 Missile m;
                 m.spellId = spell_id;
@@ -590,9 +592,9 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
                 m.gateLevel = casterLevel;
                 m.castMs = static_cast<int>(duration_ms);
                 m.flightTime = flightTime;
-                m.reachAt = hitAt - kMissileFlightEndOffset;  // flight ends pre-hit
+                m.reachAt = SpellMissileRules::MissileReachAt(hitAt);  // flight ends pre-hit
                 m.launchAt = std::max(m_fx_time, m.reachAt - flightTime);
-                m.landAt = m.reachAt + kMissileLandingDelay;  // Target stage fires
+                m.landAt = SpellMissileRules::MissileLandAt(m.reachAt);  // Target stage fires
                 // A fresh cast: this spell+caster's landing is the missile's,
                 // not createLanding's (clears a previous cast's "landed" mark).
                 m_missileLanded.erase({spell_id, caster_id});

@@ -25,6 +25,9 @@
 #include "client/spell/spell_fx_timing.h"
 #include "client/spell/spell_visual_vocabulary.h"
 #include "client/graphics/spell_visual_selection.h"
+// B1163 (#482): the calibrated missile timing + the oracle's spell-859 gate,
+// as pure device-free rules (the missile constants' single source of truth).
+#include "client/graphics/spell_b1163_missile_rules.h"
 
 namespace EQT { namespace Graphics { class ConstrainedTextureCache; }}
 
@@ -544,18 +547,19 @@ private:
     // speed / castAnim-release offset is B1153's (see the README FOLLOW-UP).
     std::vector<Missile> m_missiles;
     double m_fx_time = 0.0;
-    static constexpr float kMissileSpeed = 30.0f;  // units / second
-    // The record-80 oracle's flight gap (9.05 units, TRACE sec. 8); the flight
-    // time is this over kMissileSpeed (9.05 / 30 = 0.30 s, the oracle's flight
-    // 472.33-472.63 s). The harness b1130 rig's gap differs, so the calibrated
-    // flight time (not a resolved gap) is what the gate compares.
-    static constexpr float kMissileFlightDistance = 9.05f;
-    // The flight ends this much BEFORE the OP_Action (the missile reaches the
-    // target 0.184 s before the server resolves the hit, TRACE sec. 8).
-    static constexpr float kMissileFlightEndOffset = 0.184f;
-    // The Target-stage arrival burst fires this much AFTER the flight ends
-    // (the record-80 emitters' 0.25 s delay + onset, TRACE sec. 6/8).
-    static constexpr float kMissileLandingDelay = 0.30f;
+    // B1163 (#482): the canonical missile values live in
+    // client/graphics/spell_b1163_missile_rules.h (device-free, so
+    // test_b1163_missile_rules pins them without a display); these aliases
+    // keep SpellVisualFX on that single source of truth. The per-record
+    // "run" speed is runtime-only (that header's proof: 0.02 x elapsed x
+    // live velocity, eqgame 00476c18-00476d2f), so one calibrated speed --
+    // not a per-record value -- drives the actor. Record-80 oracle: 9.05
+    // units over 0.30 s = 30 u/s (TRACE sec. 3/8); flight ends 0.184 s
+    // before the OP_Action; the Target stage fires 0.30 s after. BLESS-ONLY.
+    static constexpr float kMissileSpeed           = SpellMissileRules::kMissileSpeed;
+    static constexpr float kMissileFlightDistance  = SpellMissileRules::kMissileFlightDistance;
+    static constexpr float kMissileFlightEndOffset = SpellMissileRules::kMissileFlightEndOffset;
+    static constexpr float kMissileLandingDelay    = SpellMissileRules::kMissileLandingDelay;
     // (spell, caster) whose Target stage a missile already fired: createLanding
     // skips it on OP_Action so the landing is drawn exactly once, at whichever
     // of arrival / OP_Action comes second is suppressed in favour of the first.
