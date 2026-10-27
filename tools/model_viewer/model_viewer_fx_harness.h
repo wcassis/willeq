@@ -55,7 +55,7 @@ struct HarnessOptions {
     int fps = 30;
     double seconds = 0.0;
     bool headless = false;
-    uint32_t seed = 1;                 // particle RNG seed in scripted mode
+    uint32_t seed = 1;                 // --fx-seed (alias --seed): particle RNG seed, fixed; 0 = random_device
     // B1144 (#464): the caster's spellsnew.eff slot-gate level (--caster-level).
     // 60 = the `#level 60` every oracle capture behind the measured rows ran at.
     int casterLevel = 60;

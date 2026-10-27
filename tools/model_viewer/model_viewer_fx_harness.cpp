@@ -19,6 +19,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstdio>
 #include <filesystem>
 #include <iomanip>
@@ -43,6 +44,7 @@ std::unordered_map<uint16_t, glm::vec3> fxPendingPositions;
 std::unordered_map<uint16_t, glm::vec3> fxPendingDirections;
 eqt::bridge::CastGlowRoute fxRoute;
 video::ITexture* fxBackdrop = nullptr;
+scene::IMeshSceneNode* fxGroundNode = nullptr;  // addGroundPlane(); B1169 draws it first
 
 std::vector<std::string> splitTabs(const std::string& line) {
     std::vector<std::string> out;
@@ -788,6 +790,7 @@ void addGroundPlane() {
     scene::IMeshSceneNode* node = smgr->addMeshSceneNode(plane);
     plane->drop();
     if (!node) return;
+    fxGroundNode = node;
     node->setPosition(core::vector3df(0.0f, box.MinEdge.Y, 0.0f));
     // A SOLID plane painted the clear colour: it writes depth (particles
     // below the ground are hidden as lane 5's terrain hides them) and shows
@@ -849,36 +852,161 @@ bool setupSpellTestCamera() {
     return true;
 }
 
-// B1169 (#488): Irrlicht's solid pass draws its nodes sorted by their
-// material-0 texture POINTER (CSceneManager::DefaultNodeEntry::operator<,
-// TextureValue = getMaterial(0).getTexture(0)): a heap address, so under ASLR
-// the caster/target order is whichever texture the allocator placed lower.
-// On a distance-0 target the two models share pixels whose depths tie (the
-// GBM context is 16-bit depth), and the LEQUAL depth test keeps the LATER
-// draw there -- the pre-B1169 run-to-run pixel differences. Logged at frame 0
-// and on every change, so a run states the order it drew in. (The ground
-// plane is untextured -- a null key -- and always sorts first.)
-static void logSolidDrawOrder(int frame) {
-    static std::string last;
-    struct Entry { const char* name; const void* tex; };
-    std::vector<Entry> es;
-    auto tex0 = [](scene::ISceneNode* n) -> const void* {
-        return n->getMaterialCount() ? static_cast<const void*>(n->getMaterial(0).getTexture(0)) : nullptr;
+namespace {
+
+// B1169 (#488) diagnostics, WILLEQ_FX_MESH_HASH=1 only: an FNV-1a hash of
+// each model's posed vertex and index buffers (the bytes the GPU draws) per
+// written frame, and the scene tree at frame 0 (each node's material-0
+// texture pointer is its pre-B1169 solid sort key), so two runs show whether
+// their CPU-side geometry and their node set agree before a frame difference
+// is blamed on the GPU.
+uint64_t meshBytesHash(scene::IMesh* m) {
+    uint64_t h = 1469598103934665603ull;
+    auto mix = [&h](const void* p, size_t n) {
+        const auto* b = static_cast<const unsigned char*>(p);
+        for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ull; }
     };
-    if (animatedNode && animatedNode->isVisible()) es.push_back({"caster", tex0(animatedNode)});
-    if (targetAnimatedNode && targetAnimatedNode->isVisible() && !fxTargetGone)
-        es.push_back({"target", tex0(targetAnimatedNode)});
-    std::stable_sort(es.begin(), es.end(), [](const Entry& a, const Entry& b) {
-        return reinterpret_cast<uintptr_t>(a.tex) < reinterpret_cast<uintptr_t>(b.tex);
-    });
-    std::string order = "ground";
-    for (const auto& e : es) order += std::string(" < ") + e.name;
+    if (!m) return 0;
+    for (u32 i = 0; i < m->getMeshBufferCount(); ++i) {
+        scene::IMeshBuffer* mb = m->getMeshBuffer(i);
+        const size_t vsz = mb->getVertexType() == video::EVT_STANDARD ? sizeof(video::S3DVertex)
+                         : mb->getVertexType() == video::EVT_2TCOORDS ? sizeof(video::S3DVertex2TCoords)
+                                                                      : sizeof(video::S3DVertexTangents);
+        mix(mb->getVertices(), mb->getVertexCount() * vsz);
+        mix(mb->getIndices(), mb->getIndexCount() * (mb->getIndexType() == video::EIT_16BIT ? 2 : 4));
+    }
+    return h;
+}
+
+void logSceneNodes(scene::ISceneNode* n, int depth) {
+    for (scene::ISceneNode* c : n->getChildren()) {
+        std::printf("[fx-harness] scene-node %*s'%s' type %08x visible %d materials %u tex0 %p mt0 %d\n",
+                    depth * 2, "", c->getName(), static_cast<unsigned>(c->getType()), c->isVisible() ? 1 : 0,
+                    c->getMaterialCount(),
+                    c->getMaterialCount() ? static_cast<const void*>(c->getMaterial(0).getTexture(0)) : nullptr,
+                    c->getMaterialCount() ? static_cast<int>(c->getMaterial(0).MaterialType) : -1);
+        logSceneNodes(c, depth + 1);
+    }
+}
+
+void logMeshHashes(int frame) {
+    static const bool on = std::getenv("WILLEQ_FX_MESH_HASH") != nullptr;
+    if (!on) return;
+    if (frame == 0) logSceneNodes(smgr->getRootSceneNode(), 0);
+    std::printf("[fx-harness] mesh-hash frame %d caster %016llx target %016llx\n", frame,
+                static_cast<unsigned long long>(animatedNode ? meshBytesHash(animatedNode->getInstanceMesh()) : 0),
+                static_cast<unsigned long long>(targetAnimatedNode ? meshBytesHash(targetAnimatedNode->getInstanceMesh()) : 0));
+}
+
+// B1169 (#488): THE HARNESS'S FIXED SOLID DRAW ORDER.
+// Irrlicht's solid pass sorts its nodes by their material-0 texture POINTER
+// (CSceneManager::drawAll: SolidNodeList.sort(), DefaultNodeEntry::operator<
+// on TextureValue = getMaterial(0).getTexture(0)) -- a heap address, so under
+// ASLR the order of the caster, her held item (IT72, the orb) and a
+// distance-0 target changed from run to run. Those models share pixels whose
+// depths tie (the ThinkPad's GBM context is 16-bit depth), and the LEQUAL
+// depth test keeps the LATER draw there: the pre-B1169 frame differences
+// (refactor/B1169/README.md). This node takes the ground plane and the
+// models out of the sorted list and draws them, inside the same solid pass,
+// in ONE fixed order: ground, target, the caster's held items, caster -- the
+// order 13 of 20 pre-B1169 runs of 93 drew in (ground's null key always
+// sorted first; the other 7 drew orb < target < caster), so those runs'
+// frames are this order's frames bit for bit. A node or held item with a
+// transparent material registers for the transparent pass exactly as its own
+// OnRegisterSceneNode would (AUTOMATIC: the whole model; a mesh node: its
+// transparent buffers), so only the solid order changes.
+class HarnessSolidOrderNode : public scene::ISceneNode {
+public:
+    explicit HarnessSolidOrderNode(scene::ISceneManager* mgr) : scene::ISceneNode(mgr->getRootSceneNode(), mgr, -1) {
+        setAutomaticCulling(scene::EAC_OFF);
+        setName("B1169 solid order");
+    }
+    // The managed nodes, in draw order; each is reparented under this node
+    // (identity transform), so the scene manager never registers them itself.
+    void adopt(scene::ISceneNode* n, bool heldItemsFirst) {
+        if (!n) return;
+        n->setParent(this);
+        order_.push_back({n, heldItemsFirst});
+    }
+    void OnRegisterSceneNode() override {
+        solid_.clear();
+        if (!IsVisible) return;
+        for (const auto& e : order_) collect(e.node, e.heldItemsFirst);
+        if (!solid_.empty()) SceneManager->registerNodeForRendering(this, scene::ESNRP_SOLID);
+        // No ISceneNode::OnRegisterSceneNode(): the children are drawn here.
+    }
+    void render() override {
+        for (scene::ISceneNode* n : solid_) n->render();
+    }
+    const core::aabbox3d<f32>& getBoundingBox() const override { return box_; }
+    // The names in the order the last frame drew them.
+    std::string describe() const {
+        std::string out;
+        for (scene::ISceneNode* n : solid_) {
+            if (!out.empty()) out += " < ";
+            out += n->getName();
+        }
+        return out;
+    }
+
+private:
+    struct Entry { scene::ISceneNode* node; bool heldItemsFirst; };
+    void collect(scene::ISceneNode* n, bool heldItemsFirst) {
+        if (!n->isVisible()) return;
+        if (heldItemsFirst)
+            for (scene::ISceneNode* c : n->getChildren()) collect(c, true);
+        bool solid = false, transparent = false;
+        for (u32 i = 0; i < n->getMaterialCount(); ++i) {
+            video::IMaterialRenderer* r =
+                SceneManager->getVideoDriver()->getMaterialRenderer(n->getMaterial(i).MaterialType);
+            (r && r->isTransparent() ? transparent : solid) = true;
+        }
+        if (n->getType() == scene::ESNT_MESH) {  // CMeshSceneNode: each pass its own buffers
+            if (transparent) SceneManager->registerNodeForRendering(n, scene::ESNRP_TRANSPARENT);
+            if (solid) solid_.push_back(n);
+        } else if (transparent) {  // ESNRP_AUTOMATIC: one transparent material = a transparent node
+            SceneManager->registerNodeForRendering(n, scene::ESNRP_TRANSPARENT);
+        } else if (solid) {
+            solid_.push_back(n);
+        }
+        if (!heldItemsFirst)
+            for (scene::ISceneNode* c : n->getChildren()) collect(c, false);
+    }
+    std::vector<Entry> order_;
+    std::vector<scene::ISceneNode*> solid_;
+    core::aabbox3d<f32> box_{0, 0, 0, 0, 0, 0};
+};
+
+HarnessSolidOrderNode* fxSolidOrder = nullptr;
+
+// Built once the preset's fits are done (they read the models' boxes through
+// the normal scene); names the nodes for the log.
+void fixHarnessSolidOrder() {
+    fxSolidOrder = new HarnessSolidOrderNode(smgr);
+    if (fxGroundNode) fxGroundNode->setName("ground");
+    if (targetAnimatedNode) targetAnimatedNode->setName("target");
+    if (animatedNode) {
+        animatedNode->setName("caster");
+        for (scene::ISceneNode* c : animatedNode->getChildren()) c->setName("caster-held-item");
+    }
+    fxSolidOrder->adopt(fxGroundNode, false);
+    fxSolidOrder->adopt(targetAnimatedNode, true);
+    fxSolidOrder->adopt(animatedNode, true);
+    fxSolidOrder->drop();  // the scene graph holds it
+}
+
+// Logged at frame 0 and whenever it changes (the target hides for a self
+// cast and after its despawn).
+void logSolidDrawOrder(int frame) {
+    static std::string last;
+    if (!fxSolidOrder) return;
+    const std::string order = fxSolidOrder->describe();
     if (order == last) return;
     last = order;
-    std::printf("[fx-harness] solid draw order at frame %d: %s", frame, order.c_str());
-    for (const auto& e : es) std::printf(" %s=%p", e.name, e.tex);
-    std::printf("\n");
+    std::printf("[fx-harness] solid draw order (fixed, B1169) at frame %d: %s\n", frame, order.c_str());
 }
+
+}  // namespace
 
 int runScriptedHarness() {
     std::vector<HarnessCast> plan;
@@ -945,6 +1073,11 @@ int runScriptedHarness() {
     const double dt = 1.0 / simHz;
     const int frames = static_cast<int>(std::lround(harnessOpts.seconds * harnessOpts.fps));
     const Clock::time_point epoch{};  // the scripted clock: no wall time anywhere
+    // B1169 (#488): what makes two runs of one plan pixel-identical
+    // (tools/model_viewer/README.md "Determinism").
+    std::printf("[fx-harness] determinism (B1169): fx-seed %u%s, step 1/%d s on the scripted clock, "
+                "synchronous worker, fixed solid draw order\n",
+                harnessOpts.seed, harnessOpts.seed == 0 ? " (random_device: NOT reproducible)" : "", simHz);
     size_t next = 0;
     double lastAction = -1.0;  // scripted time of the latest OP_Action
     bool targetDied = false;
@@ -962,6 +1095,7 @@ int runScriptedHarness() {
     std::vector<uint16_t> activeSourceEmitters;
     std::string activeCastTrack;
     placeHarnessTarget(plan[0].self, plan[0].distance);
+    fixHarnessSolidOrder();  // B1169 (#488)
     device->getTimer()->stop();  // (already stopped by setupSpellTestCamera)
     // Step g runs at t = g / simHz; every sub-th step is drawn and written as
     // frame g / sub (with sub = 2, exactly review/B1138/scripts/decimate.py's
@@ -1091,8 +1225,9 @@ int runScriptedHarness() {
             driver->draw2DImage(fxBackdrop, core::rect<s32>(0, 0, harnessOpts.width, harnessOpts.height),
                                 core::rect<s32>(0, 0, ts.Width, ts.Height));
         }
-        logSolidDrawOrder(f);
         smgr->drawAll();
+        logSolidDrawOrder(f);
+        logMeshHashes(f);
         renderSpellParticles();
         for (const auto& r : harnessOpts.uiOccluders)  // the lane client's UI, drawn last
             driver->draw2DRectangle(video::SColor(255, 24, 24, 30), core::rect<s32>(r.x0, r.y0, r.x1, r.y1));
