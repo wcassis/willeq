@@ -146,6 +146,8 @@ def harness_level(frames_dir, plan=None):
         raise LevelError(f'{timing}: missing')
     with open(timing) as f:
         rows = [line.rstrip('\n').split('\t') for line in f]
+    if not rows:
+        raise LevelError(f'{timing}: empty (run unfinished?)')
     hdr = rows[0]
     if 'caster_level' in hdr:
         i, ev = hdr.index('caster_level'), hdr.index('event')

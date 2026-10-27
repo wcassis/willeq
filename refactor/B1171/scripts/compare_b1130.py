@@ -71,7 +71,10 @@ def num(x):
 
 
 def run_level(ev, kind, rec):
-    lv, _src = CL.harness_level(f'{ev}/frames/{kind}_r{rec}', f'{ev}/plans/r{rec}.plan')
+    try:
+        lv, _src = CL.harness_level(f'{ev}/frames/{kind}_r{rec}', f'{ev}/plans/r{rec}.plan')
+    except (CL.LevelError, OSError):
+        return None  # no finished run: unknown, so refused
     return lv
 
 
