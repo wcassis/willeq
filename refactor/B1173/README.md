@@ -60,10 +60,12 @@ dev-u24 with B1155's `harness_measure_b1130.py`, as B1166's sweep did. No game c
   `0x4033` message arm (`0x460737`, B1163); the r132 capture (the oracle leg of record 7)
   carries 0 rows of opcode 0x4033, and B1130's record table says "projectile: none" for
   spell 40. Fable flies a missile for spell 40 because its rule is "the record has a drawn
-  Middle stage" (`src/client/graphics/spell_visual_fx.cpp:571`). That is a target-relative term
-  the client did not apply in this leg. It is not changed here: the same rule drives the
-  B1152 record-80 missile of 38 / 93, whose oracle legs ALSO had no 0x4033 row (B1163), and
-  whose drawing path is the open B1163 follow-up. RULING REQUEST below.
+  Middle stage" (`src/client/graphics/spell_visual_fx.cpp:571`). That is a deviation from the
+  client: fable's record-driven Middle flight for spell 40 is to be removed. Owner: **B1170
+  (#489)**, which removes the same flight for record 80 (38 / 93): the oracle drew no Middle
+  stage in those legs either (`refactor/B1168/README.md:152-158`, `:193`), so there is no
+  untraced drawing path to wait for. Will's rule (2026-10-27): willeq copies the client's
+  spell effects exactly. RULING REQUEST: none.
 
 ## 1. Spell 40's record (field 145 -> 88)
 
@@ -196,14 +198,24 @@ OP_HPUpdate, OP_ManaChange, OP_MoveDoor, OP_SpecialMesg only), and the record ta
 packet only for target type 1 (`ST_TargetOptional`, "only used for targeted projectile
 spells", common/spdat.h line 997) through `Mob::TrySpellProjectile`; spell 40 is target type 5.
 Fable draws the Middle whenever the record has a drawn Middle stage and there is a target
-(`src/client/graphics/spell_visual_fx.cpp:571`), so for spell 40 it adds a target-relative
-flight the oracle leg did not show. Removing it measurably drops r7's source_cov from 0.210 to
-0.142 (sec. 3), further from the oracle's 0.390; r7's Source gap is then the Source slots' own.
+(`src/client/graphics/spell_visual_fx.cpp:571`); for spell 40 that adds a target-relative
+flight the oracle leg did not show. That flight is a deviation from the client and is to be
+removed; owner **B1170 (#489)**, which removes the same flight for record 80 (38 / 93), where
+the oracle also drew no Middle stage (`refactor/B1168/README.md:152-158`, `:193`). Removing it
+drops r7's source_cov from 0.210 to 0.142 (sec. 3); r7's remaining Source gap (oracle 0.390)
+is the Source slots' own.
 
-Not changed here, because the same rule is what draws B1152's record-80 missile for 38 and
-93, whose oracle legs also had no `0x4033` row and still showed a flight whose client path is
-untraced (B1163's FOLLOW-UP); gating fable's Middle on a missile message would remove that
-calibrated flight too. That is a ruling, not a fix this card can make by itself.
+History (superseded by Will's rule and B1168). The dev's earlier reasoning, kept verbatim:
+
+> Fable draws the Middle whenever the record has a drawn Middle stage and there is a target
+> (`src/client/graphics/spell_visual_fx.cpp:571`), so for spell 40 it adds a target-relative
+> flight the oracle leg did not show. Removing it measurably drops r7's source_cov from 0.210 to
+> 0.142 (sec. 3), further from the oracle's 0.390; r7's Source gap is then the Source slots' own.
+>
+> Not changed here, because the same rule is what draws B1152's record-80 missile for 38 and
+> 93, whose oracle legs also had no `0x4033` row and still showed a flight whose client path is
+> untraced (B1163's FOLLOW-UP); gating fable's Middle on a missile message would remove that
+> calibrated flight too. That is a ruling, not a fix this card can make by itself.
 
 A second difference, in the other direction, found on the way: when the client's Middle stage
 fires, an anchor-1 Middle slot is drawn on the caster (`FUN_00495cc3` anchor 1 = param_4 =
@@ -221,16 +233,12 @@ this card's scope (FOLLOW-UP 2).
 
 ## RULING REQUEST
 
-Should fable draw a spell's Middle stage (the missile) only where the client builds a
-missile object -- after a `0x4033` projectile message, which the lane's server sends for
-target type 1 spells -- instead of for every record with a drawn Middle stage? Yes removes
-spell 40's flight (r7 source_cov 0.210 -> 0.142, measured) and, unless B1163's untraced
-drawing path is found first, also B1152's record-80 flight for 38 / 93. Recommendation: hold
-until B1163's follow-up traces what drew the 38 flight without a `0x4033` row.
+None. Will's rule (2026-10-27): willeq copies the client's spell effects exactly; fable's
+Middle flight for spell 40 (and for 38 / 93, per B1168) is a deviation, removed by B1170 (#489).
 
 ## FOLLOW-UP
 
-1. The Middle-stage gate above (after the ruling), with a unit test on `createCastGlow`'s
-   missile rule and a re-render of r7 and tour-7 (38 / 93) on the ThinkPad.
+1. Removing the Middle flight where the client builds no missile: owned by **B1170 (#489)**
+   (with a unit test on `createCastGlow`'s missile rule and a re-render of r7 and tour-7).
 2. Fable's `launchMissile` skips anchor-1 Middle slots that the client draws on the caster
-   (sec. 4); copy the client when the gate is settled.
+   (sec. 4, `src/client/graphics/spell_visual_fx.cpp:1209`); owner **B1170 (#489)**.
