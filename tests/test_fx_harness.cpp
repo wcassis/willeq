@@ -33,6 +33,7 @@
 #include "client/graphics/spell_cast_animation.h"
 #include "client/willeq_database.h"
 #include "../tools/model_viewer/fx_target_anchor.h"
+#include "../tools/model_viewer/fx_capture_pose.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -705,4 +706,40 @@ TEST(B1166TargetAnchor, TheRestPoseStripAndAnOffsetBodyFail) {
         SynthFrame f;
         EXPECT_FALSE(fxharness::checkTargetAnchor(f.measure(a), a, 238.0f).ok());
     }
+}
+
+// B1167 (#486): the b1130 rig's world yaw from the capture facts
+// (fx_capture_pose.h; refactor/B1167/README.md sec. 2).
+TEST(B1167CapturePose, TheRigYawPutsTheCameraAtTheCapturesDirHeading) {
+    EXPECT_FLOAT_EQ(fxharness::rigYawDeg(fxharness::kB1130NpcPose), 45.0f);    // heading 0 + 135 - 90
+    EXPECT_FLOAT_EQ(fxharness::rigYawDeg(fxharness::kB1130SelfPose), 157.5f);  // heading 160 (112.5) + 135 - 90
+    // The fitted camera sits on +Z of the caster (angle 90); turned, it sits
+    // at the capture's caster heading + Camera1-DirHeading 192 (135 deg).
+    for (const auto* pose : {&fxharness::kB1130NpcPose, &fxharness::kB1130SelfPose}) {
+        float x = 0.0f, z = 30.0f;
+        fxharness::turnXZ(fxharness::rigYawDeg(*pose), x, z);
+        const float at = std::atan2(z, x) * 180.0f / 3.14159265f;
+        const float want = fxharness::headingDeg(pose->casterHeading512 + pose->cameraDirHeading512);
+        EXPECT_NEAR(std::remainder(at - want, 360.0f), 0.0f, 1e-3f);
+    }
+    // The client's heading rule: rotation Y = -heading deg.
+    EXPECT_FLOAT_EQ(fxharness::rotYForHeading(160.0f), -112.5f);
+}
+
+TEST(B1167CapturePose, TheTurnedTargetStandsOnTheCapturesBearing) {
+    // B1166's solved target offset (review/B1166/worker/probe/after.log:125:
+    // x -8.888, z 0.924), turned by the npc yaw, against the capture's offset
+    // from the caster: #spawn at (-74, 428), caster #goto (-67.6, 434.4) in
+    // server x/y, i.e. (zone x, zone y) = (server y, server x) = (-6.4, -6.4)
+    // -> Irrlicht (x, z) = (-6.4, -6.4).
+    const float cx = -6.4f, cz = -6.4f;
+    float x = -8.888f, z = 0.924f;
+    const float before = std::atan2(z, x) - std::atan2(cz, cx);
+    fxharness::turnXZ(fxharness::rigYawDeg(fxharness::kB1130NpcPose), x, z);
+    const float after = std::atan2(z, x) - std::atan2(cz, cx);
+    const float d = std::fabs(std::remainder(after * 180.0f / 3.14159265f, 360.0f));
+    EXPECT_LT(d, 6.0f) << "turned target bearing off the capture's by " << d << " deg";
+    EXPECT_GT(std::fabs(std::remainder(before * 180.0f / 3.14159265f, 360.0f)), 50.0f)
+        << "the un-turned rig already matched the capture";
+    EXPECT_LT(std::hypot(x - cx, z - cz), 1.0f);
 }
