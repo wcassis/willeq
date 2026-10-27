@@ -359,7 +359,13 @@ Everything below is in `review/B1174/worker/oracle/b1174_disc8604/`:
   `EQ_CLIENT_PATH=/mnt/projects/EverQuestP1999`: every case passes, and
   `AModelWithoutTheTrackKeepsItsCurrentAnimation` skips by design (the
   Troll has t06). See `review/B1174/worker/test_cast_animation_thinkpad.log`.
-- Hygiene and the cite-checker line: the MR description.
+- Hygiene on gitlab-runner-1: 100% of 48 passed
+  (`review/B1174/worker/hygiene.log`). The first run failed `ZeroCallers`
+  with a stale `EXEMPT_TESTS` row: `SpellVisualFX::missileCount` now has the
+  harness as a caller, so the row was retired in `scripts/refactor/check_zero_callers.py`.
+- `scripts/refactor/cite_check.py` over this README: `checked 25 cites,
+  0 problems, 0 address warnings`. The `eqgame.exe.c` lines in sec. 3, which
+  the checker does not parse, were each read by hand.
 
 ## FOLLOW-UP
 
