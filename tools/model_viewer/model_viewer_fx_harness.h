@@ -26,6 +26,7 @@
 
 #include "client/bridge/cast_glow_route.h"
 #include "client/spell/spell_fx_options.h"
+#include "fx_target_anchor.h"
 
 namespace EQ { struct SpellData; }
 
@@ -123,6 +124,10 @@ struct HarnessOptions {
 // B1165: the exit code of a run whose particle options differ from the
 // oracle capture's without --particle-options (sysexits EX_DATAERR).
 constexpr int kHarnessExitParticleOptions = 65;
+// B1155 / B1177: the exit code of a --camera preset that does not solve to its
+// recorded geometry (setupSpellTestCamera false; refactor/B1155/README.md "The
+// solve"). It exits through the normal teardown, never a signal (B1177).
+constexpr int kHarnessExitPresetDidNotSolve = fxharness::kExitPresetDidNotSolve;
 extern HarnessOptions harnessOpts;
 
 // The Y rotation that turns a race model to face +Z, toward a face-on preset

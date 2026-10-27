@@ -333,39 +333,79 @@ bool fitFixedNpcTarget(const PresetGeometry& g) {
 
     // Newton on the two feet-pixel residuals (finite-difference Jacobian),
     // damped. Starts on the caster's right and closer to the camera.
+    //
+    // B1177 (#496): the measured rows are whole pixels, so a 0.05-unit
+    // difference can move neither (a zero Jacobian row): the step retries the
+    // difference at 4x and 16x before it falls back to a nudge. The nudge's
+    // signs were inverted (it moved the target AWAY from the anchor pixels:
+    // review/B1172/worker/wrong_model/r1_6_1_6.log fits 7 -> 8, column 940.2
+    // -> 948.8 and feet row 616 -> 618 for an anchor at 940 / 615) and moved
+    // both axes even when one was already in; that is the 616/616/618 cycle
+    // (refactor/B1177/README.md sec. 2). The solve stops on a detected cycle
+    // (fxharness::fitCyclePeriod) or the iteration cap, and prints every
+    // candidate of the cycle (or the closest one) with why it misses.
+    const fxharness::TargetAnchor anchorReq{g.targetFeetX, g.targetFeetY, g.targetPx};
+    std::vector<fxharness::FitSample> samples;
     float x = -2.0f, z = 2.0f;
+    float mX = x, mZ = z;  // where `m` was measured (x, z move on after it)
     std::array<float, 3> m{1e9f, -1e9f, 0.0f};
+    int cycle = 0;
     for (int iter = 0; iter < harnessOpts.targetFitIterations; ++iter) {
         m = measure(x, z);
-        if (m[0] < 1e8f) {
-            const float r0 = m[0] - targetFeetXS, r1 = m[1] - targetFeetYS;
-            std::printf("[fx-harness]   tgt fit %d: (x %.3f, z %.3f) -> feet row %.1f at column %.1f, %.0f px (surface)\n",
-                        iter, x, z, m[1], m[0], m[2]);
-            if (std::fabs(r0) < 0.5f * Sx && std::fabs(r1) < 0.5f * Sy) break;
-            const float d = 0.05f;
+        mX = x;
+        mZ = z;
+        if (m[0] >= 1e8f) {
+            std::printf("[fx-harness]   tgt fit %d: (x %.3f, z %.3f) -> no target pixels\n", iter, x, z);
+            break;
+        }
+        const float r0 = m[0] - targetFeetXS, r1 = m[1] - targetFeetYS;
+        std::printf("[fx-harness]   tgt fit %d: (x %.3f, z %.3f) -> feet row %.1f at column %.1f, %.0f px (surface)\n",
+                    iter, x, z, m[1], m[0], m[2]);
+        if (std::fabs(r0) < 0.5f * Sx && std::fabs(r1) < 0.5f * Sy) break;
+        samples.push_back({x, z, m[0] / Sx, m[1] / Sy, m[2] / Sy});
+        cycle = fxharness::fitCyclePeriod(samples);
+        if (cycle) break;
+        bool stepped = false;
+        for (float d = 0.05f; d <= 0.8f && !stepped; d *= 4.0f) {
             const auto mx = measure(x + d, z);
             const auto mz = measure(x, z + d);
-            if (mx[0] < 1e8f && mz[0] < 1e8f) {
-                const float j00 = (mx[0] - m[0]) / d, j01 = (mz[0] - m[0]) / d;
-                const float j10 = (mx[1] - m[1]) / d, j11 = (mz[1] - m[1]) / d;
-                const float det = j00 * j11 - j01 * j10;
-                if (std::fabs(det) > 1e-6f) {
-                    const float dx = (j11 * (-r0) - j01 * (-r1)) / det;
-                    const float dz = (-j10 * (-r0) + j00 * (-r1)) / det;
-                    const float step = std::min(1.0f, 6.0f / std::max(std::fabs(dx), std::fabs(dz)));
-                    x += dx * step;
-                    z += dz * step;
-                    continue;
-                }
+            if (mx[0] >= 1e8f || mz[0] >= 1e8f) break;
+            const float j00 = (mx[0] - m[0]) / d, j01 = (mz[0] - m[0]) / d;
+            const float j10 = (mx[1] - m[1]) / d, j11 = (mz[1] - m[1]) / d;
+            const float det = j00 * j11 - j01 * j10;
+            if (std::fabs(det) <= 1e-6f) {
+                std::printf("[fx-harness]     singular Jacobian at d %.2f (d col/dx %.2f, d col/dz %.2f, "
+                            "d row/dx %.2f, d row/dz %.2f px/unit)\n",
+                            d, j00, j01, j10, j11);
+                continue;
             }
-            // singular Jacobian: nudge toward the target pixels
-            x -= 0.2f * std::copysign(1.0f, r0);  // column right = world -X
-            z += 0.2f * std::copysign(1.0f, r1);  // feet row down = closer
+            const float dx = (j11 * (-r0) - j01 * (-r1)) / det;
+            const float dz = (-j10 * (-r0) + j00 * (-r1)) / det;
+            const float step = std::min(1.0f, 6.0f / std::max(std::fabs(dx), std::fabs(dz)));
+            x += dx * step;
+            z += dz * step;
+            stepped = true;
         }
+        if (stepped) continue;
+        // Still singular: nudge only the axis that is out, TOWARD its pixel.
+        // Screen right is world -X (targetRightOfCaster), so a column right of
+        // the anchor (r0 > 0) needs x up; a feet row below it (r1 > 0) means
+        // the target stands too close, so z goes down (+z = closer = lower).
+        if (std::fabs(r0) >= 0.5f * Sx) x += 0.05f * std::copysign(1.0f, r0);
+        if (std::fabs(r1) >= 0.5f * Sy) z -= 0.05f * std::copysign(1.0f, r1);
+        std::printf("[fx-harness]     still singular: nudge to (x %.3f, z %.3f)\n", x, z);
     }
     if (animatedNode) animatedNode->setVisible(casterWasVisible);
-    const bool ok = m[0] < 1e8f && std::fabs(m[0] - targetFeetXS) < 1.0f * Sx &&
-                    std::fabs(m[1] - targetFeetYS) < 1.0f * Sy;
+    const bool ok = m[0] < 1e8f && std::fabs(m[0] - targetFeetXS) < fxharness::kSolveAcceptPx * Sx &&
+                    std::fabs(m[1] - targetFeetYS) < fxharness::kSolveAcceptPx * Sy;
+    // B1177: the diagnostic -- the cycle's candidates, or the closest one.
+    if (!ok)
+        for (const auto& l : fxharness::fitDiagnostic(samples, cycle, anchorReq, harnessOpts.targetFitIterations))
+            std::printf("[fx-harness] %s\n", l.c_str());
+    // The placement is where `m` was MEASURED (before B1177 the line and the
+    // stored placement used x, z after the last step, which no frame drew).
+    x = mX;
+    z = mZ;
     std::printf("[fx-harness] camera b1130: target (x %.3f, y %.3f, z %.3f) -> rendered target feet row %.0f at "
                 "column %.0f, %.0f px head top to feet (oracle r51 target, fx_target_anchor.h: feet %d at %d, "
                 "%d px)\n",
