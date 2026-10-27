@@ -1,0 +1,40 @@
+# action	target	hold_ms	still_name
+# B1164 A/B (d): review/B1118/plans/oracle_druid.tsv re-run VERBATIM (only # fps=25 added, the rate B1118 was recorded at): none of (a)/(b)/(c) reproduced B1118's 93 landing, so this asks whether B1118's own plan does today
+# fps=25
+# B1118 oracle leg B: class-gated spells (the official client refuses a gem cast its class cannot use: "You are not high enough level to cast this spell!", oracle_leg/24_fx41.png). Testcaster is set to class 6 (druid) by SQL for this session only.
+# clicks at the gem pitch MEASURED on this box (oracle_calib/11_gems_ready.png:
+# cells 30 px pitch, gem i (1-based) centre at image (25, 183+30i) = root
+# (25, 213+30i); the still is the root cropped +0+30).
+# pose=-74,428,3.75,160
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+wait	8000	0	settle
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#memspell 93 0	0	m1
+command	#memspell 38 1	0	m2
+command	#memspell 54 2	0	m3
+command	#memspell 41 3	0	m4
+command	#memspell 253 4	0	m5
+command	#memspell 458 5	0	m6
+command	#memspell 656 6	0	m7
+command	#level 60	0	lvl
+command	#mana	0	mana
+press	F9	0	cam1
+press	F9	0	cam2
+press	F9	0	cam3
+wait	3000	0	cam_settle
+command	/target Testcaster	0	tgt_self
+wait	1500	0	tgt_self_settle
+click	25,363	0	gem5_cast253
+wait	12000	0	fx253
+command	#mana	0	mana253
+command	#spawn TrollF	0	spawn93
+wait	4000	0	spawn93_settle
+command	/target TrollF	0	tgt93
+wait	1500	0	tgt93_settle
+click	25,243	0	gem1_cast93
+wait	12000	0	fx93
+command	/q	0	quit
