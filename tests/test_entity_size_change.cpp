@@ -225,7 +225,8 @@ TEST(EntitySizeScale, NoSizeFromTheServerIsTheRaceDefaultNotZero) {
 
 // The local player's node draws translation-only, so its node scale (and its
 // collisionZOffset) is the 1.0 it is drawn at; every other spawn gets the
-// client's actor scale.
+// client's actor scale. The 1.0 is a DEVIATION from the client (which scales
+// its own player too), owned by B1176 (#495); this pins today's behaviour.
 TEST(EntitySizeScale, TheLocalPlayerNodeKeepsTheScaleItIsDrawnAt) {
     EXPECT_FLOAT_EQ(entityNodeScale(false, 1, 0, 6.0f), 1.2f);
     EXPECT_FLOAT_EQ(entityNodeScale(true, 1, 0, 6.0f), 1.0f);

@@ -99,12 +99,19 @@ inline float collisionZOffsetFromBounds(const irr::core::aabbox3df& bbox, float 
 }
 
 // B1172 (#491): the scale an entity's node is given -- the official client's
-// actor scale (actor_scale.h) for every spawn but the LOCAL player, whose node
-// draws with a translation-only world matrix (EQAnimatedMeshSceneNode::render,
-// isPlayerNode_) and is therefore drawn at 1.0 whatever its scale says. Its
-// node scale, and so its collisionZOffset, stays 1.0 to match what is drawn
-// (the client draws its own player at the actor scale too -- refactor/B1172
-// FOLLOW-UP, with the first-person eye that was fitted on the 1.0 model).
+// actor scale (actor_scale.h) for every spawn, and 1.0 for the LOCAL player.
+// The 1.0 is a DEVIATION from the client, owned by B1176 (#495): the client
+// has no local-player branch -- both EQPlayer build paths run FUN_0047fa9e
+// and then FUN_0043c84b (review/B1141/ghidra/out/eqgame.exe.c:106152 ->
+// :106154 and :106406 -> :106416), and 0x43c84b hands actor+0xC4 to the
+// graphics actor (0x43d3e8 `call [edx+0x50]`) for every player, skipping it
+// only for a null player (0x43c87b) or a null graphics actor (0x43d3d0). So a
+// human player is 1.2 in the client and 1.0 here (a dwarf 0.8 vs 1.0; a dark
+// elf, default 5, is 1.0 on both sides). fable draws its own player with a
+// translation-only world matrix (EQAnimatedMeshSceneNode::render,
+// isPlayerNode_), so its node scale -- and the collisionZOffset measured from
+// it -- stays 1.0 to match what is drawn until B1176 moves the drawing, the
+// T431 first-person eye and the third-person camera together.
 inline float entityNodeScale(bool isLocalPlayer, uint16_t raceId, uint8_t gender, float serverSize) {
     return isLocalPlayer ? 1.0f : clientActorScale(raceId, gender, serverSize);
 }
