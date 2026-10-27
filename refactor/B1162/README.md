@@ -1,10 +1,12 @@
 # B1162 (#481): combat-ability + discipline FX on the real client path
 
-**Outcome: BLOCKED — neither leg landed on the real client path.** Both legs ran
-cleanly (rc=0, 56 steps each) on lane 5, observer rig, and both were silent on the
-wire. The two HARD RULES tripped: zero C->S `OP_CastSpell` (the /disc leg) and
-zero C->S `OP_InstillDoubt` (the Intimidation leg). This documents the legs, the
-evidence, and the class-ownership investigation that corrects B1143's lead.
+**Outcome (continuation, 2026-10-27): Intimidation LANDED on the real client
+path; the /disc leg reached the server on the real client path but the server
+REFUSED it.** Read "Continuation step 1" (why attempts 1-2 could not send
+OP_InstillDoubt), "Continuation step 2" (the landing), "Correction: Leg A did
+not land" and "Rows, clips, lane" at the end. The sections between here and
+there are the two earlier attempts, kept as written (Leg A's "LANDED" verdict
+is corrected below; the G-key reading of attempt 2 is superseded by step 1).
 
 ## The two legs
 
@@ -339,3 +341,114 @@ in the caster's INI for this leg only (new driver directive `# char-ini-set=`,
 `#stun`, caster standing, `/doability 1` (the same `FUN_0041f4a0(DAT_0095d424[0])`
 call the Abilities-page button makes, 0x46a813 vs 0x4d3b9d). Plan
 `plans/b1162_combat13_v3.tsv`.
+
+## Continuation step 2 (ONE lane-5 leg): Intimidation -> Fear 229 LANDED
+
+Leg `b1162_combat13_v3` (2026-10-27 11:35-11:49Z, rc=0, class 9 Rogue, observer
+rig, `refactor/B1162/scripts/run_leg_b1162.sh b1162_combat13_v3 9 --pre-sql-file
+refactor/B1162/sql/b1162_combat13_v3.sql --post-sql-file
+refactor/B1162/sql/b1162_combat13_v2.post.sql`; evidence
+`review/B1162/worker/oracle/b1162_combat13_v3/`). Pcap lines
+(`refactor/B1162/scripts/` decode of `capture.pcap`, caster port 35593,
+observer port 38639; `review/B1162/worker/probe_b1162_msgs.py`):
+
+```
+1793101494.790 S->C OP_SpecialMesg   "You stunned TrollF (262) for 2 Minutes."   (step 20 #stun)
+1793101502.249 C->S OP_InstillDoubt  size 0                                       (step 22 /doability 1)
+1793101502.276 S->C OP_Action        060104013c000a00... (target 262, source 260, spell 0x00e5 = 229)
+1793101502.276 S->C OP_Action        same bytes, observer port 38639
+1793101502.452 C->S OP_Animation     04010c2b
+1793101523.554 S->C OP_FormattedMessage  ... "Fear" "TrollF"  (the fade, Act+21.3 s)
+1793101539.432 C->S OP_InstillDoubt  size 0                                       (step 27 /doability 1)
+1793101539.444 S->C OP_Action        060104013c000a00... (229 on 262), also to 38639
+```
+
+Census over the whole pcap (`all-opcodes.tsv`): 2 C->S `OP_InstillDoubt`,
+10 S->C `OP_Action`, 4 S->C `OP_BeginCast` -- all four are
+`57000b00d0070000` = source 87 spell 11 cast 2000 ms at 1793101451.925-.941 (an
+ambient qeynos2 NPC, 50 s before the first press). **Zero `OP_BeginCast` from
+the intimidator (260): no Source**, as the client plays a record's Source only
+from its begin-cast handler (B1144). The ability slot came from the
+`# char-ini-set=` edit: `character-after.ini` still holds `Ability1=71` at stop
+(the load-time slot check kept it for a Rogue), and the driver restored the
+original INI byte-identically (`character-restored` marker after the `cmp`).
+
+**The NPC landing in the observer view** (`refactor/B1162/scripts/obs_measure_b1162.py`,
+the B1143 instrument with only the eqpcap path changed; geometry
+`refactor/B1162/scripts/geom_b1162_combat13_v3.json` = B1143 p3_rig93 at the
+same poses; files `review/B1162/worker/measure/combat13_v3/`), vs
+`review/B1130/record_table.tsv` row 13 (line 24 of the file: e13, 209 Spook the
+Dead, GM cast WITH a BeginCast, fixed_npc camera):
+
+| | onset (Act+) | end (Act+) | peak | run cov | cen_h | h p5..p95 | ground band |
+|---|---|---|---|---|---|---|---|
+| oracle 229 rep 1 (observer, NPC 228 px) | +0.392 (f12985) | +6.259 (f13161) | f13045 Act+2.392 cov 1.024 | 0.676 | 0.72 | -0.34..1.91 | 0.20 |
+| oracle 229 rep 2 | +0.391 (f14100) | +6.258 (f14276) | f14198 Act+3.658 cov 0.969 | 0.649 | 0.76 | -0.29..1.94 | 0.18 |
+| B1130 row 13 (209, fixed_npc) | +0.39 | +6.39 | landing_cov 3.264 (whole-frame RISE, includes the held Source) | -- | 0.77 | 0.23..1.63 | -- |
+| fable harness 229 action-only, b1130 preset | +0.333 (f55) | +6.267 (f233) | f81 Act+1.200, RISE cov 0.927, anchor cov 0.339 | 0.177 | 0.87 | 0.25..1.60 | 0.00 |
+
+The harness row (`review/B1162/worker/harness/fear229_b1130/`, plan
+`1.5 229 other 0 0 60 action`, `--camera b1130 --seed 1`; measured with
+`refactor/B1162/scripts/harness_measure_b1130_action.py`, the B1155 instrument
+with BC = Act - 1 frame for an action-only cast) draws record 101 (field 145)
+Target slots 0-3 only (`frames/slots.tsv`: spelkb x2, spelcb x2, no Source
+slot) and SOURCE none (max 57 px = 0.0013 model^2). Onset and end match the
+oracle to 2 frames / 0.01 s. **Miss (owner named, not fixed here): the ground
+band.** The oracle's run carries ground 0.18-0.20 and h_p5 below the feet
+(-0.29..-0.34, skulls on the ground in front of the NPC, still
+`22_command.frame.png`); the harness run has ground 0.00 and h_p5 0.25. Owner:
+the record-101 Target slots' spawn volume (`slots.tsv` anchor 3 / attach 3 and
+1) in the landing emitter set-up (`createLanding`, run.log line
+`createLanding: caster=1 target=2 spell=229 row=13 slots 0:3/3@16386...`). The
+coverage columns are NOT comparable across the two rigs (observer camera with
+the NPC inside the caster vs the b1130 preset's separate 325 px target), so no
+coverage verdict is drawn.
+
+## Correction: Leg A (/disc, attempt 2) did NOT land
+
+Re-decoding `review/B1162/worker/oracle/b1162_disc325_v2/capture.pcap` around
+the `/disc` (same decoder):
+
+```
+1793062472.595 C->S OP_CastSpell     0a0000009c210000ffffffff... (slot 10, spell 0x219c = 8604)
+1793062472.625 S->C OP_SpecialMesg   "Your class cannot learn from this tome."
+1793062472.625 S->C OP_InterruptCast 04010000b7010000
+1793062472.625 S->C OP_InterruptCast 04010000be3000005465737463617374657200 ("Testcaster", observer port 48968)
+1793062472.641 S->C OP_SpecialMesg   "Your class cannot learn from this tome."   (repeat)
+```
+
+There is **no S->C `OP_Action`** for 8604; the ManaChange/HPUpdate/Stamina rows
+the attempt-2 section called "the Leechcurse drain" are the regular tick
+traffic. The server's `UseDiscipline` (akk-stack `zone/effects.cpp` 885-890)
+prints that line when `spells[spell_id].classes[GetClass() - 1] == 255`, i.e.
+the lane's server-side spell row for 8604 does not give class 5 a level, while
+the client's own `spells_us.txt` does (field 108 = 60). What stands from Leg A:
+**the real client `/disc` fires (C->S OP_CastSpell slot 10) when the discipline
+is in the zone-in list**; the server then refused it, so the oracle had nothing
+to draw. Record 325's on-screen behaviour on a real `/disc` landing is
+therefore still unobserved; the fable side is pinned regardless:
+`tests/test_fx_harness.cpp` `TheLeechcurseDisciplineWithoutBeginCastDrawsNothing`
+(8604 action-only: peak 4 px vs pre-cast noise 3 px; the 4499 record-326 test
+alongside: 0 vs 0 -- `review/B1162/worker/fx_gate_disc.txt`), and the harness
+row `review/B1162/worker/harness/disc8604_b1130self/` (empty `slots.tsv`,
+SOURCE none max 48 px, LANDING none max 112 px). One more lane leg was not
+allowed by the ruling; see the RULING REQUEST.
+
+## Rows, clips, lane
+
+- Ledger clips (`refactor/B1158/scripts/make_clip.py`, oracle LEFT / willeq
+  RIGHT, BC = Act for both action-only casts):
+  `review/B1162/worker/ledger/clips/b1162_fear229_intimidation.mp4` (+ `_strip.png`;
+  oracle f12973 @ 30 fps, t0 1793101069.835; willeq f45) and
+  `review/B1162/worker/ledger/clips/b1162_disc8604_leechcurse.mp4` (+ `_strip.png`;
+  oracle f14732, t0 1793061981.526, cut at the C->S OP_CastSpell epoch; willeq f45).
+  Specs in `review/B1162/worker/ledger/specs/`, alignment lines in `clip.log`.
+- Lane before == after (the leg's own census): char 67 `char-state-before.tsv`
+  = `char-state-after.tsv` = class 12, level 1, race 6; char 103
+  before = after = class 1, level 1, race 1; driver.log SAVED/LEG/BACK:
+  character_skills 0/1/0, character_disciplines 0/0/0, timers 2/2/2; gems back
+  to 93,38,54,41,253,458,656 ("char 67 restored" in the run output); the
+  caster INI restored byte-identically. Lease FREE at the end
+  (`cleanup exit=0 lane=5 lock=state=FREE`). An "Oraclewatch's corpse" already
+  lay in the observer's view at the settle still (`16_wait.frame.png`); it was
+  not created or touched by this leg.
