@@ -155,6 +155,7 @@
 #include "client/graphics/environment/spell_sprite_atlas.h"
 #include "client/spell/spell_fx_timing.h"
 #include "client/spell/spells_eff_reader.h"
+#include "client/spell/spells_new_eff_reader.h"
 #include "spell_landing_population.h"
 #include "spell_fx_population_oracle.h"
 #include "spell_pool.h"
@@ -568,78 +569,149 @@ TEST_P(SpellPoolRule, TheRuleKeepsEachLandingsSchedule) {
 }
 
 // B1161 (#480): the pool rule RE-DERIVED against the record-driven field.
-// Whirling Wind (spell 253, spellsnew.eff record 104 = survey row 35) is a
-// continuous FIELD, not a 0.6 s burst (B1118: oracle landing coverage 7.28
-// caster heights^2, tests/spell_fx_population_oracle.h row 35) -- and its
-// field is the record's FILE populations (B1149), which the rule does not
-// scale: the oracle's pool (EQGraphicsDX9, per-emitter rings, ring full drops
-// the rest of the frame's emission, 0x10061180) is a CAP, and fable applies
-// that rule at its one pool -- new particles dropped while it is full, no
-// count scaled (refactor/B1149/README.md sec. 4).  The file's peak live per
-// record (B1149's census, review/B1149/pool_census.tsv, level 60, Source +
-// Target summed): record 104 (253) is the largest a class-level 1-60 spell
-// draws -- 3746 + 1168 = 4914, inside the desktop 8192, over the sbc 4096 by
-// 818, where the pool fills and drops; record 113 (290) 107 + 2417 = 2524
-// fits both; record 80 (93/38) is absent from the census, which prints the
-// records with sum > 2048 (its header), so its field is <= 2048.
-TEST_P(SpellPoolRule, WhirlingWindFieldDrawsTheFileCountsAndThePoolCapsThem) {
-    const auto& cfg = EQT::Graphics::Environment::SpellEffectsConfig::instance();
-    // The rule scales none of a record's words: its landing style definition
-    // is the style's own (kStyle-scaled) rates with no record-specific factor
-    // (B1153 retired the per-record scale; B1161 pins it for the largest, the
-    // next-largest and one small record).
-    const struct { uint32_t spell; int record; } kPairs[] = {{253, 104}, {290, 113}, {93, 80}};
-    for (const auto& p : kPairs) {
-        for (const char* half : {"impact", "spellComplete"}) {
-            const auto rec = cfg.getStyleSettings(half, p.spell, p.record);
-            const auto style = cfg.getStyleSettings(half, 0, -1);
-            EXPECT_FLOAT_EQ(rec.spawnRate, style.spawnRate)
-                << half << " spell " << p.spell << " record " << p.record
-                << ": a record's field is drawn at the file's counts, not pool-scaled";
-            EXPECT_FLOAT_EQ(rec.sustainRate, style.sustainRate)
-                << half << " record " << p.record;
+// A spell with a spellsnew.eff record draws its slots' FILE populations
+// (B1149, applySlotEmitter) and the rule scales none of them: the oracle's
+// pool (EQGraphicsDX9, per-emitter rings, ring full drops the rest of the
+// frame's emission, 0x10061180) is a CAP, and fable applies that rule at its
+// one pool -- new particles dropped while it is full, no count scaled
+// (refactor/B1149/README.md sec. 4; the drop itself is exercised through the
+// real worker by SpellLandingPool.TheLargestRecordFieldIsCappedNotScaled,
+// tests/test_spell_landing_volume.cpp).  Here each record's field is
+// re-derived from its EDD words, slot by slot -- burst + perTick x tps x
+// min(window, L) (spell_fx_timing.h peakLive), Source with the caller duration
+// cast + the cast-animation term, Target with none, every slot a level-60
+// caster draws, a stage's slots summed (an upper bound: they need not peak
+// together) -- and must reproduce B1149's census, which decoded the same
+// words with its own reader (review/B1149/scripts/pool_census.py, the cast it
+// uses beside each record): records 104 / 113 / 91 are the three largest
+// fields of the 40 B1130 records, 80 (93/38) a small one.
+TEST_P(SpellPoolRule, TheRecordFieldsAreTheFileCountsAndOnlyRecord104ExceedsAPool) {
+    const std::string dir = eqClientPath();
+    if (!std::ifstream(dir + "/spellsnew.edd").good()) GTEST_SKIP() << "spellsnew.edd not under " << dir;
+    EQ::SpellsNewEffReader reader;
+    ASSERT_TRUE(reader.load(dir)) << reader.loadError();
+    auto stagePeak = [&](int rec, int stage, int callerMs) {
+        float sum = 0.0f;
+        for (const auto& d : reader.drawnSlots(rec, stage, 60)) {
+            const EQ::SpellsNewEddTiming* w = reader.edd().timing(d.slot.emitter);
+            if (w) sum += EQ::SpellFxSlotTimingFor(*w, callerMs).peakLive();
         }
-    }
-    const struct { int record; float sum; } kFields[] = {
-        {104, 4914.0f},  // 253: the largest record field (3746 + 1168)
-        {113, 2524.0f},  // 290: 107 + 2417
-        { 80, 2048.0f},  // 93/38: absent from the census (prints sum > 2048)
+        return sum;
     };
-    for (const auto& f : kFields) {
-        if (f.record == 104) {
-            EXPECT_EQ(f.sum <= pool(), pool() >= 8192.0f)
-                << "record 104's field (4914) fits the 8192 pool and over the 4096 one, "
-                   "which fills and drops the rest (no scaling)";
+    const struct { int record; int castMs; float source, target; } kCensus[] = {
+        {104, 1750, 3746.0f, 1168.5f},  // 253 Whirling Wind
+        {113, 1500, 107.0f, 2417.12f},  // 290 Color Flux
+        { 91, 3300, 1554.0f, 796.0f},   // 115 Dismiss Summoned
+        { 80, 2700, 304.5f, 1302.5f},   // 38 Lightning Bolt / 93 Burst of Flame
+    };
+    for (const auto& c : kCensus) {
+        const float src = stagePeak(c.record, EQ::kSpellsNewEffSource,
+                                    EQ::SpellFxCallerDurationMs(EQ::SpellFxStage::Source, c.castMs, 0));
+        const float tgt = stagePeak(c.record, EQ::kSpellsNewEffTarget,
+                                    EQ::SpellFxCallerDurationMs(EQ::SpellFxStage::Target, c.castMs, 0));
+        EXPECT_NEAR(src, c.source, 0.5f) << "record " << c.record << " Source";
+        EXPECT_NEAR(tgt, c.target, 0.5f) << "record " << c.record << " Target";
+        const float field = src + tgt;
+        if (c.record == 104) {
+            EXPECT_GT(field, 4096.0f) << "record 104's field exceeds the sbc pool (by " << field - 4096.0f << ")";
+            EXPECT_EQ(field <= pool(), pool() >= 8192.0f)
+                << "record 104's field (" << field << ") fits the 8192 pool, not the " << pool()
+                << " one, which fills and drops";
         } else {
-            EXPECT_LE(f.sum, pool())
-                << "record " << f.record << "'s file field (" << f.sum
-                << ") fits the " << pool() << " pool at the file's counts";
+            EXPECT_LE(field, pool()) << "record " << c.record << "'s field (" << field << ") fits the " << pool()
+                                     << " pool at the file's counts";
         }
     }
 }
 
-// Whirling Wind's landing END: B1118 measured the oracle's at Act+6.52 s
-// (T422's 5.6 s total was an llvmpipe-era read); the measured end is the lane-5
-// capture's (refactor/B1121/README.md).  B1161 (#480): the 253 override is
-// retired, so the landing is measured on the RECORD path (its spellsnew.eff
-// record 104 = survey row 35, tests/spell_anim_rows.h).  The record's emitter
-// lifetime is the cast-animation term -- the client's rule, eqgame 0x49b977
-// (duration = cast + the CastingAnim track, 0x47ddd4) with B1145's measured
-// 4.35 s (EQ::kSpellFxCastAnimationSeconds; B1148 carries it per caster) --
-// what the retired override had been carrying as `emitterLifetime 4.35`.  The
-// record-driven last death is 0.33 + 4.35 + 2.0 = 6.68 s, in the band; the
-// pre-B1161 style base gave 0.33 + 2.85 + 2.0 = 5.18 s (refactor/B1153/
-// README.md sec. 1).
-TEST_F(SpellStyleOverrides, WhirlingWindLastsAsLongAsTheOracles) {
-    const glm::vec4 col(1.0f);
-    for (const auto& def : {SpellPresets::Impact(col, 253, 104), SpellPresets::SpellComplete(col, 253, 104)}) {
-        const auto& ed = def.emitters.at(0);
-        const float lastDeath = ed.triggerDelay + ed.config.emitterLifetime + ed.config.lifetimeMax;
-        EXPECT_GE(lastDeath, 6.52f) << "last death " << lastDeath << " s";
-        EXPECT_LE(lastDeath, 7.32f) << "last death " << lastDeath << " s";
-        // The term is the client's rule, not a word from a per-spell block.
-        EXPECT_FLOAT_EQ(ed.config.emitterLifetime, EQ::kSpellFxCastAnimationSeconds);
+// B1161 (#480): record 0 is NO record (spells_us.txt field 145 = 0,
+// spell_visual_vocabulary.h; SpellsNewEffReader::getRecord(0) is nullptr), and
+// a record adds nothing to any style definition: the cast-animation term is
+// the Source stage's caller duration (spell_fx_timing.h), the client passes
+// the Target stage none (eqgame 0x47f5e1), and a record's landing is its
+// slots.  So record 0, -1 and the spell's real record give the same settings
+// and the same landing definitions -- the 210 field-145 = 0 spells (1106 Sear
+// among them) land exactly as an unrecorded spell does.
+TEST_F(SpellStyleOverrides, RecordZeroIsTheNoRecordPath) {
+    const auto& cfg = SpellEffectsConfig::instance();
+    const struct { uint32_t spell; int record; } kSpells[] = {
+        {0, 104}, {1106, 104}, {253, 104}, {93, 80}, {290, 113}, {54, 82}};
+    for (const auto& sp : kSpells) {
+        for (const char* style : {"impact", "spellComplete", "castGlow", "castSpray"}) {
+            const auto none = cfg.getStyleSettings(style, sp.spell, -1);
+            for (int rec : {0, sp.record}) {
+                const auto s = cfg.getStyleSettings(style, sp.spell, rec);
+                EXPECT_FLOAT_EQ(s.emitterLifetime, none.emitterLifetime) << style << " " << sp.spell << " rec " << rec;
+                EXPECT_EQ(s.hasEmitterLifetime, none.hasEmitterLifetime) << style << " " << sp.spell << " rec " << rec;
+                EXPECT_FLOAT_EQ(s.spawnRate, none.spawnRate) << style << " " << sp.spell << " rec " << rec;
+                EXPECT_FLOAT_EQ(s.sustainRate, none.sustainRate) << style << " " << sp.spell << " rec " << rec;
+                EXPECT_EQ(s.burstCount, none.burstCount) << style << " " << sp.spell << " rec " << rec;
+            }
+        }
+        const glm::vec4 col(1.0f);
+        auto lastDeath = [](const SpellEffectDef& d) {
+            const auto& ed = d.emitters.at(0);
+            return ed.triggerDelay + ed.config.emitterLifetime + ed.config.lifetimeMax;
+        };
+        EXPECT_FLOAT_EQ(lastDeath(SpellPresets::Impact(col, sp.spell, 0)), lastDeath(SpellPresets::Impact(col, sp.spell, -1)))
+            << sp.spell;
+        EXPECT_FLOAT_EQ(lastDeath(SpellPresets::SpellComplete(col, sp.spell, 0)),
+                        lastDeath(SpellPresets::SpellComplete(col, sp.spell, -1))) << sp.spell;
     }
+    // The no-record landing ends where the style does: 1106's definition is
+    // the style's (no override), triggerDelay + emitterLifetime + lifetimeMax.
+    const auto style = cfg.getStyleSettings("impact", 0, -1);
+    EXPECT_FLOAT_EQ(SpellPresets::Impact(glm::vec4(1.0f), 1106, 0).emitters.at(0).config.emitterLifetime,
+                    style.emitterLifetime);
+}
+
+// Whirling Wind on the RECORD path (B1161 #480: its override is retired; the
+// spell's record is spellsnew.eff 104 = survey row 35, tests/spell_anim_rows.h).
+// The cast-animation term (B1145's 4.35 s, EQ::kSpellFxCastAnimationSeconds;
+// B1148 reads it per caster from the CastingAnim track) is the client's
+// SOURCE duration: eqgame passes a Source stage cast_ms + the track
+// (0x49b977 / 0x47ddd4) and a Target stage none (0x47f5e1).  Computed from
+// record 104's EDD words: the Source emits to OP_BeginCast + 1.75 + 4.35 and
+// its last particle dies Act+6.10 -- the oracle's caster-box Source end for
+// this row is Act+6.073 (B1145, tests/spell_fx_timing_oracle.h row 35), inside
+// B1145's 0.5 s.  The Target stage is the file's fixed 5.0 s run with lives
+// up to 3.5 s: last death 8.5 s after the stage starts (B1145's
+// crosscheck.tsv target_end_l60).  The landing's VISIBLE end on the harness
+// is the EDD fade field's (refactor/B1161/README.md sec. 3 reports it against
+// the B1118 oracle's 6.52); no style word reaches the record path.
+TEST_F(SpellStyleOverrides, WhirlingWindsRecordPathCarriesTheTermOnItsSource) {
+    const std::string dir = eqClientPath();
+    if (!std::ifstream(dir + "/spellsnew.edd").good()) GTEST_SKIP() << "spellsnew.edd not under " << dir;
+    EQ::SpellsNewEffReader reader;
+    ASSERT_TRUE(reader.load(dir)) << reader.loadError();
+    constexpr int kRecord = 104, kCastMs = 1750;
+    auto stageEnd = [&](int stage, int callerMs, int* n) {
+        float end = -1.0f;
+        *n = 0;
+        for (const auto& d : reader.drawnSlots(kRecord, stage, 60)) {
+            const EQ::SpellsNewEddTiming* w = reader.edd().timing(d.slot.emitter);
+            if (!w) continue;
+            end = std::max(end, EQ::SpellFxSlotTimingFor(*w, callerMs).end());
+            ++*n;
+        }
+        return end;
+    };
+    const int32_t srcCaller = EQ::SpellFxCallerDurationMs(EQ::SpellFxStage::Source, kCastMs, 0);
+    EXPECT_EQ(srcCaller, kCastMs + static_cast<int32_t>(EQ::kSpellFxCastAnimationSeconds * 1000.0f + 0.5f));
+    int n = 0;
+    const float sourcePastAction = stageEnd(EQ::kSpellsNewEffSource, srcCaller, &n) - kCastMs * 0.001f;
+    EXPECT_EQ(n, 4);
+    EXPECT_NEAR(sourcePastAction, 6.10f, 1e-4f) << "1.75 + 4.35 + the longest Source life 1.75, less the cast";
+    EXPECT_NEAR(sourcePastAction, 6.073f, 0.5f) << "the oracle's Source end for row 35 (B1145)";
+    EXPECT_EQ(EQ::SpellFxCallerDurationMs(EQ::SpellFxStage::Target, kCastMs, 0), 0) << "no duration for a Target";
+    EXPECT_NEAR(stageEnd(EQ::kSpellsNewEffTarget, 0, &n), 8.5f, 1e-4f) << "B1145 crosscheck.tsv row 35";
+    EXPECT_EQ(n, 3);
+    // The style definition holds no record word: 253's landing halves are the
+    // style's (its override is gone), whatever record is passed.
+    const auto& cfg = SpellEffectsConfig::instance();
+    for (const char* half : {"impact", "spellComplete"})
+        EXPECT_FLOAT_EQ(cfg.getStyleSettings(half, 253, kRecord).emitterLifetime,
+                        cfg.getStyleSettings(half, 0, -1).emitterLifetime) << half;
 }
 
 // An UNMEASURED spell still resolves to the plain style -- no override may be

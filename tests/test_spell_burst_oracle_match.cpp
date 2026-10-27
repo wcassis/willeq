@@ -243,21 +243,28 @@ TEST_F(SpellBurstOracleMatch, ParticleLifetimeMatchesTheOraclesDeathFreeRise) {
 // pin is the sim's last possible death, triggerDelay + emitterLifetime +
 // lifetimeMax: the last lit frame falls 0.2-0.6 s before it once the sustain
 // thins below the visibility threshold, so it must sit in [end, end + 0.8].
-// B1161 (#480): 253's override is retired, so its row goes through the RECORD
-// path (its spellsnew.eff record 104 = survey row 35, tests/spell_anim_rows.h):
-// the record's emitter lifetime is the cast-animation term
-// (SpellEffectsConfig::getStyleSettings, B1145/B1148), not a per-spell word.
+// B1161 (#480): each spell is built with the record the CLIENT gives it
+// (spells_us.txt field 145: 93/38 -> 80, 54/656 -> 82, 41 -> 89, 458 -> 121),
+// not -1: a style definition carries no per-record word (the cast-animation
+// term is the Source stage's caller duration, spell_fx_timing.h, and eqgame
+// passes a Target stage none, 0x47f5e1), so the record changes nothing here
+// and these are the definitions the landing draws when no spellsnew.eff slot
+// is drawn. 253 (record 104) left this table with its override (B1161): its
+// definition is now the style's (last death 0.33 + 2.85 + 2.0 = 5.18 s), and
+// its landing is drawn from record 104's slots, whose timing is the file's
+// (SpellStyleOverrides.WhirlingWindLastsAsLongAsTheOracles pins that path;
+// refactor/B1161/README.md sec. 3 reports its end against the oracle's 6.52).
 TEST_F(SpellBurstOracleMatch, EveryMeasuredLandingEndsWhereTheOraclesDoes) {
     const struct { uint32_t id; float oracleEnd; int record; } kEnds[] = {
-        {93, 4.87f, -1}, {38, 4.85f, -1}, {54, 5.10f, -1}, {656, 5.00f, -1},
-        {41, 6.22f, -1}, {253, 6.52f, 104}, {458, 4.94f, -1}};
+        {93, 4.87f, 80}, {38, 4.85f, 80}, {54, 5.10f, 82}, {656, 5.00f, 82},
+        {41, 6.22f, 89}, {458, 4.94f, 121}};
     const glm::vec4 col(1.0f);
     for (const auto& e : kEnds) {
         for (const auto& def : {SpellPresets::Impact(col, e.id, e.record), SpellPresets::SpellComplete(col, e.id, e.record)}) {
             const auto& ed = def.emitters.at(0);
             const float lastDeath = ed.triggerDelay + ed.config.emitterLifetime + ed.config.lifetimeMax;
-            EXPECT_GE(lastDeath, e.oracleEnd) << "spell " << e.id << " " << def.name;
-            EXPECT_LE(lastDeath, e.oracleEnd + 0.8f) << "spell " << e.id << " " << def.name;
+            EXPECT_GE(lastDeath, e.oracleEnd) << "spell " << e.id << " record " << e.record << " " << def.name;
+            EXPECT_LE(lastDeath, e.oracleEnd + 0.8f) << "spell " << e.id << " record " << e.record << " " << def.name;
         }
     }
 }

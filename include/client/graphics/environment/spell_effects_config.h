@@ -134,10 +134,16 @@ public:
      * Get merged style settings for a given style name and optional spell ID.
      * If spellId is non-zero and has overrides, those fields replace base style values.
      *
-     * B1131: `record` is the spell's spells.eff record (spells_us.txt field
-     * 123, -1 = none). A landing half ("impact" / "spellComplete") the spell
-     * does not override is the style scaled for THAT record's held Source
-     * (applyPool: a landing plus its own held Source peaks at half the pool).
+     * `record` is the spell's spellsnew.eff record (B1137: spells_us.txt
+     * field 145, the vocabulary's spellAnim; 0 = none, -1 = not given; a
+     * record exists only for record > 0). B1153 (#473) retired the per-record
+     * landing scale and B1161 (#480) confirmed the parameter adds nothing to
+     * any style: a record's landing is its spellsnew.edd slots
+     * (applySlotEmitter), and the cast-animation term is the Source stage's
+     * caller duration (spell_fx_timing.h), never a landing's lifetime -- the
+     * client passes a Target stage no duration (eqgame 0x47f5e1). Kept for
+     * the callers' signature; record 0, -1 and any record give the same
+     * settings (SpellStyleOverrides.RecordZeroIsTheNoRecordPath).
      */
     StyleSettings getStyleSettings(const std::string& styleName, uint32_t spellId = 0,
                                    int record = -1) const;

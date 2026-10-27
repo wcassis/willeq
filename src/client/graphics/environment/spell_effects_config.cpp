@@ -249,10 +249,11 @@ bool SpellEffectsConfig::reload() {
 // it is full (allocateParticle returns -1, sim_particles.cpp:774), no count
 // is scaled (refactor/B1149/README.md sec. 4).  The
 // largest record field a class-level 1-60 spell draws is record 35's
-// (spellsnew.eff 104, spell 253): 3746 + 1168 = 4914 peak live -- inside
-// the desktop 8192, over the sbc 4096 by 818, where the pool fills and
-// drops; its steady field (~14100 desktop / ~5930 sbc, B1153's probe)
-// exceeds both.  The half-pool bound still serves spells with no record
+// (spellsnew.eff 104, spell 253): 3746 + 1168 = 4914 peak live (each
+// slot's burst + perTick x tps x min(window, L), summed: an upper bound) --
+// inside the desktop 8192, over the sbc 4096 by 818, where the pool fills
+// and drops (pinned by SpellLandingPool.TheLargestRecordFieldIsCappedNotScaled
+// in tests/test_spell_landing_volume.cpp).  The half-pool bound still serves spells with no record
 // (the style landing) and the kept overrides (B1153's five: 38/41/54/458/
 // 656), whose style-drawn landings it rescales.
 //
@@ -465,8 +466,16 @@ SpellEffectsConfig::StyleSettings SpellEffectsConfig::getStyleSettings(
     // overrides stay -- the measured no-file clouds, sizes and populations for
     // the spells whose spellsnew file is not the whole story (refactor/
     // B1153/README.md documents each with its numbers). B1161 (#480) retires
-    // the 253 one of them: the record path now carries its words (the cast-
-    // animation term below, the file's counts).
+    // the 253 one of them.
+    // B1161 (#480): `record` adds NOTHING to a landing half. The cast-animation
+    // term (EQ::kSpellFxCastAnimationSeconds, B1145/B1148) is the client's
+    // SOURCE duration: eqgame passes a Source stage cast_ms + the caster's
+    // CastingAnim track (0x49b977 / 0x47ddd4) and a Target stage NO duration
+    // (0x47f5e1; SpellFxCallerDurationMs in spell_fx_timing.h), so the record
+    // path carries the term in createCastGlow's Source caller duration, never
+    // in a landing's emitterLifetime. Record 0 is "no record" (spells_us.txt
+    // field 145 = 0, spell_visual_vocabulary.h) and lands exactly as -1 does.
+    (void)record;
     // Find base style
     auto baseIt = styles_.find(styleName);
     if (baseIt == styles_.end()) {
@@ -474,38 +483,17 @@ SpellEffectsConfig::StyleSettings SpellEffectsConfig::getStyleSettings(
         return StyleSettings{};
     }
 
-    StyleSettings s = baseIt->second;
-    bool overrideCarriesLifetime = false;
     // Check for spell-specific overrides
     if (spellId != 0) {
         auto spellIt = spellOverrides_.find(spellId);
         if (spellIt != spellOverrides_.end()) {
             auto styleIt = spellIt->second.find(styleName);
             if (styleIt != spellIt->second.end()) {
-                s = mergeOverrides(s, styleIt->second);
-                overrideCarriesLifetime = styleIt->second.hasEmitterLifetime;
+                return mergeOverrides(baseIt->second, styleIt->second);
             }
         }
     }
-    // B1161 (#480): a record's landing emitter lives the CAST-ANIMATION TERM,
-    // the client's rule, never a per-spell word. eqgame passes a cast-driven
-    // stage a duration of cast_ms + the caster's CastingAnim track length
-    // (eqgame 0x49b977; the track length is 0x47ddd4, the spell's field-120
-    // word), and B1145 measured the emission's end at a median 4.35 s past
-    // OP_Action -- EQ::kSpellFxCastAnimationSeconds (refactor/B1145/README.md).
-    // B1148 carries the term per caster from the skeleton track at cast time
-    // (spell_visual_fx.cpp createCastGlow); this is where it sits on the
-    // record path in a style definition: the no-slot fallback emits from it
-    // and the tests measure it against the oracle's ends. It is what the
-    // retired 253 override carried as `emitterLifetime 4.35` (its
-    // record-driven end was 5.18 s, the oracle's 6.52, refactor/B1153/
-    // README.md sec. 1). A kept override's own measured emitterLifetime wins.
-    if (record >= 0 && !overrideCarriesLifetime &&
-        (styleName == "impact" || styleName == "spellComplete")) {
-        s.emitterLifetime = EQ::kSpellFxCastAnimationSeconds;
-        s.hasEmitterLifetime = true;
-    }
-    return s;
+    return baseIt->second;
 }
 
 void SpellEffectsConfig::loadSpellOverrides(const Json::Value& root) {
