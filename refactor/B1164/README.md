@@ -1,6 +1,7 @@
-# B1164 (#483): spell-93 landing — the population is the word count; against B1130 r51 the
-"0.505x" is a units/geometry mismatch (willeq/oracle 0.969x peak to peak in r51's geometry);
-against the gate's own B1118 capture the landing is still ~0.5x (acceptance B NOT met)
+# B1164 (#483): spell-93 landing density — population = the word count; the lane-5 A/B
+finds no capture condition behind B1118's larger landing, B1130's r51 target geometry is wrong,
+and willeq is ~0.5× at the gate = a relatively small target (0.66×) × a thinner landing per
+target height (0.75×); acceptance B NOT met
 
 Record 80 (spell 93), harness b1118 + b1130, oracle frames from B1130 r51 (`review/B1130/oracle/r51/video.mp4`)
 and B1118 `oracle_druid` / `oracle_leg` (lane 5). This card acts on B1160's `popcount_93.txt`
@@ -12,6 +13,31 @@ Evidence root: `/mnt/projects/fable/review/B1164/worker/` (the first worker's ru
 leg: renders, measurements, the B1118 frame extractions). Scripts are committed under
 `refactor/B1164/scripts/`; every number below is printed by the command beside it, run from
 `dev2/` (paths in the commands are relative to it).
+
+## Continuation leg (dev3, review 7668) — read first
+
+Evidence: `/mnt/projects/fable/review/B1164/worker/dev3/` (lane-5 captures `oracle/`, plans
+`refactor/B1164/plans/`, measurements beside them). Every number below in §5 is printed by the
+command named with it, run from `dev3/` unless the path says otherwise.
+
+1. §2a: +0x19C and +0x6C are INT flags = 1 on the landing emitters (the first leg printed
+   +0x19C as a float).
+2. §4: the decompile — record 80's landing slots are attached to the target's
+   SPELLPOINT_DEFAULT, so the client multiplies every landing dimension by s = the point's
+   world-matrix scale; willeq passes s = 1.
+3. §5: the lane-5 A/B. Neither condition B1118 differs in (target on the caster; target slain),
+   nor both together, reproduces B1118's landing: r51 and the three controlled captures read
+   1.96–1.98 target heights² in the window and 3.95–4.24 caster² on the gate's instrument, and
+   B1118's own plan re-run today reads 2.115 / 4.342 (B1118: 2.377 / 5.847, with a camera ~6 %
+   closer). B1118's 93 is not reproducible; it is not a condition of the cast.
+4. §5: **B1130's r51 target geometry (325 px, feet (940,652)) is not reproduced.** Measured by
+   difference against a target-free still at r51's own camera, r51's target is 265 px
+   (rows 329..593). §2b's "0.969× in r51's geometry" used the 325 px and is withdrawn; with the
+   measured height, willeq is 0.75× the oracle per target height².
+5. willeq's gate shortfall (1.993 vs 3.95–4.24 caster²) factors into (i) the target's size
+   relative to the caster, 1.057 caster heights in willeq vs 1.30–1.35 in the oracle ((1.057/1.30)²
+   = 0.66), and (ii) 0.75× lit area per target height². Neither is a word willeq mis-applies on
+   the EDD path that this card can name from evidence: no code change (§7, FOLLOW-UP §9).
 
 ## Corrected problem statement (operator 23:35Z, MR !312 note 7623)
 
@@ -109,7 +135,12 @@ Every word that sets the per-particle area is applied correctly:
 These words are applied as the file states; §2b–§3 measure what the per-particle area
 actually is against the oracle, like with like.
 
-## 2b. The 0.505× compares two different units
+## 2b. The 0.505× compares two different units (first leg; the host geometry is WITHDRAWN, §5)
+
+> **Withdrawn (dev3).** This section normalises r51 by the target geometry of
+> `review/B1130/geom/r51.json` (325 px, feet (940,652)). §5 measures r51's target at 265 px
+> (rows 329..593, by difference against a target-free still at the same camera), so the
+> "0.969×/0.995× in r51's geometry" below does not hold; the corrected comparison is §5.
 
 The card's ratio is 1.993 (willeq, b1118 harness) / 3.945 (oracle, B1130 r51). The two
 numbers are normalised by different bodies:
@@ -181,7 +212,7 @@ lit area matches r51 at 0.969× peak to peak (0.995× at f7561, with the same co
 vs 1.993, `measure/t93_b1118_die/summary.tsv`; the end moves to +4.700 because the target
 despawns at Act+1.027).
 
-## 3. What the 0.505× is, and the two remaining owners
+## 3. What the 0.505× is, and the two remaining owners (first leg; superseded by §5)
 
 1. **Units (×2.418)**: oracle normalised by the 209 px caster while its landing host is
    325 px; willeq normalised by its 235 px landing host. 3.945 / 2.418 = 1.631.
@@ -276,7 +307,105 @@ and `sim_particles.cpp:899` (motion) — but every caller passes the constant
 stage at `spell_visual_fx.cpp:1013`). So willeq draws record 80 at s = 1 for every target.
 Whether that is the gap depends on the target's s in the oracle captures, which §5 measures.
 
-## 6. Instrument (env-gated, local patch — not committed as a default)
+## 5. Lane-5 A/B (dev3): which condition makes B1118's landing larger?
+
+B1118's `oracle_druid` 93 differs from B1130 r51 in two conditions: the target `#spawn`ed ON
+the caster (r51: `#goto`-ed 1.4 caster heights away) and the target slain at the landing (r51:
+hp 30000, alive). Each leg below is r51's plan (`review/B1130/plans/r51.tsv`) with the named
+change(s), run by `scripts/eqemu/oracle/oracle_class_leg.sh 5 6 <plan> <out>` from hermes-ext
+under the lane-5 lease (owner `kb-b1164-pixel-area_*`), class 6 for the leg; every leg ended
+`cleanup exit=0 ... lock=state=FREE` with char 67's class, gems, skills, disciplines and timers
+restored (`BACK` lines in each `driver.log`). Plans: `refactor/B1164/plans/`.
+
+| leg (`dev3/oracle/`) | plan | change vs r51 | target fate (pcap, `review/B1118/scripts/pcap_ops.py`) |
+|---|---|---|---|
+| r51 (B1130) | `review/B1130/plans/r51.tsv` | — | alive (hp 30000, `#stun`) |
+| (a) `ab_a_oncaster_alive_25fps` | `ab_a_oncaster_alive.tsv` | no `#goto`: target on the caster | alive: no OP_Death for 261 |
+| (b) `ab_b_away_slain_25fps` | `ab_b_away_slain.tsv` | bare `#spawn TrollF` (B1118's: Health 1) | OP_Death 260 at OP_Action (1793106347.477), OP_DeleteSpawn 260 +1.04 s |
+| (c) `ab_c_oncaster_slain_25fps` | `ab_c_oncaster_slain.tsv` | both | OP_Death 260 at OP_Action (1793107679.281), OP_DeleteSpawn +1.04 s |
+| (d) `ab_d_b1118_rerun_25fps` | `ab_d_b1118_rerun.tsv` | B1118's own plan, verbatim | OP_Death 261 at OP_Action (1793108543.808), OP_DeleteSpawn +1.04 s |
+| B1118 `oracle_druid` | `review/B1118/plans/oracle_druid.tsv` | (both) | OP_Death 260 at OP_Action (1792609933.847), OP_DeleteSpawn +1.04 s |
+
+All targets are the same model: OP_NewSpawn `TrollF000 race=1 gender=0 size=6.000` in B1118,
+r51 and every new leg (`dev3/spawns.txt`: `python3 refactor/B1164/scripts/b1164_spawns.py
+<capture.pcap> TrollF`, the Spawn_Struct offsets of `include/common/packets/spawn.h:64`).
+
+**Target heights** (`dev3/hostpx.txt`, `python3 refactor/B1164/scripts/b1164_hostpx.py
+<with> <without> x0 x1 305 602`: rows of the band where ≥ 3 px differ by > 40 between a
+still with the target and a target-free still at the same camera; every row's count is
+printed):
+
+| capture | stills (with − without) | rows | height |
+|---|---|---|---|
+| B1118 | `27_spawn93_settle` − `25_mana253` | 317..600 | **284 px** (caster 210) |
+| (a) both runs, (c) | `23_tgt_npc_settle` − `14_cam_settle` | 329..600 / 328..600 | **272 / 273 px** (caster 209) |
+| (b), r51 camera | `29_tgt_npc_settle` − `16_empty_r51cam` | 333..600 | **268 px** |
+| **r51 itself** | `review/B1130/oracle/r51/26_tgt_npc_settle` − (b)'s `16_empty_r51cam` | 329..593 | **265 px** |
+| willeq b1118 harness | `refactor/B1164/scripts/b1164_silhouette.py dev2/frames/t93_b1118/frame_00010.png` (union of caster + target on the uniform clear colour) | 367..607 | **241 px** (caster 228, rows 378..605, harness log `dev2/runs/t93_b1118.run.log`) |
+
+(b) has a target-free still at r51's camera because its plan `#goto`-es the caster to r51's
+spot and back before the spawn. **r51's target is 265 px with its boots at row ~593–600, not
+the 325 px / feet (940,652) of `review/B1130/geom/r51.json:9`** (those rows include the
+"TrollF" name label: the single-still extent of r51's band, `python3
+refactor/B1164/scripts/b1164_figure_rows.py review/B1130/oracle/r51/26_tgt_npc_settle.png 895 1000
+290 660`, reads rows 290..614 = 325 px, from the label's top row to the selection ring). The
+oracle draws the human target 1.27–1.35 caster heights tall; willeq's b1118 harness draws
+it 241/228 = 1.057.
+
+**Results.** Gate instrument = `review/B1130/scripts/cast_measure.py <leg> 93 measure <label>
+geom/<g>.json` (B1122 `fx_timing.py`, crop 150,60,990,540, caster 209 px; B1118's own row is
+its crop 150,60,900,540, caster 210). Window = `WIN=-1.5,0.6,0.16,1.8 python3
+refactor/B1164/scripts/b1164_regions.py <label> <frames> <f0> <f1> <tail0> <tail1> <crop>
+<target feet> <target px> 209 [excludes]` (lit area in TARGET heights², the reviewer's window
+and mask), frames by `refactor/B1164/scripts/b1164_extract.py`, tail = the last 1.5 s of the
+measure window. Sprites = `refactor/B1164/scripts/b1164_sparks.py ... -1.95,1.95,0,2.55`
+(co-located captures only: the same window and band for all of them).
+
+| capture | gate crop cov (caster²), peak | window (target²), peak | column \|dx\|<0.5 | outside | sprites p90 diam / median (target, 1e-4) | files |
+|---|---|---|---|---|---|---|
+| r51 (25 fps) | 3.945 f7561 Act+2.108 | 1.978 f7584 | 1.596 | 0.382 | — | `review/B1130/measure/r51_fixed_npc.txt:5`; `regions_win2_oracleR51_93_h265.txt` |
+| (a) on caster, alive | 4.071 f7296 Act+2.088 | 1.963 f7296 | 1.539 | 0.424 | 0.038 / 4.19 | `measure/ab_a25_fixed_npc.txt`; `regions_win2_ab_a25.txt`; `sparks_ab_a25.txt` |
+| (b) away, slain | 4.210 f7852 Act+2.274 (end Act+4.834) | 1.984 f7852 | 1.583 | 0.401 | — | `measure/ab_b25_fixed_npc.txt`; `regions_win2_ab_b25.txt` |
+| (c) on caster, slain | 4.237 f7101 Act+2.147 (end Act+4.827) | 1.980 f7099 | 1.545 | 0.435 | 0.039 / 4.05 | `measure/ab_c25_fixed_npc.txt`; `regions_win2_ab_c25.txt`; `sparks_ab_c25.txt` |
+| (d) B1118 plan re-run (target 268 px) | 4.342 f8519 Act+2.028 (end Act+4.908; its crop 150,60,900,540, caster 210) | 2.115 f8518 | 1.562 | 0.552 | 0.040 / 4.32 | `measure/ab_d25_fixed_npc.txt`; `regions_win2_ab_d25.txt`; `sparks_ab_d25.txt` |
+| **B1118** (on caster, slain) | **5.847** f7573 | **2.377** f7573 | 1.562 | 0.815 | 0.049 / 6.57 | `review/B1118/measure/timing.txt:3`; `regions_win2_oracleB1118_93_humanhost.txt`; `sparks_oracleB1118_93_h284.txt` |
+| willeq b1118 (gate harness) | 1.993 f152 | 1.484 f154 | 1.284 | 0.200 | 0.033 / 3.79 | `dev2/measure/t93_b1118/summary.tsv`; `regions_win2_t93_b1118_humanhost.txt`; `sparks_t93_b1118_h241.txt` |
+
+10 fps / crf 23 controls (the driver's default rate, before `# fps=25` was added to the plans):
+(a) 4.237 caster² f3080, window 2.008 (`measure/ab_a_fixed_npc.txt`,
+`regions_win2_ab_a_10fps.txt`); an r51 replica (the (b) plan before its spawn line was changed)
+4.101 caster² f2994 (`measure/r51rep_fixed_npc.txt`).
+
+**Reading.**
+
+- Neither B1118 condition alone, nor both together, changes the oracle's landing: r51, (a),
+  (b) and (c) agree within 0.021 target heights² in the window (1.963–1.984) and within 7 % on
+  the gate instrument (3.945–4.237); (d), B1118's own plan, reads 2.115 / 4.342. The death shortens the landing (end Act+4.83 when the
+  corpse is deleted 1.04 s after OP_Death; r51/(a) Act+6.65) but not its peak. So the
+  co-location/death A/B finds **no capture condition that the gate's harness would have to
+  match**; the decompile agrees (§4: s has no distance, co-location or death input).
+- B1118's 2.377 / 5.847 is the outlier: its column is taller and wider (`dev3/grid_oracleB1118_f7573.txt`
+  vs `dev3/grid_ab_a25_f7296.txt`: lit ≥ 0.86 at up 1.75 over dx 0..0.25 vs 0.13/0.06;
+  dx −0.75 fully lit vs 0.40–0.75). B1118's own plan, re-run today as (d), reads 4.342 / 2.115, not 5.847 / 2.377; its target
+  measures 268 px (rows 333..600, `hostpx.txt`) against B1118's 284 px in the same plan, pose and
+  stills, i.e. B1118's camera sat ~6 % closer (that plan sets no `Camera2` ini keys, r51's
+  plans do), and per target height B1118 is still 1.12× (d). **B1118's 93 landing is not
+  reproducible today and is not a condition of the cast**; it should not be the gate's 93
+  reference without a re-capture (FOLLOW-UP).
+- willeq is **0.75×** the oracle per target height² (1.484 / 1.963–1.984; 0.70× against (d)'s 2.115) and its sprites are
+  smaller (p90 diameter 0.033 vs 0.038–0.039 target heights; median 3.79 vs 4.05–4.19 e-4)
+  in the same window and band. That is the per-particle-area gap acceptance B asks about,
+  measured like for like for the first time; it is NOT explained by a word §2a reads wrongly
+  (sizes, multiplier, depth bias, blend, texture are applied as written), and the one
+  multiplier willeq does not apply is s (§4). Whether the oracle's s for this target is
+  ≈ 1.15 (which would give ≈ 1.32× lit area per target height²) is not pinned statically:
+  `0x10039480` reads the point's world matrix, which is model data at runtime.
+- willeq's gate number has a second, separate factor: its target is drawn 1.057 caster heights
+  tall against the oracle's 1.27–1.35, so in caster units its landing host is
+  (1.057/1.30)² = 0.66× the oracle's. 0.66 × 0.75 = 0.50 ≈ 1.993 / 4.07.
+
+
+## 6. Instrument (first leg; env-gated, local patch — not committed as a default)
 
 - `WILLEQ_FX_COUNT=1` — per-emitter live count + config per frame
   (`sim_particles.cpp`, after `particleActiveCount_`).
@@ -288,7 +417,7 @@ Whether that is the gap depends on the target's s in the oracle captures, which 
   gap is not a dropped draw.
 
 
-## 5. Re-gate (acceptance C)
+## 7. Re-gate (acceptance C)
 
 This card changes **no C++, config, golden, manifest or baseline**: the only files are this
 README and `refactor/B1164/scripts/`. The binary every gate row runs is therefore the
@@ -298,9 +427,9 @@ branch to confirm it (`scripts/run93.sh t93_b1118 tour_93.tsv --camera b1118 --s
 
 | row | B1157 after (`refactor/B1157/b1118_table.tsv`) | this branch | owner of the remaining delta |
 |---|---|---|---|
-| tour 93 (b1118) | land 1.993, end +6.633 | land 1.993, end +6.633 (`measure/t93_b1118/summary.tsv`) | none in the sim: equal to the r51 oracle in its geometry (§2b); the b1118 lane oracle 5.847 is the open oracle-side question (§3, FOLLOW-UP 2) |
+| tour 93 (b1118) | land 1.993, end +6.633 | land 1.993, end +6.633 (`measure/t93_b1118/summary.tsv`) | §5: 0.66× from the target's relative size (FOLLOW-UP 2) × 0.75× per target height² (FOLLOW-UP 3); the 5.847 reference is not reproducible (FOLLOW-UP 4) |
 | tour 93 (b1118), target slain at Act | — | land 1.985, end +4.700 (`measure/t93_b1118_die/summary.tsv`) | record only |
-| r0 93 fixed_npc (b1130) | land 0.358 (`refactor/B1157/b1130_table.tsv:2`) | not re-run through the b1130 instrument; in-window 1.485 vs oracle 1.493 (§2b) | the b1130 target fit (FOLLOW-UP 1) |
+| r0 93 fixed_npc (b1130) | land 0.358 (`refactor/B1157/b1130_table.tsv:2`) | not re-run (no code change); the b1130 preset's target is fitted to a wrong reference (§5) | the b1130 target fit (FOLLOW-UP 1) |
 
 Every other tour-7 / 40-record row (both presets) is the B1157 after column unchanged,
 with B1157's owners (`refactor/B1157/README.md` sec. 6).
@@ -308,31 +437,40 @@ with B1157's owners (`refactor/B1157/README.md` sec. 6).
 **93 clip (acceptance D):** the first leg's `clips/b1164_93_current.mp4` (+ `_strip.png`,
 `refactor/B1158/scripts/make_clip.py`, spec `specs/b1164_93_current.json`) is the current
 behaviour; with no code change it is the after clip too. The like-for-like evidence is the
-table in §2b, not the clip (the clip's oracle side is a different framing).
+table in §5, not the clip (the clip's oracle side is B1118's capture, §5 (d)).
 
-## 6. Acceptance
+## 8. Acceptance
 
 | # | item | status |
 |---|---|---|
 | A | population attributed with the decompile line, 93 count re-measured | **met** — §1: `perTick × tps` (0x10060fe2), 1550 is the word count; no spawn bug, so no fix |
-| B | per-particle area word named + fixed + re-measured | **NOT met** — the r51 gap is units (§2b, 0.969× peak to peak), but against the B1118 oracle in the gate's own framing willeq is 0.341× over the crop / 0.518× in the window with half the sprite diameter (§3); pending the lane-5 A/B |
-| C | both sweeps + tour-7 before/after vs B1157 with owners | **met** — §5 (no code change; 93 re-measured equal) |
-| D | 93 clip | **met** — first leg's clip, unchanged behaviour (§5) |
+| B | per-particle area word named + fixed + re-measured | **NOT met** — measured like for like (§5, target heights², the same window/band): willeq 1.484 vs the oracle 1.963–2.115 (0.70–0.76×), sprite p90 diameter 0.033 vs 0.038–0.040. No condition of the cast explains it (A/B (a)–(d)); the only multiplier willeq does not apply is the attach scale s (§4), whose runtime value is not pinned, so no word can be named and fixed from evidence (FOLLOW-UP 3) |
+| C | both sweeps + tour-7 before/after vs B1157 with owners | **met** — §7 (no code change, so no row moves; 93 re-measured equal) |
+| D | 93 clip | **met** — first leg's clip, unchanged behaviour (§7) |
 | E | targeted ctest + hygiene + CI build green | no C++ change, so no new device-free test; the MR pipeline is the build/hygiene check |
 | F | MR "Closes #483" | the MR says **Refs #483** (orchestrator ruling: #483 stays open until B is met) |
 
-## 7. FOLLOW-UP (named owners — no card cut, per the worker rules)
+## 9. FOLLOW-UP (named owners — no card cut, per the worker rules)
 
-1. **b1130 harness target fit** (owner: the B1155 harness preset, `tools/model_viewer`
-   `fitFixedNpcTarget`): fit the target on a STANDING frame so its feet land on row 652 at
-   325 px, then re-run the 40-record b1130 sweep. Until then every b1130 landing_cov row is
-   read through a crop that misses most of the target (§3), and its "0/40 landing PASS" is
-   not a sim finding.
-2. **Oracle A/B on lane 5** (owner: FX oracle legs): cast 93 twice with one condition
-   changed at a time — target `#spawn`ed on the caster but with hp 30000 (alive), and target
-   1.4 caster heights away with hp 1 (slain) — measured with `scripts/b1164_regions.py` /
-   `b1164_sparks.py` in host units. It decides whether co-location or the death doubles the
-   oracle's landing (B1118 2.940 vs r51 1.493 host² in the same window); only then is there
-   a rule (candidate: the +0x6C attach scale s, TRACE.md (a)) for willeq to implement, and
-   the b1118 gate's oracle reference (5.847) is a fair target only for the condition it
-   captured.
+1. **b1130 target reference** (owner: the B1155 harness preset, `fitFixedNpcTarget`,
+   `tools/model_viewer/README.md:73`, and B1130's geometry): r51's target is 265 px with its
+   boots at rows ~593–600 near column 955 (§5, `dev3/hostpx.txt`), not the 325 px / feet
+   (940,652) of `review/B1130/geom/r51.json:9` that the preset fits (its 316 px / row 782,
+   `refactor/B1155/README.md:246`). Re-fit and re-run the 40-record b1130 sweep; every B1130
+   geom json carrying `tmpx 325` / `tfeet 940,652` reads its landing rows in the wrong units.
+2. **Target size relative to the caster** (owner: entity scale — `config/race_models.json`,
+   `entityScaleForServerSize`, the harness's caster/target appearance): the official client
+   draws the race-1 male `#spawn` (size 6) 1.27–1.35 caster heights tall at the caster's spot
+   (§5: 272/209, 284/210), willeq's b1118 harness 241/228 = 1.057. Which model is off (the
+   size-0 DAF caster or the size-6 HUM target) needs an oracle measurement against a fixed
+   reference; this factor alone is 0.66× of the gate's 93 number in caster units.
+3. **The attach scale s at runtime** (owner: the FX-sim sprite lane, B1149/B1151 successor):
+   record 80's landing is point-attached, so the client multiplies sizes, velocities, shape and
+   offsets by `0x10039480`(SPELLPOINT_DEFAULT) (§4); willeq passes 1. The remaining 0.75× per
+   target height² and the 1.15× sprite diameter are the size an s ≈ 1.15 would give, but s is
+   model data at runtime: pin it (a lane-5 debugger read of `0x10039480`'s return for this
+   target, or the model's point matrix), then implement it with a unit test.
+4. **B1118's 93 reference** (owner: FX oracle legs / the gate baseline, BLESS-ONLY): B1118's
+   own plan re-run today (§5 (d)) reads 4.342 / 2.115, not 5.847 / 2.377, with a 6 % smaller
+   target (B1118's plan sets no `Camera2` ini keys). Re-capture the b1118 oracle references
+   with the camera pinned before 5.847 (or B1157's 3.049 lane band) is used as a target.
