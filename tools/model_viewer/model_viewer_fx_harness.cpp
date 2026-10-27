@@ -241,7 +241,8 @@ float b1130TargetFitPx = 0.0f;
 // by difference against a target-free still; B1130's 325 px / (940,652)
 // began at the name label), the solve sees the STANDING frame, and the
 // rendered height is the model's own -- a self-check, never a fitted input
-// (the FABLE human renders 238 px there, refactor/B1166/README.md sec. 2).
+// (the FABLE human renders 285 px there at the client's actor scale 1.2,
+// refactor/B1172/README.md sec. 2; 238 px at fable's old 1.0, B1166).
 //
 // Screen right for a camera looking along -kCasterFacing is world -X
 // (targetRightOfCaster), so the target at column 940 sits at x < 0, and its
@@ -533,8 +534,8 @@ void applyHarnessPresetDefaults() {
             // standing human male), NOT a race-9 troll -- r51's own OP_NewSpawn
             // reads race 1, gender 0, size 6.000 (refactor/B1166/README.md
             // sec. 1). b1130 renders that human male and lets the solver find
-            // its depth from the two feet pixels (B1166: 288 px in the oracle,
-            // 238 px in FABLE at the same spot -- a model-height gap).
+            // its depth from the two feet pixels (288 px in the oracle; 238 px in
+            // FABLE at 1.0 (B1166), 285 px at the client's actor scale 1.2, B1172).
             harnessOpts.targetRace = 1;
             harnessOpts.targetGender = 0;
             harnessOpts.targetSize = 6.0f;

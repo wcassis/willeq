@@ -324,8 +324,8 @@ bool initSpellTestMode() {
     // B1139 feet-apart rule). B1166 (#485): the 50 px "collapsed" human
     // B1155 recorded was the bind pose the target fit measured before any
     // animation was applied; the fit now forces the p01 pose
-    // (fitFixedNpcTarget) and the standing human renders 238 px at the
-    // oracle's feet (refactor/B1166/README.md).
+    // (fitFixedNpcTarget) and the standing human renders 285 px at the
+    // oracle's feet at the client's actor scale (refactor/B1172/README.md).
     const bool b1130Preset =
         harnessOpts.cameraPreset == "b1130" || harnessOpts.cameraPreset == "b1130-self";
     const char* targetIdle = b1130Preset ? "p01" : "o01";

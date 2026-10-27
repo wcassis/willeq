@@ -22,7 +22,7 @@
 // 940,652 / tmpx 325) is NOT the target's box: its extent began at the name
 // label's top row (290) and its feet row is not the boots'. The harness solves
 // the feet (row, column) -- the two world unknowns x, z -- and the height is
-// then the model's own, ratcheted at its measured 238 px (below).
+// then the model's own, ratcheted at its measured 285 px (below).
 //
 // Header-only and Irrlicht-free so the geometry is unit-tested offline
 // (tests/test_fx_harness.cpp, B1166TargetAnchor*).
@@ -48,25 +48,25 @@ constexpr TargetAnchor kB1130TargetAnchor{940.0f, 615.0f, 288.0f};
 // - height +-3 vs the STANDING height the solve rendered (the written frame
 //   must show the body the solve fitted -- the B1155 defect was a 50 px fit vs
 //   a 316 px frame);
-// - AND the standing height itself, 238 +-3 px (ratio 0.826 +-0.01 of the
-//   anchor's 288). The height is NOT solved: the two feet pixels fix the world
-//   (x, z), and the FABLE human male (race 1, gender 0, size 6) solved at the
-//   anchor renders rows 378..615 = 238 px = 0.826x the oracle's 288
-//   (review/B1166/worker/probe/after.log:128; the 0.826 gap is a model-height
-//   gap owned outside this harness, refactor/B1166/README.md sec. 2 and
-//   FOLLOW-UP 2). This ratchets that measured value so a model or scale
-//   regression fails: the earlier +-25 %-of-288 bound (216..360 px) passed a
-//   dark-elf female (219 px), a human female (217), a barbarian (285), a troll
-//   (324) and the human at size 7 (277) placed by `--target` at the anchor
-//   (review/B1166/worker/wrong_model/, README sec. 2). A body of the SAME
-//   height (dark-elf male 238, high-elf male 239, erudite male 236 there)
-//   cannot be told apart by height; this check does not claim to.
-//   If the human model's height is ever corrected toward the oracle's 288
-//   (FOLLOW-UP 2), re-measure and move kStandingPx with it.
+// - AND the standing height itself, 285 +-3 px (ratio 0.990 of the anchor's
+//   288). The height is NOT solved: the two feet pixels fix the world (x, z),
+//   and the height is the model's own. B1166 ratcheted the human male (race 1,
+//   gender 0, size 6) at 238 px (0.826x) when fable drew it at scale 1.0;
+//   B1172 (#491) draws it at the official client's actor scale, size x 0.2 =
+//   1.2 (include/client/graphics/actor_scale.h), and it renders rows 331..615
+//   = 285 px (review/B1172/worker/wrong_model/default.log, the self-check
+//   line; refactor/B1172/README.md sec. 2). This ratchets that measured value
+//   so a model or scale regression fails. At the anchor with `--target`
+//   (review/B1172/worker/wrong_model/*.log): human female 1:1:6 260 px,
+//   dark-elf female 6:1:6 261, the human at size 7 332, troll 9:0:6 280 --
+//   all rejected; the barbarian 2:0:6 renders 284, inside the band: under the
+//   client's rule every classic race at the same size word is drawn about the
+//   same height, and a body of the SAME height cannot be told apart by height;
+//   this check does not claim to.
 constexpr float kFeetTolPx = 1.0f;
 constexpr float kColumnTolPx = 3.0f;
 constexpr float kHeightTolPx = 3.0f;
-constexpr float kStandingPx = 238.0f;
+constexpr float kStandingPx = 285.0f;
 constexpr float kStandingTolPx = 3.0f;
 
 // The harness's clear colour (50,50,80) -- the ground plane paints it too --
