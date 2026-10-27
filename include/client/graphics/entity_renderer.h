@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include "client/spell/spell_action_anim.h"  // B1174: ActionCastAnimInputs
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eq/equipment_model_loader.h"
@@ -697,11 +698,12 @@ public:
     void cancelEntityCast(uint16_t spawnId);
     void completeEntityCast(uint16_t spawnId);
     // B1174 (#493): OP_Action (effect_flag 0) plays the spell's CastingAnim on
-    // its standing source (eqgame 0x47f4af, EQ::ActionPlaysSourceCastAnim);
+    // its source when the client's conditions hold (eqgame 0x47f4af,
+    // EQ::ActionPlaysSourceCastAnim: id, record, target type, stand byte,
+    // field 123, Bard/instrument_mod);
     // a source still casting keeps its BeginCast track and B1157's end rule.
     // Returns the track started ("" = none).
-    std::string actionEntityCastAnim(uint16_t spawnId, int castAnimId, int spellAffectIndex, int sourceClass,
-                                     uint32_t instrumentMod);
+    std::string actionEntityCastAnim(uint16_t spawnId, int castAnimId, const EQ::ActionCastAnimInputs& in);
     bool isEntityCasting(uint16_t spawnId) const;
     float getEntityCastProgress(uint16_t spawnId) const;
 

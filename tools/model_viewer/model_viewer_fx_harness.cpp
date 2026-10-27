@@ -420,6 +420,23 @@ const EQ::SpellData* spellOrNull(uint32_t id) {
     return spellDatabase ? spellDatabase->getSpell(id) : nullptr;
 }
 
+// B1174 (#493): FUN_0047f4af's inputs for the harness caster's OP_Action
+// (spell_action_anim.h): the plan's spell id, its record (the plan only
+// holds spells the db has), the record's field 98 target type, a standing
+// source (the harness caster never sits, loots or feigns), field 123, and a
+// class that is no Bard with instrument_mod 0.
+EQ::ActionCastAnimInputs harnessActionInputs(uint32_t spellId, const EQ::SpellData& sp) {
+    EQ::ActionCastAnimInputs in;
+    in.spellId = spellId;
+    in.recordExists = true;
+    in.targetType = static_cast<uint8_t>(sp.target_type);
+    in.sourceStandState = EQ::kStandStateStanding;
+    in.spellAffectIndex = sp.spell_affect_index;
+    in.sourceClass = 0;
+    in.instrumentMod = 0;
+    return in;
+}
+
 // The harness must write the REQUESTED frame (harnessOpts.width x height), and
 // the surfaceless EGL surface can be another size (the ThinkPad's virtual
 // display gave 3840x2160 for a 1280x800 request: 3x horizontally, 2.7x
@@ -1264,8 +1281,7 @@ int runScriptedHarness() {
                 // (OP_Action without OP_BeginCast) takes the B1174 branch.
                 if (!activeCastTrack.empty()) {
                     endCastAnim(animatedNode, "p01");
-                } else if (EQ::ActionPlaysSourceCastAnim(/*standing=*/true, sp.spell_affect_index,
-                                                         /*class: the harness caster is no Bard*/ 0, 0)) {
+                } else if (EQ::ActionPlaysSourceCastAnim(harnessActionInputs(c.spellId, sp))) {
                     // B1174 (#493): eqgame's OP_Action handler (0x47f4af)
                     // plays the spell's CastingAnim on its standing source --
                     // a /disc's only visible effect (the observer's t06

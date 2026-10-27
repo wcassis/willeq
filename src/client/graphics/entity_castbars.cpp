@@ -105,15 +105,16 @@ void EntityRenderer::cancelEntityCast(uint16_t spawnId) {
 // already plays that track (the client's same-id no-op), so only a source
 // with no cast -- a /disc -- starts one here; the per-frame walk returns it
 // to the idle when the track stops (updateMainThreadEntityState).
-std::string EntityRenderer::actionEntityCastAnim(uint16_t spawnId, int castAnimId, int spellAffectIndex,
-                                                 int sourceClass, uint32_t instrumentMod) {
+std::string EntityRenderer::actionEntityCastAnim(uint16_t spawnId, int castAnimId,
+                                                 const EQ::ActionCastAnimInputs& in) {
     auto it = entities_.find(spawnId);
     if (it == entities_.end()) return std::string();
     EntityVisual& visual = it->second;
     if (visual.isCasting || visual.isCorpse || visual.isFading || !visual.animatedNode) return std::string();
-    const bool standing = visual.poseState == EntityVisual::PoseState::Standing;
-    if (!EQ::ActionPlaysSourceCastAnim(standing, spellAffectIndex, sourceClass, instrumentMod))
-        return std::string();
+    // The client's conditions, as read (spell id, record, target type, the
+    // source's stand byte, field 123, Bard/instrument_mod): the stand byte
+    // is the spawn's Entity::stand_state, not the renderer's poseState.
+    if (!EQ::ActionPlaysSourceCastAnim(in)) return std::string();
     const std::string code = playCastAnim(visual.animatedNode, castAnimId);
     if (!code.empty()) {
         visual.actionAnimCode = code;

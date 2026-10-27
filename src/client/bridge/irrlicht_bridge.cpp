@@ -1121,8 +1121,15 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             // completeEntityCast, so a source still casting keeps B1157's
             // end-of-cast rule and only a /disc starts the track.
             if (d.isCastAnimation && renderer_->getEntityRenderer()) {
-                renderer_->getEntityRenderer()->actionEntityCastAnim(
-                    d.casterId, d.castAnim, d.spellVisual.spellAffectIndex, d.sourceClass, d.instrumentMod);
+                EQ::ActionCastAnimInputs in;
+                in.spellId = d.spellId;
+                in.recordExists = d.spellRecordExists;
+                in.targetType = d.targetType;
+                in.sourceStandState = d.sourceStandState;
+                in.spellAffectIndex = d.spellVisual.spellAffectIndex;
+                in.sourceClass = d.sourceClass;
+                in.instrumentMod = d.instrumentMod;
+                renderer_->getEntityRenderer()->actionEntityCastAnim(d.casterId, d.castAnim, in);
             }
             // Complete entity casting bar
             if (renderer_->getEntityRenderer()) {

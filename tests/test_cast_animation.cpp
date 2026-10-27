@@ -60,23 +60,113 @@ TEST(CastAnimation, TheSpellIdsNameTheirTracksThroughEqgamesTable) {
     EXPECT_EQ(EQ::SpellCastAnimationCode(79), nullptr);
 }
 
-// B1174 (#493): eqgame's OP_Action spell handler FUN_0047f4af asks the
-// SOURCE for the spell's CastingAnim (0x47f54e..0x47f55c) when its stand byte
-// is 'd' (standing) or 'f' (0x47f519..0x47f525), the spell's field 123 is not
-// 61..64 (FUN_0044ced9, 0x47f527..0x47f530) and the source is not a Bard (class
-// byte 8) unless the packet's instrument_mod is above 10 (0x47f53c..0x47f54c).
+// B1174 (#493): eqgame's OP_Action spell handler FUN_0047f4af returns before
+// anything unless the spell id is in 1..9999 (FUN_0044d0d0, 0x47f4c2), the
+// client has a record (0x47f4de) and its byte +0x180, spells_us.txt field 98
+// (target type), is not 0 (0x47f4e6..0x47f4ed). It then asks the SOURCE for
+// the spell's CastingAnim (0x47f54e..0x47f55c) when its stand byte is 'd'
+// (standing) or 'f' (0x47f519..0x47f525), the spell's field 123 is not 61..64
+// (FUN_0044ced9, 0x47f527..0x47f530) and the source is not a Bard (class byte
+// 8) unless the packet's instrument_mod, a signed int, is above 10
+// (0x47f53c..0x47f54c).
+namespace {
+EQ::ActionCastAnimInputs Disc8604() {
+    // The lane-5 /disc: 8604, client target type 6 (self), field 123 = 51,
+    // a standing Shadow Knight (5), instrument_mod 10.
+    EQ::ActionCastAnimInputs in;
+    in.spellId = 8604;
+    in.recordExists = true;
+    in.targetType = 6;
+    in.sourceStandState = 100;
+    in.spellAffectIndex = 51;
+    in.sourceClass = 5;
+    in.instrumentMod = 10;
+    return in;
+}
+}  // namespace
+
 TEST(CastAnimation, OPActionAsksTheStandingSourceForTheCastingAnim) {
-    // The lane-5 /disc: 8604, field 123 = 51, a Shadow Knight (5), mod 10.
-    EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(true, 51, 5, 10));
-    EXPECT_FALSE(EQ::ActionPlaysSourceCastAnim(false, 51, 5, 10)) << "a sitting source is not asked";
-    for (int idx : {61, 62, 63, 64})
-        EXPECT_FALSE(EQ::ActionPlaysSourceCastAnim(true, idx, 5, 10)) << "field 123 = " << idx;
-    EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(true, 60, 5, 10));
-    EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(true, 65, 5, 10));
-    EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(true, -1, 5, 10)) << "no spells.eff record";
-    EXPECT_FALSE(EQ::ActionPlaysSourceCastAnim(true, 51, 8, 10)) << "a Bard at instrument_mod 10";
-    EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(true, 51, 8, 11)) << "a Bard above instrument_mod 10";
-    EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(true, 51, 0, 0)) << "an unknown class is no Bard";
+    EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(Disc8604()));
+
+    // The handler's outer early returns.
+    for (uint32_t id : {0u, 10000u, 0xffffu}) {
+        auto in = Disc8604();
+        in.spellId = id;
+        EXPECT_FALSE(EQ::ActionPlaysSourceCastAnim(in)) << "spell id " << id << " is outside 1..9999";
+    }
+    for (uint32_t id : {1u, 9999u}) {
+        auto in = Disc8604();
+        in.spellId = id;
+        EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(in)) << "spell id " << id;
+    }
+    {
+        auto in = Disc8604();
+        in.recordExists = false;
+        EXPECT_FALSE(EQ::ActionPlaysSourceCastAnim(in)) << "no client record";
+    }
+    {
+        // 2246 Call of Alarm (CastingAnim 43) and 3077 Storm Stomp (44) have
+        // target type 0 in the client's spells_us.txt: no swing.
+        auto in = Disc8604();
+        in.targetType = 0;
+        in.spellId = 2246;
+        EXPECT_FALSE(EQ::ActionPlaysSourceCastAnim(in)) << "2246: target type 0";
+        in.spellId = 3077;
+        EXPECT_FALSE(EQ::ActionPlaysSourceCastAnim(in)) << "3077: target type 0";
+        in.targetType = 1;
+        EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(in)) << "any non-zero target type";
+    }
+
+    // The stand byte: 100 or 102 only.
+    for (int stand : {100, 102}) {
+        auto in = Disc8604();
+        in.sourceStandState = static_cast<uint8_t>(stand);
+        EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(in)) << "stand " << stand;
+    }
+    for (int stand : {0, 101, 105, 110, 111, 115, 120}) {
+        auto in = Disc8604();
+        in.sourceStandState = static_cast<uint8_t>(stand);
+        EXPECT_FALSE(EQ::ActionPlaysSourceCastAnim(in)) << "stand " << stand << " (105 = looting)";
+    }
+
+    // Field 123.
+    for (int idx : {61, 62, 63, 64}) {
+        auto in = Disc8604();
+        in.spellAffectIndex = idx;
+        EXPECT_FALSE(EQ::ActionPlaysSourceCastAnim(in)) << "field 123 = " << idx;
+    }
+    for (int idx : {60, 65, -1}) {
+        auto in = Disc8604();
+        in.spellAffectIndex = idx;
+        EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(in)) << "field 123 = " << idx << " (-1 = no spells.eff record)";
+    }
+
+    // Bard and instrument_mod, compared signed.
+    auto bard = Disc8604();
+    bard.sourceClass = 8;
+    EXPECT_FALSE(EQ::ActionPlaysSourceCastAnim(bard)) << "a Bard at instrument_mod 10";
+    bard.instrumentMod = 11;
+    EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(bard)) << "a Bard above instrument_mod 10";
+    for (uint32_t mod : {0x80000000u, 0xfffffff5u, 0xffffffffu}) {
+        bard.instrumentMod = mod;
+        EXPECT_FALSE(EQ::ActionPlaysSourceCastAnim(bard)) << "instrument_mod " << mod << " is negative as an int";
+    }
+    auto nobody = Disc8604();
+    nobody.sourceClass = 0;
+    nobody.instrumentMod = 0;
+    EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(nobody)) << "an unknown class is no Bard";
+}
+
+// The stand byte fable keeps per spawn (Entity::stand_state): the server's
+// AT_Anim stand values as sent, ANIM_STAND (0) = 100, anything else unchanged.
+TEST(CastAnimation, TheSpawnStandStateFollowsTheServersAppearance) {
+    EXPECT_EQ(EQ::SpawnStandStateAfterAppearance(100, 105), 105) << "looting";
+    EXPECT_EQ(EQ::SpawnStandStateAfterAppearance(105, 100), 100);
+    EXPECT_EQ(EQ::SpawnStandStateAfterAppearance(100, 110), 110);
+    EXPECT_EQ(EQ::SpawnStandStateAfterAppearance(110, 0), 100) << "ANIM_STAND";
+    EXPECT_EQ(EQ::SpawnStandStateAfterAppearance(100, 102), 102);
+    EXPECT_EQ(EQ::SpawnStandStateAfterAppearance(110, 18), 110) << "an action animation leaves the byte";
+    EXPECT_EQ(EQ::SpawnStandStateAfterAppearance(110, 300), 110);
 }
 
 #ifdef EQT_HAS_GRAPHICS
@@ -268,7 +358,10 @@ TEST_F(CastAnimationEntity, ADiscActionSwingsTheIdleSourceThenReturnsToIdle) {
     EXPECT_EQ(info.castAnim, 44) << "8604's field 120";
     build(5120, false);
     ASSERT_NE(find(5120), nullptr);
-    EXPECT_EQ(ents_->actionEntityCastAnim(5120, static_cast<int>(info.castAnim), 51, 5, 10), "t06");
+    EXPECT_EQ(info.targetType, 6) << "8604's field 98 (self)";
+    EQ::ActionCastAnimInputs in = Disc8604();
+    in.targetType = static_cast<uint8_t>(info.targetType);
+    EXPECT_EQ(ents_->actionEntityCastAnim(5120, static_cast<int>(info.castAnim), in), "t06");
     const auto* c = find(5120);
     ASSERT_NE(c, nullptr);
     EXPECT_FALSE(c->isCasting) << "an OP_Action starts no cast state";
@@ -302,7 +395,11 @@ TEST_F(CastAnimationEntity, AnActionOnACastingOrBardSourceStartsNothing) {
     ASSERT_NE(find(5121), nullptr);
     ents_->startEntityCast(5121, 93, "Burst of Fire", 950, 44);
     walk(0.3f);
-    EXPECT_EQ(ents_->actionEntityCastAnim(5121, 44, 25, 12, 10), "");
+    EQ::ActionCastAnimInputs casting = Disc8604();
+    casting.spellId = 93;
+    casting.spellAffectIndex = 25;
+    casting.sourceClass = 12;
+    EXPECT_EQ(ents_->actionEntityCastAnim(5121, 44, casting), "");
     EXPECT_TRUE(find(5121)->actionAnimCode.empty());
     EXPECT_EQ(find(5121)->castAnimCode, "t06") << "the BeginCast track stands";
     ents_->completeEntityCast(5121);
@@ -310,8 +407,37 @@ TEST_F(CastAnimationEntity, AnActionOnACastingOrBardSourceStartsNothing) {
 
     build(5122, false);
     ASSERT_NE(find(5122), nullptr);
-    EXPECT_EQ(ents_->actionEntityCastAnim(5122, 44, 51, 8, 10), "") << "a Bard at instrument_mod 10";
+    EQ::ActionCastAnimInputs bard = Disc8604();
+    bard.sourceClass = 8;
+    EXPECT_EQ(ents_->actionEntityCastAnim(5122, 44, bard), "") << "a Bard at instrument_mod 10";
     EXPECT_NE(find(5122)->animatedNode->getAnimator().getCurrentAnimation(), "t06");
+}
+
+// The stand byte and the target type gate the swing too: a looting source
+// (the server's AT_Anim 105) is not asked, nor is a sitting one, and a spell
+// whose client record has target type 0 (2246 Call of Alarm, CastingAnim 43,
+// read from the shipped db) plays nothing on a standing source.
+TEST_F(CastAnimationEntity, ALootingSourceOrATargetTypeZeroSpellStartsNothing) {
+    build(5123, false);
+    ASSERT_NE(find(5123), nullptr);
+    EQ::ActionCastAnimInputs looting = Disc8604();
+    looting.sourceStandState = EQ::SpawnStandStateAfterAppearance(100, 105);
+    EXPECT_EQ(ents_->actionEntityCastAnim(5123, 44, looting), "") << "a looting source";
+    EQ::ActionCastAnimInputs sitting = Disc8604();
+    sitting.sourceStandState = EQ::SpawnStandStateAfterAppearance(100, 110);
+    EXPECT_EQ(ents_->actionEntityCastAnim(5123, 44, sitting), "") << "a sitting source";
+    EXPECT_TRUE(find(5123)->actionAnimCode.empty());
+
+    const auto alarm = db_.getSpell(2246);
+    ASSERT_EQ(alarm.id, 2246u) << "the row is in the shipped db";
+    EXPECT_EQ(alarm.targetType, 0) << "2246's field 98";
+    EXPECT_EQ(alarm.castAnim, 43) << "2246's field 120";
+    EQ::ActionCastAnimInputs alarmIn = Disc8604();
+    alarmIn.spellId = 2246;
+    alarmIn.targetType = static_cast<uint8_t>(alarm.targetType);
+    EXPECT_EQ(ents_->actionEntityCastAnim(5123, static_cast<int>(alarm.castAnim), alarmIn), "")
+        << "target type 0: the handler returns first";
+    EXPECT_NE(find(5123)->animatedNode->getAnimator().getCurrentAnimation(), "t05");
 }
 
 // A CastingAnim id that names a track the model does not have keeps the
