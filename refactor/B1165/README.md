@@ -21,9 +21,9 @@ dev-u24), e.g. `python3 -I peread.py eqgame.exe 00793b4c 8 i`.
 
 So the shipped `SpellParticleNearClipPlane=2.000000` is **Near**, and fable's default
 near-clip choice is now Near (index 0) for both pages; the knob value stays 2.0 at the
-default. Tests: tests/test_options_particles.cpp:184 (`TheNearClipTableIsTheOraclesAndTwoIsNear`,
+default. Tests: tests/test_options_particles.cpp:185 (`TheNearClipTableIsTheOraclesAndTwoIsNear`,
 the ini round trip pins 2.0 = Near and 4/6/8 = Medium/Far/Farthest) and
-tests/test_options_particles.cpp:207 (`TheLoaderClampsAndTheComboboxRoundsUp`).
+tests/test_options_particles.cpp:208 (`TheLoaderClampsAndTheComboboxRoundsUp`).
 
 Applied vs shown (fix leg, MR !318 note 7756 finding 3): the oracle APPLIES the clamped ini
 float itself -- the loader stores it as read (eqgame.exe.c 132608-132636 -> _DAT_00985810 /
@@ -42,7 +42,7 @@ src/client/graphics/ui/ui_preferences.cpp:137 stores both, the save writes the f
 src/client/graphics/ui/options_particles.cpp:95). A change through the window or
 `/option` stores the table value, as the oracle's handler does (eqgame.exe.c 245163-245204),
 so it clears the float (src/client/graphics/ui/options_values.cpp:27). The same holds for the
-Env page's floats and both opacities. Test: tests/test_options_particles.cpp:226
+Env page's floats and both opacities. Test: tests/test_options_particles.cpp:227
 (`AnOffTableIniFloatIsAppliedRawAndShownAsTheChoice`: ini 0.3 density -> shown Medium,
 applied 0.3, saved as 0.300000; 3.0 near clip -> shown Medium, applied 3.0; choosing Medium
 in the window -> 0.5). Every shipped and captured ini carries table values, so no measured
@@ -74,7 +74,7 @@ in particle_options.h; FOLLOW-UP below.
   fix leg marks the row `rawIniInt` (src/client/graphics/ui/options_settings.cpp:179, any int
   is legal: src/client/graphics/ui/options_settings.cpp:263) and the combobox shows
   `choiceDisplayIndex` (src/client/graphics/ui/options_settings.cpp:298: the value's index,
-  else the last). Test: tests/test_options_particles.cpp:276
+  else the last). Test: tests/test_options_particles.cpp:277
   (`AnOffTableCastFilterIntIsKeptRawAndDecodedByItsBits`: 6 is kept, shown "All spells", and
   decides like 4 for every pair of self / group / raid / other PC / NPC).
 * The decision, `FUN_00491cff(stage, caster, target)` (eqgame.exe.c 115163-115221,
@@ -121,8 +121,8 @@ in particle_options.h; FOLLOW-UP below.
   NPC corpse, the null/null arm and the landing / missile pairs:
   tests/test_spell_fx_options.cpp:64, tests/test_spell_fx_options.cpp:86,
   tests/test_spell_fx_options.cpp:95; per stage through SpellVisualFX with record 80:
-  tests/test_spell_slot_rules.cpp:644 (`TheOnForFilterGatesEachStage`); the combobox,
-  labels, persistence and `/option`: tests/test_options_particles.cpp:223.
+  tests/test_spell_slot_rules.cpp:646 (`TheOnForFilterGatesEachStage`); the combobox,
+  labels, persistence and `/option`: tests/test_options_particles.cpp:315.
 
 ## 4. The stage gate and ShowSpellEffects (acceptance C, part 1)
 
@@ -150,8 +150,8 @@ src/client/graphics/ui/options_command.cpp:231, routed with /option, in the rend
 command catalog). The Options record reaches SpellVisualFX every frame
 (`spellFxOptionsFromOptions`, src/client/graphics/ui/options_particles.cpp:95;
 src/client/graphics/sim/renderer_sim_bridge.cpp:459). Tests:
-the gate in tests/test_spell_fx_options.cpp:123, tests/test_options_particles.cpp:254 (the
-command and its text), tests/test_spell_slot_rules.cpp:644 (ShowSpellEffects 0 creates no
+the gate in tests/test_spell_fx_options.cpp:124, tests/test_options_particles.cpp:346 (the
+command and its text), tests/test_spell_slot_rules.cpp:646 (ShowSpellEffects 0 creates no
 Source and no landing for record 80).
 
 ## 5. The legacy [Options] ParticleDensity (acceptance C, part 2) -- documented, not wired
@@ -203,12 +203,12 @@ The issue's lead (B1149 README sec. 2 row, 0x10060f12..0x10060f43) is the distan
   B995's per-frame scaling (their oracle path, FUN_0049ab78, was not traced here).
 * Opacity and near clip stay at draw: `applyParticleKnobs`
   (src/client/graphics/environment/unified_particle_renderer.cpp:527).
-* Tests: tests/test_spell_fx_options.cpp:150 (the rule: 50 -> 25 at 0.5, 50 -> 16 at
+* Tests: tests/test_spell_fx_options.cpp:151 (the rule: 50 -> 25 at 0.5, 50 -> 16 at
   0.25, 5 kept + rate halved, 33 -> 16 by truncation, 0 -> nothing);
-  tests/test_spell_slot_rules.cpp:582 (`TheSpellPagesDensityScalesEveryStageAtCreation`:
+  tests/test_spell_slot_rules.cpp:584 (`TheSpellPagesDensityScalesEveryStageAtCreation`:
   record 80 at level 60, Source / Middle / Target, density 1, 0.5, 0.25 and 0 -- every
   created emitter's counts equal the rule applied to the density-1 counts; density 0
-  creates nothing in any stage); tests/test_spell_slot_rules.cpp:685 (the worker leaves a
+  creates nothing in any stage); tests/test_spell_slot_rules.cpp:687 (the worker leaves a
   created-at-density emitter alone: 15 sprites, and still scales a record-less one: 8).
 
 ## 7. The harness and the gate pin (acceptance D)
