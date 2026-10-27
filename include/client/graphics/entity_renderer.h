@@ -98,6 +98,17 @@ inline float collisionZOffsetFromBounds(const irr::core::aabbox3df& bbox, float 
     return -bbox.MinEdge.Y * scale;
 }
 
+// B1172 (#491): the scale an entity's node is given -- the official client's
+// actor scale (actor_scale.h) for every spawn but the LOCAL player, whose node
+// draws with a translation-only world matrix (EQAnimatedMeshSceneNode::render,
+// isPlayerNode_) and is therefore drawn at 1.0 whatever its scale says. Its
+// node scale, and so its collisionZOffset, stays 1.0 to match what is drawn
+// (the client draws its own player at the actor scale too -- refactor/B1172
+// FOLLOW-UP, with the first-person eye that was fitted on the 1.0 model).
+inline float entityNodeScale(bool isLocalPlayer, uint16_t raceId, uint8_t gender, float serverSize) {
+    return isLocalPlayer ? 1.0f : clientActorScale(raceId, gender, serverSize);
+}
+
 // Forward declarations
 class RaceModelLoader;
 class EntityPrepWorker;

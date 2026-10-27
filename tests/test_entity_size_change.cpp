@@ -57,6 +57,7 @@
 
 using namespace zonetest;
 using EQT::Graphics::clientActorScale;
+using EQT::Graphics::entityNodeScale;
 
 namespace {
 
@@ -220,6 +221,15 @@ TEST(EntitySizeScale, NoSizeFromTheServerIsTheRaceDefaultNotZero) {
     // default size (0x47a147), not zero.
     EXPECT_FLOAT_EQ(clientActorScale(6, 1, 0.0f), 1.0f);   // Dark Elf: 5.0
     EXPECT_FLOAT_EQ(clientActorScale(8, 0, -1.0f), 0.8f);  // Dwarf: 4.0
+}
+
+// The local player's node draws translation-only, so its node scale (and its
+// collisionZOffset) is the 1.0 it is drawn at; every other spawn gets the
+// client's actor scale.
+TEST(EntitySizeScale, TheLocalPlayerNodeKeepsTheScaleItIsDrawnAt) {
+    EXPECT_FLOAT_EQ(entityNodeScale(false, 1, 0, 6.0f), 1.2f);
+    EXPECT_FLOAT_EQ(entityNodeScale(true, 1, 0, 6.0f), 1.0f);
+    EXPECT_FLOAT_EQ(entityNodeScale(true, 8, 0, 4.0f), 1.0f);
 }
 
 // -------------------------------------------------------------------------

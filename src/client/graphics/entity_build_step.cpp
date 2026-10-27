@@ -337,7 +337,7 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion, uint16_t priori
                 return true;
             }
 
-            scale = clientActorScale(raceId, gender, vis.serverSize);  // B1172: actor_scale.h
+            scale = entityNodeScale(vis.isPlayer, raceId, gender, vis.serverSize);  // B1172: actor_scale.h
 
             // Temporarily clear weapon equipment IDs so createAnimatedNodeWithEquipment
             // doesn't bake weapon geometry — weapons are attached in EquipmentAttach phase

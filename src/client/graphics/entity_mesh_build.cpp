@@ -222,7 +222,7 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
     // B1172: the official client's actor scale (actor_scale.h), not the
     // race_models.json scale column -- that column only gates invisibility.
     float serverSize = visual.serverSize;
-    scale = clientActorScale(raceId, gender, serverSize);
+    scale = entityNodeScale(isPlayer, raceId, gender, serverSize);
 
     LOG_DEBUG(MOD_GRAPHICS, "buildEntityMesh[{}]: race={} gender={} size {:.2f} -> actor scale {:.3f}",
               name, raceId, gender, serverSize, scale);
