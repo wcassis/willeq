@@ -239,8 +239,9 @@ void cancelSpellTestCast() {
 #endif
 }
 
-// Creates one spell-test entity: the client's scale rule (race scale times
-// server size / 6, entityScaleForServerSize) and its material flags.
+// Creates one spell-test entity: the client's actor scale (B1172,
+// actor_scale.h: size * 0.2, the race/gender default when size <= 0) and its
+// material flags.
 static EQAnimatedMeshSceneNode* createSpellTestEntity(uint16_t race, uint8_t gender, float size,
                                                       const core::vector3df& pos, float rotY, const char* idle,
                                                       const EntityAppearance* appearance = nullptr) {
@@ -250,7 +251,7 @@ static EQAnimatedMeshSceneNode* createSpellTestEntity(uint16_t race, uint8_t gen
         appearance ? raceModelLoader->createAnimatedNodeWithEquipment(race, gender, *appearance, nullptr, -1)
                    : raceModelLoader->createAnimatedNodeWithAppearance(race, gender, 0, 0, nullptr, -1);
     if (!node) return nullptr;
-    const float scale = entityScaleForServerSize(raceModelLoader->getRaceScale(race), size);
+    const float scale = clientActorScale(race, gender, size);
     node->setScale(core::vector3df(scale, scale, scale));
     node->setPosition(pos);
     node->setRotation(core::vector3df(0, rotY, 0));

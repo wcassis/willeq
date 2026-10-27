@@ -441,8 +441,10 @@ void checkB1130Frame(const fs::path& frames, bool expectTarget, irr::video::IVid
         // npc's nearer depth, not a race scale). The FEET (row 652, col 940) are
         // the solved reference and are asserted tightly; the height is the
         // model's own collapsed value, asserted to the measured ~50 px.
-        EXPECT_NEAR(t.bottom - t.top + 1, 50.0, 6.0)
-            << "target pixel height (the FABLE human mesh's collapsed rest pose)";
+        // B1172: x 1.2, the client's actor scale for the size-6 human
+        // (actor_scale.h; 59 px measured where B1155 measured ~50 at 1.0).
+        EXPECT_NEAR(t.bottom - t.top + 1, 60.0, 6.0)
+            << "target pixel height (the FABLE human mesh's collapsed rest pose, actor scale 1.2)";
         EXPECT_NEAR(t.col, 940.0, 2.0) << "target column centroid";
     }
     img->drop();

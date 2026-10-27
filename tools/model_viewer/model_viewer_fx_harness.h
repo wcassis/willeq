@@ -63,7 +63,7 @@ struct HarnessOptions {
     int height = 600;
     uint16_t casterRace = 1;
     uint8_t casterGender = 0;
-    float casterSize = 0.0f;           // server size; 0 = the race scale alone
+    float casterSize = 0.0f;           // server size; <= 0 = the race/gender default (actor_scale.h)
     uint16_t targetRace = 1;
     uint8_t targetGender = 0;
     float targetSize = 0.0f;

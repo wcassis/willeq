@@ -42,7 +42,9 @@ bool EntityRenderer::setEntitySize(uint16_t spawnId, float serverSize) {
         return true;  // invisible race, deliberately never given a node
     }
 
-    float scale = entityScaleForServerSize(raceScale, serverSize);
+    // B1172: the client's AT_Size path (0x4524e9 -> 0x481d5d) re-runs the
+    // same actor-scale rule on the new size (actor_scale.h).
+    float scale = clientActorScale(visual.raceId, visual.gender, serverSize);
     visual.sceneNode->setScale(irr::core::vector3df(scale, scale, scale));
     // The node origin stays on the server Z, so the origin-to-feet distance
     // has to follow the scale or the entity sinks into / floats over the floor.

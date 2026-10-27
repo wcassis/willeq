@@ -219,12 +219,13 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
         return true;
     }
 
+    // B1172: the official client's actor scale (actor_scale.h), not the
+    // race_models.json scale column -- that column only gates invisibility.
     float serverSize = visual.serverSize;
-    float baseScale = scale;
-    scale = entityScaleForServerSize(scale, serverSize);
+    scale = clientActorScale(raceId, gender, serverSize);
 
-    LOG_DEBUG(MOD_GRAPHICS, "buildEntityMesh[{}]: race={} size: {:.2f} * ({:.2f}/6) = {:.2f}",
-              name, raceId, baseScale, serverSize, scale);
+    LOG_DEBUG(MOD_GRAPHICS, "buildEntityMesh[{}]: race={} gender={} size {:.2f} -> actor scale {:.3f}",
+              name, raceId, gender, serverSize, scale);
 
     // Try to create an animated mesh node first
     EQAnimatedMeshSceneNode* animNode = nullptr;

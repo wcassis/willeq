@@ -463,12 +463,17 @@ void applyHarnessPresetDefaults() {
     harnessOpts.height = 800;
     // All three presets share the b1118 char-67 caster: char 67 Testcaster
     // (lane 5): race 6 dark elf, gender 1 (fable.log
-    // "Updating appearance for entity 258 (Testcaster) to race 6 gender 1"),
-    // server size 6 (buildEntityMesh[Testcaster] ... (6.00/6) = 1.00).
+    // "Updating appearance for entity 258 (Testcaster) to race 6 gender 1").
+    // B1172: size 0 -- her S->C OP_ZoneEntry Spawn_Struct carries size 0.000
+    // in the oracle captures (r51, B1118 oracle_druid) and in fable's lane
+    // legs (B1118 fable_A, B1142 fable_N93), and no AT_Size names her; the
+    // client then draws its race/gender default 5.0 x 0.2 = 1.0
+    // (actor_scale.h). The 6.0 here before was fable's own zone_entry
+    // default, not a wire value.
     if (!harnessOpts.casterGiven) {
         harnessOpts.casterRace = 6;
         harnessOpts.casterGender = 1;
-        harnessOpts.casterSize = 6.0f;
+        harnessOpts.casterSize = 0.0f;
         // B1139: her Spawn_Struct appearance in that leg's OP_ZoneEntry (S->C):
         // face 3, TextureProfile {0, 10, 1, 23, 1, 1, 1, 0, 72} -- the red robe
         // (chest 10) and IT72, the orb her left hand holds. equip_chest2 reads

@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include "client/graphics/actor_scale.h"
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eq/equipment_model_loader.h"
@@ -95,21 +96,6 @@ namespace Graphics {
 // node at groundZ + this value puts the mesh's lowest point exactly on groundZ.
 inline float collisionZOffsetFromBounds(const irr::core::aabbox3df& bbox, float scale) {
     return -bbox.MinEdge.Y * scale;
-}
-
-// T318: the reference server size a race's per-race art scale is authored
-// against. Spawn_Struct::size and OP_SpawnAppearance AT_SIZE (29) both carry a
-// size on this scale -- a normal humanoid is 6.0 -- and the rendered scale is
-// the race scale times (serverSize / 6). Shrink/grow spells change nothing but
-// this number; eqemu clamps a client or pet to [3, 15] (Mob::ChangeSize).
-constexpr float kReferenceServerSize = 6.0f;
-
-// Rendered uniform scale for a race whose art scale is `raceScale` at server
-// size `serverSize`. serverSize <= 0 means "the server did not say", which is
-// the race scale unmodified -- NOT zero.
-inline float entityScaleForServerSize(float raceScale, float serverSize) {
-    return (serverSize > 0.0f) ? raceScale * (serverSize / kReferenceServerSize)
-                               : raceScale;
 }
 
 // Forward declarations
