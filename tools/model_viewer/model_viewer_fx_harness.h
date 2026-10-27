@@ -91,6 +91,14 @@ struct HarnessOptions {
     // OP_DeleteSpawn 1.027 s after, which a B1133 client obeys).
     double targetDeathAfterAction = -1.0;
     double targetDespawnAfterAction = -1.0;
+    // B1179 (#498): seconds after OP_Action at which the caster leaves the scene
+    // (--caster-despawn; < 0 = it stays; the counterpart of --target-despawn for a
+    // caster that zones out, e.g. the r40 602 group teleport whose caster's
+    // OP_DeleteSpawn lands 0.36..0.40 s after OP_Action in review/B1130/oracle/r84).
+    // It removes the caster's attached spell emitters (onSpawnDeleted, a plain
+    // spawn) and hides the model, so a landing that lives on the caster ends when
+    // the oracle's does instead of running the emitters' full file lifetime.
+    double casterDespawnAfterAction = -1.0;
     // Frames between the worker's compute and the draw of its buffer
     // (--worker-latency): the client draws the output of the input it posted
     // the frame before (renderer_frame.cpp: applySimulationResults, then
