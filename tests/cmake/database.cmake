@@ -104,3 +104,9 @@ ADD_EXECUTABLE(test_spell_fx_timing
 )
 TARGET_LINK_LIBRARIES(test_spell_fx_timing GTest::gtest_main ${FMT_LIB} dl)
 GTEST_DISCOVER_TESTS(test_spell_fx_timing DISCOVERY_TIMEOUT 120)
+
+# B1164 (#483): the attach scale s of a spellsnew.eff slot (the client's actor
+# scale, 0.2 x size; include/client/spell/spell_fx_attach_scale.h). Header-only.
+ADD_EXECUTABLE(test_spell_fx_attach_scale test_spell_fx_attach_scale.cpp)
+TARGET_LINK_LIBRARIES(test_spell_fx_attach_scale GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_spell_fx_attach_scale DISCOVERY_TIMEOUT 120)

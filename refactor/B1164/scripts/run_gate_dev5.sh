@@ -4,13 +4,12 @@
 # ThinkPad (172.16.200.205; the frames go straight to the NFS evidence tree), measure HERE
 # with the B1157 instruments unchanged (refactor/B1157/scripts/run_sweep_b1118.sh,
 # run_sweep_b1130.sh: same plans, fps 30, seed 1, sim 60 Hz on b1130).
-# usage: run_gate_dev5.sh <label before|after> <build slug> [b1118|b1130|all] [tag ...]
+# usage: run_gate_dev5.sh <label before|after> <model_viewer path on the ThinkPad> [b1118|b1130|all] [tag ...]
 set -u
-LABEL=$1 SLUG=$2 WHICH=${3:-all}; shift 3 2>/dev/null || shift $#
+LABEL=$1 BIN=$2 WHICH=${3:-all}; shift 3 2>/dev/null || shift $#
 ONLY=("$@")
 TP=172.16.200.205
 EV=/mnt/projects/fable/review/B1164/worker/dev5/gate/$LABEL
-BIN=/home/user/willeq-builds/$SLUG/build/bin/model_viewer
 REPO=/mnt/projects/fable/main/wt/kb-b1164-pin-s
 CLIENT=/mnt/projects/EverQuestP1999
 PACK=/mnt/projects/EverQuest_ETC1/willeq.eqe1

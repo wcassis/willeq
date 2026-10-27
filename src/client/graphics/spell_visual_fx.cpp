@@ -135,6 +135,15 @@ void SpellVisualFX::applyStageEddColours(EQT::Graphics::Environment::SpellEffect
 }
 
 #endif
+float SpellVisualFX::entityAttachScale(uint16_t entity_id) const
+{
+    // B1164 (#483): the client's s for a slot on this actor (its scale,
+    // spell_fx_attach_scale.h); 1.0 when nothing resolves it.
+    if (!m_attach_scale_cb) return kSpellFxAttachScale;
+    const float s = m_attach_scale_cb(entity_id);
+    return s > 0.0f ? s : kSpellFxAttachScale;
+}
+
 uint16_t SpellVisualFX::attachPointEntityId(uint16_t entity, int32_t attachPoint)
 {
     switch (static_cast<SpellsNewEffAttach>(attachPoint)) {
@@ -690,7 +699,7 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
                 SpellFxSlotTiming timing;
                 if (slotTiming(d.slot.emitter, sourceCallerMs, timing)) {
                     Presets::applySlotEmitter({&def}, timing, m_spells_new_eff.edd().sprite(d.slot.emitter),
-                                              sourceLatency, kSpellFxAttachScale,
+                                              sourceLatency, entityAttachScale(caster_id),  // B1164
                                               m_spells_new_eff.edd().shape(d.slot.emitter),  // B1150
                                               m_spells_new_eff.edd().motion(d.slot.emitter));  // B1151
                     slotCap = sourceLatency + timing.end() + 0.1f;
@@ -1010,7 +1019,7 @@ uint16_t SpellVisualFX::createLandingFromSlots(uint16_t caster_id, uint16_t targ
         SpellFxSlotTiming timing;
         if (slotTiming(d.slot.emitter, SpellFxCallerDurationMs(SpellFxStage::Target, 0, 0), timing))
             Presets::applySlotEmitter({&complete, &impact}, timing, m_spells_new_eff.edd().sprite(d.slot.emitter),
-                                      targetLatency, kSpellFxAttachScale,
+                                      targetLatency, entityAttachScale(entity),  // B1164
                                       m_spells_new_eff.edd().shape(d.slot.emitter),  // B1150
                                       m_spells_new_eff.edd().motion(d.slot.emitter));  // B1151
         pending.push_back({std::move(complete), follow, 0});

@@ -255,6 +255,15 @@ public:
     using LocalPlayerIdCallback = std::function<uint16_t()>;
     void setLocalPlayerIdCallback(LocalPlayerIdCallback cb) { m_local_player_cb = std::move(cb); }
 
+    // B1164 (#483): the attach scale s of an entity's spellsnew.eff slots,
+    // EQ::SpellFxAttachScale(race, server size) (spell_fx_attach_scale.h:
+    // the client's actor scale, 0.2 x size). Set by the renderer (the
+    // entity's race and Spawn_Struct size) and by the FX harness; unset or
+    // an unknown entity = kSpellFxAttachScale (1.0).
+    using EntityAttachScaleCallback = std::function<float(uint16_t entity_id)>;
+    void setEntityAttachScaleCallback(EntityAttachScaleCallback cb) { m_attach_scale_cb = std::move(cb); }
+    float entityAttachScale(uint16_t entity_id) const;
+
     // B1152 (#472): the missile actor. createProjectile() (the legacy
     // spell-visual projectile, tests-only since B1138) is REPLACED by this:
     // a spell whose spellsnew.eff record has a Middle stage spawns a missile
@@ -554,6 +563,7 @@ private:
     std::vector<Missile> m_missiles;
     double m_fx_time = 0.0;
     LocalPlayerIdCallback m_local_player_cb;  // B1163: spell 859's removal gate
+    EntityAttachScaleCallback m_attach_scale_cb;  // B1164: s per entity
     // (spell, caster) whose Target stage a missile already fired: createLanding
     // skips it on OP_Action so the landing is drawn exactly once, at whichever
     // of arrival / OP_Action comes second is suppressed in favour of the first.

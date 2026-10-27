@@ -29,9 +29,13 @@ cast-animation term of the Source duration (`0x47ddd4`, model data) is MEASURED:
 +0x80 burst, then +0x84 per tick at +0x88 ticks/s (`EmitterConfig::ticksPerSecond`) -- and draws its sprite
 size: a world-unit quad +0xCC..+0x184 wide, +0x17C..+0x180 tall (+0x18C one draw), times +0x16C, with
 +0x98/+0x9C/+0x190/+0x194 over the life (`SpellsNewEddSprite`, `SpellPresets::applySlotEmitter()`,
-`refactor/B1149/README.md`). The +0x6C attach scale is passed as 1 (+0x19C is B1150's): the client's s is model data
-(actor +0x10 x the root actor's sub-object +0x64 float +0x60, EQGraphicsDX9 0x1006090d..0x1006094a; its
-writer 0x1016be70 is not traced). The +0xA0 density distance (80 on most entries) does not bite at the
+`refactor/B1149/README.md`). Since B1164 (#483) the +0x6C / +0x19C attach scale s is
+the actor's own: a Source / Target slot on attach point 1 of an old-world model is attached to the model's
+root TRACK, s = 0x1005c4f0(track) x |row 0| of its world matrix (EQGraphicsDX9 0x10060ae8..0x10060b23), and
+that row's length is the actor scale eqgame 0x47a0e9 writes, 0.2 x the spawn's size (the race default of
+0x47a147 at size 0): read on lane 5 as 1.200000 on a size-6 human and 1.000000 on the size-0 dark-elf caster
+(`include/client/spell/spell_fx_attach_scale.h`, `refactor/B1164/README.md` sec. 10). The Middle stage's
+missile actor still gets 1. The +0xA0 density distance (80 on most entries) does not bite at the
 harness/lane camera (29 units). Since B1150 (#470) the EDD shape and offsets are wired
 (`SpellsNewEddReader::shapeAt`, passed into `SpellPresets::applySlotEmitter()`,
 `refactor/B1150/README.md`), and since B1151 (#471) the motion words
