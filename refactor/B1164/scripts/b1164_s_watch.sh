@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # B1164 (#483) dev5: run ON the lane-5 oracle host while a leg of
 # refactor/B1164/plans/pin_s_unoccluded.tsv runs. Waits for the leg's
-# steps.tsv to show the `gdb_arm` row, then attaches gdb (read-only probe
+# timeline.tsv to show its `END <n>_gdb_arm` row, then attaches gdb (read-only probe
 # b1164_s_gdb.py) to eqgame.exe for S_TMAX seconds and detaches.
 # usage: b1164_s_watch.sh <out_dir> [tmax_s=40] [give_up_s=3600]
 set -uo pipefail
@@ -13,8 +13,8 @@ touch "$stamp"
 echo "watch start $(date -u +%s.%N)" >>"$OUT/watch.log"
 end=$((SECONDS + GIVEUP))
 while (( SECONDS < end )); do
-    st=$(ls -t /home/user/eq-oracle/sessions/*/steps.tsv 2>/dev/null | head -1)
-    if [[ -n $st && $st -nt $stamp ]] && grep -q $'^[0-9]*_gdb_arm\t' "$st"; then break; fi
+    st=$(ls -t /home/user/eq-oracle/sessions/*/timeline.tsv 2>/dev/null | head -1)
+    if [[ -n $st && $st -nt $stamp ]] && grep -qP '\tEND\t[0-9]+_gdb_arm$' "$st"; then break; fi
     sleep 0.3
 done
 (( SECONDS < end )) || { echo "gave up" >>"$OUT/watch.log"; exit 1; }
