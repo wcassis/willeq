@@ -275,9 +275,19 @@ TEST_F(CastAnimationEntity, ADiscActionSwingsTheIdleSourceThenReturnsToIdle) {
     EXPECT_EQ(c->actionAnimCode, "t06");
     EXPECT_EQ(c->animatedNode->getAnimator().getCurrentAnimation(), "t06");
     EXPECT_LT(c->animatedNode->getAnimator().getProgress(), 0.05f) << "the swing starts AT the packet";
-    walk(2.0f);
+    // walk() runs only the per-frame state; the scene graph's OnAnimate is
+    // what advances a model's animator, so step both here.
+    irr::u32 ms = 1;
+    auto play = [&](float seconds) {
+        for (float t = 0.0f; t + 1e-4f < seconds; t += 0.05f) {
+            ms += 50;
+            find(5120)->animatedNode->OnAnimate(ms);
+            ents_->updateMainThreadEntityState(0.05f);
+        }
+    };
+    play(2.0f);
     EXPECT_EQ(find(5120)->animatedNode->getAnimator().getCurrentAnimation(), "t06") << "mid-swing";
-    walk(3.0f);  // past the Dark Elf female's 4100 ms t06 (B1148)
+    play(3.0f);  // past the Dark Elf female's 4100 ms t06 (B1148)
     const auto* e = find(5120);
     EXPECT_TRUE(e->actionAnimCode.empty());
     EXPECT_EQ(e->animatedNode->getAnimator().getCurrentAnimation(), "o01") << "the standing idle returns";
