@@ -252,7 +252,7 @@ TEST_F(SpellBurstOracleMatch, ParticleLifetimeMatchesTheOraclesDeathFreeRise) {
 // is drawn. 253 (record 104) left this table with its override (B1161): its
 // definition is now the style's (last death 0.33 + 2.85 + 2.0 = 5.18 s), and
 // its landing is drawn from record 104's slots, whose timing is the file's
-// (SpellStyleOverrides.WhirlingWindLastsAsLongAsTheOracles pins that path;
+// (SpellStyleOverrides.WhirlingWindsRecordPathCarriesTheTermOnItsSource pins that path;
 // refactor/B1161/README.md sec. 3 reports its end against the oracle's 6.52).
 TEST_F(SpellBurstOracleMatch, EveryMeasuredLandingEndsWhereTheOraclesDoes) {
     const struct { uint32_t id; float oracleEnd; int record; } kEnds[] = {

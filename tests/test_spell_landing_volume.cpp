@@ -356,8 +356,8 @@ TEST_P(SpellLandingPool, OneFedLandingFitsHalfThePool) {
 // the live sprites at each platform's pool.  The file's words, uncapped,
 // exceed the sbc 4096 (B1149's census: 3746 + 1168 = 4914, an upper bound):
 // on the desktop 8192 the field runs at the file's counts (peak above 4096,
-// never scaled down), on sbc the pool fills to exactly its size and drops
-// the rest (allocateParticle returns -1, sim_particles.cpp) -- never above.
+// never scaled down), on sbc the pool fills (measured 4071 of 4096; the test asserts
+// >= 0.98 x pool) and drops the rest (allocateParticle returns -1, sim_particles.cpp) -- never above.
 TEST_P(SpellLandingPool, TheLargestRecordFieldIsCappedNotScaled) {
     const char* env = std::getenv("EQ_CLIENT_PATH");
     const std::string dir = env ? env : "/mnt/projects/EverQuestP1999";

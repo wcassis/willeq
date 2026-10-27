@@ -39,9 +39,21 @@ for history; none of its numbers are used below.
 - The 253 tour row is IN band on noov (sec. 5). The landing PEAK coverage
   ratio, harness over oracle 7.281, moves from 0.731 (over the B1150 p25..p75
   band of 0.45..0.72) to 0.577 (in).
-- The b1130 record-35 row moves further from the oracle on two axes. The
-  measured cause is the override's words leaving (sec. 5). The owner is named
-  in FOLLOW-UP.
+- The b1130 record-35 row moves three axes further from the oracle
+  (source_cov, landing_cov, p90_src) and one into band (src_h_lo), against
+  B1155's nine banded columns. The measured cause is the override's words
+  leaving (sec. 5). The owner is named in FOLLOW-UP 2.
+
+### Acceptance (issue #480, lines A-F)
+
+| line | requirement | status | rests on |
+|---|---|---|---|
+| A | pool rule re-derived + ctest | MET | sec. 2; `tests/test_spell_colour_and_overrides.cpp:588`, `tests/test_spell_landing_volume.cpp:361` |
+| B | cast-animation term on the record path, with a cited rule | MET for the term (Source caller duration, eqgame 0x47f5e1..0x47f5ed). The 253 landing END is NOT MET: +5.250 after vs the oracle's 6.522 (+5.317 before). Owner B1154 #474 | sec. 3; `src/client/graphics/spell_visual_fx.cpp:649`; FOLLOW-UP 1 |
+| C | override gone, tables, 253 in band, sbc census | MET: `spellOverrides."253"` gone; 253 PEAK ratio 0.577 (band 0.45..0.72); sbc 4071 of 4096 | sec. 4, sec. 5 (b1118 table), sec. 2 (`test_spell_landing_volume.cpp:361`) |
+| D | no row worse without an owner | MET: the only row that moves further, b1130 r35, is owned by FOLLOW-UP 2 | sec. 5 (record 35 on b1130, tour-7 table) |
+| E | ctest + hygiene + CI | MET: 128/128 card suites, hygiene 48 (1 skipped), CI pipeline 2228 success | sec. 6 |
+| F | `Closes #480` | MET | the MR description |
 
 ## 1. Where the card started
 
@@ -129,8 +141,9 @@ The rule is pinned by three tests, all device-free:
   - On 8192 the field runs at the file's counts. It peaks at 4793, which is
     over the sbc pool and was never scaled down.
   - On 4096 it fills the pool. The peak is 4071, the pool less the sprites
-    that die inside the counted frame. The other 722 are dropped (4793 -
-    4071).
+    that die inside the counted frame. That is 722 fewer live at the peak
+    (4793 at pool 8192 vs 4071 at pool 4096); the test measures no drop
+    count.
 
   This is the sbc census that issue Ask 3 asks for, measured. Local run:
   `affected_suites.log`.
@@ -274,9 +287,10 @@ comparison is superseded.
 | 253 | 5.326 / +5.317 / 3.818 | 4.169 / +5.250 / 3.331 |
 | 458 | 0.501 / +5.050 / 0.120 | 0.501 / +5.050 / 0.120 |
 
-Rows 54, 656 and 458 are bit-identical. For 54, 132 frames differ, but in no
-measured value. For 656 and 458, 0 of 435 frames differ (`cmp` over
-`frames/*/frame_*.png`).
+Every measured value of rows 54, 656 and 458 is identical. Row 54 is not
+bit-identical: 132 of its 435 frames differ, with every measured value the
+same. For 656, 0 of 435 frames differ, and for 458, 0 of 483 frames differ
+(458 renders 483 frames; `cmp` over `frames/*/frame_*.png`).
 
 Rows 93, 38 and 41 differ in src_cov by 0.002 / 0.002 / 0.001. Every one of
 their 435 frames differs, starting at frame 0, by 17..126 pixels per frame
@@ -328,12 +342,16 @@ The oracle and B1157 columns come from
 `refactor/B1157/b1130_table.tsv.after.tsv` row 35. Before and after, every
 axis is short of the oracle (B1157's verdicts: short / short / short).
 
-The retire moves two axes FURTHER from the oracle:
+Against B1155's nine banded columns (`refactor/B1155/README.md:163-171`),
+the retire moves THREE axes FURTHER from the oracle and ONE into band:
 
 - landing_cov 1.791 -> 1.207 (-0.584);
-- source_cov 0.953 -> 0.891 (-0.062).
+- source_cov 0.953 -> 0.891 (-0.062);
+- p90_src 0.124 -> 0.111, short of the band 0.134..0.182 (0.158 +- 15 %)
+  both times;
+- src_h_lo 0.150 -> 0.170 moves INTO its band 0.16..0.46 (0.31 +- 0.15).
 
-landing_end moves toward it (5.150 -> 5.217).
+landing_end moves toward the oracle (5.150 -> 5.217).
 
 The measured cause is the single variable, the 253 key. Before, the
 override's landing words drew a denser field: B1120's frame-filling geometry
@@ -344,8 +362,8 @@ After, record 104's EDD field draws its own sparse shapes and sizes. That is
 B1150's under-spread case (`refactor/B1150/README.md:332`, "The under-spread
 rows"): the retired dense cloud lit more pixels than the record's EDD shape.
 
-The b1118 noov row moved INTO band. The b1130 row moved further below a band
-it was already below. Owner: the record-104 coverage gap on the record path
+The b1118 noov row moved INTO band. The b1130 row moved three axes further below
+bands it was already below (and one axis into band). Owner: the record-104 coverage gap on the record path
 (FOLLOW-UP 2). The issue asks for the 253 row in band on noov, and it is.
 
 ### Record 104's EDD words (decoded from the shipped files)
