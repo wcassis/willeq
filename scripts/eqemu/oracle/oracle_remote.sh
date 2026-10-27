@@ -956,7 +956,7 @@ if [[ -n $UI_INI_SETS ]]; then
     cp "$CLIENT"/UI_"${CHARACTER}"_*.ini "$DIR/ui-iniset-original.ini" || exit 65
     mkdir -p "$DIR/ui-ini"
     while IFS= read -r UI_SET; do
-        [[ $UI_SET =~ ^[A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9-]*=[A-Za-z0-9.-]+$ ]] || exit 65
+        [[ $UI_SET =~ ^[A-Za-z][A-Za-z0-9 ]*\.[A-Za-z][A-Za-z0-9-]*=[A-Za-z0-9.-]+$ ]] || exit 65
         python3 /home/user/eq-oracle/uigap-scripts/oracle_ini_seed.py \
             "$CLIENT" "$DIR/ui-ini" "UI_${CHARACTER}" "$UI_SET" || exit 65
     done <<<"$UI_INI_SETS"
