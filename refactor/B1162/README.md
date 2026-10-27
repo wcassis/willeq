@@ -254,3 +254,88 @@ this is a block (no GM `#castspell` substitution, no FOLLOW-UP).
     discupdate,spellfields}.py`.
 - Class-ownership probes: `probe_b1162_fields.py`, `probe_b1162_classcols.py`,
   `probe_b1162_encode.py` (in `~/kb-evidence/kb-b1162-combat-fx/`).
+
+## Continuation step 1 (ruling 01:50Z, offline): what `uVar5 == 0x47` is
+
+All lines below are `review/B1141/ghidra/out/eqgame.exe.c` (Ghidra decompile of
+the eqgame.exe with MD5 a9de1b8cc5c451b32084656fcacf1103 -- the SAME MD5 as the
+lane-5 oracle client `~/eq-oracle/client/eqgame.exe`, read-only check saved in
+`review/B1162/worker/oracle_readonly_ini_20261027.txt`) unless a file is named.
+
+**0x47 is neither a key code nor a keymap index: it is the SKILL ID 71
+(Intimidation).** The OP_InstillDoubt sender is inside `FUN_0041f4a0` (decl. line
+27566), the client's "use ability" function. Its byte argument is the skill id:
+line 27638 `uVar5 = (uint)param_2 & 0xff;`, and every branch of the function is a
+skill (0x43 = 67 Begging sends 0x13e7 at lines 28414-28431; 0x47 = 71
+Intimidation; 0x49 = 73 Taunt from line 28473). The 0x47 branch (lines 28448-28461)
+sends opcode 0x389e with a NULL payload of size 0 through line 27887
+`FUN_004912b1(&DAT_00905ca0,uVar14,puVar16,uVar18,1)` -- matching the server's
+`Handle_OP_InstillDoubt` "packet is empty" (akk-stack `zone/client_packet.cpp`
+9095-9106).
+
+**Where the skill id comes from.** `FUN_0041f4a0` has exactly four call sites in
+the disassembly (`grep "call 0x41f4a0" eqgame.dis`): 0x46a813 (`/doability`),
+0x4d3b9d (Actions-window Abilities-page button, decompile line 164019), 0x4d3f73
+(Actions-window Combat-page button, line 164200) and 0x514241 (a hotbutton of
+type 2/3 that points at one of those slots, lines 214402-214410). Every one passes
+a value read from the ability-slot tables `DAT_0095d424` (6 Ability slots) /
+`DAT_0095d414` (4 CombatSkill slots), which the client loads from the CHARACTER
+INI `[Abilities] Ability1..6` / `[CombatSkills] CombatSkill1..4` (lines
+133398-133402 and the CombatSkill loop after it; the INI is `.\<name>_<server>.ini`,
+built at line 133465 `_sprintf(_Dest_00,".\\%s_",local_208)`). The `/doability`
+handler (disassembly 0x46a7d1-0x46a86f; command table entry `/doability` ->
+handler 0x46a7d1 in .data at 0x7839bc) maps N=1..6 to `DAT_0095d424[N-1]`, N=7..10
+to `DAT_0095d414[N-7]`, and on a slot holding -1 returns silently (0x46a7f8 `cmp
+dword ptr [eax], -1` / 0x46a7fb `je 0x46a86f`). The Abilities-page button on a -1
+slot opens the skill picker instead (line 164011-164016) and sends nothing.
+**No key binding reaches it**: the keymap commands in the binary's strings have
+no Intimidation/ability entry, the lane-5 oracle `eqclient.ini` `[KeyMaps]` holds
+only five DirectInput scan codes (FORWARD_2=17, BACK_2=31, RIGHT_2=32, LEFT_2=30,
+DUCK_1=208), and a key reaches `FUN_0041f4a0` only through a hotbutton holding an
+ability slot. The caster's INI (attempt 2 `before-character.ini`, and the same
+read-only today) has `Ability1..6=-1` and `CombatSkill1..4=-1`.
+=> **attempt 2's G press could never send OP_InstillDoubt, and its `/doability
+1..2` was silent because both slots were -1.**
+
+**The class gate (a second, independent reason).** Line 27627 returns before any
+packet when `FUN_0041c8f4(skill) == 0`, i.e. `FUN_0041b0de` (line 24787-24826):
+it starts from the racial value `FUN_004184f4` (for race 6 Dark Elf only skill
+0x1d) and only consults the character's skill value (`FUN_0040e722`, line 14792
+`*(iVar2 + 0xf70 + skill*4)`) when the class cap `FUN_0044a335(class)` is
+non-zero (line 24790). That cap comes from the client's own static
+[class][skill][level] table: the skill-object constructor `FUN_00448d94`
+(line 64437; built for skills 0..99 at line 126421-126431) copies it at lines
+65366-65385 from .data 0x698c30 + skill*0x118 + class*28000.
+`refactor/B1162/scripts/client_skill_table.py` decodes it from the binary
+(`review/B1162/worker/client_skill_table_71_73.tsv`): **skill 71 Intimidation has
+a non-zero cap only for class 7 MNK (from level 18), 8 BRD (26), 9 ROG (22), 16
+BER (1); class 1 WAR has cap 0 at every level.** (Sanity row in the same file:
+skill 73 Taunt = WAR/PAL/SHD/RNG from level 1, the known in-era owners.) So for
+the Warrior of attempt 2 the function returned at line 27627 even with skill
+71 = 5000 in the profile -- the ruling's "class 1 Warrior" cannot fire it.
+The load-time slot check (line 133521-133527) also clears an Ability slot whose
+skill fails `FUN_0041b0de`.
+
+**`+0x251 == 'd'` is the caster's stand state, 'd' = 100 = standing.** The byte is
+written by the stand-state setter (lines 104774-104799: 'd' -> 0x6f duck, 'o' ->
+100 / 0x6e) and set to 0x66 (102) by the stun-message handler (line 80377); the
+server's `Animation` constants are Standing 100, Freeze 102, Looting 105, Sitting
+110, Crouching 111, Lying 115 (akk-stack `common/eq_constants.h` 68-75). The
+caster also must not be frozen ('f', 0x3050 message at the top of the function)
+and needs a non-self target (lines 28449-28453).
+
+**What the server needs** (akk-stack `zone/special_attacks.cpp` 2390-2445,
+`Mob::InstillDoubt`): the target is an NPC, no DivineAura, `CombatRange(who)`,
+the 9 s reuse timer (`common/features.h` 126 `InstillDoubtReuseTime = 9`), then
+`zone->random.Roll(GetSkill(71) + CHA/4 - (target level*4 + target WIS/4))`;
+success = `SpellOnTarget(229, who, 0, true, -2000)`, failure = the NOT_SCARING
+message. No skill-ownership check server-side.
+
+**The trigger for the ONE live leg:** class 9 Rogue (owns 71), level 60 and skill
+71 = 5000 before zone-in (`sql/b1162_combat13_v3.sql`), `Abilities.Ability1=71`
+in the caster's INI for this leg only (new driver directive `# char-ini-set=`,
+`scripts/eqemu/oracle/oracle_remote.sh`, same backup + byte-identical restore as
+`# ini-unset=`, documented in `docs/oracle_driver.md`), TrollF000 targeted +
+`#stun`, caster standing, `/doability 1` (the same `FUN_0041f4a0(DAT_0095d424[0])`
+call the Abilities-page button makes, 0x46a813 vs 0x4d3b9d). Plan
+`plans/b1162_combat13_v3.tsv`.
