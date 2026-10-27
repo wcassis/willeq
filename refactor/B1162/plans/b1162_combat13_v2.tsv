@@ -1,0 +1,60 @@
+# B1162 attempt-2 Leg B (ruling 2026-10-26 23:05Z step 2): Intimidation -> Fear
+# 229 (record 13 skull cloud) on class 1 Warrior, with the character state
+# FIXED BEFORE ZONE-IN by the pre-SQL (level 60 + skill 71 Intimidation = 5000
+# + spell 113 Shock of Spikes) -- unlike attempt 1, where the in-world
+# `#set skill 71 5000` was a NO-OP on the wire (the server answered with
+# OP_SkillUpdate skill=71 value=0, so the client never had Intimidation) and the
+# zone-in spellbook carried no 113 (the G-key gate-4 known-spell half).
+#
+# Trigger: press G -- the decompile's ONLY OP_InstillDoubt (0x389e) sender
+# (eqgame.exe.c key dispatcher, VK 0x47 branch) -- with the stunned TrollF
+# targeted in melee range. The alt+c Combat Abilities window is opened for a
+# still (attempt 1 showed empty slots; the still is quoted). /doability 1..2 is
+# kept as the negative control (it maps to no /doability index for Intimidation).
+#
+# HARD RULE: zero C->S OP_InstillDoubt => kanban block with the opcode census
+# (no GM-path substitution).
+#
+# fps=30
+# caster-video=1
+# observer=Oraclewatch
+# pose=-74,428,3.75,160
+# observer-pose=-67.6,434.4,3.75,160
+
+login	Testcaster
+obs	login	Oraclewatch
+zone	qeynos2
+obs	zone	qeynos2
+wait	8000	settle
+obs	click	1229,555	obs_close_tip
+click	1229,555	close_tip
+command	#set time 11 0	noon
+wait	1500	noon_settle
+command	#weather 0	weather
+command	#spawn TrollF 1 1 0 30000	spawn
+wait	3000	spawn_settle
+obs	press	F9	obs_f9_1
+obs	press	F9	obs_f9_2
+obs	press	F9	obs_f9_3
+obs	wait	3000	obs_cam_settle
+wait	20000	time_settle
+command	/target TrollF000	tgt_a
+wait	1500	tgt_a_settle
+command	#stun 120000	stun_a
+wait	1000	stun_a_settle
+press	G	intimidate_g
+wait	20000	fx_fear
+command	#nukebuffs	nuke_fear
+command	#stun 120000	stun_b
+wait	1000	stun_b_settle
+command	/doability 1	doa_1
+wait	2500	doa_1_settle
+command	/doability 2	doa_2
+wait	2500	doa_2_settle
+press	alt+c	ca_window
+wait	3000	ca_window_still
+command	/target TrollF000	tgt_kill
+command	#kill	kill
+wait	2000	kill_settle
+obs	command	/q	obs_quit
+command	/q	quit
