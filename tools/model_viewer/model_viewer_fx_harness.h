@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "client/bridge/cast_glow_route.h"
+#include "fx_capture_pose.h"
 
 namespace EQ { struct SpellData; }
 
@@ -111,6 +112,10 @@ extern HarnessOptions harnessOpts;
 // camera: the models' rest facing at rotation 0 is +X (seen on the first
 // harness frames: a profile view from a +Z camera).
 constexpr float kHarnessFaceOnRotY = -90.0f;
+
+// B1167 (#486): the b1130 presets' capture pose (fx_capture_pose.h) -- null for
+// b1118 and the interactive framing, which keep kHarnessFaceOnRotY.
+const fxharness::CapturePose* b1130CapturePose();
 
 // Parses a plan; false (with `err`) on a malformed row. '#' lines are comments.
 bool parseHarnessPlan(const std::string& path, std::vector<HarnessCast>& out, std::string& err);

@@ -659,7 +659,7 @@ bool initHarnessParticles() {
     });
     particleManager->setEntityDirectionCallback([nodeFor](uint16_t id, glm::vec3& out) -> bool {
         core::vector3df d;
-        if (!resolveSpellFxBoneDirection(nodeFor(EQ::SpellVisualFX::realEntityId(id)), id, d)) return false;
+        if (!resolveSpellFxAttachDirection(nodeFor(EQ::SpellVisualFX::realEntityId(id)), id, d)) return false;
         out = glm::vec3(d.X, d.Y, d.Z);
         return true;
     });
@@ -878,6 +878,54 @@ void addGroundPlane() {
     std::fflush(stdout);
 }
 
+const fxharness::CapturePose* b1130CapturePose() {
+    if (harnessOpts.cameraPreset == "b1130") return &fxharness::kB1130NpcPose;
+    if (harnessOpts.cameraPreset == "b1130-self") return &fxharness::kB1130SelfPose;
+    return nullptr;
+}
+
+// B1167 (#486): turn the fitted b1130 rig -- camera, caster, target -- about the
+// caster's vertical axis by the capture's rig yaw (fx_capture_pose.h), so the
+// world axes sit where the oracle's did relative to the camera: spellsnew.edd
+// +0x12C drifts along world +X (EQGraphicsDX9 0x10062917), which before this
+// turn ran straight across the screen while the oracle's ran into the scene.
+// The turn is rigid, so every pixel fact the fit solved (caster feet/height,
+// target feet) holds. Both actors turn with the rig and keep facing the
+// camera (their capture headings wait on the ratchet ruling,
+// model_viewer_spell_test.cpp and refactor/B1167/README.md).
+void turnB1130Rig(const fxharness::CapturePose& pose) {
+    const float psi = fxharness::rigYawDeg(pose);
+    const core::vector3df pivot = animatedNode ? animatedNode->getAbsolutePosition() : core::vector3df(0, 0, 0);
+    auto turn = [&](core::vector3df p) {
+        float x = p.X - pivot.X, z = p.Z - pivot.Z;
+        fxharness::turnXZ(psi, x, z);
+        return core::vector3df(pivot.X + x, p.Y, pivot.Z + z);
+    };
+    const core::vector3df eye = turn(camera->getAbsolutePosition()), look = turn(camera->getTarget());
+    camera->setPosition(eye);
+    camera->setTarget(look);
+    camera->updateAbsolutePosition();
+    if (animatedNode) {
+        animatedNode->setRotation(core::vector3df(0, fxharness::rotYForHeading(pose.casterHeading512), 0));
+        animatedNode->updateAbsolutePosition();
+    }
+    if (targetAnimatedNode) {
+        const core::vector3df t = turn(core::vector3df(b1130TargetX, b1130TargetY, b1130TargetZ));
+        b1130TargetX = t.X;
+        b1130TargetZ = t.Z;
+        targetAnimatedNode->setRotation(core::vector3df(0, fxharness::rotYForHeading(pose.targetHeading512), 0));
+        targetAnimatedNode->updateAbsolutePosition();
+    }
+    std::printf("[fx-harness] %s: rig turned %.2f deg about the caster (capture headings caster %.1f / target %.1f, "
+                "Camera1-DirHeading %.1f, 512ths): caster rotY %.2f, target rotY %.2f at (x %.3f, z %.3f), "
+                "camera eye (%.3f, %.3f, %.3f)\n",
+                harnessOpts.cameraPreset.c_str(), psi, pose.casterHeading512, pose.targetHeading512,
+                pose.cameraDirHeading512, animatedNode ? animatedNode->getRotation().Y : 0.0f,
+                targetAnimatedNode ? targetAnimatedNode->getRotation().Y : 0.0f, b1130TargetX, b1130TargetZ, eye.X,
+                eye.Y, eye.Z);
+    std::fflush(stdout);
+}
+
 bool setupSpellTestCamera() {
     // Scripted mode freezes the scene clock BEFORE the preset's fit renders
     // anything: drawAll() animates every node off the device timer, and a
@@ -906,6 +954,7 @@ bool setupSpellTestCamera() {
             g.targetPx = fxharness::kB1130TargetAnchor.px;
             if (!fitFixedNpcTarget(g)) return false;
         }
+        if (const fxharness::CapturePose* pose = b1130CapturePose()) turnB1130Rig(*pose);
         if (harnessOpts.ground) addGroundPlane();
         return true;
     }

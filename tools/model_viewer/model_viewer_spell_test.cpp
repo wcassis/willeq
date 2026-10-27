@@ -284,15 +284,25 @@ bool initSpellTestMode() {
     if (!initHarnessTextureCache()) return false;
 
     // B1138: in a preset the caster (and the `#spawn` target beside her)
-    // faces the camera; otherwise the caster faces the target.
+    // faces the camera; otherwise the caster faces the target. B1167 (#486):
+    // the b1130 presets are turned to the capture's world yaw once the fit is
+    // done (setupSpellTestCamera -> turnB1130Rig), and the turn carries both
+    // actors with it, so they still face the camera. Turned to their capture
+    // headings (caster 0, target 160; fx_capture_pose.h) the caster's back-on
+    // silhouette refits the camera to 30.28 units and the target renders
+    // 245 px, outside the B1166 standing-height ratchet (238 +-3 px,
+    // fx_target_anchor.h), which is bless-only: refactor/B1167/README.md
+    // RULING REQUEST.
     const bool preset = !harnessOpts.cameraPreset.empty();
+    const float casterRotY = preset ? kHarnessFaceOnRotY : 90.0f;
+    const float targetRotY = preset ? kHarnessFaceOnRotY : -90.0f;
     EntityAppearance casterLook;
     casterLook.face = harnessOpts.casterFace;
     casterLook.texture = harnessOpts.casterTexture;
     std::copy(harnessOpts.casterEquipment, harnessOpts.casterEquipment + 9, casterLook.equipment);
     animatedNode = createSpellTestEntity(harnessOpts.casterRace, harnessOpts.casterGender,
                                          harnessOpts.casterSize, core::vector3df(0, 0, 0),
-                                         preset ? kHarnessFaceOnRotY : 90.0f, "p01",
+                                         casterRotY, "p01",
                                          harnessOpts.casterAppearanceSet ? &casterLook : nullptr);
     if (animatedNode) {
         useAnimatedMesh = true;
@@ -330,7 +340,7 @@ bool initSpellTestMode() {
     const char* targetIdle = b1130Preset ? "p01" : "o01";
     targetAnimatedNode = createSpellTestEntity(
         harnessOpts.targetRace, harnessOpts.targetGender, harnessOpts.targetSize,
-        core::vector3df(harnessOpts.interactiveDistance, 0, 0), preset ? kHarnessFaceOnRotY : -90.0f,
+        core::vector3df(harnessOpts.interactiveDistance, 0, 0), targetRotY,
         targetIdle);
 
     uploadHarnessTextures();
