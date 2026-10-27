@@ -23,6 +23,7 @@
 #include "client/spell/spells_new_eff_reader.h"
 #include "client/spell/spells_new_edd_colour.h"
 #include "client/spell/spell_fx_timing.h"
+#include "client/spell/spell_fx_options.h"
 #include "client/spell/spell_visual_vocabulary.h"
 #include "client/graphics/spell_visual_selection.h"
 // B1163 (#482): the missile speed word + calibrated timing and the oracle's
@@ -101,6 +102,11 @@ public:
         bool launched = false;   // Middle emitter created
         bool reached = false;    // the missile reached the target (removed)
         bool landed = false;     // the Target stage fired
+        // B1165 (#484): the On-For filter's inputs for the Target stage
+        // (FUN_0047f4af's caster + target), and whether the Middle draws.
+        SpellFxActor casterFx;
+        SpellFxActor targetFx;
+        bool middleDraws = true;
     };
 
     // Hand bone pseudo-entity ID encoding.
@@ -234,9 +240,16 @@ public:
     // non-missile path / a caster with no tracked target). A spell whose
     // spellsnew.eff record has a Middle stage spawns a missile here that flies
     // caster -> targetId and fires the record's Target stage on arrival.
+    // B1165 (#484): `casterFx` / `targetFx` are what the On-For filter reads
+    // (spell_fx_options.h); the defaults (no spawn) pass every filter value's
+    // null/null arm. The Source (stage 0) is gated on (caster, caster) as
+    // eqgame's BeginCast passes it (eqgame.exe.c:122270), the Middle on
+    // (caster, none) (FUN_00476b12, eqgame.exe.c:95153), the missile's
+    // Target stage on (caster, target) (FUN_0047f4af, eqgame.exe.c:101960).
     uint32_t createCastGlow(uint16_t caster_id, uint32_t spell_id, uint32_t duration_ms,
                             int casterLevel = kMeasuredCasterLevel, int castAnim = 0,
-                            uint16_t targetId = 0);
+                            uint16_t targetId = 0, const SpellFxActor& casterFx = SpellFxActor{},
+                            const SpellFxActor& targetFx = SpellFxActor{});
 
     // B1148: the caster model's track length for an animation code ("t04"),
     // in ms; < 0 = no such entity / model / track. Set by the renderer (the
@@ -298,8 +311,23 @@ public:
     // (B1132) still gives the shape class, sizes and timing; the impact half
     // draws the slot's own texture, the spellComplete half the textures of the
     // Source slots the same level draws (T441).
+    // B1165: gated on (casterFx, targetFx) as stage 2 (eqgame.exe.c:101960).
     uint16_t createLanding(uint16_t caster_id, uint16_t target_id, uint32_t spell_id,
-                           int casterLevel = kMeasuredCasterLevel);
+                           int casterLevel = kMeasuredCasterLevel,
+                           const SpellFxActor& casterFx = SpellFxActor{},
+                           const SpellFxActor& targetFx = SpellFxActor{});
+
+    // B1165 (#484): the Options > Particles > Spell page + ShowSpellEffects,
+    // as the client holds them (spell_fx_options.h). Set every frame by the
+    // renderer's sim bridge from the Options record and once by the FX
+    // harness (tools/model_viewer --particle-options). Density is applied
+    // when a stage's emitters are CREATED (slotTiming ->
+    // SpellFxSlotTimingAtDensity), as CreateEmitter does.
+    void setSpellFxOptions(const SpellFxOptions& o) { m_fx_options = o; }
+    const SpellFxOptions& spellFxOptions() const { return m_fx_options; }
+    // FUN_0049b260's gate for this spell's stage (0 Source, 1 Middle, 2 Target).
+    bool stageDraws(uint32_t spell_id, int stage, const SpellFxActor& caster,
+                    const SpellFxActor& target) const;
 
     // ========================================================================
     // Effect Removal
@@ -561,6 +589,7 @@ private:
     // 0.184 s before the OP_Action and the Target stage fires 0.30 s after the
     // flight end (refactor/B1152/TRACE.md sec. 5/8). BLESS-ONLY.
     std::vector<Missile> m_missiles;
+    SpellFxOptions m_fx_options;  // B1165
     double m_fx_time = 0.0;
     LocalPlayerIdCallback m_local_player_cb;  // B1163: spell 859's removal gate
     EntityAttachScaleCallback m_attach_scale_cb;  // B1164: s per entity

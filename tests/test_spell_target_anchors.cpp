@@ -252,8 +252,8 @@ TEST(TargetLandingBridge, TheCastAnimationArmDrawsTheLandingThroughCreateLanding
     ASSERT_FALSE(bridge.empty());
     ASSERT_FALSE(fx.empty());
     EXPECT_NE(bridge.find("ApplySpellCastCompleteFx("), std::string::npos);
-    // B1144: with the caster's slot-gate level.
-    EXPECT_NE(fx.find("createLanding(d.casterId, d.targetId, d.spellId, d.fxGateLevel)"), std::string::npos);
+    // B1144: with the caster's slot-gate level; B1165: and the On-For filter's inputs.
+    EXPECT_NE(fx.find("createLanding(d.casterId, d.targetId, d.spellId, d.fxGateLevel, d.casterFx, d.targetFx)"), std::string::npos);
     for (const std::string* src : {&bridge, &fx})
         EXPECT_EQ(src->find("createSpellComplete(d.casterId"), std::string::npos)
             << "the caster-side landing half is back on the caster of an other-target cast";
@@ -280,6 +280,7 @@ TEST_F(TargetRecordRows, AnUnsurveyedRecordIsTheStyleVolumeOnTheTarget) {
 #include "client/graphics/environment/spell_particle_types.h"
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/spell_visual_fx.h"
+#include "particle_test_seed.h"
 
 #include <algorithm>
 #include <memory>
@@ -345,6 +346,7 @@ protected:
         auto& pi = input.particleInput;
         pi.deltaTime = 1.0f / 60.0f;
         pi.unifiedRendererInitialized = true;
+        pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
         pi.poolSize = pool_;
         for (uint16_t id : requested_) {
             glm::vec3 p;

@@ -47,6 +47,7 @@
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/environment/particle_manager.h"
 #include "client/graphics/environment/spell_particle_types.h"
+#include "particle_test_seed.h"
 
 #include <memory>
 #include <vector>
@@ -90,6 +91,7 @@ protected:
         auto& pi = input.particleInput;
         pi.deltaTime = 1.0f / 60.0f;
         pi.unifiedRendererInitialized = true;
+        pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
         pi.poolSize = 1024;
         pi.commands = commands;
         worker_.computeOnce(input, output);

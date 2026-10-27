@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "client/bridge/cast_glow_route.h"
+#include "client/spell/spell_fx_options.h"
 
 namespace EQ { struct SpellData; }
 
@@ -55,7 +56,7 @@ struct HarnessOptions {
     int fps = 30;
     double seconds = 0.0;
     bool headless = false;
-    uint32_t seed = 1;                 // particle RNG seed in scripted mode
+    uint32_t seed = 1;                 // --fx-seed (alias --seed): particle RNG seed, fixed; 0 = random_device
     // B1144 (#464): the caster's spellsnew.eff slot-gate level (--caster-level).
     // 60 = the `#level 60` every oracle capture behind the measured rows ran at.
     int casterLevel = 60;
@@ -104,7 +105,19 @@ struct HarnessOptions {
     uint8_t casterFace = 0;
     uint8_t casterTexture = 0;
     uint32_t casterEquipment[9] = {0};
+    // B1165 (#484): the Options > Particles > Spell page + ShowSpellEffects
+    // the run draws with. Default = the oracle capture's ini (1.0 / 1.0 /
+    // 2.0 / 24 / 1, review/B1159/worker/oracle/m_b1159_rig/eqclient-after.ini);
+    // --spell-particle-density/-opacity/-nearclip/-filter and
+    // --show-spell-effects change it, and a run that differs from the capture
+    // refuses to start (exit 65) unless --particle-options is passed.
+    EQ::SpellFxOptions spellFx;
+    bool particleOptions = false;
 };
+
+// B1165: the exit code of a run whose particle options differ from the
+// oracle capture's without --particle-options (sysexits EX_DATAERR).
+constexpr int kHarnessExitParticleOptions = 65;
 extern HarnessOptions harnessOpts;
 
 // The Y rotation that turns a race model to face +Z, toward a face-on preset

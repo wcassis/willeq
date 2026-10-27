@@ -14,7 +14,11 @@
 # unset a frame-less dir is a miss (see miss.log).
 #
 # Rig per B1130's process_record.sh: fixed_self/fixed_npc caster feet 640,598
-# model 209; fixed_npc target feet 940,652 model 325. SOURCE is always caster
+# model 209; fixed_npc target = kB1130TargetAnchor, read from its one definition
+# tools/model_viewer/fx_target_anchor.h since B1166 (#485) (the oracle r51
+# target's measured feet/height, refactor/B1166/README.md sec. 1). B1151's
+# committed rows were measured at B1130's 940,652 / 325 (an extent that began at
+# the name label): FX_TFEET=940,652 FX_TMPX=325 reproduce them. SOURCE is always caster
 # units; LANDING is target units on fixed_npc, caster units on fixed_self and
 # the close rigs (their per-capture feet/model from review/B1130/geom/e<N>.json,
 # read off the close_settle stills with the ruler -- see process_record.sh).
@@ -31,6 +35,14 @@
 #
 # usage: oracle_anchor.sh   (RUN ON THE THINKPAD)
 # output: refactor/B1151/oracle_anchor/<dir>_<STAGE>.tsv + rig.tsv + .log
+read -r TFEET TMPX < <(python3 - "$(dirname "$(realpath "$0")")/../../../tools/model_viewer/fx_target_anchor.h" <<'PY'
+import re, sys
+a = re.search(r'kB1130TargetAnchor\{([\d.]+)f, ([\d.]+)f, ([\d.]+)f\}', open(sys.argv[1]).read())
+print(f'{float(a.group(1)):g},{float(a.group(2)):g}', f'{float(a.group(3)):g}')
+PY
+)
+TFEET=${FX_TFEET:-$TFEET}; TMPX=${FX_TMPX:-$TMPX}
+[ -n "$TFEET" ] && [ -n "$TMPX" ] || { echo "oracle_anchor.sh: no kB1130TargetAnchor" >&2; exit 2; }
 set -u
 R=/home/user/src/willeq-wt/kb-b1151-frames/refactor/B1151
 B=/mnt/projects/fable/review/B1130
@@ -77,7 +89,7 @@ PY
         || { echo "$rec: $base regen FAILED (see $O/${base}.regen.log)" >> $O/miss.log; continue; }
     fi
   fi
-  if [ "$kind" = fixed_npc ]; then LF="940,652"; LM=325
+  if [ "$kind" = fixed_npc ]; then LF=$TFEET; LM=$TMPX
   elif [ "$kind" = fixed_self ]; then LF="640,598"; LM=209
   else # close_<kind>: per-capture geometry from the ruler (process_record.sh)
     read -r LF LM < <(python3 - "$B/geom/e${rec}.json" "$kind" <<'PY'

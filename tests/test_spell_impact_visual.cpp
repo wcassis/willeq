@@ -78,6 +78,7 @@
 #include "client/graphics/environment/spell_effects_config.h"
 #include "client/graphics/environment/spell_particle_types.h"
 #include "client/graphics/environment/unified_particle.h"
+#include "particle_test_seed.h"
 #endif
 #endif
 
@@ -284,9 +285,9 @@ TEST(SpellImpactVisualProducer, OnlyTheBeginCastArmCreatesASource) {
     const std::string started = fx.substr(sb, fb - sb), complete = fx.substr(fb, fe - fb);
     EXPECT_EQ(complete.find("createCastGlow("), std::string::npos)
         << "an OP_Action must not create a Source (no BeginCast = no Source)";
-    EXPECT_NE(started.find("createCastGlow(d.casterId, d.spellId, d.castTimeMs, d.fxGateLevel, d.castAnim, d.targetId)"),
+    EXPECT_NE(started.find("createCastGlow(d.casterId, d.spellId, d.castTimeMs, d.fxGateLevel, d.castAnim, d.targetId, d.casterFx, d.targetFx)"),
               std::string::npos);
-    EXPECT_NE(complete.find("createLanding(d.casterId, d.targetId, d.spellId, d.fxGateLevel)"),
+    EXPECT_NE(complete.find("createLanding(d.casterId, d.targetId, d.spellId, d.fxGateLevel, d.casterFx, d.targetFx)"),
               std::string::npos);
 }
 
@@ -466,6 +467,7 @@ protected:
         auto& pi = input.particleInput;
         pi.deltaTime = deltaTime;
         pi.unifiedRendererInitialized = true;
+        pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
         pi.poolSize = 1024;
         for (uint16_t id : requested_) {
             if (id == kTarget) pi.entityPositions[kTarget] = kTargetPos;
