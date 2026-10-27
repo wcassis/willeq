@@ -115,7 +115,8 @@ TEST(SpellParticleCastFilter, TheLandingFallsThroughToTheTarget) {
         EXPECT_TRUE(SpellParticleCastFilterShows(f, me, SpellFxActor{})) << "my missile, " << kLabel[i];
     }
     // An off-table value decodes by its bits all the same (the global keeps
-    // the raw ini int, eqgame.exe.c:132638).
+    // the raw ini int, eqgame.exe.c:132638; fable keeps it too since the B1165
+    // fix: OptionsParticles.AnOffTableCastFilterIntIsKeptRawAndDecodedByItsBits).
     EXPECT_FALSE(SpellParticleCastFilterShows(0, other, other));
     EXPECT_TRUE(SpellParticleCastFilterShows(0, me, me));
 }

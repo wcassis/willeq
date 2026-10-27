@@ -218,6 +218,97 @@ TEST(OptionsParticles, TheLoaderClampsAndTheComboboxRoundsUp) {
     EXPECT_EQ(Env::choiceForIniFloat(Env::kNearClipIniValues, Env::kNearClipChoices, 6.0f), 2);
 }
 
+// B1165 fix (MR !318 note 7756 finding 3): the oracle APPLIES the clamped ini
+// float itself -- the loader stores it as read (eqgame.exe.c:132608-132636)
+// and 0x495f29 pushes SpellParticleDensity unrounded into CreateEmitter --
+// and only its combobox DISPLAY rounds up to a choice (0x53b93f..0x53b9da).
+// So an ini 0.3 density is applied as 0.3 and shown as Medium (0.5).
+TEST(OptionsParticles, AnOffTableIniFloatIsAppliedRawAndShownAsTheChoice) {
+    const UiPreferences p = ParseUiPreferences(
+        "[Options]\r\nSpellParticleDensity=0.300000\r\nSpellParticleNearClipPlane=3.000000\r\n"
+        "SpellParticleOpacity=0.330000\r\nEnvironmentParticleDensity=1.000000\r\n");
+    const int dens = static_cast<int>(OL::Setting::SpellParticleDensity);
+    const int clip = static_cast<int>(OL::Setting::SpellParticleNearClip);
+    const int opac = static_cast<int>(OL::Setting::SpellParticleOpacity);
+    EXPECT_EQ(p.optionValues[dens], 2) << "0.3 is shown as Medium";
+    EXPECT_STREQ(OL::choiceText(OL::Setting::SpellParticleDensity, p.optionValues[dens]), "Medium");
+    EXPECT_EQ(p.optionValues[clip], 1) << "3.0 is shown as Medium (4.0)";
+    ASSERT_TRUE(p.optionIniFloats[dens].has_value());
+    EXPECT_FLOAT_EQ(*p.optionIniFloats[dens], 0.3f);
+    ASSERT_TRUE(p.optionIniFloats[clip].has_value());
+    EXPECT_FLOAT_EQ(*p.optionIniFloats[clip], 3.0f);
+    EXPECT_FALSE(p.optionIniFloats[static_cast<int>(OL::Setting::EnvParticleDensity)].has_value())
+        << "a table value needs no applied float";
+
+    OptionsPanelState s;
+    UiPreferencesBinding b;
+    b.options = &s;
+    ApplyUiPreferences(p, b);
+    EQ::SpellFxOptions o = spellFxOptionsFromOptions(s.values, s.iniFloats);
+    EXPECT_FLOAT_EQ(o.density, 0.3f) << "applied as 0.3, not the shown 0.5";
+    EXPECT_FLOAT_EQ(o.nearClip, 3.0f);
+    EXPECT_FLOAT_EQ(o.opacity, 0.33f) << "the slider shows step " << s.values[opac];
+    EXPECT_FLOAT_EQ(knob(particleKnobsFromOptions(s.values, s.iniFloats), Env::ParticleFamily::Spell).density, 0.3f);
+    EXPECT_FALSE(EQ::IsOracleCaptureSpellFxOptions(o));
+
+    // A save writes the applied float back, so the value survives.
+    const std::string t = SerializeUiPreferences(CollectUiPreferences(b, 1));
+    EXPECT_NE(t.find("SpellParticleDensity=0.300000\n"), std::string::npos) << t;
+    EXPECT_NE(t.find("SpellParticleNearClipPlane=3.000000\n"), std::string::npos) << t;
+    const UiPreferences back = ParseUiPreferences(t);
+    EXPECT_TRUE(back.optionValues == p.optionValues);
+    EXPECT_TRUE(back.optionIniFloats == p.optionIniFloats);
+
+    // Choosing in the window stores the table value, as the handler does
+    // (eqgame.exe.c:245163-245180) -- even re-choosing the shown Medium.
+    EXPECT_TRUE(setOptionsValue(s, OL::Setting::SpellParticleDensity, 2));
+    o = spellFxOptionsFromOptions(s.values, s.iniFloats);
+    EXPECT_FLOAT_EQ(o.density, 0.5f);
+    EXPECT_FALSE(s.iniFloats[dens].has_value());
+    EXPECT_FLOAT_EQ(o.nearClip, 3.0f) << "the other knobs keep theirs";
+}
+
+// B1165 fix: the oracle keeps the SpellParticleCastFilter int RAW (loader
+// eqgame.exe.c:132638, no validation) and FUN_00491cff decodes its BITS
+// (0x491d0f..0x491d41); the combobox shows the index of the value in
+// DAT_00793b4c, index 7 (All spells) when it is not listed (0x53b9e9..0x53ba07).
+// So an ini 6 (0x04 | 0x02) behaves as "Raid spells" (4) and is shown as "All spells".
+TEST(OptionsParticles, AnOffTableCastFilterIntIsKeptRawAndDecodedByItsBits) {
+    const UiPreferences p = ParseUiPreferences("[Options]\r\nSpellParticleCastFilter=6\r\n");
+    const int i = static_cast<int>(OL::Setting::SpellParticleCastFilter);
+    EXPECT_EQ(p.optionValues[i], 6) << "kept, not reset to the default 24";
+    EXPECT_EQ(OL::choiceDisplayIndex(OL::Setting::SpellParticleCastFilter, 6), 7);
+    EXPECT_STREQ(OL::choiceText(OL::Setting::SpellParticleCastFilter, 6), "All spells");
+    EXPECT_EQ(OL::choiceDisplayIndex(OL::Setting::SpellParticleCastFilter, 4), 2);
+
+    OptionsPanelState s;
+    UiPreferencesBinding b;
+    b.options = &s;
+    ApplyUiPreferences(p, b);
+    const EQ::SpellFxOptions o = spellFxOptionsFromOptions(s.values, s.iniFloats);
+    EXPECT_EQ(o.castFilter, 6);
+    EQ::SpellFxActor me, groupie, raider, other, npc;
+    for (auto* a : {&me, &groupie, &raider, &other, &npc}) a->present = true;
+    me.isSelf = true;
+    groupie.inGroup = true;
+    raider.inRaid = true;
+    npc.spawnType = 1;
+    for (const auto* c : {&me, &groupie, &raider, &other, &npc}) {
+        for (const auto* t : {&me, &groupie, &raider, &other, &npc}) {
+            EXPECT_EQ(EQ::SpellParticleCastFilterShows(6, *c, *t),
+                      EQ::SpellParticleCastFilterShows(4, *c, *t));
+        }
+    }
+    EXPECT_TRUE(EQ::SpellParticleCastFilterShows(6, raider, npc)) << "a raid member's spell shows";
+    EXPECT_FALSE(EQ::SpellParticleCastFilterShows(6, other, npc)) << "a stranger's does not";
+    EXPECT_TRUE(EQ::SpellParticleCastFilterShows(24, other, npc)) << "as All spells (24) would show it";
+
+    const std::string t = SerializeUiPreferences(CollectUiPreferences(b, 1));
+    EXPECT_NE(t.find("SpellParticleCastFilter=6\n"), std::string::npos) << t;
+    EXPECT_EQ(ParseUiPreferences("[Options]\r\nSpellParticleCastFilter=x\r\n").optionValues[i], 24)
+        << "not a number keeps the default";
+}
+
 // B1165 (#484): "On For:" is wired -- the eight choices are eqgame's table
 // DAT_00793b4c, the default is 24 (All spells), it persists as the int.
 TEST(OptionsParticles, TheOnForComboboxIsTheCastFilter) {

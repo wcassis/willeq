@@ -35,6 +35,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "client/game_options.h"
@@ -171,6 +172,13 @@ struct SettingInfo {
      */
     float iniDivisor = 0.0f;
     const float* iniFloats = nullptr;
+    /**
+     * B1165: a Choice setting whose int the oracle keeps RAW from the ini
+     * (no validation; SpellParticleCastFilter, eqgame.exe.c:132638): any int
+     * is a legal value, and the combobox shows the index of the value in the
+     * list, the LAST entry when it is not listed (0x53b9e9..0x53ba07).
+     */
+    bool rawIniInt = false;
 };
 
 /** B995: the ini text of `v` for setting `s` (a float in the oracle's format, or an int). */
@@ -199,8 +207,42 @@ bool isValidSettingValue(Setting s, int v);
 /** The next choice after `v` in list order (wrapping); `v` itself if not Choice. */
 int nextChoiceValue(Setting s, int v);
 
-/** The text of choice `v`, or "" if `v` is not one of `s`'s choices. */
+/** The text of choice `v`, or "" if `v` is not one of `s`'s choices
+ *  (a rawIniInt setting: the text of choiceDisplayIndex). */
 const char* choiceText(Setting s, int v);
+
+/** B1165: the list index the combobox shows for `v`: its index, else -1; a
+ *  rawIniInt setting falls back to the LAST index (0x53b9e9..0x53ba07). */
+int choiceDisplayIndex(Setting s, int v);
+
+// --- B1165 (MR !318 note 7756): the oracle APPLIES the loader's clamped ini
+// float (SpellParticleDensity / Opacity / NearClipPlane and the Env page's,
+// eqgame.exe.c:132608-132636 store it in _DAT_00985810.. as read; 0x495f29
+// pushes it unrounded into CreateEmitter); only the combobox DISPLAY rounds it
+// to a choice (0x53b93f..0x53b9da). The int slot of such a setting is that
+// display choice; this array carries the applied float when the ini gave one
+// the choice does not represent (nullopt = the choice's own table float). A
+// change through the window or /option stores the table float again, as the
+// oracle's handler does (eqgame.exe.c:245163-245204), so it clears the slot.
+using OptionIniFloats = std::array<std::optional<float>, kSettingCount>;
+
+/** Does `s` persist as a float (Step with iniDivisor, Choice with iniFloats)? */
+bool isIniFloatSetting(Setting s);
+/** The table float of value `v` (step / divisor, or the choice's iniFloats entry). */
+float settingTableFloat(Setting s, int v);
+/** The float the client APPLIES for `s`: `raw` when set, else settingTableFloat(s, v). */
+float appliedSettingFloat(Setting s, int v, const std::optional<float>& raw);
+/** The loader's clamp for `s` (eqgame.exe.c:132608-132637): near clip to [1, 8], else [0, 1]. */
+float clampSettingIniFloat(Setting s, float f);
+/**
+ * Parse a float setting's ini text: `display` = the choice / step the window
+ * shows, `applied` = the clamped float itself (nullopt when it equals the
+ * display's table float). false (outputs untouched) for junk or a non-float setting.
+ */
+bool parseSettingIniFloat(Setting s, const std::string& text, int& display,
+                          std::optional<float>& applied);
+/** The ini text for `s`: the raw float when set, else settingIniText(s, v). */
+std::string settingIniText(Setting s, int v, const std::optional<float>& raw);
 
 // --- The Filters page ---
 

@@ -71,25 +71,35 @@ void renderOptionsParticleTabs(UIRenderer& ui, const UILayout& layout,
     }
 }
 
-Environment::ParticleKnobs particleKnobsFromOptions(const OptionsLayout::OptionValues& v) {
+Environment::ParticleKnobs particleKnobsFromOptions(const OptionsLayout::OptionValues& v,
+                                                    const OptionsLayout::OptionIniFloats& raw) {
+    // B1165: the applied float (the loader's clamped ini value, or the shown
+    // choice's table float) -- the oracle never rounds what it applies.
+    auto f = [&](Setting s) {
+        const int i = static_cast<int>(s);
+        return OptionsLayout::appliedSettingFloat(s, v[i], raw[i]);
+    };
     Env::ParticleKnobs k = Env::identityParticleKnobs();
     auto& spell = k[static_cast<size_t>(Env::ParticleFamily::Spell)];
-    spell.opacity = Env::opacityForStep(step(v, Setting::SpellParticleOpacity));
-    spell.density = Env::densityForChoice(step(v, Setting::SpellParticleDensity));
-    spell.nearClip = Env::nearClipForChoice(step(v, Setting::SpellParticleNearClip));
+    spell.opacity = f(Setting::SpellParticleOpacity);
+    spell.density = f(Setting::SpellParticleDensity);
+    spell.nearClip = f(Setting::SpellParticleNearClip);
     auto& env = k[static_cast<size_t>(Env::ParticleFamily::Environment)];
-    env.opacity = Env::opacityForStep(step(v, Setting::EnvParticleOpacity));
-    env.density = Env::densityForChoice(step(v, Setting::EnvParticleDensity));
-    env.nearClip = Env::nearClipForChoice(step(v, Setting::EnvParticleNearClip));
+    env.opacity = f(Setting::EnvParticleOpacity);
+    env.density = f(Setting::EnvParticleDensity);
+    env.nearClip = f(Setting::EnvParticleNearClip);
     // N3: Actor stays the identity -- fable has no actor particles.
     return k;
 }
 
-EQ::SpellFxOptions spellFxOptionsFromOptions(const OptionsLayout::OptionValues& v) {
+EQ::SpellFxOptions spellFxOptionsFromOptions(const OptionsLayout::OptionValues& v,
+                                             const OptionsLayout::OptionIniFloats& raw) {
+    const auto spell = particleKnobsFromOptions(v, raw)[static_cast<size_t>(Env::ParticleFamily::Spell)];
     EQ::SpellFxOptions o;
-    o.density = Env::densityForChoice(step(v, Setting::SpellParticleDensity));
-    o.opacity = Env::opacityForStep(step(v, Setting::SpellParticleOpacity));
-    o.nearClip = Env::nearClipForChoice(step(v, Setting::SpellParticleNearClip));
+    o.density = spell.density;
+    o.opacity = spell.opacity;
+    o.nearClip = spell.nearClip;
+    // The raw int: FUN_00491cff tests its bits (0x491d0f..0x491d41).
     o.castFilter = step(v, Setting::SpellParticleCastFilter);
     o.showSpellEffects = step(v, Setting::ShowSpellEffects) != 0;
     return o;

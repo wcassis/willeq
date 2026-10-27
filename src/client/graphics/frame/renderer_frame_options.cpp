@@ -260,11 +260,11 @@ bool FrameComponent::processOptionsKeyCapture() {
 // (options_command.cpp); every setting it changed goes through the same
 // applyOptionsSetting() a click does, and syncUiPreferences() saves it.
 Environment::ParticleKnobs FrameComponent::particleOptionKnobs() const {
-    return particleKnobsFromOptions(optionsState_.values);
+    return particleKnobsFromOptions(optionsState_.values, optionsState_.iniFloats);
 }
 
 EQ::SpellFxOptions FrameComponent::spellFxOptions() const {
-    return spellFxOptionsFromOptions(optionsState_.values);
+    return spellFxOptionsFromOptions(optionsState_.values, optionsState_.iniFloats);
 }
 
 std::vector<std::string> FrameComponent::runOptionsCommand(const std::string& cmd,
