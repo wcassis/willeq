@@ -43,8 +43,9 @@ before/after delta is this card's alone, the merged tip is covered by the ctests
   byte-identical, 34 move, landing coverage up on 31 of them (x0.955..x1.238), source coverage
   down by at most 0.054. Before vs B1157 is NOT equal everywhere (sec. 4a): b1130 116 of 160
   cells differ -- B1157 rendered its b1130 sweep on the ThinkPad's Intel GPU, B1172 on the
-  NVIDIA one, and the before binary on the Intel GPU reproduces B1157's r11 to the digit (end
-  1.600 -> 2.000); b1118 differs in 253 (B1161) and 54 / 656 src_cov 0.415 -> 0.416.
+  NVIDIA one; the before binary re-rendered on the Intel GPU gives B1157's numbers on all 12
+  fixed_self rows (r11 end +2.000, not +1.600) and B1166's target-fit numbers on the fixed_npc
+  rows; b1118 differs in 253 (B1161) and, unowned, 54 / 656 src_cov 0.415 -> 0.416.
 - **Per-target-height FX rows** (sec. 5): B1166's Fear 229 below-the-feet shortfall closes
   (h_p5 -0.06 -> -0.23, ground 0.14 -> 0.20 against the oracle's -0.26 / 0.17); the spell-93
   landing's lit pixels grow only 6.3 % (b1130) and 14.6 % (b1118), because fable still attaches the landing at s = 1 where
@@ -222,7 +223,7 @@ so no b1118 ratio is decidable; b1130 (above) is the like-for-like comparison.
   size-6 bodies render 260 to 285 px, and the ratchet rejects the ones outside 285 +-3. The
   self-check negative test runs the size-5 human (`1:0:5`, 238 px). **`--target 6:1:6` CRASHES on
   gitlab-runner-1**: the dark-elf female's target solve does not converge (it cycles through feet
-  rows 616 / 616 / 618, `review/B1172/worker/wrong_model/r1_6_1_6.log:135`), and the "did not
+  rows 616 / 616 / 618, `review/B1172/worker/wrong_model/r1_6_1_6.log:131`..`:133`; "did not solve" at `:135`), and the "did not
   solve" exit then dies by SIGSEGV, rc 139, reproduced at 20082d7d
   (`review/B1172/worker/fix/crash_616/rc.txt`). The negative test's switch to 1:0:5 does not own
   that crash; B1177 (#496) does (FOLLOW-UP 3).
@@ -308,11 +309,62 @@ src_on25_n / src_cen_n beside each):
 
 | | result | owner |
 |---|---|---|
-| before vs B1157 | equal in every cell but tour 253 and r35 (spell 253): land 5.306 -> 4.148 / 5.297 -> 4.126, src 3.804 -> 3.323 | B1161 (#480), the retired 253 override -- not this card |
+| before vs B1157 | numerically equal in every cell but four: tour 253 and r35 (spell 253): land 5.306 -> 4.148 / 5.297 -> 4.126, src 3.804 -> 3.323; tour 54 and tour 656 src_cov 0.415 -> 0.416 (other cells differ only in format, 0.5 vs 0.500, or are empty in B1157's record rows) | 253: B1161 (#480), the retired 253 override. 54 / 656: sec. 4a -- unowned, predates B1169 and B1172 |
 | self-target rows, 13 | frames byte-identical | -- |
 | other rows, 34 | land_cov x0.955 (r41, 703) .. x1.238 (r13, 209), up on 31; e.g. tour 93 / 38 1.993 -> 2.149 | B1172: the target drawn at 1.2 and stood on the ground |
 | landing end | unchanged on 12 of 27 rows with a value, else -0.200 (r7) .. +0.066 (r34); r27 gains an end, +4.167 | B1172 target scale (the landing reads around a larger body) |
 | source | src_cov -0.054 .. +0.001 | B1172: the larger target overlaps the caster's Source window |
+
+### 4a. The base drift: before vs B1157 (review note 7955 finding 4)
+
+**b1130: 116 of the 160 cells differ** between B1157's committed table and this card's before run
+(fable 070a9215). Two causes, each measured:
+
+1. **The GL context (rig), not code.** B1157's b1130 sweep launched its binary (`$BIN`) with no DRM
+   override (`refactor/B1157/scripts/run_sweep_b1130.sh:76`), so it rendered on the
+   ThinkPad's Intel UHD 630 through DRM/GBM with a 16-bit depth buffer (its r11 log:
+   `review/B1172/worker/fix/rig/b1157_r11_runlog_head.txt:38` "driver=i915", `:47` "Config
+   depth=16"). B1172's runs set `WILLEQ_DRM_DEVICE=/dev/dri/no-such-card`
+   (`refactor/B1172/scripts/run_one.sh:23`) -- surfaceless EGL on the NVIDIA Quadro, depth 24, the
+   context B1150's b1118 rig and B1157's own b1118 sweep use. **Measured check:** the SAME before
+   binary re-rendered all 40 records in B1157's context
+   (`refactor/B1172/scripts/rig_check.sh`, 40 of 40 rc 0,
+   `review/B1172/worker/fix/rig/sweep_i915.log`). r11 in the Intel context reads end +2.000,
+   landing_cov 0.069, p90 0.042, src 0.053 -- B1157's four numbers to the digit -- and +1.600 /
+   0.064 / 0.041 / 0.055 in the NVIDIA one (`refactor/B1172/tables/b1130_rig_i915.tsv:13`;
+   `review/B1172/worker/fix/rig/frames/before_self_r11_i915/run.log:38` driver=i915,
+   `review/B1172/worker/fix/rig/frames/before_r11_nvidia/run.log:39` vendor=NVIDIA). All 12
+   fixed_self rows: 48 of 48 cells equal B1157 in the Intel context, 20 of 48 in the NVIDIA one
+   (`refactor/B1172/tables/b1130_rig_i915_summary.txt:2`). So the whole fixed_self drift,
+   including r11's end 2.000 -> 1.600, is the context. B1169's README already measured that the
+   depth precision sets how many tie pixels exist (`refactor/B1169/README.md:55`).
+2. **B1166's target fit (#485), on the fixed_npc rows.** In the Intel context the before binary
+   equals B1157 on only 51 of 112 fixed_npc cells, but it equals B1166's own after column
+   (`refactor/B1166/tables/b1130_table.tsv`, rendered by B1166's sweep, also without the override)
+   on 108 of 112 -- every cell of 27 records (`refactor/B1172/tables/b1130_rig_i915_summary.txt:1`).
+   B1166 moved the target onto the oracle anchor and tabled that move against B1157 (`refactor/B1166/README.md:191`: its
+   before reproduced B1157 in all 160 cells; its after is the target move). The remaining 4
+   cells are r35, spell 253 (`refactor/B1172/tables/b1130_rig_i915.tsv:37`): B1161's retirement of
+   the 253 override, which B1166's after run predates.
+3. **B1169 (determinism), B1165 (options) and this card's own change:** none. B1169 merged
+   between B1166 and 070a9215 and changes no cell in the Intel context (the 108 + 48 equal cells
+   above); B1165 merged after 070a9215, so neither re-gate binary contains it.
+
+| class | cells before != B1157 | owner, measured by |
+|---|---|---|
+| fixed_self, 12 rows (r11 end 2.000 -> 1.600, r40 p90 0.247 -> 0.219, r4 src 0.123 -> 0.128, ...) | 28 of 48 | the GL context of B1157's b1130 sweep (Intel GBM depth 16) vs B1172's (NVIDIA surfaceless depth 24): Intel re-render = B1157 48 / 48 |
+| fixed_npc, 27 rows | 85 of 108 (r2's B1157 landing 0.356 -> nan among them) | B1166 (#485) target fit + the GL context: Intel re-render = B1166's after 108 / 108 |
+| fixed_npc r35, spell 253 | 3 of 4 | B1161 (#480) + B1166 + the context |
+
+**b1118:** the same rig (NVIDIA surfaceless) on both sides. Spell 253 is B1161's. Tour 54 and 656
+src_cov 0.415 -> 0.416 is older than both B1169 and B1172: B1160 measured 0.416 at fable cc85c331
+(`refactor/B1160/measure/cur_tour_54.tsv:4`, `refactor/B1160/measure/cur_tour_656.tsv:5`), and
+B1169 found it in all three of its pre-fix runs (`refactor/B1169/README.md:144`). Between B1157's
+branch tip and cc85c331 no file under src/, include/, tools/ or config/ changes
+(`git diff --stat c39f4989^2 cc85c331 -- src include tools config` is empty), so it is not a code
+card's either; B1157's tour sweep ran a binary built at 13:39 UTC on 10-26 (ThinkPad
+`kb-b1157-cast-anim/build/bin/model_viewer` mtime) before its last commits. **Unowned, +0.001,
+no band near it**; this card names no owner and does not move it.
 
 No gate band is crossed by design here: the b1118 rig is harness-against-harness, and every move is
 the target's size, the one variable this card changes.
@@ -360,19 +412,19 @@ lane 5); fable passes `kSpellFxAttachScale = 1.0` at
 
 ## 6. Verification
 
-All on gitlab-runner-1 at the merged tip (fable f61fafb4 merged), `RBUILD_HOST=user@gitlab-runner-1 tbuild`:
+Fix leg (review note 7955), on gitlab-runner-1 at 20082d7d (the code of this leg; later commits
+are README, scripts and a file mode), `RBUILD_HOST=user@gitlab-runner-1 tbuild`:
 
-- targeted ctest `-R 'FxHarness|B1166TargetAnchor|ClientActorScale|EntitySize|EntityRescale|HeldItem|Position|ZoneEntry|SelfRace|SelfDeath|Particle|Options'`:
-  309/309 passed (`review/B1172/worker/ctest_final.log`); the real-mesh tests ran with the client
-  tree linked as CI links it (`data/eq_client`).
-- hygiene: 48/48 (`review/B1172/worker/hygiene_final.log`).
-- the full suite before the last two merges: 6495 tests, all passed but the two this card then
-  fixed -- the dark-elf wrong-body negative and this README's anchored cites
-  (`review/B1172/worker/ctest_full_runner1.log`); the MR pipeline runs the full suite on the tip.
+- full suite: 6517 / 6517 passed (`review/B1172/worker/fix/ctest_full.log`), the real-mesh tests
+  with the client tree linked as CI links it (`data/eq_client`).
+- targeted: `-R 'SelfActorSize|ActorScale|EntitySize'` 23 / 23 (`review/B1172/worker/fix/ctest1.log`);
+  the final tip's targeted run and hygiene are in `review/B1172/worker/fix/ctest_final.log` and
+  `review/B1172/worker/fix/hygiene_final.log`.
+- the earlier legs' logs: `review/B1172/worker/ctest_final.log`, `review/B1172/worker/hygiene_final.log`.
 - cite checker: `python3 -I scripts/refactor/cite_check.py refactor/B1172/README.md --tree .
-  --extra /mnt/projects/fable --dis .../eqgame.dis --dis .../EQGraphicsDX9.dis` -> `checked 126
-  cites, 0 problems, 4 address warnings` (the warnings are 0x101c95a8, a vtable, and 0x101ee6b0, a
-  float constant, each cited twice: data words); every cited line was printed and hand-checked.
+  --extra /mnt/projects/fable --dis .../eqgame.dis --dis .../EQGraphicsDX9.dis`; the result line
+  is in the MR note. Its address warnings are data words: the vtable 0x101c9ba0 and the float
+  0x101ee6b0.
 
 ## RULING REQUEST
 

@@ -1,0 +1,2 @@
+fixed_npc: 28 records rendered on i915, 112 cells; equal to B1157: NVIDIA before 24, i915 before 51; records with all 4 cells equal on i915: 5; i915 before equal to B1166's after: 108 cells, 27 records all 4
+fixed_self: 12 records rendered on i915, 48 cells; equal to B1157: NVIDIA before 20, i915 before 48; records with all 4 cells equal on i915: 12; i915 before equal to B1166's after: 48 cells, 12 records all 4
