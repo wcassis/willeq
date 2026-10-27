@@ -68,6 +68,12 @@ const Choice kCrits[] = {{0, "Show"}, {1, "Show Mine Only"}, {2, "Hide"}};
 // B995: EQUI_OptionsWindow.xml ODP_*ParticlesDensityCombobox / NearClipCombobox <Choices>.
 const Choice kDensity[] = {{0, "Off"}, {1, "Low"}, {2, "Medium"}, {3, "High"}};
 const Choice kNearClip[] = {{0, "Near"}, {1, "Medium"}, {2, "Far"}, {3, "Farthest"}};
+// B1165 (#484): ODP_SpellParticlesFilterCombobox's <Choices> (EQUI_OptionsWindow.xml),
+// each the eqgame value table DAT_00793b4c entry the handler stores
+// (eqgame.exe.c:245181-245185: DAT_0098581c = (&DAT_00793b4c)[index]).
+const Choice kCastFilter[] = {{1, "My spells"},     {2, "Group spells"},  {4, "Raid spells"},
+                              {8, "All PCs"},       {17, "Me + NPC"},     {18, "Group + NPC"},
+                              {20, "Raid + NPC"},   {24, "All spells"}};
 
 #define CHOICES(arr) arr, static_cast<int>(sizeof(arr) / sizeof(arr[0]))
 #define NO_CHOICES nullptr, 0
@@ -157,22 +163,28 @@ const SettingInfo kSettings[kSettingCount] = {
 // [instructions] describe turning the indicator ON (target_ring.h, R5).
 {Setting::TargetRing, Owner::Renderer, ValueKind::Bool, "targetring", "ShowTargetRing", 0, 1, NO_CHOICES, -1, kNoGame,
  "Show 3D Target Ring", "uifiles/default/TargetIndicator.ini; key is fable's (R5)"},
-// --- Display > Particles (B995): eqclient.ini [Options] keys, its floats.
-// Choices are EQUI_OptionsWindow.xml's <Choices>; the floats per choice and
-// the near-clip meaning are assumptions N1/N2 (particle_options.h).
+// --- Display > Particles (B995): eqclient.ini keys, its floats.
+// Choices are EQUI_OptionsWindow.xml's <Choices>; the floats per choice are
+// the decompile's (N1 PROVEN, B1165); the near-clip meaning is still N2
+// (particle_options.h).
 {Setting::ParticlesTab, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "ODP_ParticlesTabs"},
 {Setting::SpellParticleOpacity, Owner::Renderer, ValueKind::Step, "spellparticleopacity", "SpellParticleOpacity", 20, 20, NO_CHOICES, -1, kNoGame,
  "Spell Particle Opacity", "eqclient.ini SpellParticleOpacity=1.000000 (N1)", 20.0f, nullptr},
 {Setting::SpellParticleDensity, Owner::Renderer, ValueKind::Choice, "spellparticledensity", "SpellParticleDensity", 3, 0, CHOICES(kDensity), -1, kNoGame,
  "Spell Particle Density", "eqclient.ini SpellParticleDensity=1.000000 (N1)", 0.0f, Environment::kDensityIniValues},
-{Setting::SpellParticleNearClip, Owner::Renderer, ValueKind::Choice, "spellparticlenearclip", "SpellParticleNearClipPlane", 1, 0, CHOICES(kNearClip), -1, kNoGame,
- "Spell Particle Near Clip", "eqclient.ini SpellParticleNearClipPlane=2.000000 (N1, N2)", 0.0f, Environment::kNearClipIniValues},
+{Setting::SpellParticleNearClip, Owner::Renderer, ValueKind::Choice, "spellparticlenearclip", "SpellParticleNearClipPlane", 0, 0, CHOICES(kNearClip), -1, kNoGame,
+ "Spell Particle Near Clip", "eqclient.ini SpellParticleNearClipPlane=2.000000 = Near (N1 PROVEN, N2)", 0.0f, Environment::kNearClipIniValues},
+{Setting::SpellParticleCastFilter, Owner::Renderer, ValueKind::Choice, "spellparticlecastfilter", "SpellParticleCastFilter", 24, 0, CHOICES(kCastFilter), -1, kNoGame,
+ "Spell Particles On For", "eqclient.ini SpellParticleCastFilter=24; eqgame.exe.c:132638 default 0x18, kept raw (B1165)",
+ 0.0f, nullptr, /*rawIniInt=*/true},
+{Setting::ShowSpellEffects, Owner::Renderer, ValueKind::Bool, "showspelleffects", "ShowSpellEffects", 1, 1, NO_CHOICES, -1, kNoGame,
+ "Show Spell Effects", "eqclient.ini ShowSpellEffects=1; eqgame.exe.c:126007-126011 (B1165)"},
 {Setting::EnvParticleOpacity, Owner::Renderer, ValueKind::Step, "envparticleopacity", "EnvironmentParticleOpacity", 20, 20, NO_CHOICES, -1, kNoGame,
  "Environment Particle Opacity", "eqclient.ini EnvironmentParticleOpacity=1.000000 (N1)", 20.0f, nullptr},
 {Setting::EnvParticleDensity, Owner::Renderer, ValueKind::Choice, "envparticledensity", "EnvironmentParticleDensity", 3, 0, CHOICES(kDensity), -1, kNoGame,
  "Environment Particle Density", "eqclient.ini EnvironmentParticleDensity=1.000000 (N1)", 0.0f, Environment::kDensityIniValues},
-{Setting::EnvParticleNearClip, Owner::Renderer, ValueKind::Choice, "envparticlenearclip", "EnvironmentParticleNearClipPlane", 1, 0, CHOICES(kNearClip), -1, kNoGame,
- "Environment Particle Near Clip", "eqclient.ini EnvironmentParticleNearClipPlane=2.000000 (N1, N2)", 0.0f, Environment::kNearClipIniValues},
+{Setting::EnvParticleNearClip, Owner::Renderer, ValueKind::Choice, "envparticlenearclip", "EnvironmentParticleNearClipPlane", 0, 0, CHOICES(kNearClip), -1, kNoGame,
+ "Environment Particle Near Clip", "eqclient.ini EnvironmentParticleNearClipPlane=2.000000 = Near (N1 PROVEN, N2)", 0.0f, Environment::kNearClipIniValues},
 
 // --- Mouse (B433) --- eqclient.ini [Options], every shipped file:
 // InverseMouse=0 LookSpring=0 MouseActive=1 MouseWheelZoom=1
@@ -255,6 +267,7 @@ bool isValidSettingValue(Setting s, int v) {
         case ValueKind::Bool:
             return v >= 0 && v <= info.maxValue;
         case ValueKind::Choice:
+            if (info.rawIniInt) return true;  // B1165: the oracle keeps any int
             for (int i = 0; i < info.choiceCount; ++i) {
                 if (info.choices[i].value == v) return true;
             }
@@ -278,11 +291,20 @@ int nextChoiceValue(Setting s, int v) {
 
 const char* choiceText(Setting s, int v) {
     const auto& info = settingInfo(s);
-    if (info.kind != ValueKind::Choice) return "";
+    const int i = choiceDisplayIndex(s, v);
+    return i >= 0 ? info.choices[i].text : "";
+}
+
+int choiceDisplayIndex(Setting s, int v) {
+    const auto& info = settingInfo(s);
+    if (info.kind != ValueKind::Choice || info.choiceCount == 0) return -1;
     for (int i = 0; i < info.choiceCount; ++i) {
-        if (info.choices[i].value == v) return info.choices[i].text;
+        if (info.choices[i].value == v) return i;
     }
-    return "";
+    // B1165: SpellParticleCastFilter's combobox starts at index 7 and takes
+    // the index of the first DAT_00793b4c entry equal to the value
+    // (0x53b9e9..0x53ba07: push 7; pop edx ... mov edx, eax).
+    return info.rawIniInt ? info.choiceCount - 1 : -1;
 }
 
 Setting filterAt(int row) {
@@ -345,34 +367,71 @@ std::string settingIniText(Setting s, int v) {
     return buf;
 }
 
-bool parseSettingIniText(Setting s, const std::string& text, int& out) {
+bool isIniFloatSetting(Setting s) {
     const auto& info = settingInfo(s);
-    const bool isFloat = (info.kind == ValueKind::Step && info.iniDivisor > 0.0f) ||
-                         (info.kind == ValueKind::Choice && info.iniFloats);
-    if (isFloat) {
-        float f = 0.0f;
-        try {
-            size_t used = 0;
-            f = std::stof(text, &used);
-            if (used == 0 || !std::isfinite(f)) return false;
-        } catch (...) {
-            return false;
-        }
-        if (info.kind == ValueKind::Step) {
-            const int v = static_cast<int>(std::lround(f * info.iniDivisor));
-            if (!isValidSettingValue(s, v)) return false;
-            out = v;
-            return true;
-        }
-        int best = -1;
-        float bestD = 0.0f;
-        for (int i = 0; i < info.choiceCount; ++i) {  // the nearest choice
-            const float d = std::fabs(info.iniFloats[i] - f);
-            if (best < 0 || d < bestD) { best = i; bestD = d; }
-        }
-        if (best < 0) return false;
-        out = info.choices[best].value;
-        return true;
+    return (info.kind == ValueKind::Step && info.iniDivisor > 0.0f) ||
+           (info.kind == ValueKind::Choice && info.iniFloats);
+}
+
+float settingTableFloat(Setting s, int v) {
+    const auto& info = settingInfo(s);
+    if (info.kind == ValueKind::Step && info.iniDivisor > 0.0f)
+        return static_cast<float>(v) / info.iniDivisor;
+    if (info.kind == ValueKind::Choice && info.iniFloats) {
+        for (int i = 0; i < info.choiceCount; ++i)
+            if (info.choices[i].value == v) return info.iniFloats[i];
+    }
+    return static_cast<float>(v);
+}
+
+float appliedSettingFloat(Setting s, int v, const std::optional<float>& raw) {
+    return raw ? *raw : settingTableFloat(s, v);
+}
+
+float clampSettingIniFloat(Setting s, float f) {
+    // B1165 (#484): the oracle's loader clamps before anything reads the
+    // float (eqgame.exe.c:132608-132637): opacity and density to [0, 1],
+    // the near clip to [1, 8].
+    const bool nearClip = settingInfo(s).iniFloats == Environment::kNearClipIniValues;
+    return nearClip ? Environment::clampNearClipIni(f) : Environment::clampUnitIni(f);
+}
+
+bool parseSettingIniFloat(Setting s, const std::string& text, int& display,
+                          std::optional<float>& applied) {
+    if (!isIniFloatSetting(s)) return false;
+    const auto& info = settingInfo(s);
+    float f = 0.0f;
+    try {
+        size_t used = 0;
+        f = std::stof(text, &used);
+        if (used == 0 || !std::isfinite(f)) return false;
+    } catch (...) {
+        return false;
+    }
+    f = clampSettingIniFloat(s, f);
+    int v = 0;
+    if (info.kind == ValueKind::Step) {
+        // fable's slider shows the nearest step.
+        v = static_cast<int>(std::lround(f * info.iniDivisor));
+        if (!isValidSettingValue(s, v)) return false;
+    } else {
+        // The oracle's combobox shows the first choice whose value is >= the
+        // float (0x53b93f..0x53b985, 0x53b994..0x53b9da), not the nearest.
+        const int i = Environment::choiceForIniFloat(info.iniFloats, info.choiceCount, f);
+        if (i < 0) return false;
+        v = info.choices[i].value;
+    }
+    display = v;
+    // ... while the client APPLIES the clamped float itself (B1165 fix, MR
+    // !318 note 7756: _DAT_00985810.. hold it as read, 0x495f29 pushes it).
+    applied = (f == settingTableFloat(s, v)) ? std::nullopt : std::optional<float>(f);
+    return true;
+}
+
+bool parseSettingIniText(Setting s, const std::string& text, int& out) {
+    if (isIniFloatSetting(s)) {
+        std::optional<float> applied;
+        return parseSettingIniFloat(s, text, out, applied);
     }
     try {
         size_t used = 0;
@@ -383,6 +442,13 @@ bool parseSettingIniText(Setting s, const std::string& text, int& out) {
     } catch (...) {
         return false;
     }
+}
+
+std::string settingIniText(Setting s, int v, const std::optional<float>& raw) {
+    if (!raw || !isIniFloatSetting(s)) return settingIniText(s, v);
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%f", static_cast<double>(*raw));
+    return buf;
 }
 
 // The `/filter` reply text, eqstr_us.txt 1316-1353 (the name each one's

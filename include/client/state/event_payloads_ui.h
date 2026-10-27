@@ -18,6 +18,7 @@
 
 #include "client/hotbar/hotbar_slot_type.h"  // T156: HotbarSlotAssignedData carries the enum, not a raw uint8_t
 #include "client/spell/spell_visual_vocabulary.h"  // T381: SpellCastVisual*Data carry the render vocabulary by value, not a SpellDatabase*
+#include "client/spell/spell_fx_options.h"  // B1165: SpellCastVisual*Data carry the On-For filter inputs
 
 class HCMap;
 class PathfinderNavmesh;
@@ -139,6 +140,11 @@ struct SpellCastVisualStartedData {
     // B1148 (#468): spell field 120 CastingAnim, the animation id whose track
     // length eqgame adds to the Source duration (0x47ddd4); 0 = unknown.
     int castAnim = 0;
+    // B1165 (#484): what the Options > Particles "On For:" filter reads of the
+    // caster and of the missile's target (EQ::SpellFxActor, spell_fx_options.h):
+    // NPC/PC/corpse, in my group, in my raid, me. Default = no such spawn.
+    EQ::SpellFxActor casterFx;
+    EQ::SpellFxActor targetFx;
     // B1152 (#472): the target the missile flies to (eqgame 0x476b12 sec. 3,
     // FUN_0047bf6c — the end point of the projectile path). The local
     // player's current target for a player cast, 0 for an NPC cast the client
@@ -171,6 +177,9 @@ struct SpellCastVisualCompleteData {
     // cast can land without this client having seen its BeginCast.
     EQ::SpellVisualVocabulary spellVisual;
     int fxGateLevel = 1;  // B1144: see SpellCastVisualStartedData
+    // B1165 (#484): the landing's On-For inputs (stage 2 on caster + target).
+    EQ::SpellFxActor casterFx;
+    EQ::SpellFxActor targetFx;
     // B1174 (#493): what eqgame's OP_Action handler needs to play the spell's
     // CastingAnim on the source (EQ::ActionPlaysSourceCastAnim,
     // spell_action_anim.h): field 120, the source spawn's class (0 = unknown)

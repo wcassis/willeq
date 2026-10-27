@@ -285,9 +285,9 @@ TEST(SpellImpactVisualProducer, OnlyTheBeginCastArmCreatesASource) {
     const std::string started = fx.substr(sb, fb - sb), complete = fx.substr(fb, fe - fb);
     EXPECT_EQ(complete.find("createCastGlow("), std::string::npos)
         << "an OP_Action must not create a Source (no BeginCast = no Source)";
-    EXPECT_NE(started.find("createCastGlow(d.casterId, d.spellId, d.castTimeMs, d.fxGateLevel, d.castAnim, d.targetId)"),
+    EXPECT_NE(started.find("createCastGlow(d.casterId, d.spellId, d.castTimeMs, d.fxGateLevel, d.castAnim, d.targetId, d.casterFx, d.targetFx)"),
               std::string::npos);
-    EXPECT_NE(complete.find("createLanding(d.casterId, d.targetId, d.spellId, d.fxGateLevel)"),
+    EXPECT_NE(complete.find("createLanding(d.casterId, d.targetId, d.spellId, d.fxGateLevel, d.casterFx, d.targetFx)"),
               std::string::npos);
 }
 
