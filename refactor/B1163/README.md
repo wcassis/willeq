@@ -19,10 +19,14 @@ Branch cut at `origin/fable 1150a34a` (B1153 merged).
 **Reworked again after the re-review FAIL (MR !313 note 7704, finding 1).** The
 previous text read the word as a distance per tick and called 30 u/s
 "derived". It is not: the word is a thrust term in a damped velocity, and the
-oracle legs that measured 30 u/s built no missile object at all. **The answer
-to (A) is: the speed is NOT derivable from the files or from the code for the
-measured legs. `kMissileSpeed = 30 u/s` is the B1152 record-80 calibration,
-and the model is below.**
+oracle legs that measured 30 u/s built no missile object at all. **What is
+proven: the `FUN_00476f34` missile object did not draw the measured flight (its
+only caller is `00460737` and none of the three captures has a `0x4033` row).
+The path that did draw it is untraced (see below and open assumption 1), so
+whether a spellsnew.edd/.eff field drives that flight is OPEN, not shown to be
+runtime-only. `kMissileSpeed = 30 u/s` is the B1152 record-80 calibration, and
+the model is below. ORCHESTRATOR RULING on (A): accepted as a stated limit; the
+drawing path is the follow-up card.**
 
 ### Where the word comes from
 
@@ -42,7 +46,9 @@ Its local branch writes the word `[missile+0x28]` (exe.c 95390-95412):
 `00460737 call 0x476f34`, in the `0x4033` arm of the message handler
 `FUN_0045b8f0` (a raw `E8`/`E9` scan of `.text` finds no other; the image holds
 no `0x00476f34` pointer constant; the missile list head `[0x905cd0]` is
-written only by the constructor, `00476f6f` / `00476f8b`, and by removal). The
+written by the constructor, `00476f6f` / `00476f8b`, by removal (`004778e2` /
+`004778fd`), and by a null write in a global teardown,
+`0049765d mov dword ptr [0x905cd0], esi` with esi = 0, which creates no missile). The
 call passes `ebx`, the handler's message argument
 (`0045b90a mov ebx, dword ptr [ebp + 0x10]`), as the third argument, so the
 constructor takes its RECEIVED branch and copies the word, the position, the
@@ -112,9 +118,16 @@ per dt unit, 64 u/s if time() is ms), not "1.5 u/tick".
 - **Homing and removal** (`FUN_004766aa`, `00445587`, before the physics):
   while the word is non-zero (`004766de fld dword ptr [esi + 0x28]` /
   `004766e8 jnp 0x476ad0`) it re-stores the XY distance to the target
-  (`004768b1 call 0x439c41` / `004768b9 fstp dword ptr [eax + 0xff4]`) every pass
-  (the refresh compare is unsigned, `004767d1 cmp eax, edi` / `004767d3 jbe 0x476930`,
-  and the actor's `+0xe4` is set 2000 ahead for type 9, `00476f19`, so it wraps);
+  (`004768b1 call 0x439c41` / `004768b9 fstp dword ptr [eax + 0xff4]`) every pass,
+  in two steps. The refresh writes `+0xe4` = now (`00476810 mov dword ptr
+  [ecx + 0xe4], edx`) and the compare is unsigned (`004767d1 cmp eax, edi` /
+  `004767d3 jbe 0x476930`). Pass 1: the stored distance is 2000, so the
+  threshold is 1000 (`004767b9 mov edi, 0x3e8`), and the actor's `+0xe4` was set
+  2000 ahead for type 9 (`00476f19 add dword ptr [esi + 0xe4], 0x7d0`), so the
+  compare wraps and the first refresh runs. From pass 2 on, a stored distance
+  under 200.0 (`00476730 fcomp dword ptr [0x641f90]`) sets the threshold to 0
+  (`00476749 xor edi, edi`), so the refresh runs whenever elapsed > 0, i.e. every
+  pass;
   under 32 units (`00476939 fcomp dword ptr [0x64112c]`) it snaps the heading
   to the target (`0047694c mov dword ptr [esi + 0x2c], eax`). When the distance
   stored at the PREVIOUS pass is below `[0x6410b4]` = 2.0
