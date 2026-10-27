@@ -1272,8 +1272,9 @@ int runScriptedHarness() {
                 const auto box = targetAnimatedNode->getTransformedBoundingBox();
                 th = box.MaxEdge.Y - box.MinEdge.Y;
             }
-            std::printf("[fx-harness] 0x4033 geometry: source (y,x,z) %.4f %.4f %.4f target %.4f %.4f %.4f "
-                        "height %.4f heading %.4f word %.4f +0x62 %d sim_hz %d\n",
+            // %.9g: every float exactly, so missile_flight_model.py starts from the same bits.
+            std::printf("[fx-harness] 0x4033 geometry: source (y,x,z) %.9g %.9g %.9g target %.9g %.9g %.9g "
+                        "height %.9g heading %.9g word %.9g +0x62 %d sim_hz %d\n",
                         cp.Z, cp.X, cp.Y, tp.Z, tp.X, tp.Y, th, w.heading, w.word, static_cast<int>(w.damped),
                         simHz);
             spellVisualFX->spawnMissileObject(w, harnessOpts.casterLevel);

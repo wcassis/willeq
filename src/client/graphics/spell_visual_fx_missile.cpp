@@ -129,12 +129,13 @@ void SpellVisualFX::updateMissileObjects(float delta_time)
             missileEntity(m.o.w.targetId, target);
             const SpellMissile::SpellFields* spell =
                 m.o.w.type == SpellMissile::kTypeSpell ? missileSpellFields(m.o.w.spellId) : nullptr;
+            m.targetHeight = target.height;
             // The caster's physics ticks every frame here: its tick age is 0.
             if (SpellMissile::Spawn(m.o, now, spell, source, target, 0)) {
                 LOG_INFO(MOD_SPELL, "B1170 missile spawn: source={} target={} spell={} stage={} life={} ms "
-                         "pos=({:.2f},{:.2f},{:.2f})",
+                         "pos=({:.2f},{:.2f},{:.2f}) target_height={:.9g}",
                          m.o.w.sourceId, m.o.w.targetId, m.o.w.spellId, m.o.stage, m.o.lifeEnd - now,
-                         m.o.w.pos[0], m.o.w.pos[1], m.o.w.pos[2]);
+                         m.o.w.pos[0], m.o.w.pos[1], m.o.w.pos[2], m.targetHeight);
 #ifdef EQT_HAS_GLES2
                 if (spell && m.o.stage != 0) fireMissileStage(m, *spell);
 #endif
@@ -146,10 +147,12 @@ void SpellVisualFX::updateMissileObjects(float delta_time)
         } else if (SpellMissile::PassDue(m.o, now)) {
             SpellMissile::Entity target;
             missileEntity(m.o.w.targetId, target);
+            target.height = m.targetHeight;
             remove = SpellMissile::Pass(m.o, now, target);
-            LOG_DEBUG(MOD_SPELL, "B1170 missile pass: spell={} t={} pos=({:.2f},{:.2f},{:.2f}) stored={:.2f} hit={}",
-                      m.o.w.spellId, now, m.o.w.pos[0], m.o.w.pos[1], m.o.w.pos[2], m.o.stored,
-                      m.o.hit ? 1 : 0);
+            LOG_INFO(MOD_SPELL, "B1170 missile pass: spell={} t={} pos=({:.6f},{:.6f},{:.6f}) "
+                     "vel=({:.6f},{:.6f},{:.6f}) heading={:.6f} aim={:.6f} aimTarget={:.6f} stored={:.6f} hit={}",
+                     m.o.w.spellId, now, m.o.w.pos[0], m.o.w.pos[1], m.o.w.pos[2], m.o.w.vel[0], m.o.w.vel[1],
+                     m.o.w.vel[2], m.o.w.heading, m.o.w.aim, m.o.aimTarget, m.o.stored, m.o.hit ? 1 : 0);
             if (remove) {
                 LOG_INFO(MOD_SPELL, "B1170 missile removed: spell={} at t+{} ms ({}) pos=({:.2f},{:.2f},{:.2f})",
                          m.o.w.spellId, now, m.o.hit ? "hit" : "lifetime", m.o.w.pos[0], m.o.w.pos[1],

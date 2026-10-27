@@ -192,9 +192,19 @@ def main():
     if not m:
         print('no geometry line in', a.runlog)
         return 2
+    # The height the object itself read at its spawn (one step after the
+    # injection, after the target's animation advanced) wins over the
+    # injection-time value the geometry line carries.
+    spawn_h = None
+    for line in open(a.runlog, errors='replace'):
+        h = re.search(r'B1170 missile spawn: .* target_height=(\S+)', line)
+        if h:
+            spawn_h = float(h.group(1))
     v = [float(x) for x in m.groups()[:9]]
     geo = dict(sy=v[0], sx=v[1], sz=v[2], ty=v[3], tx=v[4], tz=v[5], height=v[6], heading=v[7], word=v[8],
                damped=int(m.group(10)))
+    if spawn_h is not None:
+        geo['height'] = spawn_h
     sim_hz = int(m.group(11))
     frames, removed = fly(geo, a.inject_at, a.fps, sim_hz, a.life)
     harness = {}

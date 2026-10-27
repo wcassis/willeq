@@ -455,6 +455,9 @@ private:
         SpellMissile::Object o;
         int gateLevel = kMeasuredCasterLevel;
         uint16_t anchor = 0;  // the ParticleManager anchor the object's emitters follow
+        // The target's height as read at the spawn: the client's actor
+        // height (+0x238) is a per-actor value, not the animated pose's box.
+        float targetHeight = 0.0f;
     };
     std::vector<MissileFx> m_missile_objects;
     double m_missile_clock_ms = 0.0;  // the object clock (time() read as ms)
