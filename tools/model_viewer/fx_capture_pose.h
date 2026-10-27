@@ -2,15 +2,15 @@
 // captures were taken at, so a world-fixed EDD word (spellsnew.edd +0x12C, the
 // world +X drift: EQGraphicsDX9 0x10062917 `world x += s*D12C*dt`, applied by
 // the sim at src/client/graphics/sim_particles.cpp updateEddMotion) points
-// where it pointed on the oracle's screen, and the caster/target face the
-// camera the way the oracle's did (the +0x60 emitters orient to the attach
-// point, i.e. to the actor's facing).
+// where it pointed on the oracle's screen.
 //
 // Before B1167 the b1130 presets built the scene in an arbitrary world frame:
 // caster at the origin facing +Z, the camera on +Z looking back at her
 // (kHarnessFaceOnRotY), the target solved at its screen anchor. Every screen
-// fact held, but the world's +X axis sat 90 deg off-screen-left, and the
-// caster faced the camera where the oracle's turned her back to it.
+// fact held, but the world's +X axis ran straight to screen-left, where the
+// capture's ran into the scene (45 deg off the camera's axis). The caster
+// still faces the camera, where the oracle's turned her back to it (RULING
+// REQUEST, below).
 //
 // The capture facts (refactor/B1167/README.md sec. 2; decoded by
 // refactor/B1167/scripts/oracle_poses.py from review/B1130/oracle/<leg>/capture.pcap):
@@ -27,11 +27,14 @@
 // (kHarnessFaceOnRotY's note) an actor at heading h faces the direction at angle
 // +h deg from +X toward +Z, and a camera at DirHeading d sits at angle h + d.
 //
-// The harness keeps its fit (camera on +Z, i.e. at angle 90 deg from the
-// caster) and then turns the WHOLE rig -- camera, caster, target -- about the
-// caster's vertical axis by psi = h_caster + d - 90 deg, so the rig's camera
-// lands where the capture's did relative to the world axes. A rigid turn of
-// the rig changes no screen fact the fit solved.
+// The harness keeps its fit (face-on actors, camera on +Z, i.e. at angle 90
+// deg from the caster), then turns the rig -- camera and target position --
+// about the caster's vertical axis by psi = h_caster + d - 90 deg, so the
+// camera lands where the capture's did relative to the world axes (a rigid
+// turn: every solved pixel holds). The actors turn with it and keep facing
+// the camera; turning them to their capture headings (rotYForHeading) is the
+// RULING REQUEST of refactor/B1167/README.md (it moves the B1130 caster box or
+// the bless-only standing-height ratchet).
 //
 // Header-only and Irrlicht-free (tests/test_fx_harness.cpp, B1167CapturePose*).
 #pragma once
@@ -64,14 +67,6 @@ inline float rotYForHeading(float h512) { return -headingDeg(h512); }
 inline float rigYawDeg(const CapturePose& p) {
     return headingDeg(p.casterHeading512) + headingDeg(p.cameraDirHeading512) - kHarnessCameraAngleDeg;
 }
-
-// The node rotation Y an actor needs BEFORE the turn (in the fit's frame) so
-// that, turned by psi, it faces its capture heading. Facing angle = -rotY.
-// Not applied yet: with the caster at heading 0 the fit's camera comes to
-// 30.28 units and the human target renders 245 px, outside the bless-only
-// standing-height ratchet (refactor/B1167/README.md RULING REQUEST); the
-// harness keeps both actors face-on (kHarnessFaceOnRotY) through the turn.
-inline float preTurnRotY(float h512, float psiDeg) { return rotYForHeading(h512) + psiDeg; }
 
 // Turn a horizontal (x, z) offset by psi (deg, from +X toward +Z).
 inline void turnXZ(float psiDeg, float& x, float& z) {

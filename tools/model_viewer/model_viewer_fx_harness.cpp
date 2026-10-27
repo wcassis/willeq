@@ -890,9 +890,13 @@ const fxharness::CapturePose* b1130CapturePose() {
 // +0x12C drifts along world +X (EQGraphicsDX9 0x10062917), which before this
 // turn ran straight across the screen while the oracle's ran into the scene.
 // The turn is rigid, so every pixel fact the fit solved (caster feet/height,
-// target feet) holds. Both actors turn with the rig and keep facing the
-// camera (their capture headings wait on the ratchet ruling,
-// model_viewer_spell_test.cpp and refactor/B1167/README.md).
+// target feet) holds. Both actors turn WITH the rig and keep facing the
+// camera: their capture headings (caster 0 = her back three-quarters to the
+// camera, target 160) wait on a ruling, because fitting on the back-turned
+// caster moves the camera to 30.28 units and the target to 245 px, outside
+// the bless-only standing-height ratchet, while turning her after the fit
+// leaves her 200 px with feet row 591, off B1130's 209 px / 598
+// (refactor/B1167/README.md sec. 2 and RULING REQUEST).
 void turnB1130Rig(const fxharness::CapturePose& pose) {
     const float psi = fxharness::rigYawDeg(pose);
     const core::vector3df pivot = animatedNode ? animatedNode->getAbsolutePosition() : core::vector3df(0, 0, 0);
@@ -906,14 +910,14 @@ void turnB1130Rig(const fxharness::CapturePose& pose) {
     camera->setTarget(look);
     camera->updateAbsolutePosition();
     if (animatedNode) {
-        animatedNode->setRotation(core::vector3df(0, fxharness::rotYForHeading(pose.casterHeading512), 0));
+        animatedNode->setRotation(animatedNode->getRotation() - core::vector3df(0, psi, 0));
         animatedNode->updateAbsolutePosition();
     }
     if (targetAnimatedNode) {
         const core::vector3df t = turn(core::vector3df(b1130TargetX, b1130TargetY, b1130TargetZ));
         b1130TargetX = t.X;
         b1130TargetZ = t.Z;
-        targetAnimatedNode->setRotation(core::vector3df(0, fxharness::rotYForHeading(pose.targetHeading512), 0));
+        targetAnimatedNode->setRotation(targetAnimatedNode->getRotation() - core::vector3df(0, psi, 0));
         targetAnimatedNode->updateAbsolutePosition();
     }
     std::printf("[fx-harness] %s: rig turned %.2f deg about the caster (capture headings caster %.1f / target %.1f, "

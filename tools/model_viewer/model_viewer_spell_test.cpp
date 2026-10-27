@@ -285,13 +285,9 @@ bool initSpellTestMode() {
 
     // B1138: in a preset the caster (and the `#spawn` target beside her)
     // faces the camera; otherwise the caster faces the target. B1167 (#486):
-    // the b1130 presets are turned to the capture's world yaw once the fit is
-    // done (setupSpellTestCamera -> turnB1130Rig), and the turn carries both
-    // actors with it, so they still face the camera. Turned to their capture
-    // headings (caster 0, target 160; fx_capture_pose.h) the caster's back-on
-    // silhouette refits the camera to 30.28 units and the target renders
-    // 245 px, outside the B1166 standing-height ratchet (238 +-3 px,
-    // fx_target_anchor.h), which is bless-only: refactor/B1167/README.md
+    // the b1130 presets fit on these face-on actors, then turnB1130Rig turns
+    // the rig -- actors included -- to the capture's world yaw
+    // (fx_capture_pose.h); the actors' own capture headings are the README's
     // RULING REQUEST.
     const bool preset = !harnessOpts.cameraPreset.empty();
     const float casterRotY = preset ? kHarnessFaceOnRotY : 90.0f;
