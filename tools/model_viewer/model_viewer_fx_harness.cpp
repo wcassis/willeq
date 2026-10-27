@@ -687,8 +687,8 @@ bool initHarnessParticles() {
     // B1164 (#483): the attach scale s, the client's actor scale from the
     // entity's race and server size, as the renderer computes it.
     spellVisualFX->setEntityAttachScaleCallback([](uint16_t id) -> float {
-        if (id == casterEntityId) return EQ::SpellFxAttachScale(harnessOpts.casterRace, harnessOpts.casterSize);
-        if (id == targetEntityId) return EQ::SpellFxAttachScale(harnessOpts.targetRace, harnessOpts.targetSize);
+        if (id == casterEntityId) return EQ::SpellFxAttachScale(harnessOpts.casterRace, harnessOpts.casterGender, harnessOpts.casterSize);
+        if (id == targetEntityId) return EQ::SpellFxAttachScale(harnessOpts.targetRace, harnessOpts.targetGender, harnessOpts.targetSize);
         return 0.0f;
     });
     // B1152 (#472): the missile gate reads the launch/arrival times from the

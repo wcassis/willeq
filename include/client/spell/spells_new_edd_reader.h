@@ -256,11 +256,10 @@ struct SpellsNewEddMotion {
 SpellsNewEddMotion decodeSpellsNewEddMotion(const uint8_t* entry416);
 
 // B1149: the attach scale s for +0x6C / +0x19C. B1164 (#483) pinned the
-// client's s for a Source / Target slot on an actor: its actor scale, 0.2 x
-// its server size (EQ::SpellFxAttachScale, spell_fx_attach_scale.h; lane-5
+// client's s for a Source / Target slot on an actor: its actor scale
+// (EQ::SpellFxAttachScale, spell_fx_attach_scale.h -> actor_scale.h; lane-5
 // read 1.200000 on a size-6 human). This constant is what an entity nothing
-// resolves, a race that rule does not cover, and the Middle stage's missile
-// actor (not traced) still get.
+// resolves and the Middle stage's missile actor (not traced) still get.
 constexpr float kSpellFxAttachScale = 1.0f;
 
 class SpellsNewEddReader {

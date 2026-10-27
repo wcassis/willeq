@@ -13,52 +13,45 @@
 //     (0x10046830 binds SPELLPOINT_DEFAULT to the model tag with no suffix,
 //     e.g. HUM -> HUM_TRACKDEF, whose one frame is the identity rotation,
 //     |q| = 16384/16384), so the row's length is the ACTOR's scale.
-//   * The actor's scale is eqgame 0x47a0e9's return (called by 0x47fa9e at
-//     0x47fb82, stored at actor +0xC4 by 0x47fb87): 0.2 x the spawn's size,
-//     the size being the race default of 0x47a147 when the spawn carries
-//     none (size <= 0).
+//   * The actor's scale (eqgame actor +0xC4) is the one rule of
+//     include/client/graphics/actor_scale.h, EQT::Graphics::clientActorScale,
+//     shared with B1172 (#491, the model's drawn scale). Every branch of it is
+//     cited there and re-read in refactor/B1164/README.md sec. 10.2:
+//       - size: the spawn's size (+0x23c) when > 0, else 0x47a147's race /
+//         gender default, stored back (0x47fb07..0x47fb30);
+//       - 0x47a0e9 (called at 0x47fb82, stored at +0xC4 by 0x47fb87):
+//         0.2 x size, x 0.7692308 while the NewZone flag at 0x923c30 is set;
+//         races 0x193 and >= 0x195 (0x47937c): size / 6 x 1.3, or size / 6
+//         while 0x923c30 or the byte 0x923798 is set;
+//       - 0x47a239 (called at 0x47fbff with the scale slot preset to -1.0 at
+//         0x47fbbe): races 0x31, 0x49, 0x72, 0x8d..0x8f, 0x9e, 0xc4, 0xfc,
+//         0x194 -> 1.0, 0x48 -> 2.0, 0x6c -> 0.05; written over +0xC4 at
+//         0x47fc41 when it is not -1.0. Every other race keeps 0x47a0e9's.
 // The lane-5 read (gdb on 0x10060b27, refactor/B1164/scripts/b1164_s_gdb.py)
 // gave s = 1.200000 on the Target slots of record 80 cast on a race-1
-// `#spawn` of size 6 (row 0 = -0.459220, 1.108655, 0; 0x1005c4f0 = 1.000000)
-// and s = 1.000000 / 0.999755 on the Source slots of a race-6 caster of size 0
-// (race default 5.0) -- 0.2 x 6 and 0.2 x 5.
+// `#spawn` of size 6 (row 0 = -0.459220, 1.108655, 0; 0x1005c4f0 = 1.000000),
+// 1.000000 on the Target slots of the same cast on a race-6 `#spawn` of size 5
+// (DarkF), and 1.000000 / 0.999755 on the Source slots of a race-6 caster of
+// size 0 (race default 5.0) -- 0.2 x 6, 0.2 x 5, 0.2 x 5.
 //
-// Scope: races 0..0x19. For those 0x47a239 (the per-race override that may
-// rewrite the actor scale) returns without writing, and 0x47937c is false, so
-// 0.2 x size is the whole rule. Other races keep the previous constant 1.0
-// (kSpellFxAttachScale): their override is not traced here.
+// The root track's |row 0| factor is read for HUM and DAF (1.000000 both,
+// refactor/B1164/scripts/b1164_root_track.py); SpellFxAttachScale() is the
+// actor scale, i.e. it takes that factor as 1 for every model.
+
+#include "client/graphics/actor_scale.h"
 
 #include <cstdint>
 
 namespace EQ {
 
-// eqgame 0x47a147: the size an actor of `race` takes when the server sends 0,
-// for the races this header covers (< 0x1a; `gender` matters only above it).
-inline float SpellFxRaceDefaultSize(uint16_t race) {
-    switch (race) {
-        case 2:  return 7.0f;   // _DAT_00642658
-        case 4:
-        case 6:  return 5.0f;   // _DAT_00640e58
-        case 7:  return 5.5f;   // _DAT_0064263c
-        case 8:  return 4.0f;   // _DAT_00642650
-        case 9:  return 8.0f;   // _DAT_00641fa0
-        case 10: return 9.0f;   // _DAT_006410cc
-        case 11: return 3.5f;   // _DAT_00642d68
-        case 12: return 3.0f;   // _DAT_00640e24
-        default: return 6.0f;   // _DAT_0064264c
-    }
-}
-
-// True when SpellFxAttachScale() applies the client's rule to `race`.
-inline bool SpellFxAttachScaleTraced(uint16_t race) { return race < 0x1a; }
-
-// The attach scale s of a spell emitter on an actor of `race` whose spawn
-// carries `serverSize` (Spawn_Struct size; <= 0 = none): the actor's scale,
-// eqgame 0x47a0e9 = 0.2 (_DAT_00640fec) x the size. 1.0 for an untraced race.
-inline float SpellFxAttachScale(uint16_t race, float serverSize) {
-    if (!SpellFxAttachScaleTraced(race)) return 1.0f;
-    const float size = serverSize > 0.0f ? serverSize : SpellFxRaceDefaultSize(race);
-    return 0.2f * size;
+// The attach scale s of a spell emitter on an actor of `race` / `gender`
+// whose spawn carries `serverSize` (Spawn_Struct size; <= 0 = none): the
+// actor's scale, EQT::Graphics::clientActorScale(). The two flags are the
+// client's globals 0x923c30 (NewZone_Struct offset 592) and 0x923798; both
+// read 0 on lane 5 (s = 0.2 x 6 exactly), which is the default here.
+inline float SpellFxAttachScale(uint16_t race, uint8_t gender, float serverSize,
+                                bool zoneScaleFlag = false, bool flag923798 = false) {
+    return EQT::Graphics::clientActorScale(race, gender, serverSize, zoneScaleFlag, flag923798);
 }
 
 }  // namespace EQ

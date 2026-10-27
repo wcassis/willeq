@@ -269,9 +269,10 @@ public:
     void setLocalPlayerIdCallback(LocalPlayerIdCallback cb) { m_local_player_cb = std::move(cb); }
 
     // B1164 (#483): the attach scale s of an entity's spellsnew.eff slots,
-    // EQ::SpellFxAttachScale(race, server size) (spell_fx_attach_scale.h:
-    // the client's actor scale, 0.2 x size). Set by the renderer (the
-    // entity's race and Spawn_Struct size) and by the FX harness; unset or
+    // EQ::SpellFxAttachScale(race, gender, server size)
+    // (spell_fx_attach_scale.h: the client's actor scale, actor_scale.h). Set
+    // by the renderer (the entity's race, gender and Spawn_Struct size) and by
+    // the FX harness; unset or
     // an unknown entity = kSpellFxAttachScale (1.0).
     using EntityAttachScaleCallback = std::function<float(uint16_t entity_id)>;
     void setEntityAttachScaleCallback(EntityAttachScaleCallback cb) { m_attach_scale_cb = std::move(cb); }

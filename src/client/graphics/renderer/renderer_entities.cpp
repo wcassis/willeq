@@ -322,7 +322,8 @@ void IrrlichtRenderer::initDeferredGraphics() {
                 const auto& entities = entityRenderer_->getEntities();
                 auto it = entities.find(entity_id);
                 if (it == entities.end()) return 0.0f;
-                return EQ::SpellFxAttachScale(it->second.raceId, it->second.serverSize);
+                return EQ::SpellFxAttachScale(it->second.raceId, it->second.gender,
+                                               it->second.serverSize);
             });
 
         LOG_DEBUG(MOD_GRAPHICS, "Spell visual effects initialized");
