@@ -1,244 +1,359 @@
-# B1161 (#480): retire the 253 spellOverride -- pool rule re-derived, cast-anim term on the record path
+# B1161 (#480): retire the 253 spellOverride -- the pool rule re-derived against the record-driven field, the cast-animation term on the record path
 
-Branch `task/kb-b1161-retire-253`. Evidence: `/home/user/kb-evidence/kb-b1161-retire-253/`
-(frames + measurements for all 18 runs; the orchestrator copies it to
-`/mnt/projects/fable/review/B1161/` at hand-back). The specification is
-`glab issue view 480`. The predecessor is B1153's FOLLOW-UP, items 2 and 3
-(`refactor/B1153/README.md` "FOLLOW-UP (proposed, no cards created)"):
-"Re-derive the rule against the record-driven field and retire the 253
-override for good" (item 2) and "Wire it into the record path" (item 3, of
-B1145's +4.35 s cast-animation term that "sits in the file as an override
-word").
-
-**Merge note (orchestrator 2026-10-26 22:05Z):** `origin/fable` had moved to
-`1150a34a` (the B1153 merge, MR !311) before the retire step; `git fetch
-origin && git merge origin/fable` fast-forwarded this branch (its pre-merge
-tip was `cc85c331`, the B1159 merge -- the actual start tip, per `git
-reflog`) and the retire edits landed on top. The BEFORE numbers below are on
-`cc85c331`; the AFTER numbers are on `1150a34a` + the retire diff. The
-B1157/B1153 merges between the two tips are pixel-neutral on the six
-non-253 tour rows (bit-identical before/after, sec. 5).
+Branch `task/kb-b1161-retire-253`. The issue is the specification (`glab
+issue view 480`). It follows from B1153's FOLLOW-UP items 2 and 3
+(`refactor/B1153/README.md`, "FOLLOW-UP (proposed, no cards created)").
+This is the rework after the cold review of MR !314 (note 7654, 13
+findings). Evidence for the rework (before and after, local renders, the
+scripts, ctest logs) is in `/mnt/projects/fable/review/B1161/worker/rework/`.
+The first pass's evidence stays in `/mnt/projects/fable/review/B1161/worker/`
+for history; none of its numbers are used below.
 
 ## 0. Result
 
-- The 253 (record 35) `spellOverride` is out of `config/spell_effects.json`;
-  `spellOverrides` keeps its five: 38/41/54/458/656.
-- The pool rule is re-derived against the record-driven field (sec. 2): a
-  spell with a spellsnew.eff record draws its slots' FILE populations and
-  the rule scales NONE of them -- the pool (8192 desktop / 4096 sbc) is a
-  CAP, not a scaler (B1149 sec. 4). The half-pool bound is the no-record
-  style landing's (and the kept overrides'). Pinned by `SpellPoolRule` over
-  the largest, next-largest and a small record.
-- The +4.35 s cast-animation term is on the record path via the client's
-  computed rule -- `EQ::kSpellFxCastAnimationSeconds`, never a per-spell
-  word (sec. 3). The record-driven 253 run ends at 6.68 s, inside B1118's
-  band against the oracle's 6.52 s; the pre-B1161 style base gave 5.18 s.
-- Rendered: 253's b1118 landing PEAK moves 5.303 (0.813 of the oracle, OVER
-  the band) to 4.157 (0.637, IN the 0.45..0.72 band) -- reproducing B1153's
-  own retirement-probe gate (5.308/0.814 -> 4.188/0.642). No pool overflow
-  anywhere: the pool drops when full, on desktop and sbc alike. The five
-  kept overrides and the override-free control (93) are bit-identical
-  before/after.
+- The 253 (record 35) `spellOverride` is gone from `config/spell_effects.json`.
+  `spellOverrides` keeps five spells: 38, 41, 54, 458 and 656.
+  `ConfigKeyReachability` is green.
+- The pool rule, re-derived against the record-driven field (sec. 2): a spell
+  with a spellsnew.eff record draws its slots' FILE populations, and no rule
+  scales them. The pool (8192 desktop, 4096 sbc) is a CAP, as in the oracle.
+  Three ctests pin it:
+  - records 104, 113, 91 and 80 are re-derived from their EDD words;
+  - record 104 runs through the real worker: 4793 live at 8192, and 4071 at
+    4096, where the pool fills and drops the rest;
+  - record 0 is the no-record path.
+- The cast-animation term (sec. 3) is the client's SOURCE duration. eqgame
+  passes a Source stage `cast_ms` + the CastingAnim track, and passes a Target
+  stage no duration. The record path already carries the term in
+  `createCastGlow`'s Source caller duration.
+  - The first pass also wrote the term into the landing style definitions
+    (`getStyleSettings`, `record >= 0`). The client has no such rule. It also
+    caught record 0 = none (210 spells) and would have pushed every record
+    spell's definition out of band (review findings 1 and 2). That term is
+    removed.
+  - Record 104's computed Source end is Act+6.10, against the oracle's Source
+    end of 6.073.
+  - The 253 LANDING end does NOT meet the B1118 band. The rendered landing
+    ends at +5.250 against the oracle's 6.522, before and after this card. This
+    is a record-path gap that this card does not close (sec. 3, FOLLOW-UP).
+- The 253 tour row is IN band on noov (sec. 5). The landing PEAK coverage
+  ratio, harness over oracle 7.281, moves from 0.731 (over the B1150 p25..p75
+  band of 0.45..0.72) to 0.577 (in).
+- The b1130 record-35 row moves further from the oracle on two axes. The
+  measured cause is the override's words leaving (sec. 5). The owner is named
+  in FOLLOW-UP.
 
-## 1. What existed before the retire step
+## 1. Where the card started
 
-The 253 override (as carried at `cc85c331`, `config/spell_effects.json`
-`spellOverrides."253"`): `impact` + `spellComplete` (B1120/B1122's measured
-landing geometry: the frame-filling field, population words summing to a
-2160-sprite field) and `castGlow`. Its `emitterLifetime 4.35` was B1145's
-computed cast-animation term (+4.35 s past OP_Action) placed in the file
-"because the record path does not honour it yet" (B1153, sec. 1).
+The 253 override at `1150a34a` (the B1153 merge, which is this branch's merge
+base) was `config/spell_effects.json` `spellOverrides."253"`. It held
+`impact` + `spellComplete` (B1120/B1122's measured landing geometry and sizes)
+and `castGlow` (a 1950/s Source cloud). Its `emitterLifetime 4.35` was B1145's
+cast-animation term.
 
-B1153's retirement probe (commit 701ac572, reverted 423890ee) kept 253 for
-two owned gaps (its README, "The 253 retirement probe (and why it was
-reverted)"):
+B1153's retirement probe kept 253 for two reasons (its README, "The 253
+retirement probe (and why it was reverted)"):
 
-1. `SpellPoolRule` FAILED: the record-driven field's steady population is
-   ~14100 (desktop) / ~5930 (sbc) live sprites; `applyPopulationRule` was
-   derived against the override's 2160 field.
-2. `WhirlingWindLastsAsLongAsTheOracles` FAILED: the record-driven last
-   death was 5.18 s vs the oracle's 6.52 s (band [6.52, 7.32]).
+- `SpellPoolRule` failed on a modelled steady field of ~14100 / ~5930 sprites.
+  That number was B1153's STYLE model, `steady(impact(253)) +
+  steady(complete(253))`, not the file's field (sec. 2 gives the file's).
+- `WhirlingWindLastsAsLongAsTheOracles` failed: the style DEFINITION's last
+  death was 5.18 s against the band [6.52, 7.32].
 
-The pool rule (`src/client/graphics/environment/
-spell_effects_config.cpp:236`, "THE POOL RULE"), as carried at `cc85c331`:
-every landing plus its held
-Source peaked at HALF THE POOL -- applied to the style landing AND to the
-overrides' style-drawn landings, with per-record factors for the record
-path. The record path itself (B1149's `applySlotEmitter`) already drew the
-slots' FILE populations; the rule's record-side machinery (per-record scale
-factors) was the retired residue this unit removes.
+Both failures were about the style definition. The rendered record path
+builds its landing from record 104's EDD slots, and the slot emitter
+overwrites the definition's timing and counts
+(`src/client/graphics/environment/spell_emitter_presets.cpp:430`,
+`c.emitterLifetime = std::max(t.window(), kOneStep)`).
 
 ## 2. The pool rule, re-derived against the record-driven field
 
-The oracle's pool is a CAP, not a scaler: EQGraphicsDX9 gives each emitter a
-ring sized from its own words (capped at 100000), and when a ring is full the
-rest of that frame's emission is dropped (`cmp edx,[ebp+0x7c]; je
-0x100621f7`, 0x10061180..0x10061197); its create path has no global cap
-(0x1005e0a0 -> 0x1005a430). Fable applies the same rule at its ONE pool:
-`SimulationWorker::allocateParticle()` returns -1 when the free list is
-empty (`src/client/graphics/sim_particles.cpp:774`) -- new particles are
-dropped while the pool is full, no count is scaled. The pool size rides the
-worker input from this config (`src/client/graphics/sim/
-renderer_sim_bridge.cpp:470`). All three cites are in
-`refactor/B1149/README.md` sec. 4.
+In the oracle the pool is a CAP, not a scaler. EQGraphicsDX9 gives each
+emitter a ring sized from its own words. When a ring is full, the rest of that
+frame's emission is dropped (`cmp edx,[ebp+0x7c]; je 0x100621f7`,
+0x10061180..0x10061197). The create path has no global cap (0x1005e0a0 ->
+0x1005a430). Fable applies the same rule at its ONE pool:
+`SimulationWorker::allocateParticle()` returns -1 when the free list is empty
+(`src/client/graphics/sim_particles.cpp:774`). New particles are dropped while
+the pool is full, and no count is scaled. These cites are B1149's
+(`refactor/B1149/README.md` sec. 4).
 
-So the rule is, restated in `spell_effects_config.cpp:236` and the
-`landingPopulation.rule` text in `config/spell_effects.json`:
+The rule, restated in the comment at
+`src/client/graphics/environment/spell_effects_config.cpp:236` and in
+`landingPopulation.rule` in `config/spell_effects.json`:
 
-- a spell with NO record lands the style (impact + spellComplete); that
-  style landing plus its own held Source peaks at HALF THE POOL (two
-  overlapping no-record landings fit), and `applyPool` rescales its rates;
-- a spell WITH a record draws its slots' FILE populations (B1149) and the
-  rule scales none of them -- the pool caps at runtime (drop while full);
-- the five kept overrides' style-drawn landings keep the half-pool bound.
+- A spell with NO record (field 145 = 0) lands the style. That style landing
+  plus its own held Source peaks at HALF THE POOL, so two such landings fit,
+  and `applyPool` rescales their rates.
+- A spell WITH a record draws its slots' FILE populations. The rule scales
+  none of them, and the pool caps at runtime.
+- The five kept overrides' style-drawn landings keep the half-pool bound.
 
-The largest field a class-level 1-60 spell draws is record 35's
-(spellsnew.eff 104, spell 253): 3746 (Source) + 1168 (Target) = 4914 peak
-live -- `awk '$1==104' /mnt/projects/fable/review/B1149/pool_census.tsv`
-prints `104  Wind104eff V2  3746  1168  4914`. Inside the desktop 8192,
-over the sbc 4096 by 818, where the pool fills and drops; its steady field
-(~14100 desktop / ~5930 sbc, B1153's probe arithmetic) exceeds both. The
-next-largest is record 113 (spell 290): 107 + 2417 = 2524 (same census,
-`awk '$1==113'`). Record 80 (spells 93/38) is absent from the census, which
-prints only the records with sum > 2048 (its header) -- its field is
-<= 2048, inside both pools.
+Each record's field is re-derived from its EDD words. Per slot it is burst +
+perTick x tps x min(window, L) (`include/client/spell/spell_fx_timing.h:119`,
+`peakLive`). Source slots use the caller duration cast + 4.35 s; Target slots
+use none. Each stage sums every slot a level-60 caster draws, which is an
+upper bound. The four records below are the three largest fields of the 40
+B1130 records plus a small one. The census rows come from
+`python3 -I review/B1149/scripts/pool_census.py` (that script decodes the
+same words with its own reader). The 80 / 89 / 82 / 121 rows are not in the
+committed census, which prints only sums > 2048. They are the same script
+filtered to those records:
 
-Pinned device-free by `SpellPoolRule.WhirlingWindFieldDrawsTheFileCountsAndThePoolCapsThem`
-(`tests/test_spell_colour_and_overrides.cpp`, parametrised over both
-platforms' pools from `config/constrained_presets.json`): for records
-104/113/80 the record-path style definition carries the STYLE's own
-(kStyle-scaled) rates -- no record-specific factor -- and record 104's 4914
-is asserted to fit the 8192 pool and over the 4096 one (which fills and
-drops). The no-record half keeps its own pin,
-`EveryLandingPeaksAtTheRuleForThisPool`.
+| record | spell | Source | Target | field | 8192 | 4096 |
+|---|---|---|---|---|---|---|
+| 104 | 253 Whirling Wind | 3746 | 1168.5 | 4914.5 | fits | over by 818 |
+| 113 | 290 Color Flux | 107 | 2417.12 | 2524.12 | fits | fits |
+| 91 | 115 Dismiss Summoned | 1554 | 796 | 2350 | fits | fits |
+| 80 | 93 / 38 | 304.5 | 1302.5 | 1607 | fits | fits |
+
+`awk -F'\t' '$1==104 || $1==113 || $1==91' /mnt/projects/fable/review/B1149/pool_census.tsv`
+prints the first three rows: `4914`, `2524` and `2350`. The 40-record set is
+`tests/spell_fx_timing_oracle.h`. Of its 40 records, only 104, 113, 91 and
+112 (2338) have a census row.
+
+The rule is pinned by three tests, all device-free:
+
+- `SpellPoolRule.TheRecordFieldsAreTheFileCountsAndOnlyRecord104ExceedsAPool`
+  (`tests/test_spell_colour_and_overrides.cpp:588`) runs at both platform
+  pools. It decodes the four records slot by slot with `SpellsNewEffReader`
+  and checks each stage against the census within 0.5. It then checks that
+  104 is over 4096 and inside 8192, and that the other three fit both pools.
+- `SpellLandingPool.TheLargestRecordFieldIsCappedNotScaled`
+  (`tests/test_spell_landing_volume.cpp:361`) exercises the cap through the
+  real `SimulationWorker`. It builds record 104 from the shipped EDD the way
+  `createCastGlow` / `createLandingFromSlots` do: 4 Source slots at
+  OP_BeginCast, then 3 Target slots x 2 halves at OP_Action (1.75 s). It
+  prints `[ B1161 ] record 104 field peak 4793 live at pool 8192, 4071 at
+  pool 4096`:
+  - On 8192 the field runs at the file's counts. It peaks at 4793, which is
+    over the sbc pool and was never scaled down.
+  - On 4096 it fills the pool. The peak is 4071, the pool less the sprites
+    that die inside the counted frame. The other 722 are dropped (4793 -
+    4071).
+
+  This is the sbc census that issue Ask 3 asks for, measured. Local run:
+  `affected_suites.log`.
+- `SpellStyleOverrides.RecordZeroIsTheNoRecordPath`
+  (`tests/test_spell_colour_and_overrides.cpp:635`) covers spells 0, 1106,
+  253, 93, 290 and 54, for every style. Record 0, record -1 and the spell's
+  real record give the same `emitterLifetime`, rates and burst, and the same
+  landing last death.
 
 ## 3. The cast-animation term on the record path
 
-The client's rule: eqgame passes a cast-driven stage a duration of
-`cast_ms +` the caster model's CastingAnim track length (eqgame `0x49b977`;
-the track is `0x47ddd4`, model data -- B1148). B1145 measured the emission's
-end at a median 4.35 s past OP_Action (`review/B1145/cast_anim/`): that
-median is `EQ::kSpellFxCastAnimationSeconds`
-(`include/client/spell/spell_fx_timing.h:57`), carried per caster from the
-skeleton track at cast time by `createCastGlow` (`sourceCallerMs =
-duration_ms - sourceLatency + castAnimMs`, `src/client/graphics/
-spell_visual_fx.cpp:649`) -- so the rendered record SOURCE already honours
-the term. What the record path did NOT honour it in was the STYLE
-DEFINITION: `getStyleSettings` returned the style's 2.85 s `emitterLifetime`
-for a record's landing, so the record-driven last death was
-0.33 + 2.85 + 2.0 = 5.18 s (B1153's probe number).
+The client's rule: eqgame passes a cast-driven stage (the Source) a duration
+of `cast_ms` plus the caster model's CastingAnim track (eqgame `0x49b977`;
+the track is `0x47ddd4`, B1148). It passes the Target stage none (eqgame
+`0x47f5e1`). `SpellFxCallerDurationMs`
+(`include/client/spell/spell_fx_timing.h:87`; its Target arm at
+`include/client/spell/spell_fx_timing.h:95` is `return 0;`) encodes both. B1145 measured the term as a median 4.35 s
+(`EQ::kSpellFxCastAnimationSeconds`,
+`include/client/spell/spell_fx_timing.h:57`). B1148 reads it per caster from
+the skeleton track.
 
-The retire step moves the term onto the record path in ONE place --
-`SpellEffectsConfig::getStyleSettings` (`src/client/graphics/environment/
-spell_effects_config.cpp:504`): a record's landing emitter (`impact` /
-`spellComplete`, `record >= 0`) lives `EQ::kSpellFxCastAnimationSeconds`
--- the client's constant, not a word from a per-spell block (a kept
-override's own measured `emitterLifetime` still wins,
-`spell_effects_config.cpp:537`). No per-spell constant anywhere: the config
-carries no 253 key, and the code names the one shared constant.
+The record path carries the term in ONE place: `createCastGlow`'s Source
+caller duration (`sourceCallerMs = SpellFxCallerDurationMs(...)`,
+`src/client/graphics/spell_visual_fx.cpp:649`). It has done so since
+B1145/B1148. The landing passes `SpellFxCallerDurationMs(SpellFxStage::Target,
+0, 0)` (`src/client/graphics/spell_visual_fx.cpp:1012`). No style word
+reaches either path, because `applySlotEmitter` overwrites the definition's
+timing.
 
-Pinned by `SpellStyleOverrides.WhirlingWindLastsAsLongAsTheOracles`
-(`tests/test_spell_colour_and_overrides.cpp`): the record-path definition
-(`SpellPresets::Impact/SpellComplete(col, 253, 104)` -- record 104 = survey
-row 35, `tests/spell_anim_rows.h`) has last death
-triggerDelay + emitterLifetime + lifetimeMax = 0.33 + 4.35 + 2.0 = 6.68 s,
-inside B1118's band against the oracle's 6.52 s ([6.52, 7.32]), and
-asserts `emitterLifetime == EQ::kSpellFxCastAnimationSeconds`. The rendered
-record landing is timed from the EDD words (`applySlotEmitter` overwrites
-the style timing), so this change moves no rendered pixel for a record
-spell -- it is the definition-level end the band governs.
+The first pass added a second copy of the term to `getStyleSettings`, for the
+`impact` / `spellComplete` landing definitions of any `record >= 0`. That
+copy is removed. The style lookup adds nothing per record
+(`src/client/graphics/environment/spell_effects_config.cpp:478`,
+`(void)record;`) for three reasons:
+
+- It is not the client's rule: the client gives the landing no duration.
+- It caught record 0, which means "no record". 210 spells have field 145 = 0,
+  `getRecord(0)` is nullptr (`src/client/spell/spells_new_eff_reader.cpp:121`),
+  and those spells' definitions moved from 5.18 s to 6.68 s.
+- It changed no rendered record landing. It only moved a definition that the
+  B1121 end-band test then read. With real records, every record spell's
+  definition left that band; 93 and 38 (record 80) reached 6.68 s against
+  [4.87, 5.67].
+
+The header doc that led to the condition is corrected
+(`include/client/graphics/environment/spell_effects_config.h:135`). It now
+reads field 145, 0 = none.
+
+Pinned by `SpellStyleOverrides.WhirlingWindsRecordPathCarriesTheTermOnItsSource`
+(`tests/test_spell_colour_and_overrides.cpp:682`), from record 104's EDD
+words:
+
+- The Source caller is 1750 + 4350 = 6100 ms.
+- The four Source slots end at BC+7.85 = Act+6.10, which is 1.75 + 4.35 plus
+  the longest Source life of 1.75, less the 1.75 s cast.
+- The oracle's caster-box Source end for row 35 is Act+6.073 (B1145,
+  `tests/spell_fx_timing_oracle.h:67`), inside B1145's 0.5 s.
+- The Target takes no caller duration. Its three slots end 8.5 s after the
+  stage starts, matching `review/B1145/crosscheck.tsv` row 35
+  (`target_end_l60 8.5`).
+
+`SpellBurstOracleMatch.EveryMeasuredLandingEndsWhereTheOraclesDoes`
+(`tests/test_spell_burst_oracle_match.cpp:257`) now builds each spell with its
+client record: 93/38 -> 80, 54/656 -> 82, 41 -> 89, 458 -> 121
+(`spells_us.txt` field 145). All six stay in their bands because the record
+adds nothing to a definition. 253 left that table with its override: its
+definition is now the style's, and its landing is the record's slots.
+
+### The 253 run against the oracle's ends (rendered, the AFTER tour run)
+
+Rendered log, `after/frames/b1161_after_tour_253/run.log`:
+
+- `createCastGlow ... slots 0:2@1+0.41..6.85 1:2@1+0.41..6.85
+  2:2@1+0.41..7.35 3:2@1+0.41..7.60`. These are times from OP_BeginCast; the
+  plan's cast is 1750 ms (`after/plans/b1161_after_tour_253.plan`).
+- The Source run is 1.75 - 0.41 + 4.10 = 5.44 s. The 4.10 s is the harness
+  caster's own CastingAnim track (B1148, `refactor/B1149/README.md` sec. 5),
+  not the 4.35 s fallback.
+- The Source's last death is BC+7.60 = Act+5.85.
+- `createLanding ... slots 0:3/2@1+0.33..8.83 1:3/2@1+0.33..8.33
+  2:3/2@1+0.33..8.33`, times from OP_Action. The Target's last death is
+  Act+8.83.
+
+The harness measures the landing's VISIBLE end (`abs_end`, `summary.tsv`) at
++5.317 before and +5.250 after. The oracle's is 6.522 (B1118, lane 5,
+`refactor/B1118/README.md:185`: f6543 Act+0.802 -> f6686 Act+6.522).
+`review/B1142/gate/regression_table.tsv` row 253 has `oracle_end 6.522`.
+The record-driven run therefore ends 1.27 s short of the oracle's landing
+end. The override never changed that end (+5.317 with it). This card does not
+close it either: the rendered record landing is timed by record 104's EDD
+fade field (Target T = -5.0 fixed, L 3.0..3.5, fade-out 3.25..4.0). The end
+is info only in this card family (B1153 gate (a)), but issue Ask 2 asks for
+it, so it is reported as NOT met with these numbers (FOLLOW-UP 1).
 
 ## 4. The override is gone; the reader is gone
 
-`config/spell_effects.json`: the `"253"` key (impact / spellComplete /
-castGlow) deleted; `spellOverrides` keeps 38/41/54/458/656. The config's
-key census (`tests/test_config_key_reachability.cpp`,
-`ConfigKeyReachability`) is green -- its `spellOverrides` doc block now
-reads "five measured clouds that stay -- 38/41/54/458/656; the 253 one was
-retired by B1161". There was no 253-specific code reader: the override is
-data read by the generic `loadSpellOverrides` / `getStyleSettings` merge,
-which is pinned to the five by the census. The tombstones sit in the two
-comments that named the six (`src/client/graphics/spell_visual_fx.cpp:544`,
-`:634`).
+`config/spell_effects.json` loses the `"253"` key (impact / spellComplete /
+castGlow); `spellOverrides` keeps 38/41/54/458/656. No code read 253
+specifically. The override was data, read by the generic `loadSpellOverrides`
+/ `getStyleSettings` merge, and the key census in
+`tests/test_config_key_reachability.cpp` (`ConfigKeyReachability`, green)
+pins it to the five. The two comments in `src/client/graphics/spell_visual_fx.cpp`
+that named the six now name the five.
 
-## 5. Before/after (the only variable: the 253 retire + the rule)
+## 5. Before/after (the merge base vs the fixed tip, one variable)
 
-Sweep: `bash /home/user/kb-evidence/kb-b1161-retire-253/scripts/run_b1161.sh
-<before|after>` (evidence `before/` on `cc85c331`, `after/` on
-`1150a34a` + the retire diff; geometry copies B1149's sweep scripts
-exactly: t_begin 1.5 s, distance 0, seed 1; b1118 secs = 1.5 + cast/1000 +
-11.5, b1130 secs = 1.5 + cast/1000 + 13.5; b1118 level 60, b1130 level =
-the record's own B1130 level = 5 for record 35). Rendered on the ThinkPad
-(`model_viewer --spell-test --headless`), measured with B1139's
-`harness_measure.py` (b1118) and B1155's `harness_measure_b1130.py`
-(b1130).
+Both phases were rendered and measured LOCALLY on dev-u24 by the same script:
+`bash /mnt/projects/fable/review/B1161/worker/rework/scripts/run_b1161_local.sh
+<phase> <tree> <model_viewer>`.
 
-### tour-7 on b1118 (level 60; `summary.tsv` per run)
+- **before**: the merge base `1150a34a`, a `git archive` tree with its own
+  Release build.
+- **after**: the fixed tip `7a76f033`, recorded in `after/sweep.log`.
 
-| spell | land_cov before -> after | abs_end before -> after | src_cov before -> after |
-|---|---|---|---|
-| 253 | 5.306 -> 4.148 | +5.317 -> +5.283 | 3.804 -> 3.323 |
-| 38  | 1.993 -> 1.993 | +6.633 -> +6.633 | 0.385 -> 0.385 |
-| 41  | 2.478 -> 2.478 | +5.667 -> +5.667 | 1.129 -> 1.129 |
-| 54  | 1.204 -> 1.204 | +6.333 -> +6.333 | 0.416 -> 0.416 |
-| 458 | 0.500 -> 0.500 | +5.050 -> +5.050 | 0.120 -> 0.120 |
-| 656 | 1.204 -> 1.204 | +6.333 -> +6.333 | 0.416 -> 0.416 |
-| 93  | 1.993 -> 1.993 | +6.633 -> +6.633 | 0.385 -> 0.385 |
+The geometry is the first pass's (B1149/B1157's sweep):
 
-The five kept overrides and the override-free control 93 are bit-identical
-(no row worse without an owner); only 253 moves -- the override's landing
-geometry and its held-Source words going out. The BEFORE phase reproduces
-the baseline the after-tables compare to, `refactor/B1157/b1118_table.tsv`
-exactly (tour 253: 5.306 / +5.317 / src 3.804; sweep row r35: 5.297 /
-+5.217 / src 3.806), so the AFTER deltas are measured against B1157's own
-numbers.
+- t_begin 1.5 s, distance 0, seed 1, 30 fps, 60 Hz;
+- b1118 secs = 1.5 + cast/1000 + 11.5, at level 60;
+- b1130 secs = 1.5 + cast/1000 + 13.5, at level 5, record 35's B1130 level.
 
-### 253 in band on noov (b1118 PEAK, B1150's method)
+Measurement used B1139's `harness_measure.py` for b1118 and B1155's
+`harness_measure_b1130.py` for b1130. The tables come from
+`bash .../rework/scripts/tables.sh`.
 
-`grep ^PEAK <run>/fable_253/shape.txt`: before `PEAK f124 Act+0.88 cov
-5.303`, after `PEAK f124 Act+0.88 cov 4.157`. Against the oracle's 6.52 s
-(B1118: `refactor/B1118/README.md:185` -- f6543 Act+0.802 -> f6686
-Act+6.522, peak f6552, cov 7.28; B1153's denominator), the ratio is
-5.303/6.522 = 0.813 (OVER) -> 4.157/6.522 = 0.637, inside the
-harness/oracle landing-ratio band 0.45..0.72 (B1150's p25..p90 over the
-40-row survey, `refactor/B1150/README.md`). B1153's own probe measured the
-same move on its tree: 5.308 (0.814) -> 4.188 (0.642 IN). The `end` column
-is info only in this card family (B1150: the missile/Middle stack moved
-every end; B1153 gate (a): "end is info only") -- the rendered end
-(+5.283) is the EDD fade field's own crossing (record 104's Target slots:
-T = -5.0 fixed, L 3.0..3.5, fade-out 3.25..4.0, decoded below), and the
-override's words never reached the rendered record path (`applySlotEmitter`
-overwrites the style timing), which is why it does not move with the
-retire.
+`git diff --stat 1150a34a..7a76f033 -- src include config` touches config
+(the 253 key and the rule text), comments, and `getStyleSettings`, which
+returns to its `1150a34a` behaviour. So the only rendered variable is the
+253 key. The first pass compared a BEFORE on `cc85c331` with an AFTER on
+`1150a34a` + diff, which spanned B1153's rework (review finding 8); that
+comparison is superseded.
 
-### record 35 on b1130 (level 5; `b1130_rows.tsv` per run)
+### tour-7 on b1118 (`summary.tsv` per run: land_cov / abs_end / src_cov)
 
-| | before | after |
+| spell | before (1150a34a) | after (7a76f033) |
 |---|---|---|
-| landing_onset | +0.117 | +0.317 |
-| landing_end | +5.150 | +5.217 |
-| landing_cov | 1.785 | 1.203 |
-| source_cov | 0.947 | 0.889 |
+| 93 | 1.993 / +6.633 / 0.386 | 1.993 / +6.633 / 0.384 |
+| 38 | 1.993 / +6.633 / 0.386 | 1.993 / +6.633 / 0.384 |
+| 54 | 1.199 / +6.333 / 0.414 | 1.199 / +6.333 / 0.414 |
+| 656 | 1.199 / +6.333 / 0.414 | 1.199 / +6.333 / 0.414 |
+| 41 | 2.492 / +5.667 / 1.131 | 2.492 / +5.667 / 1.130 |
+| 253 | 5.326 / +5.317 / 3.818 | 4.169 / +5.250 / 3.331 |
+| 458 | 0.501 / +5.050 / 0.120 | 0.501 / +5.050 / 0.120 |
 
-The b1130 preset has no oracle row of its own (B1153: the decision is taken
-on the b1118 lane numbers; the b1130 half is the withov/noov delta on that
-geometry) -- the delta is the override's words leaving, nothing else moves.
+Rows 54, 656 and 458 are bit-identical. For 54, 132 frames differ, but in no
+measured value. For 656 and 458, 0 of 435 frames differ (`cmp` over
+`frames/*/frame_*.png`).
 
-### The pool: no overflow, desktop and sbc
+Rows 93, 38 and 41 differ in src_cov by 0.002 / 0.002 / 0.001. Every one of
+their 435 frames differs, starting at frame 0, by 17..126 pixels per frame
+(median 33 / 33 / 35), all inside y 387..604, x 604..714. Frame 0 is 1.5 s
+before OP_BeginCast, so no spell is drawn in it. In frame 0 of 93, 29 pixels
+differ, inside y 478..510, x 636..654: z-fighting speckle where the target's
+held-weapon model meets its body (crop `rework/crop93.png`). This is
+renderer non-determinism in the model pass, not the spell path.
 
-The pool drops when full by construction (`sim_particles.cpp:774`), so the
-live count never exceeds the pool on either platform. Record 104's field
-(4914 peak; ~14100 desktop / ~5930 sbc steady) fits the desktop 8192 peak
-and overflows nothing -- the sbc 4096 fills and drops the rest of the
-frame's emission, exactly the oracle's ring-full rule (B1149 sec. 4).
-Pinned by the parametrised `SpellPoolRule` test (both platforms from
-`config/constrained_presets.json`: 8192 / 4096).
+None of these rows moves its land_cov or end, so no row other than 253 is
+worse (acceptance D).
+
+The local renderer is not the ThinkPad's. B1157's ThinkPad baseline
+(`refactor/B1157/b1118_table.tsv`) has tour 253 at 5.306 / +5.317 / 3.804;
+the local before has 5.326 / +5.317 / 3.818. So the comparison above is
+local before vs local after. B1157's table is quoted only for orientation.
+
+### 253 in band on noov (b1118, B1150's ratio)
+
+B1150 defines the ratio as harness coverage / oracle coverage
+(`refactor/B1150/README.md:262`). Its band is the ratio's p25..p75 over the
+40 rows, 0.45..0.72 (`refactor/B1150/README.md:338`). The oracle's 253
+landing coverage is 7.281 (`review/B1142/gate/regression_table.tsv` row 253,
+`oracle_land_cov`). PEAK lines come from `grep ^PEAK
+<measure>/<run>/fable_253/shape.txt`.
+
+| run | before PEAK cov | ratio | after PEAK cov | ratio |
+|---|---|---|---|---|
+| tour 253 (self, the acceptance row) | f130 Act+1.08 5.326 | 0.731 OVER | f124 Act+0.88 4.204 | 0.577 IN |
+| r35_b1118 (other, level 60) | f124 Act+0.88 5.320 | 0.731 OVER | f124 Act+0.88 4.171 | 0.573 IN |
+
+The summary `land_cov` gives the same verdicts: tour 5.326 -> 4.169 (0.731
+-> 0.573) and r35 5.317 -> 4.146 (0.730 -> 0.569).
+
+B1153's decision table printed this move as "0.814 -> 0.642", which is
+coverage divided by the oracle's end TIME of 6.522 (FOLLOW-UP 3). With the
+correct units it is 5.308 / 7.281 = 0.729 -> 4.188 / 7.281 = 0.575.
+
+### record 35 on b1130 (level 5, `b1130_rows.tsv`)
+
+| | before (1150a34a) | after (7a76f033) | oracle (B1157 b1130 row 35) | B1157 harness |
+|---|---|---|---|---|
+| source_cov | 0.953 | 0.891 | 1.142 | 0.953 |
+| landing_cov | 1.791 | 1.207 | 7.283 | 1.791 |
+| landing_end_s | +5.150 | +5.217 | 6.950 | 5.217 |
+| landing_onset_s | +0.117 | +0.317 | | |
+
+The oracle and B1157 columns come from
+`refactor/B1157/b1130_table.tsv.after.tsv` row 35. Before and after, every
+axis is short of the oracle (B1157's verdicts: short / short / short).
+
+The retire moves two axes FURTHER from the oracle:
+
+- landing_cov 1.791 -> 1.207 (-0.584);
+- source_cov 0.953 -> 0.891 (-0.062).
+
+landing_end moves toward it (5.150 -> 5.217).
+
+The measured cause is the single variable, the 253 key. Before, the
+override's landing words drew a denser field: B1120's frame-filling geometry
+and B1123's sizes (startMid 0.496 / 0.6105 for impact / spellComplete,
+against the style's 0.198 / 0.244, `tests/test_spell_colour_and_overrides.cpp`
+`B1123SizesAreTheOraclesRoi`). Its 1950/s Source cloud added to the Source.
+After, record 104's EDD field draws its own sparse shapes and sizes. That is
+B1150's under-spread case (`refactor/B1150/README.md:332`, "The under-spread
+rows"): the retired dense cloud lit more pixels than the record's EDD shape.
+
+The b1118 noov row moved INTO band. The b1130 row moved further below a band
+it was already below. Owner: the record-104 coverage gap on the record path
+(FOLLOW-UP 2). The issue asks for the 253 row in band on noov, and it is.
 
 ### Record 104's EDD words (decoded from the shipped files)
 
-`/home/user/eq-oracle/client/spellsnew.eff` record 104 ("Wind104eff V2") +
-`spellsnew.edd` (offsets per `docs/spellsnew_format.md`; entries are 1-based
-after the 8-byte magic, 416 bytes each):
+These come from `/mnt/projects/EverQuestP1999/spellsnew.eff` record 104
+("Wind104eff V2") and `spellsnew.edd`. Entries start after the 8-byte magic,
+416 bytes each; offsets per `docs/spellsnew_format.md`. The cold review
+re-decoded and confirmed this table.
 
 | stage | slot | edd | T | L | burst | perTick | tps | fade-out |
 |---|---|---|---|---|---|---|---|---|
@@ -250,37 +365,48 @@ after the 8-byte magic, 416 bytes each):
 | Target | 1 (lvl 0)  | 433 | -5.0 | 3.0 | 2 | 3 | 25 | 4.0 |
 | Target | 2 (lvl 39) | 434 | -5.0 | 3.0 | 2 | 2 | 25 | 4.0 |
 
-T = 0 takes the caller's duration (Source: cast + 4.35; the render log's
-slot ranges give the run as 5.44 s, i.e. the client's own 1.50 s cast
-minus the 0.41 s stage latency plus the term -- `after/frames/
-b1161_after_tour_253/run.log` `createCastGlow ... slots 0:2@1+0.41..6.85`);
-T = -5.0 is a fixed 5.0 s run (Target: no caller duration). The slot ranges
-the renderer logs (each range = stage start..last death of that slot):
-Source `+0.41..6.85/6.85/7.35/7.60` relative to OP_BeginCast (the 0.41 s
-stage latency; last death BC+7.60 = Act+6.10), Target `+0.33..8.83/8.33/
-8.33` relative to OP_Action (the 0.33 s stage latency; last death
-Act+8.83) -- same log, `createLanding ... slots 0:3/2@1+0.33..8.83 ...`.
-The visible end is the field's fade, earlier on both.
-
 ## 6. Verification
 
-- Affected suites (the 27 spell/override/timing/reachability suites):
-  `cd <worktree> && rbuild kb-b1161-retire-253 test -R 'AnimRows|CastAnimation|CastAnimationEntity|ConfigKeyReachability|FxHarness|SlotRules|SlotRulesPoints|SlotRulesSim|SourceAnchors|SourceRecordRows|SpellBurstOracleMatch|SpellBurstPool|SpellBurstPoolSizing|SpellColourChain|SpellColourFromSpriteArt|SpellFxTimingFiles|SpellFxTimingRules|SpellLandingPool|SpellLandingVolume|SpellParticlePoolWiring|SpellPoolExceptions|SpellPoolPlatforms|SpellPoolRule|SpellStyleOverrides|TargetAnchors|TargetLandingBridge|TargetRecordRows'`
-  -> `100% tests passed, 0 tests failed out of 125` (14 skipped: the
-  `CastAnimationEntity` live cases that need the oracle models; evidence
-  `affected_suites.log`).
-- Hygiene (doc size/counts/claims/citations + comment claims): `rbuild
-  kb-b1161-retire-253 hygiene` -> `100% tests passed, 0 tests failed out of
-  48`, exit 0.
-- The full ctest suite runs on the GitLab runner (CI `build-test`, B1042);
-  the worktree build tree is partial by construction (rbuild builds named
-  targets), so the local run (evidence `full_suite.log`) is `32% tests
-  passed, 453 tests failed out of 662` with every failure a missing binary:
-  450 `*_NOT_BUILT` plus the three asset-pin tests
-  (`TexturesReproducible` / `PackReproducible` / `DbReproducible`), whose
-  error names the absent generator (`generate_textures`, `eqe1_builder`,
-  `willeq_db_builder`). This diff touches no `data/` pin (the changed files
-  are the 8 in `git diff --stat`).
-- Cite checker (B1156):
+- **Card suites**, the 27-suite regex of the card (`AnimRows|CastAnimation|...|TargetRecordRows`):
+  - Locally, on the fixed tip with `EQ_CLIENT_PATH=/mnt/projects/EverQuestP1999`
+    so the EDD-reading tests run: `100% tests passed, 0 tests failed out of
+    128`, 1 skipped (`CastAnimationEntity.AModelWithoutTheTrackKeepsItsCurrentAnimation`).
+    Evidence `rework/affected_suites.log`.
+  - Through `tbuild` on the ThinkPad, where the tree has no `data/eq_client`:
+    `100% tests passed, 0 tests failed out of 128`, 10 skipped. The skips
+    are the 6 `CastAnimationEntity` cases,
+    `SpellColourChain.TheMeasuredStagesAreWhatSpellsEffActuallyHolds`, and
+    three of this card's EDD tests, which skip without the client files.
+    Evidence `rework/affected_suites_thinkpad.log`.
+  - CI links `data/eq_client` to the client (`.gitlab-ci.yml`), so the EDD
+    tests run there.
+- **Hygiene**: `tbuild <wt> hygiene` (the CI hygiene job's `ctest -L
+  hygiene`) -> `100% tests passed, 0 tests failed out of 48`, 1 skipped
+  (`MemoryCapHuntScript`). Evidence `rework/hygiene.log`.
+- **Cite checker** (this README):
   `python3 -I scripts/refactor/cite_check.py refactor/B1161/README.md --tree . --extra /mnt/projects/fable --dis /mnt/projects/fable/review/B1141/ghidra/out/eqgame.dis --dis /mnt/projects/fable/review/B1141/ghidra/out/EQGraphicsDX9.dis`
-  -> `checked 18 cites, 0 problems, 0 address warnings`
+  -> `checked 30 cites, 0 problems, 0 address warnings`.
+- **Pipeline**: the final push runs with CI. Its id and status are in the
+  MR description and the MR note.
+- **Changed files**: this branch changes 9 (`git diff --stat
+  1150a34a..HEAD`): config, the header, the config `.cpp`,
+  `spell_visual_fx.cpp`, four test files, and this README. No `data/` pin,
+  golden, manifest, baseline or preset is touched.
+
+## FOLLOW-UP (proposed, no cards created)
+
+1. **253's rendered landing end.** It is +5.250 against the oracle's 6.522
+   (B1118), and record 104's computed Target last death is 8.5 s against
+   B1130's 6.950. The end is set by record 104's EDD fade field (Target
+   fade-out 3.25..4.0, L 3.0..3.5), not by any style word. Issue Ask 2's
+   "end within the B1118 band" is not met. It needs the visible-end
+   mechanism of the EDD fade (the B1154 #474 fade-onset line).
+2. **Record 104's coverage on the record path.** At b1130 it is 1.207
+   landing / 0.891 Source against the oracle's 7.283 / 1.142. At b1118 it is
+   in band (0.577). This is B1150's sparse-EDD-shape case, now without the
+   dense override that masked it at b1130.
+3. **`refactor/B1153/README.md` carries the same ratio-units error as this
+   card's first pass.** Its decision table (line 122 and the gate table at
+   line 198) prints 0.814 / 0.642, which is coverage / oracle END TIME
+   (6.522). The B1150 ratio is coverage / oracle coverage 7.281: 0.729 /
+   0.575. Not fixed here.
