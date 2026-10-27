@@ -81,6 +81,18 @@ void parseCommandLine(int argc, char* argv[], ViewerArgs& args) {
                 harnessOpts.casterAppearanceSet = true;
             }
             harnessOpts.casterGiven = true;
+        } else if (arg == "--spell-particle-density" && i + 1 < argc) {
+            harnessOpts.spellFx.density = static_cast<float>(std::atof(argv[++i]));  // B1165
+        } else if (arg == "--spell-particle-opacity" && i + 1 < argc) {
+            harnessOpts.spellFx.opacity = static_cast<float>(std::atof(argv[++i]));
+        } else if (arg == "--spell-particle-nearclip" && i + 1 < argc) {
+            harnessOpts.spellFx.nearClip = static_cast<float>(std::atof(argv[++i]));
+        } else if (arg == "--spell-particle-filter" && i + 1 < argc) {
+            harnessOpts.spellFx.castFilter = std::atoi(argv[++i]);
+        } else if (arg == "--show-spell-effects" && i + 1 < argc) {
+            harnessOpts.spellFx.showSpellEffects = std::atoi(argv[++i]) != 0;
+        } else if (arg == "--particle-options") {
+            harnessOpts.particleOptions = true;
         } else if (arg == "--worker-latency" && i + 1 < argc) {
             harnessOpts.workerLatency = std::atoi(argv[++i]) > 0 ? 1 : 0;
         } else if (arg == "--caster" && i + 1 < argc) {
@@ -135,6 +147,8 @@ void printUsageBanner(const ViewerArgs& args) {
     std::cout << "                    [--caster-appearance face,texture:e0,...,e8] [--sim-hz <hz>]" << std::endl;
     std::cout << "                    [--caster race:gender[:size]] [--target race:gender[:size]]" << std::endl;
     std::cout << "                    [--eqe1 <willeq.eqe1>] [--eqe1-dir <dir>] [--fx-seed N] [--no-ground] [--caster-px 235] [--caster-level 60]   (B1138 FX harness)" << std::endl;
+    std::cout << "                    [--spell-particle-density 1] [--spell-particle-opacity 1] [--spell-particle-nearclip 2]" << std::endl;
+    std::cout << "                    [--spell-particle-filter 24] [--show-spell-effects 1] [--particle-options]   (B1165; exit 65 off the capture ini)" << std::endl;
     std::cout << "       --debug, -d [level]  Enable debug output (default level 1)" << std::endl;
     std::cout << std::endl;
     std::cout << "Controls:" << std::endl;

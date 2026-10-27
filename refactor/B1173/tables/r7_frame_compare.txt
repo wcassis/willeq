@@ -1,0 +1,7 @@
+tip_vs_after_mid	frames 0..509	differ anywhere 510 (first 0)	differ left of col 1280 510 (first 0 (912 px))
+mid_after_vs_before	frames 0..509	differ anywhere 510 (first 0)	differ left of col 800 176 (first 92 (10141 px))
+mid_after_vs_before_to_Act	frames 0..105	differ anywhere 106 (first 0)	differ left of col 800 14 (first 92 (10141 px))
+nomid_after_vs_before	frames 0..509	differ anywhere 510 (first 0)	differ left of col 800 172 (first 118 (6286 px))
+nomid_after_vs_before_to_Act	frames 0..105	differ anywhere 106 (first 0)	differ left of col 800 0 (first none)
+after_mid_vs_nomid	frames 0..509	differ anywhere 206 (first 91)	differ left of col 1280 206 (first 91 (14438 px))
+before_mid_vs_nomid	frames 0..509	differ anywhere 206 (first 91)	differ left of col 1280 206 (first 91 (14438 px))

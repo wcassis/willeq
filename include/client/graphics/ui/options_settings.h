@@ -35,6 +35,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "client/game_options.h"
@@ -94,6 +95,13 @@ enum class Setting : uint8_t {
     SpellParticleOpacity,  // Renderer, 0..20 -> SpellParticleOpacity 0..1
     SpellParticleDensity,  // Renderer, Off/Low/Medium/High
     SpellParticleNearClip, // Renderer, Near/Medium/Far/Farthest
+    // B1165 (#484): "On For:" -- SpellParticleCastFilter, the value table at
+    // eqgame DAT_00793b4c (1/2/4/8/17/18/20/24), decoded by FUN_00491cff
+    // (include/client/spell/spell_fx_options.h).
+    SpellParticleCastFilter,
+    // B1165: [Defaults] ShowSpellEffects, the /showspelleffects switch (no
+    // Options-window control in the oracle either); 0 = no spell particles.
+    ShowSpellEffects,
     EnvParticleOpacity,
     EnvParticleDensity,
     EnvParticleNearClip,
@@ -160,10 +168,19 @@ struct SettingInfo {
      * B995: the oracle keeps some settings as FLOATS (`1.000000`). A Step
      * setting with iniDivisor > 0 persists value / iniDivisor; a Choice
      * setting with iniFloats persists iniFloats[the choice's list index].
-     * Both read back to the nearest value. Neither set = an integer key.
+     * B1165: the slot holds the step / choice the window SHOWS (nearest step;
+     * the combobox rule of choiceForIniFloat); the clamped ini float itself is
+     * the APPLIED value (OptionIniFloats below). Neither set = an integer key.
      */
     float iniDivisor = 0.0f;
     const float* iniFloats = nullptr;
+    /**
+     * B1165: a Choice setting whose int the oracle keeps RAW from the ini
+     * (no validation; SpellParticleCastFilter, eqgame.exe.c:132638): any int
+     * is a legal value, and the combobox shows the index of the value in the
+     * list, the LAST entry when it is not listed (0x53b9e9..0x53ba07).
+     */
+    bool rawIniInt = false;
 };
 
 /** B995: the ini text of `v` for setting `s` (a float in the oracle's format, or an int). */
@@ -192,8 +209,42 @@ bool isValidSettingValue(Setting s, int v);
 /** The next choice after `v` in list order (wrapping); `v` itself if not Choice. */
 int nextChoiceValue(Setting s, int v);
 
-/** The text of choice `v`, or "" if `v` is not one of `s`'s choices. */
+/** The text of choice `v`, or "" if `v` is not one of `s`'s choices
+ *  (a rawIniInt setting: the text of choiceDisplayIndex). */
 const char* choiceText(Setting s, int v);
+
+/** B1165: the list index the combobox shows for `v`: its index, else -1; a
+ *  rawIniInt setting falls back to the LAST index (0x53b9e9..0x53ba07). */
+int choiceDisplayIndex(Setting s, int v);
+
+// --- B1165 (MR !318 note 7756): the oracle APPLIES the loader's clamped ini
+// float (SpellParticleDensity / Opacity / NearClipPlane and the Env page's,
+// eqgame.exe.c:132608-132636 store it in _DAT_00985810.. as read; 0x495f29
+// pushes it unrounded into CreateEmitter); only the combobox DISPLAY rounds it
+// to a choice (0x53b93f..0x53b9da). The int slot of such a setting is that
+// display choice; this array carries the applied float when the ini gave one
+// the choice does not represent (nullopt = the choice's own table float). A
+// change through the window or /option stores the table float again, as the
+// oracle's handler does (eqgame.exe.c:245163-245204), so it clears the slot.
+using OptionIniFloats = std::array<std::optional<float>, kSettingCount>;
+
+/** Does `s` persist as a float (Step with iniDivisor, Choice with iniFloats)? */
+bool isIniFloatSetting(Setting s);
+/** The table float of value `v` (step / divisor, or the choice's iniFloats entry). */
+float settingTableFloat(Setting s, int v);
+/** The float the client APPLIES for `s`: `raw` when set, else settingTableFloat(s, v). */
+float appliedSettingFloat(Setting s, int v, const std::optional<float>& raw);
+/** The loader's clamp for `s` (eqgame.exe.c:132608-132637): near clip to [1, 8], else [0, 1]. */
+float clampSettingIniFloat(Setting s, float f);
+/**
+ * Parse a float setting's ini text: `display` = the choice / step the window
+ * shows, `applied` = the clamped float itself (nullopt when it equals the
+ * display's table float). false (outputs untouched) for junk or a non-float setting.
+ */
+bool parseSettingIniFloat(Setting s, const std::string& text, int& display,
+                          std::optional<float>& applied);
+/** The ini text for `s`: the raw float when set, else settingIniText(s, v). */
+std::string settingIniText(Setting s, int v, const std::optional<float>& raw);
 
 // --- The Filters page ---
 

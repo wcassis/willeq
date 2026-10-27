@@ -141,6 +141,10 @@ struct UiPreferences {
     // above, same flagged one-writer deviation. Only Renderer-owned slots
     // are ever collected, parsed or written; the rest stay at the default.
     OptionsLayout::OptionValues optionValues = OptionsLayout::defaultOptionValues();
+    // B1165: the applied float of a particle float key whose ini value the
+    // shown choice does not represent (options_settings.h OptionIniFloats);
+    // written back as that float, so a hand-set 0.3 survives a save.
+    OptionsLayout::OptionIniFloats optionIniFloats{};
 
     // B834 (#202): `[Tips]` -- the official section and keys (ShowTips,
     // ShowTOTD, <Key>=0), quoted from real player files; tip_preferences.h.
@@ -167,6 +171,7 @@ struct UiPreferences {
             && soundVolume == o.soundVolume
             && clipPlane == o.clipPlane
             && optionValues == o.optionValues
+            && optionIniFloats == o.optionIniFloats
             && tips == o.tips
             && textColors == o.textColors
             && cameraMode == o.cameraMode
