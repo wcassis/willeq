@@ -1,0 +1,53 @@
+# action	target	hold_ms	still_name
+# B1178 observer leg: independent unclipped check of the Troll-on-caster pair
+# from the B1130 fixed vantage (the observer, Oraclewatch, stands where
+# B1130's caster stood, -67.6,434.4; the caster, Testcaster, stands where the
+# B1118/B1130 Troll stood, -74,428 = the B1118 tour's pose; TrollF spawns at
+# the caster's position, so the pair is co-located as in the b1118 tour).
+# The observer's display is :99 (the grabbed video, 30fps); the caster's own
+# display is also grabbed (caster-video=1, llvmpipe). TrollF is stunned; 93
+# (DRU 1, caster class 6) is cast on the Troll once. The observer's camera is
+# pinned to the standing eqclient.ini Camera1 keys (the B1130 fixed camera).
+# Troll alone in the observer view = (obs_with - obs_cam_settle) difference:
+# the Troll renders in front of the co-located caster, so the difference is
+# the Troll's own silhouette, unclipped (x ~855..1026, outside the observer's
+# Main Chat window at x 427..820).
+# pose=-74,428,3.75,160
+# observer=Oraclewatch
+# observer-pose=-67.6,434.4,3.75,160
+# fps=30
+# caster-video=1
+# obs-ini-set=Options.Camera1-Distance=30.000000
+# obs-ini-set=Options.Camera1-DirHeading=192.000000
+# obs-ini-set=Options.Camera1-Heading=0.000000
+# obs-ini-set=Options.Camera1-Pitch=0.000000
+# obs-ini-set=Options.Camera1-Height=5.000000
+# obs-ini-set=Options.Camera1-Zoom=90.000000
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#memspell 93 0	0	m1
+command	#level 60	0	lvl
+command	#mana	0	mana
+obs	press	F9	0	obs_cam1
+obs	press	F9	0	obs_cam2
+obs	press	F9	0	obs_cam3
+obs	wait	3000	0	obs_cam_settle
+command	#spawn TrollF 1 1 0 30000	0	spawn93
+wait	4000	0	spawn93_settle
+command	#stun 120000	0	stun
+wait	1500	0	stun_settle
+obs	wait	2000	0	obs_with
+command	/target TrollF	0	tgt93
+wait	1500	0	tgt93_settle
+command	/cast 1	0	cast93
+wait	15500	0	fx93
+obs	command	/q	0	obs_quit
+command	/q	0	quit

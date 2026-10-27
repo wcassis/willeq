@@ -1,0 +1,65 @@
+# action	target	hold_ms	still_name
+# B1178 leg A: the B1118 oracle tour (plans/oracle_tour.tsv, verbatim) at 30 fps,
+# UNPINNED camera, chat window at its committed position -- the reproduction
+# leg: proves lane 5 still gives the committed B1118 framing, or states the
+# delta in px (refactor/B1178/README.md). Testcaster class 6 (druid) for the
+# seven gems; TrollF/L/Fr/I spawned at the caster's position, one per target
+# spell; 41/253/458 cast on the caster (tgt_self), 93/38/54/656 on the Trolls.
+# pose=-74,428,3.75,160
+# fps=30
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+wait	8000	0	settle
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#memspell 93 0	0	m1
+command	#memspell 38 1	0	m2
+command	#memspell 54 2	0	m3
+command	#memspell 41 3	0	m4
+command	#memspell 253 4	0	m5
+command	#memspell 458 5	0	m6
+command	#memspell 656 6	0	m7
+command	#level 60	0	lvl
+command	#mana	0	mana
+press	F9	0	cam1
+press	F9	0	cam2
+press	F9	0	cam3
+wait	3000	0	cam_settle
+command	/target Testcaster	0	tgt_self
+wait	1500	0	tgt_self_settle
+click	25,333	0	gem4_cast41
+wait	12000	0	fx41
+command	#mana	0	mana41
+click	25,363	0	gem5_cast253
+wait	12000	0	fx253
+command	#mana	0	mana253
+click	25,393	0	gem6_cast458
+wait	16000	0	fx458
+command	#mana	0	mana458
+command	#spawn TrollF	0	spawn93
+wait	4000	0	spawn93_settle
+command	/target TrollF	0	tgt93
+wait	1500	0	tgt93_settle
+click	25,243	0	gem1_cast93
+wait	12000	0	fx93
+command	#spawn TrollL	0	spawn38
+wait	4000	0	spawn38_settle
+command	/target TrollL	0	tgt38
+wait	1500	0	tgt38_settle
+click	25,273	0	gem2_cast38
+wait	12000	0	fx38
+command	#spawn TrollFr	0	spawn54
+wait	4000	0	spawn54_settle
+command	/target TrollFr	0	tgt54
+wait	1500	0	tgt54_settle
+click	25,303	0	gem3_cast54
+wait	12000	0	fx54
+command	#spawn TrollI	0	spawn656
+wait	4000	0	spawn656_settle
+command	/target TrollI	0	tgt656
+wait	1500	0	tgt656_settle
+click	25,423	0	gem7_cast656
+wait	12000	0	fx656
+command	/q	0	quit
