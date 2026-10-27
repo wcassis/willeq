@@ -182,10 +182,10 @@ TEST(OptionsParticles, AnOfficialOptionsSectionLoads) {
 // 0x40000000 / 0x40800000 / 0x40c00000 / 0x41000000) -- the shipped 2.0 is
 // NEAR -- and its loader's clamp to [1, 8] (eqgame.exe.c:132626-132637).
 TEST(OptionsParticles, TheNearClipTableIsTheOraclesAndTwoIsNear) {
-    EXPECT_FLOAT_EQ(Env::nearClipForChoice(0), 2.0f);
-    EXPECT_FLOAT_EQ(Env::nearClipForChoice(1), 4.0f);
-    EXPECT_FLOAT_EQ(Env::nearClipForChoice(2), 6.0f);
-    EXPECT_FLOAT_EQ(Env::nearClipForChoice(3), 8.0f);
+    EXPECT_FLOAT_EQ(OL::settingTableFloat(OL::Setting::SpellParticleNearClip, 0), 2.0f);
+    EXPECT_FLOAT_EQ(OL::settingTableFloat(OL::Setting::SpellParticleNearClip, 1), 4.0f);
+    EXPECT_FLOAT_EQ(OL::settingTableFloat(OL::Setting::SpellParticleNearClip, 2), 6.0f);
+    EXPECT_FLOAT_EQ(OL::settingTableFloat(OL::Setting::SpellParticleNearClip, 3), 8.0f);
     OptionsPanelState s;
     EXPECT_EQ(value(s, OL::Setting::SpellParticleNearClip), 0) << "the default is Near";
     EXPECT_STREQ(OL::choiceText(OL::Setting::SpellParticleNearClip, 0), "Near");

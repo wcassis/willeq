@@ -36,6 +36,8 @@
  *       _DAT_006410b4 = 2.0), eqgame.exe.c:132608-132637; the combobox shows
  *       the first choice whose value is >= the float, else the last
  *       (0x53b93f..0x53b985, 0x53b994..0x53b9da). So the shipped 2.0 is NEAR.
+ *       The client APPLIES the clamped float itself (0x495f29 pushes it into
+ *       CreateEmitter), not the shown choice: options_settings.h OptionIniFloats.
  *       The opacity slider's 21 steps stay fable's (readout "x %").
  *   N2. STILL AN ASSUMPTION: "near clip" culls particles CLOSER than the
  *       distance. The three values reach EQGraphicsDX9's engine object
@@ -87,16 +89,9 @@ constexpr int kOpacitySteps = 20;
 constexpr int kDensityChoices = 4;   // Off, Low, Medium, High
 constexpr int kNearClipChoices = 4;  // Near, Medium, Far, Farthest
 
-inline float opacityForStep(int step) {
-    if (step < 0) step = 0;
-    if (step > kOpacitySteps) step = kOpacitySteps;
-    return static_cast<float>(step) / kOpacitySteps;
-}
-
-/** Density choice -> the oracle's float (N1, PROVEN). */
-inline float densityForChoice(int choice);
-/** Near-clip choice -> world units (N1, PROVEN). */
-inline float nearClipForChoice(int choice);
+// B1165: a step / choice maps to its float through the settings table
+// (OptionsLayout::settingTableFloat); the knobs take the APPLIED float
+// (OptionsLayout::appliedSettingFloat), which is the ini's own when it set one.
 
 /** How many of `count` a family of `density` spawns (rounded, never more). */
 inline int scaledCount(int count, float density) {
@@ -154,14 +149,6 @@ inline int choiceForIniFloat(const float* values, int count, float f) {
     for (int i = 0; i < count; ++i)
         if (!(f > values[i])) return i;
     return count - 1;
-}
-
-inline float densityForChoice(int choice) {
-    return (choice >= 0 && choice < kDensityChoices) ? kDensityIniValues[choice] : 1.0f;
-}
-
-inline float nearClipForChoice(int choice) {
-    return (choice >= 0 && choice < kNearClipChoices) ? kNearClipIniValues[choice] : kNearClipIniValues[0];
 }
 
 }  // namespace Environment

@@ -15,9 +15,9 @@ dev-u24), e.g. `python3 -I peread.py eqgame.exe 00793b4c 8 i`.
 | quantity | oracle | where | fable (this card) |
 |---|---|---|---|
 | Density Off/Low/Medium/High | 0 / 0x3e800000 = 0.25 / 0x3f000000 = 0.5 / 0x3f800000 = 1.0 | options handler eqgame.exe.c 245163-245180 (Spell), 245207-245224 (Env) | `kDensityIniValues` unchanged (already right) |
-| Near Clip Near/Medium/Far/Farthest | 0x40000000 = 2 / 0x40800000 = 4 / 0x40c00000 = 6 / 0x41000000 = 8 | eqgame.exe.c 245189-245204 (Spell), 245225-245240 (Env) | `kNearClipIniValues` was {1, 2, 4, 8}; now include/client/graphics/environment/particle_options.h:139 |
-| loader clamp | density, opacity to [0, 1]; near clip to [1, _DAT_00641fa0]; default _DAT_006410b4 | eqgame.exe.c 132608-132637; peread: 0x641fa0 = 0x41000000 = 8.0, 0x6410b4 = 0x40000000 = 2.0 | `clampUnitIni` / `clampNearClipIni` (particle_options.h:146), applied in `parseSettingIniText` |
-| ini float -> combobox choice | the first choice whose value is >= the float, else the last (`fcom; test ah,0x41; jp` = next while f > v) | near clip 0x53b93f..0x53b985 vs 0x659378.. = 2/4/6/8; density 0x53b994..0x53b9da vs 0x659368.. = 0/0.25/0.5/1 | `choiceForIniFloat` (particle_options.h:153), used at src/client/graphics/ui/options_settings.cpp:420, which used to take the nearest choice |
+| Near Clip Near/Medium/Far/Farthest | 0x40000000 = 2 / 0x40800000 = 4 / 0x40c00000 = 6 / 0x41000000 = 8 | eqgame.exe.c 245189-245204 (Spell), 245225-245240 (Env) | `kNearClipIniValues` was {1, 2, 4, 8}; now include/client/graphics/environment/particle_options.h:134 |
+| loader clamp | density, opacity to [0, 1]; near clip to [1, _DAT_00641fa0]; default _DAT_006410b4 | eqgame.exe.c 132608-132637; peread: 0x641fa0 = 0x41000000 = 8.0, 0x6410b4 = 0x40000000 = 2.0 | `clampUnitIni` / `clampNearClipIni` (particle_options.h:141), applied in `parseSettingIniText` |
+| ini float -> combobox choice | the first choice whose value is >= the float, else the last (`fcom; test ah,0x41; jp` = next while f > v) | near clip 0x53b93f..0x53b985 vs 0x659378.. = 2/4/6/8; density 0x53b994..0x53b9da vs 0x659368.. = 0/0.25/0.5/1 | `choiceForIniFloat` (particle_options.h:148), used at src/client/graphics/ui/options_settings.cpp:420, which used to take the nearest choice |
 
 So the shipped `SpellParticleNearClipPlane=2.000000` is **Near**, and fable's default
 near-clip choice is now Near (index 0) for both pages; the knob value stays 2.0 at the
