@@ -16,6 +16,9 @@ import gdb, os, struct, time
 OUT = open(os.environ['S_OUT'], 'a', buffering=1)
 TMAX = float(os.environ.get('S_TMAX', '40'))
 EVERY = int(os.environ.get('S_EVERY', '50'))
+# Wine relocates the DLL (lane 5: base 0x01d70000, not its preferred 0x10000000): every
+# address below is the decompile's VA + D, D = the loaded base (S_BASE, from /proc/<pid>/maps) - 0x10000000.
+D = int(os.environ.get('S_BASE', '0x10000000'), 16) - 0x10000000
 
 
 def mem(a, n):
@@ -39,7 +42,7 @@ def reg(r):
 
 
 # fstp dword ptr [esp+0x30] at 0x100609ee; fld dword ptr [0x101c5948] at 0x10060b82
-EXPECT = {0x100609ee: bytes.fromhex('d95c2430'), 0x10060b82: bytes.fromhex('d9054859')}
+EXPECT = {0x100609ee + D: bytes.fromhex('d95c2430'), 0x10060b82 + D: bytes.fromhex('d905')}
 T0 = time.time()
 seen = {}
 hits = [0]
@@ -69,7 +72,7 @@ class Probe(gdb.Breakpoint):
                 return False
             name = cstr(edi, 64)
             tex = cstr(edi + 0x40, 32)
-            if self.addr == 0x100609ee:
+            if self.addr == 0x100609ee + D:
                 st0 = float(gdb.parse_and_eval('$st0'))
                 OUT.write('RET t=%.3f n=%d edd=%s tex=%s inst=0x%08x point=0x%08x s=%.6f\n'
                           % (now, n, name, tex, ebp, point, st0))
@@ -98,9 +101,9 @@ for a, b in EXPECT.items():
     got = mem(a, len(b))
     OUT.write('CHECK 0x%08x expect %s got %s\n' % (a, b.hex(), got.hex()))
     ok = ok and got == b
-OUT.write('CHECK 0x10039480 %s\n' % mem(0x10039480, 6).hex())
+OUT.write('CHECK 0x10039480+D %s base_delta=0x%x\n' % (mem(0x10039480 + D, 6).hex(), D & 0xffffffff))
 if ok:
-    probes = [Probe(0x100609ee), Probe(0x10060b82)]
+    probes = [Probe(0x100609ee + D), Probe(0x10060b82 + D)]
     OUT.write('ARMED t=0 tmax=%.0f\n' % TMAX)
     try:
         gdb.execute('continue')
