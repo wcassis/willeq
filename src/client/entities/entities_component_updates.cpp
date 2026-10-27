@@ -31,6 +31,7 @@
 // note in this family's component header.
 
 #include "client/eq.h"
+#include "client/graphics/actor_scale.h"  // B1172: the client's resolved size
 #include "client/corpse_predicate.h"  // T486: IsCorpseNpcType
 #include "client/entities/entities_component.h"
 #include "client/world_object.h"
@@ -398,6 +399,10 @@ void eqt::entities::EntitiesComponent::ZoneProcessNewSpawn(const EQ::Net::Packet
 				LOG_DEBUG(MOD_MAIN, "Found our own spawn in NewSpawn! Name: {}, Spawn ID: {}, server pos=({:.2f}, {:.2f}, {:.2f}) size={:.2f}",
 					entity.name, ctx_.self.MySpawnId(), entity.x, entity.y, entity.z, entity.size);
 			}
+			// B1172 (#491) fix leg: our size is the client's ONE resolved number
+			// (a size word not > 0 -> the race/gender default, written back at eqgame
+			// 0x47fb30): the entity record and PlayerState carry the same value.
+			entity.size = EQT::Graphics::clientResolvedActorSize(entity.race_id, entity.gender, entity.size);
 			// Update our position to match server spawn position
 			ctx_.game_state.player().setSize(entity.size);
 			// T311: same wire-frame -> render-frame conversion as the
