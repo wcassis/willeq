@@ -43,6 +43,7 @@
 #include <string>
 
 #include "client/graphics/spell_cast_animation.h"
+#include "client/spell/spell_action_anim.h"
 #include "client/spell/spell_fx_timing.h"
 
 using namespace EQT::Graphics;
@@ -57,6 +58,25 @@ TEST(CastAnimation, TheSpellIdsNameTheirTracksThroughEqgamesTable) {
     EXPECT_STREQ(EQ::SpellCastAnimationCode(43), "t05");
     EXPECT_EQ(EQ::SpellCastAnimationCode(0), nullptr) << "0 = unknown (the payload's default)";
     EXPECT_EQ(EQ::SpellCastAnimationCode(79), nullptr);
+}
+
+// B1174 (#493): eqgame's OP_Action spell handler FUN_0047f4af asks the
+// SOURCE for the spell's CastingAnim (0x47f54e..0x47f55c) when its stand byte
+// is 'd' (standing) or 'f' (0x47f519..0x47f525), the spell's field 123 is not
+// 61..64 (FUN_0044ced9, 0x47f527..0x47f530) and the source is not a Bard (class
+// byte 8) unless the packet's instrument_mod is above 10 (0x47f53c..0x47f54c).
+TEST(CastAnimation, OPActionAsksTheStandingSourceForTheCastingAnim) {
+    // The lane-5 /disc: 8604, field 123 = 51, a Shadow Knight (5), mod 10.
+    EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(true, 51, 5, 10));
+    EXPECT_FALSE(EQ::ActionPlaysSourceCastAnim(false, 51, 5, 10)) << "a sitting source is not asked";
+    for (int idx : {61, 62, 63, 64})
+        EXPECT_FALSE(EQ::ActionPlaysSourceCastAnim(true, idx, 5, 10)) << "field 123 = " << idx;
+    EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(true, 60, 5, 10));
+    EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(true, 65, 5, 10));
+    EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(true, -1, 5, 10)) << "no spells.eff record";
+    EXPECT_FALSE(EQ::ActionPlaysSourceCastAnim(true, 51, 8, 10)) << "a Bard at instrument_mod 10";
+    EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(true, 51, 8, 11)) << "a Bard above instrument_mod 10";
+    EXPECT_TRUE(EQ::ActionPlaysSourceCastAnim(true, 51, 0, 0)) << "an unknown class is no Bard";
 }
 
 #ifdef EQT_HAS_GRAPHICS
@@ -235,6 +255,53 @@ TEST_F(CastAnimationEntity, ThePlayerCastsTheSameTrack) {
     EXPECT_TRUE(p->castAnimCode.empty());
     if (p->animatedNode->hasAnimation("p01"))
         EXPECT_EQ(p->animatedNode->getAnimator().getCurrentAnimation(), "p01") << "the player idle";
+}
+
+// B1174 (#493): a /disc -- OP_Action with no OP_BeginCast -- plays the
+// spell's CastingAnim on its standing source at the packet (8604 Leechcurse
+// Discipline: 44 = t06, what the lane-5 observer saw from Act+0.42), and the
+// model returns to the standing idle once the one-shot track has played out
+// (the observer's caster is back in its idle pose at Act+4.36).
+TEST_F(CastAnimationEntity, ADiscActionSwingsTheIdleSourceThenReturnsToIdle) {
+    const auto info = db_.getSpell(8604);
+    ASSERT_EQ(info.id, 8604u) << "the row is in the shipped db";
+    EXPECT_EQ(info.castAnim, 44) << "8604's field 120";
+    build(5120, false);
+    ASSERT_NE(find(5120), nullptr);
+    EXPECT_EQ(ents_->actionEntityCastAnim(5120, static_cast<int>(info.castAnim), 51, 5, 10), "t06");
+    const auto* c = find(5120);
+    ASSERT_NE(c, nullptr);
+    EXPECT_FALSE(c->isCasting) << "an OP_Action starts no cast state";
+    EXPECT_EQ(c->actionAnimCode, "t06");
+    EXPECT_EQ(c->animatedNode->getAnimator().getCurrentAnimation(), "t06");
+    EXPECT_LT(c->animatedNode->getAnimator().getProgress(), 0.05f) << "the swing starts AT the packet";
+    walk(2.0f);
+    EXPECT_EQ(find(5120)->animatedNode->getAnimator().getCurrentAnimation(), "t06") << "mid-swing";
+    walk(3.0f);  // past the Dark Elf female's 4100 ms t06 (B1148)
+    const auto* e = find(5120);
+    EXPECT_TRUE(e->actionAnimCode.empty());
+    EXPECT_EQ(e->animatedNode->getAnimator().getCurrentAnimation(), "o01") << "the standing idle returns";
+}
+
+// A source still in its BeginCast state already plays the track (the
+// client's same-id no-op): the action request changes nothing and B1157's
+// completeEntityCast still ends the pose. A Bard at instrument_mod 10 is not
+// asked at all.
+TEST_F(CastAnimationEntity, AnActionOnACastingOrBardSourceStartsNothing) {
+    build(5121, false);
+    ASSERT_NE(find(5121), nullptr);
+    ents_->startEntityCast(5121, 93, "Burst of Fire", 950, 44);
+    walk(0.3f);
+    EXPECT_EQ(ents_->actionEntityCastAnim(5121, 44, 25, 12, 10), "");
+    EXPECT_TRUE(find(5121)->actionAnimCode.empty());
+    EXPECT_EQ(find(5121)->castAnimCode, "t06") << "the BeginCast track stands";
+    ents_->completeEntityCast(5121);
+    EXPECT_EQ(find(5121)->animatedNode->getAnimator().getCurrentAnimation(), "o01");
+
+    build(5122, false);
+    ASSERT_NE(find(5122), nullptr);
+    EXPECT_EQ(ents_->actionEntityCastAnim(5122, 44, 51, 8, 10), "") << "a Bard at instrument_mod 10";
+    EXPECT_NE(find(5122)->animatedNode->getAnimator().getCurrentAnimation(), "t06");
 }
 
 // A CastingAnim id that names a track the model does not have keeps the

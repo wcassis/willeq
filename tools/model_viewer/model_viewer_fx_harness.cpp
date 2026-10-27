@@ -1206,9 +1206,9 @@ int runScriptedHarness() {
     // emitter_origin.tsv every frame, cleared at the cast's Action; and the
     // cast track its BeginCast started ("" when the model has none) -- the
     // Action only ends a pose that began, the client's guard
-    // (endEntityCastAnim runs on a non-empty castAnimCode): a /disc is
-    // OP_Action with no OP_BeginCast, and the client never switched the
-    // model on that one.
+    // (endEntityCastAnim runs on a non-empty castAnimCode). A /disc is
+    // OP_Action with no OP_BeginCast: its swing is the OP_Action handler's
+    // own CastingAnim request (B1174, actionCastTrack below).
     std::vector<uint16_t> activeSourceEmitters;
     std::string activeCastTrack;
     // B1174 (#493): the track an OP_Action started with no cast in progress
@@ -1260,9 +1260,8 @@ int runScriptedHarness() {
                 harnessAction(sp, c.self, level, now);
                 // B1157: OP_Action ends the cast state; the model takes the
                 // idle (the guessed t04/t05/t06 played once here before is
-                // gone). Only when a BeginCast started the track -- a /disc
-                // (OP_Action without OP_BeginCast) never did, and the client
-                // never switched the model on that one either.
+                // gone). Only when a BeginCast started the track; a /disc
+                // (OP_Action without OP_BeginCast) takes the B1174 branch.
                 if (!activeCastTrack.empty()) {
                     endCastAnim(animatedNode, "p01");
                 } else if (EQ::ActionPlaysSourceCastAnim(/*standing=*/true, sp.spell_affect_index,
