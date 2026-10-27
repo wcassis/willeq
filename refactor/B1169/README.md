@@ -86,14 +86,14 @@ is not used here.
 
 ## 2. The fix and the 3-run proof (acceptance B)
 
-`HarnessSolidOrderNode` (`tools/model_viewer/model_viewer_fx_harness.cpp:918`,
-built by `fixHarnessSolidOrder` at `:984`, called once before the frame loop at
-`:1098`) takes the ground, target and caster out of the sorted list
+`HarnessSolidOrderNode` (`tools/model_viewer/model_viewer_fx_harness.cpp:986`,
+built by `fixHarnessSolidOrder` at `:1052`, called once before the frame loop at
+`:1166`) takes the ground, target and caster out of the sorted list
 (reparented under it, identity transform). It registers ONE solid entry and
 draws them inside the same solid pass in a fixed order: ground, target, the
 caster's held items, caster. There is NO client rule to follow: the production
 client goes through the same Irrlicht texture-pointer sort
-(`CSceneManager.cpp:1485` in the patched Irrlicht) and no oracle draw order has
+(`CSceneManager.cpp` line 1485 in the patched Irrlicht) and no oracle draw order has
 been established. This order is a HARNESS CONVENTION, chosen as the majority
 order (13 of 20 pre-fix runs), so those runs' frames are this order's frames
 bit for bit. The fix is harness-only: compiled only into the `model_viewer`
@@ -102,7 +102,7 @@ registers for the transparent pass as its own `OnRegisterSceneNode` would, so
 only the solid order is pinned. Each run logs
 `solid draw order (fixed, B1169) at frame 0: ground < target < caster-held-item < caster`
 and a `determinism (B1169)` line naming the seed
-(`tools/model_viewer/model_viewer_fx_harness.cpp:1078`). `--fx-seed N`
+(`tools/model_viewer/model_viewer_fx_harness.cpp:1146`). `--fx-seed N`
 (`tools/model_viewer/model_viewer_startup.cpp:56`, `--seed` kept as an alias)
 defaults to 1. Fixed dt and the synchronous worker were already true (sec. 1).
 Goldens, manifests and baselines are untouched (none reads these frames).
