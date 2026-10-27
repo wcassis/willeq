@@ -231,19 +231,18 @@ float b1130TargetFitPx = 0.0f;
 
 // B1155: b1130's fixed_npc target. review/B1130/README.md "Geometry": the
 // B1118 opening pose with the caster #goto -67.6,434.4 so the #spawn TrollF
-// stands ~1.4 caster heights to her right -- the settle stills (oracle
-// cal_r35/15_time_settle.png) record the caster 209 px with feet (640,598) and
-// the NPC 325 px with feet (940,652). The b1130 camera is already fitted to
-// the caster; this solves the target's world offset (x, z) from the two feet
-// pixels and then MEASURES its rendered height, so the 325 px -- the oracle's
-// own level-1 human male standing ~1.55x NEARER to the camera than the
-// caster, not a race scale -- is a consistency check, never a hand-tuned
-// input.
+// stands ~1.4 caster heights to her right. The b1130 camera is already fitted
+// to the caster (209 px, feet (640,598)); this solves the target's world
+// offset (x, z) from its two feet pixels. B1166 (#485): the feet are the
+// oracle target's MEASURED box (fx_target_anchor.h: feet (940,615), 288 px,
+// by difference against a target-free still; B1130's 325 px / (940,652)
+// began at the name label), the solve sees the STANDING frame, and the
+// rendered height is the model's own -- a self-check, never a fitted input
+// (the FABLE human renders 238 px there, refactor/B1166/README.md sec. 2).
 //
 // Screen right for a camera looking along -kCasterFacing is world -X
 // (targetRightOfCaster), so the target at column 940 sits at x < 0, and its
-// lower feet row (652 > 598) and larger pixel height put it CLOSER to the
-// camera than the caster: z > 0.
+// lower feet row (615 > 598) puts it CLOSER to the camera than the caster.
 bool fitFixedNpcTarget(const PresetGeometry& g) {
     if (!targetAnimatedNode || !camera) return false;
     const video::SColor clear(255, 50, 50, 80);
@@ -523,10 +522,11 @@ void applyHarnessPresetDefaults() {
             // PC-race default, mob.cpp :4033). The "TrollF" name is only a
             // label: the oracle spawned the SAME level-1 human male as b1118's
             // target (the settle still r51/21_stun_settle shows a clothed,
-            // standing human male), NOT a race-9 troll. Its 325 px (vs the
-            // caster's 209) comes entirely from standing ~1.55x NEARER to the
-            // camera, not a race scale. b1130 renders that level-1 human male
-            // and lets the solver find its depth from the two feet pixels.
+            // standing human male), NOT a race-9 troll -- r51's own OP_NewSpawn
+            // reads race 1, gender 0, size 6.000 (refactor/B1166/README.md
+            // sec. 1). b1130 renders that human male and lets the solver find
+            // its depth from the two feet pixels (B1166: 288 px in the oracle,
+            // 238 px in FABLE at the same spot -- a model-height gap).
             harnessOpts.targetRace = 1;
             harnessOpts.targetGender = 0;
             harnessOpts.targetSize = 6.0f;
@@ -895,7 +895,7 @@ bool setupSpellTestCamera() {
         }
         if (!fitFaceOnCamera(g, harnessOpts.cameraPreset.c_str())) return false;
         if (harnessOpts.cameraPreset == "b1130") {
-            // The fixed_npc target: 325 px with feet (940,652).
+            // The fixed_npc target: the oracle r51 target's measured feet (B1166).
             g.targetFeetX = fxharness::kB1130TargetAnchor.feetX;
             g.targetFeetY = fxharness::kB1130TargetAnchor.feetY;
             g.targetPx = fxharness::kB1130TargetAnchor.px;
