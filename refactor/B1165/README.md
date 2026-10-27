@@ -121,7 +121,7 @@ in particle_options.h; FOLLOW-UP below.
   NPC corpse, the null/null arm and the landing / missile pairs:
   tests/test_spell_fx_options.cpp:64, tests/test_spell_fx_options.cpp:86,
   tests/test_spell_fx_options.cpp:95; per stage through SpellVisualFX with record 80:
-  tests/test_spell_slot_rules.cpp:646 (`TheOnForFilterGatesEachStage`); the combobox,
+  tests/test_spell_slot_rules.cpp:740 (`TheOnForFilterGatesEachStage`); the combobox,
   labels, persistence and `/option`: tests/test_options_particles.cpp:315.
 
 ## 4. The stage gate and ShowSpellEffects (acceptance C, part 1)
@@ -151,7 +151,7 @@ command catalog). The Options record reaches SpellVisualFX every frame
 (`spellFxOptionsFromOptions`, src/client/graphics/ui/options_particles.cpp:95;
 src/client/graphics/sim/renderer_sim_bridge.cpp:459). Tests:
 the gate in tests/test_spell_fx_options.cpp:124, tests/test_options_particles.cpp:346 (the
-command and its text), tests/test_spell_slot_rules.cpp:646 (ShowSpellEffects 0 creates no
+command and its text), tests/test_spell_slot_rules.cpp:740 (ShowSpellEffects 0 creates no
 Source and no landing for record 80).
 
 ## 5. The legacy [Options] ParticleDensity (acceptance C, part 2) -- documented, not wired
@@ -205,10 +205,10 @@ The issue's lead (B1149 README sec. 2 row, 0x10060f12..0x10060f43) is the distan
   (src/client/graphics/environment/unified_particle_renderer.cpp:527).
 * Tests: tests/test_spell_fx_options.cpp:151 (the rule: 50 -> 25 at 0.5, 50 -> 16 at
   0.25, 5 kept + rate halved, 33 -> 16 by truncation, 0 -> nothing);
-  tests/test_spell_slot_rules.cpp:584 (`TheSpellPagesDensityScalesEveryStageAtCreation`:
+  tests/test_spell_slot_rules.cpp:678 (`TheSpellPagesDensityScalesEveryStageAtCreation`:
   record 80 at level 60, Source / Middle / Target, density 1, 0.5, 0.25 and 0 -- every
   created emitter's counts equal the rule applied to the density-1 counts; density 0
-  creates nothing in any stage); tests/test_spell_slot_rules.cpp:687 (the worker leaves a
+  creates nothing in any stage); tests/test_spell_slot_rules.cpp:781 (the worker leaves a
   created-at-density emitter alone: 15 sprites, and still scales a record-less one: 8).
 
 ## 7. The harness and the gate pin (acceptance D)
