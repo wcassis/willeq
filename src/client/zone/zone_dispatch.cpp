@@ -21,6 +21,7 @@
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
 
+#include <cstddef>
 #include <cstring>
 
 // P28: inventory/chat/hotbar/command-registry are plain data-model headers
@@ -121,6 +122,30 @@ void eqt::zone::ZoneComponent::OnZoneEntry(const EQ::Net::Packet & p)
 		if (p.Length() > 71) {
 			auto spawn_name = p.GetCString(9); // offset 2 + 7
 			LOG_DEBUG(MOD_MAIN, "  Spawn name at offset 7: '{}'", spawn_name);
+		}
+	}
+
+	// B1164 (#483) fix leg: this packet is our own Spawn_Struct (385 bytes,
+	// include/common/packets/spawn.h; the oracle capture's S->C OP_ZoneEntry
+	// follows OP_PlayerProfile). ZoneProcessPlayerProfile gave our entity a
+	// placeholder size of 6.0 (zone_entry.cpp), and on a graphical zone-in no
+	// other spawn packet for ourselves arrives (T332), so the placeholder
+	// stood for the session. The official client takes this struct's size
+	// (+75; Testcaster's reads 0.000 = "none" -> the race default, eqgame
+	// 0x47fb07..0x47fb30) for its actor scale, which is the attach scale of
+	// our own spell slots (spell_fx_attach_scale.h). The entity record
+	// carries it from here; PlayerState's size (the wire-z offset) is not
+	// touched.
+	if (p.Length() >= 2 + sizeof(EQT::Spawn_Struct)) {
+		const uint32_t spawn_id = p.GetUInt32(2 + offsetof(EQT::Spawn_Struct, spawnId));
+		auto it = ctx_.entities.find(ctx_.self.MySpawnId());
+		if (it != ctx_.entities.end() && spawn_id == ctx_.self.MySpawnId()) {
+			float size = 0.0f;
+			std::memcpy(&size, static_cast<const char*>(p.Data()) + 2 + offsetof(EQT::Spawn_Struct, size),
+			            sizeof(size));
+			it->second.size = size;
+			ctx_.Player().SyncEntityToGameState(it->second);
+			LOG_DEBUG(MOD_MAIN, "OP_ZoneEntry: own spawn {} size {:.3f}", spawn_id, size);
 		}
 	}
 }

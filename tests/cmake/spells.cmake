@@ -136,6 +136,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_cast_end_wire DISCOVERY_TIMEOUT 120)
 
+# B1164 (#483) fix leg: the local player's own spawn size comes from the
+# server's OP_ZoneEntry Spawn_Struct (the attach scale of its own spell slots).
+ADD_EXECUTABLE(test_local_player_spawn_size
+    test_local_player_spawn_size.cpp
+)
+TARGET_LINK_LIBRARIES(test_local_player_spawn_size GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_local_player_spawn_size PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_local_player_spawn_size DISCOVERY_TIMEOUT 120)
+
 # T483 (board B762/B770): store the ninth Titanium gem, show and offer eight.
 # The panel half draws on the EDT_NULL device, so the target needs graphics.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
