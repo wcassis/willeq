@@ -172,12 +172,61 @@ same lane 5, same observer rig, same HARD RULES.
   click on the Intimidation slot. HARD RULE: 0 C->S `OP_InstillDoubt` → block
   with the opcode census.
 
-## What the oracle draws on /disc (B1130 rows 325/326)
+## Leg A result — `/disc` on the owning class: LANDED
 
-B1134 P4 (the /disc that DID work on its own class) and the B1130 row 325/326
-record-325 spells have **no Target stage** — the /disc landing is a self/caster
-effect. So when `/disc` does fire, the observer would see a caster-side effect,
-not a target landing. (Moot here: the leg never sent the packet.)
+Leg A ran clean (rc=0, 16 steps, observer rig, chars 67+103 restored). The pre-SQL
+disciplines were delivered to the client at zone-in (`OP_DisciplineUpdate` ids=
+**[8604, 4504]**, S->C, t=1793062354.009/.015), and the `/disc` step then fired:
+
+- **C->S `OP_CastSpell`(12363) t=1793062472.595**
+  payload `0a000000 9c210000 ffffffff 00000000 d224603f` = slot 10, spell **8604**
+  (Leechcurse Discipline, SHD-lvl-60 variant), self-target — B1134 P4's working form.
+- S->C landing (caster side): `OP_InterruptCast`x2 + `OP_SpecialMesg`x2 +
+  `OP_ManaChange`x11 / `OP_HPUpdate`x9 / `OP_Stamina`x2 (the Leechcurse drain).
+  **No `OP_BeginCast`** (record 325 has no Target stage).
+- Observer (char 103) in the window: **no landing** (only keepalive/`OP_MoveDoor`).
+  Matches B1134: the observer draws NO landing on /disc (caster-side record).
+
+**Mechanism proven:** the official client resolves `/disc <name>` against its OWN
+(zone-in) discipline list, not the live `OP_DisciplineUpdate` buffer. Attempt 1
+delivered the disciplines mid-session (only 4504 + 5 others, never 8604), so
+"Leechcurse Discipline" (which the client resolves to 8604 for a SHD) was not in the
+resolution list -> silent. With 8604 in `character_disciplines` BEFORE zone-in it is
+in the zone-in list -> /disc fires. This is the fix the ruling predicted.
+
+## Leg B result — Intimidation -> Fear 229: ZERO C->S (HARD RULE)
+
+Leg B ran clean (rc=0). Zone-in delivered **skill 71 (Intimidation)=5000 and spell
+113** (88-book, has 113). With TrollF000 targeted (`C->S OP_TargetCommand` 262,
+server-confirmed) and `#stun 120000` active, the G-press (step 22) sent **only
+keepalives** (`OP_ClientUpdate`x3 + `OP_FloatListThing`x3): **zero `OP_InstillDoubt`,
+zero `OP_CastSpell`**; no S->C `OP_Action` 229/209; `/doability 1..2` (negative
+control) also zero.
+
+The decompile (the ONE `0x389e` sender, eqgame.exe.c line 28460) gates the G key on
+ONLY: (1) valid non-self target, and (3) caster position state `+0x251=='d'`
+(standing). **NOT** skill 71, **NOT** spell 113, **NOT** in-combat, **NOT** a
+Combat-Abilities slot — correcting the attempt-1 "Gate-4 known-113 / in-combat"
+reading. Both apparent gates were satisfied in the leg, yet nothing was sent: the
+remaining cause is at the client's key-delivery / handler-entry level (the G key not
+reaching this branch, or the caster byte not 'd' at the instant), which the pcap
+cannot show and which no skill/spell/combat pre-SQL can change. Per the HARD RULE
+this is a block (no GM `#castspell` substitution, no FOLLOW-UP).
+
+## Next steps (for the orchestrator) — Leg A is done; Leg B is a block
+
+1. **`/disc` (record 325/326): DONE.** It lands on the real client path when the
+   discipline is in `character_disciplines` before zone-in (Leg A pcap lines above).
+   The oracle draws the caster-side drain (mana/HP/stamina + SpecialMesg), NO landing
+   on the observer (record 325 has no Target stage), consistent with B1134.
+2. **Intimidation (record 13 / 229): BLOCKED.** The trigger is the G key (VK 0x47),
+   whose only gates are (valid non-self target) + (caster `+0x251=='d'`). A level-60
+   Warrior with Intimidation 5000 + spell 113 + a confirmed in-range stunned target
+   still sent zero `OP_InstillDoubt`. The next leg must get the G key to actually
+   reach the 0x47 handler in a 'd' state (input focus / state at the instant) — a
+   client-input question, not a character-state one.
+3. Harness rows + two ledger clips (ask #3/#4): the /disc half can proceed (Leg A
+   landed); the Intimidation half is moot until the G-press lands.
 
 ## Lane state (before == after)
 
@@ -188,29 +237,20 @@ not a target landing. (Moot here: the leg never sent the packet.)
   `character_skills`/`character_disciplines`/`timers`. Char 103 (observer) was not
   modified by either leg. Stack left down by the legs' `down.sh` step (expected).
 
-## Next steps (for the orchestrator) — this is a block, not a FOLLOW-UP
-
-1. **`/disc` (record 325/326)**: the owning class is 5 (verified), but the leg was
-   still silent at level 60 + `#traindisc 60` with "0 new disciplines" learned.
-   Check the discipline-training state the client's `/disc` resolution requires
-   (a trained-level column, or a client-side name/availability gate) — the class
-   was not the only gate.
-2. **Intimidation (record 13 / 229)**: G-press reached a standing Warrior with a
-   valid in-range target and Intimidation set, yet sent nothing. The decompile's
-   VK 0x47 gate (`*(caster+0x251)=='d'`) is more than "standing" — likely requires
-   the caster **in combat** (the card's option (c)) and/or Intimidation **equipped
-   in a Combat Abilities slot** (option (b); the CA window showed empty slots).
-   The next leg needs the character to attack (enter combat) and/or equip
-   Intimidation before the G press.
-3. Harness rows + two ledger clips (ask #3/#4) are moot until a leg lands.
-
 ## Evidence
 
-- `plans/b1162_disc325.tsv`, `plans/b1162_combat13.tsv` (both pass
+- Attempt 1: `plans/b1162_disc325.tsv`, `plans/b1162_combat13.tsv` (both pass
   `oracle_plan_check.py`).
-- `~/kb-evidence/kb-b1162-combat-fx/`: `disc325_census.txt`, `combat13_census.txt`,
-  `oracle/b1162_disc325/`, `oracle/b1162_combat13/` (stills + per-step opcodes +
-  pcap), `disc325_finding.md`, `lane_before.txt`, `lane_after.txt` (stack down at
-  probe; restoration confirmed by the legs' post-SQL output in `*.run.out`).
+- Attempt 2 (this block): `plans/b1162_disc325_v2.tsv`, `plans/b1162_combat13_v2.tsv`
+  + `sql/b1162_{disc325,combat13}_v2.sql` + `.post.sql` (pre-SQL fixes state before
+  zone-in; post-SQL restores level). Both plans pass `oracle_plan_check.py --lane 5`.
+- `~/kb-evidence/kb-b1162-combat-fx/`:
+  - Attempt 1: `disc325_census.txt`, `combat13_census.txt`, `oracle/b1162_disc325/`,
+    `oracle/b1162_combat13/`, `disc325_finding.md`, `lane_before.txt`.
+  - Attempt 2: **`attempt2_finding.md`** (both legs' result + mechanism + decompile
+    gate), `oracle/b1162_disc325_v2/` (Leg A: stills + per-step opcodes + pcap),
+    `oracle/b1162_combat13_v2/` (Leg B: same), probes `probe_b1162_{legA,legA_landing,
+    legA_observer,legB,legB_gwindow,legB_target}.py`, `probe_b1162_{book,book2,
+    discupdate,spellfields}.py`.
 - Class-ownership probes: `probe_b1162_fields.py`, `probe_b1162_classcols.py`,
   `probe_b1162_encode.py` (in `~/kb-evidence/kb-b1162-combat-fx/`).

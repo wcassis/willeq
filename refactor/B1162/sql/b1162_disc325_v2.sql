@@ -17,5 +17,5 @@ DROP TABLE IF EXISTS _b1162_home_lvl;
 CREATE TABLE _b1162_home_lvl AS SELECT `level` AS lvl FROM character_data WHERE id=67;
 UPDATE character_data SET `level`=60 WHERE id=67;
 DELETE FROM character_disciplines WHERE id=67;
-INSERT INTO character_disciplines (id, discipline) VALUES (67, 8604);
-INSERT INTO character_disciplines (id, discipline) VALUES (67, 4504);
+INSERT INTO character_disciplines (id, slot_id, disc_id) VALUES (67, 0, 8604);
+INSERT INTO character_disciplines (id, slot_id, disc_id) VALUES (67, 1, 4504);

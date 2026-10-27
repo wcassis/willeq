@@ -21,4 +21,4 @@ DROP TABLE IF EXISTS _b1162_home_lvl;
 CREATE TABLE _b1162_home_lvl AS SELECT `level` AS lvl FROM character_data WHERE id=67;
 UPDATE character_data SET `level`=60 WHERE id=67;
 REPLACE INTO character_skills (id, skill_id, value) VALUES (67, 71, 5000);
-REPLACE INTO character_spells (id, spell_id) VALUES (67, 113);
+REPLACE INTO character_spells (id, slot_id, spell_id) VALUES (67, 93, 113);
