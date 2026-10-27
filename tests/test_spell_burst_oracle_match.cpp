@@ -243,13 +243,17 @@ TEST_F(SpellBurstOracleMatch, ParticleLifetimeMatchesTheOraclesDeathFreeRise) {
 // pin is the sim's last possible death, triggerDelay + emitterLifetime +
 // lifetimeMax: the last lit frame falls 0.2-0.6 s before it once the sustain
 // thins below the visibility threshold, so it must sit in [end, end + 0.8].
+// B1161 (#480): 253's override is retired, so its row goes through the RECORD
+// path (its spellsnew.eff record 104 = survey row 35, tests/spell_anim_rows.h):
+// the record's emitter lifetime is the cast-animation term
+// (SpellEffectsConfig::getStyleSettings, B1145/B1148), not a per-spell word.
 TEST_F(SpellBurstOracleMatch, EveryMeasuredLandingEndsWhereTheOraclesDoes) {
-    const struct { uint32_t id; float oracleEnd; } kEnds[] = {
-        {93, 4.87f}, {38, 4.85f}, {54, 5.10f}, {656, 5.00f},
-        {41, 6.22f}, {253, 6.52f}, {458, 4.94f}};
+    const struct { uint32_t id; float oracleEnd; int record; } kEnds[] = {
+        {93, 4.87f, -1}, {38, 4.85f, -1}, {54, 5.10f, -1}, {656, 5.00f, -1},
+        {41, 6.22f, -1}, {253, 6.52f, 104}, {458, 4.94f, -1}};
     const glm::vec4 col(1.0f);
     for (const auto& e : kEnds) {
-        for (const auto& def : {SpellPresets::Impact(col, e.id), SpellPresets::SpellComplete(col, e.id)}) {
+        for (const auto& def : {SpellPresets::Impact(col, e.id, e.record), SpellPresets::SpellComplete(col, e.id, e.record)}) {
             const auto& ed = def.emitters.at(0);
             const float lastDeath = ed.triggerDelay + ed.config.emitterLifetime + ed.config.lifetimeMax;
             EXPECT_GE(lastDeath, e.oracleEnd) << "spell " << e.id << " " << def.name;
@@ -334,7 +338,10 @@ TEST_F(SpellBurstOracleMatch, TheSourceCloudRatesAreTheCalibratedOnes) {
     EXPECT_FLOAT_EQ(glow(54).config.spawnRate, 1050.0f);  // record 23
     EXPECT_FLOAT_EQ(glow(656).config.spawnRate, 1050.0f);
     EXPECT_FLOAT_EQ(spray(41).config.spawnRate, 330.0f);  // record 20
-    EXPECT_FLOAT_EQ(glow(253).config.spawnRate, 1950.0f); // record 35
+    // B1161 (#480): the 253 Source cloud (1950/s, B1122's record-35 fit) is
+    // retired with the 253 override: 253's castGlow is the style again, and
+    // its record 104 EDD slots draw the Source at the file's counts (B1149).
+    EXPECT_FLOAT_EQ(glow(253).config.spawnRate, 80.0f);   // style (no override left)
     EXPECT_FLOAT_EQ(glow(458).config.spawnRate, 65.0f);   // record 33
     // B1131 put each RECORD's measured onset here (93 = record 0 BC+0.46, 54 =
     // 23 0.42, 253 = 35 0.42, 458 = 33 0.38). B1145: the Source starts at the

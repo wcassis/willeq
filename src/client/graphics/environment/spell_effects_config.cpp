@@ -240,13 +240,21 @@ bool SpellEffectsConfig::reload() {
 //   the style landing (impact + spellComplete) PLUS its own held Source
 //   peaks at HALF THE POOL.
 //
-// Half the pool is B1121/B1123's bound: two overlapping fed landings fit, and
-// so does 253's steady field beside one (it is a landing too).  The B1123 sweep
-// measured every oracle landing it gated as needing MORE sprites than that
-// (93 7.2 k, 253 15 k at the shipped sizes), so the bound IS the target for
-// them.  A landing the oracle fills with FEWER sprites is a hand-set exception
-// (`landingPopulation.exceptions.<id>.peakLive`, each with its `why`): its
-// peak is min(that, half the pool).
+// B1161 (#480) + B1153 (#473): the bound is the NO-RECORD path's.  A spell
+// with a spellsnew.eff record draws its slots' FILE populations (B1149) and
+// the rule scales none of them: the oracle's pool (EQGraphicsDX9 -- per-
+// emitter rings, ring full drops the rest of the frame's emission,
+// 0x10061180; no global cap in its create path) is a CAP, not a scaler, and
+// fable applies that rule at its one pool: new particles are dropped while
+// it is full (allocateParticle returns -1, sim_particles.cpp:774), no count
+// is scaled (refactor/B1149/README.md sec. 4).  The
+// largest record field a class-level 1-60 spell draws is record 35's
+// (spellsnew.eff 104, spell 253): 3746 + 1168 = 4914 peak live -- inside
+// the desktop 8192, over the sbc 4096 by 818, where the pool fills and
+// drops; its steady field (~14100 desktop / ~5930 sbc, B1153's probe)
+// exceeds both.  The half-pool bound still serves spells with no record
+// (the style landing) and the kept overrides (B1153's five: 38/41/54/458/
+// 656), whose style-drawn landings it rescales.
 //
 // The JSON rates give each landing's SCHEDULE (peak vs sustain, impact vs
 // spellComplete); this rule scales spawnRate and sustainRate together so the
@@ -308,10 +316,12 @@ void SpellEffectsConfig::applyPopulationRule(const Json::Value& root) {
     // is decided at cast time, so the larger overlap of the two counts.
     // B1153 (#473): the rows are retired. A spell that HAS a spellsnew.eff
     // record holds the cast-animation term (EQ::kSpellFxCastAnimationSeconds,
-    // B1148) -- what every retired row carried, and what all six override
-    // spells have (their rows 0/20/23/33/35, anims 80/89/82/121/104 in
+    // B1148) -- what every retired row carried, and what all five kept
+    // override spells have (their rows 0/20/23/33/35, anims 80/89/82/121/104 in
     // tests/spell_anim_rows.h); the style landing (id == 0) is the no-record
-    // path and keeps the default row's hold.  Computed from the UNSCALED
+    // path and keeps the default row's hold.  B1161 (#480): the 253 override
+    // is retired, so record 35's (its spellsnew.eff 104) field is no longer
+    // among the rescaled landings below.  Computed from the UNSCALED
     // style each spell merges over.
     auto resolve = [&](uint32_t id, const char* style) {
         auto st = styles_.find(style);
@@ -367,11 +377,15 @@ void SpellEffectsConfig::applyPopulationRule(const Json::Value& root) {
     // B1153 (#473): the per-record rows (and with them the per-record
     // factors) are retired: a record's landing draws its slots' FILE
     // populations (applySlotEmitter, B1149), not the style's scaled rates.
-    // The style's own landing (a spell with no record) carries kStyle, the
-    // six override spells' landings are rescaled above, and a record spell's
-    // style-drawn Source (the ones without a spellsnew.eff Source slot) keeps
-    // its row's factor: the style's overlap at the cast-animation hold --
-    // what B1152's recordSourceScale_[record] carried for every row.
+    // B1161 (#480): that is now the whole record path -- the largest field
+    // (record 35 / spellsnew.eff 104 / 253: 4914 peak live) is drawn at the
+    // file's counts and capped by the pool at runtime (drop while full), not
+    // scaled.  The style's own landing (a spell with no record) carries
+    // kStyle, the five kept overrides' landings are rescaled above, and a
+    // record spell's style-drawn Source (the ones without a spellsnew.eff
+    // Source slot) keeps its factor: the style's overlap at the
+    // cast-animation hold -- what B1152's recordSourceScale_[record] carried
+    // for every row.
     {
         float a = 0.0f, t = 0.0f, kSourceRecord = 1.0f;
         factor(0, base, EQ::kSpellFxCastAnimationSeconds, &a, &t, &kSourceRecord);
@@ -447,11 +461,12 @@ void SpellEffectsConfig::loadStyle(const Json::Value& json, const std::string& n
 SpellEffectsConfig::StyleSettings SpellEffectsConfig::getStyleSettings(
         const std::string& styleName, uint32_t spellId, int record) const {
     // B1153 (#473): no per-record landing scale any more (a record's landing
-    // draws its slots' FILE populations, applySlotEmitter, B1149). The six
-    // B1120/B1122 spell overrides stay -- the measured no-file clouds, sizes
-    // and populations for the spells whose spellsnew file is not the whole
-    // story (refactor/B1153/README.md documents each with its numbers).
-    (void)record;
+    // draws its slots' FILE populations, applySlotEmitter, B1149). The spell
+    // overrides stay -- the measured no-file clouds, sizes and populations for
+    // the spells whose spellsnew file is not the whole story (refactor/
+    // B1153/README.md documents each with its numbers). B1161 (#480) retires
+    // the 253 one of them: the record path now carries its words (the cast-
+    // animation term below, the file's counts).
     // Find base style
     auto baseIt = styles_.find(styleName);
     if (baseIt == styles_.end()) {
@@ -459,17 +474,38 @@ SpellEffectsConfig::StyleSettings SpellEffectsConfig::getStyleSettings(
         return StyleSettings{};
     }
 
+    StyleSettings s = baseIt->second;
+    bool overrideCarriesLifetime = false;
     // Check for spell-specific overrides
     if (spellId != 0) {
         auto spellIt = spellOverrides_.find(spellId);
         if (spellIt != spellOverrides_.end()) {
             auto styleIt = spellIt->second.find(styleName);
             if (styleIt != spellIt->second.end()) {
-                return mergeOverrides(baseIt->second, styleIt->second);
+                s = mergeOverrides(s, styleIt->second);
+                overrideCarriesLifetime = styleIt->second.hasEmitterLifetime;
             }
         }
     }
-    return baseIt->second;
+    // B1161 (#480): a record's landing emitter lives the CAST-ANIMATION TERM,
+    // the client's rule, never a per-spell word. eqgame passes a cast-driven
+    // stage a duration of cast_ms + the caster's CastingAnim track length
+    // (eqgame 0x49b977; the track length is 0x47ddd4, the spell's field-120
+    // word), and B1145 measured the emission's end at a median 4.35 s past
+    // OP_Action -- EQ::kSpellFxCastAnimationSeconds (refactor/B1145/README.md).
+    // B1148 carries the term per caster from the skeleton track at cast time
+    // (spell_visual_fx.cpp createCastGlow); this is where it sits on the
+    // record path in a style definition: the no-slot fallback emits from it
+    // and the tests measure it against the oracle's ends. It is what the
+    // retired 253 override carried as `emitterLifetime 4.35` (its
+    // record-driven end was 5.18 s, the oracle's 6.52, refactor/B1153/
+    // README.md sec. 1). A kept override's own measured emitterLifetime wins.
+    if (record >= 0 && !overrideCarriesLifetime &&
+        (styleName == "impact" || styleName == "spellComplete")) {
+        s.emitterLifetime = EQ::kSpellFxCastAnimationSeconds;
+        s.hasEmitterLifetime = true;
+    }
+    return s;
 }
 
 void SpellEffectsConfig::loadSpellOverrides(const Json::Value& root) {

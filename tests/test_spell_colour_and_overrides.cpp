@@ -153,6 +153,7 @@
 #include "client/graphics/environment/spell_effects_config.h"
 #include "client/graphics/environment/spell_particle_types.h"
 #include "client/graphics/environment/spell_sprite_atlas.h"
+#include "client/spell/spell_fx_timing.h"
 #include "client/spell/spells_eff_reader.h"
 #include "spell_landing_population.h"
 #include "spell_fx_population_oracle.h"
@@ -454,10 +455,6 @@ protected:
     static float live(uint32_t spellId) {
         return spell_landing_population::PeakLive({impact(spellId), complete(spellId)});
     }
-    // Steady population of a continuous emission: rate x mean lifetime.
-    static float steady(const EmitterConfig& c) {
-        return c.spawnRate * 0.5f * (c.lifetimeMin + c.lifetimeMax);
-    }
 };
 
 // B1123 (RED on the B1122 config, which carried 93's T422 x1.1034 override):
@@ -570,36 +567,78 @@ TEST_P(SpellPoolRule, TheRuleKeepsEachLandingsSchedule) {
     }
 }
 
-// Whirling Wind is a continuous field, not a 0.6 s burst -- and since B1120
-// a FRAME-FILLING one (B1118: oracle 253 Landing coverage 7.28 caster
-// heights^2; T422's 25-36 trickle measured max 0.033).  Its steady population
-// is bounded by the pool: one 253 field plus one record-0 landing must fit.
-TEST_P(SpellPoolRule, WhirlingWindIsASteadyFrameFillingField) {
-    const float total = steady(impact(253)) + steady(complete(253));
-    const float largest = live(93);
-    // B1145 (#465): record 35's held Source is now the computed cast-animation
-    // term (4.35 s past OP_Action; B1131's 1.1 s was a lower bound: its arcs are
-    // seen apart only to Act+1.1), so on the 4096 pool the field shares the
-    // half pool with a held 1950/s Source for longer: 1076 there (1500+ on 8192).
-    EXPECT_GE(total, pool() >= 8192 ? 1500.0f : 1000.0f) << "a field, not a trickle; fable holds " << total;
-    EXPECT_LE(total + largest, pool() * 1.002f)
-        << "253's field (" << total << ") plus a record-0 landing (" << largest
-        << ") must fit the pool (" << pool() << ")";
+// B1161 (#480): the pool rule RE-DERIVED against the record-driven field.
+// Whirling Wind (spell 253, spellsnew.eff record 104 = survey row 35) is a
+// continuous FIELD, not a 0.6 s burst (B1118: oracle landing coverage 7.28
+// caster heights^2, tests/spell_fx_population_oracle.h row 35) -- and its
+// field is the record's FILE populations (B1149), which the rule does not
+// scale: the oracle's pool (EQGraphicsDX9, per-emitter rings, ring full drops
+// the rest of the frame's emission, 0x10061180) is a CAP, and fable applies
+// that rule at its one pool -- new particles dropped while it is full, no
+// count scaled (refactor/B1149/README.md sec. 4).  The file's peak live per
+// record (B1149's census, review/B1149/pool_census.tsv, level 60, Source +
+// Target summed): record 104 (253) is the largest a class-level 1-60 spell
+// draws -- 3746 + 1168 = 4914, inside the desktop 8192, over the sbc 4096 by
+// 818, where the pool fills and drops; record 113 (290) 107 + 2417 = 2524
+// fits both; record 80 (93/38) is absent from the census, which prints the
+// records with sum > 2048 (its header), so its field is <= 2048.
+TEST_P(SpellPoolRule, WhirlingWindFieldDrawsTheFileCountsAndThePoolCapsThem) {
+    const auto& cfg = EQT::Graphics::Environment::SpellEffectsConfig::instance();
+    // The rule scales none of a record's words: its landing style definition
+    // is the style's own (kStyle-scaled) rates with no record-specific factor
+    // (B1153 retired the per-record scale; B1161 pins it for the largest, the
+    // next-largest and one small record).
+    const struct { uint32_t spell; int record; } kPairs[] = {{253, 104}, {290, 113}, {93, 80}};
+    for (const auto& p : kPairs) {
+        for (const char* half : {"impact", "spellComplete"}) {
+            const auto rec = cfg.getStyleSettings(half, p.spell, p.record);
+            const auto style = cfg.getStyleSettings(half, 0, -1);
+            EXPECT_FLOAT_EQ(rec.spawnRate, style.spawnRate)
+                << half << " spell " << p.spell << " record " << p.record
+                << ": a record's field is drawn at the file's counts, not pool-scaled";
+            EXPECT_FLOAT_EQ(rec.sustainRate, style.sustainRate)
+                << half << " record " << p.record;
+        }
+    }
+    const struct { int record; float sum; } kFields[] = {
+        {104, 4914.0f},  // 253: the largest record field (3746 + 1168)
+        {113, 2524.0f},  // 290: 107 + 2417
+        { 80, 2048.0f},  // 93/38: absent from the census (prints sum > 2048)
+    };
+    for (const auto& f : kFields) {
+        if (f.record == 104) {
+            EXPECT_EQ(f.sum <= pool(), pool() >= 8192.0f)
+                << "record 104's field (4914) fits the 8192 pool and over the 4096 one, "
+                   "which fills and drops the rest (no scaling)";
+        } else {
+            EXPECT_LE(f.sum, pool())
+                << "record " << f.record << "'s file field (" << f.sum
+                << ") fits the " << pool() << " pool at the file's counts";
+        }
+    }
 }
 
-// And it lasts as long as the oracle's: B1118 measured its landing END at
-// Act+6.52 s (T422's 5.6 s total was an llvmpipe-era read).  The sim's last
-// death (delay + emitterLifetime + lifetimeMax) must not fall before it; the
-// measured end is the lane-5 capture's (refactor/B1121/README.md).
+// Whirling Wind's landing END: B1118 measured the oracle's at Act+6.52 s
+// (T422's 5.6 s total was an llvmpipe-era read); the measured end is the lane-5
+// capture's (refactor/B1121/README.md).  B1161 (#480): the 253 override is
+// retired, so the landing is measured on the RECORD path (its spellsnew.eff
+// record 104 = survey row 35, tests/spell_anim_rows.h).  The record's emitter
+// lifetime is the cast-animation term -- the client's rule, eqgame 0x49b977
+// (duration = cast + the CastingAnim track, 0x47ddd4) with B1145's measured
+// 4.35 s (EQ::kSpellFxCastAnimationSeconds; B1148 carries it per caster) --
+// what the retired override had been carrying as `emitterLifetime 4.35`.  The
+// record-driven last death is 0.33 + 4.35 + 2.0 = 6.68 s, in the band; the
+// pre-B1161 style base gave 0.33 + 2.85 + 2.0 = 5.18 s (refactor/B1153/
+// README.md sec. 1).
 TEST_F(SpellStyleOverrides, WhirlingWindLastsAsLongAsTheOracles) {
     const glm::vec4 col(1.0f);
-    for (const auto& def : {SpellPresets::Impact(col, 253), SpellPresets::SpellComplete(col, 253)}) {
+    for (const auto& def : {SpellPresets::Impact(col, 253, 104), SpellPresets::SpellComplete(col, 253, 104)}) {
         const auto& ed = def.emitters.at(0);
         const float lastDeath = ed.triggerDelay + ed.config.emitterLifetime + ed.config.lifetimeMax;
         EXPECT_GE(lastDeath, 6.52f) << "last death " << lastDeath << " s";
         EXPECT_LE(lastDeath, 7.32f) << "last death " << lastDeath << " s";
-        EXPECT_FLOAT_EQ(ed.config.sustainRate, 0.0f) << "a continuous field, not a peak + sustain";
-        EXPECT_FLOAT_EQ(ed.config.spawnWindow, 0.0f);
+        // The term is the client's rule, not a word from a per-spell block.
+        EXPECT_FLOAT_EQ(ed.config.emitterLifetime, EQ::kSpellFxCastAnimationSeconds);
     }
 }
 
@@ -664,14 +703,16 @@ TEST_P(SpellPoolRule, ThePoolStillHoldsTwoOfTheLargestLanding) {
 //     54     0.1525  0.187          0.044   0.037-0.051   0.047  0.046
 //     656    0.115   0.141          0.035   0.030-0.040   0.033  0.033
 //     41     0.2645  0.325          0.101   0.086-0.116   0.102  0.102
-//     253    0.351   0.4315         0.093   0.079-0.107   0.096  0.095
+//     253    0.351   0.4315         0.093   0.079-0.107   0.096  0.095  (retired B1161)
 //     458    0.3615  0.4455         0.101   0.086-0.116   0.101  0.100
 //   Source   castGlow 0.659 (style: 93, 38), 54 0.216, 656 0.225, 253 1.03,
 //            458 0.4895; castSpray 41 1.0035 (style 1.356 untouched: 41 is
 //            its only measured spell).  Oracle 93 0.084, 38 0.074, 54 0.027,
 //            656 0.028, 41 0.113, 253 0.178, 458 0.043; cal c2 0.080 0.079
 //            0.027 0.028 0.112 0.150 0.045; gate 0.078 0.077
-//            0.027 0.028 0.108 0.164 0.046 -- all 14 in band.  Coverage at the gate
+//            0.027 0.028 0.108 0.164 0.046 -- all 14 in band (the 253 row
+//            retired with its override by B1161: the record 104 EDD field
+//            draws it at the file's sprite sizes now).  Coverage at the gate
 //            (landing 3.01 2.55 0.98 0.62 2.25 3.67 1.50 vs the oracle 5.85 3.89
 //            2.46 2.49 4.15 7.28 1.24) is reported, not asserted.
 // ---------------------------------------------------------------------------
@@ -719,13 +760,15 @@ TEST_F(SpellStyleOverrides, B1122SourceShapesFollowTheSpellsEffRecord) {
     // values are the kOverrideShape bands); the motions/sizes they kept stay.
     EXPECT_EQ(castSprayFor(41).spawnShape, castSprayFor(0).spawnShape);
     EXPECT_EQ(castSprayFor(41).spawnExtents, castSprayFor(0).spawnExtents);
-    EXPECT_EQ(castGlowFor(253).spawnShape, style.spawnShape);
-    EXPECT_EQ(castGlowFor(253).spawnExtents, style.spawnExtents);
     EXPECT_EQ(castGlowFor(458).spawnShape, style.spawnShape);
     EXPECT_EQ(castGlowFor(458).spawnExtents, style.spawnExtents);
-    // Sizes are B1123SizesAreTheOraclesRoi's: 253 keeps the size that read in
-    // band before the sizes-first shrink of the style.
-    EXPECT_NE(startMid(castGlowFor(253)), startMid(style));
+    // B1161 (#480): the 253 override is retired, so 253's Source is the style
+    // too (its cloud was B1122's last non-record Source; its EDD slots draw
+    // the record 104 field at the file's counts, B1149).
+    EXPECT_EQ(castGlowFor(253).spawnShape, style.spawnShape);
+    EXPECT_EQ(castGlowFor(253).spawnExtents, style.spawnExtents);
+    EXPECT_FLOAT_EQ(startMid(castGlowFor(253)), startMid(style))
+        << "no 253 size override left";
 }
 
 // RED on the completion-leg config (fable 52b810e2): every row but 253/458
@@ -738,13 +781,13 @@ TEST_F(SpellStyleOverrides, B1123SizesAreTheOraclesRoi) {
     struct Row { uint32_t id; float impact, complete; };
     for (const Row& r : {Row{0, 0.198f, 0.244f}, Row{93, 0.198f, 0.244f}, Row{38, 0.1785f, 0.219f},
                          Row{54, 0.314f, 0.3855f}, Row{656, 0.2015f, 0.2465f}, Row{41, 0.2645f, 0.325f},
-                         Row{253, 0.496f, 0.6105f}, Row{458, 1.0545f, 1.2995f}}) {
+                         Row{458, 1.0545f, 1.2995f}}) {
         EXPECT_NEAR(startMid(impact(r.id)), r.impact, 0.0006f) << r.id;
         EXPECT_NEAR(startMid(complete(r.id)), r.complete, 0.0006f) << r.id;
     }
     struct Src { uint32_t id; float mid; };
     for (const Src& r : {Src{0, 0.659f}, Src{93, 0.659f}, Src{38, 0.659f}, Src{54, 0.3435f},
-                         Src{656, 0.3715f}, Src{253, 1.8335f}, Src{458, 1.3165f}}) {
+                         Src{656, 0.3715f}, Src{458, 1.3165f}}) {
         EXPECT_NEAR(startMid(castGlowFor(r.id)), r.mid, 0.0006f) << r.id;
     }
     EXPECT_NEAR(startMid(castSprayFor(41)), 1.0035f, 0.0006f);
@@ -752,6 +795,12 @@ TEST_F(SpellStyleOverrides, B1123SizesAreTheOraclesRoi) {
     // 93 IS record 0: no size override of its own.
     EXPECT_FLOAT_EQ(startMid(impact(93)), startMid(impact(0)));
     EXPECT_FLOAT_EQ(startMid(castGlowFor(93)), startMid(castGlowFor(0)));
+    // B1161 (#480): the 253 override (landing 0.496/0.6105, Source 1.8335,
+    // B1123/B1127's ROI fits) is retired: 253's style words are the style's
+    // own again, and its record 104 field draws the file's EDD sprite sizes.
+    EXPECT_FLOAT_EQ(startMid(impact(253)), startMid(impact(0)));
+    EXPECT_FLOAT_EQ(startMid(complete(253)), startMid(complete(0)));
+    EXPECT_FLOAT_EQ(startMid(castGlowFor(253)), startMid(castGlowFor(0)));
 }
 
 // The point-sprite clamp (POINT_SPRITE_VS: 1..100 px, size * screenH / clip.w)

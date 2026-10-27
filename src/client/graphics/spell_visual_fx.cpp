@@ -541,7 +541,8 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         // official client draws it (B1130 survey, config `sourceRecords`):
         // hands / feet-ring / orbit / body / head, with the record's onset.
         // A spell whose override gives its Source its own geometry (B1122's
-        // 54/656/41/253/458) keeps it on the caster's entity, at its own rate.
+        // 54/656/41/458; the 253 cloud was retired by B1161) keeps it on the
+        // caster's entity, at its own rate.
         // Every Source emits until releaseCastGlow() (OP_Action) ends it after
         // the record's hold; the cap is the cast plus the longest hold, for a
         // cast whose OP_Action never arrives.
@@ -630,8 +631,8 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         // attach point. The row keeps the shape, sizes, onset and hold; each
         // slot draws 1/measured of the row's population and its own emitter's
         // art. A spell whose override sets its own Source spawnShape (B1122's
-        // measured 54/656/41/253/458 clouds) keeps that geometry on the
-        // caster's entity for every slot.
+        // measured 54/656/41/458 clouds; the 253 one was retired by B1161)
+        // keeps that geometry on the caster's entity for every slot.
         const StageSlots slots = stageSlots(spell_id, kSpellsNewEffSource, casterLevel);
         // B1145 (#465): each slot's timing is its emitter's (spellsnew.edd
         // +0x78/+0x7C/+0x80..+0x8C) for the duration eqgame passes a Source:

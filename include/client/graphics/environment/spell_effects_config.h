@@ -40,13 +40,18 @@ public:
     bool reload();
 
     /**
-     * B1123 (#443): set the spell particle pool (the platform's preset value,
-     * ConstrainedRendererConfig::spellParticlePool) and derive every landing
-     * population from it by the one pool rule (spell_effects_config.cpp,
-     * applyPopulationRule): each landing peaks at half the pool -- two
-     * overlapping landings, or 253's field beside one, fit -- unless
-     * `landingPopulation.exceptions` names a smaller, oracle-measured peak.
-     * Re-reads the loaded file, so it may be called again (a re-sized pool).
+     * B1123 (#443) as re-derived by B1153 (#473) and B1161 (#480): set the
+     * spell particle pool (the platform's preset value,
+     * ConstrainedRendererConfig::spellParticlePool) and derive the landing
+     * populations from it by the one pool rule (spell_effects_config.cpp,
+     * applyPopulationRule).  The oracle's pool is a CAP, not a scaler: a
+     * landing drawn from a spellsnew.eff record (or from one of the five kept
+     * spellOverrides) is emitted at the file's / the override's own counts
+     * and the pool drops the rest once it is full (EQGraphicsDX9's per-
+     * emitter rings, refactor/B1149/README.md sec. 4) -- the rule scales none
+     * of them.  The half-pool bound is the no-record style landing's (two
+     * overlapping ones fit).  Re-reads the loaded file, so it may be called
+     * again (a re-sized pool).
      */
     void applyPool(int pool);
 
