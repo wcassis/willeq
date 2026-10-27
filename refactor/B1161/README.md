@@ -52,7 +52,7 @@ for history; none of its numbers are used below.
 | B | cast-animation term on the record path, with a cited rule | MET for the term (Source caller duration, eqgame 0x47f5e1..0x47f5ed). The 253 landing END is NOT MET: +5.250 after vs the oracle's 6.522 (+5.317 before). Owner B1154 #474 | sec. 3; `src/client/graphics/spell_visual_fx.cpp:649`; FOLLOW-UP 1 |
 | C | override gone, tables, 253 in band, sbc census | MET: `spellOverrides."253"` gone; 253 PEAK ratio 0.577 (band 0.45..0.72); sbc 4071 of 4096 | sec. 4, sec. 5 (b1118 table), sec. 2 (`test_spell_landing_volume.cpp:361`) |
 | D | no row worse without an owner | MET: the only row that moves further, b1130 r35, is owned by FOLLOW-UP 2 | sec. 5 (record 35 on b1130, tour-7 table) |
-| E | ctest + hygiene + CI | MET: 128/128 card suites, hygiene 48 (1 skipped), CI pipeline 2228 success | sec. 6 |
+| E | ctest + hygiene + CI | MET: 128/128 card suites, hygiene 48 (1 skipped), CI green at every pushed tip (2228 @ 37db24cb, 2243 @ 27003d64; the merge tip's pipeline is the MR head pipeline) | sec. 6 |
 | F | `Closes #480` | MET | the MR description |
 
 ## 1. Where the card started
@@ -403,12 +403,12 @@ re-decoded and confirmed this table.
   (`MemoryCapHuntScript`). Evidence `rework/hygiene.log`.
 - **Cite checker** (this README):
   `python3 -I scripts/refactor/cite_check.py refactor/B1161/README.md --tree . --extra /mnt/projects/fable --dis /mnt/projects/fable/review/B1141/ghidra/out/eqgame.dis --dis /mnt/projects/fable/review/B1141/ghidra/out/EQGraphicsDX9.dis`
-  -> `checked 30 cites, 0 problems, 0 address warnings`.
+  -> `checked 37 cites, 0 problems, 0 address warnings`.
 - **Pipeline**: the final push runs with CI. Its id and status are in the
   MR description and the MR note.
-- **Changed files**: this branch changes 9 (`git diff --stat
+- **Changed files**: this branch changes 10 (`git diff --stat
   1150a34a..HEAD`): config, the header, the config `.cpp`,
-  `spell_visual_fx.cpp`, four test files, and this README. No `data/` pin,
+  `spell_visual_fx.cpp`, four test files, this README, and CLAUDE.md (T441 paragraph only). No `data/` pin,
   golden, manifest, baseline or preset is touched.
 
 ## FOLLOW-UP (proposed, no cards created)
