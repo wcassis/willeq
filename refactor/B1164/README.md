@@ -20,7 +20,8 @@ Evidence: `/mnt/projects/fable/review/B1164/worker/dev4/` (no new captures or re
 number is re-measured from the existing stills, frames and videos).
 
 - **r51's target is 286 px (rows 329..614), not 265.** b1164_hostpx.py's difference threshold
-  40 stops at row 593, where the right boot's contrast against the ground falls to 17–27; at
+  40 stops at row 593 because fewer than 3 px per row exceed 40 below it (the boot pixels' per-row
+  maxima fall 43/39/36/32/30/28/28/27 over rows 594..601, 21–25 over 602..614; per MR note 7787); at
   threshold 20 or 15 the rows run to 603 (the selection ring starts at 604), and the boot's own
   colour runs on to row 614 (§5, `review/B1164/worker/dev4/hostpx_sweep.txt`, new script
   `refactor/B1164/scripts/b1164_hostpx_sweep.py`). Every number built on 265 is recomputed:
@@ -264,21 +265,22 @@ Two things the measurement exposes, each owned elsewhere:
   willeq landing falls below it and record 0 reads land_cov 0.358
   (`refactor/B1157/b1130_table.tsv:2`) (§2b's in-window match is withdrawn, §5). This is
   the "0/40 landing_cov PASS" of `refactor/B1155/README.md:215`.
-- **The two oracle captures disagree with each other.** B1118's `oracle_druid` 93
-  (lane-5 b1118 framing, target `#spawn`ed ON the caster, killed at OP_Action: the chat at
-  `dev2/oracle_b1118_frames/ob_7573.png` reads "You have slain TrollF") reads 5.847
-  (`review/B1118/measure/timing.txt:3`; re-measured 5.845 at f7573 by
+- **The two oracle captures disagree with each other.** (WITHDRAWN, §5, per MR note 7787: the
+  first leg compared B1118 against r51 at B1130's 325 px / feet (940,652) and read 2.940 host²
+  as 1.97× r51's 1.493, B1118's spark sprites as twice r51's diameter, and willeq as drawing
+  "the r51 size in both framings". At r51's measured 286 px (§5) the comparison is, in §5's
+  units, B1118 vs r51 ≤ 2.377 / 1.806 = **≤ 1.32×** in the window and ≤ 0.049 / 0.039 =
+  **≤ 1.26×** in p90 diameter (upper bounds: B1118 is chat-window clipped at row 600), and
+  willeq's p90 0.033 is BELOW r51's 0.039, so willeq does not draw "the r51 size". Which
+  capture condition (target on the caster vs 1.4 heights away; slain vs alive) produces
+  B1118's larger column is not decided by these captures.) What stands from the first leg:
+  B1118's `oracle_druid` 93 (lane-5 b1118 framing, target `#spawn`ed ON the caster, killed at
+  OP_Action: the chat at `dev2/oracle_b1118_frames/ob_7573.png` reads "You have slain TrollF")
+  reads 5.847 (`review/B1118/measure/timing.txt:3`; re-measured 5.845 at f7573 by
   `scripts/b1164_regions.py oracleB1118_93 "oracle_b1118_frames/ob_{f}.png" 7565 7580 7725 7760 150,60,900,540 640,598 210 210`
-  → `regions_oracleB1118_93.txt`). In the §2b window it is **2.940 host²**
-  (`regions_win2_oracleB1118_93.txt`) — 1.97× r51's 1.493 — with a column about twice as
-  wide (lit fraction ≥ 0.95 out to dx −0.9 / +0.6, `profile_oracleB1118_f7573.txt`, vs
-  0.07 / 0.14 in r51) and spark sprites twice the diameter (p90 0.067 host, median 11.79e-4,
-  `sparks_oracleB1118_93_peak.txt`). B1118's spell 38 cast (same record, same framing,
-  target slain) shows the same wide column (2.432 host² in the window,
-  `regions_oracleB1118_38.txt`, f9800). willeq does not change with the death (1.985) and
-  draws the r51 size in both framings. The two oracle legs differ in two conditions at
-  once (target on the caster vs 1.4 heights away; slain vs alive), so which one doubles the
-  oracle's effect is not decided by these captures. The only code path in the trace that
+  → `regions_oracleB1118_93.txt`), and its spell 38 cast (same record, same framing, target
+  slain) shows the same wide column (`regions_oracleB1118_38.txt`, f9800); willeq does not
+  change with the death (1.985). The only code path in the trace that
   scales sprite size, offsets and velocities together is the attach scale s
   (`refactor/B1151/TRACE.md:51`, stage 1 at 0x10060906, the +0x6C stage 2 ending
   0x1006094a); willeq passes it as 1 (`docs/spellsnew_format.md:32`). That is a candidate,
@@ -395,7 +397,8 @@ stand at x ≈ 925..980, right of the border, and are not clipped.
 **r51's target is 286 px with its right boot (columns ~938..950) down to row 614**, not the
 265 px of the dev3 measurement and not the 325 px / feet (940,652) of
 `review/B1130/geom/r51.json:9`. Threshold 40 stops at row 593 because the boot (BGR
-~(16,33,78)) differs from the ground (33,60,57) by at most 27 per channel below it; at threshold
+~(16,33,78)) differs from the ground (33,60,57) by at most 43/39/36/32/30/28/28/27 per channel at
+rows 594..601 and 21–25 at rows 602..614 (per MR note 7787), so fewer than 3 px per row exceed 40 below 593; at threshold
 20 or 15 every row 594..603 counts 11–14 px, and below 603 the selection ring's green glow takes over the
 difference count, so the boot's bottom is read by its own colour (B < 25: 10–14 px in every row
 to 614, 3 px at 615). 286 px (329..614) is adopted; 275 px (329..603, the rows the difference
@@ -463,13 +466,17 @@ for the co-located captures (the same window and band for all of them); r51's sp
 - willeq is **0.82×** r51 per target height² (1.484 / 1.806; 0.79× against r51's 275-px lower
   bound, 1.890) and 0.70–0.76× against the co-located captures ((d) ≤ 2.115, (a)–(c) ≤ 1.963–1.980;
   upper bounds, so these ratios are lower bounds). Its sprites are smaller in diameter: p90
-  0.033 vs r51's 0.039 (r51's window) and ≤ 0.038–0.040 co-located; its median area is not
-  smaller than r51's (3.79 vs 2.93e-4) and below the co-located ≤ 4.05–4.32. That is the
+  0.033 vs r51's 0.039 (r51's window); against the clipped co-located captures (p90 ≤ 0.038–0.040)
+  that is not decidable; its median area is not smaller than r51's (3.79 vs 2.93e-4), and
+  against the co-located medians (≤ 4.05–4.32) it is not decidable either. That is the
   per-particle-area gap acceptance B asks about; it is NOT explained by a word §2a reads wrongly
   (sizes, multiplier, depth bias, blend, texture are applied as written), and the one multiplier
   willeq does not apply is s (§4). An oracle s of ≈ 1.10 (√(1/0.82)) to 1.18 (0.039/0.033)
   for this target would cover it, but s is not pinned statically: `0x10039480` reads the
   point's world matrix, which is model data at runtime.
+- Open question: r51 (286 px) and leg (b) (268 px) are the same model at the same spot and
+  camera yet differ by 18 px; this is unexplained, and the 275-px lower bound covers only part
+  of it.
 - willeq's gate number has a second, separate factor: its target is drawn 1.057 caster heights
   tall against r51's 1.37, so in caster units its landing host is (1.057/1.37)² = **0.60×** the
   oracle's (against the co-located captures' 1.30–1.35 it would be 0.61–0.66×, but those ratios
