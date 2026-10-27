@@ -924,6 +924,18 @@ if [[ -n $INI_UNSET ]]; then
     python3 /home/user/eq-oracle/uigap-scripts/oracle_ini_seed.py \
         "$CLIENT" "$DIR" "$CHARACTER" "$INI_UNSET" || exit 65
 fi
+# B1162: `# char-ini-set=Section.Key=VALUE` sets ONE key in the login
+# character's INI (e.g. Abilities.Ability1=71: the Actions-window ability slot
+# that /doability 1 reads, eqgame.exe.c 133398-133402). Same backup/restore as
+# ini-unset (character-original.ini, restored byte-identically at stop), so the
+# two are mutually exclusive and only one row is allowed.
+CHAR_INI_SET=$(sed -n 's/^# char-ini-set=//p' "$DIR/plan.tsv")
+if [[ -n $CHAR_INI_SET ]]; then
+    [[ -z $INI_UNSET && $(wc -l <<<"$CHAR_INI_SET") -eq 1 ]] || exit 65
+    [[ $CHAR_INI_SET =~ ^[A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9]*=-?[0-9A-Za-z.]+$ ]] || exit 65
+    python3 /home/user/eq-oracle/uigap-scripts/oracle_ini_seed.py \
+        "$CLIENT" "$DIR" "$CHARACTER" "$CHAR_INI_SET" || exit 65
+fi
 cp "$CLIENT/${CHARACTER}_"*.ini "$DIR/before-character.ini" 2>/dev/null || :
 # Capture starts before even launching Wine. Save PIDs for interrupted cleanup.
 # B1057: on lane 5 the eqemu containers run on this box, so `-i any` records

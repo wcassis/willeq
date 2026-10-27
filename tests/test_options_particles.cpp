@@ -26,6 +26,7 @@
 #include "client/graphics/ui/static_ui_input.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/ui_preferences.h"
+#include "particle_test_seed.h"
 
 #include <string>
 
@@ -452,6 +453,7 @@ size_t fireParticles(float envDensity) {
         auto& pi = in.particleInput;
         pi.deltaTime = 1.0f / 30.0f;
         pi.unifiedRendererInitialized = true;
+        pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
         pi.poolSize = 1024;
         pi.density[static_cast<size_t>(Env::ParticleFamily::Environment)] = envDensity;
         if (frame == 0) {

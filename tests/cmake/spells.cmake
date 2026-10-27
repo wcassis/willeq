@@ -298,6 +298,15 @@ IF(EQT_GRAPHICS)
     GTEST_DISCOVER_TESTS(test_spell_slot_rules DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1163 (#482): device-free rules for the two B1152 missile follow-ups (the
+# calibrated missile speed + the oracle's spell-859 gate). Pure logic -- no
+# <irrlicht.h> -- so it builds and runs in both the graphics and headless trees.
+ADD_EXECUTABLE(test_b1163_missile_rules
+    test_b1163_missile_rules.cpp
+)
+TARGET_LINK_LIBRARIES(test_b1163_missile_rules GTest::gtest_main willeq_core)
+GTEST_DISCOVER_TESTS(test_b1163_missile_rules DISCOVERY_TIMEOUT 120)
+
 # B1137 (#457): the measured Source/Target row is chosen by the spell's
 # spellsnew.eff record (field 145), not its spells.eff record (field 123).
 # Config rows run everywhere; the SpellVisualFX key check needs graphics.

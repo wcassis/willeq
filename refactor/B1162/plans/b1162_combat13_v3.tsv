@@ -1,0 +1,63 @@
+# B1162 continuation (ruling 01:50Z, ONE leg): Intimidation -> Fear 229
+# (record 13 skull cloud) through the client's REAL ability path.
+#
+# Step 1 (offline, README "Continuation step 1"): `uVar5 == 0x47` in the one
+# OP_InstillDoubt (0x389e) sender is NOT a key code: uVar5 is the SKILL ID the
+# ability function FUN_0041f4a0 is called with (0x47 = 71 = Intimidation). Its
+# four callers all read a skill id out of the Actions-window ability slots
+# ([Abilities] AbilityN / [CombatSkills] CombatSkillN of the character INI):
+# /doability N (0x46a813), the Abilities-page button (0x4d3b9d), the Combat-page
+# button (0x4d3f73) and a hotbutton (0x514241). The caster's INI had every slot
+# at -1 (attempt 2 before-character.ini) and /doability on a -1 slot returns
+# silently (0x46a7fb). And the client's own class/level skill table (.data
+# 0x698b30) gives Intimidation to classes 7 MNK (lvl 18), 8 BRD (26), 9 ROG (22),
+# 16 BER (1) -- NOT class 1 Warrior, so a Warrior's ability call returns before
+# any packet. Attempt 2's G press and Warrior class could never send it.
+#
+# This leg: class 9 Rogue, level 60, skill 71 = 5000 before zone-in (pre-SQL),
+# ability slot 1 = 71 in the caster's character INI for this leg only (restored
+# byte-identically at stop), TrollF000 targeted + #stun, caster standing, then
+# `/doability 1` twice (10 s client reuse, 9 s server reuse in between).
+# HARD RULE: zero C->S OP_InstillDoubt => record the finding and fall back to the
+# ONE allowed GM leg (b1162_fear229_gm.tsv); no block.
+#
+# fps=30
+# caster-video=1
+# observer=Oraclewatch
+# char-ini-set=Abilities.Ability1=71
+# pose=-74,428,3.75,160
+# observer-pose=-67.6,434.4,3.75,160
+
+login	Testcaster
+obs	login	Oraclewatch
+zone	qeynos2
+obs	zone	qeynos2
+wait	8000	settle
+obs	click	1229,555	obs_close_tip
+click	1229,555	close_tip
+command	#set time 11 0	noon
+wait	1500	noon_settle
+command	#weather 0	weather
+command	#spawn TrollF 1 1 0 30000	spawn
+wait	3000	spawn_settle
+obs	press	F9	obs_f9_1
+obs	press	F9	obs_f9_2
+obs	press	F9	obs_f9_3
+obs	wait	3000	obs_cam_settle
+wait	20000	time_settle
+command	/target TrollF000	tgt_a
+wait	1500	tgt_a_settle
+command	#stun 120000	stun_a
+wait	1000	stun_a_settle
+command	/doability 1	intimidate_a
+wait	20000	fx_fear
+command	#nukebuffs	nuke_fear
+command	#stun 120000	stun_b
+wait	1000	stun_b_settle
+command	/doability 1	intimidate_b
+wait	20000	fx_fear_b
+command	/target TrollF000	tgt_kill
+command	#kill	kill
+wait	2000	kill_settle
+obs	command	/q	obs_quit
+command	/q	quit

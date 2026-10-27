@@ -1,0 +1,94 @@
+# B1162 item 2 (issue #481): Intimidation -> Fear 229, on the REAL client path.
+#
+# B1143 (#463) ran leg p3_combat1 (class 1 Warrior) with a /doability 1..10
+# sweep and sent ZERO OP_InstillDoubt (0x389e). The client decompile
+# (review/B1141/ghidra/out/eqgame.exe.c) shows the ONLY OP_InstillDoubt sender
+# is the key-press dispatcher FUN_0041ef86 (27387), the VK 'G' branch (28448):
+#   - no target      -> eqstr 0x306e "You must have a target to intimidate!"
+#   - self target    -> eqstr 0x3193 "You can't intimidate yourself!"
+#   - standing + target -> SEND 0x389e (OP_InstillDoubt, 28460)
+#   - not standing   -> eqstr 0x3070 "Stand up first!"
+# The gate is *(caster+0x251)=='d' (a standing posture byte), NOT the target
+# state. So the trigger is pressing the G key while standing with a valid
+# target -- NOT /doability (which maps to none of the ten /doability indices).
+#
+# Server side (eqemu special_attacks.cpp Mob::InstillDoubt, 2390): the current
+# target must be an NPC in CombatRange; success roll =
+# Intimidation + CHA/4 - (targLevel*4 + targWIS/4); on success
+# SpellOnTarget(229, who, 0, true, -2000) casts Fear unresistably. With
+# `#set skill 71 5000` in-world the roll is certain (the B is set AFTER
+# #level 60 -- skill rows for the switched class are created at LOGIN, so a
+# pre-SQL alone is a NO-OP).
+#
+# The leg: (a) presses G on the stunned TrollF000 (the OP_InstillDoubt
+# trigger), (b) sweeps /doability 1..10 as the negative control (it should
+# still send nothing), (c) opens the Combat Abilities window (alt+c) for a
+# still. Fear 229 landing (B1130 row 13, the "skull cloud") is measured in the
+# observer view; NO Source on the intimidator (OP_Action without OP_BeginCast)
+# is confirmed in the pcap.
+#
+# Command forms are the B1143 .fix leg's findings: /target (never #target),
+# #stun <ms> after /target, #kill (no argument) after /target.
+#
+# fps=30
+# caster-video=1
+# observer=Oraclewatch
+# pose=-74,428,3.75,160
+# observer-pose=-67.6,434.4,3.75,160
+
+login	Testcaster
+obs	login	Oraclewatch
+zone	qeynos2
+obs	zone	qeynos2
+wait	8000	settle
+obs	click	1229,555	obs_close_tip
+click	1229,555	close_tip
+command	#set time 11 0	noon
+wait	1500	noon_settle
+command	#weather 0	weather
+command	#level 60	lvl
+command	#set skill 71 5000	set_intim
+wait	1500	set_intim_settle
+command	#spawn TrollF 1 1 0 30000	spawn
+wait	3000	spawn_settle
+obs	press	F9	obs_f9_1
+obs	press	F9	obs_f9_2
+obs	press	F9	obs_f9_3
+obs	wait	3000	obs_cam_settle
+wait	20000	time_settle
+command	/target TrollF000	tgt_a
+wait	1500	tgt_a_settle
+command	#stun 120000	stun_a
+wait	1000	stun_a_settle
+press	G	intimidate_g
+wait	14000	fx_fear
+command	#nukebuffs	nuke_fear
+command	#stun 120000	stun_b
+wait	1000	stun_b_settle
+command	/doability 1	doa_1
+wait	2500	doa_1_settle
+command	/doability 2	doa_2
+wait	2500	doa_2_settle
+command	/doability 3	doa_3
+wait	2500	doa_3_settle
+command	/doability 4	doa_4
+wait	2500	doa_4_settle
+command	/doability 5	doa_5
+wait	2500	doa_5_settle
+command	/doability 6	doa_6
+wait	2500	doa_6_settle
+command	/doability 7	doa_7
+wait	2500	doa_7_settle
+command	/doability 8	doa_8
+wait	2500	doa_8_settle
+command	/doability 9	doa_9
+wait	2500	doa_9_settle
+command	/doability 10	doa_10
+wait	2500	doa_10_settle
+press	alt+c	ca_window
+wait	2500	ca_window_still
+command	/target TrollF000	tgt_kill
+command	#kill	kill
+wait	2000	kill_settle
+obs	command	/q	obs_quit
+command	/q	quit

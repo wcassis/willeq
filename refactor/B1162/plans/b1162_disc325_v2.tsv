@@ -1,0 +1,41 @@
+# B1162 attempt-2 Leg A (ruling 2026-10-26 23:05Z step 2): /disc Leechcurse
+# Discipline on the OWNING class (5 Shadow Knight), with the character state
+# FIXED BEFORE ZONE-IN by the pre-SQL (level 60 + character_disciplines 8604,
+# 4504) -- unlike attempt 1, where #level 60 + #traindisc 60 ran AFTER zone-in
+# and the client's zone-in profile was a level-1, zero-discipline character.
+#
+# /disc Leechcurse Discipline is the /disc-triggerable discipline (the ruling's
+# field-121 finding: Reaper Strike / Lich Sting are not /disc-eligible, so they
+# are not run here -- attempt 1 already showed them silent on the wire).
+# REFUTED (B1162 fix leg, review note 7739): field 121 is the lane spells_new
+# TargetAnim column, not a /disc flag (README "The /disc landing leg"). Reaper
+# Strike / Lich Sting were silent in attempt 1 because they were not in the
+# client's discipline list. This header is kept as the plan that was run.
+# B1130 rows 325/326: the record-325 Leechcurse has NO Target stage -- the /disc
+# landing is a caster-side effect, so no NPC target is needed.
+#
+# HARD RULE: zero C->S OP_CastSpell again => kanban block with the pcap lines
+# (no GM-path substitution).
+#
+# fps=30
+# caster-video=1
+# observer=Oraclewatch
+# pose=-74,428,3.75,160
+# observer-pose=-67.6,434.4,3.75,160
+
+login	Testcaster
+obs	login	Oraclewatch
+zone	qeynos2
+obs	zone	qeynos2
+wait	8000	settle
+obs	click	1229,555	obs_close_tip
+click	1229,555	close_tip
+command	#set time 11 0	noon
+wait	1500	noon_settle
+command	#weather 0	weather
+wait	20000	time_settle
+command	/disc Leechcurse Discipline	disc_leecheurse
+wait	20000	fx_leecheurse
+command	#nukebuffs	nuke_0
+obs	command	/q	obs_quit
+command	/q	quit

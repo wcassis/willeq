@@ -1,0 +1,29 @@
+run	binary	aslr	frames_0_89_md5	logged_order
+base_a	fable_f9f0cfcd	on	fe8094ba	-
+base_b	fable_f9f0cfcd	on	a614cb1f	-
+norand_a	fable_f9f0cfcd	off(setarch -R)	a614cb1f	-
+norand_b	fable_f9f0cfcd	off(setarch -R)	a614cb1f	-
+instr_1a	step1_d2ec3c0b	on	a614cb1f	ground < target < caster
+instr_1b	step1_d2ec3c0b	on	a614cb1f	ground < target < caster
+instr_1c	step1_d2ec3c0b	on	a614cb1f	ground < target < caster
+instr_2a	step1_d2ec3c0b	on	fe8094ba	ground < target < caster
+instr_2b	step1_d2ec3c0b	on	a614cb1f	ground < target < caster
+instr_2c	step1_d2ec3c0b	on	a614cb1f	ground < target < caster
+hash_a	instr2	on	fe8094ba	ground < target < caster
+hash_b	instr2	on	a614cb1f	ground < target < caster
+hash_c	instr2	on	fe8094ba	ground < target < caster
+hash_d	instr2	on	fe8094ba	ground < target < caster
+hash_e	instr2	on	a614cb1f	ground < target < caster
+hash_f	instr2	on	fe8094ba	ground < target < caster
+nodes_a	instr3	on	a614cb1f	target < held-item < caster
+nodes_b	instr3	on	a614cb1f	target < held-item < caster
+nodes_c	instr3	on	a614cb1f	target < held-item < caster
+nodes_d	instr3	on	a614cb1f	target < held-item < caster
+nodes_e	instr3	on	a614cb1f	target < held-item < caster
+nodes_f	instr3	on	fe8094ba	held-item < target < caster
+fix1_a	fix1	on	a614cb1f	ground < target < caster-held-item < caster
+fix1_b	fix1	on	a614cb1f	ground < target < caster-held-item < caster
+fix1_c	fix1	on	a614cb1f	ground < target < caster-held-item < caster
+fix1_d	fix1	on	a614cb1f	ground < target < caster-held-item < caster
+fix1_e	fix1	on	a614cb1f	ground < target < caster-held-item < caster
+fix1_f	fix1	on	a614cb1f	ground < target < caster-held-item < caster

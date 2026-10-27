@@ -289,6 +289,14 @@ of the spell, and it does not reach the summary's 3-digit cells on this host. (T
 pass's dev-u24 runs DID show summary-level moves, e.g. 93 src_cov 0.384 / 0.386 between two
 base runs; that host was not used here.)
 
+These runs PREDATE B1169 (#488, MR !321, merged into this branch afterwards), which found
+the mechanism: Irrlicht sorts the solid nodes by their texture POINTER, so ASLR changes the
+caster / held item / target draw order and the depth ties at the caster's shoulder go to
+whichever draws later -- 206 of 435 frames, first frame 1 (1 px, delta 36), up to 49 px a
+frame (refactor/B1169/README.md sec. 1). Those are the same numbers as mode B here
+(`mode_pixels.tsv`: 206 frames, 191 for 458, 1 to 49 px, frame 1 = 1 px delta 36), so modes A / B are the two
+draw orders. B1169 fixed the harness's solid draw order; these 3 + 3 runs were not re-made.
+
 The gates themselves at non-capture settings (93, rendered on the ThinkPad with
 `--particle-options`; `review/B1165/worker/runs/dens*_tour_93`, `sse0_tour_93`):
 density 0.5 -> land_cov 1.286, src_cov 0.232 (1.993 / 0.386 at 1.0); density 0 and
@@ -312,7 +320,12 @@ before rendering at density 0.5 without it (`runs/pin/density05_noflag.log`, rc=
    (eqgame.exe.c 243097, `FUN_0053ac98(_DAT_00985814 * _DAT_00640fc8)`, 0x640fc8 = 100.0 as a
    double) and sets position x 0.01 (245434, _DAT_00640038 = 0.01); fable's slider has 20
    steps (iniDivisor 20). The applied opacity is the ini float either way.
-5. The FX harness is not frame-deterministic run to run (sec. 8): two byte-level outcomes per
-   spell on the ThinkPad, the difference starting at frames 1-8 before any cast; on dev-u24
-   the first pass also saw 3-digit summary moves. A gate that wants pixel identity needs that
-   fixed first (FOLLOW-UP card).
+5. The FX harness's run-to-run pixel noise (sec. 8) is B1169's ASLR solid draw order, fixed
+   by B1169 after these runs; no B1165 follow-up beyond re-making (E) identity runs on a
+   post-B1169 harness if a pixel-identity gate is wanted.
+6. B1163's spell-859 missile-removal Target stage (`fireSpell859RemovalAtPlayer`) fires
+   through FUN_0049b260 in the oracle (0x47f5ed), so it now passes the same stage gate
+   (src/client/graphics/spell_visual_fx.cpp `stageDraws`); the target is the player, which
+   the filter always shows, so only density / opacity / ShowSpellEffects can hide it. Not
+   exercised by a test: fable builds no 859 missile (record 85 has no Middle,
+   refactor/B1163/README.md:235).

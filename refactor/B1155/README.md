@@ -247,7 +247,9 @@ oracle, per cell. This does NOT edit B1149's README.
   not 652, because the rest pose's bottom is not the standing pose's feet, so the
   fit places the standing figure slightly nearer the camera. A future unit that
   wants the target's OWN standing box at the oracle's still (feet 652, 325 px)
-  must fit the solver on a standing frame, not the rest pose. This card's FX
+  must fit the solver on a standing frame, not the rest pose (done by B1166,
+  #485: `refactor/B1166/README.md`; the oracle target is 288 px with feet at row
+  615, B1130's 325 / 652 began at the name label). This card's FX
   measurement is unaffected (measured in the crop, in caster heights; the re-run
   landing columns are the arbiter).
 - The per-miss owner mechanism (B1150 shapes / B1151 frames-scale-modes / B1152

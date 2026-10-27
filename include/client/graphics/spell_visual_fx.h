@@ -26,6 +26,9 @@
 #include "client/spell/spell_fx_options.h"
 #include "client/spell/spell_visual_vocabulary.h"
 #include "client/graphics/spell_visual_selection.h"
+// B1163 (#482): the missile speed word + calibrated timing and the oracle's
+// spell-859 removal gate, as pure device-free rules (one source of truth).
+#include "client/graphics/spell_b1163_missile_rules.h"
 
 namespace EQT { namespace Graphics { class ConstrainedTextureCache; }}
 
@@ -95,7 +98,7 @@ public:
         double launchAt = 0.0;   // FX-time (s) the Middle emitter starts (flight)
         double reachAt = 0.0;    // FX-time (s) the missile reaches the target
         double landAt = 0.0;     // FX-time (s) the Target stage fires (the landing)
-        float flightTime = 0.0f; // seconds, distance / kMissileSpeed
+        float flightTime = 0.0f; // seconds, the B1152 calibration 9.05 / 30 (B1163)
         bool launched = false;   // Middle emitter created
         bool reached = false;    // the missile reached the target (removed)
         bool landed = false;     // the Target stage fired
@@ -256,6 +259,14 @@ public:
     // The CastingAnim term for this caster in ms (castAnim's track length),
     // < 0 when it does not resolve.
     int32_t castAnimationMs(uint16_t caster_id, int castAnim) const;
+
+    // B1163 (#482): the LOCAL PLAYER's spawn id (0 = none). When a spell-859
+    // missile is removed within 40.0 XY units of the player, the oracle fires
+    // 859's Target stage AT THE PLAYER (eqgame 00477962 .. 0047f5ed,
+    // spell_b1163_missile_rules.h). Set by the renderer; the FX harness leaves
+    // it unset (no local player).
+    using LocalPlayerIdCallback = std::function<uint16_t()>;
+    void setLocalPlayerIdCallback(LocalPlayerIdCallback cb) { m_local_player_cb = std::move(cb); }
 
     // B1152 (#472): the missile actor. createProjectile() (the legacy
     // spell-visual projectile, tests-only since B1138) is REPLACED by this:
@@ -481,6 +492,7 @@ private:
     void updateMissiles(float delta_time);
     void launchMissile(Missile& m);
     void fireMissileLanding(Missile& m);
+    void fireSpell859RemovalAtPlayer(const Missile& m);  // B1163
     // A missile for this spell+caster still pending or in flight (its Target
     // stage has not fired yet). createLanding() defers to it on OP_Action.
     bool missileInFlight(uint32_t spell_id, uint16_t caster_id) const;
@@ -561,30 +573,16 @@ private:
     // B1152 (#472): the missile actor's state. m_missiles holds pending and
     // in-flight missiles; m_fx_time is the FX time base (seconds) advanced by
     // update() that launchAt/reachAt/landAt are measured against. The timing
-    // is calibrated to the record-80 oracle (refactor/B1152/missile_oracle.tsv,
-    // TRACE.md sec. 5/8, spell 38): the flight (in the gap) is 472.33-472.63 s
-    // over 9.05 units = 0.30 s = 30 u/s; the flight ENDS 0.184 s before the
-    // OP_Action (472.633 vs 472.817); and the Target-stage arrival burst is
-    // 0.30 s AFTER the flight ends (472.933) -- the impact burst plays over an
-    // already-resolved hit, at the target (sec. 5/8). The in-memory per-spell
-    // "run" value that eqgame scales by 0.02 (sec. 3) is not in the raw files,
-    // so one calibrated speed + two calibrated offsets stand in; the per-record
-    // speed / castAnim-release offset is B1153's (see the README FOLLOW-UP).
+    // lives in client/graphics/spell_b1163_missile_rules.h (B1163, #482): the
+    // flight is the record-80 oracle's calibrated 9.05-unit gap at the
+    // calibrated 30 u/s (eqgame's [missile+0x28] is a thrust word in a damped
+    // velocity, not a speed; refactor/B1163/README.md (A)); the flight ENDS
+    // 0.184 s before the OP_Action and the Target stage fires 0.30 s after the
+    // flight end (refactor/B1152/TRACE.md sec. 5/8). BLESS-ONLY.
     std::vector<Missile> m_missiles;
     SpellFxOptions m_fx_options;  // B1165
     double m_fx_time = 0.0;
-    static constexpr float kMissileSpeed = 30.0f;  // units / second
-    // The record-80 oracle's flight gap (9.05 units, TRACE sec. 8); the flight
-    // time is this over kMissileSpeed (9.05 / 30 = 0.30 s, the oracle's flight
-    // 472.33-472.63 s). The harness b1130 rig's gap differs, so the calibrated
-    // flight time (not a resolved gap) is what the gate compares.
-    static constexpr float kMissileFlightDistance = 9.05f;
-    // The flight ends this much BEFORE the OP_Action (the missile reaches the
-    // target 0.184 s before the server resolves the hit, TRACE sec. 8).
-    static constexpr float kMissileFlightEndOffset = 0.184f;
-    // The Target-stage arrival burst fires this much AFTER the flight ends
-    // (the record-80 emitters' 0.25 s delay + onset, TRACE sec. 6/8).
-    static constexpr float kMissileLandingDelay = 0.30f;
+    LocalPlayerIdCallback m_local_player_cb;  // B1163: spell 859's removal gate
     // (spell, caster) whose Target stage a missile already fired: createLanding
     // skips it on OP_Action so the landing is drawn exactly once, at whichever
     // of arrival / OP_Action comes second is suppressed in favour of the first.
