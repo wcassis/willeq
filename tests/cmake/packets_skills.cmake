@@ -181,6 +181,14 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_entity_size_change DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1172 (#491): the official client's actor scale (race / gender / spawn
+# size -> drawn scale, include/client/graphics/actor_scale.h). Header-only.
+ADD_EXECUTABLE(test_actor_scale
+    test_actor_scale.cpp
+)
+TARGET_LINK_LIBRARIES(test_actor_scale GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_actor_scale DISCOVERY_TIMEOUT 120)
+
 # T454 (board B473): a corpse holds the death pose's last frame. Same
 # EDT_NULL + willeq_core gate as test_entity_size_change; the real-node half
 # skips without the shipped db or the client tree.

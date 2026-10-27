@@ -243,7 +243,8 @@ float b1130TargetFitPx = 0.0f;
 // by difference against a target-free still; B1130's 325 px / (940,652)
 // began at the name label), the solve sees the STANDING frame, and the
 // rendered height is the model's own -- a self-check, never a fitted input
-// (the FABLE human renders 238 px there, refactor/B1166/README.md sec. 2).
+// (the FABLE human renders 285 px there at the client's actor scale 1.2,
+// refactor/B1172/README.md sec. 2; 238 px at fable's old 1.0, B1166).
 //
 // Screen right for a camera looking along -kCasterFacing is world -X
 // (targetRightOfCaster), so the target at column 940 sits at x < 0, and its
@@ -535,8 +536,8 @@ void applyHarnessPresetDefaults() {
             // standing human male), NOT a race-9 troll -- r51's own OP_NewSpawn
             // reads race 1, gender 0, size 6.000 (refactor/B1166/README.md
             // sec. 1). b1130 renders that human male and lets the solver find
-            // its depth from the two feet pixels (B1166: 288 px in the oracle,
-            // 238 px in FABLE at the same spot -- a model-height gap).
+            // its depth from the two feet pixels (288 px in the oracle; 238 px in
+            // FABLE at 1.0 (B1166), 285 px at the client's actor scale 1.2, B1172).
             harnessOpts.targetRace = 1;
             harnessOpts.targetGender = 0;
             harnessOpts.targetSize = 6.0f;
@@ -855,7 +856,37 @@ void placeHarnessTarget(bool self, float distance) {
     } else {
         const core::vector3df right = harnessOpts.cameraPreset.empty() ? core::vector3df(1, 0, 0)
                                                                        : targetRightOfCaster();
-        targetAnimatedNode->setPosition(animatedNode->getPosition() + right * distance);
+        core::vector3df pos = animatedNode->getPosition() + right * distance;
+        if (!harnessOpts.cameraPreset.empty()) {
+            // B1172 (#491): stand the target on the caster's ground, the rule
+            // addGroundPlane applies to her (the client's collisionZOffset:
+            // an entity's pose box stands on the floor). At the client's
+            // actor scale the human's pose box reaches 0.85 units below the
+            // dark elf's, so placed at her origin it sank through the
+            // depth-writing plane and lost its feet in every frame. Measured
+            // once, on the first placement (the frozen t = 0 pose, as the
+            // ground plane is), so every later placement stands it the same.
+            static bool measured = false;
+            static float standY = 0.0f;
+            if (!measured) {
+                measured = true;
+                targetAnimatedNode->setPosition(pos);
+                targetAnimatedNode->updateAbsolutePosition();
+                animatedNode->forceAnimationUpdate();
+                targetAnimatedNode->forceAnimationUpdate();
+                core::aabbox3df cb = animatedNode->getBoundingBox();
+                animatedNode->getAbsoluteTransformation().transformBoxEx(cb);
+                core::aabbox3df tb = targetAnimatedNode->getBoundingBox();
+                targetAnimatedNode->getAbsoluteTransformation().transformBoxEx(tb);
+                standY = cb.MinEdge.Y - tb.MinEdge.Y;
+                std::printf("[fx-harness] %s target: pose box y %.3f..%.3f; caster pose box bottom %.3f -> "
+                            "target stands at y %+.3f\n",
+                            harnessOpts.cameraPreset.c_str(), tb.MinEdge.Y, tb.MaxEdge.Y, cb.MinEdge.Y, standY);
+                std::fflush(stdout);
+            }
+            pos.Y += standY;
+        }
+        targetAnimatedNode->setPosition(pos);
     }
     targetAnimatedNode->updateAbsolutePosition();
 }

@@ -10,11 +10,13 @@
 // S->C OP_PlayerProfile, then S->C OP_ZoneEntry len 385, Testcaster size
 // 0.000 = none -> the race default; refactor/B1164/scripts/b1164_spawns.py).
 //
-// The first test pins what the placeholder does on its own (the review asked
-// for a verification, not an assertion): a dark-elf player whose profile has
-// been read carries 6.0, so s = 0.2 x 6 = 1.2 where the client's is 1.0.
-// The second replays the server's OP_ZoneEntry and is RED before this leg
-// (OnZoneEntry only logged).
+// Merged with B1172's fix leg (a7798e47): ONE source of truth for our size.
+// The profile now holds what the client holds for a size word of 0 -- the
+// race/gender default resolved by eqgame 0x47fb30
+// (EQT::Graphics::clientResolvedActorSize) -- and OnZoneEntry replaces it
+// with the wire size, resolved the same way. Before B1164/B1172 the profile
+// left the placeholder 6.0 (s = 1.2 on a dark elf, where the client's is 1.0)
+// and OnZoneEntry only logged: review/B1164/worker/dev5/fix/local_player_red.txt.
 
 #include <gtest/gtest.h>
 
@@ -68,13 +70,14 @@ float SelfAttachScale(const EverQuest& eq) {
 
 }  // namespace
 
-TEST(LocalPlayerSpawnSize, ProfileAloneLeavesThePlaceholderSix) {
+TEST(LocalPlayerSpawnSize, ProfileHoldsTheResolvedRaceDefault) {
     EverQuest eq = MakeEq();
     Prep(eq);
     ReplayZone(eq, HC_OP_PlayerProfile, Profile());
     ASSERT_EQ(eq.GetEntities().count(kSelfId), 1u);
-    EXPECT_FLOAT_EQ(eq.GetEntities().at(kSelfId).size, 6.0f);
-    EXPECT_FLOAT_EQ(SelfAttachScale(eq), 1.2f) << "0.2 x the placeholder 6.0";
+    EXPECT_FLOAT_EQ(eq.GetEntities().at(kSelfId).size, 5.0f) << "dark elf default, not the old 6.0";
+    EXPECT_FLOAT_EQ(eq.GetGameState().player().size(), 5.0f) << "PlayerState holds the same number";
+    EXPECT_FLOAT_EQ(SelfAttachScale(eq), 1.0f);
 }
 
 TEST(LocalPlayerSpawnSize, ServerZoneEntryCarriesTheOracleSize) {
@@ -82,7 +85,8 @@ TEST(LocalPlayerSpawnSize, ServerZoneEntryCarriesTheOracleSize) {
     Prep(eq);
     ReplayZone(eq, HC_OP_PlayerProfile, Profile());
     ReplayZone(eq, HC_OP_ZoneEntry, ServerZoneEntry(0.0f));
-    EXPECT_FLOAT_EQ(eq.GetEntities().at(kSelfId).size, 0.0f);
+    EXPECT_FLOAT_EQ(eq.GetEntities().at(kSelfId).size, 5.0f) << "size word 0 -> the race default";
+    EXPECT_FLOAT_EQ(eq.GetGameState().player().size(), 5.0f);
     EXPECT_FLOAT_EQ(SelfAttachScale(eq), 1.0f)
         << "the oracle's dark-elf caster: size 0 -> race default 5.0 -> s 1.000000";
 }
@@ -93,6 +97,7 @@ TEST(LocalPlayerSpawnSize, ServerZoneEntrySizeIsTakenAsSent) {
     ReplayZone(eq, HC_OP_PlayerProfile, Profile());
     ReplayZone(eq, HC_OP_ZoneEntry, ServerZoneEntry(3.0f));
     EXPECT_FLOAT_EQ(eq.GetEntities().at(kSelfId).size, 3.0f);
+    EXPECT_FLOAT_EQ(eq.GetGameState().player().size(), 3.0f);
     EXPECT_NEAR(SelfAttachScale(eq), 0.6f, 1e-6f);
 }
 
@@ -100,6 +105,6 @@ TEST(LocalPlayerSpawnSize, AnotherSpawnsZoneEntryIsIgnored) {
     EverQuest eq = MakeEq();
     Prep(eq);
     ReplayZone(eq, HC_OP_PlayerProfile, Profile());
-    ReplayZone(eq, HC_OP_ZoneEntry, ServerZoneEntry(0.0f, kSelfId + 1));
-    EXPECT_FLOAT_EQ(eq.GetEntities().at(kSelfId).size, 6.0f);
+    ReplayZone(eq, HC_OP_ZoneEntry, ServerZoneEntry(3.0f, kSelfId + 1));
+    EXPECT_FLOAT_EQ(eq.GetEntities().at(kSelfId).size, 5.0f);
 }

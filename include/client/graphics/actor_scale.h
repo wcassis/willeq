@@ -89,10 +89,22 @@ constexpr bool clientRaceForcedActorScale(uint16_t race, float& scale) {
     }
 }
 
+// FUN_0047fa9e's first half (0x47fb07..0x47fb30): the ONE size number the
+// client keeps for a spawn, EQPlayer+0x23c. A size word that is not > 0 is
+// replaced by the race/gender default and that default is WRITTEN BACK
+// (0x47fb30 `fst [esi+0x23c]`), so everything that later reads the size --
+// the actor scale below and, measured, the z the client transmits for itself
+// (T311 Leg A: a Barbarian whose OP_ZoneEntry size word is 0.000 sends
+// ground + 0.625 x 7; the oracle's dark-elf caster, size word 0.000, sends
+// ground + 0.625 x 5; refactor/B1172/README.md sec. 3) -- sees the default.
+constexpr float clientResolvedActorSize(uint16_t race, uint8_t gender, float size) {
+    return (size > 0.0f) ? size : clientDefaultActorSize(race, gender);
+}
+
 // FUN_0047fa9e (0x47fa9e): the scale the client draws a spawn at.
 constexpr float clientActorScale(uint16_t race, uint8_t gender, float size, bool zoneScaleFlag = false,
                                  bool flag923798 = false) {
-    const float s = (size > 0.0f) ? size : clientDefaultActorSize(race, gender);
+    const float s = clientResolvedActorSize(race, gender, size);
     float forced = 0.0f;
     if (clientRaceForcedActorScale(race, forced)) return forced;
     return clientSizeToActorScale(race, s, zoneScaleFlag, flag923798);
