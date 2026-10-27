@@ -233,40 +233,61 @@ exit 65 covers them; run_tour.sh also runs the checker (PO_CHECK=1).
 
 ## 8. Tour-7 before / after at the capture settings (acceptance E)
 
-Recipe: `review/B1165/worker/scripts/run_tour.sh <tag>` (B1160's tour-7 rows -- 93, 38,
-54, 656, 41 other at 1500 ms, 253 self at 1750 ms, 458 other at 3150 ms -- b1118 camera,
-30 fps, `--seed 1`, measured with review/B1139/scripts/harness_measure.py, FX_KEEP=1),
-rendered on dev-u24 with the base binary (fable bd82e0e2, `before`, repeated as
-`before2`) and this card's binary (`after`, with `PO_CHECK=1`: the checker printed the
-capture's 1/1/2/24/1 for every spell and passed). Every summary row is in
-`review/B1165/worker/runs/<tag>_tour_<spell>/measure/summary.tsv`; the cells that are not
-equal in all three runs are tabled in `review/B1165/worker/runs/tour_before_after.tsv`:
+The first pass's before/after ran on dev-u24 (base fable bd82e0e2, two base runs) and its
+458 repeats on the ThinkPad; review note 7756 found 5 of its 8 moved cells OUTSIDE the two
+base values, and a cross-host comparison. That table is superseded; this is the fix leg's
+measurement, ALL on the ThinkPad (172.16.200.205):
 
-| spell | column | before | before2 | after |
-|---|---|---|---|---|
-| 93 | src_cov | 0.384 | 0.386 | 0.386 |
-| 38 | src_cov | 0.386 | 0.386 | 0.384 |
-| 54 | src_ext | 1.16 | 1.15 | 1.16 |
-| 656 | src_ext | 1.15 | 1.15 | 1.16 |
-| 253 | roi_s | 0.128 | 0.124 | 0.124 |
-| 458 | land_cov / fxt_cov | 0.501 | 0.501 | 0.500 |
-| 458 | roi_s | 0.039 | 0.039 | 0.040 |
+* Binaries: BASE = fable baa94f20 (the MR's target tip) in a throwaway worktree, built by
+  tbuild (`/home/user/willeq-builds/kb-b1165-base/build/bin/model_viewer`, md5
+  3227cd23e8397f56a8b1136d892bb7ee); AFTER = this branch with baa94f20 merged in (md5
+  225431bf2ac26cca9d9feb2223742ce9, rebuilt at the final tip with the same md5:
+  `review/B1165/worker/fix/model_viewer_md5_final.txt`).
+* Settings: the AFTER runs used the harness default = the capture's Spell page (density 1.0 /
+  opacity 1.0 / near clip 2.0 / filter 24 / ShowSpellEffects 1); the checker
+  `scripts/tools/fx_particle_options.py` passed on all 21 after runs (`po_check rc=0` in
+  each `runs/after*_tour_*/particle_options.log`). The BASE binary has no such flags: it
+  draws at density 1, opacity 1, no near clip (`identityParticleKnobs()`), no filter, the
+  only Spell page fable had before this card.
+* Recipe: `review/B1165/worker/fix/scripts/tp_tour.sh <tag> <slug>` (B1160's tour-7 rows,
+  b1118 camera, 30 fps, `--seed 1`, measured on dev-u24 with
+  review/B1139/scripts/harness_measure.py, FX_KEEP=1, exactly as run_scene.sh), run
+  INTERLEAVED base1, after1, base2, after2, base3, after3 so the box's other load (another
+  session's renders, loadavg 2.7-19 in `review/B1165/worker/fix/tour.log`) falls on both.
+  42 renders, all `render rc=0 measure rc=0`; every frames dir is KEPT under
+  `review/B1165/worker/fix/frames/<tag>_tour_<spell>/` (+ `.measure/`), the summaries under
+  `review/B1165/worker/fix/runs/<tag>_tour_<spell>/measure/summary.tsv`.
 
-All other cells of the seven rows (15 columns each) are identical in the three runs. The
-listed cells move by the same amount BETWEEN TWO RUNS OF THE SAME BASE BINARY (93 src_cov
-0.384 / 0.386, 54 src_ext 1.16 / 1.15, 253 roi_s 0.128 / 0.124; 93 and 38, and 54 and
-656, draw the same records and trade the same last digit), i.e. the harness is not
-frame-deterministic run to run. To separate the one input the after-runs changed at the
-capture settings -- the harness now applies the spell family's near clip 2.0 where it used
-`identityParticleKnobs()` (0, no cull) before -- 458 was rendered three times on the
-ThinkPad with this card's build (`review/B1165/worker/runs/tp_nc2_tour_458`,
-`tp_nc0_tour_458` with `--spell-particle-nearclip 0 --particle-options`, `tp_nc2b_tour_458`):
-the three summary rows are equal (land_cov 0.501, roi_s 0.040, src_cov 0.117), near clip 2
-vs 0 is PIXEL-IDENTICAL on all 486 frames (`cmp`), while the repeat at the same settings
-differs from the first run on 191 of 486 frames. So nothing at the capture settings moved a
-gate number beyond the harness's own run-to-run noise; the remaining 458 last-digit moves
-(0.501 -> 0.500, 0.039 -> 0.040) are that noise, not near clip and not density (density 1
-is the identity of the CreateEmitter rule, sec. 6).
+Result (`review/B1165/worker/fix/scripts/spread_table.py`, output
+`review/B1165/worker/fix/tour_spread_E.tsv`): for each of the 7 spells x 15 summary columns =
+105 cells, the base min/max over base1..3 and every after value. **All 105 cells are
+IDENTICAL in all six runs** (the base spread is zero-width and every after value equals
+it), so (E) "no gate number moves at the capture settings" is MET as stated, not as a noise
+bound. The summary rows:
+
+| spell | land_cov | land_t | fxt_cov | end | roi_l | roi_s | src_cov | src_ext |
+|---|---|---|---|---|---|---|---|---|
+| 93 | 1.992 | +2.07 | 1.992 | +6.633 | 0.045 | 0.070 | 0.385 | 2.18 |
+| 38 | 1.992 | +2.07 | 1.992 | +6.633 | 0.045 | 0.070 | 0.385 | 2.18 |
+| 54 | 1.191 | +3.00 | 1.191 | +6.333 | 0.028 | 0.022 | 0.424 | 1.17 |
+| 656 | 1.191 | +3.00 | 1.191 | +6.333 | 0.028 | 0.022 | 0.424 | 1.17 |
+| 41 | 2.489 | +1.50 | 2.489 | +5.700 | 0.107 | 0.094 | 1.131 | 2.42 |
+| 253 | 4.174 | +1.02 | none | - | 0.087 | 0.218 | 3.331 | 3.18 |
+| 458 | 0.501 | +2.95 | 0.501 | +5.183 | 0.061 | 0.040 | 0.117 | 0.64 |
+
+(every column of every run: `tour_spread_E.tsv`.) At the pixel level the harness is not
+deterministic run to run, with exactly TWO outcomes per spell
+(`review/B1165/worker/fix/scripts/frame_diff.py` -> `frame_identity.tsv`, classes in
+`frame_modes.tsv`): a run's frames are byte-identical either to mode A or to mode B; B differs
+from A on 206 of 435 frames (191 of 483 for 458), by 1 to 49 pixels per frame (max channel difference 160;
+`review/B1165/worker/fix/mode_pixels.tsv`, every differing frame of one A/B pair per spell), and
+it starts at frames 1-8, BEFORE the cast (t_begin 1.5 s = frame 45) -- the same frames in
+every spell's B. Mode B occurred in base runs (54 base3, 41 base3) and in after runs (93
+after2, 54 after1/after3, 656 after1/after3, 458 after1/after3); 38 and 253 were mode A in
+all six. So the pixel noise is a scene-level harness state independent of the binary and
+of the spell, and it does not reach the summary's 3-digit cells on this host. (The first
+pass's dev-u24 runs DID show summary-level moves, e.g. 93 src_cov 0.384 / 0.386 between two
+base runs; that host was not used here.)
 
 The gates themselves at non-capture settings (93, rendered on the ThinkPad with
 `--particle-options`; `review/B1165/worker/runs/dens*_tour_93`, `sse0_tour_93`):
@@ -291,6 +312,7 @@ before rendering at density 0.5 without it (`runs/pin/density05_noflag.log`, rc=
    (eqgame.exe.c 243097, `FUN_0053ac98(_DAT_00985814 * _DAT_00640fc8)`, 0x640fc8 = 100.0 as a
    double) and sets position x 0.01 (245434, _DAT_00640038 = 0.01); fable's slider has 20
    steps (iniDivisor 20). The applied opacity is the ini float either way.
-5. The FX harness is not frame-deterministic run to run (sec. 8): two runs of one binary
-   differ on ~40 % of frames by a few pixels; a gate that wants "identical" needs that
-   fixed first.
+5. The FX harness is not frame-deterministic run to run (sec. 8): two byte-level outcomes per
+   spell on the ThinkPad, the difference starting at frames 1-8 before any cast; on dev-u24
+   the first pass also saw 3-digit summary moves. A gate that wants pixel identity needs that
+   fixed first (FOLLOW-UP card).
