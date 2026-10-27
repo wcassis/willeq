@@ -455,6 +455,8 @@ void SimBridgeComponent::postSimulationInput(float deltaTime) {
             const auto knobs = ctx_.Frame().particleOptionKnobs();
             ctx_.particleManager->setParticleKnobs(knobs);
             for (size_t f = 0; f < knobs.size(); ++f) pi.density[f] = knobs[f].density;
+            // B1165 (#484): the Spell page's stage gate + creation density.
+            if (spellVisualFX_) spellVisualFX_->setSpellFxOptions(ctx_.Frame().spellFxOptions());
         }
         pi.unifiedRendererInitialized = true;  // If we got here, it's initialized
         // T422 (board B375): `global.maxParticles` in config/spell_effects.json

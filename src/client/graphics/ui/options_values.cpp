@@ -21,8 +21,13 @@ bool setOptionsValue(OptionsPanelState& state, Setting setting, int value) {
     }
     if (info.owner != Owner::Renderer && info.owner != Owner::Game) return false;
     if (!OptionsLayout::isValidSettingValue(setting, value)) return false;
+    // B1165: a change stores the table value, as the oracle's handler does
+    // (eqgame.exe.c:245163-245204), so an applied off-table ini float goes.
+    auto& raw = state.iniFloats[static_cast<int>(setting)];
+    const bool hadRaw = raw.has_value();
+    raw.reset();
     int& slot = state.values[static_cast<int>(setting)];
-    if (slot == value) return false;
+    if (slot == value) return hadRaw;
     slot = value;
     // The two anon checkboxes are views of ONE server value (0/1/2): checking
     // one unchecks the other here, exactly as the server will.

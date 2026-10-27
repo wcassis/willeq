@@ -431,6 +431,7 @@ void applySlotEmitter(const std::vector<SpellEffectDef*>& slotDefs, const EQ::Sp
         c.burstCount = 0;
         c.ticksPerSecond = 0.0f;
         c.tickParticles = 0.0f;
+        c.densityAtCreate = true;  // B1165: `t` carries the Spell page's density
         if (!emits) continue;
         // B1145's motion time-scaling (oldLife / L on the config velocities)
         // applies to non-record spells only: a record's particles move on

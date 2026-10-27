@@ -7,7 +7,7 @@
  * eqclient.ini carries, for each of Spell / Environment / Actor,
  * `<Family>ParticleOpacity=1.000000`, `<Family>ParticleDensity=1.000000`,
  * `<Family>ParticleNearClipPlane=2.000000` (and `<Family>ParticleCastFilter=24`,
- * whose meaning is not in the files and which stays unwired). The CONTROLS
+ * the "On For:" combobox, B1165: include/client/spell/spell_fx_options.h). The CONTROLS
  * are EQUI_OptionsWindow.xml's: an Opacity slider, a Density combobox
  * (Off / Low / Medium / High) and a Near Clip combobox (Near / Medium / Far /
  * Farthest) on each page.
@@ -24,17 +24,32 @@
  * preset value (the unit's rule), and the defaults below are the identity
  * except nearClip's 2-unit cull.
  *
- * ASSUMPTIONS AWAITING ORACLE (flagged; none is in the files):
- *   N1. the ini floats are real quantities, not choice indices: opacity
- *       0..1 (the slider's 21 steps, readout "x %" like the T434 sliders);
- *       density Off 0 / Low 0.25 / Medium 0.5 / High 1.0; near clip in world
- *       units Near 1 / Medium 2 / Far 4 / Farthest 8 -- so the shipped 2.0
- *       is Medium and the shipped density 1.0 is High.
- *   N2. "Near clip" culls particles CLOSER than the distance (the plane's
- *       name), not farther.
+ * PROVEN FROM THE DECOMPILE (B1165 #484, refactor/B1165/README.md; eqgame.exe =
+ * review/B1141/ghidra/out/eqgame.exe.c, data words read from the binary):
+ *   N1. the ini floats are real quantities, not choice indices. The Options
+ *       handler writes density Off 0 / Low 0.25 / Medium 0.5 / High 1.0
+ *       (0x3e800000 / 0x3f000000 / 0x3f800000) and near clip Near 2 /
+ *       Medium 4 / Far 6 / Farthest 8 (0x40000000 / 0x40800000 /
+ *       0x40c00000 / 0x41000000), eqgame.exe.c:245163-245204 (Spell page;
+ *       Env 245207-245240). The loader clamps the ini density / opacity to
+ *       [0, 1] and the near clip to [1, 8] (_DAT_00641fa0 = 8.0, default
+ *       _DAT_006410b4 = 2.0), eqgame.exe.c:132608-132637; the combobox shows
+ *       the first choice whose value is >= the float, else the last
+ *       (0x53b93f..0x53b985, 0x53b994..0x53b9da). So the shipped 2.0 is NEAR.
+ *       The client APPLIES the clamped float itself (0x495f29 pushes it into
+ *       CreateEmitter), not the shown choice: options_settings.h OptionIniFloats.
+ *       The opacity slider's 21 steps stay fable's (readout "x %").
+ *   N2. STILL AN ASSUMPTION: "near clip" culls particles CLOSER than the
+ *       distance. The three values reach EQGraphicsDX9's engine object
+ *       (vtable +0x38 = 0x1005de60 stores them at +8/+0xC/+0x10; eqgame
+ *       0x445329..0x445351 passes Spell/Env/Actor), but the per-particle
+ *       read of those words was not found in B1165's pass (README sec. 2).
  *   N3. Actor ("Player") particles -- particles emitted by actor models --
  *       do not exist in fable, so that page's knobs have nothing to act on
  *       and stay unwired (options_classification.cpp says so per row).
+ *   SpellParticleCastFilter ("On For:") is the eight-entry value table at
+ *   DAT_00793b4c = {1, 2, 4, 8, 17, 18, 20, 24} decoded by FUN_00491cff:
+ *   wired in include/client/spell/spell_fx_options.h (B1165).
  *
  * Device-free.
  */
@@ -74,16 +89,9 @@ constexpr int kOpacitySteps = 20;
 constexpr int kDensityChoices = 4;   // Off, Low, Medium, High
 constexpr int kNearClipChoices = 4;  // Near, Medium, Far, Farthest
 
-inline float opacityForStep(int step) {
-    if (step < 0) step = 0;
-    if (step > kOpacitySteps) step = kOpacitySteps;
-    return static_cast<float>(step) / kOpacitySteps;
-}
-
-/** Density choice -> the oracle's float (N1). */
-inline float densityForChoice(int choice);
-/** Near-clip choice -> world units (N1). */
-inline float nearClipForChoice(int choice);
+// B1165: a step / choice maps to its float through the settings table
+// (OptionsLayout::settingTableFloat); the knobs take the APPLIED float
+// (OptionsLayout::appliedSettingFloat), which is the ini's own when it set one.
 
 /** How many of `count` a family of `density` spawns (rounded, never more). */
 inline int scaledCount(int count, float density) {
@@ -120,16 +128,27 @@ inline bool applyParticleKnobs(const ParticleKnobs& knobs, ParticleFamily family
     return true;
 }
 
-/** The settings table's float persistence: density / near-clip per choice (N1). */
+/** The settings table's float persistence: density / near-clip per choice
+ *  (N1, PROVEN: eqgame.exe.c:245163-245204). */
 inline constexpr float kDensityIniValues[kDensityChoices] = {0.0f, 0.25f, 0.5f, 1.0f};
-inline constexpr float kNearClipIniValues[kNearClipChoices] = {1.0f, 2.0f, 4.0f, 8.0f};
+inline constexpr float kNearClipIniValues[kNearClipChoices] = {2.0f, 4.0f, 6.0f, 8.0f};
 
-inline float densityForChoice(int choice) {
-    return (choice >= 0 && choice < kDensityChoices) ? kDensityIniValues[choice] : 1.0f;
+/** The loader's clamps (eqgame.exe.c:132608-132637): density / opacity to
+ *  [0, 1], near clip to [1, _DAT_00641fa0 = 8]. */
+constexpr float kNearClipIniMin = 1.0f;
+constexpr float kNearClipIniMax = 8.0f;
+inline float clampUnitIni(float f) { return f < 0.0f ? 0.0f : (f > 1.0f ? 1.0f : f); }
+inline float clampNearClipIni(float f) {
+    return f < kNearClipIniMin ? kNearClipIniMin : (f > kNearClipIniMax ? kNearClipIniMax : f);
 }
 
-inline float nearClipForChoice(int choice) {
-    return (choice >= 0 && choice < kNearClipChoices) ? kNearClipIniValues[choice] : 2.0f;
+/** The choice the oracle's combobox shows for a (clamped) ini float: the
+ *  first list value >= f, else the last (0x53b93f..0x53b985 near clip,
+ *  0x53b994..0x53b9da density: `fcom; test ah,0x41; jp` = next while f > v). */
+inline int choiceForIniFloat(const float* values, int count, float f) {
+    for (int i = 0; i < count; ++i)
+        if (!(f > values[i])) return i;
+    return count - 1;
 }
 
 }  // namespace Environment
