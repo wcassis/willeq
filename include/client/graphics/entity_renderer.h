@@ -642,6 +642,7 @@ public:
 
     // Set the player's spawn ID (marks that entity as the player)
     void setPlayerSpawnId(uint16_t spawnId);
+    uint16_t getPlayerSpawnId() const { return playerSpawnId_; }  // B1163
 
     // Get the player's model Y offset (rendering nudge applied on top of server Z;
     // 0 everywhere today, because the node origin IS the server Z)

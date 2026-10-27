@@ -562,28 +562,24 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         // Target stage fires on OP_Action in createLanding (spell 54's removal
         // branch fires stage 2 there UNCONDITIONALLY -- eqgame 0x47795c
         // je 0x477a55 -> 0x477aa3 call 0x49b260, refactor/B1152/TRACE.md
-        // sec. 5; spell 859's distance-gated 0x47f614 call is unimplemented,
-        // B1153), and a caster with no target (targetId == 0) has no
-        // destination.
+        // sec. 5; spell 859's distance-gated removal fire at the local player
+        // is fireSpell859RemovalAtPlayer, B1163), and a caster with no target
+        // (targetId == 0) has no destination.
         {
             const StageSlots middle = stageSlots(spell_id, kSpellsNewEffMiddle, casterLevel);
             if (targetId != 0 && middle.fromFile && !middle.drawn.empty()) {
                 // B1152 timing (missile_oracle.tsv, TRACE sec. 5/8): the hit
                 // (OP_Action) is at BeginCast + cast_ms. The flight (the
                 // Middle emitter moving caster -> target) ENDS 0.184 s BEFORE
-                // the hit (kMissileFlightEndOffset) and the Target-stage arrival
-                // burst fires 0.30 s AFTER the flight ends (kMissileLanding
-                // Delay) -- the impact plays over an already-resolved hit, at
-                // the target. The flight time is the record-80 oracle's 0.30 s
-                // (9.05 units at kMissileSpeed, sec. 3/8); a resolved-gap
-                // refinement (the particle manager's positions, not the b1130
-                // rig's ~12 units, so it undershoots) and the per-record "run"
-                // speed are B1153's. launchMissile re-resolves the destination
-                // and, if it has despawned, hands the landing back to
-                // spell 54's unconditional at-removal stage-2 fire). The
-                // timing rules are the pure B1163 constants (the per-record
-                // "run" speed is runtime-only, so one calibrated speed).
-                const float flightTime = SpellMissileRules::MissileFlightTime();
+                // the hit and the Target-stage arrival burst fires 0.30 s
+                // AFTER the flight ends -- the impact plays over an
+                // already-resolved hit, at the target. The flight time is the
+                // record-80 oracle's 9.05-unit gap over the spell's speed word
+                // (B1163: eqgame [missile+0x28], 1.5 u/tick = 30 u/s, 0.8 =
+                // 16 u/s for 0x35b; spell_b1163_missile_rules.h). launchMissile
+                // re-resolves the destination and, if it has despawned, hands
+                // the landing back to createLanding.
+                const float flightTime = SpellMissileRules::MissileFlightTime(spell_id);
                 const double hitAt = m_fx_time + duration_ms / 1000.0;  // OP_Action
                 Missile m;
                 m.spellId = spell_id;
@@ -1163,6 +1159,7 @@ void SpellVisualFX::updateMissiles(float delta_time)
         }
         if (m.launched && !m.reached && m_fx_time >= m.reachAt) {
             m.reached = true;  // the flight emitter ends; the missile is gone
+            fireSpell859RemovalAtPlayer(m);  // B1163: eqgame FUN_0047789d
         }
         if (m.reached && !m.landed && m_fx_time >= m.landAt) {
             fireMissileLanding(m);  // the Target stage fires; sets m.landed
@@ -1254,6 +1251,33 @@ void SpellVisualFX::fireMissileLanding(Missile& m)
     m_missileLanded.insert({m.spellId, m.casterId});
     LOG_INFO(MOD_SPELL, "B1152 missile arrival: caster={} spell={} target={} -> Target stage fired",
              m.casterId, m.spellId, m.targetId);
+}
+
+void SpellVisualFX::fireSpell859RemovalAtPlayer(const Missile& m)
+{
+    // B1163 (#482): the missile removal FUN_0047789d. For spell 0x35b
+    // (00477962) with the missile within 40.0 XY units of the LOCAL PLAYER
+    // (004779c6 call 0x439c41 / 004779cb fcomp [0x645ec0]; dist <= 40), the
+    // oracle builds a type-0xe7 action on the player (00477a4e call 0x47f614
+    // -> 0047f630 call 0x47f4af) that fires the spell's Target stage AT THE
+    // PLAYER (0047f5eb push 2 / 0047f5ed call 0x49b260). fable's missile ends
+    // at its target, so the removal position is the target's.
+    namespace R = SpellMissileRules;
+    if (m.spellId != R::kSpell859 || !m_particle_manager || !m_local_player_cb) return;
+    const uint16_t player = m_local_player_cb();
+    if (player == 0) return;
+    glm::vec3 missilePos(0.0f), playerPos(0.0f);
+    if (!m_particle_manager->resolveEntityPosition(m.targetId, missilePos) ||
+        !m_particle_manager->resolveEntityPosition(player, playerPos)) return;
+    // Renderer coords: x = EQ x, z = EQ y (y is up), so EQ's XY plane is x/z.
+    const float distXY = R::GateDistanceXY(missilePos.x, missilePos.z, playerPos.x, playerPos.z);
+    if (!R::Spell859RemovalFiresAtPlayer(m.spellId, distXY)) return;
+    const StageSlots slots = stageSlots(m.spellId, kSpellsNewEffTarget, m.gateLevel);
+    if (slots.fromFile) {
+        createLandingFromSlots(m.casterId, player, m.spellId, sourceRecordOf(m.spellId), slots);
+    }
+    LOG_INFO(MOD_SPELL, "B1163 859 removal: caster={} spell={} player={} distXY={:.2f} -> "
+             "Target stage fired at the player", m.casterId, m.spellId, player, distXY);
 }
 #endif
 

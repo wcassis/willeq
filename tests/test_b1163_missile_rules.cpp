@@ -1,80 +1,98 @@
 // B1163 (#482): device-free tests for the two missile follow-ups from B1152.
+// The addresses are instruction starts in review/B1141/ghidra/out/eqgame.dis;
+// the full trace is in client/graphics/spell_b1163_missile_rules.h and
+// refactor/B1163/README.md.
 //
-//  (A) The per-record "run" speed is a RUNTIME quantity (elapsed-since-stage x
-//      the live target velocity, eqgame 00476c12-00476d2f) -- not a file field
-//      -- so the actor flies at one CALIBRATED speed. This pins that the speed
-//      is the constant 30 u/s and that the timing formula reproduces the
-//      record-80 oracle flight (9.05 units over 0.30 s).
+//  (A) The missile speed is the missile's speed word [missile+0x28]: 1.5 per
+//      physics tick for a spell missile (00477514), 0.8 for spell 0x35b
+//      (0047750d cmp / 0047751d mov). A tick is 50 ms (FUN_004bfe0f:
+//      elapsed x 0.02), so 1.5 x 20 = 30 u/s -- the speed B1152 measured for
+//      record 80 -- and spell 859 flies at 16 u/s.
 //
-//  (C) Spell 859's distance-gated 0x47f614 branch (eqgame 00477962 cmp eax,
-//      0x35b -> 004779cb fcomp [0x645ec0]=40.0 -> 00477a4e call 0x47f614) is a
-//      no-draw network + velocity step, so fable implements no draw for it.
-//      This pins the traced gate (the branch fires iff spell==859 AND
-//      dist<40.0) so the rule survives and the contrast with spell 54's
-//      unconditional stage-2 fire (0x49b260) is documented.
+//  (C) Spell 859's removal gate (FUN_0047789d): 00477962 cmp eax, 0x35b, the
+//      XY distance to the local player (004779c6 call 0x439c41) against
+//      [0x645ec0] = 40.0 (004779cb fcomp / 004779d3 test ah, 0x41 /
+//      004779d6 jp 0x477aab: taken when dist <= 40.0) -> 00477a4e call
+//      0x47f614 with packet type 0xe7 -> 0047f630 call 0x47f4af ->
+//      0047f5eb push 2 / 0047f5ed call 0x49b260: spell 859's Target stage
+//      fired at the local player.
 //
-// Device-free: includes only the pure rules header
-// (client/graphics/spell_b1163_missile_rules.h, no <irrlicht.h>), so it builds
-// and runs in both the graphics and headless trees with no display.
+// Device-free: includes only the pure rules header (no <irrlicht.h>), so it
+// builds and runs in both the graphics and headless trees with no display.
 
 #include <gtest/gtest.h>
 
+#include <limits>
+
 #include "client/graphics/spell_b1163_missile_rules.h"
+
+namespace R = EQ::SpellMissileRules;
 
 namespace {
 
-// (A) The calibrated missile speed is a constant, and the timing formula
-// reproduces the record-80 oracle (refactor/B1152/missile_oracle.tsv, spell 38:
-// flight 472.333-472.633 s = 0.30 s over 9.05 units = 30 u/s, TRACE sec. 3/8).
-TEST(B1163MissileRules, MissileSpeedIsCalibratedConstantNotPerRecord) {
-    const float speed = EQ::SpellMissileRules::kMissileSpeed;
-    const float dist  = EQ::SpellMissileRules::kMissileFlightDistance;
-    EXPECT_FLOAT_EQ(speed, 30.0f);
-    EXPECT_FLOAT_EQ(dist, 9.05f);
+// (A) The speed comes from the speed word, per spell missile.
+TEST(B1163MissileRules, MissileSpeedFromTheSpeedWord) {
+    EXPECT_EQ(R::kSpell859, 0x35bu);
+    EXPECT_FLOAT_EQ(R::kMissileSpeedWordSpell, 1.5f);   // 0x3fc00000
+    EXPECT_FLOAT_EQ(R::kMissileSpeedWord859, 0.8f);     // 0x3f4ccccd
+    EXPECT_FLOAT_EQ(R::kMissileTicksPerSecond, 20.0f);  // 1 / (50 ms)
 
-    // The flight time is distance / speed -- a constant, NOT a per-record value
-    // (the runtime-only proof lives in the rules header) -- and lands in the
-    // record-80 oracle's 0.30 s flight band.
-    const float flightTime = EQ::SpellMissileRules::MissileFlightTime();
-    EXPECT_NEAR(flightTime, 9.05f / 30.0f, 1e-6);
-    EXPECT_NEAR(flightTime, 0.30, 0.02);
+    // Every spell but 859 carries the 1.5 word; 859 carries 0.8.
+    EXPECT_FLOAT_EQ(R::MissileSpeedWord(38), 1.5f);
+    EXPECT_FLOAT_EQ(R::MissileSpeedWord(93), 1.5f);
+    EXPECT_FLOAT_EQ(R::MissileSpeedWord(0x35b), 0.8f);
 
-    // The reach/land offsets reproduce the record-80 oracle clock (OP_Action at
-    // 472.817 s; flight ends at 472.633 s; the Target stage fires at 472.933 s).
+    // kMissileSpeed is DERIVED: 1.5 u/tick x 20 ticks/s = 30 u/s exactly,
+    // the record-80 speed B1152 measured (9.05 units over 0.30 s).
+    EXPECT_FLOAT_EQ(R::kMissileSpeed, 30.0f);
+    EXPECT_FLOAT_EQ(R::MissileSpeed(38), 30.0f);
+    EXPECT_FLOAT_EQ(R::MissileSpeed(0x35b), 16.0f);
+
+    // The flight over the calibrated gap: 0.302 s at 1.5, 0.566 s at 0.8.
+    EXPECT_FLOAT_EQ(R::kMissileFlightDistance, 9.05f);
+    EXPECT_NEAR(R::MissileFlightTime(38), 9.05f / 30.0f, 1e-6);
+    EXPECT_NEAR(R::MissileFlightTime(0x35b), 9.05f / 16.0f, 1e-6);
+    EXPECT_GT(R::MissileFlightTime(0x35b), R::MissileFlightTime(38));
+}
+
+// (A) The record-80 clock is unchanged by the derivation (missile_oracle.tsv
+// M1_38: OP_Action 472.817 s, flight 472.333-472.633 s, arrival 472.933 s).
+TEST(B1163MissileRules, Record80ClockUnchanged) {
     const double hitAt   = 472.817;
-    const double reachAt = EQ::SpellMissileRules::MissileReachAt(hitAt);
-    const double landAt  = EQ::SpellMissileRules::MissileLandAt(reachAt);
+    const double reachAt = R::MissileReachAt(hitAt);
+    const double landAt  = R::MissileLandAt(reachAt);
     EXPECT_NEAR(reachAt, 472.633, 0.005);
     EXPECT_NEAR(landAt, 472.933, 0.005);
-    // The flight starts reachAt - flightTime ~= the oracle's 472.333 s.
-    EXPECT_NEAR(reachAt - flightTime, 472.333, 0.02);
+    EXPECT_NEAR(reachAt - R::MissileFlightTime(38), 472.333, 0.02);
 }
 
-// (C) The oracle's spell-859 gate: the 0x47f614 branch fires iff the spell is
-// 859 (0x35b) AND the effect is within 40.0 units of the player ([0x645ec0]).
-// The callee is a no-draw network + velocity step, so fable draws nothing for
-// it; the traced rule is encoded here (against the production constants in
-// spell_b1163_missile_rules.h) and pinned, with the contrast to spell 54
-// (0x36), whose stage-2 fire (0x49b260) has no distance gate.
-static bool b1163_859GatedBranch(uint32_t spellId, float distToPlayer) {
-    return spellId == EQ::SpellMissileRules::kSpell859
-        && distToPlayer < EQ::SpellMissileRules::kSpell859GateDistance;
+// (C) The 859 removal gate: spell 0x35b AND XY distance <= 40.0.
+TEST(B1163MissileRules, Spell859RemovalFiresAtPlayer) {
+    EXPECT_FLOAT_EQ(R::kSpell859GateDistance, 40.0f);  // [0x645ec0]
+
+    EXPECT_TRUE(R::Spell859RemovalFiresAtPlayer(0x35b, 0.0f));
+    EXPECT_TRUE(R::Spell859RemovalFiresAtPlayer(0x35b, 39.9f));
+    // The boundary fires: fcomp sets C3 alone at equality (odd parity, no jp).
+    EXPECT_TRUE(R::Spell859RemovalFiresAtPlayer(0x35b, 40.0f));
+    EXPECT_FALSE(R::Spell859RemovalFiresAtPlayer(0x35b, 40.01f));
+    EXPECT_FALSE(R::Spell859RemovalFiresAtPlayer(0x35b, 55.0f));
+    // Unordered (NaN) sets C0 and C3 together: even parity, the jp skips.
+    EXPECT_FALSE(R::Spell859RemovalFiresAtPlayer(
+        0x35b, std::numeric_limits<float>::quiet_NaN()));
+    // Other spells never take this branch: 38 / 93 (ordinary missiles) and
+    // 54 (0x36), whose stage 2 fires unconditionally on its own branch.
+    EXPECT_FALSE(R::Spell859RemovalFiresAtPlayer(38, 0.0f));
+    EXPECT_FALSE(R::Spell859RemovalFiresAtPlayer(0x36, 0.0f));
+    EXPECT_FALSE(R::Spell859RemovalFiresAtPlayer(0, 0.0f));
 }
 
-TEST(B1163MissileRules, Spell859GatedBranch) {
-    EXPECT_EQ(EQ::SpellMissileRules::kSpell859, 0x35b);
-    EXPECT_FLOAT_EQ(EQ::SpellMissileRules::kSpell859GateDistance, 40.0f);
-
-    // 859 within 40 units -> the oracle fires the gated branch.
-    EXPECT_TRUE(b1163_859GatedBranch(0x35b, 39.9f));
-    EXPECT_TRUE(b1163_859GatedBranch(0x35b, 10.0f));
-    // 859 at/beyond 40 units -> it does not.
-    EXPECT_FALSE(b1163_859GatedBranch(0x35b, 40.0f));
-    EXPECT_FALSE(b1163_859GatedBranch(0x35b, 55.0f));
-    // A different spell -> no, even when close: spell 54 (0x36) fires
-    // unconditionally (no distance gate), and an absent spell (0) never does.
-    EXPECT_FALSE(b1163_859GatedBranch(0x36, 10.0f));
-    EXPECT_FALSE(b1163_859GatedBranch(0, 10.0f));
+// (C) The gate distance is 2-D: FUN_00439c41 with a 0.0 7th argument drops z.
+TEST(B1163MissileRules, GateDistanceIsXY) {
+    EXPECT_FLOAT_EQ(R::GateDistanceXY(0.0f, 0.0f, 30.0f, 40.0f), 50.0f);
+    EXPECT_FLOAT_EQ(R::GateDistanceXY(10.0f, 10.0f, 10.0f, 10.0f), 0.0f);
+    // 40 units apart in x: exactly on the boundary, so 859 fires.
+    EXPECT_TRUE(R::Spell859RemovalFiresAtPlayer(
+        0x35b, R::GateDistanceXY(0.0f, 0.0f, 40.0f, 0.0f)));
 }
 
 } // namespace
