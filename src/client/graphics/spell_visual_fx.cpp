@@ -166,8 +166,20 @@ bool SpellVisualFX::slotTiming(int32_t emitter, int32_t callerMs, SpellFxSlotTim
 {
     const SpellsNewEddTiming* w = m_spells_new_eff.edd().timing(emitter);
     if (!w) return false;
-    out = SpellFxSlotTimingFor(*w, callerMs);
+    // B1165 (#484): the Spell page's density, applied as CreateEmitter does
+    // (0x1005a430: at creation, to the record's own +0x80/+0x84/+0x88).
+    out = SpellFxSlotTimingAtDensity(SpellFxSlotTimingFor(*w, callerMs), m_fx_options.density);
     return true;
+}
+
+bool SpellVisualFX::stageDraws(uint32_t spell_id, int stage, const SpellFxActor& caster,
+                               const SpellFxActor& target) const
+{
+    // B1165 (#484): FUN_0049b260's gate. `hasRecord` = the spell has a
+    // spellsnew.eff record with content (stageSlots' fromFile), eqgame's
+    // param_2[0x8d] != 0 arm.
+    const bool hasRecord = stageSlots(spell_id, kSpellsNewEffSource, kMeasuredCasterLevel).fromFile;
+    return SpellFxStageDraws(m_fx_options, hasRecord, stage, caster, target);
 }
 
 SpellVisualResolution SpellVisualFX::resolveVisual(uint32_t spell_id) const
@@ -503,10 +515,15 @@ int32_t SpellVisualFX::castAnimationMs(uint16_t caster_id, int castAnim) const
 }
 
 uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, uint32_t duration_ms,
-                                      int casterLevel, int castAnim)
+                                      int casterLevel, int castAnim, const SpellFxActor& casterFx)
 {
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
+        // B1165 (#484): the Spell page's gate per stage (FUN_0049b260): the
+        // Source on (caster, caster) -- BeginCast passes the caster twice,
+        // eqgame.exe.c:122270. (B1170: no Middle here; the 0x4033 object's
+        // stage fires are gated in spell_visual_fx_missile.cpp.)
+        const bool sourceDraws = stageDraws(spell_id, 0, casterFx, casterFx);
         // Remove any existing cast glow for this caster (center, both hands, head)
         m_particle_manager->removeSpellEffectsForEntity(caster_id);
         m_particle_manager->removeSpellEffectsForEntity(rightHandEntityId(caster_id));
@@ -553,6 +570,12 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         // 00495d93: an anchor-2 slot with no object is skipped), and the
         // only object is the one a server 0x4033 message builds (00460737);
         // the record-driven B1152 missile that flew here is removed.
+        if (!sourceDraws) {
+            LOG_INFO(MOD_SPELL, "createCastGlow: caster={} spell={}: Source not drawn (On For {}, density {}, "
+                                "opacity {}, ShowSpellEffects {})", caster_id, spell_id, m_fx_options.castFilter,
+                     m_fx_options.density, m_fx_options.opacity, m_fx_options.showSpellEffects ? 1 : 0);
+            return 1;
+        }
         // T441 (board B398): the Source draws its resolved stage's own sprites
         // (and so its own colour); applyStageSpriteNames() drops the tint.
         const std::vector<std::string> stageNames =
@@ -687,6 +710,8 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         return 1;
     }
 #endif
+    // B1165 (#484): the same stage-0 gate on the worker / scene-node paths.
+    if (!stageDraws(spell_id, 0, casterFx, casterFx)) return 1;
     if (m_worker_driven) {
         // Remove existing cast glow via worker
         if (hasCastGlow(caster_id)) {
@@ -805,10 +830,17 @@ void SpellVisualFX::createImpact(uint16_t target_id, uint32_t spell_id)
 }
 
 uint16_t SpellVisualFX::createLanding(uint16_t caster_id, uint16_t target_id, uint32_t spell_id,
-                                      int casterLevel)
+                                      int casterLevel, const SpellFxActor& casterFx,
+                                      const SpellFxActor& targetFx)
 {
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
+        // B1165 (#484): stage 2 on (caster, target), eqgame.exe.c:101960.
+        if (!stageDraws(spell_id, 2, casterFx, targetFx)) {
+            LOG_INFO(MOD_SPELL, "createLanding: caster={} spell={}: Target stage not drawn (On For {})",
+                     caster_id, spell_id, m_fx_options.castFilter);
+            return 0;
+        }
         namespace Presets = EQT::Graphics::Environment::SpellPresets;
         using Cfg = EQT::Graphics::Environment::SpellEffectsConfig;
         using Anchor = Cfg::TargetAnchor;
@@ -863,6 +895,9 @@ uint16_t SpellVisualFX::createLanding(uint16_t caster_id, uint16_t target_id, ui
         return follow;
     }
 #endif
+    // B1165 (#484): the same stage-2 gate on the scene-node path.
+    if (!stageDraws(spell_id, 2, casterFx, targetFx)) return 0;
+    (void)casterLevel;
     // The legacy scene-node path: no per-record rows, the landing on the target.
     const uint16_t entity = target_id != 0 ? target_id : caster_id;
     createSpellComplete(entity, spell_id);

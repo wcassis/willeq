@@ -14,7 +14,7 @@ void ApplySpellCastStartedFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
                              CastGlowRoute::Clock::time_point now) {
     // B1170 (#489): a 0x4033 missile object, not a cast: the object alone.
     if (d.missileObject) {
-        if (fx) fx->spawnMissileObject(*d.missileObject, d.fxGateLevel);
+        if (fx) fx->spawnMissileObject(*d.missileObject, d.fxGateLevel, d.casterFx, d.missileTargetFx);
         return;
     }
     const bool createGlow = route.onBeginCast(d.casterId, d.spellId, d.castTimeMs, now);
@@ -27,7 +27,8 @@ void ApplySpellCastStartedFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
     // B1144 (#464): the caster's gate level picks the record's slots.
     // B1148 (#468): CastingAnim picks the caster track whose length the
     // Source runs past the cast time.
-    fx->createCastGlow(d.casterId, d.spellId, d.castTimeMs, d.fxGateLevel, d.castAnim);
+    // B1165 (#484): the On-For filter's input (spell_fx_options.h).
+    fx->createCastGlow(d.casterId, d.spellId, d.castTimeMs, d.fxGateLevel, d.castAnim, d.casterFx);
 }
 
 void ApplySpellCastCompleteFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
@@ -53,7 +54,8 @@ void ApplySpellCastCompleteFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
     // B1132 (#452): the whole landing on the record's Target anchor (the
     // target; the caster only for a caster-anchored record).
     // B1144: the record's Target slots at the caster's gate level; none = no landing.
-    if (d.isCastAnimation) fx->createLanding(d.casterId, d.targetId, d.spellId, d.fxGateLevel);
+    // B1165 (#484): stage 2 on (caster, target).
+    if (d.isCastAnimation) fx->createLanding(d.casterId, d.targetId, d.spellId, d.fxGateLevel, d.casterFx, d.targetFx);
 }
 
 void ApplySpellCastInterruptedFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,

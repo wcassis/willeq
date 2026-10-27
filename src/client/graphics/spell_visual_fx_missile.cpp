@@ -40,11 +40,14 @@ constexpr uint16_t kMissileAnchorCount = 0x100;
 constexpr double kAnchorLingerMs = 15000.0;
 }  // namespace
 
-void SpellVisualFX::spawnMissileObject(const SpellMissile::Wire& wire, int gateLevel)
+void SpellVisualFX::spawnMissileObject(const SpellMissile::Wire& wire, int gateLevel,
+                                       const SpellFxActor& casterFx, const SpellFxActor& targetFx)
 {
     MissileFx m;
     m.o.w = wire;
     m.gateLevel = gateLevel;
+    m.casterFx = casterFx;
+    m.targetFx = targetFx;
     m_missile_objects.push_back(m);
     LOG_INFO(MOD_SPELL, "B1170 missile object: source={} target={} spell={} type={} word={:.3f} "
              "heading={:.2f} aim={:.2f} pos=({:.2f},{:.2f},{:.2f}) vel=({:.3f},{:.3f},{:.3f}) +0x60={} +0x61={} +0x62={} "
@@ -212,6 +215,15 @@ void SpellVisualFX::fireMissileStage(MissileFx& m, const SpellMissile::SpellFiel
     if (!m_particle_manager) return;
     const uint32_t spellId = m.o.w.spellId;
     const auto caster = static_cast<uint16_t>(m.o.w.sourceId);
+    // B1165 (#484): 00476ecc's FUN_0049b260 call is the stage gate's entry
+    // (eqgame.exe.c:121989-122034): stage 1 or 2 on (caster, none) -- the
+    // call passes 0 as the target (00476ebf .. 00476ecc).
+    if (!stageDraws(spellId, m.o.stage, m.casterFx, SpellFxActor{})) {
+        LOG_INFO(MOD_SPELL, "B1170 missile stage {}: spell={} not drawn (On For {}, density {}, opacity {}, "
+                 "ShowSpellEffects {})", m.o.stage, spellId, m_fx_options.castFilter, m_fx_options.density,
+                 m_fx_options.opacity, m_fx_options.showSpellEffects ? 1 : 0);
+        return;
+    }
     m.anchor = allocMissileAnchor();
     if (m.anchor == 0) return;
     placeMissileAnchor(m.anchor, m.o.w.pos);
@@ -286,6 +298,11 @@ void SpellVisualFX::fireMissileRemoval(MissileFx& m)
         // 00477a55 .. 00477aa3: FUN_0049b260(2, record, caster, 0, pos - vel, 0, 0).
         float pos[3];
         SpellMissile::RemovalPosition(m.o, pos);
+        // B1165: 00477aa3's FUN_0049b260 is gated on (caster, none).
+        if (!stageDraws(spellId, 2, m.casterFx, SpellFxActor{})) {
+            LOG_INFO(MOD_SPELL, "B1170 missile removal: spell 54 Target stage not drawn (B1165 Spell page gate)");
+            return;
+        }
         const uint16_t world = allocMissileAnchor();
         if (world == 0 || !slots.fromFile) return;
         placeMissileAnchor(world, pos);
@@ -311,6 +328,16 @@ void SpellVisualFX::fireMissileRemoval(MissileFx& m)
     in.targetType = spell ? spell->targetType : 0;  // 0047f4e6: spell +0x180
     in.distXY = R::GateDistanceXY(m.o.w.pos[0], m.o.w.pos[1], p.pos[0], p.pos[1]);
     if (!R::Spell859RemovalFires(in) || !slots.fromFile) return;
+    // B1165: 0x47f5ed's FUN_0049b260 is the stage gate on (caster, the
+    // player); FUN_00491cff shows a spell whose target is me (0x491dd0 ..
+    // 0x491e1d), so only density / opacity / ShowSpellEffects can hide it.
+    SpellFxActor me;
+    me.present = true;
+    me.isSelf = true;
+    if (!stageDraws(spellId, 2, m.casterFx, me)) {
+        LOG_INFO(MOD_SPELL, "B1170 missile removal: spell 859 Target stage not drawn (B1165 Spell page gate)");
+        return;
+    }
     // 0047f5e1 .. 0047f5ed: FUN_0049b260(2, record, caster, player, 0, 0, 0).
     StageArgs args;
     args.caster = caster;

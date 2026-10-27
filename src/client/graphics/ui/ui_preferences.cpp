@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <optional>
 #include <sstream>
 
 #include "client/data_paths.h"
@@ -131,6 +132,15 @@ void ParseSettingKey(const std::string& key, const std::string& value, UiPrefere
         if (key != info.iniKey) continue;
         int v = 0;
         const std::string t = Trim(value);
+        // B1165: a particle float keeps the clamped value the ini gave as the
+        // APPLIED value; the slot holds the choice the window shows.
+        if (OptionsLayout::isIniFloatSetting(info.setting)) {
+            std::optional<float> applied;
+            if (!OptionsLayout::parseSettingIniFloat(info.setting, t, v, applied)) return;
+            p.optionValues[i] = v;
+            p.optionIniFloats[i] = applied;
+            return;
+        }
         if (info.kind == OptionsLayout::ValueKind::Bool &&
             (t == "TRUE" || t == "true" || t == "FALSE" || t == "false")) {
             v = (t == "TRUE" || t == "true") ? 1 : 0;
@@ -190,7 +200,9 @@ UiPreferences CollectUiPreferences(const UiPreferencesBinding& b, int cameraMode
         p.soundVolume = b.options->soundVolume;
         p.clipPlane = b.options->clipPlane;
         for (int i = 0; i < OptionsLayout::kSettingCount; ++i) {
-            if (IsPersistedSetting(i)) p.optionValues[i] = b.options->values[i];
+            if (!IsPersistedSetting(i)) continue;
+            p.optionValues[i] = b.options->values[i];
+            p.optionIniFloats[i] = b.options->iniFloats[i];  // B1165
         }
         p.textColors = b.options->textColors;  // B993
     }
@@ -243,6 +255,12 @@ void ApplyUiPreferences(const UiPreferences& p, const UiPreferencesBinding& b) {
             const auto s = static_cast<OptionsLayout::Setting>(i);
             if (OptionsLayout::isValidSettingValue(s, p.optionValues[i])) {
                 b.options->values[i] = p.optionValues[i];
+                // B1165: the applied float, clamped again for the same reason.
+                const auto& raw = p.optionIniFloats[i];
+                b.options->iniFloats[i] =
+                    (raw && OptionsLayout::isIniFloatSetting(s))
+                        ? std::optional<float>(OptionsLayout::clampSettingIniFloat(s, *raw))
+                        : std::nullopt;
             }
         }
         b.options->textColors = p.textColors;  // B993 (clamped 0..255 by type)
@@ -397,7 +415,7 @@ std::string SerializeUiPreferences(const UiPreferences& p) {
         if (!IsPersistedSetting(i)) continue;
         out += OptionsLayout::allSettings()[i].iniKey;
         out += "=" + OptionsLayout::settingIniText(static_cast<OptionsLayout::Setting>(i),
-                                                   p.optionValues[i]) + "\n";
+                                                   p.optionValues[i], p.optionIniFloats[i]) + "\n";
     }
     // B834: the official [Tips] section, as the real files write it.
     out += "[Tips]\nShowTips=";

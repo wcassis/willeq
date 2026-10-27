@@ -20,6 +20,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 
 #if defined(EQT_HAS_GRAPHICS) && defined(EQT_HAS_GLES2)
 
@@ -123,6 +124,27 @@ protected:
         for (auto& c : pm_->drainCommands())
             if (c.type == EQT::Graphics::ParticleCommand::CreateSpellEffect) out.push_back(c);
         return out;
+    }
+    // B1170 (#489): a 0x4033 spell missile object kOther -> kCaster (the
+    // entities in EQ (y, x, z) as the renderer hands them over).
+    void SpawnMissile(uint32_t spell, const EQ::SpellFxActor& casterFx = {}, const EQ::SpellFxActor& targetFx = {}) {
+        fx_->setMissileEntityCallback([](uint16_t id, SpellVisualFX::MissileEntityState& out) -> bool {
+            if (id != kCaster && id != kOther) return false;
+            const glm::vec3 c = id == kOther ? kOtherCenter : kCenter;
+            out = SpellVisualFX::MissileEntityState{};
+            out.eqPos[0] = c.z;
+            out.eqPos[1] = c.x;
+            out.eqPos[2] = c.y;
+            return true;
+        });
+        EQ::SpellMissile::Wire w;
+        w.word = 1.5f;
+        w.damped = 1;
+        w.type = EQ::SpellMissile::kTypeSpell;
+        w.spellId = spell;
+        w.sourceId = kOther;
+        w.targetId = kCaster;
+        fx_->spawnMissileObject(w, 60, casterFx, targetFx);
     }
     static uint16_t On(const EQT::Graphics::ParticleCommandData& c) {
         return c.casterID != 0 ? c.casterID : c.targetID;
@@ -526,6 +548,205 @@ TEST_F(SlotRules, ASpellWithoutARecordKeepsTheRowsAnchor) {
     EXPECT_FALSE(slots.fromFile);
     fx_->createCastGlow(kCaster, 93, 1500, 1);
     for (const auto& c : Created()) EXPECT_NE(On(c), kHead);
+}
+
+// ===========================================================================
+// B1165 (#484): the Options > Particles > Spell page on the record path
+// ===========================================================================
+
+namespace {
+
+// One created command's (or a landing pair's) counts: burst, per-tick and
+// tick rate summed over its emitters, and whether the density is already in.
+struct Counts {
+    int burst = 0;
+    float perTick = 0.0f;
+    float tps = 0.0f;
+    bool atCreate = true;
+};
+Counts Sum(const std::vector<EQT::Graphics::ParticleCommandData>& v, size_t from, size_t n) {
+    Counts c;
+    for (size_t i = from; i < from + n && i < v.size(); ++i)
+        for (const auto& ed : v[i].spellDef.emitters) {
+            c.burst += ed.config.burstCount;
+            c.perTick += ed.config.tickParticles;
+            c.tps = std::max(c.tps, ed.config.ticksPerSecond);
+            c.atCreate = c.atCreate && ed.config.densityAtCreate;
+        }
+    return c;
+}
+// What CreateEmitter makes of the density-1 counts at `d` (0x1005a463..0x1005a4f5).
+Counts AtDensity(const Counts& one, float d) {
+    EQ::SpellFxSlotTiming t;
+    t.run = 1.0f;
+    t.lifetime = 1.0f;
+    t.burst = one.burst;
+    t.perTick = static_cast<int32_t>(std::lround(one.perTick));
+    t.ticksPerSecond = one.tps;
+    t = EQ::SpellFxSlotTimingAtDensity(t, d);
+    Counts c;
+    c.burst = t.burst;
+    c.perTick = static_cast<float>(t.perTick);
+    c.tps = t.perTick > 0 ? t.ticksPerSecond : 0.0f;
+    return c;
+}
+EQ::SpellFxOptions Density(float d) {
+    EQ::SpellFxOptions o;
+    o.density = d;
+    return o;
+}
+
+}  // namespace
+
+// Each stage's emitters are created with the Spell page's density applied to
+// the record's counts as CreateEmitter applies it -- Source (createCastGlow),
+// Middle (the 0x4033 object's spawn, B1170) and Target (createLanding) of 93's record 80
+// at level 60 -- and the worker does not scale them again (densityAtCreate).
+TEST_F(SlotRules, TheSpellPagesDensityScalesEveryStageAtCreation) {
+    Note(kBurstOfFlame);
+    auto stages = [&](float d) {
+        fx_->setSpellFxOptions(Density(d));
+        std::vector<std::vector<Counts>> out(3);
+        fx_->createCastGlow(kCaster, 93, 1500, 60);
+        const auto src = Created();
+        for (size_t i = 0; i < src.size(); ++i) out[0].push_back(Sum(src, i, 1));
+        // B1170 (#489): the Middle comes only from a 0x4033 missile object
+        // kOther -> kCaster (its stage 1 fires at the spawn).
+        SpawnMissile(93);
+        for (int f = 0; f < 40 && fx_->missileObjectCount() > 0; ++f) {
+            fx_->update(0.05f);
+            for (const auto& c : Created())
+                if (c.spellDef.name == "MissileMiddle") out[1].push_back(Sum({c}, 0, 1));
+        }
+        fx_->clearAllEffects();
+        Created();
+        fx_->createLanding(kCaster, kOther, 93, 60);
+        const auto land = Created();
+        for (size_t i = 0; i + 1 < land.size(); i += 2) out[2].push_back(Sum(land, i, 2));
+        return out;
+    };
+    const auto one = stages(1.0f);
+    ASSERT_EQ(one[0].size(), 4u) << "record 80's four Source slots at level 60";
+    ASSERT_FALSE(one[1].empty()) << "record 80 flies a Middle";
+    ASSERT_EQ(one[2].size(), 4u) << "and lands four Target slots";
+    EXPECT_EQ(one[0][3].burst, 33);
+    EXPECT_EQ(one[2][0].burst, 50);
+    const char* const name[3] = {"Source", "Middle", "Target"};
+    for (float d : {0.5f, 0.25f}) {
+        const auto got = stages(d);
+        for (int st = 0; st < 3; ++st) {
+            ASSERT_EQ(got[st].size(), one[st].size()) << name[st] << " at " << d;
+            for (size_t i = 0; i < got[st].size(); ++i) {
+                const Counts want = AtDensity(one[st][i], d);
+                EXPECT_EQ(got[st][i].burst, want.burst) << name[st] << " slot " << i << " at " << d;
+                EXPECT_NEAR(got[st][i].perTick, want.perTick, 1e-4f) << name[st] << " slot " << i << " at " << d;
+                if (want.perTick > 0.0f)
+                    EXPECT_FLOAT_EQ(got[st][i].tps, want.tps) << name[st] << " slot " << i << " at " << d;
+                EXPECT_TRUE(got[st][i].atCreate) << name[st] << " slot " << i;
+            }
+        }
+    }
+    // Spot values (record 80, level 60) at 0.5: the Source's 33 -> ftol(16.5)
+    // = 16, its 2s keep min(2, 16) = 2 and their 32 ticks/s halve; the
+    // Target's 50 + 50 x 30/s -> 25 + 25 x 30/s.
+    const auto half = stages(0.5f);
+    EXPECT_EQ(half[0][3].burst, 16);
+    EXPECT_EQ(half[0][0].burst, 2);
+    EXPECT_FLOAT_EQ(half[0][0].tps, 16.0f);
+    EXPECT_EQ(half[2][0].burst, 25);
+    EXPECT_NEAR(half[2][0].perTick, 25.0f, 1e-4f);
+    EXPECT_FLOAT_EQ(half[2][0].tps, 30.0f);
+    // Density 0: FUN_0049b260 draws no record stage at all (0x49b30b).
+    const auto off = stages(0.0f);
+    for (int st = 0; st < 3; ++st) EXPECT_TRUE(off[st].empty()) << name[st] << " at density 0";
+}
+
+// "On For:" per stage: the Source on (caster, caster), the Middle on
+// (caster, none) (the 0x4033 object, B1170), createLanding on (caster, target).
+TEST_F(SlotRules, TheOnForFilterGatesEachStage) {
+    Note(kBurstOfFlame);
+    EQ::SpellFxActor other;
+    other.present = true;  // a PC, not me, not grouped
+    EQ::SpellFxActor me;
+    me.present = true;
+    me.isSelf = true;
+    EQ::SpellFxOptions mine;
+    mine.castFilter = 1;  // My spells
+    fx_->setSpellFxOptions(mine);
+    // Another PC's bolt at me: no Source, no Middle -- the landing on me draws.
+    fx_->createCastGlow(kOther, 93, 1500, 60, 0, other);
+    EXPECT_TRUE(Created().empty()) << "My spells: another PC's Source is hidden";
+    // B1170 (#489): its 0x4033 object still flies; the Middle it fires at the
+    // spawn is (caster, none) and hidden, and a 93 object fires no Target
+    // stage of its own (only 54 / 859 do, at removal).
+    SpawnMissile(93, other, me);
+    ASSERT_EQ(fx_->missileObjectCount(), 1u) << "the object exists whatever the filter";
+    size_t middle = 0, landing = 0;
+    for (int f = 0; f < 60 && fx_->missileObjectCount() > 0; ++f) {
+        fx_->update(0.05f);
+        for (const auto& c : Created()) (c.spellDef.name == "MissileMiddle" ? middle : landing)++;
+    }
+    EXPECT_EQ(middle, 0u) << "the Middle is (caster, none): hidden";
+    EXPECT_EQ(landing, 0u) << "no Target stage from a 93 object";
+    // Another PC's spell on another PC: nothing; on me: the landing.
+    fx_->createLanding(kCaster, kOther, 93, 60, other, other);
+    EXPECT_TRUE(Created().empty());
+    fx_->createLanding(kCaster, kOther, 93, 60, other, me);
+    EXPECT_EQ(Created().size(), 8u);
+    // All spells (the default and every capture's 24): everything draws.
+    fx_->setSpellFxOptions(EQ::SpellFxOptions{});
+    fx_->createCastGlow(kCaster, 93, 1500, 60, 0, other);
+    EXPECT_EQ(Created().size(), 4u);
+    // ShowSpellEffects 0: no record stage draws (0x49b331).
+    EQ::SpellFxOptions hidden;
+    hidden.showSpellEffects = false;
+    fx_->setSpellFxOptions(hidden);
+    fx_->createCastGlow(kCaster, 93, 1500, 60, 0, me);
+    fx_->createLanding(kCaster, kOther, 93, 60, me, me);
+    EXPECT_TRUE(Created().empty()) << "/showspelleffects off draws no spell particles";
+}
+
+// The worker leaves a created-at-density emitter alone and still scales a
+// non-record one by the family density (B995).
+TEST(SlotRulesSim, ACreatedAtDensityEmitterIsNotScaledAgain) {
+    auto run = [](bool atCreate) {
+        EQT::Graphics::Environment::SpellEffectDef def;
+        EQT::Graphics::Environment::SpellEmitterDef ed;
+        auto& c = ed.config;
+        c.spawnRate = 0.0f;
+        c.burstCount = 5;
+        c.ticksPerSecond = 10.0f;
+        c.tickParticles = 2.5f;
+        c.emitterLifetime = 0.5f;
+        c.lifetimeMin = c.lifetimeMax = 5.0f;
+        c.velocityBase = glm::vec3(0.0f);
+        c.densityAtCreate = atCreate;
+        def.emitters.push_back(ed);
+        EQT::Graphics::SimulationWorker worker;
+        EQT::Graphics::SimulationOutput output;
+        size_t alive = 0;
+        for (int f = 0; f < 60; ++f) {
+            EQT::Graphics::SimulationInput input;
+            auto& pi = input.particleInput;
+            pi.deltaTime = 1.0f / 60.0f;
+            pi.unifiedRendererInitialized = true;
+            pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
+            pi.poolSize = 256;
+            for (float& d : pi.density) d = 0.5f;
+            if (f == 0) {
+                EQT::Graphics::ParticleCommandData cmd;
+                cmd.type = EQT::Graphics::ParticleCommand::CreateSpellEffect;
+                cmd.spellDef = def;
+                cmd.preAssignedEffectID = 1;
+                pi.commands.push_back(cmd);
+            }
+            worker.computeOnce(input, output);
+            if (output.particleOutput.valid) alive = output.particleOutput.renderBuffer.size();
+        }
+        return alive;
+    };
+    EXPECT_EQ(run(true), 15u) << "5 + 4 ticks x 2.5: the density was applied at creation";
+    EXPECT_EQ(run(false), 8u) << "round(5 x 0.5) = 3 + 4 ticks x 1.25 = 5";
 }
 
 #endif  // EQT_HAS_GRAPHICS && EQT_HAS_GLES2

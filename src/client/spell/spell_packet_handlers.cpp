@@ -17,6 +17,8 @@
  */
 
 #include "client/spell/spell_manager.h"
+
+#include <cctype>
 #include "client/spell/spells_new_eff_reader.h"  // B1144: SpellsNewEffGateLevel
 #include "client/eq.h"
 #include "client/combat.h"
@@ -43,6 +45,40 @@ static int fxGateLevelOf(const EverQuest* eq, uint16_t caster_id)
     return EQ::SpellsNewEffGateLevel(true, it->second.npc_type != 0, it->second.level);
 }
 
+// B1165 (#484): what eqgame's On-For filter FUN_00491cff reads of a spawn
+// (spell_fx_options.h): its type (+0x244 = fable's npc_type), whether its name
+// is in my group (FUN_00485df1) or my raid (FUN_004303a6), and whether it is
+// me (DAT_00905ce4). An unknown id is the client's null spawn.
+static EQ::SpellFxActor fxActorOf(EverQuest* eq, uint16_t id)
+{
+    EQ::SpellFxActor a;
+    if (id == 0) return a;
+    const auto& entities = eq->GetEntities();
+    const auto it = entities.find(id);
+    if (it == entities.end()) return a;
+    a.present = true;
+    a.spawnType = it->second.npc_type;
+    a.isSelf = id == eq->GetEntityID();
+    const std::string name = EQT::toDisplayName(it->second.name);
+    auto same = [&](const std::string& n) {
+        if (n.size() != name.size()) return false;
+        for (size_t i = 0; i < n.size(); ++i)
+            if (std::tolower(static_cast<unsigned char>(n[i])) != std::tolower(static_cast<unsigned char>(name[i])))
+                return false;
+        return true;
+    };
+    const auto& group = eq->GetGameState().group();
+    for (int i = 0; i < group.memberCount(); ++i) {
+        const auto* m = group.getMember(i);
+        if (m && ((m->spawnId != 0 && m->spawnId == id) || same(m->name))) { a.inGroup = true; break; }
+    }
+    if (eq->Group().IsInRaid()) {
+        for (const auto& r : eq->Group().GetRaidMembers())
+            if (same(r.name)) { a.inRaid = true; break; }
+    }
+    return a;
+}
+
 // B1170 (#489): the server's 0x4033 missile object. eqgame copies the 0x88
 // bytes into the object it builds (00460737, the constructor's received
 // branch); fable decodes them here (client/spell/spell_missile_object.h) and
@@ -66,6 +102,9 @@ void SpellManager::handleMissileObject(const uint8_t* payload, size_t len)
     d.isPlayerCast = false;
     d.isTargetCast = false;
     d.fxGateLevel = fxGateLevelOf(m_eq, static_cast<uint16_t>(wire.sourceId));
+    // B1165 (#484): the stage gate's On-For inputs for the object's fires.
+    d.casterFx = fxActorOf(m_eq, static_cast<uint16_t>(wire.sourceId));
+    d.missileTargetFx = fxActorOf(m_eq, static_cast<uint16_t>(wire.targetId));
     d.missileObject = std::make_shared<const EQ::SpellMissile::Wire>(std::move(wire));
     m_bridge->pushEvent(eqt::state::GameEvent(
         eqt::state::GameEventType::SpellCastVisualStarted, std::move(d)));
@@ -116,6 +155,7 @@ void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32
             if (spell) d.spellVisual = spell->visualVocabulary();
             d.fxGateLevel = fxGateLevelOf(m_eq, caster_id);  // B1144
             if (spell) d.castAnim = spell->cast_anim;  // B1148: field 120
+            d.casterFx = fxActorOf(m_eq, caster_id);  // B1165
             m_bridge->pushEvent(eqt::state::GameEvent(
                 eqt::state::GameEventType::SpellCastVisualStarted, std::move(d)));
         }
@@ -156,6 +196,7 @@ void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32
             if (spell) d.spellVisual = spell->visualVocabulary();  // T381 (B160)
             d.fxGateLevel = fxGateLevelOf(m_eq, caster_id);  // B1144
             if (spell) d.castAnim = spell->cast_anim;  // B1148: field 120
+            d.casterFx = fxActorOf(m_eq, caster_id);   // B1165
             m_bridge->pushEvent(eqt::state::GameEvent(
                 eqt::state::GameEventType::SpellCastVisualStarted, std::move(d)));
         }
@@ -228,6 +269,8 @@ void SpellManager::handleAction(const EQT::SpellActionInfo& action)
         d.completionAnim = completion_anim;
         if (spell) d.spellVisual = spell->visualVocabulary();  // T381 (B160)
         d.fxGateLevel = fxGateLevelOf(m_eq, caster_id);  // B1144
+        d.casterFx = fxActorOf(m_eq, caster_id);         // B1165
+        d.targetFx = fxActorOf(m_eq, target_id);
         m_bridge->pushEvent(eqt::state::GameEvent(
             eqt::state::GameEventType::SpellCastVisualComplete, std::move(d)));
     }

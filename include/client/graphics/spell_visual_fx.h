@@ -24,6 +24,7 @@
 #include "client/spell/spells_new_edd_colour.h"
 #include "client/spell/spell_fx_timing.h"
 #include "client/spell/spell_missile_object.h"
+#include "client/spell/spell_fx_options.h"
 #include "client/spell/spell_visual_vocabulary.h"
 #include "client/graphics/spell_visual_selection.h"
 
@@ -207,8 +208,13 @@ public:
     // B1148 (#468): `castAnim` = spell field 120; the Source's caller
     // duration is the cast time + the caster model's track for it
     // (castAnimationMs), the measured 4.35 s when that does not resolve.
+    // B1165 (#484): `casterFx` is what the On-For filter reads
+    // (spell_fx_options.h); the default (no spawn) passes every filter value's
+    // null/null arm. The Source (stage 0) is gated on (caster, caster) as
+    // eqgame's BeginCast passes it (eqgame.exe.c:122270).
     uint32_t createCastGlow(uint16_t caster_id, uint32_t spell_id, uint32_t duration_ms,
-                            int casterLevel = kMeasuredCasterLevel, int castAnim = 0);
+                            int casterLevel = kMeasuredCasterLevel, int castAnim = 0,
+                            const SpellFxActor& casterFx = SpellFxActor{});
 
     // B1148: the caster model's track length for an animation code ("t04"),
     // in ms; < 0 = no such entity / model / track. Set by the renderer (the
@@ -239,8 +245,23 @@ public:
     // (B1132) still gives the shape class, sizes and timing; the impact half
     // draws the slot's own texture, the spellComplete half the textures of the
     // Source slots the same level draws (T441).
+    // B1165: gated on (casterFx, targetFx) as stage 2 (eqgame.exe.c:101960).
     uint16_t createLanding(uint16_t caster_id, uint16_t target_id, uint32_t spell_id,
-                           int casterLevel = kMeasuredCasterLevel);
+                           int casterLevel = kMeasuredCasterLevel,
+                           const SpellFxActor& casterFx = SpellFxActor{},
+                           const SpellFxActor& targetFx = SpellFxActor{});
+
+    // B1165 (#484): the Options > Particles > Spell page + ShowSpellEffects,
+    // as the client holds them (spell_fx_options.h). Set every frame by the
+    // renderer's sim bridge from the Options record and once by the FX
+    // harness (tools/model_viewer --particle-options). Density is applied
+    // when a stage's emitters are CREATED (slotTiming ->
+    // SpellFxSlotTimingAtDensity), as CreateEmitter does.
+    void setSpellFxOptions(const SpellFxOptions& o) { m_fx_options = o; }
+    const SpellFxOptions& spellFxOptions() const { return m_fx_options; }
+    // FUN_0049b260's gate for this spell's stage (0 Source, 1 Middle, 2 Target).
+    bool stageDraws(uint32_t spell_id, int stage, const SpellFxActor& caster,
+                    const SpellFxActor& target) const;
 
     // ========================================================================
     // B1170 (#489): the server's 0x4033 missile OBJECT
@@ -253,7 +274,12 @@ public:
     // (00445556 / 00445580), the Middle stage rides the object (anchor 2,
     // 00495d8e) and the removal fires the 54 / 859 Target stages (0047789d).
     // `gateLevel` is the source spawn's slot-gate level (SpellsNewEffGateLevel).
-    void spawnMissileObject(const SpellMissile::Wire& wire, int gateLevel = kMeasuredCasterLevel);
+    // B1165 (#484): `casterFx` / `targetFx` are the source and target as the
+    // On-For filter reads them; every stage the object fires goes through
+    // stageDraws as eqgame's FUN_0049b260 entry gates it.
+    void spawnMissileObject(const SpellMissile::Wire& wire, int gateLevel = kMeasuredCasterLevel,
+                            const SpellFxActor& casterFx = SpellFxActor{},
+                            const SpellFxActor& targetFx = SpellFxActor{});
     size_t missileObjectCount() const { return m_missile_objects.size(); }
     // The i-th object's position (EQ y, x, z); false when there is none.
     bool missileObjectPosition(size_t i, float eqPos[3]) const {
@@ -458,6 +484,8 @@ private:
         // The target's height as read at the spawn: the client's actor
         // height (+0x238) is a per-actor value, not the animated pose's box.
         float targetHeight = 0.0f;
+        SpellFxActor casterFx;  // B1165: the On-For inputs for the object's fires
+        SpellFxActor targetFx;
     };
     std::vector<MissileFx> m_missile_objects;
     double m_missile_clock_ms = 0.0;  // the object clock (time() read as ms)
@@ -556,6 +584,7 @@ private:
     std::vector<EQT::Graphics::SpellVFXCommandData> m_pending_commands;
     bool m_worker_driven = false;
 
+    SpellFxOptions m_fx_options;  // B1165
     // Default effect durations
     static constexpr float DEFAULT_IMPACT_DURATION = 1.5f;  // Impact particles last 1.5 seconds
 };

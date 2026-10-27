@@ -54,6 +54,7 @@
 #include "client/graphics/ui/color_picker.h"  // B993
 #include "client/chat/chat_text_colors.h"     // B993
 #include "client/graphics/environment/particle_options.h"  // B995
+#include "client/spell/spell_fx_options.h"                  // B1165
 #include "client/state/event_bus.h"
 #include "client/graphics/ui/ui_layout.h"
 
@@ -99,6 +100,10 @@ struct OptionsPanelState {
     // game thread last published (applyGameOptionChanged). The three legacy
     // sliders above do NOT live here -- their slots are unused.
     OptionsLayout::OptionValues values = OptionsLayout::defaultOptionValues();
+    // B1165: the applied ini float of a particle float setting whose `values`
+    // slot only holds the choice the window shows (options_settings.h
+    // OptionIniFloats); nullopt = the choice's table float.
+    OptionsLayout::OptionIniFloats iniFloats{};
 
     /** The Filters page: OFP_FilterList's selected row (0..kFilterCount-1). */
     int filterSelectedRow = 0;
@@ -235,7 +240,14 @@ int particleSubTabAt(const UILayout& layout, int i, int mouseX, int mouseY);
 void renderOptionsParticleTabs(UIRenderer& ui, const UILayout& layout,
                                const OptionsPanelState& state, int i);
 /** The Spell / Env pages' values as the particle systems' knobs (Actor: identity, N3). */
-Environment::ParticleKnobs particleKnobsFromOptions(const OptionsLayout::OptionValues& values);
+/** B1165: each float knob is the applied ini float (`iniFloats`) when one is
+ *  set, else the shown choice's table float. */
+Environment::ParticleKnobs particleKnobsFromOptions(const OptionsLayout::OptionValues& values,
+                                                    const OptionsLayout::OptionIniFloats& iniFloats = {});
+/** B1165 (#484): the Spell page + ShowSpellEffects as SpellVisualFX's options
+ *  (density, opacity, near clip, On For -- the raw int --, the global switch). */
+EQ::SpellFxOptions spellFxOptionsFromOptions(const OptionsLayout::OptionValues& values,
+                                             const OptionsLayout::OptionIniFloats& iniFloats = {});
 
 /** Render the window. Only when optionsWindowIsVisible(). */
 void renderOptionsWindow(UIRenderer& ui, const UILayout& layout,
