@@ -321,11 +321,11 @@ bool initSpellTestMode() {
     // the client's player idle p01 (the caster's own, deterministic 209 px)
     // rather than the o01 "other" idle, so the target's pose -- and therefore
     // the solved camera -- is reproducible run to run. b1118 keeps o01 (its
-    // B1139 feet-apart rule). NOTE: the FABLE client's human (race 1) mesh
-    // renders in a collapsed rest pose in this harness (the robed dark-elf
-    // caster stands at 209 px, the human target at 50 px, all p01) -- a model
-    // fidelity gap vs the official client's standing 325 px, documented in
-    // refactor/B1155/README.md.
+    // B1139 feet-apart rule). B1166 (#485): the 50 px "collapsed" human
+    // B1155 recorded was the bind pose the target fit measured before any
+    // animation was applied; the fit now forces the p01 pose
+    // (fitFixedNpcTarget) and the standing human renders 238 px at the
+    // oracle's feet (refactor/B1166/README.md).
     const bool b1130Preset =
         harnessOpts.cameraPreset == "b1130" || harnessOpts.cameraPreset == "b1130-self";
     const char* targetIdle = b1130Preset ? "p01" : "o01";

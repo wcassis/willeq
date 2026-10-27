@@ -50,6 +50,7 @@
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/environment/particle_manager.h"
 #include "client/graphics/environment/spell_effects_config.h"
+#include "particle_test_seed.h"
 
 #include <memory>
 #include <string>
@@ -103,6 +104,7 @@ protected:
         auto& pi = input.particleInput;
         pi.deltaTime = deltaTime;
         pi.unifiedRendererInitialized = true;
+        pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
         pi.poolSize = 1024;
         pi.commands = pm_->drainCommands();
         drainedCommands_ = pi.commands.size();

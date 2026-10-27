@@ -33,6 +33,7 @@
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/environment/spell_population_model.h"
 #include "spell_pool.h"
+#include "particle_test_seed.h"
 
 #include <cstdlib>
 #include <fstream>
@@ -275,6 +276,7 @@ TEST(SlotRulesSim, TheEmitterEmitsTheBurstThenTicksAndDrawsTheFilesSize) {
         auto& pi = input.particleInput;
         pi.deltaTime = 1.0f / 60.0f;
         pi.unifiedRendererInitialized = true;
+        pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
         pi.poolSize = 256;
         if (f == 0) {
             EQT::Graphics::ParticleCommandData cmd;

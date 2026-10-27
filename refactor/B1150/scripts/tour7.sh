@@ -5,6 +5,10 @@
 # (review/B1142/gate/regression_table.tsv; the 93 reference is 3.049, NOT
 # 2.938). Measured by harness_measure.py with FX_KEEP (run_scene.sh).
 # usage: tour7.sh <tag>
+# B1169 (#488): two tours of one binary are byte-identical frame for frame
+# (--seed 1 = --fx-seed 1, the fixed solid draw order); prove "before/after
+# identical" with scripts/tools/fx_frame_identity.py on the kept frames
+# (tools/model_viewer/README.md "Determinism"), not by eye or by table cells.
 # RUN ON THE THINKPAD (the rbuild tree and the client files live there).
 tag=$1; R=/mnt/projects/fable/refactor/B1150; S=$R/scripts
 F=/tmp/b1150-frames
