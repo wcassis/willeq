@@ -37,6 +37,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -50,6 +51,7 @@
 #include "client/spell/spell_fx_timing.h"
 #include "client/spell/spells_new_eff_reader.h"
 #include "spell_pool.h"
+#include "particle_test_seed.h"
 #include <glm/glm.hpp>
 #include <algorithm>
 #include <utility>
@@ -120,6 +122,7 @@ protected:
             auto& pi = input.particleInput;
             pi.deltaTime = 1.0f / 60.0f;
             pi.unifiedRendererInitialized = true;
+            pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
             pi.poolSize = SpellEffectsConfig::instance().getGlobal().maxParticles;
             for (uint16_t id : requested) {
                 if (id == kCaster) pi.entityPositions[kCaster] = kPos;
@@ -321,6 +324,7 @@ TEST_P(SpellLandingPool, OneFedLandingFitsHalfThePool) {
         auto& pi = input.particleInput;
         pi.deltaTime = 1.0f / 60.0f;
         pi.unifiedRendererInitialized = true;
+        pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
         pi.poolSize = pool;
         for (uint16_t id : requested)
             if (id == kCaster) pi.entityPositions[kCaster] = kPos;
@@ -417,6 +421,7 @@ TEST_P(SpellLandingPool, TheLargestRecordFieldIsCappedNotScaled) {
             auto& pi = input.particleInput;
             pi.deltaTime = 1.0f / 60.0f;
             pi.unifiedRendererInitialized = true;
+            pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
             pi.poolSize = poolSize;
             for (uint16_t id : requested)
                 if (id == kCaster) pi.entityPositions[kCaster] = kPos;
@@ -614,6 +619,7 @@ TEST_P(SpellLandingPool, ASourceAndItsOwnLandingFitHalfThePool) {
             auto& pi = input.particleInput;
             pi.deltaTime = 1.0f / 60.0f;
             pi.unifiedRendererInitialized = true;
+            pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
             pi.poolSize = pool;
             for (uint16_t id : requested)
                 if (id == kCaster) pi.entityPositions[kCaster] = kPos;
@@ -706,6 +712,31 @@ TEST(SpellParticlePoolWiring, EveryInitialisedInputCarriesTheConfiguredPool) {
         }
         EXPECT_EQ(sites, 1) << rel;
     }
+}
+
+// B1169 (#488): every TEST input that runs the particle phase seeds its RNG
+// (tests/particle_test_seed.h). An unseeded one draws from std::random_device
+// and its banded cloud is a different cloud every run -- this file's Source
+// widths failed ~1 run in 300 that way. Literal occurrences (a quote before
+// the flag, as in the guards' own search strings) are not sites.
+TEST(SpellParticleSeedWiring, EveryTestThatRunsTheParticlePhaseSeedsIt) {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::path(WILLEQ_REPO_ROOT) / "tests";
+    const std::string flag = "pi.unifiedRendererInitialized = true";
+    int sites = 0;
+    for (const auto& e : fs::directory_iterator(dir)) {
+        const std::string ext = e.path().extension().string();
+        if (ext != ".cpp" && ext != ".h") continue;
+        const std::string rel = "tests/" + e.path().filename().string();
+        const std::string src = ReadFile(rel);
+        for (size_t at = src.find(flag); at != std::string::npos; at = src.find(flag, at + flag.size())) {
+            if (at > 0 && src[at - 1] == '"') continue;
+            ++sites;
+            EXPECT_NE(src.substr(at, 600).find("pi.rngSeed ="), std::string::npos)
+                << rel << " offset " << at << ": an unseeded particle input (B1169)";
+        }
+    }
+    EXPECT_GE(sites, 17) << "the 2026-10-27 tree had 17 seeded sites; did the scan miss tests/?";
 }
 
 }  // namespace
