@@ -72,7 +72,7 @@ emitter's position source is the anchor, and anchor 2 is the missile.
 
 ### A2. Who fires stage 1
 
-Every direct call of the three emitter entry points in `eqgame.dis`
+All 14 direct calls of the three emitter entry points in `eqgame.dis`
 (`grep -n 'call 0x49b260\|call 0x495cc3\|call 0x49ab78'`), with the stage argument:
 
 | call | stage | source of the stage | arg 7 of `FUN_00495cc3` |
@@ -88,11 +88,16 @@ Every direct call of the three emitter entry points in `eqgame.dis`
 | `00481b03 call 0x495cc3` | 2 | `00481b00 push 2` | 0 (`00481af6 push edx`, edx = 0) |
 | `0041760f call 0x49ab78` | 2 | `0041760d push 2` | (legacy path) |
 | `0043699d call 0x49ab78` | 2 | `0043699b push 2` | (legacy path) |
+| `0049b34c call 0x495cc3` | passed through | the dispatcher passes its stage argument on | passed through |
+| `0049b389 call 0x49ab78` | passed through | the legacy path passes its stage argument on | (legacy path) |
+| `0049b518 call 0x49ab78` | 2 | `0049b516 push 2`, inside `FUN_0049b39d` on the OP_BeginCast path | (legacy path) |
+
+None of the last three fires stage 1 on its own, so the conclusion below stands.
 
 No absolute pointer to `0x495cc3`, `0x49ab78`, `0x49b260`, `0x476b12`,
 `0x476f34` or `0x4b6908` exists in the image (a 4-byte little-endian scan of
-`/mnt/projects/fable/review/B1141/bin/eqgame.exe` finds none), so these are all
-the callers.
+`/mnt/projects/fable/review/B1141/bin/eqgame.exe` finds none), so these 14 of 14
+direct calls are all the callers.
 
 Stage 1 therefore comes from two places only:
 
@@ -173,11 +178,16 @@ python3 -P refactor/B1168/scripts/gap_track.py /mnt/projects/fable/review/B1159/
   17-41 px, centroid x 719.2-719.8, y 535.6-537.0 on all ten frames; 0 px on
   f14169 and f14180. A 9.05-unit flight in 0.30 s would cross the 100-px box,
   this did not move by more than 0.6 px.
-- **M3b_93 (f18611-f18622): moves AWAY from the target.** Centroid x 699.4
-  (f18611) → 724.9 (f18622) → 742.5 (f18623) → 759.0 (f18624), i.e. toward the
-  caster.
-- **M1b_38 (f14509-f14548): no direction.** 45-280 px, centroid x jumping
-  between 670.6 and 754.9 (f14526 682.5 → f14529 754.9 → f14530 695.2).
+- **M3b_93 (f18611-f18622): two stationary particles, no motion in either
+  direction.** A per-frame connected-component split of the same box shows a
+  41 px particle at (700,571) from f18611 and a 16-20 px particle at (758,557)
+  from f18614, both lasting to f18623; neither shifts by more than 1 px. The
+  centroid drift 699.4 (f18611) → 759.0 (f18624) is an averaging artifact of
+  the two (the left one fades while the right one stays).
+- **M1b_38 (f14509-f14548): no direction.** 45-280 px; in-window centroid x
+  ranges from 670.8 (f14545) to 754.9 (f14529) (f14526 682.5 → f14529 754.9 →
+  f14530 695.2); 670.6 is f14551, outside the window. By connected components
+  it is at least 5 stationary particles, none of them moving.
 
 Together with A2: the pixels B1152 read as the missile are not a caster-to-target
 flight, consistent with the code drawing no Middle in those legs. The 0.302 s
@@ -200,10 +210,11 @@ time `1200 + 10 × distance / speed` ms (zone/spell_effects.cpp line 9679).
 In M1_38 the damage message is on the OP_Action tick (all-opcodes.tsv rows
 15588 OP_Action and 15590 `string_id=9073 … 'Testcaster', 'Oraclewatch', '121'`,
 both 23:50:44.973), and no `0x4033` row exists: this server did not take the
-projectile path for these casts. Why (the server's own `spells_new.targettype`
-for 38/93) was NOT read: the lane-5 stack was down
-(`eq_docker ps` on 172.16.200.205 lists no container) and the card has no live
-step. FOLLOW-UP.
+projectile path for these casts. Why: ANSWERED in the review (MR !319 note
+7814): lane-5 `peq.spells_new.targettype` = 5 for 38, 54 and 93 and
+`Spells:UseLiveSpellProjectileGFX` = false, so `TrySpellProjectile`
+(zone/spells.cpp line 2585) is never reached. (This leg itself could not read it: the
+lane-5 stack was down.)
 
 ## (B) The oracle's frame interval
 
@@ -297,9 +308,13 @@ Recommendation: (a).
 
 ## FOLLOW-UP
 
-- Read the lane-5 server's `spells_new.targettype` (and the
-  `Spells:UseLiveSpellProjectileGFX` rule) for 38 / 93 to state why the server
-  sent no `0x4033` (A6).
+- ANSWERED (MR !319 note 7814): the lane-5 server's `peq.spells_new.targettype`
+  is 5 for 38 / 54 / 93 and `Spells:UseLiveSpellProjectileGFX` = false, so
+  `TrySpellProjectile` (zone/spells.cpp line 2585) is never reached and no `0x4033` is
+  sent (A6).
+- OPEN, unproven lead (reviewer): the client's `spells_us.txt` 0-based field 98
+  is 1 for 38 and 54 (5 for 93). Whether that field is the client's target type
+  is not proven here.
 - An oracle leg where the server DOES send `0x4033` (a target-type-1 bolt on a
   server that takes `TrySpellProjectile`) would give the flight the B1163 model
   describes, and the pass interval with it.
