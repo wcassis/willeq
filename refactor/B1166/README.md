@@ -188,24 +188,52 @@ B1162's preset row (run cov 0.178, cen_h 0.87, h 0.25..1.60, ground 0.00; line 5
 oracle reference B1162 used, B1130 row 13 (e13, spell 209, same camera), reproduces B1130's
 own row at 652/325 (0.706 / 0.77 / 0.23..1.63 / 0.00; line 2) and moves at the measured
 anchor. Like with like = the same anchor (940,615 / 288), the same crop extended to row 800
-(150,60,990,740) and the same excludes on both sides:
+(150,60,990,740) and the same excludes on both sides. Every exclude is FULL-FRAME x,y,w,h,
+anchor.py's own convention (`/mnt/projects/fable/review/B1130/scripts/anchor.py:30` subtracts the crop
+origin): the two name labels B1130 excluded for e13 (540,315,200,45 / 880,265,160,45, `review/B1130/geom/e13.json:12-13`)
+plus the two lower-screen UI boxes the first run intended (written crop-relative there as
+0,540,540,200 / 900,540,90,200, i.e. full-frame 150,600,540,200 / 1050,600,90,200), which the
+extended crop reaches; the oracle form adds cast_measure.py's two UI boxes. Commands (run from
+`/mnt/projects/fable/review`, `X="540,315,200,45 880,265,160,45 150,600,540,200 1050,600,90,200"`):
+
+```
+python3 -P <wt>/refactor/B1166/scripts/measure_anatomy.py oracle B1130/oracle/e13/video.mp4 1792693504.407 \
+  1792693802.902 1792693804.934 1792693817.934 B1166/worker/named_measure/oracle_e13_a615_288_c740ff \
+  150,60,990,740 940,615 288 $X
+python3 -P <wt>/refactor/B1166/scripts/measure_anatomy.py harness B1166/worker/named_<before|after>/fear229_b1130/frames \
+  B1166/worker/named_measure/fear229_<before|after>_a615_<288|238>_c740ff 150,60,990,740 940,615 <288|238> $X
+```
+
+(the oracle times are e13's, `B1166/worker/named_measure/oracle_e13_a615_288_c740ff/m/meta.json`.)
 
 | run | anchor | run cov | cen_h | h p5..p95 | ground | line |
 |---|---|---|---|---|---|---|
-| oracle e13 (209) | 940,615 / 288 | 0.930 | 0.65 | -0.26..1.71 | 0.17 | 4 |
+| oracle e13 (209) | 940,615 / 288 | 1.002 | 0.61 | -0.26..1.70 | 0.21 | 4 |
 | oracle 229 observer rep 1 / 2 (B1162, another camera) | its own | 0.676 / 0.649 | 0.72 / 0.76 | -0.34..1.91 / -0.29..1.94 | 0.20 / 0.18 | -- |
-| harness 229 before (target at 782) | 940,615 / 288 | 0.280 | 0.55 | -0.45..1.63 | 0.31 | 7 |
-| harness 229 after | 940,615 / 288 | 0.194 | 0.75 | 0.00..1.65 | 0.10 | 10 |
-| harness 229 after, own height | 940,615 / 238 | 0.258 | 0.94 | 0.01..2.02 | 0.08 | 11 |
+| harness 229 before (target at 782) | 940,615 / 288 | 0.275 | 0.58 | -0.41..1.64 | 0.29 | 7 |
+| harness 229 after | 940,615 / 288 | 0.209 | 0.70 | -0.04..1.64 | 0.14 | 10 |
+| harness 229 after, own height | 940,615 / 238 | 0.283 | 0.87 | -0.05..2.00 | 0.12 | 11 |
 
 (observer rows: `review/B1162/worker/measure/combat13_v3/b1162_combat13_v3_229_1_npc.txt:215`,
-`review/B1162/worker/measure/combat13_v3/b1162_combat13_v3_229_2_npc.txt:215`.) **Verdict change**: B1162's "not compared until
-B1166 = n/a" becomes measured. cen_h 0.75 is inside the observer pair (0.72 / 0.76); the
-landing reaches less far below the feet than both references (h_p5 0.00 vs -0.26 / -0.34 /
--0.29; ground 0.10 vs 0.17 / 0.20 / 0.18), and the shortfall holds when normalised by the
-harness's own 238 px (h_p5 0.01, ground 0.08). Owner: unattributed between the Target-stage
-spawn volume below the feet (B1150's landing shapes) and the caster level (sec. 3) -- the
-B1162 plan passes level 60, so the level is not it here; FOLLOW-UP 4.
+`review/B1162/worker/measure/combat13_v3/b1162_combat13_v3_229_2_npc.txt:215`.)
+
+Correction (MR !320 note 7834, finding 1): the first version of this table passed those two
+UI boxes crop-relative (0,540,540,200 / 900,540,90,200). Read full-frame, the second box
+blanked x 900..990, y 540..740 -- the target's own lower legs and the ground under its feet --
+on every row with crop 150,60,990,740 (the superseded `*_c740` dirs; their `measure.txt` line 7
+shows the boxes). The script now asserts the convention: an exclude must overlap the crop and
+must not touch the target's column between its head and 0.15 heights below its feet; the old
+box fails it (`/mnt/projects/fable/review/B1166/worker/named_measure/exclude_assert_negative.txt:7`, exit 1).
+The c540 rows (lines 3, 6, 9) end at row 600 and were not touched by either box.
+
+**Verdict change**: B1162's "not compared until B1166 = n/a" becomes measured. cen_h 0.70 sits
+between e13's 0.61 and the observer pair's 0.72 / 0.76 (below the pair, not inside it); the
+landing reaches less far below the feet than all three references (h_p5 -0.04 vs -0.26 /
+-0.34 / -0.29; ground 0.14 vs 0.21 / 0.20 / 0.18), and the shortfall holds when normalised by
+the harness's own 238 px (h_p5 -0.05, ground 0.12). The margins are smaller than the first
+(mis-excluded) version stated. Owner: unattributed between the Target-stage spawn volume
+below the feet (B1150's landing shapes) and the caster level (sec. 3) -- the B1162 plan
+passes level 60, so the level is not it here; FOLLOW-UP 4.
 
 **B1164 willeq-b1130 93**: B1164's window instrument (`b1164_regions.py`, copied unchanged to
 `/mnt/projects/fable/review/B1166/worker/scripts/`, md5 = the B1164 branch's), window
@@ -252,8 +280,8 @@ baseline or `config/constrained_presets.json` value changed.
    px); the b1118 camera shows the same direction (241 vs >= 284).
 3. **r7 (spell 40) Source window moves with the target's placement** from BC+1.57
    (frame 92); deterministic, mechanism not traced.
-4. **Fear 229 below-the-feet extent** (h_p5 0.00 vs -0.26..-0.34, ground 0.10 vs
-   0.17-0.20): owner candidates the Target-stage spawn volume (B1150 shapes); not proven
+4. **Fear 229 below-the-feet extent** (h_p5 -0.04 vs -0.26..-0.34, ground 0.14 vs
+   0.18-0.21): owner candidates the Target-stage spawn volume (B1150 shapes); not proven
    here.
 5. Every B1130 geometry file with tfeet 940,652 / tmpx 325 carries the label-row error;
    the oracle-side anatomy columns of `review/B1130/record_table.tsv` (target cen_h, h) were

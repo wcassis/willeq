@@ -7,20 +7,34 @@ usage:
   measure_anatomy.py oracle <video.mp4> <pts_offset> <t_bc> <t_act> <t_end> <out> <crop> <tfeet> <tpx> [exclude ...]
   measure_anatomy.py harness <frames_dir> <out> <crop> <tfeet> <tpx> [exclude ...]
 The harness form takes BC/Act from timing.tsv (an action-only cast: BC = Act - 1 frame, B1162's
-rule) and t_end = min(Act + 12, video end - 0.05) (B1155's). Excludes are crop-relative
-x,y,w,h (anchor.py's --exclude); the oracle form ALSO applies cast_measure.py's two UI
-excludes (600,40,170,75 and 0,0,200,800). halfw 0.7 (r51.json thalfw). Prints one TSV row:
-label crop tfeet tpx onset end peak rise_cov run_cov cen_h h_p5 h_p95 ground."""
+rule) and t_end = min(Act + 12, video end - 0.05) (B1155's). Excludes are FULL-FRAME x,y,w,h,
+the one convention of anchor.py's --exclude (review/B1130/scripts/anchor.py:30 subtracts the crop
+origin itself); the oracle form ALSO applies cast_measure.py's two UI excludes (600,40,170,75 and
+0,0,200,800, full-frame too). Asserted: every exclude overlaps the crop, and none touches the
+target's own column (|x - feet_x| <= 0.2 target heights) between its head and 0.15 target
+heights below its feet -- B1166's first run passed the chat/Songs windows crop-relative and so
+blanked the target's lower legs (MR !320 note 7834 finding 1). halfw 0.7 (r51.json thalfw).
+Prints one TSV row: label crop tfeet tpx onset end peak rise_cov run_cov cen_h h_p5 h_p95 ground."""
 import sys, os, re, subprocess
 PY = sys.executable
 S22 = '/mnt/projects/fable/review/B1132/scripts'
 S30 = '/mnt/projects/fable/review/B1130/scripts'
+def check_excludes(crop, tfeet, tpx, exc):
+    cx, cy, cw, ch = map(int, crop.split(','))
+    fx, fy = map(float, tfeet.split(',')); tp = float(tpx)
+    for e in exc:
+        ex, ey, ew, eh = map(int, e.split(','))
+        assert ex < cx + cw and ex + ew > cx and ey < cy + ch and ey + eh > cy, f'exclude {e} (full-frame) misses crop {crop}'
+        assert not (ex < fx + 0.2 * tp and ex + ew > fx - 0.2 * tp and ey < fy + 0.15 * tp and ey + eh > fy - tp), \
+            f'exclude {e} (full-frame) covers the target column at feet {tfeet} / {tpx} px'
 a = sys.argv[1:]
 if a[0] == 'oracle':
     video, off, tbc, tact, tend, out, crop, tfeet, tpx = a[1:10]; exc = a[10:]
     exc = ['600,40,170,75', '0,0,200,800'] + exc
+    check_excludes(crop, tfeet, tpx, exc)
 else:
     fd, out, crop, tfeet, tpx = a[1:6]; exc = a[6:]
+    check_excludes(crop, tfeet, tpx, exc)
     rows = [l.rstrip('\n').split('\t') for l in open(fd + '/timing.tsv')][1:]
     ts = [float(r[1]) for r in rows if r[2] == '-']
     fps = round(1.0 / (ts[1] - ts[0]))
