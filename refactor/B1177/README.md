@@ -152,7 +152,11 @@ not re-run: the default solve never entered the singular branch, so its trajecto
 - Hygiene: 48/48 (`/mnt/projects/fable/review/B1177/worker/hygiene_runner2.log`).
   model_viewer_fx_harness.cpp stays under the 1500-line ceiling: the diagnostic lives in the
   header-only fx_target_anchor.h, which the offline tests include.
-- CI: the MR pipeline.
+- Re-checked after merging gitlab/fable (f61fafb4, unchanged) and the B1172 fix-leg tip
+  20082d7d (no harness or fx_target_anchor.h change): 16/16 FX-harness tests, the exit-2 and
+  6:1:6 tests among them (`/mnt/projects/fable/review/B1177/worker/ctest_runner2_merged.log`), hygiene
+  48/48 (`/mnt/projects/fable/review/B1177/worker/hygiene_runner2_merged.log`).
+- CI: the MR pipeline. Until B1172 (MR !325) merges, this branch carries its commits.
 
 ## RULING REQUEST
 
