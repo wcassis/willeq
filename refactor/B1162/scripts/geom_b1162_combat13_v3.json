@@ -1,0 +1,18 @@
+{
+ "crop": "330,150,820,650",
+ "caster_feet": "950,650",
+ "caster_px": 278,
+ "npc_feet": "950,648",
+ "npc_px": 228,
+ "observer_feet": "675,614",
+ "observer_px": 264,
+ "exclude": [
+  "425,600,450,200",
+  "1100,240,150,170",
+  "1050,580,200,30",
+  "1050,680,100,120",
+  "1150,620,100,180"
+ ],
+ "halfw": 0.7,
+ "why": "B1143 p3_rig93 geometry reused unchanged: same pose=/observer-pose= directives (-74,428,3.75,160 / -67.6,434.4,3.75,160) and F9x3 camera; checked on this leg's observer still oracle/b1162_combat13_v3/16_wait.frame.png (Testcaster column x~900-1000, feet ~650; TrollF inside it; Oraclewatch x~600-690). NEW in this leg: an Oraclewatch corpse lies at ~x460-620 y520-600, outside the caster/NPC ROIs (x790-1110). Original note: Read off oracle/p3_rig93/28_obs_cam_settle.png (1280x800, observer's own camera after F9x3). Row-profile (|pixel-bg|>40, 120px column windows): TrollF+Testcaster column x890-1010 = names 316-352, Testcaster head 372-396, body to 624, silhouette gone by 656 (feet 650); TrollF head ~420 (4x-zoom read) -> npc 228px on top of the caster (the plan's #spawn drops TrollF on the caster's pose spot). Oraclewatch column x590-760 = names 324-340, head ~350, body to 584, feet blip 604-616 (614), then the Main Chat panel from ~618. Excludes = the observer UI inside the crop: Main Chat (425-875 x 600-800, top on the y600 grid line), Group (1100-1250 x 240-410), the empty effects window (1050-1250 x 580-610), Songs (1050-1150 x 680-800), Actions (1150-1250 x 620-800) -- 3x-zoom grid reads."
+}
