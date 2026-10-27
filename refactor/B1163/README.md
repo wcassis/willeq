@@ -203,7 +203,10 @@ computed only where both sides have a value. Verbatim table:
 - **Hygiene** `rbuild <wt> hygiene` → 48/48 (1 skipped), including
   `ZeroCallers` (the timing helpers have production callers in
   `spell_visual_fx.cpp`; the 859 rule is test-local).
-- **Whole-tree CI build**: pipeline <PIPELINE_ID> on MR <MR> → <STATUS>.
+- **Whole-tree CI build**: MR `!313` (Closes #482) pipeline `2195` (iid 2154)
+  → **success** (hygiene, build-headless, build-test, zone-budget-census and
+  the visual `gate` all green; the arm / prune / ledger-live jobs are manual
+  and do not gate).
 
 ## Files
 
