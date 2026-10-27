@@ -706,6 +706,7 @@ TEST(SlotRulesSim, ACreatedAtDensityEmitterIsNotScaledAgain) {
             auto& pi = input.particleInput;
             pi.deltaTime = 1.0f / 60.0f;
             pi.unifiedRendererInitialized = true;
+            pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
             pi.poolSize = 256;
             for (float& d : pi.density) d = 0.5f;
             if (f == 0) {
