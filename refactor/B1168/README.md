@@ -274,13 +274,13 @@ not draw (RULING REQUEST).
 
 - Cite checker:
   `python3 -I scripts/refactor/cite_check.py refactor/B1168/README.md --tree . --extra /mnt/projects/fable --dis /mnt/projects/fable/review/B1141/ghidra/out/eqgame.dis --dis /mnt/projects/fable/review/B1141/ghidra/out/EQGraphicsDX9.dis`
-  → see the MR note for the final line.
+  → `checked 39 cites, 0 problems, 0 address warnings`.
 - Bare addresses and quoted `address instruction` pairs:
   `python3 -I refactor/B1168/scripts/check_addrs.py refactor/B1168/README.md /mnt/projects/fable/review/B1141/ghidra/out/eqgame.dis`
-  → every bare 8-digit address is an instruction start and every quoted
-  instruction matches.
+  → `checked 85 bare addresses, 76 quoted instructions, 0 problems`.
 - ThinkPad (`tbuild`): `--target test_b1163_missile_rules test_fx_harness`,
-  `test -R 'B1163MissileRules|FxHarness'`, `hygiene`; logs
+  `test -R 'B1163MissileRules|FxHarness'` (100 % passed, 0 failed out of 14),
+  `hygiene` (100 % passed, 0 failed out of 48); logs
   `/mnt/projects/fable/review/B1168/worker/{build,ctest,hygiene}.log`.
 
 ## RULING REQUEST
