@@ -1,10 +1,12 @@
 # B1162 (#481): combat-ability + discipline FX on the real client path
 
 **Outcome (continuation, 2026-10-27): Intimidation LANDED on the real client
-path; the /disc leg reached the server on the real client path but the server
-REFUSED it.** Read "Continuation step 1" (why attempts 1-2 could not send
+path, and a real-client /disc LANDED on lane 5 (4499 Defensive Discipline,
+record 326); record 325 (Leechcurse) cannot land on this lane, because no
+spell id gives the Shadow Knight a level on both the client and the lane
+server.** Read "Continuation step 1" (why attempts 1-2 could not send
 OP_InstillDoubt), "Continuation step 2" (the landing), "Correction: Leg A did
-not land" and "Rows, clips, lane" at the end. The sections between here and
+not land", "Rows, clips, lane" and "The /disc landing leg" at the end. The sections between here and
 there are the two earlier attempts, kept as written (Leg A's "LANDED" verdict
 is corrected below; the G-key reading of attempt 2 is superseded by step 1).
 
@@ -59,8 +61,10 @@ Intimidation skill set, and still sent nothing.
 
 B1143 ran the /disc leg on "class 4 (Shadow Knight)". The Ti `spells_us.txt`
 class-ownership columns **f104..f119 are per-class level caps** (class N at
-f(103+N)); f121 is a `/disc`-triggerable flag, NOT a class id (B1143's "field 121
-= class 13" was a misread). The record-325 disciplines
+f(103+N)); f121 is not a class id (B1143's "field 121 = class 13" was a misread).
+(Correction, "The /disc landing leg": f121 is not a `/disc` flag either. It
+is the `TargetAnim` column of the lane's `spells_new`, and 13 is an animation
+id shared by ordinary spells such as 93 Burst of Flame.) The record-325 disciplines
 (8604/8617/8642 Leechcurse Discipline variants) carry **f108=60 = class 5
 (Shadow Knight) level 60** — the owning class is **5, not 4**. So B1143's leg ran
 on a class that does NOT own the disciplines, which is a genuine cause of a silent
@@ -286,7 +290,7 @@ INI `[Abilities] Ability1..6` / `[CombatSkills] CombatSkill1..4` (lines
 133398-133402 and the CombatSkill loop after it; the INI is `.\<name>_<server>.ini`,
 built at line 133465 `_sprintf(_Dest_00,".\\%s_",local_208)`). The `/doability`
 handler (disassembly 0x46a7d1-0x46a86f; command table entry `/doability` ->
-handler 0x46a7d1 in .data at 0x7839bc) maps N=1..6 to `DAT_0095d424[N-1]`, N=7..10
+handler 0x46a7d1 in .data at 0x78b9bc) maps N=1..6 to `DAT_0095d424[N-1]`, N=7..10
 to `DAT_0095d414[N-7]`, and on a slot holding -1 returns silently (0x46a7f8 `cmp
 dword ptr [eax], -1` / 0x46a7fb `je 0x46a86f`). The Abilities-page button on a -1
 slot opens the skill picker instead (line 164011-164016) and sends nothing.
@@ -431,8 +435,8 @@ therefore still unobserved; the fable side is pinned regardless:
 (8604 action-only: peak 4 px vs pre-cast noise 3 px; the 4499 record-326 test
 alongside: 0 vs 0 -- `review/B1162/worker/fx_gate_disc.txt`), and the harness
 row `review/B1162/worker/harness/disc8604_b1130self/` (empty `slots.tsv`,
-SOURCE none max 48 px, LANDING none max 112 px). One more lane leg was not
-allowed by the ruling; see the RULING REQUEST.
+SOURCE none max 48 px, LANDING none max 112 px). The ruling of 2026-10-27
+allowed one more lane leg; see "The /disc landing leg" below.
 
 ## Rows, clips, lane
 
@@ -452,3 +456,153 @@ allowed by the ruling; see the RULING REQUEST.
   (`cleanup exit=0 lane=5 lock=state=FREE`). An "Oraclewatch's corpse" already
   lay in the observer's view at the settle still (`16_wait.frame.png`); it was
   not created or touched by this leg.
+
+## The /disc landing leg (orchestrator ruling 2026-10-27: observe one real /disc landing)
+
+The ruling did not accept acceptance C on the harness pin alone. It asked for
+one lane-5 `/disc` with a discipline that the lane server grants the caster's
+class. The steps are below. Every line number refers to
+`review/B1141/ghidra/out/eqgame.exe.c` (the lane-5 client binary, same MD5)
+unless another file is named.
+
+### Which discipline can land (offline + the read-only lane query)
+
+**The server gate.** `Client::UseDiscipline` (akk-stack `zone/effects.cpp`
+852, the same file on the lane: md5 bfbd2057f758579ece7350b5fe2c7882 for both
+`/opt/akk-stack/code/zone/effects.cpp` and the NFS copy) needs three things.
+The id must be in `m_pp.disciplines`. Then line 887
+`uint8 level_to_use = spell.classes[GetClass() - 1];` must not be 255, or
+line 889 prints `"Your class cannot learn from this tome."`. Finally the level
+must be at most the caster's level.
+
+**The client gate.** The `/discipline` command (command table .data 0x78b5b0:
+`/discipline` -> handler 0x46fc1b, the entry before `/random`; `/disc` is its
+abbreviation) is `FUN_0046fc1b` (line 91578):
+- line 91604 is its class gate. Classes 1, 7, 9, 3, 4, 5, 8, 15 and 16 pass;
+  any other class gets string 0x16d0 (line 91664).
+- It walks the 100-entry discipline list `FUN_005f0a00(i)` (line 386913,
+  `+0x3aec + i*4`, the buffer `OP_DisciplineUpdate` fills). It takes the
+  FIRST entry whose spell name prefix-matches the typed text (line 91652
+  `__strnicmp((char *)puVar3[0x82],param_2,_MaxCount)`) and calls
+  `FUN_004bb39d` (line 91654).
+- `FUN_004bb39d` (line 142875) sends only if `FUN_004baca6` (line 142348:
+  the id is in the list) holds and `FUN_004bb2dd(id) == 1` (line 142913). It
+  then sends `FUN_00411f3d(10,param_2,...)` (line 142953) = C->S
+  `OP_CastSpell` slot 10.
+- `FUN_004bb2dd` (line 142831) returns -1 when the CLIENT's own spell row
+  holds 0xff for the caster's class (line 142850; `FUN_0044e755` line 69481
+  reads `spell + 0x150 + class`, with `ecx` = the spell record per
+  `eqgame.dis` 0x4bb320 `mov ecx, edi`). It returns -2 below that level
+  (line 142859) and 1 otherwise (line 142864).
+
+So a `/disc` lands only when the client's `spells_us.txt` row AND the
+server's `spells_new` row both give the caster's class a level.
+
+**The lane query** (lease `kb-b1162-combat-fx` taken 12:27Z; the stack was
+fully down, so only the `mariadb` service was started with the lane scripts'
+`compose up -d mariadb`; the leg's own up/down followed). Output:
+`review/B1162/worker/lane5_spells_new_discs_20261027.txt`:
+
+| id | client `spells_us.txt` (name, class level) | lane `spells_new` (name, class level) | passes both |
+|---|---|---|---|
+| 4504 | Leechcurse Discipline, **none** (all 255) | Leechcurse Discipline, SHD 60 | no (client refuses) |
+| 8604 | Leechcurse Discipline, SHD 60 | **Bear Claw**, none | no (server refuses: attempt 2) |
+| 8617 | Leechcurse Discipline, SHD 60 | **Grappling Roots**, none | no |
+| 8642 | Leechcurse Discipline, SHD 60 | **Tangleweb**, none | no |
+| 4520 / 8616 / 8618 | Unholy Aura (SHD 55 on 8616/8618 only) | 4520 SHD 55; 8616 Wind Raze, 8618 Deafening Gibberish | no |
+| **4499** | Defensive Discipline, WAR 55 | Defensive Discipline, WAR 55 | **yes** |
+| 4502, 4503, 4509, 4510, 4515, 4671, 4673 | MNK 54, WAR 52, MNK 53, MNK 51, ROG 55, BST 55, ROG 53 | the same | yes |
+
+The client's ids 8600+ and the lane's `spells_new` ids name different spells.
+**No record-325 id (4504, 8604, 8617, 8642, and Reaper Strike/Lich Sting
+6236/6268, which have no client class level) passes both gates on this lane.**
+So record 325's real `/disc` landing cannot be observed here, and the fable
+side stays pinned only by the record-325 harness test. Every passing id uses
+record 326. I chose **4499 (WAR 55)**: it is the spell of B1130's record-51 row
+(`review/B1130/record_table.tsv` line 5, the row that holds spellsnew.eff
+record 326; B1130 has no row for record 325, "not cast here") and of B1134's
+P4 `/disc` measurement.
+
+Field 121 (the attempt-2 "/disc-eligible flag") is the lane's `TargetAnim`
+column (`review/B1162/worker/lane5_spells_new_columns_20261027.txt`: 120
+CastingAnim, 121 TargetAnim, 145 spellanim). It is not a `/disc` gate, and 13
+is shared by ordinary spells such as 93 Burst of Flame.
+
+### The leg
+
+The leg is `b1162_disc4499_v3`, run 2026-10-27 13:10-13:21Z, rc=0. It waited
+on B1164's lease from 12:31Z and never broke it. Command:
+`refactor/B1162/scripts/run_leg_b1162.sh b1162_disc4499_v3 1 --pre-sql-file
+refactor/B1162/sql/b1162_disc4499_v3.sql --post-sql-file
+refactor/B1162/sql/b1162_disc325_v2.post.sql`. The plan is
+`refactor/B1162/plans/b1162_disc4499_v3.tsv`, with the same poses and observer
+F9x3 camera as combat13_v3 and no NPC. Before zone-in, the caster was class 1,
+level 60, with `character_disciplines` (67, 0, 4499). Evidence is in
+`review/B1162/worker/oracle/b1162_disc4499_v3/`.
+
+Pcap lines (caster port 39676, observer port 37940;
+`review/B1162/worker/probe_b1162_msgs_local.py`):
+
+```
+1793106957.096 S->C 39676 OP_DisciplineUpdate 400  93110000 00000000 ...  (zone-in list: slot 0 = 0x1193 = 4499)
+1793107093.629 C->S 39676 OP_CastSpell 20  0a000000 93110000 ffffffff 00000000 457ed4e0  (slot 10, spell 4499, self)
+1793107093.641 S->C 37940 OP_Action 31  030103013c000a00...e700000000 9311 3c00  (target 259, source 259, spell 4499) -> observer
+1793107093.641 S->C 39676 OP_Action 31  same (+ the ...3c04 second row) -> caster
+1793107093.641 S->C 39676 OP_DisciplineTimer 12  01000000 76020000 00000000  (timer 1, 0x276 = 630 s = recast_time 630000)
+```
+
+The leg's whole-pcap census (`all-opcodes.tsv`) holds 1 C->S `OP_CastSpell`
+and 5 S->C `OP_Action`, all spell 4499. There is no `OP_InterruptCast` and no
+refusal line. There are 4 S->C `OP_BeginCast`, all `57000b00d0070000` at
+1793107001.886/.903 (source 87, spell 11, 2000 ms: the ambient qeynos2 NPC
+also seen in combat13_v3, 92 s before the `/disc`). **There is no
+`OP_BeginCast` from the caster, so no Source**, as B1134 found. The caster's
+own view (`review/B1162/worker/strips/disc4499_v3_caster.png`, from
+`video-caster.mp4`, uncalibrated t0) shows "Defensive Discipline" in the
+Combat Abilities window and the chat line "You assume a defensive fighting
+style." from about Act+0.9.
+
+**The landing row in the observer view.** The instrument is
+`refactor/B1162/scripts/obs_measure_b1162.py ... 4499 --npc-id 259`, which
+anchors on the caster, because target = source = 259. The geometry is
+`refactor/B1162/scripts/geom_b1162_disc4499_v3.json`, B1134's `rig.json`
+unchanged and checked on `15_wait.frame.png`. The output is in
+`review/B1162/worker/measure/disc4499_v3/`; the strip is
+`review/B1162/worker/strips/disc4499_v3_observer.png` (f14078 / f14092 /
+f14098 / f14106 / f14130).
+
+| | onset (Act+) | end (Act+) | peak | run cov | cen_h | h p5..p95 | ground band |
+|---|---|---|---|---|---|---|---|
+| oracle 4499 /disc, this leg (observer, caster 212 px) | +0.454 (f14092) | +1.120 (f14112) | f14098 Act+0.654 cov 0.067 | 0.054 | 0.70 | 0.28..1.09 | 0.02 |
+| B1134 p4 4499 /disc (`review/B1134/measure/p4_discs_4499_1.txt`) | +0.460 (f13245) | +1.126 (f13265) | f13256 Act+0.826 cov 0.067 | 0.054 | 0.69 | 0.28..1.09 | 0.02 |
+| B1130 record-51 row (spellsnew.eff 326; its numbers are the GM `#castspell 4499 0` path WITH a BeginCast) | Source +0.70 | lit to Act+8.0-8.3 | Source cov 0.231 | -- | 0.21 | -0.05..0.74 | feet ring |
+| fable harness 4499 action-only, b1130-self (`review/B1162/worker/harness/disc4499_b1130self/`) | none | none | SOURCE max 25 px, LANDING max 72 px (thr 288) | -- | -- | -- | -- |
+
+The oracle's lit run is the caster's arm/turn animation, not a sprite. The
+strip shows the arms raised and the body turning at f14092-f14106 and no
+glow. Its coverage, extent and timing repeat B1134's `/disc` row to 1 frame.
+The GM path's feet-ring Source (the B1130 row) does NOT appear on the real
+`/disc`, because there is no `OP_BeginCast`. The harness draws no spellsnew.eff
+slot (`frames/slots.tsv` empty; run.log `createLanding: caster=1 target=1
+spell=4499: no Target slot drawn -- no landing`), which **matches the oracle's
+sprite content** (none). The harness does not animate the caster, so the
+0.054 animation coverage has no counterpart. That is a model-animation
+question, not an FX one, and no FX owner is named. The pin is
+`FxHarness.ADisciplineWithoutBeginCastDrawsNothing` (tests/test_fx_harness.cpp,
+4499; its comment now cites this leg). The record-325 test's comment was
+corrected: the server refused 8604, so it pins the fable side only.
+
+**Ledger clip:** `review/B1162/worker/ledger/clips/b1162_disc4499_defensive.mp4`
+(+ `_strip.png`; spec `ledger/specs/b1162_disc4499_defensive.json`; oracle
+f14078 at 30 fps, t0 1793106624.361 = the leg's `video.calibration.tsv`
+calibrated_t0, BC = Act; willeq f45; line in `ledger/clip.log`).
+
+**Lane before == after (this leg):** char 67 `char-state-before.tsv` =
+`char-state-after.tsv` = class 12, level 1, race 6. Char 103 before = after =
+class 1, level 1, race 1, with an unchanged book. driver.log SAVED/LEG/BACK:
+character_skills 0/0/0, character_disciplines 0/1/0, timers 2/3/2 (the 4499
+reuse timer was added and removed). Gems are back to 93,38,54,41,253,458,656
+("char 67 restored"). Spellbook and buffs before = after, "snapshot restored
+BYTE-IDENTICALLY" x2. The caster INI `before-character.ini` is byte-identical
+to the file at stop (`cmp`). The lease was FREE at the end (`cleanup exit=0
+lane=5 lock=state=FREE`).

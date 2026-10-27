@@ -1,0 +1,12 @@
+{
+ "crop": "330,150,910,530",
+ "caster_feet": "933,639",
+ "caster_px": 212,
+ "npc_feet": "933,639",
+ "npc_px": 212,
+ "observer_feet": "640,600",
+ "observer_px": 230,
+ "exclude": ["418,600,420,200", "1055,640,100,160", "1155,610,125,190", "1140,240,140,200", "1135,560,140,50", "1055,0,225,240"],
+ "halfw": 0.7,
+ "why": "B1134 review/B1134/geom/rig.json (the p2_rig93/p4 discs rig) unchanged: same pose=/observer-pose= directives and F9x3 camera. Checked on this leg's observer still oracle/b1162_disc4499_v3/15_wait.frame.png at 3x zoom: Testcaster head top 428, feet 640, column ~x940 (B1134: 427 / 639 / x933). The /disc lands on the caster itself (OP_Action target 259 = source 259), so the 'npc' anchor is set to the caster and the leg is measured with --npc-id 259 (obs_measure_b1162.py routes a target == --npc-id to npc_feet/npc_px). The Oraclewatch corpse (x455-615, y540-600) lies outside the caster ROI (933 +- 0.7*212 px)."
+}
