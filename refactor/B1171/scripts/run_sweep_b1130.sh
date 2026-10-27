@@ -10,20 +10,25 @@
 # The level is written into the plan, the sweep log line and (by the harness)
 # timing.tsv + run.log; after the render the run's timing.tsv level is checked
 # against the capture's and a mismatch is refused (not measured).
-# Rendered ON the ThinkPad into the NFS evidence dir, measured HERE with
-# refactor/B1155/scripts/harness_measure_b1130.py (the B1166 anchor).
+# Rendered ON the ThinkPad into the NFS evidence dir, measured HERE with each tree's own
+# refactor/B1155/scripts/harness_measure_b1130.py (the B1166 anchor in both).
 #
-# usage: run_sweep_b1130.sh <after|control> [record ...]
+# usage: run_sweep_b1130.sh <before|after|control> [record ...]
+#   before  = fable's binary (wt/kb-b1171-before), B1166's plans: the table's
+#             class level -- the sweep as it stood (its rows are REFUSED by
+#             compare_b1130.py, which is the point)
 #   after   = this branch's binary, level from the capture (the re-run)
-#   control = this branch's binary, B1166's own plan (table level) -- proves the
-#             binary change is logging only: frames must equal B1166's after run
+#   control = this branch's binary, the table level -- with `before` it proves
+#             the binary change is logging only (frames byte-identical)
+# SHARD=<name> gives a concurrent shard its own sweep.<name>.log / .exit.
 set -u
-VAR=${1:?after|control}; shift
+VAR=${1:?before|after|control}; shift
 SLUG=kb-b1171-sweep-level
 WT=/mnt/projects/fable/main/wt/$SLUG
+BSLUG=$SLUG; [ "$VAR" = before ] && BSLUG=kb-b1171-before
+case "$VAR" in before|after|control) ;; *) echo "variant must be before|after|control" >&2; exit 2 ;; esac
 EV=/mnt/projects/fable/review/B1171/worker/b1130_$VAR
-B1166=/mnt/projects/fable/review/B1166/worker/b1130_after
-BIN=/home/user/willeq-builds/$SLUG/build/bin/model_viewer
+BIN=/home/user/willeq-builds/$BSLUG/build/bin/model_viewer
 CLIENT=/mnt/projects/EverQuestP1999
 PACK=/mnt/projects/EverQuest_ETC1/willeq.eqe1
 TABLE=/mnt/projects/fable/review/B1130/record_table.tsv
@@ -39,8 +44,8 @@ fi
 n=0; fail=0
 for rec in "${recs[@]}"; do
   n=$((n + 1))
-  line=$(awk -F'\t' -v r="$rec" '$1 == r {print $1"\t"$6"\t"$7"\t"$12"\t"$11"\t"$10"\t"$3}' "$TABLE")
-  IFS=$'\t' read -r rec spell_id name captures targettype cast_ms capture <<< "$line"
+  line=$(awk -F'\t' -v r="$rec" '$1 == r {print $1"\t"$6"\t"$7"\t"$12"\t"$11"\t"$10"\t"$3"\t"$9}' "$TABLE")
+  IFS=$'\t' read -r rec spell_id name captures targettype cast_ms capture class_level <<< "$line"
   kind=fixed_self; case "$captures" in *fixed_npc*) kind=fixed_npc ;; esac
   cam=b1130-self; [ "$kind" = fixed_npc ] && cam=b1130
   tgt=other; case "$targettype" in self|group|group-teleport) tgt=self ;; esac
@@ -52,24 +57,23 @@ for rec in "${recs[@]}"; do
     echo "[$n] $tag: NO ORACLE LEVEL (capture $capture) -- not run" >> "$LOG"; fail=$((fail + 1)); continue
   fi
   plan="$EV/plans/r${rec}.plan"
-  if [ "$VAR" = control ]; then cp "$B1166/plans/r${rec}.plan" "$plan"; else
-    printf 't_begin_s\tspell_id\ttarget\tdistance_units\tcast_ms\tcaster_level\tpackets\n1.5\t%s\t%s\t0\t%s\t%s\n' \
-        "$spell_id" "$tgt" "$cast_ms" "$olevel" > "$plan"
-  fi
+  plevel=$olevel; [ "$VAR" = after ] || plevel=$class_level  # before/control: B1166's layout
+  printf 't_begin_s\tspell_id\ttarget\tdistance_units\tcast_ms\tcaster_level\tpackets\n1.5\t%s\t%s\t0\t%s\t%s\n' \
+      "$spell_id" "$tgt" "$cast_ms" "$plevel" > "$plan"
   fd="$EV/frames/$tag"; rm -rf "$fd"; mkdir -p "$fd"; cp "$plan" "$fd/plan.tsv"
-  echo "[$n/${#recs[@]}] $tag (spell $spell_id $name, $tgt, cast ${cast_ms}ms, $secs s, $cam) capture $capture oracle_level $olevel plan_level $(awk -F'\t' 'NR==2{print $6}' "$plan") rendering $(date -u +%T)" >> "$LOG"
-  if ! ssh "$TP" "cd '$WT' && '$BIN' --spell-test --client '$CLIENT' --eqe1 '$PACK' --plan '$plan' \
+  echo "[$n/${#recs[@]}] $tag (spell $spell_id $name, $tgt, cast ${cast_ms}ms, $secs s, $cam) capture $capture oracle_level $olevel plan_level $plevel rendering $(date -u +%T)" >> "$LOG"
+  if ! ssh "$TP" "cd '/mnt/projects/fable/main/wt/$BSLUG' && '$BIN' --spell-test --client '$CLIENT' --eqe1 '$PACK' --plan '$plan' \
       --frames-dir '$fd' --fps 30 --seconds $secs --sim-hz 60 --seed 1 --headless --camera $cam \
       > '$fd/run.log' 2>&1" < /dev/null; then
     echo "[$n] $tag: RENDER FAILED (see $fd/run.log)" >> "$LOG"; fail=$((fail + 1)); continue
   fi
-  hlevel=$($LVL harness "$fd" 2>> "$LOG")
+  hlevel=$($LVL harness "$fd" --plan "$plan" 2>> "$LOG")
   if [ "$VAR" = after ] && ! $LVL check "$olevel" "$hlevel" >> "$LOG" 2>&1; then
     echo "[$n] $tag: harness_level $hlevel REFUSED vs oracle_level $olevel -- not measured" >> "$LOG"
     fail=$((fail + 1)); continue
   fi
   mkdir -p "$mroot"
-  if FX_KEEP=1 python3 -P "$WT/refactor/B1155/scripts/harness_measure_b1130.py" "$fd" "$mroot" "$kind" \
+  if FX_KEEP=1 python3 -P "/mnt/projects/fable/main/wt/$BSLUG/refactor/B1155/scripts/harness_measure_b1130.py" "$fd" "$mroot" "$kind" \
       < /dev/null > "$mroot/measure.log" 2>&1; then
     echo "[$n] $tag: harness_level $hlevel done $(date -u +%T)" >> "$LOG"
   else

@@ -21,7 +21,10 @@ fail=0
 while read -r sid tgt cms; do
   tag=tour_$sid
   plan="$EV/plans/$tag.plan"
-  printf 't_begin_s\tspell_id\ttarget\tdistance_units\tcast_ms\tcaster_level\n1.5\t%s\t%s\t0\t%s\t60\n' "$sid" "$tgt" "$cms" > "$plan"
+  # B1171 (#490): the level of the B1118 oracle leg behind the spell's rows, not a literal 60.
+  lvl=$(python3 -I "$(dirname "$0")/../../../scripts/fx/capture_level.py" b1118 "$sid") \
+      || { echo "[$tag] no oracle #level" >> "$EV/sweep.log"; fail=$((fail + 1)); continue; }
+  printf 't_begin_s\tspell_id\ttarget\tdistance_units\tcast_ms\tcaster_level\n1.5\t%s\t%s\t0\t%s\t%s\n' "$sid" "$tgt" "$cms" "$lvl" > "$plan"
   secs=$(awk -v c="$cms" 'BEGIN{printf "%.1f", 1.5 + c/1000 + 11.5}')
   fd="$EV/frames/$tag"; rm -rf "$fd"; mkdir -p "$fd"
   echo "[$tag] rendering $(date -u +%T)" >> "$EV/sweep.log"
