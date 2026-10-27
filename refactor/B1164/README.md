@@ -129,6 +129,33 @@ denser.
   `drawn == cnt == sim total` — the renderer draws every alive particle, so the density
   gap is not a dropped draw.
 
+## Re-gate (tour-7 + sweeps vs B1157 — acceptance C)
+
+This card makes **no C++ change**, so before (B1160 current = post-B1157) and after
+(this card) are identical — no row can regress. The tour-7 (b1118) and 40-record sweep
+(both presets) values are unchanged from B1157's current column and B1160's current-tip
+measurements; this card's fresh 93 render (1.993, `measure_cur93c`) confirms the current
+tip still produces the established values. B1160's re-gate (MR !312) already established
+no row regresses post-B1152; this card adds no delta.
+
+tour-7 (b1118), land_cov current vs the B1151 baseline
+(`refactor/B1157/b1118_table.tsv`, "n" column):
+
+| spell | land_cov (current) | vs B1151 | verdict |
+|---|---|---|---|
+| 93  | 1.993 | −0.120 | over — this card's attribution |
+| 38  | 1.993 | −0.120 | over — renders identically to 93 |
+| 41  | 2.478 | +0.000 | PASS |
+| 54  | 1.204 | +0.000 | PASS |
+| 253 | 5.306 | +0.000 | PASS |
+| 458 | 0.500 | +0.001 | short — unattributed (no B1152 baseline) |
+| 656 | 1.204 | +0.000 | PASS |
+
+No row regressed vs the B1157 current column (identical — no code change). The b1130
+40-record sweep is likewise unchanged (`refactor/B1157/b1130_table.tsv`). Owners for the
+open deltas: 93/38 = this card's per-pixel density (§6 FOLLOW-UP); 458 = unattributed
+(no B1152 baseline); the `over` cast-anim rows (202/40/200) = the B1157 cast pose.
+
 ## 5. Acceptance
 
 | # | item | status |
