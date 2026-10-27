@@ -8,7 +8,7 @@
 # run_sweep_b1118.sh plans: level 60, secs 1.5 + cast + 11.5). Rendered ON the ThinkPad into the
 # NFS evidence dir, measured HERE: b1130 by B1155's harness_measure_b1130.py (fixed_npc /
 # fixed_self), b1118 by B1139's harness_measure.py (FX_KEEP=1 FX_SPELLS=auto).
-#   before = fable 070a9215 (wt/kb-b1167-before), after = this branch (wt/kb-b1167-record104).
+#   before = fable f61fafb4 (wt/kb-b1167-before), after = this branch (wt/kb-b1167-record104).
 # usage: run_sweeps.sh <before|after> [parallel=3]
 set -u
 VAR=${1:?before|after}; PAR=${2:-3}
