@@ -39,6 +39,7 @@
 #include "client/graphics/environment/spell_particle_types.h"
 #include "client/graphics/environment/unified_particle.h"
 #include "client/graphics/simulation_worker.h"
+#include "particle_test_seed.h"
 
 namespace {
 
@@ -343,6 +344,7 @@ Env::UnifiedParticle runMotionTerm(const Env::EmitterConfig::EddMotion& motion,
         auto& pi = input.particleInput;
         pi.deltaTime = 1.0f / 60.0f;
         pi.unifiedRendererInitialized = true;
+        pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
         pi.poolSize = 256;
         if (f == 0) {
             EQT::Graphics::ParticleCommandData cmd;
@@ -533,6 +535,7 @@ TEST(SpellEddMotionSim, FollowTracksTheMovingEmitter) {
         auto& pi = input.particleInput;
         pi.deltaTime = 1.0f / 60.0f;
         pi.unifiedRendererInitialized = true;
+        pi.rngSeed = particle_test::kSeed;  // B1169: fixed draws (tests/particle_test_seed.h)
         pi.poolSize = 256;
         pi.entityPositions[1] = glm::vec3(0.5f * f, 0.0f, 0.0f);  // moving caster
         if (f == 0) {
