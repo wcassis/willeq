@@ -205,4 +205,60 @@ exit 65 covers them; run_tour.sh also runs the checker (PO_CHECK=1).
 
 ## 8. Tour-7 before / after at the capture settings (acceptance E)
 
-TOUR_SECTION
+Recipe: `review/B1165/worker/scripts/run_tour.sh <tag>` (B1160's tour-7 rows -- 93, 38,
+54, 656, 41 other at 1500 ms, 253 self at 1750 ms, 458 other at 3150 ms -- b1118 camera,
+30 fps, `--seed 1`, measured with review/B1139/scripts/harness_measure.py, FX_KEEP=1),
+rendered on dev-u24 with the base binary (fable bd82e0e2, `before`, repeated as
+`before2`) and this card's binary (`after`, with `PO_CHECK=1`: the checker printed the
+capture's 1/1/2/24/1 for every spell and passed). Every summary row is in
+`review/B1165/worker/runs/<tag>_tour_<spell>/measure/summary.tsv`; the cells that are not
+equal in all three runs are tabled in `review/B1165/worker/runs/tour_before_after.tsv`:
+
+| spell | column | before | before2 | after |
+|---|---|---|---|---|
+| 93 | src_cov | 0.384 | 0.386 | 0.386 |
+| 38 | src_cov | 0.386 | 0.386 | 0.384 |
+| 54 | src_ext | 1.16 | 1.15 | 1.16 |
+| 656 | src_ext | 1.15 | 1.15 | 1.16 |
+| 253 | roi_s | 0.128 | 0.124 | 0.124 |
+| 458 | land_cov / fxt_cov | 0.501 | 0.501 | 0.500 |
+| 458 | roi_s | 0.039 | 0.039 | 0.040 |
+
+All other cells of the seven rows (15 columns each) are identical in the three runs. The
+listed cells move by the same amount BETWEEN TWO RUNS OF THE SAME BASE BINARY (93 src_cov
+0.384 / 0.386, 54 src_ext 1.16 / 1.15, 253 roi_s 0.128 / 0.124; 93 and 38, and 54 and
+656, draw the same records and trade the same last digit), i.e. the harness is not
+frame-deterministic run to run. To separate the one input the after-runs changed at the
+capture settings -- the harness now applies the spell family's near clip 2.0 where it used
+`identityParticleKnobs()` (0, no cull) before -- 458 was rendered three times on the
+ThinkPad with this card's build (`review/B1165/worker/runs/tp_nc2_tour_458`,
+`tp_nc0_tour_458` with `--spell-particle-nearclip 0 --particle-options`, `tp_nc2b_tour_458`):
+the three summary rows are equal (land_cov 0.501, roi_s 0.040, src_cov 0.117), near clip 2
+vs 0 is PIXEL-IDENTICAL on all 486 frames (`cmp`), while the repeat at the same settings
+differs from the first run on 191 of 486 frames. So nothing at the capture settings moved a
+gate number beyond the harness's own run-to-run noise; the remaining 458 last-digit moves
+(0.501 -> 0.500, 0.039 -> 0.040) are that noise, not near clip and not density (density 1
+is the identity of the CreateEmitter rule, sec. 6).
+
+The gates themselves at non-capture settings (93, rendered on the ThinkPad with
+`--particle-options`; `review/B1165/worker/runs/dens*_tour_93`, `sse0_tour_93`):
+density 0.5 -> land_cov 1.286, src_cov 0.232 (1.993 / 0.386 at 1.0); density 0 and
+ShowSpellEffects 0 -> both "Source not drawn" and "Target stage not drawn" in run.log and
+the two runs are pixel-identical on all 435 frames (land_cov 0.008, src_cov 0.046: the
+caster's own motion, no particle drawn). The checker exits 65 on those frames without
+`--particle-options` (`runs/dens0.5_tour_93/particle_options.log`), and the harness exits 65
+before rendering at density 0.5 without it (`runs/pin/density05_noflag.log`, rc=65).
+
+## 9. Residues and follow-ups
+
+1. N2 (near clip culls nearer) -- the engine words +8/+0xC/+0x10 are stored, their read is
+   not located (sec. 2).
+2. Legacy `ParticleDensity` load order (sec. 5): the client starts with the legacy value as
+   the Env density and ignores the loaded EnvironmentParticleDensity until its combobox
+   changes; fable uses the Env page's value from load. `/particles` is not in fable.
+3. The legacy-path third arm of the stage gate (spell +0x230 in 61..64, `FUN_0044ced9`).
+4. Off-table ini floats / filter ints are snapped to the table (sec. 1, 3); the oracle keeps
+   the raw value.
+5. The FX harness is not frame-deterministic run to run (sec. 8): two runs of one binary
+   differ on ~40 % of frames by a few pixels; a gate that wants "identical" needs that
+   fixed first.
