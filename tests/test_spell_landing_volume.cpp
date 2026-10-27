@@ -35,6 +35,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -45,6 +47,8 @@
 #include "client/graphics/environment/unified_particle.h"
 #include "spell_fx_shape_oracle.h"
 #include "client/graphics/simulation_worker.h"
+#include "client/spell/spell_fx_timing.h"
+#include "client/spell/spells_new_eff_reader.h"
 #include "spell_pool.h"
 #include <glm/glm.hpp>
 #include <algorithm>
@@ -234,22 +238,15 @@ TEST_F(SpellLandingVolume, FrostBoltIsASwirlAndFlatGlints) {
     }
 }
 
-// 253 Whirling Wind: both halves fill a frame-sized box round the caster.
-// B1150 (#470): the retired frame BOX [14.95, 8.125, 6.5] (kOverrideShape) is
-// gone; the halves spawn on record 35's Target shape (ring r 11; ellipsoids
-// 5/4 and 9/8; edd_shapes.tsv), which the style's motion carries to a live
-// set at ~1.0-1.7H, the spellComplete half out to ~1.1H radius and the
-// impact half in at ~0.42H.
-TEST_F(SpellLandingVolume, WhirlingWindFillsTheFrame) {
-    const Shape complete = Measure(Run(Complete(253), 2.0f));
-    EXPECT_GE(complete.radius, 0.95f);
-    EXPECT_GE(complete.top, 1.45f);
-    EXPECT_LE(complete.bottom, 1.25f);
-    const Shape impact = Measure(Run(Impact(253), 2.0f));
-    EXPECT_GE(impact.radius, 0.35f);
-    EXPECT_GE(impact.top, 1.50f);
-    EXPECT_LE(impact.bottom, 1.20f);
-}
+// 253 Whirling Wind: B1161 (#480) retired the 253 override, so the spell has
+// no style-drawn volume of its own any more: Complete(253)/Impact(253) are
+// the style itself (the B1120 volume the no-record landings draw), and the
+// FRAME-FILLING field it was (B1118: oracle coverage 7.28 caster heights^2)
+// is its record 104's EDD field -- the file's counts and shapes (B1149,
+// B1150), capped by the pool at runtime, measured by the B1161 sweep against
+// the band in tests/spell_fx_population_oracle.h row 35.  The style's own
+// volume stays pinned by TheStyleLandingIsAColumnAtLeastTwoCasterHeightsTall
+// and TheStyleImpactIsASparkShellWiderThanTheColumn above.
 
 // 458 Fire Spiral: balls burst up and out and fall back; the burst stays
 // within ~2.2 caster heights (the oracle's 458 rowtop at its peak, f7773).
@@ -348,6 +345,120 @@ TEST_P(SpellLandingPool, OneFedLandingFitsHalfThePool) {
     EXPECT_LE(peak, static_cast<size_t>(pool / 2)) << "one landing peaked at " << peak << " live sprites";
 }
 
+// B1161 (#480): the pool rule on the RECORD path is the oracle's ring-full
+// rule -- a CAP, not a scaler (EQGraphicsDX9 0x10061180: ring full drops the
+// rest of the frame's emission; refactor/B1149/README.md sec. 4).  Drive the
+// real worker with the largest record field a class-level 1-60 spell draws --
+// record 104 (253 Whirling Wind), built slot by slot from the shipped
+// spellsnew.edd the way SpellVisualFX::createCastGlow / createLandingFromSlots
+// build it (Source slots at OP_BeginCast with the caller duration cast +
+// the cast-animation term, Target slots at OP_Action with none) -- and count
+// the live sprites at each platform's pool.  The file's words, uncapped,
+// exceed the sbc 4096 (B1149's census: 3746 + 1168 = 4914, an upper bound):
+// on the desktop 8192 the field runs at the file's counts (peak above 4096,
+// never scaled down), on sbc the pool fills (measured 4071 of 4096; the test asserts
+// >= 0.98 x pool) and drops the rest (allocateParticle returns -1, sim_particles.cpp) -- never above.
+TEST_P(SpellLandingPool, TheLargestRecordFieldIsCappedNotScaled) {
+    const char* env = std::getenv("EQ_CLIENT_PATH");
+    const std::string dir = env ? env : "/mnt/projects/EverQuestP1999";
+    if (!std::ifstream(dir + "/spellsnew.edd").good()) GTEST_SKIP() << "spellsnew.edd not under " << dir;
+    EQ::SpellsNewEffReader reader;
+    ASSERT_TRUE(reader.load(dir)) << reader.loadError();
+    namespace Presets = EQT::Graphics::Environment::SpellPresets;
+    const auto& cfg = SpellEffectsConfig::instance();
+    const int pool = cfg.getGlobal().maxParticles;
+    constexpr uint32_t kSpell = 253;   // Whirling Wind
+    constexpr int kRecord = 104;       // its spells_us.txt field 145
+    constexpr int kCastMs = 1750;      // its cast time (spells_us.txt)
+    constexpr int kLevel = 60;
+    const glm::vec4 col(1.0f);
+    struct Made { SpellEffectDef def; float duration; bool atAction; };
+    std::vector<Made> made;
+    // Source: createCastGlow's caller duration (the cast less the stage
+    // latency, + the cast-animation term) and its per-slot cap.
+    const float srcLatency = cfg.sourceStageLatency();
+    const int32_t srcCaller = EQ::SpellFxCallerDurationMs(
+        EQ::SpellFxStage::Source, kCastMs - static_cast<int32_t>(srcLatency * 1000.0f + 0.5f), 0);
+    for (const auto& d : reader.drawnSlots(kRecord, EQ::kSpellsNewEffSource, kLevel)) {
+        const EQ::SpellsNewEddTiming* w = reader.edd().timing(d.slot.emitter);
+        ASSERT_NE(w, nullptr) << "Source slot " << d.index;
+        const EQ::SpellFxSlotTiming t = EQ::SpellFxSlotTimingFor(*w, srcCaller);
+        auto def = Presets::SourceForSpell(col, kSpell, kRecord, false, kA, 1.0f);
+        Presets::applySlotEmitter({&def}, t, reader.edd().sprite(d.slot.emitter), srcLatency, EQ::kSpellFxAttachScale,
+                                  reader.edd().shape(d.slot.emitter), reader.edd().motion(d.slot.emitter));
+        made.push_back({def, srcLatency + t.end() + 0.1f, false});
+    }
+    // Target: no caller duration (eqgame 0x47f5e1), the two landing halves
+    // sharing each slot, from OP_Action.
+    const float tgtLatency = cfg.targetStageLatency();
+    for (const auto& d : reader.drawnSlots(kRecord, EQ::kSpellsNewEffTarget, kLevel)) {
+        const EQ::SpellsNewEddTiming* w = reader.edd().timing(d.slot.emitter);
+        ASSERT_NE(w, nullptr) << "Target slot " << d.index;
+        const EQ::SpellFxSlotTiming t = EQ::SpellFxSlotTimingFor(
+            *w, EQ::SpellFxCallerDurationMs(EQ::SpellFxStage::Target, kCastMs, 0));
+        auto complete = Presets::TargetForSpell(col, kSpell, kRecord, true, kA);
+        auto impact = Presets::TargetForSpell(col, kSpell, kRecord, false, kA);
+        Presets::applySlotEmitter({&complete, &impact}, t, reader.edd().sprite(d.slot.emitter), tgtLatency,
+                                  EQ::kSpellFxAttachScale, reader.edd().shape(d.slot.emitter),
+                                  reader.edd().motion(d.slot.emitter));
+        made.push_back({complete, 0.0f, true});
+        made.push_back({impact, 0.0f, true});
+    }
+    ASSERT_EQ(made.size(), 4u + 2u * 3u) << "record 104: 4 Source slots + 3 Target slots at level 60";
+
+    const int actFrame = static_cast<int>(std::lround(kCastMs * 0.001f * 60.0f));
+    auto peakAt = [&](int poolSize) {
+        EQT::Graphics::SimulationWorker worker;
+        EQT::Graphics::SimulationOutput output;
+        std::unordered_set<uint16_t> requested;
+        size_t peak = 0;
+        for (int f = 0; f < actFrame + 60 * 9; ++f) {
+            EQT::Graphics::SimulationInput input;
+            auto& pi = input.particleInput;
+            pi.deltaTime = 1.0f / 60.0f;
+            pi.unifiedRendererInitialized = true;
+            pi.poolSize = poolSize;
+            for (uint16_t id : requested)
+                if (id == kCaster) pi.entityPositions[kCaster] = kPos;
+            uint32_t eid = 1;
+            for (const auto& m : made) {
+                if (m.atAction ? f == actFrame : f == 0) {
+                    EQT::Graphics::ParticleCommandData cmd;
+                    cmd.type = EQT::Graphics::ParticleCommand::CreateSpellEffect;
+                    cmd.spellDef = m.def;
+                    cmd.casterID = kCaster;
+                    cmd.targetID = kCaster;
+                    cmd.duration = m.duration;
+                    cmd.preAssignedEffectID = eid;
+                    pi.commands.push_back(cmd);
+                }
+                ++eid;
+            }
+            worker.computeOnce(input, output);
+            requested = output.particleOutput.positionRequestEntities;
+            if (output.particleOutput.valid) peak = std::max(peak, output.particleOutput.renderBuffer.size());
+        }
+        return peak;
+    };
+    // The field at the file's counts: the desktop pool never fills under it.
+    const int desktop = spell_pool::Shipped("desktop");
+    const size_t field = peakAt(desktop);
+    EXPECT_GT(field, 4096u) << "record 104's file field, unscaled, exceeds the sbc pool: it peaked at " << field;
+    EXPECT_LT(field, static_cast<size_t>(desktop)) << "and fits the desktop pool";
+    const size_t here = peakAt(pool);
+    EXPECT_LE(here, static_cast<size_t>(pool)) << "the pool is a cap: " << here << " live at pool " << pool;
+    if (static_cast<size_t>(pool) > field) {
+        EXPECT_EQ(here, field) << "a pool the field fits leaves it at the file's counts (no scaling)";
+    } else {
+        // The pool fills (the peak sits at the pool less the sprites that
+        // die inside the frame they are counted in) and the rest is dropped.
+        EXPECT_GE(here, static_cast<size_t>(0.98f * static_cast<float>(pool)))
+            << "the field fills the " << pool << " pool: peak " << here;
+        EXPECT_LT(here, field) << "and the sprites over it are dropped, not rescheduled";
+    }
+    std::printf("[ B1161    ] record 104 field peak %zu live at pool %d, %zu at pool %d\n", field, desktop, here, pool);
+}
+
 // A style with no triggerDelay keeps the IMMEDIATE trigger (the projectile
 // trail is the worked case since B1138 deleted the buff aura; the cast glow was
 // one until B1122 gave the Source its onset).
@@ -390,14 +501,15 @@ struct SourceCase {
 // B1150 widths, measured in this test's Run (three unseeded runs each, 2026-10-25,
 // the rbuild tree of 216f6621): 93 2.44-2.54, 38 2.46-2.53, 54/656 1.497
 // (record 23's S shape is narrow and the style's ORBITAL radius 0.85 bounds
-// it), 41 2.43-2.52, 253 2.52-2.55, 458 2.43-2.53.
+// it), 41 2.43-2.52, 458 2.43-2.53. B1161 (#480): the 253 row (2.52-2.55) is
+// retired with the 253 override -- its Source is record 104's EDD slots
+// (B1144/B1149), not a style cloud.
 const SourceCase kSourceCases[] = {
     {93, false, 1.5f, 2.2f, 2.8f},
     {38, false, 2.5f, 2.2f, 2.8f},
     {54, false, 1.0f, 1.3f, 1.7f},
     {656, false, 2.0f, 1.3f, 1.7f},
     {41, true, 1.5f, 2.2f, 2.8f},
-    {253, false, 1.5f, 2.3f, 2.8f},
     {458, false, 3.6f, 2.2f, 2.8f},
 };
 
@@ -544,18 +656,20 @@ TEST_P(SpellLandingPool, ASourceAndItsOwnLandingFitHalfThePool) {
 // A Source never overlaps its OWN landing (removeCastGlow() at OP_Action
 // frees it; the landing waits triggerDelay), but it can overlap the previous
 // cast's landing, which OneFedLandingFitsHalfThePool bounds at half the
-// pool -- so every Source cloud must fit the other half. 253's own landing
-// (2160) cannot be live under a new 253 Source: its recast is 12 s.
+// pool -- so every Source cloud must fit the other half.
 // The lower bounds are the live counts that measured >= 80 % of the oracle's
 // Source coverage on the B1122 gate (refactor/B1122/README.md sec. 5), at the
 // pool those were measured at. B1131: where a record's held Source cannot sit
-// beside its own landing in half the pool (sbc: 54/656, 41, 253), the pool
-// rule scales the Source too (SpellEffectsConfig::sourcePoolScale), and the
-// floor scales with it.
+// beside its own landing in half the pool (sbc: 54/656, 41), the pool rule
+// scales the Source too (SpellEffectsConfig::sourcePoolScale), and the floor
+// scales with it. B1161 (#480): the 253 row (floor 1640, beside the retired
+// 2160 field) is retired with the 253 override: its Source is record 104's
+// EDD slots at the file's counts (B1149), capped by the pool, not a
+// style-drawn cloud beside a style-drawn landing.
 TEST_P(SpellLandingPool, EverySourceCloudFitsBesideALanding) {
     const int pool = SpellEffectsConfig::instance().getGlobal().maxParticles;
     const std::pair<uint32_t, size_t> kMinLive[] = {
-        {93, 70}, {38, 70}, {54, 670}, {656, 900}, {41, 150}, {253, 1640}, {458, 54}};
+        {93, 70}, {38, 70}, {54, 670}, {656, 900}, {41, 150}, {458, 54}};
     for (const auto& c : kSourceCases) {
         const SpellEffectDef src = SourceDef(c);
         const auto ps = Run(src, c.castSec + src.emitters.at(0).triggerDelay);
