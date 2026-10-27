@@ -1291,13 +1291,14 @@ void SpellVisualFX::fireMissileLanding(Missile& m)
     const StageSlots slots = stageSlots(m.spellId, kSpellsNewEffTarget, m.gateLevel);
     // B1165 (#484): the arrival is stage 2 on (caster, target), FUN_0047f4af
     // (eqgame.exe.c:101960).
-    if (slots.fromFile && stageDraws(m.spellId, 2, m.casterFx, m.targetFx)) {
+    const bool draws = stageDraws(m.spellId, 2, m.casterFx, m.targetFx);
+    if (slots.fromFile && draws) {
         createLandingFromSlots(m.casterId, m.targetId, m.spellId, record, slots);
     }
     m.landed = true;
     m_missileLanded.insert({m.spellId, m.casterId});
-    LOG_INFO(MOD_SPELL, "B1152 missile arrival: caster={} spell={} target={} -> Target stage fired",
-             m.casterId, m.spellId, m.targetId);
+    LOG_INFO(MOD_SPELL, "B1152 missile arrival: caster={} spell={} target={} -> Target stage {}",
+             m.casterId, m.spellId, m.targetId, draws ? "fired" : "not drawn (B1165 Spell page gate)");
 }
 #endif
 
