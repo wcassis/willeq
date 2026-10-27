@@ -66,14 +66,20 @@ numbers and the target differ, all from `review/B1130/README.md` "Geometry":
 | 1280x800, caster 209 px, feet row 598 at column 640 | the settle stills `oracle/cal_r35/15_time_settle.png` (the B1118 opening pose, `#stun 120000`, camera F9 x3) | `--caster-px` |
 | caster = the b1118 char-67 appearance | the same char 67 Testcaster | `--caster`, `--caster-appearance` |
 | b1130: target race 1 (human), gender 0 (male), size 6 -- eqemu's `#spawn [name][race][level][texture][health][gender]...`: `#spawn TrollF 1 1 0 30000` is race=1, level=1, texture=0, hp=30000 with the GENDER arg absent -> `Mob::GetDefaultGender(1)` = MALE; "TrollF" is only a label | the same command; caster `#goto -67.6,434.4` puts it ~1.4 caster heights to her right | `--target` |
-| b1130: target 325 px, feet (940,652) | the same settle still; the 325 is that human's NEARER depth (~1.55x closer to the camera than the caster), not a race scale -- a consistency check, not an input (the FABLE rest-pose fit renders it as a 50 px strip; `refactor/B1155/README.md`) | -- |
+| b1130: target feet (940,615), 288 px (B1166) | the r51 settle still `oracle/r51/26_tgt_npc_settle.png` minus a target-free still at r51's camera, diff threshold 20, the selection ring excluded (`refactor/B1166/README.md` sec. 1; B1130's 652/325 began at the name label). The feet are SOLVED; the height is the model's own at that spot (the FABLE human renders 238 px, 0.826x) and is a self-check ratcheted at 238 +-3 px, not an input | -- (`tools/model_viewer/fx_target_anchor.h`) |
 
 The camera is fitted to the caster exactly as b1118's is (`fitFaceOnCamera`,
 209 px / row 598); the target's world offset (x, z) is then SOLVED from its
-two feet pixels (Newton on the rendered silhouette, `fitFixedNpcTarget`), and
-the solve is printed like the b1118 block. A preset that does not solve within
-1 px exits 2. Pinned by `tests/test_fx_harness.cpp`
-(`B1130PresetSolvesTheFixedNpcGeometry`, `B1130SelfPresetSolvesTheCasterAlone`).
+two feet pixels (Newton on the rendered silhouette of its STANDING frame, its
+pose box stood on the ground plane, `fitFixedNpcTarget`), and the solve is
+printed like the b1118 block. A preset that does not solve within 1 px exits 2.
+Frame 0 is then re-measured (`[fx-harness] b1130 target self-check`): feet
++-1 px and column +-3 px of the anchor, height +-3 px of the solved standing
+height and 238 +-3 px (the measured standing height of the FABLE human there, 0.826x the
+oracle's 288 px; `fx_target_anchor.h` kStandingPx), else exit 5 (B1166). A `--target` other than
+a body of that height therefore exits 5 on b1130. Pinned by `tests/test_fx_harness.cpp`
+(`B1130PresetSolvesTheFixedNpcGeometry`, `B1130SelfCheckRejectsAWrongTargetModel`,
+`B1130SelfPresetSolvesTheCasterAlone`).
 The target idles (no death unless `--target-death`). Measure a run with
 `refactor/B1155/scripts/harness_measure_b1130.py <frames> <out> <fixed_npc|fixed_self>`
 and band the sweep with `refactor/B1155/scripts/band_table.py`
