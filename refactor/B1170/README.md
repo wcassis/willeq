@@ -1,6 +1,9 @@
 # B1170 (#489): the spell missile exactly as the client draws it
 
-Branch `task/kb-b1170-missile-exact`, cut from `fable 9136b7a3` (B1168 merged).
+Branch `task/kb-b1170-missile-exact`, cut from `fable 9136b7a3` (B1168 merged);
+`gitlab/fable` merged in twice (merge, not rebase): `070a9215` (B1166, B1169)
+cleanly, and `f61fafb4` (B1165, B1173) with six conflicted files resolved by
+hand (section E3).
 Will's rule (2026-10-27): willeq copies the official client's spell effects
 exactly. Every address below is an instruction start in
 `/mnt/projects/fable/review/B1141/ghidra/out/eqgame.dis` (the `0x1…` ones in
@@ -289,8 +292,10 @@ and the `SpellCastVisualStartedData::targetId` that only fed the missile.
   landing is drawn on OP_Action (B1152 returned 0 there, "deferring to the
   in-flight missile").
 - Harness (`refactor/B1170/scripts/render_b1130gate_tp.sh`, the B1163 b1130
-  gate plans, binaries `before` = 9136b7a3, `step1` = 85803903, `after` = the
-  MR head's code; md5s in `/mnt/projects/fable/review/B1170/worker/binaries.md5`):
+  gate plans; first pass with `before` = 9136b7a3 and `step1` = 85803903,
+  evidence `gate_before/`, `gate_step1/`; repeated on the final fable tip with
+  B1169's deterministic harness, section F; md5s in
+  `/mnt/projects/fable/review/B1170/worker/binaries.md5`):
   before, 38 and 93 print 3 `B1152 missile` lines each and defer the landing;
   after, none, and `createLanding: caster=1 target=2 spell=38 row=80 slots …`
   at OP_Action. `refactor/B1170/scripts/frame_diff_series.py`
@@ -315,6 +320,8 @@ and the `SpellCastVisualStartedData::targetId` that only fed the missile.
   → `SpellManager::handleMissileObject` → `SpellCastVisualStartedData::missileObject`
   → `ApplySpellCastStartedFx` → `spawnMissileObject` (the renderer supplies
   EQ positions + model heights and the local player).
+- The object keeps its target's height as read at the spawn (the client's
+  actor height `+0x238` is per actor, not the animated pose's box).
 - Tests (`tests/test_b1170_missile_object.cpp`): the decoder on the server's
   payload and on short / tiny-velocity input, the trig tables and angles, the
   24 rows (B), the 33-unit pass gate and the hit / lifetime rule, the spawn
@@ -325,21 +332,182 @@ and the `SpellCastVisualStartedData::targetId` that only fed the missile.
   spell 93 (field 18 = 0, travel 0) is removed by its 50-unit lifetime on its
   first pass.
 
-## (F) Re-gate (ThinkPad, before = 9136b7a3, after = the MR code)
+### E2. The B1165 stage gate
 
-RE-GATE-TABLE
+Every stage the object fires goes through `SpellVisualFX::stageDraws`, the
+FUN_0049b260-entry gate B1165 implements (eqgame.exe.c:121989-122034):
+the spawn's stage 1 / 2 on (source, none) — `00476ecc` passes 0 as the
+target and the position (`00476ec0 push ebx`, `00476ec1 push ebx`; `00476ebf push esi`
+is the object, `00476ec2 push dword ptr [ecx + 0xfe4]` the caster); spell 54's
+removal fire on (source, none) (`00477aa3`); spell 859's on (source, the
+player) (`0047f5ed`), which FUN_00491cff always shows for a target that is me,
+so only density / opacity / ShowSpellEffects hide it. The source's and the
+target's On-For inputs come from the game thread (`fxActorOf`,
+`SpellManager::handleMissileObject`) on the same event. Tests:
+`SlotRules.TheSpellPagesDensityScalesEveryStageAtCreation` and
+`SlotRules.TheOnForFilterGatesEachStage` now take the Middle from a `0x4033`
+object (B1165 drove it through the removed B1152 missile).
+
+### E3. The merge with `f61fafb4`, resolved by hand
+
+`spell_visual_fx.h/.cpp`, `spell_cast_fx.cpp`, `spell_packet_handlers.cpp`,
+`event_payloads_ui.h`, `test_spell_impact_visual.cpp` conflicted, all on
+B1165's additions to the B1152 missile this card removes. Resolution: the
+`Missile` struct, `m_missiles`, `fireMissileLanding`, `fireSpell859RemovalAtPlayer`
+and the createLanding deferral stay removed together with B1165's On-For fields
+on them; `createCastGlow` keeps B1165's Source gate on (caster, caster) and
+takes only `casterFx` (its `targetId` / `targetFx` fed only the missile);
+`createLanding` keeps B1165's stage-2 gate; `SpellCastVisualStartedData`
+keeps `casterFx` and gains `missileTargetFx` for the object; B1165's
+`fxActorOf` is kept and also fills the object's inputs; the source-string test
+expects the new `createCastGlow` call. Two test lines B1165 / B1150 cite
+moved by the new test helper and their READMEs' line cites were updated
+(DocCitations).
+
+## (F) Re-gate (ThinkPad; before = fable `f61fafb4`, after = this branch)
+
+Both binaries built on the ThinkPad from the final trees (md5s in
+`/mnt/projects/fable/review/B1170/worker/binaries.md5`: `before_t2`,
+`after_t2`), B1169's deterministic harness (`--fx-seed 1`, fixed solid draw
+order; each run log carries the `determinism (B1169)` line). Renders:
+`refactor/B1170/scripts/regate_tp.sh` (tour-7 + 40 records on b1118, 40
+records on b1130, B1157's plans and command lines), frame identity
+`refactor/B1170/scripts/regate_identity.py`
+(`/mnt/projects/fable/review/B1170/worker/regate/identity_t2.tsv`):
+
+- **70 of 87 runs are byte-identical before / after** (0 differing frames).
+- **The 17 that differ are exactly the runs whose before-log prints 3
+  `B1152 missile` lines and a deferred landing**: b1118 tour 93, tour 38, r0
+  (93), r1 (200), r2 (202), r6 (722), r7 (40), r18 (378), r25 (14), r26 (310);
+  b1130 records 0, 1, 2, 6, 7, 25, 26. Each first differs at the B1152 launch
+  (e.g. tour 93 / r0 at frame 76 = 2.533 s = OP_Action 3.0 − 0.486 + one frame).
+- The b1130 gate spells (section D's plans): 38 and 93 differ (220 of 465
+  frames, first 106), 54 / 41 / 458 / 656 / 859 are identical
+  (`gate_t2_identity.tsv`).
+- An earlier pass without B1169's fix differed in 1 px on 71 frames of some
+  non-missile rows; re-rendering showed the same binary reproduces both
+  outcomes (`regate/identity_before_vs_after_rerun.tsv`): the pre-B1169 draw
+  order, not this change. The final pass above has none.
+
+The 17 runs, measured (`refactor/B1170/scripts/measure_regate.sh`, B1139's
+`harness_measure.py` / B1155's `harness_measure_b1130.py` + `band_table.py`;
+tables `refactor/B1170/regate_b1118.tsv`, `refactor/B1170/regate_b1130.tsv`,
+built by `refactor/B1170/scripts/build_regate_table.py`). Owner of every row:
+the removed B1152 record-driven Middle (the oracle drew no Middle on these
+casts, B1168).
+
+b1118 (land_cov, end; src_cov):
+
+| row | spell | land_cov b → a | end b → a | src_cov b → a |
+|---|---|---|---|---|
+| tour 93 / tour 38 / r0 | 93 / 38 / 93 | 1.993 → 2.113 | +6.633 → +6.467 | 0.385 → 0.363 |
+| r1 | 200 | 1.308 → 1.251 | +6.233 → +6.167 | 0.304 → 0.304 |
+| r2 | 202 | 0.694 → 0.671 | +4.633 → +4.633 | 0.301 → 0.300 |
+| r6 | 722 | 0.401 → 0.391 | - | 0.340 → 0.340 |
+| r7 | 40 | 0.902 → 1.067 | +5.633 → +5.900 | 0.524 → 0.411 |
+| r18 | 378 | 0.945 → 0.982 | +5.200 → +5.067 | 0.433 → 0.433 |
+| r25 | 14 | 2.088 → 1.992 | +6.533 → +6.433 | 0.448 → 0.448 |
+| r26 | 310 | 1.870 → 1.492 | +4.667 → +4.567 | 0.401 → 0.401 |
+
+The tour 93 / 38 after values are B1151's pre-missile tour values (2.113 /
++6.467, `refactor/B1157/b1118_table.tsv` `land_cov_b` / `end_b`), and r0's and
+r26's are B1151's record values (2.113, 1.492; `refactor/B1152/README.md` sweep
+table): removing the missile restores what fable drew before B1152.
+
+b1130 (oracle / before / after, verdicts before → after):
+
+| record | source_cov | landing_cov | landing_end_s |
+|---|---|---|---|
+| 0 | 0.170 / 0.213 / 0.176, over → over | 3.945 / 0.553 / 0.552, short → short | 6.670 / 4.667 / 4.667, short → short |
+| 1 | 0.290 / 0.092 / 0.092, short → short | 3.050 / 0.243 / 0.252, short → short | 6.580 / 3.400 / 3.300, short → short |
+| 2 | 0.147 / 0.275 / 0.272, over → over | 2.250 / nan / 0.316, n-a → short | 5.480 / nan / 5.067, n-a → short |
+| 6 | 0.380 / 0.098 / 0.098, short → short | 0.762 / 0.142 / 0.145, short → short | 6.260 / 1.200 / 1.167, short → short |
+| 7 | 0.390 / 0.211 / 0.144, short → short | 3.077 / 0.577 / 0.529, short → short | 6.810 / 6.100 / 5.333, short → short |
+| 25 | 0.284 / 0.122 / 0.122, short → short | 4.847 / 0.830 / 0.846, short → short | 6.640 / 4.433 / 4.433, short → short |
+| 26 | 0.405 / 0.195 / 0.195, short → short | 8.003 / nan / nan, n-a | 5.050 / nan / nan, n-a |
+
+No verdict changes. Record 7 (spell 40) is the one B1173 flagged: its
+source_cov moves 0.211 → 0.144 (B1173's diagnostic patch measured
+0.210 → 0.142 on its tip). `nan` is the instrument finding no landing run.
 
 ## (G) Checks
 
-CHECKS
+- Builds and tests on `gitlab-runner-2` (the session's build host for this
+  slug from the coordinator's switch on): the spell / bridge / harness / dispatch
+  targets, `tbuild test -R 'Bridge|EventBus|FxHarness|GameStateSync|Reachability|Spell|SlotRules|OptionsParticles|ZoneDispatch|ZoneOpcode|B1163|B1170'`
+  → **100 % tests passed, 0 failed out of 417** on the merged tip
+  (`/mnt/projects/fable/review/B1170/worker/ctest.log`); the three suites that
+  skip without the EQ client were also run with `EQ_CLIENT_PATH`:
+  `test_b1170_missile_object` 10/10, `test_spell_visual_vocabulary` 8/8,
+  `test_spell_slot_rules` 18/18 (`ctest_client_data_runner2.txt`).
+- `tbuild hygiene` → 100 % of 48 (`hygiene.log`).
+- Renders on the ThinkPad (`model_viewer` built there), section F.
+- Cite checker and the bare-address check: section H.
+
+## (H) Citations
+
+- `python3 -I scripts/refactor/cite_check.py refactor/B1170/README.md --tree . --extra /mnt/projects/fable --dis /mnt/projects/fable/review/B1141/ghidra/out/eqgame.dis --dis /mnt/projects/fable/review/B1141/ghidra/out/EQGraphicsDX9.dis`
+  → `checked 37 cites, 0 problems, 3 address warnings` (the warnings: `0x101ec4b0` twice, a data constant cited as data; `0x4365db`, the wrap helper whose entry the .dis decodes as a jump table, see below).
+- Every bare address and quoted `address instruction` pair:
+  `python3 -I refactor/B1168/scripts/check_addrs.py refactor/B1170/README.md /mnt/projects/fable/review/B1141/ghidra/out/eqgame.dis /mnt/projects/fable/review/B1141/ghidra/out/EQGraphicsDX9.dis`
+  → `checked 152 bare addresses, 135 quoted instructions, 0 problems`. The same check over the new code
+  (`include/client/spell/spell_missile_object.h`, `src/client/spell/spell_missile_object.cpp`,
+  `src/client/graphics/spell_visual_fx_missile.cpp`, `tests/test_b1170_missile_object.cpp`)
+  reports no address that is not an instruction start (its MISMATCH lines are
+  prose after a quoted instruction); the one non-instruction function entry,
+  the wrap helper at `0x4365db` (the .dis decodes a jump table over it), is
+  cited by its instructions `004365df` .. `00436625`.
 
 ## RULING REQUEST
 
-RULING-REQUEST
+BLESS-ONLY items this branch touches or invalidates (nothing below was edited
+except item 1, which the dispatch net requires):
+
+1. **`tests/goldens/zone_opcodes_g01.txt` +1 line** `0x4033 HC_OP_SomeItemPacketMaybe`
+   (and `ZoneDispatchTable.GoldenListIsTheMeasured145Arms` now expects 146):
+   the new 0x4033 handler. The test file's own header says a genuinely new
+   handler "is meant to require a line in the golden list -- that edit is the
+   review moment". Bless or reject; without it the handler cannot be wired.
+2. **No longer oracle facts — to be removed from the gate tables by Will's bless:**
+   - `refactor/B1157/b1118_table.tsv`: rows `tour 93`, `tour 38`, `r0`, `r1`,
+     `r2`, `r6`, `r7`, `r18`, `r25`, `r26` — columns `land_cov_n`, `end_n`,
+     `src_cov_n`, `src_on25_n`, `src_cen_n` (measured with the B1152 missile)
+     and, for the eight `r*` rows, `land_cov_b`, `end_b`, `src_cov_b`,
+     `src_on25_b`, `src_cen_b` (the `b1152_*` baselines, also missile renders);
+     the tour 93 / 38 `owner` text ("B1152 sim delta").
+   - `refactor/B1157/b1130_table.tsv`: records 0, 1, 2, 6, 7, 25, 26 — the
+     `b1157_*` and `delta_*` / `v57_*` columns.
+   - `refactor/B1152/missile_oracle.tsv`: `flight_start*`, `flight_end*`,
+     `middle_onset*`, `middle_end*` (not a flight, refactor/B1168/README.md A5),
+     and with them the B1152 gate rows launch@−0.486 / reach@−0.184 / land@+0.116
+     for 38 / 93 (refactor/B1152/README.md "The missile timing gate",
+     refactor/B1163/README.md (B) band table).
+   - `/mnt/projects/fable/review/B1142/gate/regression_table.tsv`: **none** — its
+     fable columns were rendered before B1152 existed and its oracle columns
+     are oracle captures with no Middle stage, so no cell holds the missile.
+   The replacement values for every row above are section F's after column.
+3. **The event**: the 0x4033 object rides `SpellCastVisualStarted`
+   (`SpellCastVisualStartedData::missileObject`) because a new
+   `GameEventType` changes the event-type count root CLAUDE.md states in three
+   places, which this card may not edit. Rule: keep it, or allow a dedicated
+   `SpellMissileObject` event with the CLAUDE.md count edits.
 
 ## FOLLOW-UP
 
-FOLLOW-UP-LIST
+- **A real type-9 capture**: needs a server that writes 9 at `+0x63` and the
+  spell id at `+0x5c` (eqemu's ProjectileAnimation never does; a server patch
+  or a live-era server). Then: lane-5 leg per card ask 3, the captured payload
+  fed with `--missile-payload`.
+- **Item missiles** (type ≠ 9: every lane-5 `0x4033`, arrows and the
+  bolt-graphics spells): the client draws the `+0x65` IT model on the object;
+  fable builds and flies the object but draws nothing.
+- Not modelled in the object: the caster-race branch of the spawn
+  (`00476c3c`, races 0x31 / 0x9e / 0xc4), `FUN_00477cc9`'s world-collision
+  sweep and its proximity hits (`FUN_0047658a`), the hit flag's position snap
+  (`004782c1` .. `004782cf`), the legacy spells.eff stage path for a spell
+  with no spellsnew.eff record (`0x49ab78`), `FUN_0047f4af`'s SPA-driven
+  position override for 859 (`0047f57b` .. `0047f594`), and the time() unit
+  (read as ms; B1168 (B)).
 
 ## Files
 
