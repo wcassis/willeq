@@ -937,6 +937,13 @@ int runScriptedHarness() {
         }
         const uint32_t castMs = plan[i].castMsOverride >= 0 ? static_cast<uint32_t>(plan[i].castMsOverride)
                                                             : sp->cast_time_ms;
+        // B1171 (#490): the caster level this cast is drawn at, and where it came
+        // from, in the run log -- a sweep's comparison against an oracle capture
+        // is refused when this differs from the capture's `#level`
+        // (scripts/fx/capture_level.py).
+        std::printf("[fx-harness] cast %zu: spell %u caster_level %d (%s)\n", i, plan[i].spellId,
+                    plan[i].casterLevel >= 0 ? plan[i].casterLevel : harnessOpts.casterLevel,
+                    plan[i].casterLevel >= 0 ? "plan" : "--caster-level");
         if (plan[i].beginCast) events.push_back({plan[i].tBegin, static_cast<int>(i), false, castMs});
         events.push_back({plan[i].tBegin + castMs / 1000.0, static_cast<int>(i), true, castMs});
     }
@@ -949,7 +956,9 @@ int runScriptedHarness() {
         std::fprintf(stderr, "[fx-harness] cannot write %s/timing.tsv\n", harnessOpts.framesDir.c_str());
         return 4;
     }
-    timing << "frame\tt\tevent\tspell\ttarget\tdistance\tcast_ms\tt_event\n";
+    // B1171 (#490): caster_level (last column, so the index readers keep
+    // working) = the slot-gate level each packet was drawn at.
+    timing << "frame\tt\tevent\tspell\ttarget\tdistance\tcast_ms\tt_event\tcaster_level\n";
     // B1144: the spellsnew.eff slots each packet draws (SpellVisualFX::stageSlots,
     // the rule createCastGlow / createLanding draw by): BeginCast -> Source,
     // the cast-animation Action -> Target. No BeginCast = no Source row.
@@ -1056,9 +1065,9 @@ int runScriptedHarness() {
                              << '\t' << d.texture << '\n';
             }
             char row[256];
-            std::snprintf(row, sizeof(row), "%d\t%.6f\t%s\t%u\t%s\t%.3f\t%u\t%.6f\n", f, t,
+            std::snprintf(row, sizeof(row), "%d\t%.6f\t%s\t%u\t%s\t%.3f\t%u\t%.6f\t%d\n", f, t,
                           e.action ? "Action" : "BeginCast", c.spellId, c.self ? "self" : "other",
-                          c.distance, e.castMs, e.t);
+                          c.distance, e.castMs, e.t, level);
             timing << row;
         }
         // B1139: the lane NPC the tour kills (OP_Death, then OP_DeleteSpawn).
@@ -1163,7 +1172,7 @@ int runScriptedHarness() {
             return 4;
         }
         char row[96];
-        std::snprintf(row, sizeof(row), "%d\t%.6f\t-\t-\t-\t-\t-\t-\n", f, t);
+        std::snprintf(row, sizeof(row), "%d\t%.6f\t-\t-\t-\t-\t-\t-\t-\n", f, t);
         timing << row;
         if (!activeSourceEmitters.empty()) {
             // The emitter origin = the slot's attach point on the caster:
