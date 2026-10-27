@@ -1,0 +1,89 @@
+# B1162 item 1 (issue #481): RECORD 325, the Shadow Knight disciplines, on the
+# OWNING class.
+#
+# B1143 (#463) ran this leg on class 4 and the Ti client swallowed every /disc
+# (zero C->S OP_CastSpell). The lane's eqemu class table
+# (/opt/akk-stack/code/common/classes.h) has class 4 = Ranger, class 5 =
+# ShadowKnight. The lane's Ti-client spells_us.txt (fields 104..119 =
+# classes1..16, 0-based ^-split; record = field 145, spellsnew.eff) shows the
+# record-325 set:
+#   4504 Leechcurse Discipline  record 325  classcols = {} (no column)
+#   6236 Reaper Strike          record 325  classcols = {} (no column)
+#   6268 Lich Sting             record 325  classcols = {} (no column)
+#   6299 Reaper Strike Recourse record 325  classcols = {} (no column)
+#   6311 Lich Sting Recourse    record 325  classcols = {} (no column)
+#   8604/8617/8642 Leechcurse Discipline record 325  classcol 5 (SHD) lvl 60
+# So the OWNING class for the record-325 Leechcurse variants is class 5 =
+# Shadow Knight (the B1143 "class 4 (Shadow Knight)" was actually Ranger).
+# This leg switches char 67 to class 5 (SHD), levels it, trains disciplines,
+# and runs the REAL client path /disc x3 (no GM #castspell -- the card forbids
+# substituting the GM path).
+#
+# Activation = the REAL client path, /disc <name> (B1134 P4's working form:
+# /disc sends OP_CastSpell slot 10 -> OP_Action with NO OP_BeginCast).
+# #resetdisc_timer all between casts (B1134 P4b: the single 10-minute reuse
+# timer rejected casts 2..4 of P4). The observer view is measured against
+# B1130 rows 325/326 and the B1143 item-3 instrument to state whether the
+# oracle draws ANY landing on /disc.
+#
+# Command forms are the B1143 .fix leg's findings: /target (never #target),
+# #stun <ms> after /target, #kill (no argument) after /target.
+#
+# fps=30
+# caster-video=1
+# observer=Oraclewatch
+# pose=-74,428,3.75,160
+# observer-pose=-67.6,434.4,3.75,160
+
+login	Testcaster
+obs	login	Oraclewatch
+zone	qeynos2
+obs	zone	qeynos2
+wait	8000	settle
+obs	click	1229,555	obs_close_tip
+click	1229,555	close_tip
+command	#set time 11 0	noon
+wait	1500	noon_settle
+command	#weather 0	weather
+command	#level 60	lvl
+command	#traindisc 60	traindisc
+wait	3000	traindisc_settle
+command	#spawn TrollF 1 1 0 30000	spawn
+wait	3000	spawn_settle
+obs	press	F9	obs_f9_1
+obs	press	F9	obs_f9_2
+obs	press	F9	obs_f9_3
+obs	wait	3000	obs_cam_settle
+wait	20000	time_settle
+command	/target TrollF000	tgt_a
+wait	1500	tgt_a_settle
+command	#stun 120000	stun_a
+wait	1000	stun_a_settle
+command	/disc Leechcurse Discipline	disc_4504
+wait	14000	fx_4504
+command	#nukebuffs	nuke_0
+command	#resetdisc_timer all	reset_0
+wait	4000	reset_0_settle
+command	/target TrollF000	tgt_b
+wait	1500	tgt_b_settle
+command	#stun 120000	stun_b
+wait	1000	stun_b_settle
+command	/disc Reaper Strike	disc_6236
+wait	14000	fx_6236
+command	#nukebuffs	nuke_1
+command	#resetdisc_timer all	reset_1
+wait	4000	reset_1_settle
+command	/target TrollF000	tgt_c
+wait	1500	tgt_c_settle
+command	#stun 120000	stun_c
+wait	1000	stun_c_settle
+command	/disc Lich Sting	disc_6268
+wait	14000	fx_6268
+command	#nukebuffs	nuke_2
+command	#resetdisc_timer all	reset_2
+wait	4000	reset_2_settle
+command	/target TrollF000	tgt_kill
+command	#kill	kill
+wait	2000	kill_settle
+obs	command	/q	obs_quit
+command	/q	quit

@@ -231,7 +231,10 @@ TEST_F(FxHarness, AnOtherTargetLandingLightsTheTargetAndNotTheCaster) {
 // OP_BeginCast (B1134 leg P4b's pcap), and the official client plays a
 // record's Source from its begin-cast handler only (eqgame.exe 0x49b39d);
 // 4499 Defensive Discipline's record 326 has no Target stage, so no landing.
-// The observer drew no sprite (B1134 record 51). The harness's action-only
+// The observer drew no sprite (B1134 record 51; re-observed by B1162 leg
+// b1162_disc4499_v3: OP_Action 4499 with no OP_BeginCast, the observer's
+// caster ROI lit only by the caster's animation, Act+0.454..1.120, peak cov
+// 0.067 -- refactor/B1162/README.md "The /disc landing leg"). The harness's action-only
 // packets must therefore draw NOTHING: every frame equals the frame of a run
 // whose only cast lies past the end (no lit px beyond the two processes'
 // pre-cast noise).
@@ -269,6 +272,47 @@ TEST_F(FxHarness, ADisciplineWithoutBeginCastDrawsNothing) {
         b->drop();
     }
     std::printf("[fx-gate] /disc 4499 (OP_Action only): peak lit px vs the no-cast run %d (pre-cast noise %d)\n",
+                peak, noise);
+    EXPECT_LE(peak, noise + 16) << "an OP_Action without OP_BeginCast drew something";
+    cleanDirs();
+}
+
+// B1162 (#481): the same gate on record 325, with the discipline the official
+// client really fired on lane 5: /disc Leechcurse Discipline -> C->S
+// OP_CastSpell slot 10 spell 8604, no OP_BeginCast (leg b1162_disc325_v2,
+// refactor/B1162/README.md "Correction: Leg A did not land"). 8604's
+// spellsnew.eff record (spells_us.txt field 145) is 325, which has no Target
+// stage. The lane server refused the cast (its 8604 row is another spell), so
+// the oracle never drew a real record-325 /disc; this pins the fable side
+// only. The harness's action-only 8604 must draw nothing.
+TEST_F(FxHarness, TheLeechcurseDisciplineWithoutBeginCastDrawsNothing) {
+    const fs::path disc = runPlan("disc8604", "0.5\t8604\tself\t0\t0\t60\taction\n", 3.0);
+    const fs::path none = runPlan("none8604", "100\t8604\tself\t0\t0\t60\taction\n", 3.0);
+    ASSERT_FALSE(disc.empty()) << "the /disc harness run failed";
+    ASSERT_FALSE(none.empty()) << "the reference harness run failed";
+    EXPECT_TRUE(slotRows(disc).empty()) << "a /disc drew a spellsnew.eff slot";
+    const Box whole{0, 0, 1279, 799};
+    int noise = 0;  // the two processes' pre-cast difference (see the 4499 test)
+    for (int f = 0; f < 15; ++f) {
+        irr::video::IImage* a = load(frameAt(disc, f));
+        irr::video::IImage* b = load(frameAt(none, f));
+        ASSERT_NE(a, nullptr);
+        ASSERT_NE(b, nullptr);
+        noise = std::max({noise, lit(a, b, whole), lit(b, a, whole)});
+        a->drop();
+        b->drop();
+    }
+    int peak = 0;
+    for (int f = 15; f < 90; ++f) {  // Act-0.0 .. Act+2.5 s
+        irr::video::IImage* a = load(frameAt(disc, f));
+        irr::video::IImage* b = load(frameAt(none, f));
+        ASSERT_NE(a, nullptr);
+        ASSERT_NE(b, nullptr);
+        peak = std::max({peak, lit(a, b, whole), lit(b, a, whole)});
+        a->drop();
+        b->drop();
+    }
+    std::printf("[fx-gate] /disc 8604 (OP_Action only): peak lit px vs the no-cast run %d (pre-cast noise %d)\n",
                 peak, noise);
     EXPECT_LE(peak, noise + 16) << "an OP_Action without OP_BeginCast drew something";
     cleanDirs();
