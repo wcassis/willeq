@@ -10,6 +10,7 @@
 #include <functional>
 #include <vector>
 #include <variant>
+#include <optional>
 #include <string>
 #include <cstdint>
 #include <mutex>
@@ -17,6 +18,7 @@
 #include <glm/glm.hpp>
 
 #include "client/hotbar/hotbar_slot_type.h"  // T156: HotbarSlotAssignedData carries the enum, not a raw uint8_t
+#include "client/spell/spell_missile_object.h"  // B1170: SpellCastVisualStartedData::missileObject
 #include "client/spell/spell_visual_vocabulary.h"  // T381: SpellCastVisual*Data carry the render vocabulary by value, not a SpellDatabase*
 
 class HCMap;
@@ -139,6 +141,14 @@ struct SpellCastVisualStartedData {
     // B1148 (#468): spell field 120 CastingAnim, the animation id whose track
     // length eqgame adds to the Source duration (0x47ddd4); 0 = unknown.
     int castAnim = 0;
+    // B1170 (#489): set when this event carries the server's 0x4033 missile
+    // object message instead of an OP_BeginCast: the renderer builds the
+    // object (SpellVisualFX::spawnMissileObject) and nothing else of the cast
+    // arm runs. Carried here, not on an enumerator of its own, because a new
+    // GameEventType changes the event-type count CLAUDE.md states
+    // (refactor/B1170/README.md, RULING REQUEST). A pointer, so the other
+    // events' variant slot does not grow by the 0x88-byte message.
+    std::shared_ptr<const EQ::SpellMissile::Wire> missileObject;
 };
 
 struct SpellCastVisualCompleteData {

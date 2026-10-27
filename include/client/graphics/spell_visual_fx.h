@@ -23,6 +23,7 @@
 #include "client/spell/spells_new_eff_reader.h"
 #include "client/spell/spells_new_edd_colour.h"
 #include "client/spell/spell_fx_timing.h"
+#include "client/spell/spell_missile_object.h"
 #include "client/spell/spell_visual_vocabulary.h"
 #include "client/graphics/spell_visual_selection.h"
 
@@ -242,6 +243,43 @@ public:
                            int casterLevel = kMeasuredCasterLevel);
 
     // ========================================================================
+    // B1170 (#489): the server's 0x4033 missile OBJECT
+    // ========================================================================
+    // The official client draws a record's Middle stage ONLY on a missile
+    // object, and the only object is the one a received 0x4033 builds
+    // (eqgame 00460737; client/spell/spell_missile_object.h). This is that
+    // object: spawnMissileObject() takes the decoded message, update() runs
+    // the client's per-frame spawn and its >= 33-unit physics passes
+    // (00445556 / 00445580), the Middle stage rides the object (anchor 2,
+    // 00495d8e) and the removal fires the 54 / 859 Target stages (0047789d).
+    // `gateLevel` is the source spawn's slot-gate level (SpellsNewEffGateLevel).
+    void spawnMissileObject(const SpellMissile::Wire& wire, int gateLevel = kMeasuredCasterLevel);
+    size_t missileObjectCount() const { return m_missile_objects.size(); }
+    // The i-th object's position (EQ y, x, z); false when there is none.
+    bool missileObjectPosition(size_t i, float eqPos[3]) const {
+        if (i >= m_missile_objects.size()) return false;
+        for (int k = 0; k < 3; ++k) eqPos[k] = m_missile_objects[i].o.w.pos[k];
+        return true;
+    }
+
+    // An entity as the missile object reads it, in EQ coordinates (y, x, z)
+    // plus its model height. Set by the renderer (lastX/lastY/lastZ) and the
+    // FX harness; unset, the entity position callback is used (Irrlicht
+    // x, y, z -> EQ x, z, y; height 0).
+    struct MissileEntityState {
+        float eqPos[3] = {0.0f, 0.0f, 0.0f};  // y, x, z
+        float height = 0.0f;
+    };
+    using MissileEntityCallback = std::function<bool(uint16_t entity_id, MissileEntityState& out)>;
+    void setMissileEntityCallback(MissileEntityCallback cb) { m_missile_entity_cb = std::move(cb); }
+
+    // The LOCAL PLAYER's spawn id (0 = none): spell 859's removal fires its
+    // Target stage at the player within 40.0 XY units (00477962 .. 0047f5ed,
+    // spell_b1163_missile_rules.h). Set by the renderer.
+    using LocalPlayerIdCallback = std::function<uint16_t()>;
+    void setLocalPlayerIdCallback(LocalPlayerIdCallback cb) { m_local_player_cb = std::move(cb); }
+
+    // ========================================================================
     // Effect Removal
     // ========================================================================
 
@@ -395,8 +433,48 @@ private:
 #ifdef EQT_HAS_GLES2
     // B1144: createLanding's spellsnew.eff path (one emitter pair per Target
     // slot; B1149: the pair is the slot's one emitter, the file's population).
+    // B1170 (#489): with `args`, the slots are placed as eqgame's
+    // FUN_00495cc3 places them for an explicit FUN_0049b260 call: anchor 0
+    // on args->world, 1 on args->caster, 2 on args->missile, 3 on
+    // args->target, a 0 argument skipping the slot (00495d4c .. 00495dc3),
+    // and every slot run for args->callerMs.
+    struct StageArgs {
+        uint16_t caster = 0;
+        uint16_t target = 0;
+        uint16_t world = 0;
+        uint16_t missile = 0;
+        int32_t callerMs = 0;
+    };
     uint16_t createLandingFromSlots(uint16_t caster_id, uint16_t target_id, uint32_t spell_id,
-                                    int record, const StageSlots& slots);
+                                    int record, const StageSlots& slots,
+                                    const StageArgs* args = nullptr);
+#endif
+
+    // B1170 (#489): the missile objects (spell_visual_fx_missile.cpp).
+    struct MissileFx {
+        SpellMissile::Object o;
+        int gateLevel = kMeasuredCasterLevel;
+        uint16_t anchor = 0;  // the ParticleManager anchor the object's emitters follow
+    };
+    std::vector<MissileFx> m_missile_objects;
+    double m_missile_clock_ms = 0.0;  // the object clock (time() read as ms)
+    MissileEntityCallback m_missile_entity_cb;
+    LocalPlayerIdCallback m_local_player_cb;
+    // spells_us.txt fields 18 / 98 / 122 per spell id, read on first use.
+    std::unordered_map<uint32_t, SpellMissile::SpellFields> m_missile_spell_fields;
+    // Anchors kept after their object (spell 859's emitters stay where it
+    // was removed, 00476ad4) or for a fixed-position fire, with the clock
+    // time they are released at.
+    std::vector<std::pair<uint16_t, double>> m_missile_anchor_expiry;
+    uint16_t m_next_missile_anchor = 0;
+    void updateMissileObjects(float delta_time);
+    bool missileEntity(uint32_t id, SpellMissile::Entity& out) const;
+    const SpellMissile::SpellFields* missileSpellFields(uint32_t spell_id);
+#ifdef EQT_HAS_GLES2
+    uint16_t allocMissileAnchor();
+    void placeMissileAnchor(uint16_t anchor, const float eqPos[3]);
+    void fireMissileStage(MissileFx& m, const SpellMissile::SpellFields& spell);
+    void fireMissileRemoval(MissileFx& m);
 #endif
 
     // Update individual effect types

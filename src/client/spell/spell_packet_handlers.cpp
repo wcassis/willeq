@@ -43,6 +43,34 @@ static int fxGateLevelOf(const EverQuest* eq, uint16_t caster_id)
     return EQ::SpellsNewEffGateLevel(true, it->second.npc_type != 0, it->second.level);
 }
 
+// B1170 (#489): the server's 0x4033 missile object. eqgame copies the 0x88
+// bytes into the object it builds (00460737, the constructor's received
+// branch); fable decodes them here (client/spell/spell_missile_object.h) and
+// the renderer runs and draws the object. The source spawn's level is the
+// slot gate's, as for a cast.
+void SpellManager::handleMissileObject(const uint8_t* payload, size_t len)
+{
+    EQ::SpellMissile::Wire wire;
+    if (!EQ::SpellMissile::DecodeWire(payload, len, wire)) {
+        LOG_WARN(MOD_SPELL, "OP_SomeItemPacketMaybe: {} bytes, the object needs {} -- ignored", len,
+                 EQ::SpellMissile::kWireSize);
+        return;
+    }
+    LOG_DEBUG(MOD_SPELL, "OP_SomeItemPacketMaybe: source={} target={} type={} spell={} word={}",
+              wire.sourceId, wire.targetId, static_cast<int>(wire.type), wire.spellId, wire.word);
+    if (!m_bridge) return;
+    eqt::state::SpellCastVisualStartedData d;
+    d.casterId = static_cast<uint16_t>(wire.sourceId);
+    d.spellId = wire.spellId;
+    d.castTimeMs = 0;
+    d.isPlayerCast = false;
+    d.isTargetCast = false;
+    d.fxGateLevel = fxGateLevelOf(m_eq, static_cast<uint16_t>(wire.sourceId));
+    d.missileObject = std::make_shared<const EQ::SpellMissile::Wire>(std::move(wire));
+    m_bridge->pushEvent(eqt::state::GameEvent(
+        eqt::state::GameEventType::SpellCastVisualStarted, std::move(d)));
+}
+
 void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32_t cast_time_ms)
 {
     const SpellData* spell = m_spell_db.getSpell(spell_id);

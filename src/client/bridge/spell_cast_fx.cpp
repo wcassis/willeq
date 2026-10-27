@@ -12,6 +12,11 @@ namespace bridge {
 void ApplySpellCastStartedFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
                              const state::SpellCastVisualStartedData& d,
                              CastGlowRoute::Clock::time_point now) {
+    // B1170 (#489): a 0x4033 missile object, not a cast: the object alone.
+    if (d.missileObject) {
+        if (fx) fx->spawnMissileObject(*d.missileObject, d.fxGateLevel);
+        return;
+    }
     const bool createGlow = route.onBeginCast(d.casterId, d.spellId, d.castTimeMs, now);
     if (!createGlow || !fx) return;
     // T381 (B160): teach the FX layer this spell's resist type, school and

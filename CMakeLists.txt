@@ -637,6 +637,8 @@ SET(CLIENT_CORE_SOURCES
     src/client/spell/spells_new_eff_reader.cpp
     src/client/spell/spells_new_edd_reader.cpp
     src/client/spell/spells_new_edd_colour.cpp
+    # B1170 (#489): the 0x4033 missile object (device-free).
+    src/client/spell/spell_missile_object.cpp
     # Skill system sources
     src/client/skill/behind_target.cpp
     src/client/skill/skill_cap_table.cpp
@@ -947,6 +949,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/character_model_view.cpp
         src/client/graphics/spell_visual_fx.cpp
         src/client/graphics/spell_visual_fx_nodes.cpp
+        src/client/graphics/spell_visual_fx_missile.cpp
         src/client/graphics/spell_visual_selection.cpp
         src/client/graphics/text_batch.cpp
         # Detail system (grass, plants, debris)
@@ -1397,8 +1400,10 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/spell/spells_new_eff_reader.cpp
         src/client/spell/spells_new_edd_reader.cpp
         src/client/spell/spells_new_edd_colour.cpp
+        src/client/spell/spell_missile_object.cpp
         src/client/graphics/spell_visual_fx.cpp
         src/client/graphics/spell_visual_fx_nodes.cpp
+        src/client/graphics/spell_visual_fx_missile.cpp
         src/client/graphics/spell_visual_selection.cpp
         # Particle system (required for GLES2 spell effects via ParticleManager)
         src/client/graphics/environment/particle_manager.cpp

@@ -322,6 +322,8 @@ TEST_F(SpellVisualVocabularyTest, ACastDrawsNoMiddleStageWithoutAMissileObject) 
     // A record WITH a Middle stage: the cast builds no missile object, and its
     // landing is not deferred -- it is drawn on OP_Action, on the target (2).
     fx_->createCastGlow(1, kBurstOfFlame, 1000, 60, 0);
+    EXPECT_EQ(fx_->missileObjectCount(), 0u)
+        << "only a server 0x4033 message builds a missile object";
     EXPECT_NE(fx_->createLanding(1, 2, kBurstOfFlame, 60), 0u)
         << "no missile object: the Target stage lands on OP_Action";
 
@@ -329,6 +331,61 @@ TEST_F(SpellVisualVocabularyTest, ACastDrawsNoMiddleStageWithoutAMissileObject) 
     fx_->createCastGlow(1, kSummonCorpse, 1000, 60, 0);
     EXPECT_NE(fx_->createLanding(1, 2, kSummonCorpse, 60), 0u);
 
+    fx_->setParticleManager(nullptr);
+}
+
+// B1170 (#489): a server 0x4033 object for a type-9 spell missile flies from
+// its source to its target on the FX clock and is removed at the hit; the
+// harness and the renderer feed it the same way (spawnMissileObject).
+TEST_F(SpellVisualVocabularyTest, AMissileObjectFliesAndIsRemovedAtTheHit) {
+    if (!std::filesystem::exists(eqClientPath() + "/spells_us.txt")) {
+        GTEST_SKIP() << "spells_us.txt not present under " << eqClientPath();
+    }
+    EQT::Graphics::Environment::ParticleManager pm(device_->getSceneManager(),
+                                                   device_->getVideoDriver());
+    fx_->setParticleManager(&pm);
+    // Source 1 at the origin, target 2 twenty units north (EQ y).
+    fx_->setMissileEntityCallback([](uint16_t id, SpellVisualFX::MissileEntityState& out) -> bool {
+        if (id != 1 && id != 2) return false;
+        out = SpellVisualFX::MissileEntityState{};
+        out.eqPos[0] = id == 2 ? 20.0f : 0.0f;
+        out.eqPos[1] = id == 2 ? 0.0001f : 0.0f;
+        return true;
+    });
+    // Spell 38 (field 98 = 1, travel 3: a 30000-unit life) closes the gap and
+    // is removed at the hit; spell 93 (field 18 = 0, travel 0) lives 50 units,
+    // so the lifetime removes it on its first pass (refactor/B1163/README.md
+    // (A), "Lifetime").
+    struct Case { uint32_t spell; bool hits; };
+    for (const Case c : {Case{38, true}, Case{kBurstOfFlame, false}}) {
+        EQ::SpellMissile::Wire w;
+        w.word = 1.5f;
+        w.damped = 1;
+        w.type = EQ::SpellMissile::kTypeSpell;
+        w.spellId = c.spell;
+        w.sourceId = 1;
+        w.targetId = 2;
+        fx_->spawnMissileObject(w, 60);
+        ASSERT_EQ(fx_->missileObjectCount(), 1u);
+        float pos[3] = {0, 0, 0};
+        float lastY = 0.0f;
+        int frames = 0;
+        while (fx_->missileObjectCount() == 1 && frames < 300) {
+            fx_->update(1.0f / 30.0f);
+            ++frames;
+            if (fx_->missileObjectPosition(0, pos)) {
+                EXPECT_GE(pos[0], lastY) << "spell " << c.spell << " frame " << frames;  // toward +y
+                lastY = pos[0];
+            }
+        }
+        EXPECT_EQ(fx_->missileObjectCount(), 0u) << "spell " << c.spell;
+        if (c.hits) {
+            EXPECT_GT(lastY, 15.0f) << "spell 38 closes most of the 20-unit gap before the hit";
+            EXPECT_GT(frames, 4);
+        } else {
+            EXPECT_LE(frames, 3);
+        }
+    }
     fx_->setParticleManager(nullptr);
 }
 #endif  // EQT_HAS_GLES2

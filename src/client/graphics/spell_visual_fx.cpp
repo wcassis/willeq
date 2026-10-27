@@ -441,6 +441,10 @@ void SpellVisualFX::update(float delta_time)
         }
     }
 
+    // B1170 (#489): the 0x4033 missile objects. FX-layer state, so they run
+    // in both worker-driven and direct modes (spell_visual_fx_missile.cpp).
+    updateMissileObjects(delta_time);
+
     // Worker-driven path: update math runs on SimulationWorker thread
     if (m_worker_driven) return;
 
@@ -880,7 +884,7 @@ uint16_t SpellVisualFX::createLanding(uint16_t caster_id, uint16_t target_id, ui
 // landing entity. Returns the point the first slot follows (0 when nothing is
 // drawn).
 uint16_t SpellVisualFX::createLandingFromSlots(uint16_t caster_id, uint16_t target_id, uint32_t spell_id,
-                                               int record, const StageSlots& slots)
+                                               int record, const StageSlots& slots, const StageArgs* args)
 {
     namespace Presets = EQT::Graphics::Environment::SpellPresets;
     using Cfg = EQT::Graphics::Environment::SpellEffectsConfig;
@@ -901,15 +905,31 @@ uint16_t SpellVisualFX::createLandingFromSlots(uint16_t caster_id, uint16_t targ
     std::vector<Pending> pending;
     for (const auto& d : slots.drawn) {
         const auto anchor = d.slot.anchorKind();
-        // B1170 (#489): an anchor-2 (missile) Target slot is drawn by the client
-        // only with a missile object (00495d8e / 00495d93); on OP_Action there
-        // is none, so it is skipped (no Target slot in the shipped file is
-        // anchor 2: SpellsNewEffFileTest.EveryRecordsSlotWordsAreInTheDecodedRanges).
-        if (anchor == SpellsNewEffAnchor::Missile) continue;
-        const uint16_t entity =
-            (anchor == SpellsNewEffAnchor::Caster || target_id == 0) ? caster_id : target_id;
-        uint16_t follow = (ownShape || anchor == SpellsNewEffAnchor::World)
-                              ? entity : attachPointEntityId(entity, d.slot.attachPoint);
+        uint16_t entity = 0;
+        uint16_t follow = 0;
+        if (args) {
+            // B1170 (#489): an explicit FUN_0049b260 call's arguments
+            // (00495d4c .. 00495dc3): a slot whose actor argument is 0 is skipped.
+            switch (anchor) {
+                case SpellsNewEffAnchor::World:   entity = args->world; break;
+                case SpellsNewEffAnchor::Caster:  entity = args->caster; break;
+                case SpellsNewEffAnchor::Missile: entity = args->missile; break;
+                case SpellsNewEffAnchor::Target:  entity = args->target; break;
+            }
+            if (entity == 0) continue;
+            follow = (ownShape || anchor == SpellsNewEffAnchor::World || anchor == SpellsNewEffAnchor::Missile)
+                         ? entity : attachPointEntityId(entity, d.slot.attachPoint);
+        } else {
+            // B1170 (#489): an anchor-2 (missile) Target slot is drawn by the
+            // client only with a missile object (00495d8e / 00495d93); on
+            // OP_Action there is none, so it is skipped (no Target slot in the
+            // shipped file is anchor 2:
+            // SpellsNewEffFileTest.EveryRecordsSlotWordsAreInTheDecodedRanges).
+            if (anchor == SpellsNewEffAnchor::Missile) continue;
+            entity = (anchor == SpellsNewEffAnchor::Caster || target_id == 0) ? caster_id : target_id;
+            follow = (ownShape || anchor == SpellsNewEffAnchor::World)
+                         ? entity : attachPointEntityId(entity, d.slot.attachPoint);
+        }
         float aboveFeet = A;
         if (follow != entity) {
             glm::vec3 center(0.0f), bone(0.0f);
@@ -936,7 +956,8 @@ uint16_t SpellVisualFX::createLandingFromSlots(uint16_t caster_id, uint16_t targ
         // B1149 (#469): the slot's file population is shared by the two
         // halves (the row's measured geometry split), with its sprite size.
         SpellFxSlotTiming timing;
-        if (slotTiming(d.slot.emitter, SpellFxCallerDurationMs(SpellFxStage::Target, 0, 0), timing))
+        const int32_t callerMs = args ? args->callerMs : SpellFxCallerDurationMs(SpellFxStage::Target, 0, 0);
+        if (slotTiming(d.slot.emitter, callerMs, timing))
             Presets::applySlotEmitter({&complete, &impact}, timing, m_spells_new_eff.edd().sprite(d.slot.emitter),
                                       targetLatency, kSpellFxAttachScale,
                                       m_spells_new_eff.edd().shape(d.slot.emitter),  // B1150

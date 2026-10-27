@@ -327,6 +327,14 @@ public:
     bool resolveEntityPosition(uint16_t entityID, glm::vec3& outPos) const;
 
     /**
+     * B1170 (#489): a pseudo-entity whose position the FX layer sets itself
+     * (a spell missile object, refactor/B1170/README.md). resolveEntityPosition
+     * answers an anchor's id from here before asking the callback.
+     */
+    void setFxAnchorPosition(uint16_t entityID, const glm::vec3& pos) { fxAnchors_[entityID] = pos; }
+    void clearFxAnchor(uint16_t entityID) { fxAnchors_.erase(entityID); }
+
+    /**
      * Entity direction callback for spray effects (returns normalized direction in Irrlicht Y-up).
      *
      * B293 (#124): invoked once per entity in the previous frame's
@@ -528,6 +536,7 @@ private:
     // Entity callbacks (kept for resolveEntityPosition and renderer-side resolution)
     EntityPosCallback entityPosCallback_;
     EntityDirCallback entityDirCallback_;
+    std::unordered_map<uint16_t, glm::vec3> fxAnchors_;  // B1170: missile objects
 
     // Command queue (main thread accumulates, worker drains via drainCommands())
     std::vector<ParticleCommandData> pendingCommands_;

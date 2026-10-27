@@ -83,8 +83,10 @@ using eqt::zone::ZoneComponent;
 // vacuously against an empty or unreadable file (the readFile trap, K11 ee).
 TEST(ZoneDispatchTable, GoldenListIsTheMeasured145Arms) {
     const auto golden = LoadGolden();
-    EXPECT_EQ(golden.size(), 145u)
-        << "the pre-G01 switch had 145 case labels; the golden must carry all of them";
+    // B1170 (#489) added the one genuinely new handler since G01, 0x4033
+    // (the missile object), as the header comment asks: a golden line.
+    EXPECT_EQ(golden.size(), 146u)
+        << "the pre-G01 switch had 145 case labels, plus B1170's 0x4033; the golden must carry all of them";
 }
 
 // Direction 1: nothing stopped being dispatched.
