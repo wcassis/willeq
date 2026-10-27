@@ -363,6 +363,11 @@ struct EmitterConfig {
     // first frame's. 0 = the rate path (spawnRate) above.
     float ticksPerSecond = 0.0f;
     float tickParticles = 0.0f;
+    // B1165 (#484): the Spell page's density was applied to this emitter's
+    // counts when it was created (SpellPresets::applySlotEmitter on a
+    // SpellFxSlotTimingAtDensity timing, CreateEmitter 0x1005a430), so the
+    // worker must not scale its spawns by the family density again.
+    bool densityAtCreate = false;
 
     // Spell motion parameters (ORBITAL / RADIAL_EXPAND)
     float orbitalRadius = 1.0f;           // ORBITAL: orbit radius

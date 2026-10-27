@@ -157,6 +157,8 @@ void FrameComponent::applyOptionsSettingB430(OptionsLayout::Setting setting) {
         case Setting::EnvParticleOpacity:
         case Setting::EnvParticleDensity:
         case Setting::EnvParticleNearClip:
+        case Setting::SpellParticleCastFilter:  // B1165
+        case Setting::ShowSpellEffects:         // B1165
             // B995: nothing to push -- the sim bridge reads particleOptionKnobs()
             // every frame, so the next frame's spawn and draw use the value.
             LOG_INFO(MOD_GRAPHICS, "Options: {} = {}", info.name,
@@ -258,7 +260,11 @@ bool FrameComponent::processOptionsKeyCapture() {
 // (options_command.cpp); every setting it changed goes through the same
 // applyOptionsSetting() a click does, and syncUiPreferences() saves it.
 Environment::ParticleKnobs FrameComponent::particleOptionKnobs() const {
-    return particleKnobsFromOptions(optionsState_.values);
+    return particleKnobsFromOptions(optionsState_.values, optionsState_.iniFloats);
+}
+
+EQ::SpellFxOptions FrameComponent::spellFxOptions() const {
+    return spellFxOptionsFromOptions(optionsState_.values, optionsState_.iniFloats);
 }
 
 std::vector<std::string> FrameComponent::runOptionsCommand(const std::string& cmd,
