@@ -191,17 +191,17 @@ bool TargetTypeHasNoFlight(uint8_t t) {
 
 bool Spawn(Object& o, uint32_t now, const SpellFields* spell, const Entity& source,
            const Entity& target, uint32_t sourceTickAge) {
-    // 00476b45 .. 00476b63: no caster actor -> [actor+0x1005] = 1.
+    // 00476b4f .. 00476b65: no caster actor -> [actor+0x1005] = 1.
     if (!source.exists) {
         o.hit = true;
         return false;
     }
-    o.lifeEnd = now + 120000;  // 00476b6f add eax, 0x1d4c0
+    o.lifeEnd = now + 120000;  // 00476b79 add eax, 0x1d4c0
     o.stage = 0;
     auto& w = o.w;
     if (w.type == kTypeSpell) {
         if (!SpellMissileRules::SpellIdInRange(w.spellId) || !spell || !spell->exists) {
-            o.hit = true;  // 00476b93 / 00476ba4 -> 00476b65
+            o.hit = true;  // 00476b96 / 00476bad -> 00476baf
             return false;
         }
         // 00476bbe .. 00476be0: the lifetime.

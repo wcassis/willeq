@@ -40,7 +40,7 @@ namespace SpellMissile {
 inline constexpr uint16_t kOpcode = 0x4033;
 inline constexpr size_t kWireSize = 0x88;
 
-// The object type byte [+0x63] for a spell missile (00476b49 cmp byte ptr
+// The object type byte [+0x63] for a spell missile (00476b81 cmp byte ptr
 // [esi + 0x63], 9 in FUN_00476b12; 0047793d in the removal).
 inline constexpr uint8_t kTypeSpell = 9;
 
@@ -111,7 +111,8 @@ float TableCos(float angle512);
 // sin[i] / cos[i], FUN_101849c0), found by the BST walk 10184780 ..
 // 101847fe.
 int TableAtanIndex(float ratio);
-// FUN_004365db: wrap into [0, 512) (at most 7 steps, else 0).
+// The wrap helper at 0x4365db (004365df .. 00436625; also inline in the
+// physics, 004c01d3 .. 004c0228): into [0, 512), at most 7 steps, else 0.
 float WrapAngle(float a);
 // FUN_00436628: |a - b| on the 512 circle; `signedOut` gets the raw
 // difference (<= 256) or difference - 512.
