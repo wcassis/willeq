@@ -1,6 +1,6 @@
-# B1164 (#483): spell-93 landing "0.505x the oracle" is a units/geometry mismatch, not a sim
-density gap — the population is the word count and, in the oracle's own geometry, willeq's
-landing matches the oracle within 1 %
+# B1164 (#483): spell-93 landing — the population is the word count; against B1130 r51 the
+"0.505x" is a units/geometry mismatch (willeq/oracle 0.969x peak to peak in r51's geometry);
+against the gate's own B1118 capture the landing is still ~0.5x (acceptance B NOT met)
 
 Record 80 (spell 93), harness b1118 + b1130, oracle frames from B1130 r51 (`review/B1130/oracle/r51/video.mp4`)
 and B1118 `oracle_druid` / `oracle_leg` (lane 5). This card acts on B1160's `popcount_93.txt`
@@ -47,8 +47,9 @@ tick**, at `tps` ticks/second, so the sustained rate is `perTick × tps`:
 | 9 | IgniteTargetill Imp01 | spelcb.png | 3 | 3 | 10.0 | 30/s | 1.25 | 1.25 | ~38 |
 | 281 | SFofSeukor S3-2 | spelcm.png | 1 | 0 | 1.0 | 0 | 1.0 | — | 0 (burst 1) |
 
-Command: `python3 b1164_edd9.py` (reads `/mnt/projects/EverQuestP1999/spellsnew.edd`,
-416-byte entries, C++ 1-based index). The four landing emitters sum to **~1247 live**;
+Command: `python3 refactor/B1164/scripts/b1164_edd.py pop` (reads
+`/mnt/projects/EverQuestP1999/spellsnew.edd`: an 8-byte header, then 416-byte entries counted
+from 0; the index is the spellsnew.eff slot word). The four landing emitters sum to **~1247 live**;
 the sim's **1550** impact peak (`popcount_93.txt`, frame 154) adds the SOURCE emitters
 (the caster glow), so the sim holds the correct word count. **There is no 15× over-spawn.**
 
@@ -66,15 +67,20 @@ the same rule — it sets `ticksPerSecond` at `spell_emitter_presets.cpp:452` an
 For record 80's four landing emitters I computed the on-screen sprite from the words
 and measured willeq's rendered quad (`WILLEQ_FX_AREA=1` gated print, §4):
 
-| emitter | tex | w(DCC) | h(D17C) | mult(D16C) | scale(D19C) | depthBias(D0D0) | scaleSizes(D6C) | peakOpac(D0A4) | tex lit @thr45 |
+| emitter | tex | w(DCC) | h(D17C) | mult(D16C) | D19C (int flag) | depthBias(D0D0) | D6C (int flag) | peakOpac(D0A4) | tex lit @thr45 |
 |---|---|---|---|---|---|---|---|---|---|
-| 280 | spelcc.png | 0.5 | 0.5 | 1.0 | 0.0 | 0.0 | 1 | 1.0 | **9.7 %** |
-| 282 | spelcf.png | 6.0 | 6.0 | 1.0 | 0.0 | 0.0 | 1 | 0.875 | 17.4 % |
-| 9 | spelcb.png | 1.25 | 1.25 | 1.0 | 0.0 | 0.0 | 1 | 1.0 | 42.2 % |
-| 281 | spelcm.png | 16.0 | 16.0 | 1.0 | 0.0 | 0.0 | 0 | 0.75 | 16.9 % |
+| 280 | spelcc.png | 0.5 | 0.5 | 1.0 | **1** | 0.0 | **1** | 1.0 | **9.7 %** |
+| 282 | spelcf.png | 6.0 | 6.0 | 1.0 | **1** | 0.0 | **1** | 0.875 | 17.4 % |
+| 9 | spelcb.png | 1.25 | 1.25 | 1.0 | **1** | 0.0 | **1** | 1.0 | 42.2 % |
+| 281 | spelcm.png | 16.0 | 16.0 | 1.0 | **1** | 0.0 | 0 | 0.75 | 16.9 % |
 
-Command: `python3 b1164_edd11.py` (size words) + `python3 b1164_texlit.py` (the lit
-fraction of each original PNG at the instrument's threshold 45, additive max-channel).
+Command: `python3 refactor/B1164/scripts/b1164_edd.py size` (size words; +0x6C and +0x19C are
+read as INT flags, `docs/spellsnew_format.md:94` and `docs/spellsnew_format.md:132` — the first
+leg printed +0x19C as a float, where the int 1 reads 1.4e-45 and printed as 0.0) +
+`python3 b1164_texlit.py` (the lit fraction of each original PNG at the instrument's threshold
+45, additive max-channel). So **all four landing emitters have +0x19C = 1** (shape and offsets
+scale with the attach scale s) and **280/282/9 have +0x6C = 1** (sizes and velocities scale
+with s); what s is at runtime is §4.
 
 Every word that sets the per-particle area is applied correctly:
 
@@ -82,11 +88,12 @@ Every word that sets the per-particle area is applied correctly:
   at depth ≈29 (`WILLEQ_FX_AREA`, `meanPx2`/`meanSize`/`meanDepth`), which is exactly
   the decompile formula — half-width `w·0.5/depth·projScale`, `EQGraphicsDX9.dis`
   `0x1006335a` (the size read is `0x10061262` `fld [edi+0x180]` = D184 wMax). D16C=1.0
-  (no multiplier), D19C=0.0 (no B1150 scale), D0D0=0.0 (no depth bias; the bias
+  (no multiplier), D0D0=0.0 (no depth bias; the bias
   subtracts `fsub [edi+0xd0]` at `0x10063069`/`0x10063198`, a no-op at 0.0). The width
   is read at `sim_particles.cpp:872` and the height at `sim_particles.cpp:874`, both
   `× es.scale` — the `scaleSizes` word at `spell_emitter_presets.cpp:462`. The size is
-  read correctly.
+  read correctly **for s = 1**: D6C = D19C = 1 make the width, height, velocities, shape
+  and offsets all × s, and willeq passes s = 1 (§4).
 - **Blend.** willeq's additive path is `SRC_ALPHA, ONE` (`unified_particle_renderer.cpp:571`
   `srcAlphaAdditive`, comment at :567 "additive is SRC_ALPHA, ONE"), which is the
   oracle's `+0x068` blend (B1141 TSV, PROVEN: `SRCBLEND=SRCALPHA(5), DESTBLEND=ONE(2)`).
@@ -129,16 +136,19 @@ Same mask as `fx_timing.py` (max-RGB rise > 80 over the tail median).
 
 | capture | geometry | frame | lit (host²) | column \|dx\|<0.5 | outside | command → file |
 |---|---|---|---|---|---|---|
-| oracle r51 (B1130) | target alive, 1.4 caster heights right, 325 px | f7561 (`or_0057`) | **1.493** | 1.340 | 0.153 | `WIN=-1.5,0.6,0.16,1.8 python3 scripts/b1164_regions.py oracleR51_93 "../oracle_r51/or_{f:04d}.png" 45 70 177 256 0,0,1280,800 940,652 325 209 494,380,292,230 1140,0,140,800 0,0,60,800` → `regions_win2_oracleR51_93_series.txt` (window peak) |
+| oracle r51 (B1130) | target alive, 1.4 caster heights right, 325 px | f7561 (`or_0057`) | **1.493** | 1.340 | 0.153 | `WIN=-1.5,0.6,0.16,1.8 python3 scripts/b1164_regions.py oracleR51_93 "../oracle_r51/or_{f:04d}.png" 45 70 177 256 0,0,1280,800 940,652 325 209 494,380,292,230 1140,0,140,800 0,0,60,800` → `regions_win2_oracleR51_93_series.txt` (f7561 = the lit80 (crop) peak frame; the in-window peak is **f7584 (Act+3.03): 1.532, column 1.408**, `dev3/regions_win2_oracleR51_93_series_to7600.txt`, the same command over or_45..or_96) |
 | willeq `--camera b1130` | the same placement, target 316 px, feet row 782 | f158 | **1.485** | 1.335 | 0.150 | `WIN=… python3 scripts/b1164_regions.py willeq_t93_b1130 "frames/t93_b1130/frame_{f:05d}.png" 140 165 345 390 0,0,1280,800 960,782 316 209 <same excludes>` → `regions_win2_t93_b1130.txt` |
 | willeq `--camera b1118` | target on the caster, 235 px | f152 | 1.523 | 1.313 | 0.210 | `regions_t93_b1118.txt` (third block) |
 
-**willeq / oracle in the oracle's own geometry = 1.485 / 1.493 = 0.995×**, and the column
-and outside shares match to 0.005 host². The horizontal profile (lit fraction per 0.1-host
-dx bin, up 0.16..1.8; `scripts/b1164_profile.py`) agrees bin for bin:
-r51 f7561 vs willeq b1130 f152 at dx −0.4: 0.911 / 0.799, −0.2: 0.921 / 0.937,
-+0.0: 0.854 / 0.833, +0.3: 0.713 / 0.787, +0.5: 0.331 / 0.206
-(`profile_oracleR51_f7561.txt`, `profile_t93_b1130_f152.txt`).
+**willeq / oracle in the oracle's own geometry, peak to peak = 1.485 (f158) / 1.532 (f7584) =
+0.969×** (at the oracle's lit80 peak frame f7561 it is 1.485 / 1.493 = 0.995×; the column
+and outside shares match to 0.005 host² there). The horizontal profile (lit fraction per 0.1-host
+dx bin, up 0.16..1.8; `scripts/b1164_profile.py`) at the table's frames,
+r51 f7561 vs willeq b1130 f158, dx −0.4: 0.911 / 0.754, −0.2: 0.921 / 0.925,
++0.0: 0.854 / 0.767, +0.3: 0.713 / 0.864, +0.5: 0.331 / 0.229
+(`profile_oracleR51_f7561.txt`, `dev3/profile_t93_b1130_f158.txt`: `python3 scripts/b1164_profile.py
+willeq_t93_b1130 "frames/t93_b1130/frame_{f:05d}.png" 158 345 390 0,0,1280,800 960,782 316 0.16 1.8
+'494,380,292,230;1140,0,140,800;0,0,60,800'`).
 
 The willeq b1130 target's 316 px / feet row 782 was measured off a pre-cast frame of this
 run (bbox of the non-background pixels right of x 800 in `frames/t93_b1130/frame_00040.png`:
@@ -166,7 +176,7 @@ not dimmer** than the oracle's: median per-sprite lit area 3.81–3.98 vs 2.18, 
 
 Ruled out, each by the number beside it: **sprite size** (p90 diam 0.034 = 0.034),
 **alpha / blend / texture brightness** (peak rise 171 ≥ 150), **population** (the in-window
-lit area matches at 0.995× with the same column/outside split; §1 for the word count),
+lit area matches r51 at 0.969× peak to peak (0.995× at f7561, with the same column/outside split); §1 for the word count),
 **the target's death** (willeq `--target-death 0 --target-despawn 1.027`: land_cov 1.985
 vs 1.993, `measure/t93_b1118_die/summary.tsv`; the end moves to +4.700 because the target
 despawns at Act+1.027).
@@ -176,10 +186,11 @@ despawns at Act+1.027).
 1. **Units (×2.418)**: oracle normalised by the 209 px caster while its landing host is
    325 px; willeq normalised by its 235 px landing host. 3.945 / 2.418 = 1.631.
 2. **Crop clip**: r51's crop cuts its landing at up 1.82 / dx +0.62 host; inside one
-   common window the two agree at 0.995× (§2b).
+   common window the two agree at 0.969× peak to peak (§2b).
 
-So there is **no sim density defect to fix** for the r51 reference, and no EDD word is
-mis-applied (§2a, §2c).
+So against the **r51** reference there is no density gap; that does not hold against the
+gate's own B1118 capture (below), so "no EDD word is mis-applied" is shown only for r51's
+condition.
 
 Two things the measurement exposes, each owned elsewhere:
 
@@ -208,8 +219,6 @@ Two things the measurement exposes, each owned elsewhere:
   (`refactor/B1151/TRACE.md:51`, stage 1 at 0x10060906, the +0x6C stage 2 ending
   0x1006094a); willeq passes it as 1 (`docs/spellsnew_format.md:32`). That is a candidate,
   not a finding: s's runtime value is not pinned statically (TRACE.md (a) "PARTIAL").
-
-## 4. Instrument (env-gated, local patch — not committed as a default; first leg)
 
 ## 4. Instrument (env-gated, local patch — not committed as a default)
 
@@ -250,11 +259,11 @@ table in §2b, not the clip (the clip's oracle side is a different framing).
 | # | item | status |
 |---|---|---|
 | A | population attributed with the decompile line, 93 count re-measured | **met** — §1: `perTick × tps` (0x10060fe2), 1550 is the word count; no spawn bug, so no fix |
-| B | per-particle area word named + fixed + re-measured | **met as attribution, no fix** — §2c: per-sprite area and brightness are not below the oracle's; §2b: the 0.505× is the caster-vs-host normalisation (×2.418) plus r51's crop clip; in-window 0.995×. No word is mis-applied, so there is nothing to fix in the sim (a fix would be the guess Will forbids) |
+| B | per-particle area word named + fixed + re-measured | **NOT met** — the r51 gap is units (§2b, 0.969× peak to peak), but against the B1118 oracle in the gate's own framing willeq is 0.341× over the crop / 0.518× in the window with half the sprite diameter (§3); pending the lane-5 A/B |
 | C | both sweeps + tour-7 before/after vs B1157 with owners | **met** — §5 (no code change; 93 re-measured equal) |
 | D | 93 clip | **met** — first leg's clip, unchanged behaviour (§5) |
 | E | targeted ctest + hygiene + CI build green | no C++ change, so no new device-free test; the MR pipeline is the build/hygiene check |
-| F | MR "Closes #483" | the MR says Closes #483: the card's question (the 0.505×) is fully attributed; the two follow-ups below are separate owners |
+| F | MR "Closes #483" | the MR says **Refs #483** (orchestrator ruling: #483 stays open until B is met) |
 
 ## 7. FOLLOW-UP (named owners — no card cut, per the worker rules)
 
