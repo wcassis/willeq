@@ -810,11 +810,12 @@ bool b1130TargetSelfCheck(video::IImage* img) {
     const auto chk = fxharness::checkTargetAnchor(sil, a, b1130TargetFitPx);
     std::printf("[fx-harness] b1130 target self-check (frame 0, cols %d..%d): rows %d..%d (%d px, feet row %d), "
                 "column %.1f | anchor feet %.0f at %.0f: d feet %+.0f (tol %.0f), d col %+.1f (tol %.0f) | "
-                "solved standing height %.0f px: d %+.0f (tol %.0f) | oracle %.0f px: ratio %.3f (tol %.2f): %s\n",
+                "solved standing height %.0f px: d %+.0f (tol %.0f) | measured standing height %.0f px: d %+.0f "
+                "(tol %.0f; ratio %.3f of the oracle's %.0f px): %s\n",
                 win.x0, win.x1, sil.top, sil.bottom, sil.height(), sil.bottom, sil.col, a.feetY, a.feetX,
                 chk.dFeet, fxharness::kFeetTolPx, chk.dCol, fxharness::kColumnTolPx, b1130TargetFitPx, chk.dPx,
-                fxharness::kHeightTolPx, a.px, chk.ratio, fxharness::kHeightVsAnchorTol,
-                chk.ok() ? "PASS" : "FAIL");
+                fxharness::kHeightTolPx, fxharness::kStandingPx, chk.dStand, fxharness::kStandingTolPx, chk.ratio,
+                a.px, chk.ok() ? "PASS" : "FAIL");
     std::fflush(stdout);
     return chk.ok();
 }

@@ -1,9 +1,13 @@
 // B1166 (#485): the b1130 fixed_npc target anchor -- ONE definition, used by
 // the harness's target solve (fitFixedNpcTarget), by its self-check on the
-// written frame 0, and quoted by the measure scripts
-// (refactor/B1155/scripts/harness_measure_b1130.py GEOM 'fixed_npc' tfeet/tmpx,
-// refactor/B1162/scripts/harness_measure_b1130_action.py) -- so the harness and
-// the measure compare the SAME body against the oracle.
+// written frame 0, and READ (regex on the kB1130TargetAnchor line below) by the
+// measure scripts -- refactor/B1155/scripts/harness_measure_b1130.py and
+// refactor/B1162/scripts/harness_measure_b1130_action.py (GEOM 'fixed_npc'
+// tfeet/tmpx), refactor/B1162/scripts/harness_measure_b1162_anchor.py (PRESET
+// 'fixed_npc') and refactor/B1151/scripts/oracle_anchor.sh (LF/LM); each keeps
+// FX_TFEET=940,652 FX_TMPX=325 as the pre-B1166 override -- so the harness and
+// the measure compare the SAME body against the oracle. Keep that line's
+// `{x.f, y.f, px.f}` form: the scripts parse it.
 //
 // The rule (refactor/B1166/README.md sec. 1): the anchor is the oracle's own
 // target box in r51's still, MEASURED by difference against a target-free still
@@ -18,7 +22,7 @@
 // 940,652 / tmpx 325) is NOT the target's box: its extent began at the name
 // label's top row (290) and its feet row is not the boots'. The harness solves
 // the feet (row, column) -- the two world unknowns x, z -- and the height is
-// then the model's own, checked against the oracle's 288 px.
+// then the model's own, ratcheted at its measured 238 px (below).
 //
 // Header-only and Irrlicht-free so the geometry is unit-tested offline
 // (tests/test_fx_harness.cpp, B1166TargetAnchor*).
@@ -43,15 +47,27 @@ constexpr TargetAnchor kB1130TargetAnchor{940.0f, 615.0f, 288.0f};
 //   oracle's own reads 938.9-940.3 across thresholds);
 // - height +-3 vs the STANDING height the solve rendered (the written frame
 //   must show the body the solve fitted -- the B1155 defect was a 50 px fit vs
-//   a 316 px frame), AND within +-25 % of the anchor's 288 px (a wrong body --
-//   a rest-pose strip, another model -- fails). The height is NOT solved: the
-//   two feet pixels fix the world (x, z), and the FABLE human male at that spot
-//   renders 238 px = 0.826x the oracle's 288 (README sec. 2, a model-height
-//   gap owned outside this harness).
+//   a 316 px frame);
+// - AND the standing height itself, 238 +-3 px (ratio 0.826 +-0.01 of the
+//   anchor's 288). The height is NOT solved: the two feet pixels fix the world
+//   (x, z), and the FABLE human male (race 1, gender 0, size 6) solved at the
+//   anchor renders rows 378..615 = 238 px = 0.826x the oracle's 288
+//   (review/B1166/worker/probe/after.log:128; the 0.826 gap is a model-height
+//   gap owned outside this harness, refactor/B1166/README.md sec. 2 and
+//   FOLLOW-UP 2). This ratchets that measured value so a model or scale
+//   regression fails: the earlier +-25 %-of-288 bound (216..360 px) passed a
+//   dark-elf female (219 px), a human female (217), a barbarian (285), a troll
+//   (324) and the human at size 7 (277) placed by `--target` at the anchor
+//   (review/B1166/worker/wrong_model/, README sec. 2). A body of the SAME
+//   height (dark-elf male 238, high-elf male 239, erudite male 236 there)
+//   cannot be told apart by height; this check does not claim to.
+//   If the human model's height is ever corrected toward the oracle's 288
+//   (FOLLOW-UP 2), re-measure and move kStandingPx with it.
 constexpr float kFeetTolPx = 1.0f;
 constexpr float kColumnTolPx = 3.0f;
 constexpr float kHeightTolPx = 3.0f;
-constexpr float kHeightVsAnchorTol = 0.25f;
+constexpr float kStandingPx = 238.0f;
+constexpr float kStandingTolPx = 3.0f;
 
 // The harness's clear colour (50,50,80) -- the ground plane paints it too --
 // and its off-clear rule: a pixel is FIGURE when |r-50|+|g-50|+|b-80| > 12, the
@@ -99,26 +115,28 @@ inline Window targetWindow(const TargetAnchor& a, int h) {
 }
 
 struct AnchorCheck {
-    float dFeet = 0, dCol = 0, dPx = 0, ratio = 0;
-    bool found = false, feetOk = false, colOk = false, pxOk = false, ratioOk = false;
-    bool ok() const { return found && feetOk && colOk && pxOk && ratioOk; }
+    float dFeet = 0, dCol = 0, dPx = 0, dStand = 0, ratio = 0;  // ratio = height / anchor px (reported)
+    bool found = false, feetOk = false, colOk = false, pxOk = false, standOk = false;
+    bool ok() const { return found && feetOk && colOk && pxOk && standOk; }
 };
 
 // `fitPx` = the standing height the solve rendered (requested px).
 inline AnchorCheck checkTargetAnchor(const Silhouette& s, const TargetAnchor& a, float fitPx,
                                      float feetTol = kFeetTolPx, float colTol = kColumnTolPx,
-                                     float pxTol = kHeightTolPx, float ratioTol = kHeightVsAnchorTol) {
+                                     float pxTol = kHeightTolPx, float standPx = kStandingPx,
+                                     float standTol = kStandingTolPx) {
     AnchorCheck c;
     c.found = s.n > 0;
     if (!c.found) return c;
     c.dFeet = static_cast<float>(s.bottom) - a.feetY;
     c.dCol = static_cast<float>(s.col) - a.feetX;
     c.dPx = static_cast<float>(s.height()) - fitPx;
+    c.dStand = static_cast<float>(s.height()) - standPx;
     c.ratio = static_cast<float>(s.height()) / a.px;
     c.feetOk = std::fabs(c.dFeet) <= feetTol;
     c.colOk = std::fabs(c.dCol) <= colTol;
     c.pxOk = std::fabs(c.dPx) <= pxTol;
-    c.ratioOk = std::fabs(c.ratio - 1.0f) <= ratioTol;
+    c.standOk = std::fabs(c.dStand) <= standTol;
     return c;
 }
 

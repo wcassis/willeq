@@ -370,8 +370,9 @@ TEST_F(FxHarness, ALevelOneCasterDrawsOnlyItsLevelZeroSlots) {
 // feet land on the oracle target's MEASURED feet (row 615, column 940;
 // fx_target_anchor.h -- B1130's 652/325 began at the name label). Its height
 // is the model's own at that spot (two feet pixels fix x, z): the harness's
-// self-check asserts it equals the solved standing height and lies within 25 %
-// of the oracle's 288 px, and prints PASS in run.log.
+// self-check asserts it equals the solved standing height and the MEASURED
+// standing height 238 +-3 px (0.826x the oracle's 288; fx_target_anchor.h
+// kStandingPx), and prints PASS in run.log.
 struct Silhouette {
     int top = -1, bottom = -1, n = 0;
     double col = 0;
@@ -432,8 +433,9 @@ void checkB1130Frame(const fs::path& frames, bool expectTarget, irr::video::IVid
         const auto& a = fxharness::kB1130TargetAnchor;
         EXPECT_NEAR(t.bottom, a.feetY, fxharness::kFeetTolPx) << "target feet row (the oracle's measured feet)";
         EXPECT_NEAR(t.col, a.feetX, fxharness::kColumnTolPx) << "target column centroid";
-        EXPECT_NEAR(t.bottom - t.top + 1, a.px, fxharness::kHeightVsAnchorTol * a.px)
-            << "target pixel height: not the standing human (the B1155 rest-pose strip was 50 px)";
+        EXPECT_NEAR(t.bottom - t.top + 1, fxharness::kStandingPx, fxharness::kStandingTolPx)
+            << "target pixel height: not the measured standing human (238 px; the B1155 rest-pose strip was 50 "
+               "px, a dark-elf female at the spot 219)";
     }
     img->drop();
 }
@@ -449,6 +451,24 @@ TEST_F(FxHarness, B1130PresetSolvesTheFixedNpcGeometry) {
         if (line.find("b1130 target self-check") != std::string::npos) check = line;
     std::printf("%s\n", check.c_str());
     EXPECT_NE(check.find(": PASS"), std::string::npos) << "the b1130 target self-check did not PASS";
+    cleanDirs();
+}
+
+// B1166 (MR !320 note 7834 finding 3): a WRONG body at the anchor must fail the
+// harness's own self-check. The caster's model (race 6 dark elf, female, size
+// 6) solved at the anchor renders 219 px -- inside the earlier +-25 %-of-288
+// bound, which passed it (review/B1166/worker/wrong_model/old_6_1_6.log) -- and
+// the run must exit non-zero (5) with a FAIL line.
+TEST_F(FxHarness, B1130SelfCheckRejectsAWrongTargetModel) {
+    const fs::path frames = runPlan("b1130wrong", "100.0\t93\tother\t0\t250\t60\n", 0.5, "--target 6:1:6", "b1130");
+    EXPECT_TRUE(frames.empty()) << "the b1130 run with a dark-elf female target exited 0";
+    std::ifstream log(dirs_.back() / "run.log");
+    std::string line, check;
+    while (std::getline(log, line))
+        if (line.find("b1130 target self-check") != std::string::npos) check = line;
+    std::printf("%s\n", check.c_str());
+    EXPECT_NE(check.find(": FAIL"), std::string::npos) << "no FAILing self-check line for the wrong model";
+    EXPECT_NE(check.find("(219 px"), std::string::npos) << "the dark-elf female no longer renders 219 px there";
     cleanDirs();
 }
 
@@ -617,6 +637,37 @@ TEST(B1166TargetAnchor, AStandingBodyOnTheAnchorPasses) {
     EXPECT_NEAR(c.ratio, 238.0f / 288.0f, 1e-6f);
 }
 
+// The standing-height ratchet (fx_target_anchor.h kStandingPx 238 +-3): the
+// heights other bodies rendered at the anchor with `--target`
+// (review/B1166/worker/wrong_model/wrong_model_heights.tsv) all fail it, though
+// every one of them passed the earlier +-25 %-of-288 bound (216..360 px);
+// 235..241 passes. Each body is fitted to itself (fitPx = its own height), so
+// only the ratchet can reject it.
+TEST(B1166TargetAnchor, TheStandingHeightRatchetRejectsOtherBodies) {
+    const auto& a = fxharness::kB1130TargetAnchor;
+    EXPECT_FLOAT_EQ(fxharness::kStandingPx, 238.0f);
+    EXPECT_NEAR(fxharness::kStandingPx / a.px, 0.826f, 0.001f);
+    struct Body { const char* what; int px; };
+    for (const Body b : {Body{"human female 1:1:6", 217}, Body{"dark-elf female 6:1:6 (the caster model)", 219},
+                         Body{"human male at size 7", 277}, Body{"barbarian male 2:0:6", 285},
+                         Body{"troll male 9:0:6", 324}, Body{"the old bound's low edge", 216},
+                         Body{"the old bound's high edge", 360}}) {
+        SynthFrame f;
+        f.box(920, 616 - b.px, 960, 615);
+        const auto s = f.measure(a);
+        ASSERT_EQ(s.height(), b.px) << b.what;
+        const auto c = fxharness::checkTargetAnchor(s, a, static_cast<float>(b.px));
+        EXPECT_TRUE(c.feetOk && c.colOk && c.pxOk) << b.what;
+        EXPECT_FALSE(c.standOk) << b.what << " passed the standing-height ratchet";
+        EXPECT_FALSE(c.ok()) << b.what;
+    }
+    for (int px : {235, 238, 241}) {
+        SynthFrame f;
+        f.box(920, 616 - px, 960, 615);
+        EXPECT_TRUE(fxharness::checkTargetAnchor(f.measure(a), a, static_cast<float>(px)).ok()) << px << " px";
+    }
+}
+
 TEST(B1166TargetAnchor, TheRestPoseStripAndAnOffsetBodyFail) {
     const auto& a = fxharness::kB1130TargetAnchor;
     {   // B1155's defect: the fit saw a 50 px strip with its bottom on the feet row
@@ -624,7 +675,7 @@ TEST(B1166TargetAnchor, TheRestPoseStripAndAnOffsetBodyFail) {
         f.box(930, 566, 950, 615);
         const auto c = fxharness::checkTargetAnchor(f.measure(a), a, 50.0f);
         EXPECT_TRUE(c.feetOk && c.colOk && c.pxOk);
-        EXPECT_FALSE(c.ratioOk) << "a 50 px body is not the oracle's 288 px human";
+        EXPECT_FALSE(c.standOk) << "a 50 px body is not the measured 238 px standing human";
         EXPECT_FALSE(c.ok());
     }
     {   // ... and its running frames: the standing body 316 px with feet at 782
