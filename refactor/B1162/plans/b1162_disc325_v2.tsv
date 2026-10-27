@@ -7,6 +7,10 @@
 # /disc Leechcurse Discipline is the /disc-triggerable discipline (the ruling's
 # field-121 finding: Reaper Strike / Lich Sting are not /disc-eligible, so they
 # are not run here -- attempt 1 already showed them silent on the wire).
+# REFUTED (B1162 fix leg, review note 7739): field 121 is the lane spells_new
+# TargetAnim column, not a /disc flag (README "The /disc landing leg"). Reaper
+# Strike / Lich Sting were silent in attempt 1 because they were not in the
+# client's discipline list. This header is kept as the plan that was run.
 # B1130 rows 325/326: the record-325 Leechcurse has NO Target stage -- the /disc
 # landing is a caster-side effect, so no NPC target is needed.
 #
