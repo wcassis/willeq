@@ -574,12 +574,13 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
                 // the hit and the Target-stage arrival burst fires 0.30 s
                 // AFTER the flight ends -- the impact plays over an
                 // already-resolved hit, at the target. The flight time is the
-                // record-80 oracle's 9.05-unit gap over the spell's speed word
-                // (B1163: eqgame [missile+0x28], 1.5 u/tick = 30 u/s, 0.8 =
-                // 16 u/s for 0x35b; spell_b1163_missile_rules.h). launchMissile
-                // re-resolves the destination and, if it has despawned, hands
-                // the landing back to createLanding.
-                const float flightTime = SpellMissileRules::MissileFlightTime(spell_id);
+                // B1152 record-80 calibration, 9.05 units at 30 u/s = 0.302 s
+                // (B1163: eqgame's [missile+0x28] is a thrust word in a damped
+                // velocity, and the measured legs built no missile object, so
+                // no speed is derived; spell_b1163_missile_rules.h).
+                // launchMissile re-resolves the destination and, if it has
+                // despawned, hands the landing back to createLanding.
+                const float flightTime = SpellMissileRules::MissileFlightTime();
                 const double hitAt = m_fx_time + duration_ms / 1000.0;  // OP_Action
                 Missile m;
                 m.spellId = spell_id;
@@ -1271,7 +1272,16 @@ void SpellVisualFX::fireSpell859RemovalAtPlayer(const Missile& m)
         !m_particle_manager->resolveEntityPosition(player, playerPos)) return;
     // Renderer coords: x = EQ x, z = EQ y (y is up), so EQ's XY plane is x/z.
     const float distXY = R::GateDistanceXY(missilePos.x, missilePos.z, playerPos.x, playerPos.z);
-    if (!R::Spell859RemovalFiresAtPlayer(m.spellId, distXY)) return;
+    // The four early-outs (README (C)): the missile's actor object (fable's
+    // missile was launched), spell id 1..9999, the record (fable built the
+    // missile from it) and its target type, 859's spells_us.txt field 98.
+    R::Spell859RemovalInputs in;
+    in.actorObject = m.launched;
+    in.spellId = m.spellId;
+    in.recordExists = true;
+    in.targetType = R::kSpell859TargetType;
+    in.distXY = distXY;
+    if (!R::Spell859RemovalFires(in)) return;
     const StageSlots slots = stageSlots(m.spellId, kSpellsNewEffTarget, m.gateLevel);
     if (slots.fromFile) {
         createLandingFromSlots(m.casterId, player, m.spellId, sourceRecordOf(m.spellId), slots);

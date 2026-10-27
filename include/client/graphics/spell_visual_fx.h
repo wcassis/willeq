@@ -97,7 +97,7 @@ public:
         double launchAt = 0.0;   // FX-time (s) the Middle emitter starts (flight)
         double reachAt = 0.0;    // FX-time (s) the missile reaches the target
         double landAt = 0.0;     // FX-time (s) the Target stage fires (the landing)
-        float flightTime = 0.0f; // seconds, the gap / the spell's speed word (B1163)
+        float flightTime = 0.0f; // seconds, the B1152 calibration 9.05 / 30 (B1163)
         bool launched = false;   // Middle emitter created
         bool reached = false;    // the missile reached the target (removed)
         bool landed = false;     // the Target stage fired
@@ -546,11 +546,11 @@ private:
     // in-flight missiles; m_fx_time is the FX time base (seconds) advanced by
     // update() that launchAt/reachAt/landAt are measured against. The timing
     // lives in client/graphics/spell_b1163_missile_rules.h (B1163, #482): the
-    // speed is the missile's speed word [missile+0x28] (eqgame 00477514: 1.5
-    // per 50 ms tick = 30 u/s; 0047751d: 0.8 = 16 u/s for spell 0x35b), over
-    // the record-80 oracle's calibrated 9.05-unit gap; the flight ENDS 0.184 s
-    // before the OP_Action and the Target stage fires 0.30 s after the flight
-    // end (refactor/B1152/TRACE.md sec. 5/8). BLESS-ONLY.
+    // flight is the record-80 oracle's calibrated 9.05-unit gap at the
+    // calibrated 30 u/s (eqgame's [missile+0x28] is a thrust word in a damped
+    // velocity, not a speed; refactor/B1163/README.md (A)); the flight ENDS
+    // 0.184 s before the OP_Action and the Target stage fires 0.30 s after the
+    // flight end (refactor/B1152/TRACE.md sec. 5/8). BLESS-ONLY.
     std::vector<Missile> m_missiles;
     double m_fx_time = 0.0;
     LocalPlayerIdCallback m_local_player_cb;  // B1163: spell 859's removal gate
