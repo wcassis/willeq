@@ -456,7 +456,7 @@ TEST_F(FxHarness, B1130PresetSolvesTheFixedNpcGeometry) {
 
 // B1166 (MR !320 note 7834 finding 3): a WRONG body at the anchor must fail the
 // harness's own self-check. The caster's model (race 6 dark elf, female, size
-// 6) solved at the anchor renders 219 px -- inside the earlier +-25 %-of-288
+// 6) solved at the anchor renders 218-219 px -- inside the earlier +-25 %-of-288
 // bound, which passed it (review/B1166/worker/wrong_model/old_6_1_6.log) -- and
 // the run must exit non-zero (5) with a FAIL line.
 TEST_F(FxHarness, B1130SelfCheckRejectsAWrongTargetModel) {
@@ -468,7 +468,15 @@ TEST_F(FxHarness, B1130SelfCheckRejectsAWrongTargetModel) {
         if (line.find("b1130 target self-check") != std::string::npos) check = line;
     std::printf("%s\n", check.c_str());
     EXPECT_NE(check.find(": FAIL"), std::string::npos) << "no FAILing self-check line for the wrong model";
-    EXPECT_NE(check.find("(219 px"), std::string::npos) << "the dark-elf female no longer renders 219 px there";
+    // Its height (219 px in the recorded run, 218 in another -- the harness
+    // jitters by a pixel run to run): outside the ratchet, inside the old bound.
+    int px = 0;
+    const auto at = check.find("px, feet row");
+    ASSERT_NE(at, std::string::npos) << check;
+    const auto open = check.rfind('(', at);
+    ASSERT_EQ(std::sscanf(check.c_str() + open, "(%d px", &px), 1) << check;
+    EXPECT_GT(std::fabs(px - fxharness::kStandingPx), fxharness::kStandingTolPx) << px << " px";
+    EXPECT_GE(px, 216) << "the dark-elf female left the old +-25 % bound; the negative no longer shows finding 3";
     cleanDirs();
 }
 
