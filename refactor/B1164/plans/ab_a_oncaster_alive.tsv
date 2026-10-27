@@ -1,5 +1,6 @@
 # action	target	hold_ms	still_name
 # B1164 A/B (a): r51 with ONE change -- no #goto, so the #spawn stands ON the caster (B1118 placement); alive (hp 30000, #stun), one fixed cast
+# fps=25
 # pose=-74,428,3.75,160
 # ini-set=Options.Camera2-Distance=11.000000
 # ini-set=Options.Camera2-Height=1.000000

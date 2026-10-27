@@ -1,5 +1,6 @@
 # action	target	hold_ms	still_name
 # B1164 A/B (b): r51 with ONE change -- the #spawn has hp 1 (B1118 #spawn TrollF: Level 1, Health 1), so it is slain at the landing; same #goto (1.4 caster heights right), one fixed cast
+# fps=25
 # pose=-74,428,3.75,160
 # ini-set=Options.Camera2-Distance=11.000000
 # ini-set=Options.Camera2-Height=1.000000
