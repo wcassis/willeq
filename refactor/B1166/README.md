@@ -203,6 +203,9 @@ sha256 comparison of every frame). Both sweeps exited 0 (`b1130_*/sweep.log`).
   of the before binary is byte-identical to the first (`/mnt/projects/fable/review/B1166/worker/b1130_r7_rerun_identity.txt:1`),
   so it is deterministic and caused by the target's placement. Not traced here; owner
   **B1173 (#492)**, which asks for the mechanism on both sides (FOLLOW-UP 3).
+  Explained by B1173 (`refactor/B1173/README.md`, sec. 3): not the Source but record 88's
+  Middle stage, the missile fable flies caster -> target from BC+1.51; without it the row
+  reads 0.142 at both placements.
 - **Why the landing rows are still out of band (owner)**: the sweep plans pass
   `caster_level` = the record table's class level (r0: 1; `/mnt/projects/fable/review/B1166/worker/b1130_after/plans/r0.plan:2`),
   while all 46 B1130 captures were taken after `#level 60` (r51's step 09:
