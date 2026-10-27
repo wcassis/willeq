@@ -27,19 +27,27 @@ before/after delta is this card's alone, the merged tip is covered by the ctests
   940,615): oracle 288 px, fable before 238 px (0.826x), after 285 px (0.990x); target / caster
   1.378 oracle, 1.139 before, 1.364 after; the camera, fitted on the caster, did not move (sec. 2).
 - **The fix** (sec. 3): `include/client/graphics/actor_scale.h` is the client's rule, function
-  for function; every spawn's node is scaled by it, except the LOCAL player's node, which fable
-  draws with a translation-only matrix and so keeps the 1.0 it is drawn at (FOLLOW-UP 1). The
-  harness caster and the live self entity carry the wire's size 0; the b1118 target stands on the
-  caster's ground. B1166's standing-height ratchet moves 238 -> 285 px, re-measured.
+  for function; every spawn's node is scaled by it. The LOCAL player's node stays at 1.0, a
+  **DEVIATION from the client**, owned by B1176 (#495): the client has no local-player branch --
+  both EQPlayer build paths run FUN_0047fa9e and then FUN_0043c84b
+  (`review/B1141/ghidra/out/eqgame.exe.c:106152` -> `:106154`, `:106406` -> `:106416`), which
+  scales every player (sec. 1f) -- so a human player is 1.2 in the client and 1.0 in fable.
+  Our own size is ONE number, the client's resolved size (the wire's size word, or the race
+  default written back), in both the entity record and PlayerState; that moves the z fable
+  transmits for a dark elf from 3.750 to the oracle's 3.125 (+0.003) (sec. 3a). The harness
+  caster carries the wire's size 0; the b1118 target's pose box stands on the caster's (a
+  harness convention, sec. 2). B1166's standing-height ratchet moves 238 -> 285 px, re-measured.
 - **Re-gate** (sec. 4): b1130 40 records -- the 12 fixed_self rows byte-identical, the 28
   fixed_npc rows all move (target drawn larger), landing_cov PASS 0 -> 0, landing_end PASS 0 -> 1
   (r22), p90_land PASS 6 -> 6; b1118 tour-7 + 40 records -- 13 rows (the self-target ones)
   byte-identical, 34 move, landing coverage up on 31 of them (x0.955..x1.238), source coverage
-  down by at most 0.054. Before == B1157 in every cell except spell 253's two rows (B1161's
-  retirement).
+  down by at most 0.054. Before vs B1157 is NOT equal everywhere (sec. 4a): b1130 116 of 160
+  cells differ -- B1157 rendered its b1130 sweep on the ThinkPad's Intel GPU, B1172 on the
+  NVIDIA one, and the before binary on the Intel GPU reproduces B1157's r11 to the digit (end
+  1.600 -> 2.000); b1118 differs in 253 (B1161) and 54 / 656 src_cov 0.415 -> 0.416.
 - **Per-target-height FX rows** (sec. 5): B1166's Fear 229 below-the-feet shortfall closes
   (h_p5 -0.06 -> -0.23, ground 0.14 -> 0.20 against the oracle's -0.26 / 0.17); the spell-93
-  landing's lit pixels grow only 6-16 %, because fable still attaches the landing at s = 1 where
+  landing's lit pixels grow only 6.3 % (b1130) and 14.6 % (b1118), because fable still attaches the landing at s = 1 where
   the client multiplies it by this same actor scale (FOLLOW-UP 2).
 
 ## 1. The client's rule, line by line (acceptance A)
@@ -96,8 +104,9 @@ Races below 26 -- all twelve player races -- return at once (`0x47a258` `jl 0x47
 **1f. Into the renderer.** The actor build FUN_0043c84b hands actor+0xC4 to the graphics actor's
 vtable slot 0x50: `0x43d3d8` `fld [eax+0xc4]` -> `0x43d3e8` `call [edx+0x50]` with (scale, 1); the
 size change does the same through `0x481d77` / `0x481d8b` `call 0x438ebc`, a thunk to slot 0x50.
-In EQGraphicsDX9 slot 0x50 of the 167-entry actor vtables starting at 0x101c95a8 holds 0x10036aa0
-(read with `pe_data.py`): it rejects a scale <= 0 (`0x10036aa7` `fcomp [0x101ee6b0]`) and passes
+In EQGraphicsDX9 the concrete actor vtable 0x101c9ba0 (stored by the constructor at
+`0x1003fa88` `mov dword ptr [esi], 0x101c9ba0`) holds 0x10036aa0 at +0x50 and 0x1003b860 at +0x1f4
+(read with `pe_data.py f 101c9bf0 101c9d94`). 0x10036aa0 rejects a scale <= 0 (`0x10036aa7` `fcomp [0x101ee6b0]`) and passes
 it on through `0x10036bbc` `call [edx+0x1f4]` -> `0x1003b860` `add ecx, 0x64` -> `0x1003b863` `jmp
 0x101901f0` -> `0x101901f7` `mov [esi+0x60], eax`: the scene node's uniform scale. B1164 traced
 how that scale reaches a bone's world matrix (`refactor/B1164/README.md:289`, sec. 4). **The
@@ -125,7 +134,11 @@ caster was size 6.0 at `review/B1172/worker/before_src/tools/model_viewer/model_
 which is fable's own zone-in placeholder at `src/client/zone/zone_entry.cpp:627`, not a wire value:
 every capture decoded here has her at 0.000 -- `review/B1172/worker/pcap_sizes.txt:2`, `:9`, `:16`,
 `:22`, two oracle and two fable lane legs. The local player's node draws translation-only at
-`src/client/graphics/eq/animated_mesh_scene_node.cpp:271`, so whatever its scale it is drawn at 1.0.
+`src/client/graphics/eq/animated_mesh_scene_node.cpp:271`, so whatever its scale it is drawn at 1.0
+-- a deviation from the client, which runs the same FUN_0047fa9e -> FUN_0043c84b path for its own
+player as for every spawn (`review/B1141/ghidra/out/eqgame.exe.c:106152` -> `:106154` for the
+Spawn_Struct build, `:106406` -> `:106416` for the other); 0x43c84b skips the scale call only for a
+null player (`0x43c87b` `je 0x43d632`) or a null graphics actor (`0x43d3d0` `je 0x43d4a2`).
 
 ## 2. Like-for-like heights (acceptance B)
 
@@ -161,27 +174,40 @@ union of the two figures, the taller one's head on top (`review/B1172/worker/b11
 | bottom | clipped by the chat window at row 600 | 607 | 615, stood on the caster's ground |
 | height | >= 284 px, a lower bound | 241 px | 305 px |
 
-The oracle row is `review/B1164/worker/dev3/hostpx.txt:2` and B1164's dev4 threshold sweep. Its
-feet are hidden, so only the head row compares: 50 rows low before, 4-6 rows high after. Part of
-the after excess is the stand: the human's pose-box bottom is put on the caster's and its rendered
-feet sit 10 rows below hers -- 615 against 605,
-`review/B1172/worker/runs_after/frames/tour_93/run.log:103` and `:106`. B1118's caster is clipped
-too (her feet row 605 is below the border), so no b1118 ratio is decidable.
+The oracle row is `review/B1164/worker/dev3/hostpx.txt:2` and B1164's dev4 threshold sweep.
+**The b1118 head row is not evidence of a match.** The harness stands the target's pose box on the
+caster's (`review/B1172/worker/runs_after/frames/tour_93/run.log:106`: "caster pose box bottom
+-2.893 -> target stands at y +0.850"), a harness convention -- B1166's rule for b1130 -- not a
+client rule. With it the two figures do not share a rendered floor: the target's lowest row is
+615 (`review/B1172/worker/b1118_silhouette_f10.txt:2`), the caster's 605
+(`review/B1172/worker/runs_after/frames/tour_93/run.log:103`), so the target
+stands about 10 rows LOWER than she does at the same depth; lifting it onto her rendered floor
+would move its head from 311 to about 301, further from the oracle's 315 / 317, not closer. The
+oracle's feet are hidden behind the chat window (row 600), so where the oracle stands its target
+cannot be checked at b1118, and the 311-vs-315 head rows compare two placements of unknown
+relation. Re-measured with the placement kept, at the merged tip (`model_viewer` sha256 in
+`review/B1172/worker/fix/b1118_tip/model_viewer_sha.txt`): frame 10 rows 311..615 at thresholds
+30 and 15 (`review/B1172/worker/fix/b1118_tip/silhouette_f10.txt:1`, `:2`), byte-identical to
+the after run's frame 10. B1118's caster is clipped too (her feet row 605 is below the border),
+so no b1118 ratio is decidable; b1130 (above) is the like-for-like comparison.
 
 ## 3. The fix (ask 3)
 
 - `include/client/graphics/actor_scale.h:30` `clientDefaultActorSize` is 1c; `:59`
   `clientRaceUsesSixthScale` and `:69` `clientSizeToActorScale` are 1d, both flags taken as
-  arguments, default 0 = the captures' value; `:81` `clientRaceForcedActorScale` is 1e; `:93`
+  arguments, default 0 = the captures' value; `:81` `clientRaceForcedActorScale` is 1e; `:100`
+  `clientResolvedActorSize` is 1b's write-back (the one size number, sec. 3a); `:105`
   `clientActorScale` is 1b.
-- `include/client/graphics/entity_renderer.h:108` `entityNodeScale` gives the actor scale to every
-  spawn and 1.0 to the local player's node, which is drawn translation-only (FOLLOW-UP 1). Callers:
+- `include/client/graphics/entity_renderer.h:115` `entityNodeScale` gives the actor scale to every
+  spawn and 1.0 to the local player's node, which fable draws translation-only. That 1.0 is a
+  **DEVIATION from the client** (sec. 1f: both EQPlayer build paths,
+  `review/B1141/ghidra/out/eqgame.exe.c:106152` -> `:106154` and `:106406` -> `:106416`, scale the
+  player like any spawn), owned by B1176 (#495): drawing the player at its actor scale moves the
+  T431 first-person eye and the third-person camera with it and needs its live leg. Callers:
   `src/client/graphics/entity_mesh_build.cpp:225`, `src/client/graphics/entity_build_step.cpp:340`
   and, for AT_Size, `src/client/graphics/entity_size.cpp:47`. `race_models.json`'s scale column now
   only gates the invisible races (scale 0: 127, 240), as before.
-- The live self entity's record carries the wire's "size not said" at
-  `src/client/zone/zone_entry.cpp:680`; `player().size()` keeps the 6.0 placeholder because the
-  wire-z conversion was measured with it (T331).
+- Our own size: sec. 3a.
 - Harness: the caster and the target are scaled by the client's rule at
   `tools/model_viewer/model_viewer_spell_test.cpp:254`; the caster's size is the wire's 0 at
   `tools/model_viewer/model_viewer_fx_harness.cpp:514`; the b1118 target stands on the caster's
@@ -191,19 +217,67 @@ too (her feet row 605 is below the border), so no b1118 ratio is decidable.
   `review/B1172/worker/wrong_model/default_final.log:113`. Its wrong-body list was re-measured at
   the anchor with `--target`: human female 1:1:6 260 px, dark-elf female 6:1:6 261, the human at
   size 7 332, troll 9:0:6 280, the human at size 5 -- scale 1.0, fable's old drawing -- 238; the
-  barbarian 2:0:6 renders 284, a same-height body the ratchet cannot reject (under the client's
-  rule every classic race at the same size word is drawn nearly the same height). The self-check
-  negative test now uses the size-5 human, because the dark-elf female's solve does not converge on
-  gitlab-runner-1 at 1.2 (`review/B1172/worker/wrong_model/r1_6_1_6.log`, "did not solve").
+  barbarian 2:0:6 renders 284, a body the ratchet cannot reject. The same size word gives every
+  classic race the same actor scale (1.2), not the same drawn height: the meshes differ, so these
+  size-6 bodies render 260 to 285 px, and the ratchet rejects the ones outside 285 +-3. The
+  self-check negative test runs the size-5 human (`1:0:5`, 238 px). **`--target 6:1:6` CRASHES on
+  gitlab-runner-1**: the dark-elf female's target solve does not converge (it cycles through feet
+  rows 616 / 616 / 618, `review/B1172/worker/wrong_model/r1_6_1_6.log:135`), and the "did not
+  solve" exit then dies by SIGSEGV, rc 139, reproduced at 20082d7d
+  (`review/B1172/worker/fix/crash_616/rc.txt`). The negative test's switch to 1:0:5 does not own
+  that crash; B1177 (#496) does (FOLLOW-UP 3).
 - Tests: `tests/test_actor_scale.cpp:26` covers the two oracle figures, `:35` the classic-race
   table, `:46`, `:62`, `:73` the other defaults, the size word and both flags, `:86` the forced
-  scales; `tests/test_entity_size_change.cpp:229` the local-player node scale,
-  `tests/test_entity_size_change.cpp:332` the production build drawing the human at 1.2 and the
-  dark elf at 1.0 with drawn height = mesh height x that, `tests/test_entity_size_change.cpp:436` a
+  scales; `tests/test_entity_size_change.cpp:230` the local-player node scale (pinning today's
+  deviation), `tests/test_entity_size_change.cpp:333` the production build drawing the human at 1.2
+  and the dark elf at 1.0 with drawn height = mesh height x that,
+  `tests/test_entity_size_change.cpp:437` a
   ship staying at its forced 2.0 through a resize. Updated: the b1130 frame check at
   `tests/test_fx_harness.cpp:436`, the ratchet tests at `tests/test_fx_harness.cpp:466` and
   `tests/test_fx_harness.cpp:658`, and the held-item facing test, which now compares in model units
   because the NPC is drawn at 1.2 and the player at 1.0, at `tests/test_held_item_attachment.cpp:503`.
+
+### 3a. Our own size: one number (review note 7955 finding 3)
+
+The client keeps ONE size per spawn, EQPlayer+0x23c: the Spawn_Struct's size word (`0x4816fd`
+`mov [esi+0x23c], eax`) or, when it is not > 0, the race/gender default written back over it
+(`0x47fb30` `fst [esi+0x23c]`). The scale (1b) reads it, and so does the z the client transmits
+for itself -- measured, at the qeynos2 spot (-74, 428) whose collision ground is 0.00
+(`review/T311/legA/README.md:14`, `:15`):
+
+| figure | S->C OP_ZoneEntry size word | transmitted z | = 0.625 x | evidence |
+|---|---|---|---|---|
+| T311 Oraclebravo, Barbarian (default 7) | 0.000 | 4.376 (405 of 407 updates) | 7 | `review/B1172/worker/fix/self_size_wire.txt:2`, `:14` |
+| T311 Oraclealpha, Human (default 6) | 0.000 | 3.751 | 6 | `review/B1172/worker/fix/self_size_wire.txt:3`; `review/T311/legA/README.md:62` |
+| oracle Testcaster, Dark Elf (default 5), B1130 r51 | 0.000 | 3.128 (220 of 222) | 5 | `review/B1172/worker/pcap_sizes.txt:2`; `review/B1172/worker/fix/self_size_wire.txt:16`, `:17` |
+| oracle Testcaster, B1118 | 0.000 | 3.128 (166 of 168) | 5 | `review/B1172/worker/fix/self_size_wire.txt:21`, `:22` |
+| fable Testcaster, B1118 fable_A / B1142 fable_N93 | 0.000 | **3.750** | 6 | `review/B1172/worker/fix/self_size_wire.txt:26`, `:28` |
+
+(Scripts: `refactor/B1172/scripts/t311_zoneentry_sizes.py` reads T311's zone packet logs;
+`refactor/B1172/scripts/pcap_self_z.py` reads the P1999 client's 36-byte C->S OP_ClientUpdate,
+z at +28; T311 found the rule `ground + 0.625 x size` within +0.001..+0.003, its README:64.) So the
+client's wire z follows the WRITTEN-BACK default, and `include/client/position_frames.h`'s "no
+size -> 6.0 for every race" is not its rule: fable sent a dark elf 0.625 too high. T331's
+measurement (`refactor/BOARD.md:2947`, a Human male, size 6) does not require the 6.0; it is the
+same number for that race.
+
+The fix: `include/client/graphics/actor_scale.h:100` `clientResolvedActorSize` is the
+write-back; every self path stores its result in BOTH PlayerState (the wire-z offset) and our entity
+record (the actor scale):
+- OP_PlayerProfile, which carries no size: the race default, set BEFORE the profile's own z
+  conversion reads it, `src/client/zone/zone_entry.cpp:480`; the entity record copies it -- no
+  hard-coded 0, no 6.0 -- at `src/client/zone/zone_entry.cpp:685`.
+- the server's OP_ZoneEntry Spawn_Struct, which follows the profile: its size word is read and
+  resolved, `src/client/zone/zone_dispatch.cpp:138` -- the same read as B1164's branch
+  (9938bbfa, not on fable yet), plus the resolution.
+- the two self-spawn paths, `src/client/entities/entities_component.cpp:293` and
+  `src/client/entities/entities_component_updates.cpp:405`.
+`include/client/position_frames.h:77` keeps 6.0 only as PlayerState's value before the first
+profile, and says so. Tests: `tests/test_self_actor_size.cpp:77` the write-back, `:87` the wire-z
+offset against the three measured figures (+-0.004), `:97` / `:108` the profile, `:117` the
+OP_ZoneEntry size word 0 and 3, `:131` another spawn's OP_ZoneEntry ignored. The live
+consequence: a dark-elf player now transmits ground + 3.125 where it sent ground + 3.750, the
+oracle's 3.128; a human player is unchanged. The local player's drawn scale is still 1.0 (B1176).
 
 ## 4. Re-gate: tour-7 + both sweeps, before / after (ask 3, acceptance C)
 
@@ -309,13 +383,14 @@ ratchet moved with its provenance, as the orchestrator asked: B1166's `kStanding
 
 ## FOLLOW-UP
 
-1. **The local player is drawn at 1.0** (owner: the player render path +
-   first-person eye). `EQAnimatedMeshSceneNode::render` draws the local player with a
-   translation-only matrix, so a human player is drawn at 1.0 where the client draws 1.2 (a
-   dwarf 1.0 where it draws 0.8). Drawing it at the actor scale also moves the first-person eye,
-   whose fraction T431 fitted against the oracle on the 1.0 model, and the wire-z offset; it needs
-   its own live leg. This card keeps the player's node at 1.0 so its z offset still matches what
-   is drawn.
+1. **The local player is drawn at 1.0 -- a DEVIATION from the client** (owner: **B1176, #495**).
+   The client scales its own player like every spawn (`review/B1141/ghidra/out/eqgame.exe.c:106152`
+   -> `:106154`, `:106406` -> `:106416`; sec. 1f). `EQAnimatedMeshSceneNode::render` draws the local
+   player with a translation-only matrix, so a human player is drawn at 1.0 where the client draws
+   1.2 (a dwarf 1.0 where it draws 0.8; a dark elf 1.0 on both sides). Drawing it at the actor
+   scale also moves the first-person eye (T431 fitted on the 1.0 model) and the third-person
+   camera; B1176 owns that live leg. Its ask 1(b), the wire z, is measured here (sec. 3a): the
+   client's z follows the resolved size, and fable now sends that.
 2. **The landing attach scale and ONE scale table** (owner: B1164's MR !323, branch task/kb-b1164-pin-s). The client
    multiplies a target-attached landing by the target's actor scale, 1.2 here. !323's
    `include/client/spell/spell_fx_attach_scale.h` encodes 0.2 x size and a copy of the default
@@ -323,8 +398,21 @@ ratchet moved with its provenance, as the orchestrator asked: B1166's `kStanding
    `include/client/graphics/actor_scale.h` (one source of truth; this card's trace also decodes
    FUN_0047a239, which !323 left untraced: it writes no scale for races below 26, so !323's scope
    holds, and it forces 1.0 / 2.0 / 0.05 for the twelve races in sec. 1e).
-3. **A b1130 run whose target solve does not converge exits through SIGSEGV** after "did not
-   solve" (gitlab-runner-1, `--target 6:1:6`, `review/B1172/worker/wrong_model/r1_6_1_6.log`;
-   owner: the B1166 fit's failure path). Not traced.
+3. **`--camera b1130 --target 6:1:6` crashes** (owner: **B1177, #496**): on gitlab-runner-1 the
+   dark-elf female's target solve cycles without converging and the "did not solve" exit dies by
+   SIGSEGV, rc 139 (`review/B1172/worker/fix/crash_616/rc.txt`, at 20082d7d). The failure path at
+   `tools/model_viewer.cpp:137` drops the device without the teardown the normal exit runs. This
+   card's negative test runs 1:0:5 instead; that avoids the crash, it does not fix it.
+5. **Merging B1164 (MR !323, branch task/kb-b1164-pin-s, 9938bbfa; not on fable at this tip)**:
+   `git merge-tree` against it shows four conflicts. `include/client/graphics/actor_scale.h`
+   add/add: B1164 committed this card's earlier copy at mode 100755 -- take this card's (mode 100644,
+   and it adds the size resolver of sec. 3a); comments only at
+   `include/client/graphics/environment/unified_particle.h:333` and
+   `tools/model_viewer/model_viewer_fx_harness.cpp:506`; and `src/client/zone/zone_dispatch.cpp`
+   OnZoneEntry, where both add the Spawn_Struct size read. Keep ONE read, this card's (it resolves
+   the size and also sets PlayerState). B1164's `tests/test_local_player_spawn_size.cpp` expects
+   the raw word (0.0) in the entity record and a 6.0 profile placeholder; under sec. 3a the record
+   holds the resolved size (5.0 for the dark elf; the attach scale is 1.0 either way), so
+   whichever MR lands second updates those expectations.
 4. **0x923798** (sec. 1d), the byte that drops the 1.3 for races 403 / >= 405, is not traced past
    its two reset stores; `clientSizeToActorScale` takes it as an argument, 0 by default.
