@@ -1,0 +1,37 @@
+# B1162 /disc landing leg (orchestrator ruling 2026-10-27): ONE /disc on lane 5
+# whose discipline the lane SERVER grants the caster's class (README "The /disc
+# landing leg"). Class 1 Warrior, level 60, character_disciplines 4499 before
+# zone-in (sql/b1162_disc4499_v3.sql) so 4499 is in the zone-in
+# OP_DisciplineUpdate list; /disc Defensive Discipline -> the client's
+# FUN_0046fc1b name match -> FUN_004bb39d -> C->S OP_CastSpell slot 10.
+# Same poses + observer F9x3 camera as b1162_combat13_v3 (B1143 p3_rig93), no NPC.
+#
+# HARD RULE: if the server refuses, record the refusal line + its source line; no
+# GM substitution.
+#
+# fps=30
+# caster-video=1
+# observer=Oraclewatch
+# pose=-74,428,3.75,160
+# observer-pose=-67.6,434.4,3.75,160
+
+login	Testcaster
+obs	login	Oraclewatch
+zone	qeynos2
+obs	zone	qeynos2
+wait	8000	settle
+obs	click	1229,555	obs_close_tip
+click	1229,555	close_tip
+command	#set time 11 0	noon
+wait	1500	noon_settle
+command	#weather 0	weather
+obs	press	F9	obs_f9_1
+obs	press	F9	obs_f9_2
+obs	press	F9	obs_f9_3
+obs	wait	3000	obs_cam_settle
+wait	20000	time_settle
+command	/disc Defensive Discipline	disc_defensive
+wait	25000	fx_defensive
+command	#nukebuffs	nuke_0
+obs	command	/q	obs_quit
+command	/q	quit
