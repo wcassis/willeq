@@ -3,6 +3,7 @@
 
 #include "model_viewer_fx_harness.h"
 #include "model_viewer_state.h"
+#include "fx_target_anchor.h"
 
 #include "client/bridge/spell_cast_fx.h"
 #include "client/graphics/eqe1_loader.h"
@@ -224,23 +225,24 @@ bool fitFaceOnCamera(const PresetGeometry& g, const char* name) {
 
 // B1155 b1130: the solved target placement (world units), set by
 // fitFixedNpcTarget and used by placeHarnessTarget.
-float b1130TargetX = 0.0f, b1130TargetZ = 0.0f;
+float b1130TargetX = 0.0f, b1130TargetY = 0.0f, b1130TargetZ = 0.0f;
+// B1166: the standing target's pixel height the solve rendered (requested px).
+float b1130TargetFitPx = 0.0f;
 
 // B1155: b1130's fixed_npc target. review/B1130/README.md "Geometry": the
 // B1118 opening pose with the caster #goto -67.6,434.4 so the #spawn TrollF
-// stands ~1.4 caster heights to her right -- the settle stills (oracle
-// cal_r35/15_time_settle.png) record the caster 209 px with feet (640,598) and
-// the NPC 325 px with feet (940,652). The b1130 camera is already fitted to
-// the caster; this solves the target's world offset (x, z) from the two feet
-// pixels and then MEASURES its rendered height, so the 325 px -- the oracle's
-// own level-1 human male standing ~1.55x NEARER to the camera than the
-// caster, not a race scale -- is a consistency check, never a hand-tuned
-// input.
+// stands ~1.4 caster heights to her right. The b1130 camera is already fitted
+// to the caster (209 px, feet (640,598)); this solves the target's world
+// offset (x, z) from its two feet pixels. B1166 (#485): the feet are the
+// oracle target's MEASURED box (fx_target_anchor.h: feet (940,615), 288 px,
+// by difference against a target-free still; B1130's 325 px / (940,652)
+// began at the name label), the solve sees the STANDING frame, and the
+// rendered height is the model's own -- a self-check, never a fitted input
+// (the FABLE human renders 238 px there, refactor/B1166/README.md sec. 2).
 //
 // Screen right for a camera looking along -kCasterFacing is world -X
 // (targetRightOfCaster), so the target at column 940 sits at x < 0, and its
-// lower feet row (652 > 598) and larger pixel height put it CLOSER to the
-// camera than the caster: z > 0.
+// lower feet row (615 > 598) puts it CLOSER to the camera than the caster.
 bool fitFixedNpcTarget(const PresetGeometry& g) {
     if (!targetAnimatedNode || !camera) return false;
     const video::SColor clear(255, 50, 50, 80);
@@ -254,6 +256,34 @@ bool fitFixedNpcTarget(const PresetGeometry& g) {
     targetAnimatedNode->setVisible(true);
     targetAnimatedNode->setPosition(core::vector3df(0.0f, 0.0f, 0.0f));
     targetAnimatedNode->updateAbsolutePosition();
+    // B1166 (#485): solve on the STANDING frame, not the rest pose. Without
+    // this the fit saw the bind pose (a ~50 px strip whose bottom is not the
+    // feet) and the running frames -- where the harness loop's OnAnimate
+    // skins the idle -- put the standing figure's feet 130 px lower. The same
+    // rule fitFaceOnCamera applies to the caster (the client's createEntity:
+    // force the animated pose before measuring it); the scene clock is
+    // already frozen at the run's t = 0 (setupSpellTestCamera), so this is
+    // the pose frame 0 is drawn in.
+    targetAnimatedNode->forceAnimationUpdate();
+    // B1166: stand the target ON the ground the frames draw. addGroundPlane
+    // puts the depth-writing plane at the caster's pose-box bottom (the
+    // client's collisionZOffset rule: an entity's pose box stands on the
+    // ground); the target gets the same rule -- its own pose-box bottom on
+    // that plane -- or the plane hides its feet in every written frame while
+    // the fit (drawn before the plane exists) still counts them.
+    float y = 0.0f;
+    if (animatedNode) {
+        animatedNode->forceAnimationUpdate();
+        animatedNode->updateAbsolutePosition();
+        core::aabbox3df cb = animatedNode->getBoundingBox();
+        animatedNode->getAbsoluteTransformation().transformBoxEx(cb);
+        core::aabbox3df tb = targetAnimatedNode->getBoundingBox();
+        targetAnimatedNode->getAbsoluteTransformation().transformBoxEx(tb);
+        y = cb.MinEdge.Y - tb.MinEdge.Y;
+        std::printf("[fx-harness] b1130 target: pose box y %.3f..%.3f at y 0; caster pose box bottom (the ground "
+                    "plane) %.3f -> target stands at y %.3f\n",
+                    tb.MinEdge.Y, tb.MaxEdge.Y, cb.MinEdge.Y, y);
+    }
     driver->beginScene(true, true, clear);
     smgr->drawAll();
     driver->endScene();
@@ -268,7 +298,7 @@ bool fitFixedNpcTarget(const PresetGeometry& g) {
     // The target's silhouette alone (any pixel off the clear colour), in
     // SURFACE px: {column centroid, bottom row, pixel height}.
     auto measure = [&](float x, float z) -> std::array<float, 3> {
-        targetAnimatedNode->setPosition(core::vector3df(x, 0.0f, z));
+        targetAnimatedNode->setPosition(core::vector3df(x, y, z));
         targetAnimatedNode->updateAbsolutePosition();
         driver->beginScene(true, true, clear);
         smgr->drawAll();
@@ -331,14 +361,17 @@ bool fitFixedNpcTarget(const PresetGeometry& g) {
     if (animatedNode) animatedNode->setVisible(casterWasVisible);
     const bool ok = m[0] < 1e8f && std::fabs(m[0] - targetFeetXS) < 1.0f * Sx &&
                     std::fabs(m[1] - targetFeetYS) < 1.0f * Sy;
-    std::printf("[fx-harness] camera b1130: target (x %.3f, 0, z %.3f) -> rendered target feet row %.0f at "
-                "column %.0f, %.0f px head top to feet (B1130 fixed: %d at %d, %d px)\n",
-                x, z, m[1] / Sy, m[0] / Sx, m[2] / Sy, static_cast<int>(g.targetFeetY),
+    std::printf("[fx-harness] camera b1130: target (x %.3f, y %.3f, z %.3f) -> rendered target feet row %.0f at "
+                "column %.0f, %.0f px head top to feet (oracle r51 target, fx_target_anchor.h: feet %d at %d, "
+                "%d px)\n",
+                x, y, z, m[1] / Sy, m[0] / Sx, m[2] / Sy, static_cast<int>(g.targetFeetY),
                 static_cast<int>(g.targetFeetX), static_cast<int>(g.targetPx));
     std::fflush(stdout);
     if (ok) {
         b1130TargetX = x;
+        b1130TargetY = y;
         b1130TargetZ = z;
+        b1130TargetFitPx = m[2] / Sy;
     }
     return ok;
 }
@@ -489,10 +522,11 @@ void applyHarnessPresetDefaults() {
             // PC-race default, mob.cpp :4033). The "TrollF" name is only a
             // label: the oracle spawned the SAME level-1 human male as b1118's
             // target (the settle still r51/21_stun_settle shows a clothed,
-            // standing human male), NOT a race-9 troll. Its 325 px (vs the
-            // caster's 209) comes entirely from standing ~1.55x NEARER to the
-            // camera, not a race scale. b1130 renders that level-1 human male
-            // and lets the solver find its depth from the two feet pixels.
+            // standing human male), NOT a race-9 troll -- r51's own OP_NewSpawn
+            // reads race 1, gender 0, size 6.000 (refactor/B1166/README.md
+            // sec. 1). b1130 renders that human male and lets the solver find
+            // its depth from the two feet pixels (B1166: 288 px in the oracle,
+            // 238 px in FABLE at the same spot -- a model-height gap).
             harnessOpts.targetRace = 1;
             harnessOpts.targetGender = 0;
             harnessOpts.targetSize = 6.0f;
@@ -756,6 +790,36 @@ void harnessInterrupt(const EQ::SpellData& spell) {
     eqt::bridge::ApplySpellCastInterruptedFx(fxRoute, spellVisualFX.get(), d);
 }
 
+// B1166 (#485): measure the rendered target in a written frame (off-clear
+// silhouette in the anchor's window, fx_target_anchor.h) and check feet row,
+// column centroid and height against the preset's anchor within the stated
+// tolerances. Printed to the run log either way; false = out of tolerance.
+bool b1130TargetSelfCheck(video::IImage* img) {
+    if (!img) return false;
+    const auto dim = img->getDimension();
+    const auto& a = fxharness::kB1130TargetAnchor;
+    const auto win = fxharness::targetWindow(a, static_cast<int>(dim.Height));
+    const auto sil = fxharness::measureSilhouette(
+        [img](int x, int y, int& r, int& g, int& b) {
+            const video::SColor c = img->getPixel(static_cast<u32>(x), static_cast<u32>(y));
+            r = static_cast<int>(c.getRed());
+            g = static_cast<int>(c.getGreen());
+            b = static_cast<int>(c.getBlue());
+        },
+        static_cast<int>(dim.Width), static_cast<int>(dim.Height), win.x0, win.y0, win.x1, win.y1);
+    const auto chk = fxharness::checkTargetAnchor(sil, a, b1130TargetFitPx);
+    std::printf("[fx-harness] b1130 target self-check (frame 0, cols %d..%d): rows %d..%d (%d px, feet row %d), "
+                "column %.1f | anchor feet %.0f at %.0f: d feet %+.0f (tol %.0f), d col %+.1f (tol %.0f) | "
+                "solved standing height %.0f px: d %+.0f (tol %.0f) | measured standing height %.0f px: d %+.0f "
+                "(tol %.0f; ratio %.3f of the oracle's %.0f px): %s\n",
+                win.x0, win.x1, sil.top, sil.bottom, sil.height(), sil.bottom, sil.col, a.feetY, a.feetX,
+                chk.dFeet, fxharness::kFeetTolPx, chk.dCol, fxharness::kColumnTolPx, b1130TargetFitPx, chk.dPx,
+                fxharness::kHeightTolPx, fxharness::kStandingPx, chk.dStand, fxharness::kStandingTolPx, chk.ratio,
+                a.px, chk.ok() ? "PASS" : "FAIL");
+    std::fflush(stdout);
+    return chk.ok();
+}
+
 void placeHarnessTarget(bool self, float distance) {
     if (!targetAnimatedNode || !animatedNode) return;
     // B1155: b1130-self is the caster alone (B1130's fixed_self stills); the
@@ -767,7 +831,7 @@ void placeHarnessTarget(bool self, float distance) {
     targetAnimatedNode->setVisible(!self);
     if (self) return;
     if (harnessOpts.cameraPreset == "b1130") {
-        targetAnimatedNode->setPosition(core::vector3df(b1130TargetX, 0.0f, b1130TargetZ));
+        targetAnimatedNode->setPosition(core::vector3df(b1130TargetX, b1130TargetY, b1130TargetZ));
     } else {
         const core::vector3df right = harnessOpts.cameraPreset.empty() ? core::vector3df(1, 0, 0)
                                                                        : targetRightOfCaster();
@@ -832,10 +896,10 @@ bool setupSpellTestCamera() {
         }
         if (!fitFaceOnCamera(g, harnessOpts.cameraPreset.c_str())) return false;
         if (harnessOpts.cameraPreset == "b1130") {
-            // The fixed_npc target: 325 px with feet (940,652).
-            g.targetFeetX = 940.0f;
-            g.targetFeetY = 652.0f;
-            g.targetPx = 325.0f;
+            // The fixed_npc target: the oracle r51 target's measured feet (B1166).
+            g.targetFeetX = fxharness::kB1130TargetAnchor.feetX;
+            g.targetFeetY = fxharness::kB1130TargetAnchor.feetY;
+            g.targetPx = fxharness::kB1130TargetAnchor.px;
             if (!fitFixedNpcTarget(g)) return false;
         }
         if (harnessOpts.ground) addGroundPlane();
@@ -1084,6 +1148,14 @@ int runScriptedHarness() {
         char name[64];
         std::snprintf(name, sizeof(name), "/frame_%05d.png", f);
         const bool ok = shot && driver->writeImageToFile(shot, (harnessOpts.framesDir + name).c_str());
+        // B1166 (#485): the b1130 target self-check on the WRITTEN frame 0 (pre-cast:
+        // caster + target on the clear colour), against the one anchor the solve
+        // used (fx_target_anchor.h), so a fit that places another body than the
+        // oracle's cannot silently pass again.
+        if (ok && f == 0 && harnessOpts.cameraPreset == "b1130" && !b1130TargetSelfCheck(shot)) {
+            shot->drop();
+            return 5;
+        }
         if (shot) shot->drop();
         if (ok && f == 0) writeSceneBoxes(harnessOpts.framesDir + "/scene.tsv");
         if (!ok) {
