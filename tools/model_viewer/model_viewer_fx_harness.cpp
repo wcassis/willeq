@@ -639,9 +639,9 @@ bool initHarnessParticles() {
     spellVisualFX->setCastAnimationLengthCallback([nodeFor](uint16_t id, const char* code) -> int32_t {
         return CastAnimationTrackMs(nodeFor(id), code);
     });
-    // B1152 (#472): the missile gate reads the launch/arrival times from the
-    // SPELL module's log, so un-filter it (the model_viewer does not InitLogging,
-    // so the module is at the default NONE).
+    // The gates read the FX lines (createCastGlow / createLanding, B1170's
+    // missile-object lines) from the SPELL module's log, so un-filter it (the
+    // model_viewer does not InitLogging, so the module is at the default NONE).
     SetModuleLogLevel(MOD_SPELL, LOG_INFO);
     std::printf("[fx-harness] SpellVisualFX -> ParticleManager -> SimulationWorker ready\n");
     std::fflush(stdout);
@@ -717,11 +717,6 @@ void harnessBeginCast(const EQ::SpellData& spell, bool self, uint32_t castMs, in
     d.isTargetCast = false;
     d.spellVisual = spell.visualVocabulary();
     d.castAnim = spell.cast_anim;  // B1148
-    // B1152 (#472): the missile flies to the spell's target (the NPC target
-    // for an 'other' cast, the caster for a 'self' one) -- the same target
-    // harnessAction() lands on. A Middle-stage spell then spawns a missile
-    // here that flies to this id and fires the Target stage on arrival.
-    d.targetId = self ? casterEntityId : targetEntityId;
     (void)self;
     eqt::bridge::ApplySpellCastStartedFx(fxRoute, spellVisualFX.get(), d, now);
 }

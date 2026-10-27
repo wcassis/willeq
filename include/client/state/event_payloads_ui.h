@@ -139,13 +139,6 @@ struct SpellCastVisualStartedData {
     // B1148 (#468): spell field 120 CastingAnim, the animation id whose track
     // length eqgame adds to the Source duration (0x47ddd4); 0 = unknown.
     int castAnim = 0;
-    // B1152 (#472): the target the missile flies to (eqgame 0x476b12 sec. 3,
-    // FUN_0047bf6c — the end point of the projectile path). The local
-    // player's current target for a player cast, 0 for an NPC cast the client
-    // does not track a target for (the projectile then flies to the caster's
-    // facing or is simply not spawned — the MISSILE-anchored slots only fire
-    // on a missile that has a destination).
-    uint16_t targetId = 0;
 };
 
 struct SpellCastVisualCompleteData {

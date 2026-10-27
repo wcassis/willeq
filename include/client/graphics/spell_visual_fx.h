@@ -25,9 +25,6 @@
 #include "client/spell/spell_fx_timing.h"
 #include "client/spell/spell_visual_vocabulary.h"
 #include "client/graphics/spell_visual_selection.h"
-// B1163 (#482): the missile speed word + calibrated timing and the oracle's
-// spell-859 removal gate, as pure device-free rules (one source of truth).
-#include "client/graphics/spell_b1163_missile_rules.h"
 
 namespace EQT { namespace Graphics { class ConstrainedTextureCache; }}
 
@@ -83,26 +80,6 @@ using EntityPositionCallback = std::function<bool(uint16_t entity_id,
 
 class SpellVisualFX {
 public:
-    // B1152 (#472): one in-flight missile (eqgame FUN_00476b12,
-    // refactor/B1152/TRACE.md sec. 2-6). Spawns on the spell's first live tick
-    // (createCastGlow) when its spellsnew.eff record has a Middle stage;
-    // launches at the caster's cast-animation end; flies caster -> target
-    // over flightTime; fires the record's Target stage on arrival.
-    struct Missile {
-        uint32_t spellId = 0;
-        uint16_t casterId = 0;
-        uint16_t targetId = 0;
-        int gateLevel = kMeasuredCasterLevel;
-        int castMs = 0;          // the cast duration (OP_Action = the hit time)
-        double launchAt = 0.0;   // FX-time (s) the Middle emitter starts (flight)
-        double reachAt = 0.0;    // FX-time (s) the missile reaches the target
-        double landAt = 0.0;     // FX-time (s) the Target stage fires (the landing)
-        float flightTime = 0.0f; // seconds, the B1152 calibration 9.05 / 30 (B1163)
-        bool launched = false;   // Middle emitter created
-        bool reached = false;    // the missile reached the target (removed)
-        bool landed = false;     // the Target stage fired
-    };
-
     // Hand bone pseudo-entity ID encoding.
     // EQ spawn IDs are uint16_t but never exceed ~4000, so high bits are safe.
     // Bit 15 = hand bone flag, Bit 14 = left hand (0 = right, 1 = left).
@@ -202,12 +179,11 @@ public:
     //   halves on the scene-node path; createImpact is also the projectile's
     //   arrival (update(), applyWorkerResults()).
     //
-    //   B1152 (#472) DELETED createProjectile: the missile actor (the Missile
-    //   struct + update() -> updateMissiles) replaces it. createCastGlow
-    //   spawns a missile for a record with a Middle stage; launchMissile
-    //   flies the Middle emitter (PROJECTILE_PATH) and fireMissileLanding
-    //   fires the record's Target stage on arrival. A record with no Middle
-    //   stage (54/859) lands in createLanding at removal, as before.
+    //   B1152 (#472) DELETED createProjectile; B1170 (#489) DELETED the
+    //   record-driven missile that replaced it (createCastGlow's Missile,
+    //   launchMissile, fireMissileLanding, the 0.302 s calibration): the
+    //   official client draws a Middle stage only on a missile OBJECT, which
+    //   only a server 0x4033 message creates (refactor/B1170/README.md).
     //
     //   B1138 DELETED createImpactAtPosition, createBuffAura, createRainEffect
     //   and createGroundCircle with their presets and config styles: only the
@@ -230,13 +206,8 @@ public:
     // B1148 (#468): `castAnim` = spell field 120; the Source's caller
     // duration is the cast time + the caster model's track for it
     // (castAnimationMs), the measured 4.35 s when that does not resolve.
-    // B1152 (#472): `targetId` is the missile's destination (0 = none, the
-    // non-missile path / a caster with no tracked target). A spell whose
-    // spellsnew.eff record has a Middle stage spawns a missile here that flies
-    // caster -> targetId and fires the record's Target stage on arrival.
     uint32_t createCastGlow(uint16_t caster_id, uint32_t spell_id, uint32_t duration_ms,
-                            int casterLevel = kMeasuredCasterLevel, int castAnim = 0,
-                            uint16_t targetId = 0);
+                            int casterLevel = kMeasuredCasterLevel, int castAnim = 0);
 
     // B1148: the caster model's track length for an animation code ("t04"),
     // in ms; < 0 = no such entity / model / track. Set by the renderer (the
@@ -246,28 +217,6 @@ public:
     // The CastingAnim term for this caster in ms (castAnim's track length),
     // < 0 when it does not resolve.
     int32_t castAnimationMs(uint16_t caster_id, int castAnim) const;
-
-    // B1163 (#482): the LOCAL PLAYER's spawn id (0 = none). When a spell-859
-    // missile is removed within 40.0 XY units of the player, the oracle fires
-    // 859's Target stage AT THE PLAYER (eqgame 00477962 .. 0047f5ed,
-    // spell_b1163_missile_rules.h). Set by the renderer; the FX harness leaves
-    // it unset (no local player).
-    using LocalPlayerIdCallback = std::function<uint16_t()>;
-    void setLocalPlayerIdCallback(LocalPlayerIdCallback cb) { m_local_player_cb = std::move(cb); }
-
-    // B1152 (#472): the missile actor. createProjectile() (the legacy
-    // spell-visual projectile, tests-only since B1138) is REPLACED by this:
-    // a spell whose spellsnew.eff record has a Middle stage spawns a missile
-    // on its first live tick (createCastGlow) that flies caster -> target
-    // (eqgame FUN_00476b12, refactor/B1152/TRACE.md sec. 2-5) and fires the
-    // record's Target stage on arrival (the landing). The actor lives in
-    // m_missiles and advances in update(); query it from the harness/tests:
-    //   missileCount()          — missiles currently pending or in flight
-    //   missileFor(spell, caster) — the one for a spell+caster (nullptr if none)
-    // A spell with NO Middle stage (Frost Bolt / record 82) has no missile:
-    // its Target stage fires at removal as it always did (54/859 rule, sec. 5).
-    size_t missileCount() const { return m_missiles.size(); }
-    const Missile* missileFor(uint32_t spell_id, uint16_t caster_id) const;
 
     // Create impact effect at target location
     void createImpact(uint16_t target_id, uint32_t spell_id);
@@ -424,8 +373,8 @@ public:
     // plus the loaded spells.eff, and it is the only observation point for
     // the T72 stage-suppression gates in a headless test -- the gates
     // themselves live inside the ParticleManager branch of createCastGlow /
-    // createImpact (B1152 removed the travel gate with createProjectile:
-    // a record's Middle stage now spawns a missile, not a suppressed trail).
+    // createImpact (B1152 removed the travel gate with createProjectile; a
+    // record's Middle stage is drawn only on a 0x4033 missile object, B1170).
     SpellVisualResolution resolveVisual(uint32_t spell_id) const;
 
 private:
@@ -453,22 +402,6 @@ private:
     // Update individual effect types
     void updateGlow(SpellFXInstance& effect, float delta_time);
 
-#ifdef EQT_HAS_GLES2
-    // B1152 (#472): the missile actor (eqgame FUN_00476b12, refactor/B1152/
-    // TRACE.md sec. 2-6). A spell whose spellsnew.eff record has a Middle stage
-    // spawns one of these in createCastGlow(); it launches at the caster's
-    // cast-animation end, flies caster -> target over flightTime, and fires
-    // the record's Target stage on arrival (the landing). update() advances
-    // the whole vector; launchMissile() creates the Middle emitter
-    // (PROJECTILE_PATH) and fireMissileLanding() runs the Target-stage slots.
-    void updateMissiles(float delta_time);
-    void launchMissile(Missile& m);
-    void fireMissileLanding(Missile& m);
-    void fireSpell859RemovalAtPlayer(const Missile& m);  // B1163
-    // A missile for this spell+caster still pending or in flight (its Target
-    // stage has not fired yet). createLanding() defers to it on OP_Action.
-    bool missileInFlight(uint32_t spell_id, uint16_t caster_id) const;
-#endif
 
     irr::scene::ISceneManager* m_smgr;
     irr::video::IVideoDriver* m_driver;
@@ -541,23 +474,6 @@ private:
     // Worker-driven state
     std::vector<EQT::Graphics::SpellVFXCommandData> m_pending_commands;
     bool m_worker_driven = false;
-
-    // B1152 (#472): the missile actor's state. m_missiles holds pending and
-    // in-flight missiles; m_fx_time is the FX time base (seconds) advanced by
-    // update() that launchAt/reachAt/landAt are measured against. The timing
-    // lives in client/graphics/spell_b1163_missile_rules.h (B1163, #482): the
-    // flight is the record-80 oracle's calibrated 9.05-unit gap at the
-    // calibrated 30 u/s (eqgame's [missile+0x28] is a thrust word in a damped
-    // velocity, not a speed; refactor/B1163/README.md (A)); the flight ENDS
-    // 0.184 s before the OP_Action and the Target stage fires 0.30 s after the
-    // flight end (refactor/B1152/TRACE.md sec. 5/8). BLESS-ONLY.
-    std::vector<Missile> m_missiles;
-    double m_fx_time = 0.0;
-    LocalPlayerIdCallback m_local_player_cb;  // B1163: spell 859's removal gate
-    // (spell, caster) whose Target stage a missile already fired: createLanding
-    // skips it on OP_Action so the landing is drawn exactly once, at whichever
-    // of arrival / OP_Action comes second is suppressed in favour of the first.
-    std::set<std::pair<uint32_t, uint16_t>> m_missileLanded;
 
     // Default effect durations
     static constexpr float DEFAULT_IMPACT_DURATION = 1.5f;  // Impact particles last 1.5 seconds

@@ -88,10 +88,6 @@ void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32
             if (spell) d.spellVisual = spell->visualVocabulary();
             d.fxGateLevel = fxGateLevelOf(m_eq, caster_id);  // B1144
             if (spell) d.castAnim = spell->cast_anim;  // B1148: field 120
-            // B1152 (#472): the missile flies to the player's current target.
-            if (auto* combat = m_eq->GetCombatManager()) {
-                d.targetId = combat->GetTargetId();
-            }
             m_bridge->pushEvent(eqt::state::GameEvent(
                 eqt::state::GameEventType::SpellCastVisualStarted, std::move(d)));
         }

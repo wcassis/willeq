@@ -22,7 +22,7 @@ void ApplySpellCastStartedFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
     // B1144 (#464): the caster's gate level picks the record's slots.
     // B1148 (#468): CastingAnim picks the caster track whose length the
     // Source runs past the cast time.
-    fx->createCastGlow(d.casterId, d.spellId, d.castTimeMs, d.fxGateLevel, d.castAnim, d.targetId);
+    fx->createCastGlow(d.casterId, d.spellId, d.castTimeMs, d.fxGateLevel, d.castAnim);
 }
 
 void ApplySpellCastCompleteFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,

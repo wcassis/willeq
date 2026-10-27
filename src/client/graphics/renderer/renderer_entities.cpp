@@ -308,10 +308,6 @@ void IrrlichtRenderer::initDeferredGraphics() {
                 return CastAnimationTrackMs(it->second.animatedNode, code);
             });
 
-        // B1163 (#482): the local player, for spell 859's removal gate.
-        SimBridge().spellVisualFX()->setLocalPlayerIdCallback(
-            [this]() -> uint16_t { return entityRenderer_ ? entityRenderer_->getPlayerSpawnId() : 0; });
-
         LOG_DEBUG(MOD_GRAPHICS, "Spell visual effects initialized");
 
 #ifdef EQT_HAS_GLES2

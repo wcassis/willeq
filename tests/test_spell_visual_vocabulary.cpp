@@ -290,13 +290,15 @@ TEST_F(SpellVisualVocabularyTest, ASpellWithAnAffectIndexReachesResolved) {
 }
 
 #ifdef EQT_HAS_GLES2
-// B1152 (#472): createProjectile() is gone, so its old witness (the travel-stage
-// gate returning before the position callback) is replaced by the missile
-// actor's own qualification rule: a spell whose spellsnew.eff record has a
-// Middle stage drawn at the caster's level spawns a missile in createCastGlow,
-// and only when the caster has a target to fly to (targetId != 0). Summon
-// Corpse's record 83 has no Middle stage; Burst of Flame's record 80 has one.
-TEST_F(SpellVisualVocabularyTest, AMiddleStageRecordSpawnsAMissile) {
+// B1170 (#489): the official client draws a record's Middle stage only on a
+// missile OBJECT (eqgame 00495d8e / 00495d93: an anchor-2 slot with no object
+// is skipped), and only a server 0x4033 message builds one (00460737). So a
+// cast draws no Middle and its Target stage lands on OP_Action, even for a
+// record WITH a Middle stage (Burst of Flame, record 80: EDD 279, anchor 2).
+// Before B1170 the record-driven B1152 missile deferred that landing to its
+// own arrival (createLanding returned 0, "deferring to the in-flight
+// missile"); now the landing is drawn on OP_Action for both records.
+TEST_F(SpellVisualVocabularyTest, ACastDrawsNoMiddleStageWithoutAMissileObject) {
     if (!std::filesystem::exists(eqClientPath() + "/spells.eff")) {
         GTEST_SKIP() << "spells.eff not present under " << eqClientPath();
     }
@@ -317,23 +319,15 @@ TEST_F(SpellVisualVocabularyTest, AMiddleStageRecordSpawnsAMissile) {
     ASSERT_FALSE(fx_->resolveVisual(kSummonCorpse).hasTravelStage());
     ASSERT_TRUE(fx_->resolveVisual(kBurstOfFlame).hasTravelStage());
 
-    ASSERT_EQ(fx_->missileCount(), 0u);
+    // A record WITH a Middle stage: the cast builds no missile object, and its
+    // landing is not deferred -- it is drawn on OP_Action, on the target (2).
+    fx_->createCastGlow(1, kBurstOfFlame, 1000, 60, 0);
+    EXPECT_NE(fx_->createLanding(1, 2, kBurstOfFlame, 60), 0u)
+        << "no missile object: the Target stage lands on OP_Action";
 
-    // A record WITH a Middle stage, given a target: a missile spawns.
-    fx_->createCastGlow(1, kBurstOfFlame, 1000, 60, 0, /*targetId=*/2);
-    EXPECT_EQ(fx_->missileCount(), 1u)
-        << "a record WITH a Middle stage must spawn a missile";
-
-    // A record with NO Middle stage: no missile, even with a target.
-    fx_->createCastGlow(1, kSummonCorpse, 1000, 60, 0, /*targetId=*/2);
-    EXPECT_EQ(fx_->missileCount(), 1u)
-        << "a record with NO Middle stage must not spawn a missile";
-
-    // A Middle-stage spell with no target (targetId == 0): no destination,
-    // so no missile.
-    fx_->createCastGlow(1, kBurstOfFlame, 1000, 60, 0, /*targetId=*/0);
-    EXPECT_EQ(fx_->missileCount(), 1u)
-        << "a Middle-stage spell with no target must not spawn a missile";
+    // A record with NO Middle stage: the same.
+    fx_->createCastGlow(1, kSummonCorpse, 1000, 60, 0);
+    EXPECT_NE(fx_->createLanding(1, 2, kSummonCorpse, 60), 0u);
 
     fx_->setParticleManager(nullptr);
 }
