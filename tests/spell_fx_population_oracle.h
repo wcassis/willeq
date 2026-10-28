@@ -79,13 +79,13 @@ inline constexpr Exception kRetiredExceptions[] = {
 struct TourRow { int spell; float oracleLandCov; float oracleEnd; float laneLandCov; float laneEnd;
                  float roiLandingLo, roiLandingHi, roiSourceLo, roiSourceHi; };
 inline constexpr TourRow kTour[] = {
-    {93, 5.847f, 4.867f, 3.049f, 4.898f, 0.064f, 0.086f, 0.071f, 0.097f},
-    {38, 3.889f, 4.85f, 2.65f, 4.831f, 0.059f, 0.079f, 0.063f, 0.085f},
-    {54, 2.461f, 5.103f, 1.696f, 5.054f, 0.037f, 0.051f, 0.023f, 0.031f},
-    {656, 2.493f, 5.004f, 0.957f, 4.905f, 0.030f, 0.040f, 0.024f, 0.032f},
-    {41, 4.154f, 6.224f, 2.666f, 6.253f, 0.086f, 0.116f, 0.096f, 0.130f},
-    {253, 7.281f, 6.522f, 5.028f, -1.0f, 0.079f, 0.107f, 0.151f, 0.205f},
-    {458, 1.242f, 4.942f, 1.732f, 4.989f, 0.086f, 0.116f, 0.037f, 0.049f},
+    {93, 4.479f, 4.994f, 3.049f, 4.898f, 0.054f, 0.074f, 0.068f, 0.092f},
+    {38, 5.138f, 6.566f, 2.65f, 4.831f, 0.055f, 0.075f, 0.051f, 0.069f},
+    {54, 2.002f, 5.045f, 1.696f, 5.054f, 0.036f, 0.048f, 0.028f, 0.038f},
+    {656, 2.004f, 6.033f, 0.957f, 4.905f, 0.028f, 0.038f, 0.025f, 0.034f},
+    {41, 4.088f, 6.637f, 2.666f, 6.253f, 0.088f, 0.118f, 0.081f, 0.109f},
+    {253, 4.791f, 6.35f, 5.028f, -1.0f, 0.079f, 0.107f, 0.097f, 0.131f},
+    {458, 1.261f, 4.697f, 1.732f, 4.989f, 0.075f, 0.101f, 0.036f, 0.048f},
 };
 
 }  // namespace spell_fx_population_oracle
