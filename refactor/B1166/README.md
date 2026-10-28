@@ -18,10 +18,12 @@ dev-u24.
   which skin the idle, drew the standing human 316 px tall with its feet at row 782 (B1162's
   `review/B1162/worker/harness/fear229_b1130/measure_anchor.log:1`). Every fixed_npc landing
   was measured against a body that was not there.
-- **The fix** (`tools/model_viewer/model_viewer_fx_harness.cpp:246-377`): the solve forces the
-  animated pose before it measures (line 267, the same rule the caster fit applies at line
-  114), stands the target's pose box on the ground plane the frames draw (lines 268-288), and
-  fits the two feet pixels to the ONE anchor `kB1130TargetAnchor`
+- **The fix** (`tools/model_viewer/fx_target_fit.cpp:41-172` -- the B1172 FIX leg split this out
+  of `model_viewer_fx_harness.cpp` as a pure move): the solve forces the animated pose before it
+  measures (`tools/model_viewer/fx_target_fit.cpp:62`, the same rule the caster fit applies at
+  `tools/model_viewer/model_viewer_fx_harness.cpp:106`), stands the target's pose box on the ground
+  plane the frames draw (`tools/model_viewer/fx_target_fit.cpp:63-81`), and fits the two feet
+  pixels to the ONE anchor `kB1130TargetAnchor`
   (`tools/model_viewer/fx_target_anchor.h:41`: feet column 940, feet row 615, 288 px), which the
   preset reads (`tools/model_viewer/model_viewer_fx_harness.cpp:900-902`) and every measure script
   that needs the b1130 target reads too: `refactor/B1155/scripts/harness_measure_b1130.py:44-48`,
@@ -29,10 +31,11 @@ dev-u24.
   `refactor/B1162/scripts/harness_measure_b1162_anchor.py:40-44` and
   `refactor/B1151/scripts/oracle_anchor.sh:38-45`, each with FX_TFEET=940,652 FX_TMPX=325 as the
   pre-B1166 override. No other copy of 940,652 / 325 or 940,615 / 288 is left in code (sec. 5).
-- **The self-check** (`tools/model_viewer/model_viewer_fx_harness.cpp:797-821`, called on the written frame 0 at
-  line 1155, exit 5 on FAIL): feet row +-1 px and column centroid +-3 px of the anchor; height
-  +-3 px of the standing height the solve rendered; and the standing height itself ratcheted at
-  its measured 238 +-3 px (ratio 0.826 of 288; tolerances `tools/model_viewer/fx_target_anchor.h:66-70`).
+- **The self-check** (`tools/model_viewer/fx_target_fit.cpp:174-202`, called on the written frame 0 at
+  `tools/model_viewer/model_viewer_fx_harness.cpp:1264`, exit 5 on FAIL): feet row +-1 px and column
+  centroid +-3 px of the anchor; height +-3 px of the standing height the solve rendered; and the
+  standing height itself ratcheted at its measured 238 +-3 px (ratio 0.826 of 288; tolerances
+  `tools/model_viewer/fx_target_anchor.h:66-70`).
   The first version bounded the height at +-25 % of 288, which a dark-elf female at the anchor
   passed (sec. 2). Measured value: "rows 378..615 (238 px, feet row 615), column 940.2"
   (`/mnt/projects/fable/review/B1166/worker/probe/after.log:128`). Unit tests offline

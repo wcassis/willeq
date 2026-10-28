@@ -1,19 +1,21 @@
-// B1180 (#499): the EDD sprite's attach scale is the anchor entity's rendered
-// scale -- the client's s6C word (the attach point's world-matrix row-0 norm)
-// -- not the constant 1.0 that B1149's ruling left fable passing. Pinned live
-// on lane 5 (refactor/B1180, the b1180_hw_gdb probe): spell 93's Target
-// emitters on the size-6 TrollF target carry s6C = 1.2 and a width word w =
-// 1.25 (IgniteTargetill), so the oracle draws the sprite at 1.25 * 1.2 = 1.5
-// times the unit size.
+// B1180 (#499): the EDD sprite's attach scale is the anchor actor's rendered
+// scale -- the client's s6C word (the attach point's world-matrix row-0 norm,
+// the actor's scale) -- not the constant 1.0 that B1149's ruling left fable
+// passing. Pinned live on lane 5 (refactor/B1180, the b1180_hw_gdb probe):
+// spell 93's Target emitters on the size-6 human target carry s6C = 1.2,
+// f6C (the "scale sizes" word) = 1, multiplier (+0x16C) = 1.0 and width
+// (+0xCC) = 1.25 (IgniteTargetill), so the oracle draws the sprite at
+// 1.25 * 1.2 = 1.5 times the unit size.
 //
 // THE RULE, as the client applies it (EQGraphicsDX9 0x1006325e, the multiply
 // sites 0x10063364..0x1006336c): the sprite width is
 //     width * multiplier * (scaleSizes ? s : 1.0)
 // where `s` is the attach scale (the anchor's rendered scale, the s6C word).
-// fable's SpellPresets::applySlotEmitter applies that rule to the EmitterConfig
-// (its sizeStartMin/Max); B1180 makes createLandingFromSlots pass the anchor
-// entity's rendered scale (SpellVisualFX::setModelScaleCallback) as `s`
-// instead of the constant 1.0 (kSpellFxAttachScale).
+// fable's SpellPresets::applySlotEmitter applies that rule to the
+// EmitterConfig; B1164 (#483, merged ahead of this unit) is what feeds it:
+// the client's actor scale (EQ::SpellFxAttachScale, actor_scale.h) via
+// SpellVisualFX::setEntityAttachScaleCallback, instead of the constant 1.0
+// (kSpellFxAttachScale). B1180's pin is what fixed the factor.
 //
 // THIS TEST is on the pinned values: the client's width rule, and that
 // applySlotEmitter applies the attach scale to the EmitterConfig's size. A

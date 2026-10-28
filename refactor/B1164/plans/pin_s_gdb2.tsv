@@ -1,0 +1,52 @@
+# action	target	hold_ms	still_name
+# B1164 (#483) dev5 leg 3: the gdb read of the attach scale s split into its two factors (leg 2 found record 80's slots TRACK-attached, s = 0x1005c4f0(track) x |row 0| of the track matrix, EQGraphicsDX9 0x10060ae8..0x10060b23), on TWO targets in one armed window: TrollF (race 1, #spawn size 6) and DarkF (race 6 female, #spawn size 5). r51's set-up (review/B1130/plans/r51.tsv); b1164_s_watch.sh attaches from the gdb_arm row for 150 s.
+# pose=-74,428,3.75,160
+# ini-set=Options.Camera2-Distance=11.000000
+# ini-set=Options.Camera2-Height=1.000000
+# ini-set=Options.Camera2-DirHeading=192.000000
+# ini-set=Options.Camera2-Pitch=0.000000
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+wait	8000	0	settle
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#memspell 93 0	0	m1
+command	#level 60	0	lvl
+command	#mana	0	mana
+press	F9	0	cam1
+press	F9	0	cam2
+press	F9	0	cam3
+wait	3000	0	cam_settle
+command	#spawn TrollF 1 1 0 30000	0	spawn
+wait	3000	0	spawn_settle
+command	#goto -67.6 434.4 3.75	0	goto
+wait	3000	0	goto_settle
+command	/target TrollF	0	tgt_npc0
+command	#stun 120000	0	stun
+wait	1500	0	stun_settle
+wait	22000	0	time_settle
+command	/target TrollF	0	tgt_npc
+command	#stun 120000	0	stun2
+wait	1500	0	tgt_npc_settle
+wait	1500	0	gdb_arm
+wait	6000	0	gdb_attached
+click	25,243	0	cast_hum
+wait	12000	0	fx_hum
+command	/target TrollF	0	tgt_depop
+command	#depop	0	depop
+wait	2000	0	depop_settle
+command	#goto -74 428 3.75	0	goto_back2
+wait	3000	0	back2_settle
+command	#spawn DarkF 6 1 0 30000 1	0	spawn_daf
+wait	3000	0	spawn_daf_settle
+command	#goto -67.6 434.4 3.75	0	goto_daf
+wait	3000	0	daf_settle
+command	/target DarkF	0	tgt_daf
+command	#stun 120000	0	stun_daf
+command	#mana	0	mana_daf
+wait	1500	0	daf_ready
+click	25,243	0	cast_daf
+wait	12000	0	fx_daf
+command	/q	0	quit

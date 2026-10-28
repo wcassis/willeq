@@ -135,6 +135,15 @@ void SpellVisualFX::applyStageEddColours(EQT::Graphics::Environment::SpellEffect
 }
 
 #endif
+float SpellVisualFX::entityAttachScale(uint16_t entity_id) const
+{
+    // B1164 (#483): the client's s for a slot on this actor (its scale,
+    // spell_fx_attach_scale.h); 1.0 when nothing resolves it.
+    if (!m_attach_scale_cb) return kSpellFxAttachScale;
+    const float s = m_attach_scale_cb(entity_id);
+    return s > 0.0f ? s : kSpellFxAttachScale;
+}
+
 uint16_t SpellVisualFX::attachPointEntityId(uint16_t entity, int32_t attachPoint)
 {
     switch (static_cast<SpellsNewEffAttach>(attachPoint)) {
@@ -719,7 +728,7 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
                 SpellFxSlotTiming timing;
                 if (slotTiming(d.slot.emitter, sourceCallerMs, timing)) {
                     Presets::applySlotEmitter({&def}, timing, m_spells_new_eff.edd().sprite(d.slot.emitter),
-                                              sourceLatency, kSpellFxAttachScale,
+                                              sourceLatency, entityAttachScale(caster_id),  // B1164
                                               m_spells_new_eff.edd().shape(d.slot.emitter),  // B1150
                                               m_spells_new_eff.edd().motion(d.slot.emitter));  // B1151
                     slotCap = sourceLatency + timing.end() + 0.1f;
@@ -1050,18 +1059,11 @@ uint16_t SpellVisualFX::createLandingFromSlots(uint16_t caster_id, uint16_t targ
         // B1149 (#469): the slot's file population is shared by the two
         // halves (the row's measured geometry split), with its sprite size.
         SpellFxSlotTiming timing;
-        if (slotTiming(d.slot.emitter, SpellFxCallerDurationMs(SpellFxStage::Target, 0, 0), timing)) {
-            // B1180 (#499): the attach scale is the anchor entity's rendered
-            // scale (the client's s6C word), not the constant 1.0 (B1149).
-            // `entity` is the target (or the caster for a caster-anchored slot),
-            // so this is the scale the client multiplies the sprite size by.
-            const float attachScale =
-                m_model_scale_cb ? m_model_scale_cb(entity) : kSpellFxAttachScale;
+        if (slotTiming(d.slot.emitter, SpellFxCallerDurationMs(SpellFxStage::Target, 0, 0), timing))
             Presets::applySlotEmitter({&complete, &impact}, timing, m_spells_new_eff.edd().sprite(d.slot.emitter),
-                                      targetLatency, attachScale,
+                                      targetLatency, entityAttachScale(entity),  // B1164
                                       m_spells_new_eff.edd().shape(d.slot.emitter),  // B1150
                                       m_spells_new_eff.edd().motion(d.slot.emitter));  // B1151
-        }
         pending.push_back({std::move(complete), follow, 0});
         pending.push_back({std::move(impact), 0, follow});
         if (first == 0) first = follow;
