@@ -9,6 +9,8 @@ measured on dev-u24; compiles and ctests ran on gitlab-runner-2 (model_viewer fo
 the ThinkPad). **Every willeq run in this README casts at caster level 60** (the B1130 captures'
 `#level 60`: `review/B1130/oracle/e35/steps.tsv`, step `09_lvl`) unless a row says level 5.
 
+Merged fable 80654b529 (supersedes e024fb8a: B1177 solver/teardown + B1179 + B1178), MERGE-FIX leg 2026-10-28; the four conflicts (test_fx_harness.cpp, model_viewer.cpp, fx_target_fit.cpp, model_viewer_fx_harness.h) resolved keeping both sides.
+
 Note on the issue text: its "280/282/9/281 words" are record 80's Target emitters (spell 93,
 B1164). Record 104 has **three** Target emitters, 432/433/434 (slot 3 is empty), and **four**
 Source emitters, 428/429/430/431 (`python3 -I refactor/B1150/scripts/eff_record.py 104`). Their
