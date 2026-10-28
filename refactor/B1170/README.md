@@ -441,6 +441,10 @@ source_cov moves 0.211 → 0.144 (B1173's diagnostic patch measured
   `test_b1170_missile_object` 10/10, `test_spell_visual_vocabulary` 8/8,
   `test_spell_slot_rules` 18/18 (`ctest_client_data_runner2.txt`).
 - `tbuild hygiene` → 100 % of 48 (`hygiene.log`).
+- Continuation leg (2026-10-28, this branch's table retirement + bless):
+  `rbuild kb-b1170-missile-exact hygiene` → 100 % of 48 (1 skipped,
+  `MemoryCapHuntScript`, as usual); section H's cite-checker line re-measured
+  on the edited README (0 problems).
 - Renders on the ThinkPad (`model_viewer` built there), section F.
 - Cite checker and the bare-address check: section H.
 
