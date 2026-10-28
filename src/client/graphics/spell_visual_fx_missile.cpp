@@ -16,6 +16,7 @@
 
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/spell_b1163_missile_rules.h"
+#include "client/graphics/eq/equipment_model_loader.h"
 #include "common/logging.h"
 #ifdef EQT_HAS_GLES2
 #include "client/graphics/environment/particle_manager.h"
@@ -103,6 +104,80 @@ const SpellMissile::SpellFields* SpellVisualFX::missileSpellFields(uint32_t spel
     return slot.exists ? &slot : nullptr;
 }
 
+void SpellVisualFX::createMissileModel(MissileFx& m)
+{
+    // B1181 (#500), eqgame FUN_00476b12's tail (00476d8c .. 00476dd5):
+    // uVar8 = FUN_0043972a(missile + 0x65, pos y, pos x, pos z, heading
+    // (+0x2c), pitch (+0x30), mode, 1, 0) creates the object's actor from the
+    // +0x65 name, and FUN_0043972a (0043972a .. 00439a44) looks the actor
+    // definition up by the name (short names take "_ACTORDEF") -- for a
+    // missile that is the item IDFile "IT" + the model number. The scope here
+    // is type != 9 (the card's rule): a type-9 object keeps B1170's stages
+    // byte-identical and never draws its model.
+    if (m.o.w.type == SpellMissile::kTypeSpell) return;
+    const int modelId = SpellMissile::ParseMissileModelId(m.o.w.model);
+    if (modelId < 0) {
+        LOG_INFO(MOD_SPELL, "B1181 missile model: type={} model='{}' is not an IT name -- nothing drawn",
+                 static_cast<int>(m.o.w.type), m.o.w.model);
+        return;
+    }
+    if (!m_equipment_model_loader) {
+        LOG_INFO(MOD_SPELL, "B1181 missile model: IT{} named but no equipment model loader -- nothing drawn",
+                 modelId);
+        return;
+    }
+    irr::scene::IMesh* mesh = m_equipment_model_loader->getEquipmentMeshByModelId(modelId);
+    if (!mesh || !m_smgr) {
+        LOG_INFO(MOD_SPELL, "B1181 missile model: IT{} not in the equipment archives -- nothing drawn", modelId);
+        return;
+    }
+    m.modelId = modelId;
+    m.modelNode = m_smgr->addMeshSceneNode(mesh, nullptr);
+    if (!m.modelNode) {
+        m.modelId = -1;
+        LOG_INFO(MOD_SPELL, "B1181 missile model: IT{} scene node failed -- nothing drawn", modelId);
+        return;
+    }
+    m_equipment_model_loader->addMeshRef(modelId);
+    placeMissileModel(m);
+    LOG_INFO(MOD_SPELL, "B1181 missile model: IT{} drawn at ({:.2f},{:.2f},{:.2f}) heading={:.2f} aim={:.2f}",
+             modelId, m.o.w.pos[0], m.o.w.pos[1], m.o.w.pos[2], m.o.w.heading, m.o.w.aim);
+}
+
+void SpellVisualFX::placeMissileModel(MissileFx& m)
+{
+    if (!m.modelNode) return;
+    // EQ (y, x, z) -> renderer (x, z, y): the convention the entity
+    // callbacks and the anchor placement use.
+    m.modelNode->setPosition(irr::core::vector3df(m.o.w.pos[1], m.o.w.pos[2], m.o.w.pos[0]));
+    // The actor's bearing / aim fields (00476e40 .. 00476e47) stay synced to
+    // the object's +0x2c / +0x3c every pass, and the graphics rotation
+    // follows them each frame (EQGraphicsDX9 FUN_10003ec0; the 512-unit
+    // angles, the tables' period 512 = 360 degrees). The node's scale is 1:
+    // FUN_0043972a's adjustment factor is 1.0 for every name the server can
+    // send (the 0.8 / 1.3 / 1.5 rows are IT66 / IT69 / IT70 / IT73 / IT74
+    // and BBBOARD -- character equipment, not missile names), so the scale
+    // is the WLD actor definition's, already baked into the mesh the loader
+    // builds.
+    const SpellMissile::MissileModelAngles a =
+        SpellMissile::MissileModelAnglesFromFlight(m.o.w.heading, m.o.w.aim);
+    m.modelNode->setRotation(irr::core::vector3df(a.pitchDeg, a.yawDeg, a.rollDeg));
+}
+
+void SpellVisualFX::destroyMissileModel(MissileFx& m)
+{
+    // The removal's actor destroy (FUN_0047789d: the actor's delete,
+    // -> FUN_00439a46 -> DAT_0099e368 + 0x48) drops the model with the
+    // object: lifetime and hit alike (RemovedAfterPass).
+    if (!m.modelNode) return;
+    m.modelNode->remove();
+    m.modelNode = nullptr;
+    if (m.modelId >= 0) {
+        if (m_equipment_model_loader) m_equipment_model_loader->removeMeshRef(m.modelId);
+        m.modelId = -1;
+    }
+}
+
 void SpellVisualFX::updateMissileObjects(float delta_time)
 {
     // The anchors that outlive their object.
@@ -142,6 +217,7 @@ void SpellVisualFX::updateMissileObjects(float delta_time)
 #ifdef EQT_HAS_GLES2
                 if (spell && m.o.stage != 0) fireMissileStage(m, *spell);
 #endif
+                createMissileModel(m);
             } else {
                 LOG_INFO(MOD_SPELL, "B1170 missile spawn failed: source={} spell={} (no caster or no spell "
                          "record) -- removed, nothing drawn", m.o.w.sourceId, m.o.w.spellId);
@@ -178,6 +254,8 @@ void SpellVisualFX::updateMissileObjects(float delta_time)
             }
         }
 #endif
+        if (!remove) placeMissileModel(m);
+        if (remove) destroyMissileModel(m);
         if (remove) {
             m_missile_objects.erase(m_missile_objects.begin() + static_cast<long>(i));
             continue;

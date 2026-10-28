@@ -181,6 +181,34 @@ RemovalFire RemovalFireFor(const Object& o);
 // The position spell 54's fire uses: pos - vel (00477a55 .. 00477a6f).
 void RemovalPosition(const Object& o, float out[3]);
 
+// --- B1181 (#500): the +0x65 IT model ---------------------------------------
+// The client's actor loader (FUN_0043972a, 0043972a .. 00439a44) takes the
+// object's +0x65 name: a name under 10 chars that is not "PLAYER_1" gets
+// "_ACTORDEF" appended (0043975b .. 00439768) and the actor definition is
+// looked up by that name. For a missile the name is the item's IDFile the
+// server sends (eqemu Mob::ProjectileAnimation copies item->IDFile, or an
+// "IT..." argument as is) -- "IT" + the model number, the same naming the
+// equipment archive indexes (EquipmentModelLoader: modelName "IT156" /
+// modelId 156). Returns -1 when the name is not such an IT number.
+int ParseMissileModelId(const std::string& name);
+
+// The scene-node rotation (degrees, Irrlicht pitch / yaw / roll) for the
+// flight's 512-unit angles (512 = 360 degrees: EQGraphicsDX9's trig tables
+// mask the angle with 0x1ff, FUN_10184580). The actor is created with rot
+// (heading, pitch, 0) at the spawn (00476e30 .. 00476e3b) and its bearing /
+// aim fields stay synced to the object's +0x2c / +0x3c every pass
+// (00476e40 .. 00476e47; the graphics rotation follows them each frame,
+// FUN_10003ec0). The yaw uses the entity rendering's heading rule
+// (entity_updates.cpp: visualHeading = -heading) and the pitch tilts the
+// model up for a positive aim; the signs are pinned against the lane-5
+// oracle render (refactor/B1181/README.md).
+struct MissileModelAngles {
+    float pitchDeg = 0.0f;
+    float yawDeg = 0.0f;
+    float rollDeg = 0.0f;
+};
+MissileModelAngles MissileModelAnglesFromFlight(float heading512, float aim512);
+
 }  // namespace SpellMissile
 }  // namespace EQ
 

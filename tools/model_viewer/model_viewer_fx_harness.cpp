@@ -538,6 +538,10 @@ bool initHarnessParticles() {
         out.height = box.MaxEdge.Y - box.MinEdge.Y;
         return true;
     });
+    // B1181 (#500): a type != 9 missile object draws its +0x65 IT model
+    // through the equipment model loader (the gequip archives, already
+    // loaded for the characters' equipment).
+    spellVisualFX->setEquipmentModelLoader(equipmentModelLoader.get());
     spellVisualFX->setEntityPositionCallback([nodeFor](uint16_t id, core::vector3df& out) -> bool {
         if (isSpellFxBoneId(id))
             return resolveSpellFxBonePosition(nodeFor(EQ::SpellVisualFX::realEntityId(id)), id, out);
