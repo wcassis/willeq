@@ -78,17 +78,20 @@ TSV's "billboard half-height h*s*D16C*0.5/depth" (review/B1141/edd_fields_from_c
 | `s` = [esp+0x30] | the attach scale = the anchor's rendered model scale (the client's `getRaceScale(race) * size/6` for the size-6 human) | **1.2** | review/B1141/edd_fields_from_code.tsv:7 (+0x06C, read at 0x100609e1); refactor/B1164/README.md sec. 4 (0x100609e9/0x100609fd); pin7 |
 | `D_16C` = [edi+0x16C] | EDD sprite size multiplier; [esp+0x18] = [esp+0x30] · [edi+0x16C] at 0x1006325a..0x10063264 | 1.0 (the TSV census: "1.0 on all"; the pin's s18 = 1.2 = 1.2 · 1.0) | review/B1141/edd_fields_from_code.tsv:65 (R 0x1006325e); pin7 |
 | fade | EDD +0x098 grow-in / +0x09C shrink-out windows multiply [esp+0x18] (0x10063268..0x100632aa) and set C4/D8 (0x100632c8/0x100632e9) | 1.0 (no fade at the pin instants: C4 = D8 = 1.0) | review/B1141/edd_fields_from_code.tsv:18,19; disasm 0x10063268..0x100632aa |
-| `invD` = [esp+0x2c] | [0x101c5948] / [esp+0xf4] = 1/depth; 0x101c5948 read from the lane-5 DLL image = **1.0**; the depth carries the EDD +0x0D0 bias (subtracted at 0x10063069/0x10063198) | 0.136–0.422 (target distance) | disasm 0x100631d0..0x100631f3; review/B1141/edd_fields_from_code.tsv:32; DLL .rdata read |
-| `w` = [esi+0x6C], `h` = [esi+0x70] | the particle's width/height from the EDD +0x0CC/+0x17C min..max ranges | 1.25 / 1.25 (IgniteTargetill) | review/B1141/edd_fields_from_code.tsv:31,69; pin7 |
+| `invD` = [esp+0x2c] | [0x101c5948] / [esp+0xf4] = 1/depth; 0x101c5948 read from the lane-5 DLL image = **1.0**; the depth carries the EDD +0x0D0 bias (subtracted at 0x10063069/0x10063198) | 0.0678–0.4974 over all 383 rows (0.1246–0.4347 on the 24 IgniteTargetill rows; target distance) | disasm 0x100631d0..0x100631f3; review/B1141/edd_fields_from_code.tsv:32; DLL .rdata read |
+| `w` = [esi+0x6C], `h` = [esi+0x70] | the particle's width/height from the EDD +0x0CC/+0x17C min..max ranges | 1.25 / 1.25 on the 24 IgniteTargetill rows; 0.5 / 0.5 on the 151 SFofSeukor S3-1 rows; 6.0 / 6.0 on the 208 SFofSeukor S3-3 rows | review/B1141/edd_fields_from_code.tsv:31,69; pin7 |
 | M[+0x18] | view matrix element +0x18, matrix at [esp+0x514] | 1038.654 | pin7 |
 | 0.5 | data constant at 0x101c594c (DLL .rdata, read from the lane-5 image) | 0.5 | DLL .rdata read |
 
 **Live pin** (the card's ask 1): read-only gdb at the byte-verified 0x100632f0
 (`cmp edx,1` = 83 fa 01; the 0x1006335a bytes verified too), lane 5, spell 93's Target
 emitters on the size-6 human target: **383 rows (SFofSeukor 359, IgniteTargetill 24),
-all mode 0, all +0x06C = 1, all +0x019C = 1, s = 1.2, D_16C = 1.0, w = h = 1.25,
-C4 = D8 = 1.0, invD 0.136–0.422**. The client therefore draws these sprites at
-`1.25 · 1.2 · 1.0` = 1.5x the unit size. Evidence:
+all mode 0, all +0x06C = 1, all +0x019C = 1, s = 1.2, D_16C = 1.0, C4 = D8 = 1.0;
+w = h per emitter: 1.25 (IgniteTargetill, 24 rows), 0.5 (SFofSeukor S3-1, 151 rows),
+6.0 (SFofSeukor S3-3, 208 rows); invD 0.0678–0.4974 over all rows (0.1246–0.4347 on
+the IgniteTargetill rows)**. For the IgniteTargetill rows the client therefore draws
+the sprites at `1.25 · 1.2 · 1.0` = 1.5x the unit size (the same `w · s · D_16C` rule
+gives 0.6x for S3-1 and 7.2x for S3-3). Evidence:
 `/home/user/kb-evidence/kb-b1180-sprite-width/pin7/` (b1180_hw_pin.tsv); the tool is
 `refactor/B1180/scripts/b1180_hw_gdb.py` (formula at
 `refactor/B1180/scripts/b1180_hw_gdb.py:6`) + `refactor/B1180/scripts/b1180_hw_watch.sh`.
@@ -125,6 +128,12 @@ scale (B1164) — so the trio is inert for the render; it is kept as the record 
 pinned 1.2, not as the mechanism.
 
 ## 3. The re-gate (ask 3)
+
+**Reference set.** All three tables below are judged against the PRE-B1178 oracle
+references — the B1166 anchor (288/615/940), the B1155 measure and the original b1118
+tour reference — because B1178 (#497, the re-captured b1118 references and the
+regenerated B1157 columns) was not in this branch's tree at render time; the AFTER
+counts against the B1178 references are the next gate's job.
 
 B1157's gate — tour-7 (7 rows), the b1118 40-record sweep, the b1130 40-record sweep —
 rendered once, one "after" label, on this branch's tree: **post-B1169, level 60 (the
