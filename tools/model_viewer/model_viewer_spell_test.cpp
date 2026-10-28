@@ -239,8 +239,9 @@ void cancelSpellTestCast() {
 #endif
 }
 
-// Creates one spell-test entity: the client's scale rule (race scale times
-// server size / 6, entityScaleForServerSize) and its material flags.
+// Creates one spell-test entity: the client's actor scale (B1172,
+// actor_scale.h: size * 0.2, the race/gender default when size <= 0) and its
+// material flags.
 static EQAnimatedMeshSceneNode* createSpellTestEntity(uint16_t race, uint8_t gender, float size,
                                                       const core::vector3df& pos, float rotY, const char* idle,
                                                       const EntityAppearance* appearance = nullptr) {
@@ -250,7 +251,7 @@ static EQAnimatedMeshSceneNode* createSpellTestEntity(uint16_t race, uint8_t gen
         appearance ? raceModelLoader->createAnimatedNodeWithEquipment(race, gender, *appearance, nullptr, -1)
                    : raceModelLoader->createAnimatedNodeWithAppearance(race, gender, 0, 0, nullptr, -1);
     if (!node) return nullptr;
-    const float scale = entityScaleForServerSize(raceModelLoader->getRaceScale(race), size);
+    const float scale = clientActorScale(race, gender, size);
     node->setScale(core::vector3df(scale, scale, scale));
     node->setPosition(pos);
     node->setRotation(core::vector3df(0, rotY, 0));
@@ -323,8 +324,8 @@ bool initSpellTestMode() {
     // B1139 feet-apart rule). B1166 (#485): the 50 px "collapsed" human
     // B1155 recorded was the bind pose the target fit measured before any
     // animation was applied; the fit now forces the p01 pose
-    // (fitFixedNpcTarget) and the standing human renders 238 px at the
-    // oracle's feet (refactor/B1166/README.md).
+    // (fitFixedNpcTarget) and the standing human renders 285 px at the
+    // oracle's feet at the client's actor scale (refactor/B1172/README.md).
     const bool b1130Preset =
         harnessOpts.cameraPreset == "b1130" || harnessOpts.cameraPreset == "b1130-self";
     const char* targetIdle = b1130Preset ? "p01" : "o01";

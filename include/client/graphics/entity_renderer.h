@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include "client/graphics/actor_scale.h"
 #include "client/spell/spell_action_anim.h"  // B1174: ActionCastAnimInputs
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
@@ -98,19 +99,22 @@ inline float collisionZOffsetFromBounds(const irr::core::aabbox3df& bbox, float 
     return -bbox.MinEdge.Y * scale;
 }
 
-// T318: the reference server size a race's per-race art scale is authored
-// against. Spawn_Struct::size and OP_SpawnAppearance AT_SIZE (29) both carry a
-// size on this scale -- a normal humanoid is 6.0 -- and the rendered scale is
-// the race scale times (serverSize / 6). Shrink/grow spells change nothing but
-// this number; eqemu clamps a client or pet to [3, 15] (Mob::ChangeSize).
-constexpr float kReferenceServerSize = 6.0f;
-
-// Rendered uniform scale for a race whose art scale is `raceScale` at server
-// size `serverSize`. serverSize <= 0 means "the server did not say", which is
-// the race scale unmodified -- NOT zero.
-inline float entityScaleForServerSize(float raceScale, float serverSize) {
-    return (serverSize > 0.0f) ? raceScale * (serverSize / kReferenceServerSize)
-                               : raceScale;
+// B1172 (#491): the scale an entity's node is given -- the official client's
+// actor scale (actor_scale.h) for every spawn, and 1.0 for the LOCAL player.
+// The 1.0 is a DEVIATION from the client, owned by B1176 (#495): the client
+// has no local-player branch -- both EQPlayer build paths run FUN_0047fa9e
+// and then FUN_0043c84b (review/B1141/ghidra/out/eqgame.exe.c:106152 ->
+// :106154 and :106406 -> :106416), and 0x43c84b hands actor+0xC4 to the
+// graphics actor (0x43d3e8 `call [edx+0x50]`) for every player, skipping it
+// only for a null player (0x43c87b) or a null graphics actor (0x43d3d0). So a
+// human player is 1.2 in the client and 1.0 here (a dwarf 0.8 vs 1.0; a dark
+// elf, default 5, is 1.0 on both sides). fable draws its own player with a
+// translation-only world matrix (EQAnimatedMeshSceneNode::render,
+// isPlayerNode_), so its node scale -- and the collisionZOffset measured from
+// it -- stays 1.0 to match what is drawn until B1176 moves the drawing, the
+// T431 first-person eye and the third-person camera together.
+inline float entityNodeScale(bool isLocalPlayer, uint16_t raceId, uint8_t gender, float serverSize) {
+    return isLocalPlayer ? 1.0f : clientActorScale(raceId, gender, serverSize);
 }
 
 // Forward declarations

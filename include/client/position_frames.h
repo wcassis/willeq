@@ -63,8 +63,17 @@ namespace eqt {
 // The official Titanium client's z offset per unit of size, measured T311 Leg A.
 inline constexpr float kWireZOffsetPerSize = 0.625f;
 
-// The size the client assumes when an entity reports none. Matches the default
-// humanoid size the server sends and the fallback already used by the LOS code.
+// The size used when NO size has been resolved yet. It is not the client's
+// rule for "the spawn said none": the client resolves a size word that is not
+// > 0 to the race/gender default and writes it back (eqgame 0x47fb30,
+// EQT::Graphics::clientResolvedActorSize in client/graphics/actor_scale.h),
+// and the z it transmits follows that default -- MEASURED at the qeynos2 spot
+// (-74, 428), collision ground 0.00: T311 Leg A's Barbarian, OP_ZoneEntry
+// size word 0.000, sends 4.376 = 0.625 x 7 (not x 6); the B1130/B1118
+// oracle's dark-elf caster, size word 0.000, sends 3.128 = 0.625 x 5
+// (refactor/B1172/README.md sec. 3). So every self path passes the resolved
+// size (zone_entry.cpp, zone_dispatch.cpp, entities_component*.cpp); this 6.0
+// is only PlayerState's value before the first OP_PlayerProfile.
 inline constexpr float kDefaultEntitySize = 6.0f;
 
 // The distance from collision ground up to the transmitted z, for an entity of
