@@ -23,9 +23,11 @@
 # (the client's LOCAL branch, B1168 A6), so the pcap carries a C->S 0x4033
 # too. The observer draws the arrow from the S->C packet — the item-missile
 # path this card implements.
-# The caster fires with press space (attack the current target) —
-# deterministic, no mouse geometry; each /target step verifies itself with
-# the C->S TargetCommand in its step opcodes.
+# The caster attacks with a left click on the target at the B1134-measured
+# point 933,639 (the observer's feet on the caster's 1280x1024 screen, same
+# rig/pose) — a left click on a PvP-on hostile selects and initiates the
+# attack. (press space was tried once: the official client's space is
+# OP_Jump, not an attack — archery3's capture proves it.)
 # fps=30
 # pose=-74,428,3.75,160
 # observer=Oraclewatch
@@ -57,11 +59,11 @@ command	/disc Aggressive	0	aggro
 wait	1500	0	aggro_settle
 command	/target Oraclewatch	0	tgt_obs_a
 wait	1500	0	tgt_obs_a_settle
-press	space	0	arch_a
+click	933,639	0	arch_a
 wait	7000	0	arch_a_flight
 command	/target Oraclewatch	0	tgt_obs_b
 wait	1500	0	tgt_obs_b_settle
-press	space	0	arch_b
+click	933,639	0	arch_b
 wait	7000	0	arch_b_flight
 obs	command	/q	0	obs_quit
 command	/q	0	quit
