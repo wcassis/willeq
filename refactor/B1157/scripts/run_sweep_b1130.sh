@@ -54,6 +54,12 @@ for rec in "${recs[@]}"; do
     line=$(awk -F'\t' -v r="$rec" '$1 == r {print $1"\t"$6"\t"$7"\t"$12"\t"$11"\t"$10"\t"$9}' "$TABLE")
     [ -n "$line" ] || { echo "[$n] record $rec not in the table" >> "$EV/sweep.log"; fail=$((fail + 1)); continue; }
     IFS=$'\t' read -r rec spell_id name captures targettype cast_ms caster_level <<< "$line"
+    # B1171 (#490): column 9 is the CLASS level the spell is learned at (1 for r0), not
+    # the caster's; the oracle capture ran `#level 60`. The plan casts at the level the
+    # record's capture executed (its plan.tsv + steps.tsv). The committed tables of this
+    # card were rendered at column 9 (refactor/B1171/README.md).
+    caster_level=$(python3 -I "$(dirname "$0")/../../../scripts/fx/capture_level.py" b1130 "$rec") \
+        || { echo "[$n] record $rec: no oracle #level" >> "$EV/sweep.log"; fail=$((fail + 1)); continue; }
     kind=fixed_self
     case "$captures" in *fixed_npc*) kind=fixed_npc ;; esac
     cam=b1130-self

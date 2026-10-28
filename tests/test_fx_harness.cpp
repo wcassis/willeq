@@ -151,6 +151,31 @@ protected:
         }
         return out;
     }
+    // B1171 (#490): timing.tsv's caster_level per packet row, "event:level"
+    // in file order (the per-frame rows carry '-').
+    static std::vector<std::string> timingLevels(const fs::path& frames) {
+        std::vector<std::string> out;
+        std::ifstream f(frames / "timing.tsv");
+        std::string line;
+        std::getline(f, line);
+        EXPECT_EQ(line, "frame\tt\tevent\tspell\ttarget\tdistance\tcast_ms\tt_event\tcaster_level");
+        while (std::getline(f, line)) {
+            std::istringstream ss(line);
+            std::string c[9];
+            for (auto& x : c) std::getline(ss, x, '\t');
+            if (c[2] != "-") out.push_back(c[2] + ":" + c[8]);
+        }
+        return out;
+    }
+    // B1171: the run log's "[fx-harness] cast N: ..." lines.
+    static std::vector<std::string> castLevelLines(const fs::path& frames) {
+        std::vector<std::string> out;
+        std::ifstream f(frames.parent_path() / "run.log");
+        std::string line;
+        while (std::getline(f, line))
+            if (line.rfind("[fx-harness] cast ", 0) == 0) out.push_back(line);
+        return out;
+    }
     void cleanDirs() {
         if (HasFailure()) return;
         for (const auto& d : dirs_) fs::remove_all(d);
@@ -332,8 +357,24 @@ TEST_F(FxHarness, ALevelOneCasterDrawsOnlyItsLevelZeroSlots) {
     }
     std::printf("[fx-gate] 93 Source, caster box lit px summed BC+0.6..Act: level 1 %ld, level 60 %ld\n", sum1,
                 sum60);
+    // B1171 (#490): the level each run cast at is in its log and its timing.tsv.
+    EXPECT_EQ(timingLevels(l1), (std::vector<std::string>{"BeginCast:1", "Action:1"}));
+    EXPECT_EQ(timingLevels(l60), (std::vector<std::string>{"BeginCast:60", "Action:60"}));
+    EXPECT_EQ(castLevelLines(l1), (std::vector<std::string>{"[fx-harness] cast 0: spell 93 caster_level 1 (plan)"}));
     EXPECT_GT(sum1, 0) << "the level-1 caster's hand slots drew nothing";
     EXPECT_LT(sum1, sum60) << "the level-1 caster drew as much Source as the level-60 caster";
+    cleanDirs();
+}
+
+// B1171 (#490): a plan row without a level casts at --caster-level, and the
+// run log says the level did not come from the plan -- a sweep that means to
+// copy an oracle capture's `#level` writes it into every plan row.
+TEST_F(FxHarness, ThePlanLevelAndItsSourceAreLogged) {
+    const fs::path dflt = runPlan("lvl_dash", "0.1\t93\tother\t14\t200\t-\tbegincast\n", 0.5, "--caster-level 7");
+    ASSERT_FALSE(dflt.empty());
+    EXPECT_EQ(castLevelLines(dflt),
+              (std::vector<std::string>{"[fx-harness] cast 0: spell 93 caster_level 7 (--caster-level)"}));
+    EXPECT_EQ(timingLevels(dflt), (std::vector<std::string>{"BeginCast:7", "Action:7"}));
     cleanDirs();
 }
 

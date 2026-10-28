@@ -1,0 +1,41 @@
+# record	owner per missed axis (refactor/B1171/README.md sec. 3); cov=landing_cov end=landing_end_s p90=p90_land src=source_cov
+0	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; p90 short: B1164 (#483) attach scale s; src over: B1164 (#483) attach scale s
+1	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; p90 short: B1164 (#483) attach scale s; src short: B1164 (#483) attach scale s
+2	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; p90 short: B1164 (#483) attach scale s; src over: B1164 (#483) attach scale s
+3	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; p90 over: B1164 (#483) attach scale s
+4	cov short: B1164 (#483) landing pixel area; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; src over: B1164 (#483) attach scale s
+5	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; src over: B1164 (#483) attach scale s
+6	cov short: B1164 (#483) landing pixel area; end over: unattributed: over by <=0.35 s (FOLLOW-UP 3); src short: B1164 (#483) attach scale s
+7	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; p90 over: B1164 (#483) attach scale s; src over: B1170 (#489), per the B1173 (#492) analysis: the record-driven Middle-stage missile crosses the Source window
+8	cov short: B1164 (#483) landing pixel area; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; p90 short: B1164 (#483) attach scale s; src over: B1164 (#483) attach scale s
+9	cov short: B1164 (#483) landing pixel area; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; src over: B1164 (#483) attach scale s
+10	cov short: B1164 (#483) landing pixel area; end over: unattributed: over by <=0.35 s (FOLLOW-UP 3); p90 over: B1164 (#483) attach scale s; src short: B1164 (#483) attach scale s
+11	cov short: B1164 (#483) landing pixel area; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; src over: B1164 (#483) attach scale s
+12	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; p90 over: B1164 (#483) attach scale s; src over: B1164 (#483) attach scale s
+13	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; src over: B1164 (#483) attach scale s
+14	cov short: B1164 (#483) landing pixel area; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; p90 over: B1164 (#483) attach scale s; src over: B1164 (#483) attach scale s
+15	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+16	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; p90 over: B1164 (#483) attach scale s; src over: B1164 (#483) attach scale s
+17	cov short: B1164 (#483) landing pixel area; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; src short: B1164 (#483) attach scale s
+18	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; src over: B1164 (#483) attach scale s
+19	cov short: B1164 (#483) landing pixel area; src short: B1164 (#483) attach scale s
+20	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; src over: B1164 (#483) attach scale s
+21	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; src over: B1164 (#483) attach scale s
+22	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; src over: B1164 (#483) attach scale s
+23	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; p90 short: B1164 (#483) attach scale s; src over: B1164 (#483) attach scale s
+24	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; p90 over: B1164 (#483) attach scale s; src over: B1164 (#483) attach scale s
+25	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; p90 over: B1164 (#483) attach scale s; src over: B1164 (#483) attach scale s
+26	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; p90 over: B1164 (#483) attach scale s
+27	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; src over: B1164 (#483) attach scale s
+28	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; p90 over: B1164 (#483) attach scale s; src over: B1164 (#483) attach scale s
+29	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end over: unattributed: over by <=0.35 s (FOLLOW-UP 3); p90 over: B1164 (#483) attach scale s; src over: B1164 (#483) attach scale s
+30	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; p90 over: B1164 (#483) attach scale s; src over: B1164 (#483) attach scale s
+31	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; src over: B1164 (#483) attach scale s
+32	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; p90 over: B1164 (#483) attach scale s; src over: B1164 (#483) attach scale s
+33	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; p90 short: B1164 (#483) attach scale s; src over: B1164 (#483) attach scale s
+34	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; src over: B1164 (#483) attach scale s
+35	cov short: B1167 (#486); end short: B1167 (#486); p90 over: B1167 (#486); src over: B1167 (#486)
+40	cov over: harness scene: the oracle caster zones out (OP_DeleteSpawn Act+0.36-0.40), the harness never despawns it (FOLLOW-UP 2); end over: harness scene: the oracle caster zones out (OP_DeleteSpawn Act+0.36-0.40), the harness never despawns it (FOLLOW-UP 2); p90 n-a: the oracle row has no value; src short: B1164 (#483) attach scale s
+41	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end over: unattributed: +2.8 s past the oracle (FOLLOW-UP 3); src over: B1164 (#483) attach scale s
+42	cov short: B1164 (#483) landing pixel area; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; p90 short: B1164 (#483) attach scale s
+43	cov short: B1164 (#483) landing pixel area; end over: unattributed: over by <=0.35 s (FOLLOW-UP 3); p90 short: B1164 (#483) attach scale s; src over: B1164 (#483) attach scale s
