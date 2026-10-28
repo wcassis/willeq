@@ -101,11 +101,11 @@ The b1130 rig before B1167: caster at the origin facing +Z, the camera fitted on
 (`kHarnessFaceOnRotY`), the target solved at the anchor (B1166) -- world +X ran exactly to
 screen-left. The client's camera sits at DirHeading from the player's heading, so in the
 capture's world the camera is at 0 + 135 = 135 deg from the caster, i.e. the fitted rig is
-45 deg off. `turnB1130Rig` (`tools/model_viewer/model_viewer_fx_harness.cpp:925`) turns camera,
+45 deg off. `turnB1130Rig` (`tools/model_viewer/model_viewer_fx_harness.cpp:902`) turns camera,
 caster and target about the caster's vertical axis by
-`rigYawDeg = caster heading + DirHeading - 90` (`tools/model_viewer/fx_capture_pose.h:82`; 45 deg
+`rigYawDeg = caster heading + DirHeading - 90` (`tools/model_viewer/fx_capture_pose.h:91`; 45 deg
 for b1130, 157.5 deg for b1130-self, 202.5 deg for b1118, `kB1130NpcPose` / `kB1130SelfPose` /
-`kB1118Pose` at `tools/model_viewer/fx_capture_pose.h:63-64, 69`). A rigid turn moves no pixel the
+`kB1118Pose` at `tools/model_viewer/fx_capture_pose.h:64-70`). A rigid turn moves no pixel the
 fit solved (the
 frame-0 self-check still reads the target at 238 px, feet 615, column 940.2:
 `/mnt/projects/fable/review/B1167/worker/runs/fix3_b1130_l60/run.log`).
