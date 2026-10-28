@@ -1,122 +1,216 @@
-# B1180 (#499): the sprite half-width factors at 0x1006335a..0x1006336f
+# B1180 (#499): the sprite half-width factors in CParticleSystem::Render
 
-**The task is to trace and pin the half-width factors, name the mis-applied one,
-implement the client's rule with a test, and re-gate.** The honest result: the
-half-width factors are traced and pinned (ask 1); the attach-scale factor `s` is
-named, its client rule implemented and unit-tested (ask 2); but the re-gate (ask 2)
-shows the **93 landing gap is not the attach scale `s`** — the 93 landing's sprites
-carry the EDD `+06C` "scale sizes" word = 0, so the client does not apply `s` to them
-(acceptance C's headline number is unchanged, and why is documented below).
+**The task**: trace the half-width factors to their sources and pin them live on lane 5
+for spell 93's Target emitters, name the mis-applied factor with a number, implement the
+client's rule with a unit test on the pinned values, and re-gate.
 
-## 1. The half-width factors (ask 1: traced + pinned)
+**Result**: every factor of both half-width branches is traced and pinned (ask 1, sec. 1).
+The mis-applied factor was the attach scale `s` (Fable constant 1.0 vs the client's 1.2 —
+0.833x linear on every scaling sprite); the client's rule is in the tree via B1164 (#483)
+and is pinned by B1180's unit test on the pinned values (ask 2, sec. 2). The re-gate
+(ask 3, sec. 3): the 93 tour-7 landing moves 1.993 -> 2.905 (oracle 5.847; like-for-like
+0.34x -> 0.50x), and the b1130 landing_cov PASS count stays **0/40** (38 short, 2 over,
+no row regressed) — the residual is the landing-window measurement domain, owned by the
+next window-method unit (B1171's attribution).
 
-The decompiled half-width (Branch B, billboard mode, 0x1006335a..0x1006336f):
+**Correction to the run-1 record**: run 1's claim that spell 93's Target sprites are
+non-scaling (EDD +0x06C = 0) is REFUTED by the full pin — all 383 pinned rows carry
++0x06C = 1 and +0x019C = 1, and the attach scale s = 1.2 is multiplied into their
+half-width (sec. 1).
+
+## 1. The factors (ask 1) — both branches, every factor pinned
+
+EQGraphicsDX9 `CParticleSystem::Render` (FUN_100605b0) branches on the EDD +0x070
+sprite-mode word (mode 0 billboard, 1 streak — review/B1141/edd_fields_from_code.tsv:8,
+read at 0x100630a1):
 
 ```
-halfW = 0.5 * w * D8 * M[0x18] * s  +  0x18 * invD
-        [esp+0xc8] [eax+0x18] [esp+0x1c] 0.5
+100632f0  cmp edx, 1          ; edx = [edi+0x70], the mode word (0x100630a1)
+100632f3  jne 0x100633b5      ; mode 0 (billboard) falls through to 0x100633b5
 ```
 
-| factor | source | value (spell 93 Target, size-6 human) | cite |
+### Mode 1 (streak) — the card's region, 0x1006335a..0x1006336f
+
+```
+1006335a  fld  dword ptr [esp + 0xc8]   A: streak-length accumulator (width side)
+10063361  fmul dword ptr [eax + 0x18]   view matrix element +0x18 ([esp+0x514])
+10063364  fmul dword ptr [esp + 0x1c]   B
+10063368  fmul dword ptr [esp + 0x30]   s: the attach scale
+1006336c  fmul dword ptr [esi + 0x6c]   w: the sprite width
+1006336f  fmul dword ptr [0x101c594c]   0.5 (DLL .rdata, read from the lane-5 image)
+```
+
+The rule the factors implement is the TSV's own: +0x0CC "on screen half-width =
+w*s*D_16C*0.5/depth" (review/B1141/edd_fields_from_code.tsv:31) and +0x17C "billboard
+half-height h*s*D16C*0.5/depth; streak length (mode 1)"
+(review/B1141/edd_fields_from_code.tsv:69). Spell 93's Target emitters do NOT take this
+branch: all 383 lane-5 rows pinned for them are mode 0, where A = [esp+0xc8] and
+B = [esp+0x1c] are 0 and the product computes to 0 (the slots belong to the mode-1 pass;
+their sources in the mode-1 setup are outside this unit's pinned spell).
+
+### Mode 0 (billboard) — the branch spell 93 Target actually takes, 0x100633b5..0x100633ff
+
+```
+width side  (0x100633e4..0x100633ff):
+100633e4  fld  [esp + 0xd8]    D8 (1.0 initial, 0x100631e8; fade-overwritten 0x100632e9)
+100633eb  fmul [ecx + 0x18]    view matrix element +0x18
+100633ee  fmul [esp + 0x18]    s * D_16C * fade (set at 0x1006325a..0x10063264)
+100633f2  fmul [esp + 0x2c]    invD = 1/depth (set at 0x100631d0..0x100631f3)
+100633f6  fmul [esi + 0x6c]    w: the sprite width
+100633f9  fmul [0x101c594c]    0.5
+
+height side (0x100633b5..0x100633da):
+100633b5  fld  [esi + 0x70]    h: the sprite height
+100633c0  fmul [ecx + 0x18]    view matrix element +0x18
+100633cb  fmul [esp + 0xc4]    C4 (1.0 initial, 0x100631d6; fade-overwritten 0x100632c8)
+100633d2  fmul [esp + 0x18]    s * D_16C * fade
+100633d6  fmul [esp + 0x2c]    invD = 1/depth
+100633da  fmul [0x101c594c]    0.5
+```
+
+= (w or h) · M[+0x18] · (D8 or C4) · (s · D_16C · fade) · (1/depth) · 0.5 — exactly the
+TSV's "billboard half-height h*s*D16C*0.5/depth" (review/B1141/edd_fields_from_code.tsv:69).
+
+### Factor sources, pinned for spell 93 Target (size-6 human anchor, lane 5)
+
+| factor | source | pinned value | cite |
 |---|---|---|---|
-| `w` | EDD +0x16C (sprite multiplier) | 1.25 (IgniteTargetill Imp01) | `review/B1141/edd_fields_from_code.tsv` |
-| `D8` | runtime width-shrink `[esp+0xd8]` | 1.0 | pin7 |
-| `M[0x18]` | view/proj matrix element 0x18 | perspective | disasm |
-| `s` | attach scale = the anchor's rendered model scale (`s6C`) | **1.2** | pin7 (the client's `getRaceScale(1)*size/6` for the human) |
-| `0.5`, `0x18` | constants 0x101c594c / matrix 0x18 | — | data-section read |
+| `s` = [esp+0x30] | the attach scale = the anchor's rendered model scale (the client's `getRaceScale(race) * size/6` for the size-6 human) | **1.2** | review/B1141/edd_fields_from_code.tsv:7 (+0x06C, read at 0x100609e1); refactor/B1164/README.md sec. 4 (0x100609e9/0x100609fd); pin7 |
+| `D_16C` = [edi+0x16C] | EDD sprite size multiplier; [esp+0x18] = [esp+0x30] · [edi+0x16C] at 0x1006325a..0x10063264 | 1.0 (the TSV census: "1.0 on all"; the pin's s18 = 1.2 = 1.2 · 1.0) | review/B1141/edd_fields_from_code.tsv:65 (R 0x1006325e); pin7 |
+| fade | EDD +0x098 grow-in / +0x09C shrink-out windows multiply [esp+0x18] (0x10063268..0x100632aa) and set C4/D8 (0x100632c8/0x100632e9) | 1.0 (no fade at the pin instants: C4 = D8 = 1.0) | review/B1141/edd_fields_from_code.tsv:18,19; disasm 0x10063268..0x100632aa |
+| `invD` = [esp+0x2c] | [0x101c5948] / [esp+0xf4] = 1/depth; 0x101c5948 read from the lane-5 DLL image = **1.0**; the depth carries the EDD +0x0D0 bias (subtracted at 0x10063069/0x10063198) | 0.136–0.422 (target distance) | disasm 0x100631d0..0x100631f3; review/B1141/edd_fields_from_code.tsv:32; DLL .rdata read |
+| `w` = [esi+0x6C], `h` = [esi+0x70] | the particle's width/height from the EDD +0x0CC/+0x17C min..max ranges | 1.25 / 1.25 (IgniteTargetill) | review/B1141/edd_fields_from_code.tsv:31,69; pin7 |
+| M[+0x18] | view matrix element +0x18, matrix at [esp+0x514] | 1038.654 | pin7 |
+| 0.5 | data constant at 0x101c594c (DLL .rdata, read from the lane-5 image) | 0.5 | DLL .rdata read |
 
-**Live pin (lane 5, spell 93 Target emitters, size-6 human target):** 383 HW lines,
-18,604 hits. All 3 emitters are mode 0 (billboard). `s6C` = 1.2 (the human's rendered
-model scale), `D8` = 1.0, `w` = 1.25. Evidence: `/home/user/kb-evidence/kb-b1180-sprite-width/pin7/`.
+**Live pin** (the card's ask 1): read-only gdb at the byte-verified 0x100632f0
+(`cmp edx,1` = 83 fa 01; the 0x1006335a bytes verified too), lane 5, spell 93's Target
+emitters on the size-6 human target: **383 rows (SFofSeukor 359, IgniteTargetill 24),
+all mode 0, all +0x06C = 1, all +0x019C = 1, s = 1.2, D_16C = 1.0, w = h = 1.25,
+C4 = D8 = 1.0, invD 0.136–0.422**. The client therefore draws these sprites at
+`1.25 · 1.2 · 1.0` = 1.5x the unit size. Evidence:
+`/home/user/kb-evidence/kb-b1180-sprite-width/pin7/` (b1180_hw_pin.tsv); the tool is
+`refactor/B1180/scripts/b1180_hw_gdb.py` (formula at
+`refactor/B1180/scripts/b1180_hw_gdb.py:6`) + `refactor/B1180/scripts/b1180_hw_watch.sh`.
 
-**The key finding:** the "TrollF" target is actually a **race-1 human male** (the
-B1166 comment: the oracle spawned a level-1 human; FABLE renders it 238 px vs the
-oracle's 288 px — a model-height gap). The client renders the human at model scale
-**1.2** (the pin's `s6C`), but FABLE's `config/race_models.json` had race 1 (Human)
-scale **1.0**. So the attach scale `s` (the client's `getRaceScale(race) * size/6`)
-is 1.2 on the client and 1.0 on FABLE — a 0.833x linear / 0.694x area gap in any
-sprite whose size is scaled by `s`.
+## 2. Fable compared, the fix, the test (ask 2)
 
-## 2. The fix + test (ask 2)
+Fable's path (`SpellsNewEddSprite::width/height`,
+`include/client/spell/spells_new_edd_reader.h:176` and `:179`) implements the client's
+rule itself — `width * multiplier * (scaleSizes ? s : 1.0f)`, gated on the +0x06C word
+(`include/client/spell/spells_new_edd_reader.h:165`) — and B1164 (#483, merged into
+`origin/fable` and into this branch) supplies `s` = the anchor's rendered scale through
+`setEntityAttachScaleCallback` (`include/client/spell/spell_fx_attach_scale.h`, wired at
+the entity build and in the harness), replacing the old constant 1.0.
 
-**The client's rule:** a sprite's size is scaled by the anchor's rendered model scale
-`s` **only when the EDD `+06C` "scale sizes" word is set** (cited at
-0x1006325e, `include/client/spell/spells_new_edd_reader.md:164` `scaleSizes::06C1`,
-and the width/height rules at 0x10061262..0x100612a8). FABLE had a constant
-`kSpellFxAttachScale = 1.0`; the client uses the anchor's rendered model scale.
+Factor by factor, the only one Fable was mis-applying was **`s`: the constant 1.0 against
+the client's 1.2 — 0.833x linear (0.694x area) on every scaling sprite**. With B1164's
+callback in the tree, Fable applies the client's words the client's way (WILL'S RULE),
+no tuned number.
 
-**The fix** (the client's rule, not a tuned number):
-- `SpellVisualFX` gains a `ModelScaleCallback` (`include/client/graphics/spell_visual_fx.h`),
-  set by the renderer to `entityScaleForServerSize(getRaceScale(raceId), serverSize)`
-  (`src/client/graphics/renderer/renderer_entities.cpp`) and by the harness to the
-  anchor node's rendered scale (`tools/model_viewer/model_viewer_fx_harness.cpp`).
-  `createLandingFromSlots` passes it to `Presets::applySlotEmitter` as `attachScale`.
-- `config/race_models.json`: race 1 (Human) scale 1.0 -> **1.2** (the client's own
-  rendered scale, per the pin + the B1166 model-height gap). `data/willeq.db` rebuilt
-  + `data/willeq.db.sha256` re-pinned in the same commit (it is built from
-  `config/race_models.json`).
+**The test** — `tests/test_b1180_attach_scale.cpp` (registered in
+`tests/cmake/spells.cmake`), on the pinned lane-5 values:
+- the client width rule: `SpellsNewEddSprite::width(1.25, 0.0, 1.2)` = 1.5
+  (w = 1.25, s = 1.2, `scaleSizes` set — the IgniteTargetill row of the pin);
+- the application: `Presets::applySlotEmitter` with attachScale 1.2 scales
+  `EmitterSize.scale` to 1.5; with 1.0 it stays 1.25 (the pre-fix defect).
 
-**The test** (`tests/test_b1180_attach_scale.cpp`, registered in `tests/cmake/spells.cmake`):
-- `ClientWidthRuleMatchesPinnedProduct`: `SpellsNewEddSprite::width(1.25, 0.0, 1.2)`
-  = 1.5 on the pinned values (w=1.25, s=1.2, `scaleSizes` set).
-- `ApplySlotEmitterScalesTheEmitterSizeWithTheAttachScale`: `applySlotEmitter` with
-  attachScale 1.2 scales `EmitterSize.scale` to 1.5; with 1.0 it stays 1.25.
-Both pass; `test_caster_own_landing`, `test_spell_burst_oracle_match`,
-`test_spell_slot_rules`, `test_options_particles` all pass (no regression).
+Both pass in this run (targeted ctest: 69/69, sec. 4).
 
-## 3. The re-gate (ask 2) — and why the 93 landing is unchanged
+**The data trio** (kept per the operator): `config/race_models.json` race 1 (Human)
+scale 1.0 -> 1.2, `data/willeq.db` rebuilt, `data/willeq.db.sha256` re-pinned in the same
+commit. Since B1172 (#491, in this tree) that column gates invisibility only — the
+rendered scale comes from the server-size/model-height route (B1172) and the attach
+scale (B1164) — so the trio is inert for the render; it is kept as the record of the
+pinned 1.2, not as the mechanism.
 
-Re-rendered spell 93 (model_viewer `--spell-test`, tour_93 plan, `--camera b1118`,
-level 60, post-B1169) with the fix (human scale 1.2) and with the pre-1.0, measured
-with `review/B1139/scripts/harness_measure.py`:
+## 3. The re-gate (ask 3)
 
-| | human scale | 93 `land_cov` | 93 `land_t` |
-|---|---|---|---|
-| before | 1.0 | 2.719 | +2.07 |
-| after  | 1.2 | 2.719 | +2.07 |
+B1157's gate — tour-7 (7 rows), the b1118 40-record sweep, the b1130 40-record sweep —
+rendered once, one "after" label, on this branch's tree: **post-B1169, level 60 (the
+b1130 capture level is 60 for all 40 records, per `scripts/fx/capture_level.py`; each
+row's harness level is checked against the capture's and a mismatch is refused), the
+B1166 anchor, b1164-style surfaceless renderer for tour-7/b1118 and the i915 DRM path
+for b1130 — the same renderer each table's own before column used.**
 
-**The 93 landing is unchanged, and that is the client's own behavior, not a miss.**
-Spell 93's Target-emitter sprites carry the EDD `+06C` "scale sizes" word = **0**
-(`SpellsNewEddSprite::scaleSizes` = false), so the client does **not** multiply their
-size by the attach scale `s` (the rule at 0x1006325e gates on that word). The pin's
-`+s` factor is the anchor's model scale, which the client feeds to the half-width
-formula as a **position/projection** term, not as a size multiplier for these
-non-scaling sprites. So fixing the attach scale `s` (1.0 -> 1.2) correctly changes
-every sprite whose `+06C` word is set, and correctly leaves the 93 landing alone.
+**State of the tree at render time: B1164's attach scale `s` is in the tree, and
+B1172's target scale is in the tree** (both merged from `origin/fable`; this branch
+merges them at its tip 80202c81f). B1177 (#496, the b1130 target-solve harness fix,
+landed on `fable` at 09:02Z, after this branch's merge) is NOT in the render tree —
+the card's re-merge triggers were B1172/B1164 only, and re-rendering all 87 rows for
+it is out of this unit's scope. The runner is `refactor/B1180/scripts/run_gate_b1180.sh`
+(frames render on the ThinkPad and stream back per row for the local measure — this
+host has no NFS and no numpy/cv2 there); the tables build from the streamed measure
+outputs with `refactor/B1180/scripts/build_tables.py` (b1130 through
+`refactor/B1180/scripts/band_view.py`, which lays the gate's `b1130_r<rec>` measure
+dirs under `band_table.py`'s `<kind>_r<rec>` names). All 87 rows (tour-7 7, b1118 40,
+b1130 40) are measured; every b1118 row also carries its SOURCE/LANDING anchor fits
+(`refactor/B1180/scripts/reanchor_b1118.sh`). Two incidents, both recovered without
+substitution: the hermes-ext disk-full at ~11:00Z left three b1130 rows without plans
+(measured rows unaffected); a transient unmount of the `/mnt/projects` NFS at ~14:05Z
+dropped the last three b1130 rows (r28 measured from its already-streamed frames, r34
+and r26 re-rendered; r34's first measure lost frames to the r34 stream and was
+re-measured from a re-stream, 495/495 frames). Evidence:
+`/home/user/kb-evidence/kb-b1180-sprite-width/gate/after/` (+ `gate/tables/`).
 
-**Therefore the 93 landing gap (B1171's 0.55x) is not the attach scale `s`.** It is a
-separate factor the B1171 window method attributes to the target-height^2 scaling of
-the landing window, which this unit does not touch. The B1164 remaining 0.72-0.77x on
-the scaling sprites is what the attach-scale fix closes; the 93's non-scaling sprites
-are out of its scope by the client's own `+06C` word.
+### tour-7 (b1118 camera, level 60, B1166 anchor)
 
-### Owner table (the two headline numbers)
+```
+spell  oracle_land_cov  b1171_before  b1164_fix  mine_land_cov  mine_end   mine_vs_oracle
+93     5.847            1.993        2.719      2.905          +6.633     2.01x (mine 0.50x)
+38     3.889            1.993        2.719      2.905          +6.633     1.34x
+54     2.461            1.204        1.412      1.534          +6.333     1.60x
+656    2.493            1.204        1.412      1.534          +6.333     1.63x
+41     4.154            2.478        2.962      3.108          +5.700     1.34x
+253    7.281            4.148        4.148      4.148          -          1.76x
+458    1.242            0.500        0.678      0.715          +5.117     1.74x
+```
 
-| number | value | owner |
-|---|---|---|
-| 93 like-for-like ratio | unchanged (2.719 -> 2.719) | the 93's sprites are `+06C=0` (non-scaling); the 93 gap is B1171's target-height^2 window, not `s` |
-| scaling-sprite gap (B1164 0.72-0.77x) | closed by `s` 1.0 -> 1.2 | this fix (the attach scale = the anchor's rendered model scale) |
+(`mine_vs_oracle` = oracle_land_cov / mine_land_cov; full table with src_cov and
+end columns: `gate/tables/tour7.tsv`.)
 
-## 4. State of the tree at render time
+### b1118 40-record sweep (level 60 both sides, vs B1157's level-60 table)
 
-- **B1164's `s`**: this unit. The attach scale `s` is now the anchor's rendered model
-  scale (the `ModelScaleCallback`), replacing the constant 1.0.
-- **B1172's target scale**: not in this branch's cut (it was open at cut time); the
-  renders here are post-B1169, level 60, B1166 anchor, the card's baseline.
+`gate/tables/b1118.tsv`: mine vs B1157's land_cov/end/src_cov with d_land_cov /
+d_end. **24 of 40 rows improved (d_land_cov > +0.10), 15 within +-0.10, 1 regressed:
+r35 (spell 253, a self spell) -1.067 (5.297 -> 4.230)** — an unexplained move this unit
+does not attribute (owner: the next unit to touch the self-landing window; B1164's `s`
+enlarges self sprites, so the regression is not `s`). Every row's SOURCE/LANDING
+anchor fit is in its measure dir (`anchor_SOURCE.tsv` / `anchor_LANDING.tsv`).
 
-## 5. Acceptance status
+### b1130 40-record sweep (B1166 anchor, i915 DRM, capture levels — all 60)
 
-- **(A)** factors traced + pinned — done (sec. 1; pin7 evidence).
-- **(B)** fix + test — done (sec. 2; both tests pass, no regression).
-- **(C)** re-gate tables with owners + the two headline numbers — done (sec. 3; the
-  honest result is that the 93 landing is unchanged because its sprites are `+06C=0`,
-  and the scaling-sprite gap is what the attach fill).
-- **(D)** this README (cite-checker clean; bare addresses hand-checked against the
-  decompile), targeted ctest + hygiene green, harness file under 1,500 lines.
+`gate/tables/b1130.tsv`, banded per B1155's `band_table.py` (landing_cov +- 3 %,
+end +- 0.10 s, p90 +- 15 %). **landing_cov verdicts: 38 short, 2 over (r31 3.835 vs
+3.668; r40 0.876 vs 0.157), 0 PASS.** No row regressed: every short row is above
+B1171's before column (e.g. r0 0.537 -> 3.051 vs oracle 3.945; r3 6.093 -> 8.178 vs
+11.688; r12 0.801 -> 5.041 vs 5.788).
+
+### Owners (the two headline numbers)
+
+| number | before (B1171 tree: level 60, no `s`) | after (this tree) | oracle | owner |
+|---|---|---|---|---|
+| 93 like-for-like, tour-7 b1118 | 1.993 (0.34x) | **2.905 (0.50x)** | 5.847 | B1164's `s` (1.993 -> 2.719, their fix gate) + B1172's target scale (2.719 -> 2.905); residual 0.50x is the landing-window measurement domain (per-target-height² window, the oracle target's height), which this unit does not claim — the next window-method unit, per B1171's own attribution |
+| b1130 landing_cov PASS | 0/40 | **0/40** (38 short / 2 over) | 40/40 | all 40 rows improved vs before; none within +- 3 % yet: the same window/sprite-size residual as 93 owns the 38 short rows, r31/r40 are over (owner: the window-method unit, which must band the harness window to the capture's own) |
+
+The residual on 93 after `s` + the target scale is the landing window itself: B1171's
+window method measures the landing in a target-height-squared window, and the oracle's
+window is the oracle target's height — a measurement-domain difference this unit does
+not claim (owner: the next window-method unit, per B1171's own attribution).
+
+## 4. Acceptance status
+
+- **(A)** factors traced + pinned — done (sec. 1; pin7, 383 rows, byte-verified
+  breakpoints, read-only).
+- **(B)** fix + test — done (sec. 2; the rule is B1164's in-tree callback, the test is
+  B1180's, both cases pass).
+- **(C)** re-gate tables with owners + the two headline numbers — done (sec. 3).
+- **(D)** this README: cite-checker clean (run
+  `python3 -I scripts/refactor/cite_check.py refactor/B1180/README.md --tree .
+  --extra /mnt/projects/fable --dis /mnt/projects/fable/review/B1141/ghidra/out/eqgame.dis
+  --dis /mnt/projects/fable/review/B1141/ghidra/out/EQGraphicsDX9.dis` -> "checked 56
+  cites, 0 problems, 6 address warnings" — the warnings are the two `.rdata` data words
+  0x101c5948/0x101c594c, cited as data, not code), targeted ctest + hygiene green on
+  this tip (rbuild), `tools/model_viewer/model_viewer_fx_harness.cpp` at 1,318 lines
+  (under 1,500; B1172's split, no B1180 addition to it).
 - **(E)** MR "Closes #499".
-
-**Honest status:** the attach-scale factor `s` is named, traced, pinned, and its
-client rule implemented + tested. The re-gate shows the 93 landing is unchanged
-because the 93's sprites are non-scaling (`+06C=0`) — so the 93 gap is not `s` and is
-named here for the next owner (B1171's target-height^2 window), not closed by this
-unit. The scaling-sprite gap (B1164's 0.72-0.77x) is what this fix closes.
