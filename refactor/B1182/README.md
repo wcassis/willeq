@@ -194,5 +194,8 @@ success.
 
 ## 5. Hand-off
 
-* Cite checker on this README: `checked 10 cites, 0 problems, 0 address warnings`.
+* Cite checker on this README: `checked 12 cites, 0 problems, 0 address warnings`
+  (the full command with `--tree . --extra /mnt/projects/fable --dis .../eqgame.dis
+  --dis .../EQGraphicsDX9.dis`; the `eqgame.exe.c` line cites are re-read by hand,
+  as noted in sec. 1).
 * Live fable leg (pending, one command): `scripts/b1182_fable_run.sh` — see sec. 3.
