@@ -45,6 +45,7 @@
 #include <string>
 #include <vector>
 
+#include <sys/wait.h>
 #include <unistd.h>
 
 namespace fs = std::filesystem;
@@ -131,7 +132,8 @@ protected:
                                 "' --fps 30 --seconds " + std::to_string(seconds) +
                                 " --headless --camera " + camera + " --seed 1 " + extra + " > '" +
                                 (dir / "run.log").string() + "' 2>&1";
-        return std::system(cmd.c_str()) == 0 ? frames : fs::path();
+        lastStatus_ = std::system(cmd.c_str());
+        return lastStatus_ == 0 ? frames : fs::path();
     }
     static fs::path frameAt(const fs::path& frames, int f) {
         char name[32];
@@ -184,6 +186,7 @@ protected:
     irr::IrrlichtDevice* device_ = nullptr;
     std::string bin_;
     std::vector<fs::path> dirs_;
+    int lastStatus_ = 0;  // runPlan's raw std::system status (B1177)
 };
 
 TEST_F(FxHarness, AnOtherTargetLandingLightsTheTargetAndNotTheCaster) {
@@ -517,6 +520,58 @@ TEST_F(FxHarness, B1130SelfPresetSolvesTheCasterAlone) {
     cleanDirs();
 }
 
+// B1177 (#496): a --camera preset that does not solve exits with its
+// documented code 2 (fxharness::kExitPresetDidNotSolve; refactor/B1155/README.md
+// "The solve") through the normal teardown -- before B1177 this path dropped
+// the device and left the texture caches to the exit handlers, which died in
+// ~ConstrainedTextureCache (SIGSEGV, rc 139 through the shell;
+// review/B1177/worker/runs/tp_gdb_iter1.log). --target-fit-iterations 1 lets
+// the solve measure only its start point, so it cannot solve on any renderer.
+TEST_F(FxHarness, B1130PresetThatDoesNotSolveExitsTwoWithoutASignal) {
+    const fs::path frames =
+        runPlan("b1130nosolve", "100.0\t93\tother\t0\t250\t60\n", 0.5, "--target-fit-iterations 1", "b1130");
+    EXPECT_TRUE(frames.empty()) << "a one-fit solve exited 0";
+    ASSERT_FALSE(WIFSIGNALED(lastStatus_)) << "the shell itself died of signal " << WTERMSIG(lastStatus_);
+    ASSERT_TRUE(WIFEXITED(lastStatus_));
+    // The shell reports a child killed by signal n as 128 + n (139 = SIGSEGV).
+    EXPECT_EQ(WEXITSTATUS(lastStatus_), fxharness::kExitPresetDidNotSolve)
+        << "exit " << WEXITSTATUS(lastStatus_) << " (128 + n = killed by signal n); see " << (dirs_.back() / "run.log");
+    std::ifstream log(dirs_.back() / "run.log");
+    std::string line, closest;
+    bool didNotSolve = false;
+    while (std::getline(log, line)) {
+        if (line.find("did not solve to its recorded geometry") != std::string::npos) didNotSolve = true;
+        if (line.find("b1130 target solve: no convergence in 1 fits") != std::string::npos) closest = line;
+    }
+    EXPECT_TRUE(didNotSolve) << "no 'did not solve' line";
+    std::printf("%s\n", closest.c_str());
+    EXPECT_NE(closest.find("closest (x -2.000, z 2.000)"), std::string::npos)
+        << "the diagnostic does not name the one measured candidate: " << closest;
+    cleanDirs();
+}
+
+// B1177 (#496): the dark-elf female 6:1:6 target (B1166's first wrong body)
+// sent the solve around a 616/616/618 feet-row cycle on llvmpipe until the cap
+// (review/B1172/worker/wrong_model/r1_6_1_6.log). The solve must now TERMINATE
+// on every renderer and reach the self-check, which rejects her height (exit 5
+// with a FAIL line), never "did not solve" (2) or a signal.
+TEST_F(FxHarness, B1130DarkElfFemaleTargetSolvesAndFailsTheSelfCheck) {
+    const fs::path frames = runPlan("b1130de", "100.0\t93\tother\t0\t250\t60\n", 0.5, "--target 6:1:6", "b1130");
+    EXPECT_TRUE(frames.empty()) << "the b1130 run with a dark-elf female target exited 0";
+    ASSERT_TRUE(WIFEXITED(lastStatus_));
+    EXPECT_EQ(WEXITSTATUS(lastStatus_), 5) << "see " << (dirs_.back() / "run.log");
+    std::ifstream log(dirs_.back() / "run.log");
+    std::string line, check, solved;
+    while (std::getline(log, line)) {
+        if (line.find("b1130 target self-check") != std::string::npos) check = line;
+        if (line.find("camera b1130: target (") != std::string::npos) solved = line;
+    }
+    std::printf("%s\n%s\n", solved.c_str(), check.c_str());
+    EXPECT_NE(solved.find("feet row 615 at column 940"), std::string::npos) << "the solve did not reach the anchor";
+    EXPECT_NE(check.find(": FAIL"), std::string::npos) << "no FAILing self-check line for the wrong model";
+    cleanDirs();
+}
+
 // B1157 (#476): the harness caster plays the spell's CastingAnim through the
 // CLIENT's own code (spell_cast_animation.h, the body
 // EntityRenderer::startEntityCast runs on OP_BeginCast) -- started at BeginCast,
@@ -807,4 +862,65 @@ TEST(B1167CapturePose, TheTurnedTargetStandsOnTheCapturesBearing) {
             EXPECT_GT(std::fabs(std::remainder(before * 180.0f / 3.14159265f, 360.0f)), 50.0f)
                 << "the un-turned rig already matched the capture";
     }
+
+// B1177 (#496): the solve's cycle detector and its diagnostic, offline.
+TEST(B1177TargetSolve, ThePreB1177CycleIsDetected) {
+    // review/B1172/worker/wrong_model/r1_6_1_6.log, tgt fit 0..14 (the
+    // surface is the requested 1280x800 there, so these are requested px).
+    const float rows[] = {631, 621, 624, 626, 633, 620, 616, 616, 618, 616, 616, 618, 616, 616, 618};
+    const float cols[] = {709.3f, 912.0f, 906.9f, 901.7f, 940.6f, 939.5f, 940.3f, 940.2f,
+                          948.8f, 940.2f, 940.1f, 948.7f, 940.1f, 940.0f, 948.6f};
+    std::vector<fxharness::FitSample> s;
+    int firstCycle = -1;
+    for (int i = 0; i < 15; ++i) {
+        fxharness::FitSample f;
+        f.row = rows[i];
+        f.col = cols[i];
+        s.push_back(f);
+        const int p = fxharness::fitCyclePeriod(s);
+        if (p && firstCycle < 0) {
+            firstCycle = i;
+            EXPECT_EQ(p, 3);
+        }
+    }
+    EXPECT_EQ(firstCycle, 14) << "two full repeats of fits 6..8 end at fit 14";
+    // None of the three candidates is within |d| < 1 px of (940, 615).
+    const auto& a = fxharness::kB1130TargetAnchor;
+    for (int i = 12; i < 15; ++i) EXPECT_FALSE(fxharness::fitSampleSolves(s[i], a)) << i;
+    EXPECT_NE(fxharness::fitSampleWhy(s[12], a).find("feet row 616 (d +1: misses |d| < 1)"), std::string::npos)
+        << fxharness::fitSampleWhy(s[12], a);
+    EXPECT_NE(fxharness::fitSampleWhy(s[14], a).find("column 948.6 (d +8.6: misses |d| < 1)"), std::string::npos)
+        << fxharness::fitSampleWhy(s[14], a);
+}
+
+TEST(B1177TargetSolve, AStallOrAnApproachIsNotACycle) {
+    std::vector<fxharness::FitSample> s;
+    auto add = [&](float row, float col) {
+        fxharness::FitSample f;
+        f.row = row;
+        f.col = col;
+        s.push_back(f);
+    };
+    // The same pixels many times over (a sub-pixel stall): period 1 is not a cycle.
+    for (int i = 0; i < 9; ++i) add(616, 940.2f);
+    EXPECT_EQ(fxharness::fitCyclePeriod(s), 0);
+    // A damped approach that swings across the anchor twice (one repeat of a
+    // period-2 swing) and then lands: never a cycle.
+    s.clear();
+    for (float r : {631.f, 621.f, 614.f, 616.f, 614.f, 616.f, 615.f}) {
+        add(r, 940.0f);
+        EXPECT_EQ(fxharness::fitCyclePeriod(s), 0) << s.size();
+    }
+    // Two full repeats of the swing are.
+    s.clear();
+    for (float r : {614.f, 616.f, 614.f, 616.f, 614.f}) add(r, 940.0f);
+    EXPECT_EQ(fxharness::fitCyclePeriod(s), 0);
+    add(616, 940.0f);
+    EXPECT_EQ(fxharness::fitCyclePeriod(s), 2);
+    // The anchor itself solves; the documented exit code is 2.
+    fxharness::FitSample at;
+    at.row = 615;
+    at.col = 940.4f;
+    EXPECT_TRUE(fxharness::fitSampleSolves(at, fxharness::kB1130TargetAnchor));
+    EXPECT_EQ(fxharness::kExitPresetDidNotSolve, 2);
 }

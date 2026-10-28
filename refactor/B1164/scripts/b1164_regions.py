@@ -25,7 +25,7 @@ if WIN:
     keep &= (dx >= a0) & (dx <= a1) & (up >= b0) & (up <= b1)
 for ex, ey, ew, eh in exc:  # exclusion boxes in CROP coordinates (anchor.py convention)
     keep[ey:ey + eh, ex:ex + ew] = False
-print(f'# {lab} crop {crop} feet {feet} host {hpx:.0f}px norm {npx:.0f}px tail f{t0}..f{t1} exclude {exc} WIN {WIN}')
+print(f'# {lab} crop {crop} feet {feet} host {hpx:g}px norm {npx:g}px tail f{t0}..f{t1} exclude {exc} WIN {WIN}')
 print('frame\tlit80\tcov_norm\tcov_host\tcol80_host\tout80_host\tlit30_host\tmean_rise_lit80\tfrac_rise>=200_of_lit80')
 for f in range(f0, f1 + 1):
     d = (load(f) - base).max(axis=2)
