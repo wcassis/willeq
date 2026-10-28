@@ -117,12 +117,12 @@ Middle — record 82 has 0 Middle stages).
 
 | spell | rec | metric | oracle (Act+) | harness (Act+) | Δ | verdict |
 |---|---|---|---|---|---|---|
-| 38 | 80 | flight start (launch) | −0.484 | −0.486 | −0.002 | PASS |
-| 38 | 80 | flight end (reach) | −0.184 | −0.184 | 0.000 | PASS |
-| 38 | 80 | arrival (Target stage) | +0.116 | +0.116 | 0.000 | PASS |
-| 93 | 80 | flight start (launch) | −0.484* | −0.486 | −0.002 | PASS |
-| 93 | 80 | flight end (reach) | −0.184* | −0.184 | 0.000 | PASS |
-| 93 | 80 | arrival (Target stage) | +0.116* | +0.116 | 0.000 | PASS |
+| 38 | 80 | flight start (launch) | −0.484 | −0.486 | −0.002 | **RETIRED** |
+| 38 | 80 | flight end (reach) | −0.184 | −0.184 | 0.000 | **RETIRED** |
+| 38 | 80 | arrival (Target stage) | +0.116 | +0.116 | 0.000 | **RETIRED** |
+| 93 | 80 | flight start (launch) | −0.484* | −0.486 | −0.002 | **RETIRED** |
+| 93 | 80 | flight end (reach) | −0.184* | −0.184 | 0.000 | **RETIRED** |
+| 93 | 80 | arrival (Target stage) | +0.116* | +0.116 | 0.000 | **RETIRED** |
 | 54 | 82 | (no Middle) | — | no missile | — | PASS (spell 54's at-removal rule) |
 | 41 | 20 | (no Middle) | — | no missile | — | PASS (as before) |
 | 458 | 33 | (no Middle) | — | no missile | — | PASS (as before) |
@@ -132,6 +132,14 @@ Middle — record 82 has 0 Middle stages).
 semantics inferred from FPU ordering). It renders the identical flight to 38 —
 the open item is CONFIRMED for record 80 (93 flies exactly as 38 does); a
 distinct-record leg is B1153's.
+
+**The six 38 / 93 rows are RETIRED and are not oracle facts** (B1170, MR !330,
+2026-10-28): B1168 (`refactor/B1168/README.md` A5) proved the client draws
+record 80's Middle stage only on a `0x4033` missile object that the lane-5
+server never sends, so the oracle video has no in-flight missile and this gate
+(launch@−0.486 / reach@−0.184 / land@+0.116) measured a flight the oracle never
+drew. The rows are struck, not deleted; so are the `flight_*` / `middle_*`
+columns of `missile_oracle.tsv` (its `arrival_*` columns are unaffected).
 
 Measured (harness, FX-clock log lines, `--camera b1130`, run `bash
 /tmp/b1152_missile_measure.sh` on the ThinkPad):
