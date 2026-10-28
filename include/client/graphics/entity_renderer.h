@@ -11,6 +11,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include "client/graphics/actor_scale.h"
+#include "client/spell/spell_action_anim.h"  // B1174: ActionCastAnimInputs
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eq/equipment_model_loader.h"
@@ -97,19 +99,22 @@ inline float collisionZOffsetFromBounds(const irr::core::aabbox3df& bbox, float 
     return -bbox.MinEdge.Y * scale;
 }
 
-// T318: the reference server size a race's per-race art scale is authored
-// against. Spawn_Struct::size and OP_SpawnAppearance AT_SIZE (29) both carry a
-// size on this scale -- a normal humanoid is 6.0 -- and the rendered scale is
-// the race scale times (serverSize / 6). Shrink/grow spells change nothing but
-// this number; eqemu clamps a client or pet to [3, 15] (Mob::ChangeSize).
-constexpr float kReferenceServerSize = 6.0f;
-
-// Rendered uniform scale for a race whose art scale is `raceScale` at server
-// size `serverSize`. serverSize <= 0 means "the server did not say", which is
-// the race scale unmodified -- NOT zero.
-inline float entityScaleForServerSize(float raceScale, float serverSize) {
-    return (serverSize > 0.0f) ? raceScale * (serverSize / kReferenceServerSize)
-                               : raceScale;
+// B1172 (#491): the scale an entity's node is given -- the official client's
+// actor scale (actor_scale.h) for every spawn, and 1.0 for the LOCAL player.
+// The 1.0 is a DEVIATION from the client, owned by B1176 (#495): the client
+// has no local-player branch -- both EQPlayer build paths run FUN_0047fa9e
+// and then FUN_0043c84b (review/B1141/ghidra/out/eqgame.exe.c:106152 ->
+// :106154 and :106406 -> :106416), and 0x43c84b hands actor+0xC4 to the
+// graphics actor (0x43d3e8 `call [edx+0x50]`) for every player, skipping it
+// only for a null player (0x43c87b) or a null graphics actor (0x43d3d0). So a
+// human player is 1.2 in the client and 1.0 here (a dwarf 0.8 vs 1.0; a dark
+// elf, default 5, is 1.0 on both sides). fable draws its own player with a
+// translation-only world matrix (EQAnimatedMeshSceneNode::render,
+// isPlayerNode_), so its node scale -- and the collisionZOffset measured from
+// it -- stays 1.0 to match what is drawn until B1176 moves the drawing, the
+// T431 first-person eye and the third-person camera together.
+inline float entityNodeScale(bool isLocalPlayer, uint16_t raceId, uint8_t gender, float serverSize) {
+    return isLocalPlayer ? 1.0f : clientActorScale(raceId, gender, serverSize);
 }
 
 // Forward declarations
@@ -302,6 +307,12 @@ struct EntityVisual {
     // cancelEntityCast), and the per-frame state (entity_updates.cpp,
     // setPlayerEntityAnimation) must not pull it back to walk/idle.
     std::string castAnimCode;
+    // B1174 (#493): the CastingAnim track an OP_Action started on a source
+    // that had no cast in progress (a /disc; actionEntityCastAnim, eqgame
+    // 0x47f4af). It plays once and the per-frame walk returns the model to
+    // the standing idle when it stops (the observer's caster is back in its
+    // idle pose 4.36 s after the packet); "" = none.
+    std::string actionAnimCode;
     irr::scene::IBillboardSceneNode* castBarBillboard = nullptr;  // Casting bar billboard
 
     // B1148 (#468): the corpse-fade list (corpse_fade.h). isFading = this
@@ -690,6 +701,13 @@ public:
                          int castAnimId);
     void cancelEntityCast(uint16_t spawnId);
     void completeEntityCast(uint16_t spawnId);
+    // B1174 (#493): OP_Action (effect_flag 0) plays the spell's CastingAnim on
+    // its source when the client's conditions hold (eqgame 0x47f4af,
+    // EQ::ActionPlaysSourceCastAnim: id, record, target type, stand byte,
+    // field 123, Bard/instrument_mod);
+    // a source still casting keeps its BeginCast track and B1157's end rule.
+    // Returns the track started ("" = none).
+    std::string actionEntityCastAnim(uint16_t spawnId, int castAnimId, const EQ::ActionCastAnimInputs& in);
     bool isEntityCasting(uint16_t spawnId) const;
     float getEntityCastProgress(uint16_t spawnId) const;
 

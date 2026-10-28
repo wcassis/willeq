@@ -1,0 +1,42 @@
+# B1174 (#493): record 325 (Leechcurse Discipline) observed on the REAL /disc
+# path on lane 5. Class 5 Shadow Knight, level 60, character_disciplines 8604
+# ONLY before zone-in (sql/b1174_disc8604.sql), so 8604 is the first and only
+# prefix match of "Leechcurse Discipline" in the zone-in OP_DisciplineUpdate
+# list (eqgame.exe.c FUN_0046fc1b) and the client's own spells_us.txt row 8604
+# gives SHD level 60 (FUN_004bb2dd) -> C->S OP_CastSpell slot 10 spell 8604.
+# The lane server accepts it only because the leg points its spells_new row
+# 8604 at its own Leechcurse Discipline row 4504 (sql/b1174_server_8604*.sql,
+# made with the stack down, undone on every exit path; README "The server-data
+# change").
+# Same poses and observer F9x3 camera as B1162's b1162_disc4499_v3 (B1134
+# p4 rig), which framed the caster at the settle still; this leg's settle
+# still (step 15 time_settle, before the /disc) is the framing proof.
+#
+# HARD RULE: if the server refuses, record the refusal line; no GM substitution.
+#
+# fps=30
+# caster-video=1
+# observer=Oraclewatch
+# pose=-74,428,3.75,160
+# observer-pose=-67.6,434.4,3.75,160
+
+login	Testcaster
+obs	login	Oraclewatch
+zone	qeynos2
+obs	zone	qeynos2
+wait	8000	settle
+obs	click	1229,555	obs_close_tip
+click	1229,555	close_tip
+command	#set time 11 0	noon
+wait	1500	noon_settle
+command	#weather 0	weather
+obs	press	F9	obs_f9_1
+obs	press	F9	obs_f9_2
+obs	press	F9	obs_f9_3
+obs	wait	3000	obs_cam_settle
+wait	20000	time_settle
+command	/disc Leechcurse Discipline	disc_leechcurse
+wait	25000	fx_leechcurse
+command	#nukebuffs	nuke_0
+obs	command	/q	obs_quit
+command	/q	quit

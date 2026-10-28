@@ -1,0 +1,1 @@
+SELECT * FROM spells_new WHERE id IN (4504,8604) ORDER BY id; CHECKSUM TABLE spells_new EXTENDED; SELECT 'helper_tables', COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='_b1174_spells_new_8604';

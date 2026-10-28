@@ -62,7 +62,8 @@
  *                   depth before cull/divide (B1150, unified_particle_renderer)
  *   +0x19C int      1 = the attach scale s multiplies r, z and the offsets
  *                   (fStack_4d8, 0x1006090d..); 0 = attach matrix normalised
- *                   (s = 1.0); fable passes kSpellFxAttachScale = 1.0 either way
+ *                   (s = 1.0); fable passes the entity's s (B1164,
+ *                   spell_fx_attach_scale.h), 1.0 for the Middle stage
  * Shapes 5/6 also store the outward normal in the (r,z) plane used by +0x110
  * (0x1006205b..0x10062097). The random draws are the 512/1000/2000-entry
  * uniform tables (0x1005d3e0, 0x1005d400, DAT_10232860) -- uniform, so fable
@@ -254,11 +255,11 @@ struct SpellsNewEddMotion {
 
 SpellsNewEddMotion decodeSpellsNewEddMotion(const uint8_t* entry416);
 
-// B1149: the attach scale s fable passes for +0x6C. The client's s for an
-// actor is the actor's scale word (+0x10) times its model's scale (vtbl+0x84),
-// EQGraphicsDX9 0x1006090d..0x1006094a, and for a bone the bone's (0x10060991..);
-// which eqgame code writes the actor's +0x10 was NOT traced, so fable has no
-// per-actor value to pass: 1 for every actor (refactor/B1149/README.md).
+// B1149: the attach scale s for +0x6C / +0x19C. B1164 (#483) pinned the
+// client's s for a Source / Target slot on an actor: its actor scale
+// (EQ::SpellFxAttachScale, spell_fx_attach_scale.h -> actor_scale.h; lane-5
+// read 1.200000 on a size-6 human). This constant is what an entity nothing
+// resolves and the Middle stage's missile actor (not traced) still get.
 constexpr float kSpellFxAttachScale = 1.0f;
 
 class SpellsNewEddReader {

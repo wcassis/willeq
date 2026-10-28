@@ -271,6 +271,22 @@ void SpellManager::handleAction(const EQT::SpellActionInfo& action)
         d.fxGateLevel = fxGateLevelOf(m_eq, caster_id);  // B1144
         d.casterFx = fxActorOf(m_eq, caster_id);         // B1165
         d.targetFx = fxActorOf(m_eq, target_id);
+        // B1174 (#493): the source's CastingAnim at the packet (eqgame
+        // 0x47f4af, spell_action_anim.h).
+        if (spell) {
+            d.castAnim = spell->cast_anim;
+            d.spellRecordExists = true;
+            d.targetType = static_cast<uint8_t>(spell->target_type);
+        }
+        {
+            const auto& entities = m_eq->GetEntities();
+            const auto src = entities.find(caster_id);
+            if (src != entities.end()) {
+                d.sourceClass = src->second.class_id;
+                d.sourceStandState = src->second.stand_state;
+            }
+        }
+        d.instrumentMod = action.instrument_mod;
         m_bridge->pushEvent(eqt::state::GameEvent(
             eqt::state::GameEventType::SpellCastVisualComplete, std::move(d)));
     }

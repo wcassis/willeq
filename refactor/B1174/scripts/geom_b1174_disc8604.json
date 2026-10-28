@@ -1,0 +1,19 @@
+{
+ "crop": "330,150,910,530",
+ "caster_feet": "933,639",
+ "caster_px": 212,
+ "npc_feet": "933,639",
+ "npc_px": 212,
+ "observer_feet": "640,600",
+ "observer_px": 230,
+ "exclude": [
+  "418,600,420,200",
+  "1055,640,100,160",
+  "1155,610,125,190",
+  "1140,240,140,200",
+  "1135,560,140,50",
+  "1055,0,225,240"
+ ],
+ "halfw": 0.7,
+ "why": "B1162 geom_b1162_disc4499_v3.json (= B1134 review/B1134/geom/rig.json) unchanged: this leg uses the same pose=/observer-pose= directives and F9x3 camera. Checked on this leg's observer settle still oracle/b1174_disc8604/15_wait.frame.png with refactor/B1174/scripts/caster_bbox.py (review/B1174/worker/framing_bbox.tsv): Testcaster robe/skin bbox x 910..967, y 428..621, name tag x 878..994 y 376..390; the B1162 4499 still gives x 908..968, y 428..621 (same head top 428 as B1134/B1162). The /disc lands on the caster itself (OP_Action target 260 = source 260), so the 'npc' anchor is the caster and the leg is measured with --npc-id 260."
+}

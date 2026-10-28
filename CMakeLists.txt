@@ -946,6 +946,8 @@ IF(EQT_GRAPHICS)
         # T432 (board B275): per-character UI persistence -- the ONE reader and
         # writer of UI_<char>_<server>.ini.
         src/client/graphics/ui/ui_preferences.cpp
+        # B1175 (#494): the global eqclient.ini [Defaults] (particle keys).
+        src/client/graphics/ui/eqclient_ini.cpp
         src/client/graphics/ui/character_model_view.cpp
         src/client/graphics/spell_visual_fx.cpp
         src/client/graphics/spell_visual_fx_nodes.cpp
@@ -1314,6 +1316,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         tools/model_viewer/model_viewer_equipment.cpp
         tools/model_viewer/model_viewer_spell_test.cpp
         tools/model_viewer/model_viewer_fx_harness.cpp  # B1138: the scripted FX harness
+        tools/model_viewer/fx_target_fit.cpp  # B1172 FIX leg: the b1130 target fit (split out, pure move)
         tools/tool_race_db.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp

@@ -1,0 +1,64 @@
+# action	target	hold_ms	still_name
+# B1164 (#483) dev5: r51's plan (review/B1130/plans/r51.tsv: 93 as DRU, target `#spawn TrollF 1 1 0 30000`, alive, #stun, caster #goto-ed 1.4 caster heights left of it) with the Main Chat window HIDDEN (eqclient.ini [Defaults] HideChatWin=TRUE, B1002's directive, restored byte-identically at stop), so neither figure is clipped by the chat border at row 601.
+# Extra stills for the threshold sweep (refactor/B1164/scripts/b1164_hostpx_sweep.py): empty_r51cam = caster at r51's spot, no NPC (the target's "without"); bg_r51cam = the same with the caster drawn as race 127 (#set race 127, an illusion, `#set race 0` restores it) = the caster's "without".
+# Cast 1 (cast_fixed_npc) is the unoccluded 93 capture. Cast 2 (cast_gdb) is the same cast with a read-only gdb attached by refactor/B1164/scripts/b1164_s_watch.sh (armed on the gdb_arm row): it logs 0x10039480's return (the attach scale s) per emitter.
+# daf_settle: the TrollF depopped and a race-6 female NPC (the caster's race/gender, default size) spawned on the same spot: the model-height control at the target's depth.
+# fps=25
+# pose=-74,428,3.75,160
+# ini-set=Defaults.HideChatWin=TRUE
+# ini-set=Options.Camera2-Distance=11.000000
+# ini-set=Options.Camera2-Height=1.000000
+# ini-set=Options.Camera2-DirHeading=192.000000
+# ini-set=Options.Camera2-Pitch=0.000000
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+wait	8000	0	settle
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#memspell 93 0	0	m1
+command	#level 60	0	lvl
+command	#mana	0	mana
+press	F9	0	cam1
+press	F9	0	cam2
+press	F9	0	cam3
+wait	3000	0	cam_settle
+command	#goto -67.6 434.4 3.75	0	goto_empty
+wait	3000	0	empty_r51cam
+command	#set race 127	0	race_ivm
+wait	3000	0	bg_r51cam
+command	#set race 0	0	race_back
+wait	3000	0	race_back_settle
+command	#goto -74 428 3.75	0	goto_back
+wait	3000	0	back_settle
+command	#spawn TrollF 1 1 0 30000	0	spawn
+wait	3000	0	spawn_settle
+command	#goto -67.6 434.4 3.75	0	goto
+wait	3000	0	goto_settle
+command	/target TrollF	0	tgt_npc0
+command	#stun 120000	0	stun
+wait	1500	0	stun_settle
+wait	22000	0	time_settle
+command	/target TrollF	0	tgt_npc
+command	#stun 120000	0	stun2
+wait	1500	0	tgt_npc_settle
+click	25,243	0	cast_fixed_npc
+wait	15500	0	fx_fixed_npc
+command	#mana	0	mana_b
+command	/target TrollF	0	tgt_gdb
+command	#stun 120000	0	stun3
+wait	1500	0	gdb_arm
+wait	6000	0	gdb_attached
+click	25,243	0	cast_gdb
+wait	15500	0	fx_gdb
+command	/target TrollF	0	tgt_depop
+command	#depop	0	depop
+wait	2000	0	depop_settle
+command	#goto -74 428 3.75	0	goto_back2
+wait	3000	0	back2_settle
+command	#spawn DarkF 6 1 0 30000 1	0	spawn_daf
+wait	3000	0	spawn_daf_settle
+command	#goto -67.6 434.4 3.75	0	goto_daf
+wait	3000	0	daf_settle
+command	/q	0	quit

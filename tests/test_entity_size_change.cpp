@@ -56,8 +56,8 @@
 #include "zone_stream_test_utils.h"
 
 using namespace zonetest;
-using EQT::Graphics::entityScaleForServerSize;
-using EQT::Graphics::kReferenceServerSize;
+using EQT::Graphics::clientActorScale;
+using EQT::Graphics::entityNodeScale;
 
 namespace {
 
@@ -207,21 +207,30 @@ TEST_F(EntitySizeWireTest, AnIllusionWithNoSizeDoesNotResize) {
 // Part 2 -- the arithmetic, and a real node's scale.
 // =========================================================================
 
-TEST(EntitySizeScale, TheReferenceSizeIsTheOneTheArtIsAuthoredAgainst) {
-    EXPECT_FLOAT_EQ(kReferenceServerSize, 6.0f);
-    EXPECT_FLOAT_EQ(entityScaleForServerSize(1.0f, 6.0f), 1.0f);
-}
-
+// B1172 (#491): the scale is the official client's actor scale
+// (actor_scale.h, size x 0.2 for the classic races); the full race / gender /
+// size table is pinned by test_actor_scale.
 TEST(EntitySizeScale, ShrinkHalvesAndGrowMultiplies) {
-    EXPECT_FLOAT_EQ(entityScaleForServerSize(1.0f, 3.0f), 0.5f);
-    EXPECT_FLOAT_EQ(entityScaleForServerSize(1.0f, 15.0f), 2.5f);
-    EXPECT_FLOAT_EQ(entityScaleForServerSize(2.0f, 3.0f), 1.0f);
+    EXPECT_FLOAT_EQ(clientActorScale(1, 0, 6.0f), 1.2f);
+    EXPECT_FLOAT_EQ(clientActorScale(1, 0, 3.0f), 0.6f);
+    EXPECT_FLOAT_EQ(clientActorScale(1, 0, 15.0f), 3.0f);
 }
 
-TEST(EntitySizeScale, NoSizeFromTheServerLeavesTheRaceScaleAlone) {
-    // The trap: "the server did not say" must be the race scale, not zero.
-    EXPECT_FLOAT_EQ(entityScaleForServerSize(1.7f, 0.0f), 1.7f);
-    EXPECT_FLOAT_EQ(entityScaleForServerSize(1.7f, -1.0f), 1.7f);
+TEST(EntitySizeScale, NoSizeFromTheServerIsTheRaceDefaultNotZero) {
+    // The trap: "the server did not say" must be the client's race/gender
+    // default size (0x47a147), not zero.
+    EXPECT_FLOAT_EQ(clientActorScale(6, 1, 0.0f), 1.0f);   // Dark Elf: 5.0
+    EXPECT_FLOAT_EQ(clientActorScale(8, 0, -1.0f), 0.8f);  // Dwarf: 4.0
+}
+
+// The local player's node draws translation-only, so its node scale (and its
+// collisionZOffset) is the 1.0 it is drawn at; every other spawn gets the
+// client's actor scale. The 1.0 is a DEVIATION from the client (which scales
+// its own player too), owned by B1176 (#495); this pins today's behaviour.
+TEST(EntitySizeScale, TheLocalPlayerNodeKeepsTheScaleItIsDrawnAt) {
+    EXPECT_FLOAT_EQ(entityNodeScale(false, 1, 0, 6.0f), 1.2f);
+    EXPECT_FLOAT_EQ(entityNodeScale(true, 1, 0, 6.0f), 1.0f);
+    EXPECT_FLOAT_EQ(entityNodeScale(true, 8, 0, 4.0f), 1.0f);
 }
 
 // -------------------------------------------------------------------------
@@ -314,6 +323,35 @@ TEST_F(EntityRescaleNodeTest, ShrinkAndGrowChangeTheBuiltNodesScale) {
     // Back to normal.
     EXPECT_TRUE(entities_->setEntitySize(kSpawn, 6.0f));
     EXPECT_NEAR(node->getScale().Y, baseScale, baseScale * 1e-4f);
+}
+
+// B1172 (#491): the oracle's two figures through the production build --
+// the human target (race 1, gender 0, size 6.000 on the wire) is drawn at the
+// client's 1.2, the dark-elf caster (race 6, gender 1, size 0.000) at her
+// default 1.0, so the drawn height is the mesh's own height times exactly
+// that (the oracle draws them 288 / 209 px at r51).
+TEST_F(EntityRescaleNodeTest, TheOracleTargetAndCasterAreDrawnAtTheClientsActorScale) {
+    struct Fig { uint16_t spawn, race; uint8_t gender; float size, scale; };
+    for (const Fig& f : {Fig{11, 1, 0, 6.0f, 1.2f}, Fig{12, 6, 1, 0.0f, 1.0f}}) {
+        ASSERT_TRUE(entities_->createEntity(f.spawn, f.race, "Figure", 0.f, 0.f, 0.f, 0.f, false, f.gender,
+                                            EQT::Graphics::EntityAppearance(), true, false, f.size));
+        auto* node = entities_->getEntities().at(f.spawn).sceneNode;
+        ASSERT_NE(node, nullptr) << "race " << f.race;
+        EXPECT_FLOAT_EQ(node->getScale().Y, f.scale) << "race " << f.race;
+        auto drawnHeight = [&]() {
+            node->updateAbsolutePosition();
+            irr::core::aabbox3df world = node->getBoundingBox();
+            node->getAbsoluteTransformation().transformBoxEx(world);
+            return world.MaxEdge.Y - world.MinEdge.Y;
+        };
+        const float drawn = drawnHeight();
+        const irr::core::vector3df kept = node->getScale();
+        node->setScale(irr::core::vector3df(1.0f, 1.0f, 1.0f));
+        const float mesh = drawnHeight();
+        node->setScale(kept);
+        ASSERT_GT(mesh, 0.0f) << "race " << f.race;
+        EXPECT_NEAR(drawn / mesh, f.scale, 1e-4f) << "race " << f.race;
+    }
 }
 
 TEST_F(EntityRescaleNodeTest, AnUnknownSpawnAndAnImpossibleSizeAreRefused) {
@@ -422,13 +460,14 @@ TEST_F(EntityRescaleNodeTest, ResizingABoatLeavesItsDeckSurfaceWhereItWas) {
     const float heightBefore = it->second.collisionHeight;
     ASSERT_GT(heightBefore, 0.0f);
 
-    // Double the boat. The node really does rescale...
+    // Double the boat's size word. B1172: the client forces a ship's actor
+    // scale to 2.0 whatever its size (0x47a239 -> 0x47fc41), so the node
+    // keeps 2.0...
     auto* node = it->second.sceneNode;
     ASSERT_NE(node, nullptr);
-    const float scaleBefore = node->getScale().Y;
+    EXPECT_FLOAT_EQ(node->getScale().Y, 2.0f);
     EXPECT_TRUE(entities_->setEntitySize(kBoat, 12.0f));
-    EXPECT_NEAR(entities_->getEntities().at(kBoat).sceneNode->getScale().Y,
-                scaleBefore * 2.0f, scaleBefore * 1e-4f);
+    EXPECT_FLOAT_EQ(entities_->getEntities().at(kBoat).sceneNode->getScale().Y, 2.0f);
 
     // ...and the deck surface does NOT follow it. THIS IS THE LIMIT, pinned.
     EXPECT_FLOAT_EQ(entities_->getEntities().at(kBoat).collisionHeight, heightBefore);

@@ -264,6 +264,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_position_frame_roundtrip DISCOVERY_TIMEOUT 120)
 
+# B1172 (#491) fix leg: our own size is ONE number -- the client's resolved
+# size (size word, or the race/gender default written back) -- in the entity
+# record (actor scale) and PlayerState (wire-z offset), from OP_PlayerProfile
+# and the server's OP_ZoneEntry Spawn_Struct.
+ADD_EXECUTABLE(test_self_actor_size
+    test_self_actor_size.cpp
+)
+TARGET_LINK_LIBRARIES(test_self_actor_size GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_self_actor_size PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_self_actor_size DISCOVERY_TIMEOUT 120)
+
 # T332 (B049): the same zone-in z conversion WITH A RENDERER PRESENT -- the arm
 # test_position_frame_roundtrip structurally cannot cover, because headless
 # there is no renderer echo and the defect is invisible (T331 measured it live).

@@ -4,6 +4,7 @@
 #include "model_viewer_fx_harness.h"
 #include "model_viewer_state.h"
 #include "fx_target_anchor.h"
+#include "fx_target_fit.h"  // B1172 FIX leg: the b1130 target fit split out (pure move)
 
 #include "client/bridge/spell_cast_fx.h"
 #include "client/graphics/eqe1_loader.h"
@@ -12,7 +13,9 @@
 #include "client/graphics/first_person_camera.h"
 #include "client/graphics/corpse_fade.h"
 #include "client/graphics/spell_fx_bone_anchor.h"
+#include "client/spell/spell_fx_attach_scale.h"
 #include "client/graphics/spell_cast_animation.h"
+#include "client/spell/spell_action_anim.h"
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/environment/spell_effects_config.h"
 
@@ -96,20 +99,6 @@ core::vector3df targetRightOfCaster() {
     // Screen right for a camera looking along -kCasterFacing (left-handed).
     return core::vector3df(0, 1, 0).crossProduct(-kCasterFacing).normalize();
 }
-
-// B1118 tour framing (review/B1118/README.md, review/B1132/gate): chase
-// camera `az 180 pitch 12`, i.e. in front of the caster looking back at her,
-// 12 degrees down; the caster's feet at (640,605) and 235 px head top to feet
-// on a 1280x800 grab. The distance and the look-at height are FITTED here to
-// those two pixel facts with the client's projection (62.8 degree horizontal
-// FOV, T466); the fit is printed so the report can quote it.
-struct PresetGeometry {
-    float pitchDeg = 12.0f;
-    float feetX = 640.0f, feetY = 605.0f, casterPx = 235.0f;
-    // B1155 b1130: the fixed_npc target's recorded screen facts (feet column,
-    // feet row, pixel height) from review/B1130/README.md "Geometry".
-    float targetFeetX = 0.0f, targetFeetY = 0.0f, targetPx = 0.0f;
-};
 
 bool fitFaceOnCamera(const PresetGeometry& g, const char* name) {
     const float w = static_cast<float>(harnessOpts.width), h = static_cast<float>(harnessOpts.height);
@@ -229,159 +218,6 @@ bool fitFaceOnCamera(const PresetGeometry& g, const char* name) {
     return top >= 0;  // the fit rendered the caster (the caller's test asserts the pixels)
 }
 
-// B1155 b1130: the solved target placement (world units), set by
-// fitFixedNpcTarget and used by placeHarnessTarget.
-float b1130TargetX = 0.0f, b1130TargetY = 0.0f, b1130TargetZ = 0.0f;
-// B1166: the standing target's pixel height the solve rendered (requested px).
-float b1130TargetFitPx = 0.0f;
-
-// B1155: b1130's fixed_npc target. review/B1130/README.md "Geometry": the
-// B1118 opening pose with the caster #goto -67.6,434.4 so the #spawn TrollF
-// stands ~1.4 caster heights to her right. The b1130 camera is already fitted
-// to the caster (209 px, feet (640,598)); this solves the target's world
-// offset (x, z) from its two feet pixels. B1166 (#485): the feet are the
-// oracle target's MEASURED box (fx_target_anchor.h: feet (940,615), 288 px,
-// by difference against a target-free still; B1130's 325 px / (940,652)
-// began at the name label), the solve sees the STANDING frame, and the
-// rendered height is the model's own -- a self-check, never a fitted input
-// (the FABLE human renders 238 px there, refactor/B1166/README.md sec. 2).
-//
-// Screen right for a camera looking along -kCasterFacing is world -X
-// (targetRightOfCaster), so the target at column 940 sits at x < 0, and its
-// lower feet row (615 > 598) puts it CLOSER to the camera than the caster.
-bool fitFixedNpcTarget(const PresetGeometry& g) {
-    if (!targetAnimatedNode || !camera) return false;
-    const video::SColor clear(255, 50, 50, 80);
-    const core::vector3df look = camera->getTarget();
-    // Hide the caster while fitting (its silhouette would be a second
-    // off-clear blob), and take a throwaway screenshot: the EGL surface can be
-    // another size than the requested frame (see fitFaceOnCamera), and this
-    // measures against the SCALED facts, surface pixel (x*Sx, y*Sy).
-    const bool casterWasVisible = animatedNode && animatedNode->isVisible();
-    if (animatedNode) animatedNode->setVisible(false);
-    targetAnimatedNode->setVisible(true);
-    targetAnimatedNode->setPosition(core::vector3df(0.0f, 0.0f, 0.0f));
-    targetAnimatedNode->updateAbsolutePosition();
-    // B1166 (#485): solve on the STANDING frame, not the rest pose. Without
-    // this the fit saw the bind pose (a ~50 px strip whose bottom is not the
-    // feet) and the running frames -- where the harness loop's OnAnimate
-    // skins the idle -- put the standing figure's feet 130 px lower. The same
-    // rule fitFaceOnCamera applies to the caster (the client's createEntity:
-    // force the animated pose before measuring it); the scene clock is
-    // already frozen at the run's t = 0 (setupSpellTestCamera), so this is
-    // the pose frame 0 is drawn in.
-    targetAnimatedNode->forceAnimationUpdate();
-    // B1166: stand the target ON the ground the frames draw. addGroundPlane
-    // puts the depth-writing plane at the caster's pose-box bottom (the
-    // client's collisionZOffset rule: an entity's pose box stands on the
-    // ground); the target gets the same rule -- its own pose-box bottom on
-    // that plane -- or the plane hides its feet in every written frame while
-    // the fit (drawn before the plane exists) still counts them.
-    float y = 0.0f;
-    if (animatedNode) {
-        animatedNode->forceAnimationUpdate();
-        animatedNode->updateAbsolutePosition();
-        core::aabbox3df cb = animatedNode->getBoundingBox();
-        animatedNode->getAbsoluteTransformation().transformBoxEx(cb);
-        core::aabbox3df tb = targetAnimatedNode->getBoundingBox();
-        targetAnimatedNode->getAbsoluteTransformation().transformBoxEx(tb);
-        y = cb.MinEdge.Y - tb.MinEdge.Y;
-        std::printf("[fx-harness] b1130 target: pose box y %.3f..%.3f at y 0; caster pose box bottom (the ground "
-                    "plane) %.3f -> target stands at y %.3f\n",
-                    tb.MinEdge.Y, tb.MaxEdge.Y, cb.MinEdge.Y, y);
-    }
-    driver->beginScene(true, true, clear);
-    smgr->drawAll();
-    driver->endScene();
-    float Sx = 1.0f, Sy = 1.0f;
-    if (video::IImage* probe = driver->createScreenShot()) {
-        const auto dim0 = probe->getDimension();
-        Sx = static_cast<float>(dim0.Width) / static_cast<float>(harnessOpts.width);
-        Sy = static_cast<float>(dim0.Height) / static_cast<float>(harnessOpts.height);
-        probe->drop();
-    }
-    const float targetFeetXS = g.targetFeetX * Sx, targetFeetYS = g.targetFeetY * Sy;
-    // The target's silhouette alone (any pixel off the clear colour), in
-    // SURFACE px: {column centroid, bottom row, pixel height}.
-    auto measure = [&](float x, float z) -> std::array<float, 3> {
-        targetAnimatedNode->setPosition(core::vector3df(x, y, z));
-        targetAnimatedNode->updateAbsolutePosition();
-        driver->beginScene(true, true, clear);
-        smgr->drawAll();
-        driver->endScene();
-        video::IImage* img = driver->createScreenShot();
-        if (!img) return {1e9f, -1e9f, 0.0f};
-        int top = -1, bottom = -1;
-        double sx = 0;
-        int nx = 0;
-        const auto dim = img->getDimension();
-        for (u32 y = 0; y < dim.Height; ++y)
-            for (u32 x = 0; x < dim.Width; ++x) {
-                const video::SColor c = img->getPixel(x, y);
-                if (std::abs(int(c.getRed()) - 50) + std::abs(int(c.getGreen()) - 50) +
-                        std::abs(int(c.getBlue()) - 80) <= 12)
-                    continue;
-                if (top < 0) top = static_cast<int>(y);
-                bottom = static_cast<int>(y);
-                sx += x;
-                ++nx;
-            }
-        img->drop();
-        if (nx == 0) return {1e9f, -1e9f, 0.0f};
-        return {static_cast<float>(sx / nx), static_cast<float>(bottom),
-                static_cast<float>(bottom - top + 1)};
-    };
-
-    // Newton on the two feet-pixel residuals (finite-difference Jacobian),
-    // damped. Starts on the caster's right and closer to the camera.
-    float x = -2.0f, z = 2.0f;
-    std::array<float, 3> m{1e9f, -1e9f, 0.0f};
-    for (int iter = 0; iter < 24; ++iter) {
-        m = measure(x, z);
-        if (m[0] < 1e8f) {
-            const float r0 = m[0] - targetFeetXS, r1 = m[1] - targetFeetYS;
-            std::printf("[fx-harness]   tgt fit %d: (x %.3f, z %.3f) -> feet row %.1f at column %.1f, %.0f px (surface)\n",
-                        iter, x, z, m[1], m[0], m[2]);
-            if (std::fabs(r0) < 0.5f * Sx && std::fabs(r1) < 0.5f * Sy) break;
-            const float d = 0.05f;
-            const auto mx = measure(x + d, z);
-            const auto mz = measure(x, z + d);
-            if (mx[0] < 1e8f && mz[0] < 1e8f) {
-                const float j00 = (mx[0] - m[0]) / d, j01 = (mz[0] - m[0]) / d;
-                const float j10 = (mx[1] - m[1]) / d, j11 = (mz[1] - m[1]) / d;
-                const float det = j00 * j11 - j01 * j10;
-                if (std::fabs(det) > 1e-6f) {
-                    const float dx = (j11 * (-r0) - j01 * (-r1)) / det;
-                    const float dz = (-j10 * (-r0) + j00 * (-r1)) / det;
-                    const float step = std::min(1.0f, 6.0f / std::max(std::fabs(dx), std::fabs(dz)));
-                    x += dx * step;
-                    z += dz * step;
-                    continue;
-                }
-            }
-            // singular Jacobian: nudge toward the target pixels
-            x -= 0.2f * std::copysign(1.0f, r0);  // column right = world -X
-            z += 0.2f * std::copysign(1.0f, r1);  // feet row down = closer
-        }
-    }
-    if (animatedNode) animatedNode->setVisible(casterWasVisible);
-    const bool ok = m[0] < 1e8f && std::fabs(m[0] - targetFeetXS) < 1.0f * Sx &&
-                    std::fabs(m[1] - targetFeetYS) < 1.0f * Sy;
-    std::printf("[fx-harness] camera b1130: target (x %.3f, y %.3f, z %.3f) -> rendered target feet row %.0f at "
-                "column %.0f, %.0f px head top to feet (oracle r51 target, fx_target_anchor.h: feet %d at %d, "
-                "%d px)\n",
-                x, y, z, m[1] / Sy, m[0] / Sx, m[2] / Sy, static_cast<int>(g.targetFeetY),
-                static_cast<int>(g.targetFeetX), static_cast<int>(g.targetPx));
-    std::fflush(stdout);
-    if (ok) {
-        b1130TargetX = x;
-        b1130TargetY = y;
-        b1130TargetZ = z;
-        b1130TargetFitPx = m[2] / Sy;
-    }
-    return ok;
-}
-
 // scene.tsv: each visible entity's screen box (its pose bounding box's eight
 // corners projected through the frame's camera), so a consumer -- the
 // FxHarness ctest, an ROI script -- knows where the caster and the target are
@@ -419,6 +255,23 @@ void writeSceneBoxes(const std::string& path) {
 
 const EQ::SpellData* spellOrNull(uint32_t id) {
     return spellDatabase ? spellDatabase->getSpell(id) : nullptr;
+}
+
+// B1174 (#493): FUN_0047f4af's inputs for the harness caster's OP_Action
+// (spell_action_anim.h): the plan's spell id, its record (the plan only
+// holds spells the db has), the record's field 98 target type, a standing
+// source (the harness caster never sits, loots or feigns), field 123, and a
+// class that is no Bard with instrument_mod 0.
+EQ::ActionCastAnimInputs harnessActionInputs(uint32_t spellId, const EQ::SpellData& sp) {
+    EQ::ActionCastAnimInputs in;
+    in.spellId = spellId;
+    in.recordExists = true;
+    in.targetType = static_cast<uint8_t>(sp.target_type);
+    in.sourceStandState = EQ::kStandStateStanding;
+    in.spellAffectIndex = sp.spell_affect_index;
+    in.sourceClass = 0;
+    in.instrumentMod = 0;
+    return in;
 }
 
 // The harness must write the REQUESTED frame (harnessOpts.width x height), and
@@ -502,12 +355,17 @@ void applyHarnessPresetDefaults() {
     harnessOpts.height = 800;
     // All three presets share the b1118 char-67 caster: char 67 Testcaster
     // (lane 5): race 6 dark elf, gender 1 (fable.log
-    // "Updating appearance for entity 258 (Testcaster) to race 6 gender 1"),
-    // server size 6 (buildEntityMesh[Testcaster] ... (6.00/6) = 1.00).
+    // "Updating appearance for entity 258 (Testcaster) to race 6 gender 1").
+    // B1172: size 0 -- her S->C OP_ZoneEntry Spawn_Struct carries size 0.000
+    // in the oracle captures (r51, B1118 oracle_druid) and in fable's lane
+    // legs (B1118 fable_A, B1142 fable_N93), and no AT_Size names her; the
+    // client then draws its race/gender default 5.0 x 0.2 = 1.0
+    // (actor_scale.h). The 6.0 here before was fable's own zone_entry
+    // default, not a wire value.
     if (!harnessOpts.casterGiven) {
         harnessOpts.casterRace = 6;
         harnessOpts.casterGender = 1;
-        harnessOpts.casterSize = 6.0f;
+        harnessOpts.casterSize = 0.0f;
         // B1139: her Spawn_Struct appearance in that leg's OP_ZoneEntry (S->C):
         // face 3, TextureProfile {0, 10, 1, 23, 1, 1, 1, 0, 72} -- the red robe
         // (chest 10) and IT72, the orb her left hand holds. equip_chest2 reads
@@ -531,8 +389,8 @@ void applyHarnessPresetDefaults() {
             // standing human male), NOT a race-9 troll -- r51's own OP_NewSpawn
             // reads race 1, gender 0, size 6.000 (refactor/B1166/README.md
             // sec. 1). b1130 renders that human male and lets the solver find
-            // its depth from the two feet pixels (B1166: 288 px in the oracle,
-            // 238 px in FABLE at the same spot -- a model-height gap).
+            // its depth from the two feet pixels (288 px in the oracle; 238 px in
+            // FABLE at 1.0 (B1166), 285 px at the client's actor scale 1.2, B1172).
             harnessOpts.targetRace = 1;
             harnessOpts.targetGender = 0;
             harnessOpts.targetSize = 6.0f;
@@ -692,6 +550,13 @@ bool initHarnessParticles() {
     spellVisualFX->setCastAnimationLengthCallback([nodeFor](uint16_t id, const char* code) -> int32_t {
         return CastAnimationTrackMs(nodeFor(id), code);
     });
+    // B1164 (#483): the attach scale s, the client's actor scale from the
+    // entity's race and server size, as the renderer computes it.
+    spellVisualFX->setEntityAttachScaleCallback([](uint16_t id) -> float {
+        if (id == casterEntityId) return EQ::SpellFxAttachScale(harnessOpts.casterRace, harnessOpts.casterGender, harnessOpts.casterSize);
+        if (id == targetEntityId) return EQ::SpellFxAttachScale(harnessOpts.targetRace, harnessOpts.targetGender, harnessOpts.targetSize);
+        return 0.0f;
+    });
     // The gates read the FX lines (createCastGlow / createLanding, B1170's
     // missile-object lines) from the SPELL module's log, so un-filter it (the
     // model_viewer does not InitLogging, so the module is at the default NONE).
@@ -807,36 +672,6 @@ void harnessInterrupt(const EQ::SpellData& spell) {
     eqt::bridge::ApplySpellCastInterruptedFx(fxRoute, spellVisualFX.get(), d);
 }
 
-// B1166 (#485): measure the rendered target in a written frame (off-clear
-// silhouette in the anchor's window, fx_target_anchor.h) and check feet row,
-// column centroid and height against the preset's anchor within the stated
-// tolerances. Printed to the run log either way; false = out of tolerance.
-bool b1130TargetSelfCheck(video::IImage* img) {
-    if (!img) return false;
-    const auto dim = img->getDimension();
-    const auto& a = fxharness::kB1130TargetAnchor;
-    const auto win = fxharness::targetWindow(a, static_cast<int>(dim.Height));
-    const auto sil = fxharness::measureSilhouette(
-        [img](int x, int y, int& r, int& g, int& b) {
-            const video::SColor c = img->getPixel(static_cast<u32>(x), static_cast<u32>(y));
-            r = static_cast<int>(c.getRed());
-            g = static_cast<int>(c.getGreen());
-            b = static_cast<int>(c.getBlue());
-        },
-        static_cast<int>(dim.Width), static_cast<int>(dim.Height), win.x0, win.y0, win.x1, win.y1);
-    const auto chk = fxharness::checkTargetAnchor(sil, a, b1130TargetFitPx);
-    std::printf("[fx-harness] b1130 target self-check (frame 0, cols %d..%d): rows %d..%d (%d px, feet row %d), "
-                "column %.1f | anchor feet %.0f at %.0f: d feet %+.0f (tol %.0f), d col %+.1f (tol %.0f) | "
-                "solved standing height %.0f px: d %+.0f (tol %.0f) | measured standing height %.0f px: d %+.0f "
-                "(tol %.0f; ratio %.3f of the oracle's %.0f px): %s\n",
-                win.x0, win.x1, sil.top, sil.bottom, sil.height(), sil.bottom, sil.col, a.feetY, a.feetX,
-                chk.dFeet, fxharness::kFeetTolPx, chk.dCol, fxharness::kColumnTolPx, b1130TargetFitPx, chk.dPx,
-                fxharness::kHeightTolPx, fxharness::kStandingPx, chk.dStand, fxharness::kStandingTolPx, chk.ratio,
-                a.px, chk.ok() ? "PASS" : "FAIL");
-    std::fflush(stdout);
-    return chk.ok();
-}
-
 void placeHarnessTarget(bool self, float distance) {
     if (!targetAnimatedNode || !animatedNode) return;
     // B1155: b1130-self is the caster alone (B1130's fixed_self stills); the
@@ -852,7 +687,37 @@ void placeHarnessTarget(bool self, float distance) {
     } else {
         const core::vector3df right = harnessOpts.cameraPreset.empty() ? core::vector3df(1, 0, 0)
                                                                        : targetRightOfCaster();
-        targetAnimatedNode->setPosition(animatedNode->getPosition() + right * distance);
+        core::vector3df pos = animatedNode->getPosition() + right * distance;
+        if (!harnessOpts.cameraPreset.empty()) {
+            // B1172 (#491): stand the target on the caster's ground, the rule
+            // addGroundPlane applies to her (the client's collisionZOffset:
+            // an entity's pose box stands on the floor). At the client's
+            // actor scale the human's pose box reaches 0.85 units below the
+            // dark elf's, so placed at her origin it sank through the
+            // depth-writing plane and lost its feet in every frame. Measured
+            // once, on the first placement (the frozen t = 0 pose, as the
+            // ground plane is), so every later placement stands it the same.
+            static bool measured = false;
+            static float standY = 0.0f;
+            if (!measured) {
+                measured = true;
+                targetAnimatedNode->setPosition(pos);
+                targetAnimatedNode->updateAbsolutePosition();
+                animatedNode->forceAnimationUpdate();
+                targetAnimatedNode->forceAnimationUpdate();
+                core::aabbox3df cb = animatedNode->getBoundingBox();
+                animatedNode->getAbsoluteTransformation().transformBoxEx(cb);
+                core::aabbox3df tb = targetAnimatedNode->getBoundingBox();
+                targetAnimatedNode->getAbsoluteTransformation().transformBoxEx(tb);
+                standY = cb.MinEdge.Y - tb.MinEdge.Y;
+                std::printf("[fx-harness] %s target: pose box y %.3f..%.3f; caster pose box bottom %.3f -> "
+                            "target stands at y %+.3f\n",
+                            harnessOpts.cameraPreset.c_str(), tb.MinEdge.Y, tb.MaxEdge.Y, cb.MinEdge.Y, standY);
+                std::fflush(stdout);
+            }
+            pos.Y += standY;
+        }
+        targetAnimatedNode->setPosition(pos);
     }
     targetAnimatedNode->updateAbsolutePosition();
 }
@@ -1141,6 +1006,13 @@ int runScriptedHarness() {
         }
         const uint32_t castMs = plan[i].castMsOverride >= 0 ? static_cast<uint32_t>(plan[i].castMsOverride)
                                                             : sp->cast_time_ms;
+        // B1171 (#490): the caster level this cast is drawn at, and where it came
+        // from, in the run log -- a sweep's comparison against an oracle capture
+        // is refused when this differs from the capture's `#level`
+        // (scripts/fx/capture_level.py).
+        std::printf("[fx-harness] cast %zu: spell %u caster_level %d (%s)\n", i, plan[i].spellId,
+                    plan[i].casterLevel >= 0 ? plan[i].casterLevel : harnessOpts.casterLevel,
+                    plan[i].casterLevel >= 0 ? "plan" : "--caster-level");
         if (plan[i].beginCast) events.push_back({plan[i].tBegin, static_cast<int>(i), false, castMs});
         events.push_back({plan[i].tBegin + castMs / 1000.0, static_cast<int>(i), true, castMs});
     }
@@ -1153,7 +1025,9 @@ int runScriptedHarness() {
         std::fprintf(stderr, "[fx-harness] cannot write %s/timing.tsv\n", harnessOpts.framesDir.c_str());
         return 4;
     }
-    timing << "frame\tt\tevent\tspell\ttarget\tdistance\tcast_ms\tt_event\n";
+    // B1171 (#490): caster_level (last column, so the index readers keep
+    // working) = the slot-gate level each packet was drawn at.
+    timing << "frame\tt\tevent\tspell\ttarget\tdistance\tcast_ms\tt_event\tcaster_level\n";
     // B1165 (#484): the Spell page the run drew with, for the gate scripts
     // (scripts/tools/fx_particle_options.py pins it to the capture's ini).
     {
@@ -1179,6 +1053,12 @@ int runScriptedHarness() {
     // the raised pose.
     std::ofstream emitterOut(harnessOpts.framesDir + "/emitter_origin.tsv");
     emitterOut << "frame\tt\tfxid\tkind\twx\tyw\twz\tsx\tsy\n";
+    // B1174 (#493): per written frame, the live spell effects and missiles
+    // (SpellVisualFX's own lists) and the caster's track -- what a /disc
+    // draws is the caster's CastingAnim and no effect, which a whole-frame
+    // pixel diff cannot tell apart.
+    std::ofstream activityOut(harnessOpts.framesDir + "/fx_activity.tsv");
+    activityOut << "frame\tt\tactive_effects\tmissiles\tcaster_anim\n";
 
     if (!harnessOpts.backdropPath.empty()) {
         fxBackdrop = driver->getTexture(harnessOpts.backdropPath.c_str());
@@ -1209,15 +1089,18 @@ int runScriptedHarness() {
     // emitter_origin.tsv every frame, cleared at the cast's Action; and the
     // cast track its BeginCast started ("" when the model has none) -- the
     // Action only ends a pose that began, the client's guard
-    // (endEntityCastAnim runs on a non-empty castAnimCode): a /disc is
-    // OP_Action with no OP_BeginCast, and the client never switched the
-    // model on that one.
+    // (endEntityCastAnim runs on a non-empty castAnimCode). A /disc is
+    // OP_Action with no OP_BeginCast: its swing is the OP_Action handler's
+    // own CastingAnim request (B1174, actionCastTrack below).
     std::vector<uint16_t> activeSourceEmitters;
     std::string activeCastTrack;
     // B1170 (#489): the 0x4033 payload to inject (--missile-payload / --missile-at).
     bool missileInjected = harnessOpts.missilePayloadPath.empty() || harnessOpts.missileAt < 0.0;
     std::ofstream missileOut(harnessOpts.framesDir + "/missile.tsv");
     missileOut << "frame\tt\tobjects\ty\tx\tz\tsx\tsy\n";
+    // B1174 (#493): the track an OP_Action started with no cast in progress
+    // (a /disc; EntityRenderer::actionEntityCastAnim's rule), "" = none.
+    std::string actionCastTrack;
     placeHarnessTarget(plan[0].self, plan[0].distance);
     fixHarnessSolidOrder();  // B1169 (#488)
     device->getTimer()->stop();  // (already stopped by setupSpellTestCamera)
@@ -1245,6 +1128,7 @@ int runScriptedHarness() {
                 // o01 idle that looped during the channel before is gone.
                 const std::string track = playCastAnim(animatedNode, sp.cast_anim);
                 activeCastTrack = track;
+                actionCastTrack.clear();
                 std::printf("[fx-harness] BeginCast %u: caster cast-anim %s (CastingAnim %d)\n", c.spellId,
                             track.empty() ? "(no track; current stands)" : track.c_str(), sp.cast_anim);
                 // The Source-stage emitter origins to dump (step 2): the
@@ -1263,10 +1147,21 @@ int runScriptedHarness() {
                 harnessAction(sp, c.self, level, now);
                 // B1157: OP_Action ends the cast state; the model takes the
                 // idle (the guessed t04/t05/t06 played once here before is
-                // gone). Only when a BeginCast started the track -- a /disc
-                // (OP_Action without OP_BeginCast) never did, and the client
-                // never switched the model on that one either.
-                if (!activeCastTrack.empty()) endCastAnim(animatedNode, "p01");
+                // gone). Only when a BeginCast started the track; a /disc
+                // (OP_Action without OP_BeginCast) takes the B1174 branch.
+                if (!activeCastTrack.empty()) {
+                    endCastAnim(animatedNode, "p01");
+                } else if (EQ::ActionPlaysSourceCastAnim(harnessActionInputs(c.spellId, sp))) {
+                    // B1174 (#493): eqgame's OP_Action handler (0x47f4af)
+                    // plays the spell's CastingAnim on its standing source --
+                    // a /disc's only visible effect (the observer's t06
+                    // swing, refactor/B1174/README.md). Played out, the idle
+                    // returns (below, per step).
+                    actionCastTrack = playCastAnim(animatedNode, sp.cast_anim);
+                    std::printf("[fx-harness] Action %u: caster action cast-anim %s (CastingAnim %d)\n", c.spellId,
+                                actionCastTrack.empty() ? "(no track; current stands)" : actionCastTrack.c_str(),
+                                sp.cast_anim);
+                }
                 activeCastTrack.clear();
                 activeSourceEmitters.clear();
                 lastAction = e.t;
@@ -1282,9 +1177,9 @@ int runScriptedHarness() {
                              << '\t' << d.texture << '\n';
             }
             char row[256];
-            std::snprintf(row, sizeof(row), "%d\t%.6f\t%s\t%u\t%s\t%.3f\t%u\t%.6f\n", f, t,
+            std::snprintf(row, sizeof(row), "%d\t%.6f\t%s\t%u\t%s\t%.3f\t%u\t%.6f\t%d\n", f, t,
                           e.action ? "Action" : "BeginCast", c.spellId, c.self ? "self" : "other",
-                          c.distance, e.castMs, e.t);
+                          c.distance, e.castMs, e.t, level);
             timing << row;
         }
         if (!missileInjected && t + 1e-9 >= harnessOpts.missileAt) {
@@ -1320,6 +1215,14 @@ int runScriptedHarness() {
                         cp.Z, cp.X, cp.Y, tp.Z, tp.X, tp.Y, th, w.heading, w.word, static_cast<int>(w.damped),
                         simHz);
             spellVisualFX->spawnMissileObject(w, harnessOpts.casterLevel);
+        }
+        if (!actionCastTrack.empty() && actionCastAnimEnded(animatedNode, actionCastTrack)) {
+            const bool playedOut = animatedNode->getAnimator().getCurrentAnimation() == actionCastTrack;
+            if (playedOut && animatedNode->hasAnimation("p01"))
+                animatedNode->playAnimation("p01", /*loop=*/true, /*playThrough=*/false);
+            std::printf("[fx-harness] action cast-anim %s %s at t %.3f\n", actionCastTrack.c_str(),
+                        playedOut ? "played out" : "replaced", t);
+            actionCastTrack.clear();
         }
         // B1139: the lane NPC the tour kills (OP_Death, then OP_DeleteSpawn).
         // The death is ApplyCorpseDeathPose's witnessed branch: stop, then d05
@@ -1425,8 +1328,11 @@ int runScriptedHarness() {
             return 4;
         }
         char row[96];
-        std::snprintf(row, sizeof(row), "%d\t%.6f\t-\t-\t-\t-\t-\t-\n", f, t);
+        std::snprintf(row, sizeof(row), "%d\t%.6f\t-\t-\t-\t-\t-\t-\t-\n", f, t);
         timing << row;
+        activityOut << f << '\t' << std::fixed << std::setprecision(6) << t << '\t'
+                    << spellVisualFX->getActiveEffectCount() << '\t' << spellVisualFX->missileObjectCount() << '\t'
+                    << animatedNode->getAnimator().getCurrentAnimation() << '\n';
         if (!harnessOpts.missilePayloadPath.empty()) {
             // B1170: the first missile object's position (EQ y, x, z) and its
             // screen point, through the scene.tsv pinhole.

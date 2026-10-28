@@ -26,9 +26,18 @@
 #include "client/graphics/ui/static_ui_input.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/ui_preferences.h"
+#include "client/graphics/ui/eqclient_ini.h"
+#include "common/willeq_paths.h"
 #include "particle_test_seed.h"
 
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <optional>
+#include <sstream>
 #include <string>
+#include <unistd.h>
 
 using namespace EQT::Graphics;
 namespace OL = EQT::Graphics::OptionsLayout;
@@ -72,6 +81,19 @@ int value(const OptionsPanelState& s, OL::Setting setting) { return optionsSetti
 
 const Env::ParticleFamilyKnobs& knob(const Env::ParticleKnobs& k, Env::ParticleFamily f) {
     return k[static_cast<size_t>(f)];
+}
+
+// B1175 (#494): the particle keys persist in the global eqclient.ini
+// [Defaults] (eqclient_ini.h); a fresh file's text for `s`.
+std::string eqclientText(const OptionsPanelState& s) {
+    return UpdateEqClientIniText("", CollectEqClientIni(s));
+}
+
+std::string readFile(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    std::ostringstream buf;
+    buf << in.rdbuf();
+    return buf.str();
 }
 
 }  // namespace
@@ -143,9 +165,8 @@ TEST(OptionsParticles, ClicksMoveTheKnobsOfTheActivePageOnly) {
 
 TEST(OptionsParticles, KnobsPersistUnderEqclientKeysAsFloats) {
     OptionsPanelState s;
-    UiPreferencesBinding b;
-    b.options = &s;
-    std::string text = SerializeUiPreferences(CollectUiPreferences(b, 1));
+    std::string text = eqclientText(s);
+    EXPECT_EQ(text.rfind("[Defaults]\n", 0), 0u) << text;
     // The defaults are eqclient.ini's own lines, byte for byte.
     EXPECT_NE(text.find("SpellParticleOpacity=1.000000\n"), std::string::npos) << text;
     EXPECT_NE(text.find("SpellParticleDensity=1.000000\n"), std::string::npos);
@@ -155,22 +176,22 @@ TEST(OptionsParticles, KnobsPersistUnderEqclientKeysAsFloats) {
     EXPECT_NE(text.find("EnvironmentParticleNearClipPlane=2.000000\n"), std::string::npos);
     EXPECT_EQ(text.find("ActorParticle"), std::string::npos) << "N3: nothing behind them";
 
-    setOptionsValue(s, OL::Setting::SpellParticleOpacity, 10);
+    setOptionsValue(s, OL::Setting::SpellParticleOpacity, 50);
     setOptionsValue(s, OL::Setting::EnvParticleNearClip, 3);
-    text = SerializeUiPreferences(CollectUiPreferences(b, 1));
+    text = eqclientText(s);
     EXPECT_NE(text.find("SpellParticleOpacity=0.500000\n"), std::string::npos);
     EXPECT_NE(text.find("EnvironmentParticleNearClipPlane=8.000000\n"), std::string::npos);
-    const UiPreferences p = ParseUiPreferences(text);
-    EXPECT_EQ(p.optionValues[static_cast<int>(OL::Setting::SpellParticleOpacity)], 10);
+    const EqClientIni p = ParseEqClientIni(text);
+    EXPECT_EQ(p.optionValues[static_cast<int>(OL::Setting::SpellParticleOpacity)], 50);
     EXPECT_EQ(p.optionValues[static_cast<int>(OL::Setting::EnvParticleNearClip)], 3);
 }
 
-TEST(OptionsParticles, AnOfficialOptionsSectionLoads) {
-    const UiPreferences p = ParseUiPreferences(
-        "[Options]\r\nSpellParticleOpacity=0.250000\r\nSpellParticleDensity=0.500000\r\n"
+TEST(OptionsParticles, AnOfficialDefaultsSectionLoads) {
+    const EqClientIni p = ParseEqClientIni(
+        "[Defaults]\r\nSpellParticleOpacity=0.250000\r\nSpellParticleDensity=0.500000\r\n"
         "EnvironmentParticleNearClipPlane=4.000000\r\nEnvironmentParticleDensity=0.000000\r\n"
         "SpellParticleNearClipPlane=banana\r\n");
-    EXPECT_EQ(p.optionValues[static_cast<int>(OL::Setting::SpellParticleOpacity)], 5);
+    EXPECT_EQ(p.optionValues[static_cast<int>(OL::Setting::SpellParticleOpacity)], 25);
     EXPECT_EQ(p.optionValues[static_cast<int>(OL::Setting::SpellParticleDensity)], 2);
     EXPECT_EQ(p.optionValues[static_cast<int>(OL::Setting::EnvParticleNearClip)], 1)
         << "B1165: 4.0 is Medium (Near 2 / Medium 4 / Far 6 / Farthest 8)";
@@ -190,14 +211,12 @@ TEST(OptionsParticles, TheNearClipTableIsTheOraclesAndTwoIsNear) {
     OptionsPanelState s;
     EXPECT_EQ(value(s, OL::Setting::SpellParticleNearClip), 0) << "the default is Near";
     EXPECT_STREQ(OL::choiceText(OL::Setting::SpellParticleNearClip, 0), "Near");
-    UiPreferencesBinding b;
-    b.options = &s;
     const char* const ini[4] = {"2.000000", "4.000000", "6.000000", "8.000000"};
     for (int c = 0; c < 4; ++c) {
         setOptionsValue(s, OL::Setting::SpellParticleNearClip, c);
-        const std::string text = SerializeUiPreferences(CollectUiPreferences(b, 1));
+        const std::string text = eqclientText(s);
         EXPECT_NE(text.find(std::string("SpellParticleNearClipPlane=") + ini[c] + "\n"), std::string::npos) << c;
-        const UiPreferences p = ParseUiPreferences(text);
+        const EqClientIni p = ParseEqClientIni(text);
         EXPECT_EQ(p.optionValues[static_cast<int>(OL::Setting::SpellParticleNearClip)], c) << "round trip " << c;
     }
 }
@@ -206,14 +225,14 @@ TEST(OptionsParticles, TheNearClipTableIsTheOraclesAndTwoIsNear) {
 // the oracle's combobox shows it: the first choice whose value is >= it
 // (0x53b93f..0x53b985 near clip, 0x53b994..0x53b9da density).
 TEST(OptionsParticles, TheLoaderClampsAndTheComboboxRoundsUp) {
-    const UiPreferences p = ParseUiPreferences(
-        "[Options]\r\nSpellParticleNearClipPlane=0.500000\r\nEnvironmentParticleNearClipPlane=100.0\r\n"
+    const EqClientIni p = ParseEqClientIni(
+        "[Defaults]\r\nSpellParticleNearClipPlane=0.500000\r\nEnvironmentParticleNearClipPlane=100.0\r\n"
         "SpellParticleDensity=0.300000\r\nEnvironmentParticleDensity=-1.0\r\nSpellParticleOpacity=1.500000\r\n");
     EXPECT_EQ(p.optionValues[static_cast<int>(OL::Setting::SpellParticleNearClip)], 0) << "0.5 -> 1 -> Near";
     EXPECT_EQ(p.optionValues[static_cast<int>(OL::Setting::EnvParticleNearClip)], 3) << "100 -> 8 -> Farthest";
     EXPECT_EQ(p.optionValues[static_cast<int>(OL::Setting::SpellParticleDensity)], 2) << "0.3 -> Medium";
     EXPECT_EQ(p.optionValues[static_cast<int>(OL::Setting::EnvParticleDensity)], 0) << "-1 -> 0 -> Off";
-    EXPECT_EQ(p.optionValues[static_cast<int>(OL::Setting::SpellParticleOpacity)], 20) << "1.5 -> 1";
+    EXPECT_EQ(p.optionValues[static_cast<int>(OL::Setting::SpellParticleOpacity)], 100) << "1.5 -> 1";
     EXPECT_FLOAT_EQ(Env::clampNearClipIni(3.0f), 3.0f);
     EXPECT_EQ(Env::choiceForIniFloat(Env::kNearClipIniValues, Env::kNearClipChoices, 3.0f), 1);
     EXPECT_EQ(Env::choiceForIniFloat(Env::kNearClipIniValues, Env::kNearClipChoices, 6.0f), 2);
@@ -225,8 +244,8 @@ TEST(OptionsParticles, TheLoaderClampsAndTheComboboxRoundsUp) {
 // and only its combobox DISPLAY rounds up to a choice (0x53b93f..0x53b9da).
 // So an ini 0.3 density is applied as 0.3 and shown as Medium (0.5).
 TEST(OptionsParticles, AnOffTableIniFloatIsAppliedRawAndShownAsTheChoice) {
-    const UiPreferences p = ParseUiPreferences(
-        "[Options]\r\nSpellParticleDensity=0.300000\r\nSpellParticleNearClipPlane=3.000000\r\n"
+    const EqClientIni p = ParseEqClientIni(
+        "[Defaults]\r\nSpellParticleDensity=0.300000\r\nSpellParticleNearClipPlane=3.000000\r\n"
         "SpellParticleOpacity=0.330000\r\nEnvironmentParticleDensity=1.000000\r\n");
     const int dens = static_cast<int>(OL::Setting::SpellParticleDensity);
     const int clip = static_cast<int>(OL::Setting::SpellParticleNearClip);
@@ -242,9 +261,7 @@ TEST(OptionsParticles, AnOffTableIniFloatIsAppliedRawAndShownAsTheChoice) {
         << "a table value needs no applied float";
 
     OptionsPanelState s;
-    UiPreferencesBinding b;
-    b.options = &s;
-    ApplyUiPreferences(p, b);
+    ApplyEqClientIni(p, s);
     EQ::SpellFxOptions o = spellFxOptionsFromOptions(s.values, s.iniFloats);
     EXPECT_FLOAT_EQ(o.density, 0.3f) << "applied as 0.3, not the shown 0.5";
     EXPECT_FLOAT_EQ(o.nearClip, 3.0f);
@@ -253,10 +270,10 @@ TEST(OptionsParticles, AnOffTableIniFloatIsAppliedRawAndShownAsTheChoice) {
     EXPECT_FALSE(EQ::IsOracleCaptureSpellFxOptions(o));
 
     // A save writes the applied float back, so the value survives.
-    const std::string t = SerializeUiPreferences(CollectUiPreferences(b, 1));
+    const std::string t = eqclientText(s);
     EXPECT_NE(t.find("SpellParticleDensity=0.300000\n"), std::string::npos) << t;
     EXPECT_NE(t.find("SpellParticleNearClipPlane=3.000000\n"), std::string::npos) << t;
-    const UiPreferences back = ParseUiPreferences(t);
+    const EqClientIni back = ParseEqClientIni(t);
     EXPECT_TRUE(back.optionValues == p.optionValues);
     EXPECT_TRUE(back.optionIniFloats == p.optionIniFloats);
 
@@ -275,7 +292,7 @@ TEST(OptionsParticles, AnOffTableIniFloatIsAppliedRawAndShownAsTheChoice) {
 // DAT_00793b4c, index 7 (All spells) when it is not listed (0x53b9e9..0x53ba07).
 // So an ini 6 (0x04 | 0x02) behaves as "Raid spells" (4) and is shown as "All spells".
 TEST(OptionsParticles, AnOffTableCastFilterIntIsKeptRawAndDecodedByItsBits) {
-    const UiPreferences p = ParseUiPreferences("[Options]\r\nSpellParticleCastFilter=6\r\n");
+    const EqClientIni p = ParseEqClientIni("[Defaults]\r\nSpellParticleCastFilter=6\r\n");
     const int i = static_cast<int>(OL::Setting::SpellParticleCastFilter);
     EXPECT_EQ(p.optionValues[i], 6) << "kept, not reset to the default 24";
     EXPECT_EQ(OL::choiceDisplayIndex(OL::Setting::SpellParticleCastFilter, 6), 7);
@@ -283,9 +300,7 @@ TEST(OptionsParticles, AnOffTableCastFilterIntIsKeptRawAndDecodedByItsBits) {
     EXPECT_EQ(OL::choiceDisplayIndex(OL::Setting::SpellParticleCastFilter, 4), 2);
 
     OptionsPanelState s;
-    UiPreferencesBinding b;
-    b.options = &s;
-    ApplyUiPreferences(p, b);
+    ApplyEqClientIni(p, s);
     const EQ::SpellFxOptions o = spellFxOptionsFromOptions(s.values, s.iniFloats);
     EXPECT_EQ(o.castFilter, 6);
     EQ::SpellFxActor me, groupie, raider, other, npc;
@@ -304,9 +319,9 @@ TEST(OptionsParticles, AnOffTableCastFilterIntIsKeptRawAndDecodedByItsBits) {
     EXPECT_FALSE(EQ::SpellParticleCastFilterShows(6, other, npc)) << "a stranger's does not";
     EXPECT_TRUE(EQ::SpellParticleCastFilterShows(24, other, npc)) << "as All spells (24) would show it";
 
-    const std::string t = SerializeUiPreferences(CollectUiPreferences(b, 1));
+    const std::string t = eqclientText(s);
     EXPECT_NE(t.find("SpellParticleCastFilter=6\n"), std::string::npos) << t;
-    EXPECT_EQ(ParseUiPreferences("[Options]\r\nSpellParticleCastFilter=x\r\n").optionValues[i], 24)
+    EXPECT_EQ(ParseEqClientIni("[Defaults]\r\nSpellParticleCastFilter=x\r\n").optionValues[i], 24)
         << "not a number keeps the default";
 }
 
@@ -329,12 +344,10 @@ TEST(OptionsParticles, TheOnForComboboxIsTheCastFilter) {
         EXPECT_EQ(OL::settingInfo(OL::Setting::SpellParticleCastFilter).choices[i].value, table[i]) << i;
         EXPECT_STREQ(OL::choiceText(OL::Setting::SpellParticleCastFilter, table[i]), text[i]) << i;
     }
-    UiPreferencesBinding b;
-    b.options = &s;
     setOptionsValue(s, OL::Setting::SpellParticleCastFilter, 18);
-    const std::string t = SerializeUiPreferences(CollectUiPreferences(b, 1));
+    const std::string t = eqclientText(s);
     EXPECT_NE(t.find("SpellParticleCastFilter=18\n"), std::string::npos) << t;
-    EXPECT_EQ(ParseUiPreferences(t).optionValues[static_cast<int>(OL::Setting::SpellParticleCastFilter)], 18);
+    EXPECT_EQ(ParseEqClientIni(t).optionValues[static_cast<int>(OL::Setting::SpellParticleCastFilter)], 18);
     RunOptionsCommand(s, "/option", "spellparticlecastfilter group spells");
     EXPECT_EQ(value(s, OL::Setting::SpellParticleCastFilter), 2);
     EXPECT_EQ(spellFxOptionsFromOptions(s.values).castFilter, 2);
@@ -357,9 +370,7 @@ TEST(OptionsParticles, ShowSpellEffectsIsTheSlashCommandsSwitch) {
     EXPECT_EQ(r.lines.back(), "Spell particle effects are currently OFF.");
     EXPECT_EQ(value(s, OL::Setting::ShowSpellEffects), 0);
     EXPECT_FALSE(spellFxOptionsFromOptions(s.values).showSpellEffects);
-    UiPreferencesBinding b;
-    b.options = &s;
-    const std::string t = SerializeUiPreferences(CollectUiPreferences(b, 1));
+    const std::string t = eqclientText(s);
     EXPECT_NE(t.find("ShowSpellEffects=0\n"), std::string::npos) << t;
     r = RunOptionsCommand(s, "showspelleffects", "banana");  // any non-"off" turns it on
     EXPECT_EQ(value(s, OL::Setting::ShowSpellEffects), 1);
@@ -400,7 +411,7 @@ TEST(ParticleKnobs, TheOptionsMapOntoTheKnobsAndTheDefaultsAreAlmostTheIdentity)
     }
     EXPECT_FLOAT_EQ(knob(k, Env::ParticleFamily::Actor).nearClip, 0.0f);
     setOptionsValue(s, OL::Setting::SpellParticleDensity, 1);
-    setOptionsValue(s, OL::Setting::EnvParticleOpacity, 5);
+    setOptionsValue(s, OL::Setting::EnvParticleOpacity, 25);
     const Env::ParticleKnobs k2 = particleKnobsFromOptions(s.values);
     EXPECT_FLOAT_EQ(knob(k2, Env::ParticleFamily::Spell).density, 0.25f);
     EXPECT_FLOAT_EQ(knob(k2, Env::ParticleFamily::Environment).opacity, 0.25f);
@@ -487,4 +498,272 @@ TEST(ParticleKnobs, DensityScalesWhatTheWorkerSpawnsAndOffSpawnsNothing) {
     EXPECT_EQ(Env::scaledCount(10, 1.0f), 10);
     EXPECT_EQ(Env::scaledCount(10, 0.25f), 3);
     EXPECT_EQ(Env::scaledCount(10, 0.0f), 0);
+}
+
+// ===========================================================================
+// B1175 (#494): the opacity sliders and the ini file, as the client has them
+// ===========================================================================
+
+namespace {
+
+const OL::Setting kOpacitySliders[] = {OL::Setting::SpellParticleOpacity,
+                                       OL::Setting::EnvParticleOpacity};
+
+std::string percentF(float f) {
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%f", static_cast<double>(f));
+    return buf;
+}
+
+}  // namespace
+
+// Ask 1: every particle opacity slider fable wires has the client's 101
+// positions (SetNumTicks(0x65), 0x541032..0x541060); position p applies
+// p x 0.01f (the handler, eqgame.exe.c:245434, 0x640038 = 0x3c23d70a) and
+// labels "p %" ("%d %c" with '%', 0x65944c). Per slider, every position:
+// position -> value -> label, and the ini text the handler writes ("%f").
+TEST(OptionsParticlesB1175, EachOpacitySliderIs101PositionsOfPointZeroOne) {
+    EXPECT_EQ(OL::kParticleOpacitySliderPositions, 101);
+    float hundredth = 0.0f;
+    const uint32_t bits = 0x3c23d70au;
+    std::memcpy(&hundredth, &bits, sizeof(hundredth));
+    for (const OL::Setting slider : kOpacitySliders) {
+        const auto& info = OL::settingInfo(slider);
+        EXPECT_EQ(info.maxValue, 100) << info.name;
+        EXPECT_EQ(info.defaultValue, 100) << info.name << ": the capture's 1.000000";
+        EXPECT_EQ(OL::sliderSteps(slider), 100) << info.name;
+        EXPECT_FALSE(OL::isValidSettingValue(slider, 101)) << info.name;
+        for (int p = 0; p <= 100; ++p) {
+            OptionsPanelState s;
+            ASSERT_TRUE(setOptionsValue(s, slider, p) || p == 100) << info.name << " " << p;
+            const float expect = static_cast<float>(p) * hundredth;
+            const auto k = particleKnobsFromOptions(s.values, s.iniFloats);
+            const auto fam = slider == OL::Setting::SpellParticleOpacity ? Env::ParticleFamily::Spell
+                                                                         : Env::ParticleFamily::Environment;
+            EXPECT_EQ(knob(k, fam).opacity, expect) << info.name << " position " << p;
+            EXPECT_EQ(OL::settingTableFloat(slider, p), expect) << p;
+            EXPECT_EQ(optionsSettingText(s, slider), std::to_string(p) + " %") << info.name;
+            EXPECT_EQ(OL::opacitySliderLabel(p), std::to_string(p) + " %");
+            const std::string ini = OL::settingIniText(slider, p, std::nullopt);
+            EXPECT_EQ(ini, percentF(expect)) << info.name << " position " << p;
+            // ... and the client's own read of that text puts the slider back on p.
+            int shown = -1;
+            std::optional<float> applied;
+            ASSERT_TRUE(OL::parseSettingIniFloat(slider, ini, shown, applied)) << ini;
+            EXPECT_EQ(shown, p) << info.name << " " << ini;
+        }
+    }
+    // The two ends and a few names, spelled out.
+    EXPECT_EQ(OL::settingIniText(OL::Setting::SpellParticleOpacity, 50, std::nullopt), "0.500000");
+    EXPECT_EQ(OL::settingIniText(OL::Setting::SpellParticleOpacity, 100, std::nullopt), "1.000000");
+    EXPECT_EQ(OL::settingIniText(OL::Setting::EnvParticleOpacity, 0, std::nullopt), "0.000000");
+    EXPECT_EQ(OL::settingIniText(OL::Setting::EnvParticleOpacity, 1, std::nullopt), "0.010000");
+    // The Actor slider (also 101 positions in the client) stays unwired: N3.
+    EXPECT_EQ(OL::kControls[controlIndex("ODP_ActorParticlesOpacitySlider")].setting, OL::Setting::None);
+}
+
+// The client's float -> position (FUN_0053ac98(f x 100.0), eqgame.exe.c:243666):
+// floor when the fraction is below 0.5 (0x6410bc), else ceil; SetValue clamps.
+TEST(OptionsParticlesB1175, TheSliderPositionOfAnIniFloatIsTheClientsRounding) {
+    EXPECT_EQ(OL::opacitySliderPosition(0.0f), 0);
+    EXPECT_EQ(OL::opacitySliderPosition(1.0f), 100);
+    EXPECT_EQ(OL::opacitySliderPosition(0.254f), 25);
+    EXPECT_EQ(OL::opacitySliderPosition(0.255f), 26) << "25.5 -> ceil";
+    EXPECT_EQ(OL::opacitySliderPosition(0.33f), 33);
+    EXPECT_EQ(OL::opacitySliderPosition(0.996f), 100);
+    EXPECT_EQ(OL::opacitySliderPosition(2.0f), 100) << "SetValue clamps to ticks - 1";
+    EXPECT_EQ(OL::opacitySliderPosition(-0.5f), 0);
+    // An ini value between positions is shown on its position and APPLIED raw (B1165).
+    const EqClientIni p = ParseEqClientIni("[Defaults]\nSpellParticleOpacity=0.333000\n");
+    const int i = static_cast<int>(OL::Setting::SpellParticleOpacity);
+    EXPECT_EQ(p.optionValues[i], 33);
+    ASSERT_TRUE(p.optionIniFloats[i].has_value());
+    EXPECT_FLOAT_EQ(*p.optionIniFloats[i], 0.333f);
+    OptionsPanelState s;
+    ApplyEqClientIni(p, s);
+    EXPECT_EQ(optionsSettingText(s, OL::Setting::SpellParticleOpacity), "33 %");
+    EXPECT_FLOAT_EQ(spellFxOptionsFromOptions(s.values, s.iniFloats).opacity, 0.333f);
+}
+
+// The slider geometry: both ends reachable, and the knob moves with the
+// position over the slider's 100 px (EQUI_OptionsWindow.xml <CX>100</CX>).
+TEST(OptionsParticlesB1175, TheOpacitySliderSpansItsHundredPositions) {
+    const UILayout l = layout800();
+    const int i = controlIndex("ODP_SpellParticlesOpacitySlider");
+    ASSERT_GE(i, 0);
+    const auto r = OL::controlRect(l, i);
+    OptionsPanelState s = displayPage();
+    EXPECT_EQ(click(s, irr::core::vector2di(r.UpperLeftCorner.X, centre(r).Y)),
+              OL::Setting::SpellParticleOpacity);
+    EXPECT_EQ(value(s, OL::Setting::SpellParticleOpacity), 0);
+    EXPECT_EQ(optionsSettingText(s, OL::Setting::SpellParticleOpacity), "0 %");
+    click(s, irr::core::vector2di(r.LowerRightCorner.X - 1, centre(r).Y));
+    EXPECT_EQ(value(s, OL::Setting::SpellParticleOpacity), 100);
+    EXPECT_EQ(optionsSettingText(s, OL::Setting::SpellParticleOpacity), "100 %");
+    click(s, centre(OL::sliderKnobRect(l, i, 50, 100)));
+    EXPECT_EQ(value(s, OL::Setting::SpellParticleOpacity), 50);
+    int last = -1;
+    for (int p = 0; p <= 100; ++p) {
+        const int x = OL::sliderKnobRect(l, i, p, 100).UpperLeftCorner.X;
+        EXPECT_GE(x, last) << p;
+        last = x;
+    }
+    EXPECT_EQ(OL::sliderKnobRect(l, i, 100, 100).LowerRightCorner.X, r.LowerRightCorner.X);
+    // The T434 sliders keep their 0..20.
+    EXPECT_EQ(OL::sliderSteps(OL::Setting::MusicVolume), OL::SLIDER_STEPS);
+    EXPECT_EQ(OL::sliderSteps(OL::Setting::MouseSensitivity), 20);
+}
+
+// Ask 2: every particle key the window wires, and ShowSpellEffects, is the
+// client's eqclient.ini [Defaults] key (loader eqgame.exe.c:132608-132671 and
+// :126007; writers :245163-245204, :245310, :245434-245467) -- NOT a
+// per-character UI_<Char>_<server>.ini [Options] key.
+TEST(OptionsParticlesB1175, TheParticleKeysAreEqclientIniDefaultsNotPerCharacter) {
+    const OL::Setting rows[] = {
+        OL::Setting::SpellParticleOpacity, OL::Setting::SpellParticleDensity,
+        OL::Setting::SpellParticleNearClip, OL::Setting::SpellParticleCastFilter,
+        OL::Setting::ShowSpellEffects,     OL::Setting::EnvParticleOpacity,
+        OL::Setting::EnvParticleDensity,   OL::Setting::EnvParticleNearClip};
+    const char* const keys[] = {
+        "SpellParticleOpacity", "SpellParticleDensity", "SpellParticleNearClipPlane",
+        "SpellParticleCastFilter", "ShowSpellEffects", "EnvironmentParticleOpacity",
+        "EnvironmentParticleDensity", "EnvironmentParticleNearClipPlane"};
+    int eqclientRows = 0;
+    for (int i = 0; i < OL::kSettingCount; ++i)
+        if (OL::isEqClientIniSetting(static_cast<OL::Setting>(i))) ++eqclientRows;
+    EXPECT_EQ(eqclientRows, 8) << "exactly these eight";
+    for (int n = 0; n < 8; ++n) {
+        const auto& info = OL::settingInfo(rows[n]);
+        EXPECT_STREQ(info.iniKey, keys[n]);
+        ASSERT_NE(info.eqclientSection, nullptr) << keys[n];
+        EXPECT_STREQ(info.eqclientSection, "Defaults") << keys[n];
+    }
+    // The per-character file neither writes nor reads them...
+    OptionsPanelState s;
+    setOptionsValue(s, OL::Setting::SpellParticleOpacity, 40);
+    setOptionsValue(s, OL::Setting::ShowSpellEffects, 0);
+    UiPreferencesBinding b;
+    b.options = &s;
+    const std::string perChar = SerializeUiPreferences(CollectUiPreferences(b, 1));
+    for (const char* k : keys) EXPECT_EQ(perChar.find(k), std::string::npos) << k << "\n" << perChar;
+    EXPECT_NE(perChar.find("PCNames="), std::string::npos) << "the per-character [Options] keys stay";
+    // ... so an OLD per-character [Options] value is ignored, not migrated:
+    // the client has no such key there (eqclient_ini.h, NO MIGRATION).
+    const UiPreferences old = ParseUiPreferences(
+        "[Options]\nSpellParticleOpacity=0.250000\nShowSpellEffects=0\nSpellParticleCastFilter=1\n");
+    OptionsPanelState fresh;
+    UiPreferencesBinding fb;
+    fb.options = &fresh;
+    ApplyUiPreferences(old, fb);
+    EXPECT_EQ(value(fresh, OL::Setting::SpellParticleOpacity), 100);
+    EXPECT_EQ(value(fresh, OL::Setting::ShowSpellEffects), 1);
+    EXPECT_EQ(value(fresh, OL::Setting::SpellParticleCastFilter), 24);
+    // ... while the global file carries them under [Defaults].
+    const std::string global = eqclientText(s);
+    EXPECT_EQ(global.rfind("[Defaults]\n", 0), 0u) << global;
+    EXPECT_NE(global.find("\nSpellParticleOpacity=0.400000\n"), std::string::npos) << global;
+    EXPECT_NE(global.find("\nShowSpellEffects=0\n"), std::string::npos) << global;
+}
+
+// Acceptance B: the lane-5 capture's own eqclient.ini (review/B1159 rig
+// m_b1159_rig/eqclient-after.ini = review/B1130/oracle/e17/eqclient-after.ini,
+// md5 453da624da093a2aa62aa71d4b2ca8e2, copied to tests/data/b1175/) loads to
+// its lines 63, 88-89 and 106-110, and writing those same values back leaves
+// the file byte-identical (CRLF, every other section and key kept).
+TEST(OptionsParticlesB1175, TheCaptureEqclientIniLoads) {
+    const std::string text = readFile(WILLEQ_REPO_PATH("tests/data/b1175/eqclient-after.ini"));
+    ASSERT_GT(text.size(), 9000u) << "fixture tests/data/b1175/eqclient-after.ini unreadable";
+    const EqClientIni p = ParseEqClientIni(text);
+    auto v = [&](OL::Setting st) { return p.optionValues[static_cast<int>(st)]; };
+    auto raw = [&](OL::Setting st) { return p.optionIniFloats[static_cast<int>(st)].has_value(); };
+    EXPECT_EQ(v(OL::Setting::ShowSpellEffects), 1);          // line 63  ShowSpellEffects=1
+    EXPECT_EQ(v(OL::Setting::SpellParticleOpacity), 100);    // line 88  1.000000
+    EXPECT_EQ(v(OL::Setting::EnvParticleOpacity), 100);      // line 89  1.000000
+    EXPECT_EQ(v(OL::Setting::SpellParticleDensity), 3);      // line 106 1.000000 = High
+    EXPECT_EQ(v(OL::Setting::SpellParticleNearClip), 0);     // line 107 2.000000 = Near
+    EXPECT_EQ(v(OL::Setting::SpellParticleCastFilter), 24);  // line 108 24
+    EXPECT_EQ(v(OL::Setting::EnvParticleDensity), 3);        // line 109 1.000000
+    EXPECT_EQ(v(OL::Setting::EnvParticleNearClip), 0);       // line 110 2.000000
+    for (OL::Setting st : {OL::Setting::SpellParticleOpacity, OL::Setting::EnvParticleOpacity,
+                           OL::Setting::SpellParticleDensity, OL::Setting::SpellParticleNearClip,
+                           OL::Setting::EnvParticleDensity, OL::Setting::EnvParticleNearClip})
+        EXPECT_FALSE(raw(st)) << "every capture value is a table value";
+    EXPECT_TRUE(p == EqClientIni{}) << "the capture IS fable's default";
+    OptionsPanelState s;
+    ApplyEqClientIni(p, s);
+    EXPECT_TRUE(EQ::IsOracleCaptureSpellFxOptions(spellFxOptionsFromOptions(s.values, s.iniFloats)));
+
+    EXPECT_EQ(UpdateEqClientIniText(text, p), text) << "a save of the same values changes no byte";
+
+    // A change rewrites only its own line, in place, with the file's CRLF;
+    // ActorParticleOpacity (line 90) and the legacy [Options] ParticleDensity stay.
+    setOptionsValue(s, OL::Setting::SpellParticleOpacity, 37);
+    const std::string after = UpdateEqClientIniText(text, CollectEqClientIni(s));
+    EXPECT_NE(after.find("\r\nSpellParticleOpacity=0.370000\r\n"), std::string::npos);
+    EXPECT_EQ(after.find("SpellParticleOpacity=1.000000"), std::string::npos);
+    EXPECT_NE(after.find("\r\nActorParticleOpacity=1.000000\r\n"), std::string::npos);
+    EXPECT_NE(after.find("\r\nParticleDensity=3\r\n"), std::string::npos);
+    EXPECT_EQ(after.size(), text.size());
+    EXPECT_EQ(ParseEqClientIni(after).optionValues[static_cast<int>(OL::Setting::SpellParticleOpacity)], 37);
+}
+
+// The read is the profile API's: section and key names case-insensitive, the
+// first [Defaults] wins, other sections' same-named keys are not read; a
+// missing key goes to the end of [Defaults], a missing [Defaults] to the end.
+TEST(OptionsParticlesB1175, TheIniReadAndWriteFollowTheProfileApi) {
+    const EqClientIni p = ParseEqClientIni(
+        "[Options]\nSpellParticleOpacity=0.100000\n"
+        "[defaults]\nspellparticleopacity=0.200000\nSPELLPARTICLEOPACITY=0.300000\n"
+        "[Defaults]\nEnvironmentParticleOpacity=0.400000\n");
+    EXPECT_EQ(p.optionValues[static_cast<int>(OL::Setting::SpellParticleOpacity)], 20);
+    EXPECT_EQ(p.optionValues[static_cast<int>(OL::Setting::EnvParticleOpacity)], 100)
+        << "a second [Defaults] is not read";
+
+    OptionsPanelState s;
+    const std::string grown =
+        UpdateEqClientIniText("[Defaults]\r\nGamma=0.000000\r\n\r\n[Options]\r\nClipPlane=20\r\n", CollectEqClientIni(s));
+    EXPECT_EQ(grown.rfind("[Defaults]\r\nGamma=0.000000\r\nSpellParticleOpacity=1.000000\r\n", 0), 0u) << grown;
+    EXPECT_NE(grown.find("\r\nEnvironmentParticleNearClipPlane=2.000000\r\n\r\n[Options]\r\nClipPlane=20\r\n"),
+              std::string::npos) << grown;
+    const std::string added = UpdateEqClientIniText("[Options]\nClipPlane=20", CollectEqClientIni(s));
+    EXPECT_EQ(added.rfind("[Options]\nClipPlane=20\n[Defaults]\nSpellParticleOpacity=1.000000\n", 0), 0u) << added;
+}
+
+// The file itself: <cache dir>/eqclient.ini, one per install. A save updates
+// an existing file in place (the capture's other 500-odd lines survive) and a
+// load reads it back.
+TEST(OptionsParticlesB1175, TheGlobalFileSavesAndLoadsInTheCacheDir) {
+    char tmpl[] = "/tmp/b1175_eqclient_XXXXXX";
+    ASSERT_NE(::mkdtemp(tmpl), nullptr);
+    const std::string dir = tmpl;
+    std::string saved;
+    const bool had = std::getenv("WILLEQ_CACHE_DIR") != nullptr;
+    if (had) saved = std::getenv("WILLEQ_CACHE_DIR");
+    ::setenv("WILLEQ_CACHE_DIR", dir.c_str(), 1);
+
+    EqClientIni none;
+    EXPECT_FALSE(LoadEqClientIni(none)) << "no file yet: defaults";
+
+    const std::string capture = readFile(WILLEQ_REPO_PATH("tests/data/b1175/eqclient-after.ini"));
+    { std::ofstream(dir + "/eqclient.ini", std::ios::binary) << capture; }
+    OptionsPanelState s;
+    setOptionsValue(s, OL::Setting::EnvParticleOpacity, 12);
+    setOptionsValue(s, OL::Setting::ShowSpellEffects, 0);
+    ASSERT_TRUE(SaveEqClientIni(CollectEqClientIni(s)));
+    const std::string onDisk = readFile(dir + "/eqclient.ini");
+    EXPECT_NE(onDisk.find("\r\nEnvironmentParticleOpacity=0.120000\r\n"), std::string::npos);
+    EXPECT_NE(onDisk.find("\r\nShowSpellEffects=0\r\n"), std::string::npos);
+    EXPECT_NE(onDisk.find("\r\n[KeyMaps]\r\n"), std::string::npos) << "the rest of the file stays";
+    EXPECT_EQ(onDisk.size(), capture.size());
+
+    EqClientIni back;
+    ASSERT_TRUE(LoadEqClientIni(back));
+    EXPECT_EQ(back.optionValues[static_cast<int>(OL::Setting::EnvParticleOpacity)], 12);
+    EXPECT_EQ(back.optionValues[static_cast<int>(OL::Setting::ShowSpellEffects)], 0);
+    EXPECT_TRUE(back == CollectEqClientIni(s));
+
+    std::remove((dir + "/eqclient.ini").c_str());
+    ::rmdir(dir.c_str());
+    if (had) ::setenv("WILLEQ_CACHE_DIR", saved.c_str(), 1);
+    else ::unsetenv("WILLEQ_CACHE_DIR");
 }

@@ -225,6 +225,16 @@ public:
     // < 0 when it does not resolve.
     int32_t castAnimationMs(uint16_t caster_id, int castAnim) const;
 
+    // B1164 (#483): the attach scale s of an entity's spellsnew.eff slots,
+    // EQ::SpellFxAttachScale(race, gender, server size)
+    // (spell_fx_attach_scale.h: the client's actor scale, actor_scale.h). Set
+    // by the renderer (the entity's race, gender and Spawn_Struct size) and by
+    // the FX harness; unset or
+    // an unknown entity = kSpellFxAttachScale (1.0).
+    using EntityAttachScaleCallback = std::function<float(uint16_t entity_id)>;
+    void setEntityAttachScaleCallback(EntityAttachScaleCallback cb) { m_attach_scale_cb = std::move(cb); }
+    float entityAttachScale(uint16_t entity_id) const;
+
     // Create impact effect at target location
     void createImpact(uint16_t target_id, uint32_t spell_id);
 
@@ -585,6 +595,8 @@ private:
     bool m_worker_driven = false;
 
     SpellFxOptions m_fx_options;  // B1165
+    EntityAttachScaleCallback m_attach_scale_cb;  // B1164: s per entity
+
     // Default effect durations
     static constexpr float DEFAULT_IMPACT_DURATION = 1.5f;  // Impact particles last 1.5 seconds
 };

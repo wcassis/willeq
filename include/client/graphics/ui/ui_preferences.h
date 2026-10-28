@@ -28,6 +28,10 @@
  * character therefore has no file, gets the defaults, and its first toggle
  * writes one.
  *
+ * NOT HERE (B1175, #494): the Options settings the oracle keeps in its
+ * GLOBAL eqclient.ini `[Defaults]` -- the Display > Particles keys and
+ * ShowSpellEffects -- live in `<cache dir>/eqclient.ini` (eqclient_ini.h).
+ *
  * WHERE: `<cache dir>/ui/UI_<Char>_<server>.ini`, resolved through
  * eqt::ResolveCachePathForRead/Write (T402's rule, board B248) -- generated
  * state is written OUTSIDE the checkout, so a plain run never dirties the
@@ -140,10 +144,20 @@ struct UiPreferences {
     // range and its default). Written under `[Options]` beside the three
     // above, same flagged one-writer deviation. Only Renderer-owned slots
     // are ever collected, parsed or written; the rest stay at the default.
+    //
+    // B1175 (#494): NOT the Display > Particles keys and ShowSpellEffects
+    // (SpellParticle*, EnvironmentParticle*): the oracle keeps those in
+    // eqclient.ini `[Defaults]` (loader eqgame.exe.c:132608-132671 and
+    // :126007), so fable keeps them in its GLOBAL `<cache dir>/eqclient.ini`
+    // [Defaults] (eqclient_ini.h) -- one per install, not per character. This
+    // file no longer writes them, and a value an older fable wrote here is
+    // ignored on read: NOT migrated (the client has no such key in
+    // `[Options]`); the global file or the default wins.
     OptionsLayout::OptionValues optionValues = OptionsLayout::defaultOptionValues();
-    // B1165: the applied float of a particle float key whose ini value the
-    // shown choice does not represent (options_settings.h OptionIniFloats);
-    // written back as that float, so a hand-set 0.3 survives a save.
+    // B1165: the applied float of a float key whose ini value the shown
+    // choice does not represent (options_settings.h OptionIniFloats). Since
+    // B1175 every such key is an eqclient.ini one (EqClientIni carries it), so
+    // this stays empty for the per-character file.
     OptionsLayout::OptionIniFloats optionIniFloats{};
 
     // B834 (#202): `[Tips]` -- the official section and keys (ShowTips,

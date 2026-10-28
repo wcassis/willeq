@@ -1,5 +1,6 @@
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/corpse_fade.h"
+#include "client/graphics/spell_cast_animation.h"
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/constrained_renderer_config.h"
@@ -188,6 +189,23 @@ void EntityRenderer::updateMainThreadEntityState(float deltaTime) {
     // loop above: its weapon and shield were never placed and drew at the
     // model origin with the identity rotation (a blade level at the hip, a
     // shield beside the body), while its body played its idle.
+    // B1174 (#493): an OP_Action track (actionEntityCastAnim) that has played
+    // out returns the model to the standing idle.
+    for (auto& [spawnId, visual] : entities_) {
+        if (visual.actionAnimCode.empty()) continue;
+        if (actionCastAnimEnded(visual.animatedNode, visual.actionAnimCode)) {
+            const bool tookOver = visual.animatedNode &&
+                                  visual.animatedNode->getAnimator().getCurrentAnimation() != visual.actionAnimCode;
+            visual.actionAnimCode.clear();
+            if (tookOver || !visual.animatedNode) continue;
+            const char* idle = visual.isPlayer ? "p01" : "o01";
+            if (visual.animatedNode->hasAnimation(idle)) {
+                visual.animatedNode->playAnimation(idle, /*loop=*/true, /*playThrough=*/false);
+                visual.currentAnimation = idle;
+            }
+        }
+    }
+
     for (auto& [spawnId, visual] : entities_) {
         if (!visual.inSceneGraph || (!visual.primaryEquipNode && !visual.secondaryEquipNode)) continue;
         if (activeEntities_.count(spawnId)) continue;
@@ -417,6 +435,11 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
         // cancelEntityCast), never with a stray server update.
         if (visual.isCasting && !visual.castAnimCode.empty() &&
             visual.currentAnimation == visual.castAnimCode) {
+            return;
+        }
+        // B1174 (#493): the same for an OP_Action track (a /disc's swing):
+        // it plays out, then the per-frame walk takes the idle.
+        if (!visual.actionAnimCode.empty() && visual.currentAnimation == visual.actionAnimCode) {
             return;
         }
         std::string targetAnim;

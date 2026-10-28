@@ -847,11 +847,15 @@ EXEMPT_TESTS_GROUPS = {
     # getSpellColorForSpell and now runs the client's own cast sequence
     # (spell_cast_fx.cpp); getSpellColorForSpell is T381's test window on the
     # noted vocabulary's fallback colour (test_spell_visual_vocabulary).
-    # B1152 (#472): createProjectile is GONE, so its exemption (boarded as
-    # B1128, which was to wire it) is retired. The travel-stage Projectile
-    # preset has no production caller (B1170 removed the record-driven missile
-    # too), but test_spell_landing_volume still exercises the PROJECTILE_PATH
-    # emitter it defines.
+    # B1152 (#472): createProjectile is GONE -- the missile actor replaced it,
+    # and B1170 (#489) removed that record-driven missile too, so its exemption
+    # (boarded as B1128, which was to wire it) is retired. missileCount was the
+    # test's observation window on the missile actor; B1174 (#493) gave it a
+    # non-test caller (the FX harness's per-frame fx_activity.tsv), so its
+    # exemption is retired. The travel-stage Projectile preset has no production
+    # caller (the 0x4033 missile object builds its Middle emitter directly,
+    # SourceForSpell + PROJECTILE_PATH), but test_spell_landing_volume still
+    # exercises the PROJECTILE_PATH emitter it defines.
     ("(free)", "Projectile"): "seam",
     ("SpellVisualFX", "getSpellColorForSpell"): "observer",
     # B1150 (#470): the census test's observation window onto every file entry
