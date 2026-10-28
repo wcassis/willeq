@@ -116,7 +116,7 @@ bool EQAnimatedMeshSceneNode::getFirstPersonEyeOffset(
     // derivation, not the head cluster's. The client's first-person camera
     // sits 0x234 - 0x238 = 6.2 - 3.125 model units above the player's z
     // (actor_scale.h, kClientEyeModelHeight / kClientROffsetModelHeight;
-    // 005701c0:284496-284510 via FUN_00489bf5). The node origin IS the
+    // 005701c0:284515-284524 via FUN_00489bf5). The node origin IS the
     // client's z -- ground + 3.125 x s, the ROffset placement
     // (entityNodeCollisionZOffset) -- so standing eye = ground + 6.2 x s,
     // exactly as in the client. The cluster still supplies the HORIZONTAL:

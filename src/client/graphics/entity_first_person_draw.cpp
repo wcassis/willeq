@@ -355,7 +355,7 @@ EntityRenderer::getPlayerFirstPersonEyeOffset() const {
     // B1176 (#495) -- THE VERTICAL IS THE CLIENT'S OWN DERIVATION. The eye
     // HEIGHT is no longer the head cluster's: it is 0x234 - 0x238 =
     // 6.2 - 3.125 model units above the node origin, scaled by the actor
-    // scale -- the client's first-person camera (005701c0:284496-284510 via
+    // scale -- the client's first-person camera (005701c0:284515-284524 via
     // FUN_00489bf5; the third-person orbit centre is the same number,
     // 005703a0:284622-284641). Standing eye = ground + 6.2 x s, as in the
     // client. The node (EQAnimatedMeshSceneNode::getFirstPersonEyeOffset)

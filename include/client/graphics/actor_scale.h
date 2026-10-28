@@ -118,10 +118,10 @@ constexpr float clientActorScale(uint16_t race, uint8_t gender, float size, bool
 //   0x234 = 6.2          (0x40c66666 at :102202, then multiplied by the actor
 //                         scale at :102209-102210: 0x234 = 6.2 x s)
 //   0x238 = ini "ROffset" (read at :102200-102201 via FUN_004b6d42, whose
-//                         default is DAT_0064b86c = 3.125 at :138483-138487;
+//                         default is DAT_0064b86c = 3.125 at :138498;
 //                         then multiplied by the actor scale at :102205-102206:
 //                         0x238 = 3.125 x s)
-// The first-person camera (005701c0, :284496-284510) and the third-person
+// The first-person camera (005701c0, :284515-284524) and the third-person
 // orbit centre (005703a0, :284622-284641) both place the camera at
 //   z + (0x234 - 0x238)   (FUN_00489bf5, :109359-109390; the mounted variants
 //                         add their own terms and are out of scope here),
@@ -131,7 +131,7 @@ constexpr float clientActorScale(uint16_t race, uint8_t gender, float size, bool
 // ground + 0.625 x the resolved size, identical to 3.125 x s for the
 // standard races) -- so the eye and the orbit centre sit at ground + 6.2 x s.
 // FUN_0047a239 (the race override, :97743) touches neither 0x234 nor 0x238
-// below race 26 (:97753-97756 return before any write), so every playable
+// below race 26 (:97765-97766 return before any write), so every playable
 // race here follows the rule above. The ini "FPCOffset" (default 0.0,
 // FUN_004b6d29, :138483-138485) is not applied in the unmounted first-person
 // branch, and the oracle's ini does not set it.
@@ -139,7 +139,7 @@ constexpr float clientActorScale(uint16_t race, uint8_t gender, float size, bool
 
 // 0x234's un-scaled value (0x40c66666, eqgame.exe.c:102202).
 constexpr float kClientEyeModelHeight = 6.2f;
-// The ini "ROffset" default, DAT_0064b86c (0x40480000; eqgame.exe.c:138483-138487):
+// The ini "ROffset" default, DAT_0064b86c (0x40480000; eqgame.exe.c:138498):
 // the client model's origin-to-feet distance.
 constexpr float kClientROffsetModelHeight = 3.125f;
 

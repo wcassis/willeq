@@ -63,7 +63,7 @@ This rule is already implemented in
 
 - `:102200-102201` — `actor+0x238 = FUN_004b6d42(...)`, i.e. the ini key
   **`ROffset`**, defaulting to `_DAT_0064b86c`. `FUN_004b6d42`
-  (`review/B1141/ghidra/out/eqgame.exe.c:138498`) is
+  (`review/B1141/ghidra/out/eqgame.exe.c:138495-138498`) is
   `FUN_00575140("ROffset", _DAT_0064b86c, ...)`. The dword at `0x64b86c` is
   `0x40480000` = **3.125** (measured from the binary, `pe_dwords.py`). So the
   un-scaled `0x238` is 3.125 — the client model's origin-to-feet distance.
@@ -75,7 +75,7 @@ For a player (`actor+0x1a8 != 0`) the scale is applied to **both**:
 - `:102206-102207` — `0x238 = (actor+0xC4) × 0x238` = **scale × 3.125**.
 - `:102208-102210` — `0x234 = 0x234 × (actor+0xC4)` = **scale × 6.2**
   (the `FUN_004899cc()` at `:102208` is the `0x234` accessor
-  (`review/B1141/ghidra/out/eqgame.exe.c:109250`)).
+  (`review/B1141/ghidra/out/eqgame.exe.c:109251`)).
 
 The race override `FUN_0047a239` (`:102217`) may rewrite `0x234`/`0x238` for
 forced-scale races, but for the classic races it returns first
@@ -131,7 +131,7 @@ z.** This is the number fable was getting wrong: it placed the node at
 ### (c) The third-person camera
 
 The third-person/orbit camera `005703a0`
-(`review/B1141/ghidra/out/eqgame.exe.c:284668`) uses the **same** eye term:
+(`review/B1141/ghidra/out/eqgame.exe.c:284580`) uses the **same** eye term:
 the orbit centre is `player.z + FUN_00489bf5()` —
 `review/B1141/ghidra/out/eqgame.exe.c:284622-284641` read `actor+0x38` then
 added `FUN_00489bf5()` (the `0x234 − 0x238` term) before handing the position
@@ -208,7 +208,7 @@ both cameras; measured (never inferred), fable before/after.
 | race (size) | scale | camera | oracle drawn h (px) | fable BEFORE drawn h (px) | fable AFTER drawn h (px) | wire z (oracle / after) |
 |---|---|---|---|---|---|---|
 | Human (6) | 1.2 | first-person | — (†) | 6.023 (‡) | 7.44 (‡) | 3.751 / 3.75 |
-| Human (6) | 1.2 | third-person | n/m (§) | ~230 | 280 | 3.751 / 3.75 |
+| Human (6) | 1.2 | third-person | n/m (§) | ~233 | 280 | 3.751 / 3.75 |
 | Dark Elf (5) | 1.0 | first-person | — (†) | 6.171 (‡) | 6.20 (‡) | 3.126 / 3.125 |
 | Dark Elf (5) | 1.0 | third-person | n/m (§) | 217 | 218 | 3.126 / 3.125 |
 
@@ -276,7 +276,7 @@ moves by the **1.2 factor** (node z 3.119 → 3.75 = ×1.202, eye height 6.023 �
   exactly `DarkElf` (`Human = 1`, `Werewolf = 14` — the issue's "race 14" is
   not this server's numbering). The race ID is irrelevant to the scale rule
   (all classic races < 26 scale by `size × 0.2`); the measured ground truth is
-  the size — the dark-elf's wire z 3.126 = `3.125 × 1.0` proves size 5 / scale
+  the size — the dark-elf's wire z 3.126 ≈ `3.125 × 1.0` (within the oracle's +0.001..0.003 settle epsilon, measure_wire_z.py) proves size 5 / scale
   1.0. Chars 67 (Testcaster) and 103 (Oraclewatch) left as found (as-found rows
   diffed unchanged after the leg); nothing removed.
 - **Oracle** (B1134 two-client observer rig, `x11grab` stills, `EQEMU_HOST=local`):
