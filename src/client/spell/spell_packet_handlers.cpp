@@ -79,6 +79,37 @@ static EQ::SpellFxActor fxActorOf(EverQuest* eq, uint16_t id)
     return a;
 }
 
+// B1170 (#489): the server's 0x4033 missile object. eqgame copies the 0x88
+// bytes into the object it builds (00460737, the constructor's received
+// branch); fable decodes them here (client/spell/spell_missile_object.h) and
+// the renderer runs and draws the object. The source spawn's level is the
+// slot gate's, as for a cast.
+void SpellManager::handleMissileObject(const uint8_t* payload, size_t len)
+{
+    EQ::SpellMissile::Wire wire;
+    if (!EQ::SpellMissile::DecodeWire(payload, len, wire)) {
+        LOG_WARN(MOD_SPELL, "OP_SomeItemPacketMaybe: {} bytes, the object needs {} -- ignored", len,
+                 EQ::SpellMissile::kWireSize);
+        return;
+    }
+    LOG_DEBUG(MOD_SPELL, "OP_SomeItemPacketMaybe: source={} target={} type={} spell={} word={}",
+              wire.sourceId, wire.targetId, static_cast<int>(wire.type), wire.spellId, wire.word);
+    if (!m_bridge) return;
+    eqt::state::SpellCastVisualStartedData d;
+    d.casterId = static_cast<uint16_t>(wire.sourceId);
+    d.spellId = wire.spellId;
+    d.castTimeMs = 0;
+    d.isPlayerCast = false;
+    d.isTargetCast = false;
+    d.fxGateLevel = fxGateLevelOf(m_eq, static_cast<uint16_t>(wire.sourceId));
+    // B1165 (#484): the stage gate's On-For inputs for the object's fires.
+    d.casterFx = fxActorOf(m_eq, static_cast<uint16_t>(wire.sourceId));
+    d.missileTargetFx = fxActorOf(m_eq, static_cast<uint16_t>(wire.targetId));
+    d.missileObject = std::make_shared<const EQ::SpellMissile::Wire>(std::move(wire));
+    m_bridge->pushEvent(eqt::state::GameEvent(
+        eqt::state::GameEventType::SpellCastVisualStarted, std::move(d)));
+}
+
 void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32_t cast_time_ms)
 {
     const SpellData* spell = m_spell_db.getSpell(spell_id);
@@ -124,12 +155,7 @@ void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32
             if (spell) d.spellVisual = spell->visualVocabulary();
             d.fxGateLevel = fxGateLevelOf(m_eq, caster_id);  // B1144
             if (spell) d.castAnim = spell->cast_anim;  // B1148: field 120
-            // B1152 (#472): the missile flies to the player's current target.
-            if (auto* combat = m_eq->GetCombatManager()) {
-                d.targetId = combat->GetTargetId();
-            }
             d.casterFx = fxActorOf(m_eq, caster_id);  // B1165
-            d.targetFx = fxActorOf(m_eq, d.targetId);
             m_bridge->pushEvent(eqt::state::GameEvent(
                 eqt::state::GameEventType::SpellCastVisualStarted, std::move(d)));
         }

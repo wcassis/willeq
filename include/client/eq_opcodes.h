@@ -164,6 +164,9 @@ enum TitaniumZoneOpcodes {
 	// Trade opcodes
 	HC_OP_TradeRequest = 0x372f,      // Initiate trade request
 	HC_OP_TradeRequestAck = 0x4048,   // Accept trade request
+	// B1170 (#489): the missile object message (eqemu OP_SomeItemPacketMaybe,
+	// patch_Titanium.conf); eqgame's handler builds the object at 00460737.
+	HC_OP_SomeItemPacketMaybe = 0x4033,
 	// T168: SERVER->CLIENT ONLY. eqemu has no ConnectedOpcodes entry for
 	// this opcode at all -- it EMITS it from inside Handle_OP_MoveCoin to
 	// tell the other trader coins were added. To put coins into a trade,

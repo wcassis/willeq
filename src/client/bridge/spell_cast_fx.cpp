@@ -12,6 +12,11 @@ namespace bridge {
 void ApplySpellCastStartedFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
                              const state::SpellCastVisualStartedData& d,
                              CastGlowRoute::Clock::time_point now) {
+    // B1170 (#489): a 0x4033 missile object, not a cast: the object alone.
+    if (d.missileObject) {
+        if (fx) fx->spawnMissileObject(*d.missileObject, d.fxGateLevel, d.casterFx, d.missileTargetFx);
+        return;
+    }
     const bool createGlow = route.onBeginCast(d.casterId, d.spellId, d.castTimeMs, now);
     if (!createGlow || !fx) return;
     // T381 (B160): teach the FX layer this spell's resist type, school and
@@ -22,8 +27,8 @@ void ApplySpellCastStartedFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,
     // B1144 (#464): the caster's gate level picks the record's slots.
     // B1148 (#468): CastingAnim picks the caster track whose length the
     // Source runs past the cast time.
-    // B1165 (#484): the On-For filter's inputs (spell_fx_options.h).
-    fx->createCastGlow(d.casterId, d.spellId, d.castTimeMs, d.fxGateLevel, d.castAnim, d.targetId, d.casterFx, d.targetFx);
+    // B1165 (#484): the On-For filter's input (spell_fx_options.h).
+    fx->createCastGlow(d.casterId, d.spellId, d.castTimeMs, d.fxGateLevel, d.castAnim, d.casterFx);
 }
 
 void ApplySpellCastCompleteFx(CastGlowRoute& route, EQ::SpellVisualFX* fx,

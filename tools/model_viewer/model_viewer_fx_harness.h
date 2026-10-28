@@ -110,6 +110,15 @@ struct HarnessOptions {
     // the frame before (renderer_frame.cpp: applySimulationResults, then
     // postSimulationInput), the synchronous harness by default the same frame.
     int workerLatency = 0;
+    // B1170 (#489): a server 0x4033 missile message fed to the FX at a
+    // scripted time (--missile-payload <file> --missile-at <s>): the raw
+    // payload after the opcode (>= 0x88 bytes), its source / target ids
+    // remapped to the harness caster / target, its position put on the
+    // caster and its heading on the bearing to the target (what the server's
+    // ProjectileAnimation sends, zone/special_attacks.cpp); every other field
+    // as captured. Per frame the object's position goes to missile.tsv.
+    std::string missilePayloadPath;
+    double missileAt = -1.0;
     // The caster's Spawn_Struct appearance (--caster-appearance
     // face,texture:e0,..,e8 -- the TextureProfile at offset 197: head, chest,
     // arms, wrist, hands, legs, feet, primary, secondary). The b1118 preset

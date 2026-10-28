@@ -842,6 +842,8 @@ eqt::zone::ZoneComponent::ZoneOpcodeTable()
 		{HC_OP_DzCompass, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessDzCompass(p); }},
 		{HC_OP_DzExpeditionLockoutTimers, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessDzExpeditionLockoutTimers(p); }},
 		{HC_OP_BeginCast, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessBeginCast(p); }},
+		// B1170 (#489): the server's missile object (spell projectiles, arrows).
+		{HC_OP_SomeItemPacketMaybe, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessSomeItemPacketMaybe(p); }},
 		{HC_OP_ManaChange, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessManaChange(p); }},
 		{HC_OP_Buff, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessBuff(p); }},
 		{HC_OP_ColoredText, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Chat().ZoneProcessColoredText(p); }},

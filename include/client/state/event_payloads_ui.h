@@ -10,6 +10,7 @@
 #include <functional>
 #include <vector>
 #include <variant>
+#include <optional>
 #include <string>
 #include <cstdint>
 #include <mutex>
@@ -17,6 +18,7 @@
 #include <glm/glm.hpp>
 
 #include "client/hotbar/hotbar_slot_type.h"  // T156: HotbarSlotAssignedData carries the enum, not a raw uint8_t
+#include "client/spell/spell_missile_object.h"  // B1170: SpellCastVisualStartedData::missileObject
 #include "client/spell/spell_visual_vocabulary.h"  // T381: SpellCastVisual*Data carry the render vocabulary by value, not a SpellDatabase*
 #include "client/spell/spell_fx_options.h"  // B1165: SpellCastVisual*Data carry the On-For filter inputs
 
@@ -141,17 +143,19 @@ struct SpellCastVisualStartedData {
     // length eqgame adds to the Source duration (0x47ddd4); 0 = unknown.
     int castAnim = 0;
     // B1165 (#484): what the Options > Particles "On For:" filter reads of the
-    // caster and of the missile's target (EQ::SpellFxActor, spell_fx_options.h):
-    // NPC/PC/corpse, in my group, in my raid, me. Default = no such spawn.
+    // caster (EQ::SpellFxActor, spell_fx_options.h): NPC/PC/corpse, in my
+    // group, in my raid, me. Default = no such spawn. For a 0x4033 missile
+    // object (below) the caster is its source and missileTargetFx its target.
     EQ::SpellFxActor casterFx;
-    EQ::SpellFxActor targetFx;
-    // B1152 (#472): the target the missile flies to (eqgame 0x476b12 sec. 3,
-    // FUN_0047bf6c — the end point of the projectile path). The local
-    // player's current target for a player cast, 0 for an NPC cast the client
-    // does not track a target for (the projectile then flies to the caster's
-    // facing or is simply not spawned — the MISSILE-anchored slots only fire
-    // on a missile that has a destination).
-    uint16_t targetId = 0;
+    EQ::SpellFxActor missileTargetFx;
+    // B1170 (#489): set when this event carries the server's 0x4033 missile
+    // object message instead of an OP_BeginCast: the renderer builds the
+    // object (SpellVisualFX::spawnMissileObject) and nothing else of the cast
+    // arm runs. Carried here, not on an enumerator of its own, because a new
+    // GameEventType changes the event-type count CLAUDE.md states
+    // (refactor/B1170/README.md, RULING REQUEST). A pointer, so the other
+    // events' variant slot does not grow by the 0x88-byte message.
+    std::shared_ptr<const EQ::SpellMissile::Wire> missileObject;
 };
 
 struct SpellCastVisualCompleteData {

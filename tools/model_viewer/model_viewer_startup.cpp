@@ -70,6 +70,10 @@ void parseCommandLine(int argc, char* argv[], ViewerArgs& args) {
             harnessOpts.uiOccludersGiven = true;
         } else if (arg == "--target-death" && i + 1 < argc) {
             harnessOpts.targetDeathAfterAction = std::atof(argv[++i]);
+        } else if (arg == "--missile-payload" && i + 1 < argc) {
+            harnessOpts.missilePayloadPath = argv[++i];  // B1170
+        } else if (arg == "--missile-at" && i + 1 < argc) {
+            harnessOpts.missileAt = std::atof(argv[++i]);
         } else if (arg == "--target-despawn" && i + 1 < argc) {
             harnessOpts.targetDespawnAfterAction = std::atof(argv[++i]);
         } else if (arg == "--caster-despawn" && i + 1 < argc) {
@@ -148,6 +152,7 @@ void printUsageBanner(const ViewerArgs& args) {
     std::cout << "                    --fps 30 --seconds N --headless [--camera b1118] [--backdrop <png>]" << std::endl;
     std::cout << "                    [--ui-occluder x0,y0,x1,y1]... [--no-ui-occluder] [--target-death <s>]" << std::endl;
     std::cout << "                    [--target-despawn <s>] [--caster-despawn <s>] [--worker-latency 0|1]" << std::endl;
+    std::cout << "                    [--missile-payload <0x4033 payload file> --missile-at <s>]" << std::endl;
     std::cout << "                    [--caster-appearance face,texture:e0,...,e8] [--sim-hz <hz>]" << std::endl;
     std::cout << "                    [--caster race:gender[:size]] [--target race:gender[:size]]" << std::endl;
     std::cout << "                    [--eqe1 <willeq.eqe1>] [--eqe1-dir <dir>] [--fx-seed N] [--no-ground] [--caster-px 235] [--caster-level 60]   (B1138 FX harness)" << std::endl;

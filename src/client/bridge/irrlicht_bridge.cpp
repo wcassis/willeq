@@ -1090,6 +1090,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             // (spell_cast_fx.cpp) so the harness draws this exact sequence.
             ApplySpellCastStartedFx(castGlowRoute_, renderer_->getSpellVisualFX(), d,
                                     CastGlowRoute::Clock::now());
+            // B1170 (#489): a 0x4033 missile object starts no cast.
+            if (d.missileObject) break;
             // B1157 (#476): every casting entity -- the player included --
             // plays the spell's CastingAnim track on its model (startEntityCast
             // now animates; the entity cast BAR below it still skips the

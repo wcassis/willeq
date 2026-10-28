@@ -190,6 +190,9 @@ public:
 
     // Server confirms cast is starting (HC_OP_BeginCast)
     void handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32_t cast_time_ms);
+    // B1170 (#489): the server's 0x4033 missile object message (the payload
+    // after the opcode). Decoded here, drawn by the renderer's SpellVisualFX.
+    void handleMissileObject(const uint8_t* payload, size_t len);
 
     // Spell effect/action (HC_OP_Action) - spell landing
     void handleAction(const EQT::SpellActionInfo& action);

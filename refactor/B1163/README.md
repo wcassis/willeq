@@ -260,6 +260,10 @@ video frame in brackets):
 (Act frames: M1_38 f14185, M1b_38 f14543, M3b_93 f18642, M2_54 f13715,
 M2b_54 f16574. The previous B1163 text gave 93 the M1_38 values; they are 38's.)
 
+The flight start / flight end cells above are RETIRED with their source
+columns (`refactor/B1152/missile_oracle.tsv`, B1168; B1170 MR !330): the
+oracle never drew the flight. The arrival cells are live oracle measurements.
+
 **The band.** B1152 states no numeric tolerance: its gate compared the harness
 to M1_38 only and passed at |Δ| ≤ 0.002 s (`refactor/B1152/README.md`, "The
 missile timing gate"); `review/B1142/gate/regression_table.tsv` carries no
@@ -271,9 +275,13 @@ span of the three record-80 oracle legs (M1_38, M1b_38, M3b_93), widened by one
 
 | metric | oracle span | band |
 |---|---|---|
-| flight start | −1.144 .. −0.484 | −1.177 .. −0.451 |
-| flight end | −0.680 .. +0.156 | −0.713 .. +0.189 |
+| flight start (RETIRED) | −1.144 .. −0.484 | −1.177 .. −0.451 |
+| flight end (RETIRED) | −0.680 .. +0.156 | −0.713 .. +0.189 |
 | arrival | +0.116 .. +0.590 | +0.083 .. +0.623 |
+
+The flight start / end bands are RETIRED with their source columns (B1168: the
+oracle drew no Middle flight; B1170 MR !330). The arrival band is a live
+oracle measurement (the `arrival_*` columns were never retired).
 
 Harness, before (685d23fa) and after (this rework), `b1130gate.log` lines
 (`/mnt/projects/fable/review/B1163/worker/gate_before/b1130gate.log`,
@@ -289,15 +297,21 @@ spell 859 (gate_before_859/, gate_after_859/): rc=0 NO_MISSILE_LINE
 
 | spell | metric | harness before | harness after | Δ vs M1_38 | Δ vs M1b_38 | Δ vs M3b_93 | band | verdict |
 |---|---|---|---|---|---|---|---|---|
-| 38 | flight start | −0.486 | −0.486 | −0.002 | +0.658 | +0.560 | −1.177 .. −0.451 | in |
-| 38 | flight end | −0.184 | −0.184 | 0.000 | −0.340 | +0.496 | −0.713 .. +0.189 | in |
-| 38 | arrival | +0.116 | +0.116 | 0.000 | −0.474 | −0.338 | +0.083 .. +0.623 | in |
-| 93 | flight start | −0.486 | −0.486 | −0.002 | +0.658 | +0.560 | −1.177 .. −0.451 | in |
-| 93 | flight end | −0.184 | −0.184 | 0.000 | −0.340 | +0.496 | −0.713 .. +0.189 | in |
-| 93 | arrival | +0.116 | +0.116 | 0.000 | −0.474 | −0.338 | +0.083 .. +0.623 | in |
+| 38 | flight start | −0.486 | −0.486 | −0.002 | +0.658 | +0.560 | −1.177 .. −0.451 | **RETIRED** |
+| 38 | flight end | −0.184 | −0.184 | 0.000 | −0.340 | +0.496 | −0.713 .. +0.189 | **RETIRED** |
+| 38 | arrival | +0.116 | +0.116 | 0.000 | −0.474 | −0.338 | +0.083 .. +0.623 | **RETIRED** |
+| 93 | flight start | −0.486 | −0.486 | −0.002 | +0.658 | +0.560 | −1.177 .. −0.451 | **RETIRED** |
+| 93 | flight end | −0.184 | −0.184 | 0.000 | −0.340 | +0.496 | −0.713 .. +0.189 | **RETIRED** |
+| 93 | arrival | +0.116 | +0.116 | 0.000 | −0.474 | −0.338 | +0.083 .. +0.623 | **RETIRED** |
 | 54 | (no Middle: record 82) | no missile | no missile | — | — | — | — | unchanged (M2_54 +0.458, M2b_54 +0.478 are createLanding's, not a missile row) |
 | 41 / 458 / 656 | (no drawn Middle) | no missile | no missile | — | — | — | — | unchanged |
 | 859 | (record 85: no Middle) | no missile | no missile | — | — | — | — | unchanged (see C) |
+
+**The six 38 / 93 rows are RETIRED** (B1170 MR !330, 2026-10-28): B1168 proved
+the client draws record 80's Middle stage only on a `0x4033` missile object
+the lane-5 server never sends, so the launch@−0.486 / reach@−0.184 /
+land@+0.116 gate measured a flight the oracle never drew. Struck, not deleted;
+the 54 / 41 / 458 / 656 / 859 rows are unchanged.
 
 The harness sits on M1_38 (the leg B1152 calibrated to) and inside the
 record-80 span; it is 0.34..0.66 s from the two B1159 legs, which disagree with

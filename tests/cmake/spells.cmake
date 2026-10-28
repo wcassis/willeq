@@ -318,6 +318,14 @@ ADD_EXECUTABLE(test_b1163_missile_rules
 TARGET_LINK_LIBRARIES(test_b1163_missile_rules GTest::gtest_main willeq_core)
 GTEST_DISCOVER_TESTS(test_b1163_missile_rules DISCOVERY_TIMEOUT 120)
 
+# B1170 (#489): the server's 0x4033 missile object (decode, spawn, homing,
+# physics, removal), device-free -- client/spell/spell_missile_object.h.
+ADD_EXECUTABLE(test_b1170_missile_object
+    test_b1170_missile_object.cpp
+)
+TARGET_LINK_LIBRARIES(test_b1170_missile_object GTest::gtest_main willeq_core)
+GTEST_DISCOVER_TESTS(test_b1170_missile_object DISCOVERY_TIMEOUT 120)
+
 # B1137 (#457): the measured Source/Target row is chosen by the spell's
 # spellsnew.eff record (field 145), not its spells.eff record (field 123).
 # Config rows run everywhere; the SpellVisualFX key check needs graphics.

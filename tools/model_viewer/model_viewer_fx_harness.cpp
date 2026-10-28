@@ -26,6 +26,8 @@
 #include <cstdlib>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <iomanip>
 #include <unordered_map>
 
@@ -523,6 +525,19 @@ bool initHarnessParticles() {
         out = glm::vec3(d.X, d.Y, d.Z);
         return true;
     });
+    // B1170 (#489): the missile object reads entities in EQ coordinates
+    // (y, x, z) with the model height: the node origin and its bounding box.
+    spellVisualFX->setMissileEntityCallback([nodeFor](uint16_t id, EQ::SpellVisualFX::MissileEntityState& out) -> bool {
+        EQAnimatedMeshSceneNode* n = nodeFor(id);
+        if (!n) return false;
+        const auto p = n->getAbsolutePosition();
+        out.eqPos[0] = p.Z;
+        out.eqPos[1] = p.X;
+        out.eqPos[2] = p.Y;
+        const auto box = n->getTransformedBoundingBox();
+        out.height = box.MaxEdge.Y - box.MinEdge.Y;
+        return true;
+    });
     spellVisualFX->setEntityPositionCallback([nodeFor](uint16_t id, core::vector3df& out) -> bool {
         if (isSpellFxBoneId(id))
             return resolveSpellFxBonePosition(nodeFor(EQ::SpellVisualFX::realEntityId(id)), id, out);
@@ -543,9 +558,9 @@ bool initHarnessParticles() {
         if (id == targetEntityId) return EQ::SpellFxAttachScale(harnessOpts.targetRace, harnessOpts.targetGender, harnessOpts.targetSize);
         return 0.0f;
     });
-    // B1152 (#472): the missile gate reads the launch/arrival times from the
-    // SPELL module's log, so un-filter it (the model_viewer does not InitLogging,
-    // so the module is at the default NONE).
+    // The gates read the FX lines (createCastGlow / createLanding, B1170's
+    // missile-object lines) from the SPELL module's log, so un-filter it (the
+    // model_viewer does not InitLogging, so the module is at the default NONE).
     SetModuleLogLevel(MOD_SPELL, LOG_INFO);
     std::printf("[fx-harness] SpellVisualFX -> ParticleManager -> SimulationWorker ready\n");
     std::fflush(stdout);
@@ -624,11 +639,6 @@ void harnessBeginCast(const EQ::SpellData& spell, bool self, uint32_t castMs, in
     d.isTargetCast = false;
     d.spellVisual = spell.visualVocabulary();
     d.castAnim = spell.cast_anim;  // B1148
-    // B1152 (#472): the missile flies to the spell's target (the NPC target
-    // for an 'other' cast, the caster for a 'self' one) -- the same target
-    // harnessAction() lands on. A Middle-stage spell then spawns a missile
-    // here that flies to this id and fires the Target stage on arrival.
-    d.targetId = self ? casterEntityId : targetEntityId;
     (void)self;
     eqt::bridge::ApplySpellCastStartedFx(fxRoute, spellVisualFX.get(), d, now);
 }
@@ -1086,6 +1096,10 @@ int runScriptedHarness() {
     // own CastingAnim request (B1174, actionCastTrack below).
     std::vector<uint16_t> activeSourceEmitters;
     std::string activeCastTrack;
+    // B1170 (#489): the 0x4033 payload to inject (--missile-payload / --missile-at).
+    bool missileInjected = harnessOpts.missilePayloadPath.empty() || harnessOpts.missileAt < 0.0;
+    std::ofstream missileOut(harnessOpts.framesDir + "/missile.tsv");
+    missileOut << "frame\tt\tobjects\ty\tx\tz\tsx\tsy\n";
     // B1174 (#493): the track an OP_Action started with no cast in progress
     // (a /disc; EntityRenderer::actionEntityCastAnim's rule), "" = none.
     std::string actionCastTrack;
@@ -1169,6 +1183,40 @@ int runScriptedHarness() {
                           e.action ? "Action" : "BeginCast", c.spellId, c.self ? "self" : "other",
                           c.distance, e.castMs, e.t, level);
             timing << row;
+        }
+        if (!missileInjected && t + 1e-9 >= harnessOpts.missileAt) {
+            missileInjected = true;
+            std::ifstream pf(harnessOpts.missilePayloadPath, std::ios::binary);
+            const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(pf)), std::istreambuf_iterator<char>());
+            EQ::SpellMissile::Wire w;
+            if (!EQ::SpellMissile::DecodeWire(bytes.data(), bytes.size(), w)) {
+                std::fprintf(stderr, "[fx-harness] %s: %zu bytes, not a 0x4033 payload\n",
+                             harnessOpts.missilePayloadPath.c_str(), bytes.size());
+                return 2;
+            }
+            const auto cp = animatedNode->getAbsolutePosition();
+            const auto tp = targetAnimatedNode ? targetAnimatedNode->getAbsolutePosition() : cp;
+            std::printf("[fx-harness] 0x4033 injected at t %.3f: captured source %u target %u pos (%.3f,%.3f,%.3f) "
+                        "heading %.3f -> harness caster %u target %u\n",
+                        t, w.sourceId, w.targetId, w.pos[0], w.pos[1], w.pos[2], w.heading,
+                        static_cast<unsigned>(casterEntityId), static_cast<unsigned>(targetEntityId));
+            w.sourceId = casterEntityId;
+            w.targetId = targetEntityId;
+            w.pos[0] = cp.Z;
+            w.pos[1] = cp.X;
+            w.pos[2] = cp.Y;
+            w.heading = EQ::SpellMissile::Bearing(cp.Z, cp.X, tp.Z, tp.X);
+            float th = 0.0f;
+            if (targetAnimatedNode) {
+                const auto box = targetAnimatedNode->getTransformedBoundingBox();
+                th = box.MaxEdge.Y - box.MinEdge.Y;
+            }
+            // %.9g: every float exactly, so missile_flight_model.py starts from the same bits.
+            std::printf("[fx-harness] 0x4033 geometry: source (y,x,z) %.9g %.9g %.9g target %.9g %.9g %.9g "
+                        "height %.9g heading %.9g word %.9g +0x62 %d sim_hz %d\n",
+                        cp.Z, cp.X, cp.Y, tp.Z, tp.X, tp.Y, th, w.heading, w.word, static_cast<int>(w.damped),
+                        simHz);
+            spellVisualFX->spawnMissileObject(w, harnessOpts.casterLevel);
         }
         if (!actionCastTrack.empty() && actionCastAnimEnded(animatedNode, actionCastTrack)) {
             const bool playedOut = animatedNode->getAnimator().getCurrentAnimation() == actionCastTrack;
@@ -1297,8 +1345,25 @@ int runScriptedHarness() {
         std::snprintf(row, sizeof(row), "%d\t%.6f\t-\t-\t-\t-\t-\t-\t-\n", f, t);
         timing << row;
         activityOut << f << '\t' << std::fixed << std::setprecision(6) << t << '\t'
-                    << spellVisualFX->getActiveEffectCount() << '\t' << spellVisualFX->missileCount() << '\t'
+                    << spellVisualFX->getActiveEffectCount() << '\t' << spellVisualFX->missileObjectCount() << '\t'
                     << animatedNode->getAnimator().getCurrentAnimation() << '\n';
+        if (!harnessOpts.missilePayloadPath.empty()) {
+            // B1170: the first missile object's position (EQ y, x, z) and its
+            // screen point, through the scene.tsv pinhole.
+            float mp[3];
+            if (spellVisualFX->missileObjectPosition(0, mp)) {
+                const Pinhole ph = makePinhole(camera->getPosition(), camera->getTarget(), camera->getFOV(),
+                                               camera->getAspectRatio(),
+                                               static_cast<float>(harnessOpts.width),
+                                               static_cast<float>(harnessOpts.height));
+                const core::vector2df s = ph.project(core::vector3df(mp[1], mp[2], mp[0]));
+                missileOut << f << '\t' << std::fixed << std::setprecision(6) << t << '\t'
+                           << spellVisualFX->missileObjectCount() << '\t' << std::setprecision(4) << mp[0] << '\t'
+                           << mp[1] << '\t' << mp[2] << '\t' << std::setprecision(1) << s.X << '\t' << s.Y << '\n';
+            } else {
+                missileOut << f << '\t' << std::fixed << std::setprecision(6) << t << "\t0\t-\t-\t-\t-\t-\n";
+            }
+        }
         if (!activeSourceEmitters.empty()) {
             // The emitter origin = the slot's attach point on the caster:
             // the hand/head bone for a pseudo-id (B1144), the node origin for

@@ -1,28 +1,28 @@
 row	spell	baseline	verdict	land_cov_b	land_cov_n	d_land_cov	end_b	end_n	d_end	src_cov_b	src_cov_n	d_src_cov	src_on25_b	src_on25_n	src_cen_b	src_cen_n	owner
-tour 93	93	b1151_tour_93	over	2.113	1.993	-0.120	+6.467	+6.633	+0.166		0.385			+0.433		0.86	B1152 sim delta (tour not re-gated by B1152; B1152->B1157 for this spell = record r0: +0.000 land / +0.000 end)
-tour 38	38	b1151_tour_38	over	2.113	1.993	-0.120	+6.467	+6.633	+0.166		0.385			+0.433		0.86	B1152 sim delta (tour not re-gated by B1152; 38 renders identically to 93 in both gates: 2.113/+6.467 in B1151, 1.993/+6.633 here; the B1152->B1157 half is record r0: +0.000 land / +0.000 end)
+tour 93	93	b1151_tour_93	over	2.113	2.113	-0.120	+6.467	+6.467	+0.166		0.363			RETIRED		RETIRED	B1170 re-measure (refactor/B1170/README.md section F): the _n cells were B1152-missile renders and are now the post-removal values, back to B1151's pre-missile tour values; src_on25_n/src_cen_n RETIRED (not re-measured in B1170); d_* are the historical B1157-vs-b1151 deltas (B1168: the oracle drew no Middle flight; B1170 MR !330)
+tour 38	38	b1151_tour_38	over	2.113	2.113	-0.120	+6.467	+6.467	+0.166		0.363			RETIRED		RETIRED	B1170 re-measure (refactor/B1170/README.md section F): the _n cells were B1152-missile renders and are now the post-removal values, back to B1151's pre-missile 2.113/+6.467 (38 rendered identically to 93); src_on25_n/src_cen_n RETIRED (not re-measured in B1170); d_* are the historical B1157-vs-b1151 deltas (B1168: the oracle drew no Middle flight; B1170 MR !330)
 tour 54	54	b1151_tour_54	PASS	1.204	1.204	+0.000	+6.333	+6.333	+0.000		0.415			+0.500		0.63	
 tour 656	656	b1151_tour_656	PASS	1.204	1.204	+0.000	+6.333	+6.333	+0.000		0.415			+0.500		0.63	
 tour 41	41	b1151_tour_41	PASS	2.478	2.478	+0.000	+5.667	+5.667	+0.000		1.129			+0.567		0.91	
 tour 253	253	b1151_tour_253	PASS	5.306	5.306	+0.000	+5.317				3.804			+0.500		0.99	
 tour 458	458	b1151_tour_458	short	0.499	0.5	+0.001	+5.183	+5.050	-0.133		0.12			+0.300		0.53	unattributed (no B1152 baseline: 458 is not one of the 40 records; the row spans B1151->B1157 incl. B1152's sim change)
 r4	50	b1152_r4_50	PASS	1.427	1.431	+0.004				1.301			+0.900		0.77		
-r2	202	b1152_r2_202	over	0.663	0.694	+0.031	+4.700	+4.633	-0.067	0.225			+0.667		0.67		model/animation (B1157 cast pose: the raised hand -- the only delta vs the B1152 baseline; see the README for the mechanism)
-r7	40	b1152_r7_40	over	0.973	0.902	-0.071	+5.433	+5.633	+0.200	0.364	0.524	+0.160	+0.433	+0.433	0.89	0.85	model/animation (B1157 cast pose: the raised hand -- the only delta vs the B1152 baseline; see the README for the mechanism)
-r1	200	b1152_r1_200	over	1.238	1.308	+0.070	+6.167	+6.233	+0.066	0.247	0.304	+0.057	+0.533	+0.500	0.62	0.64	model/animation (B1157 cast pose: the raised hand -- the only delta vs the B1152 baseline; see the README for the mechanism)
+r2	202	b1152_r2_202	over	RETIRED	0.671	+0.031	RETIRED	+4.633	-0.067	RETIRED	0.300		RETIRED		RETIRED		model/animation (B1157 cast pose: the raised hand -- the only delta vs the B1152 baseline; see the README for the mechanism) | RETIRED (B1168; B1170 MR !330): the _b cells are the B1152 baseline, a missile-era render, and the old _n / d_* were measured with the missile; the _n cells now hold B1170's post-removal re-measure (refactor/B1170/README.md section F)
+r7	40	b1152_r7_40	over	RETIRED	1.067	-0.071	RETIRED	+5.900	+0.200	RETIRED	0.411	+0.160	RETIRED	RETIRED	RETIRED	RETIRED	model/animation (B1157 cast pose: the raised hand -- the only delta vs the B1152 baseline; see the README for the mechanism) | RETIRED (B1168; B1170 MR !330): the _b cells are the B1152 baseline, a missile-era render, and the old _n / d_* were measured with the missile; the _n cells now hold B1170's post-removal re-measure (refactor/B1170/README.md section F)
+r1	200	b1152_r1_200	over	RETIRED	1.251	+0.070	RETIRED	+6.167	+0.066	RETIRED	0.304	+0.057	RETIRED	RETIRED	RETIRED	RETIRED	model/animation (B1157 cast pose: the raised hand -- the only delta vs the B1152 baseline; see the README for the mechanism) | RETIRED (B1168; B1170 MR !330): the _b cells are the B1152 baseline, a missile-era render, and the old _n / d_* were measured with the missile; the _n cells now hold B1170's post-removal re-measure (refactor/B1170/README.md section F)
 r9	375	b1152_r9_375	PASS	1.32	1.321	+0.001	+7.200	+7.200	+0.000	0.833	0.866	+0.033	+0.433	+0.433	0.84	0.83	
 r10	590	b1152_r10_590	PASS	1.571	1.57	-0.001	+6.067	+6.100	+0.033	1.039			+0.600		0.77		
 r12	208	b1152_r12_208	PASS	3.409	3.409	+0.000	+7.000	+7.000	+0.000	1.719	1.744	+0.025	+0.600	+0.600	0.79	0.78	
 r20	341	b1152_r20_341	PASS	2.113	2.113	+0.000	+5.567	+5.567	+0.000	1.048	1.079	+0.031	+0.567	+0.567	0.82	0.81	
 r40	602	b1152_r40_602	PASS	0.639	0.639	+0.000	+4.133	+4.133	+0.000	0.965	0.986	+0.021	+0.433	+0.433	0.83	0.83	
-r25	14	b1152_r25_14	PASS	2.088	2.088	+0.000	+6.533	+6.533	+0.000	0.394			+0.600		0.84		
-r18	378	b1152_r18_378	PASS	0.944	0.945	+0.001	+5.200	+5.200	+0.000	0.39	0.433	+0.043	+0.500	+0.500	1.06	1.03	
+r25	14	b1152_r25_14	PASS	RETIRED	1.992	+0.000	RETIRED	+6.433	+0.000	RETIRED	0.448		RETIRED		RETIRED		 | RETIRED (B1168; B1170 MR !330): the _b cells are the B1152 baseline, a missile-era render, and the old _n / d_* were measured with the missile; the _n cells now hold B1170's post-removal re-measure (refactor/B1170/README.md section F)
+r18	378	b1152_r18_378	PASS	RETIRED	0.982	+0.001	RETIRED	+5.067	+0.000	RETIRED	0.433	+0.043	RETIRED	RETIRED	RETIRED	RETIRED	 | RETIRED (B1168; B1170 MR !330): the _b cells are the B1152 baseline, a missile-era render, and the old _n / d_* were measured with the missile; the _n cells now hold B1170's post-removal re-measure (refactor/B1170/README.md section F)
 r16	242	b1152_r16_242	PASS	0.845	0.846	+0.001				0.702	0.76	+0.058	+0.700	+0.700	0.35	0.37	
-r0	93	b1152_r0_93	PASS	1.993	1.993	+0.000	+6.633	+6.633	+0.000	0.337	0.385	+0.048	+0.433	+0.433	0.90	0.86	
+r0	93	b1152_r0_93	PASS	RETIRED	2.113	+0.000	RETIRED	+6.467	+0.000	RETIRED	0.363	+0.048	RETIRED	RETIRED	RETIRED	RETIRED	 | RETIRED (B1168; B1170 MR !330): the _b cells are the B1152 baseline, a missile-era render, and the old _n / d_* were measured with the missile; the _n cells now hold B1170's post-removal re-measure (refactor/B1170/README.md section F)
 r14	373	b1152_r14_373	PASS	1.881	1.881	+0.000	+8.400	+8.433	+0.033	0.072	0.11	+0.038	+0.467	+0.100	0.67	0.73	
 r5	80	b1152_r5_80	PASS	0.249	0.248	-0.001	+4.267			0.135	0.214	+0.079	+0.467	+0.467	0.72	0.78	
 r17	237	b1152_r17_237	PASS	1.24	1.237	-0.003	+4.800	+4.833	+0.033	0.546	0.603	+0.057	+0.567	+0.533	0.72	0.74	
-r6	722	b1152_r6_722	PASS	0.401	0.401	+0.000				0.34	0.34	+0.000	+0.600	+0.600	0.76	0.76	
+r6	722	b1152_r6_722	PASS	RETIRED	0.391	+0.000				RETIRED	0.340	+0.000	RETIRED	RETIRED	RETIRED	RETIRED	 | RETIRED (B1168; B1170 MR !330): the _b cells are the B1152 baseline, a missile-era render, and the old _n / d_* were measured with the missile; the _n cells now hold B1170's post-removal re-measure (refactor/B1170/README.md section F)
 r19	359	b1152_r19_359	PASS	1.297	1.297	+0.000				1.092	1.129	+0.037	+0.567	+0.567	0.70	0.70	
 r23	372	b1152_r23_372	PASS	0.839	0.838	-0.001	+6.433	+6.433	+0.000	0.381			+0.500		0.66		
 r43	720	b1152_r43_720	PASS	0.389	0.39	+0.001	+4.500	+4.567	+0.067	0.283	0.328	+0.045	+0.600	+0.500	1.16	1.11	
@@ -45,4 +45,4 @@ r8	346	b1152_r8_346	over	0.262	0.261	-0.001	+2.167	+2.500	+0.333	0.513	0.55	+0.0
 r29	286	b1152_r29_286	PASS	0.902	0.897	-0.005	+7.033	+7.033	+0.000	0.355	0.411	+0.056	+0.600	+0.467	0.56	0.56	
 r28	73	b1152_r28_73	PASS	1.635	1.635	+0.000				1.363	1.419	+0.056	+0.700	+0.667	0.65	0.65	
 r34	340	b1152_r34_340	PASS	1.068	1.068	+0.000	+5.967	+5.967	+0.000	0.387			+0.500		0.60		
-r26	310	b1152_r26_310	PASS	1.87	1.87	+0.000	+4.667	+4.667	+0.000	0.368	0.401	+0.033	+0.533	+0.500	0.57	0.58	
+r26	310	b1152_r26_310	PASS	RETIRED	1.492	+0.000	RETIRED	+4.567	+0.000	RETIRED	0.401	+0.033	RETIRED	RETIRED	RETIRED	RETIRED	 | RETIRED (B1168; B1170 MR !330): the _b cells are the B1152 baseline, a missile-era render, and the old _n / d_* were measured with the missile; the _n cells now hold B1170's post-removal re-measure (refactor/B1170/README.md section F)
