@@ -1,0 +1,8 @@
+spell	oracle_leg	oracle_level	before_level	after_level	frames	frames_identical	lane_oracle_land_cov	lane_oracle_end	b1157_land_cov_n	b1157_end_n	b1166_land_cov	b1166_end	b1166_src_cov	before_land_cov	before_end	before_src_cov	after_land_cov	after_end	after_src_cov	before_verdict	after_verdict
+93	oracle_druid	60	60	60	435	yes	5.847	4.867	1.993	+6.633	1.993	+6.633	0.385	1.993	+6.633	0.385	1.993	+6.633	0.385	level-matched	level-matched
+38	oracle_leg	60	60	60	435	yes	3.889	4.85	1.993	+6.633	1.993	+6.633	0.385	1.993	+6.633	0.385	1.993	+6.633	0.385	level-matched	level-matched
+54	oracle_leg	60	60	60	435	yes	2.461	5.103	1.204	+6.333	1.204	+6.333	0.416	1.204	+6.333	0.416	1.204	+6.333	0.416	level-matched	level-matched
+656	oracle_leg	60	60	60	435	yes	2.493	5.004	1.204	+6.333	1.204	+6.333	0.416	1.204	+6.333	0.416	1.204	+6.333	0.416	level-matched	level-matched
+41	oracle_enc	60	60	60	435	yes	4.154	6.224	2.478	+5.667	2.478	+5.667	1.129	2.478	+5.667	1.129	2.478	+5.667	1.129	level-matched	level-matched
+253	oracle_druid	60	60	60	444	yes	7.281	6.522	5.306		5.306	-	3.804	4.148	-	3.323	4.148	-	3.323	level-matched	level-matched
+458	oracle_leg	60	60	60	483	yes	1.242	4.942	0.5	+5.050	0.500	+5.050	0.120	0.500	+5.050	0.120	0.500	+5.050	0.120	level-matched	level-matched

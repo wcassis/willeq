@@ -23,6 +23,7 @@
 # usage: oracle_class_leg.sh <lane 1..5> <class 1..16> <plan.tsv> <out_dir>
 #            [--char-id 67] [--home-class 12] [--gems 93,38,54,41,253,458,656]
 #            [--pre-sql-file F] [--post-sql-file F] [--no-wait]
+#            [--server-sql-file F --server-undo-sql-file F --server-dump-sql-file F]
 # Exit codes: oracle_session.sh's (0/64/65/66/67); 64 also = plan refused;
 # 66 also = the after-census does not show the home class and the gems.
 set -uo pipefail
@@ -32,6 +33,7 @@ usage() { sed -n '/^# usage:/,/^# Exit/p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 
 [[ $# -ge 4 ]] || usage
 LANE=$1 CLS=$2 PLAN=$3 OUT=$4; shift 4
 CHAR_ID=67 HOME_CLASS=12 GEMS=93,38,54,41,253,458,656 PRE_FILE= POST_FILE= WAIT=1
+SRV_FILE= SRV_UNDO_FILE= SRV_DUMP_FILE=
 while [[ $# -gt 0 ]]; do
     case $1 in
         --char-id) CHAR_ID=$2; shift 2 ;;
@@ -40,6 +42,9 @@ while [[ $# -gt 0 ]]; do
         --pre-sql-file) PRE_FILE=$2; shift 2 ;;
         --post-sql-file) POST_FILE=$2; shift 2 ;;
         --no-wait) WAIT=0; shift ;;
+        --server-sql-file) SRV_FILE=$2; shift 2 ;;
+        --server-undo-sql-file) SRV_UNDO_FILE=$2; shift 2 ;;
+        --server-dump-sql-file) SRV_DUMP_FILE=$2; shift 2 ;;
         *) usage ;;
     esac
 done
@@ -48,6 +53,14 @@ done
 [[ -f $PLAN ]] || { echo "no plan: $PLAN" >&2; exit 64; }
 [[ -z $POST_FILE || -f $POST_FILE ]] || { echo "no post-SQL file: $POST_FILE" >&2; exit 64; }
 [[ -z $PRE_FILE || -f $PRE_FILE ]] || { echo "no pre-SQL file: $PRE_FILE" >&2; exit 64; }
+# B1174 (#493): a leg-only server-data change (oracle_session.sh runs it with
+# the stack down before up.sh and its undo on every exit path): all three or none.
+if [[ -n $SRV_FILE$SRV_UNDO_FILE$SRV_DUMP_FILE ]]; then
+    for f in "$SRV_FILE" "$SRV_UNDO_FILE" "$SRV_DUMP_FILE"; do
+        [[ -n $f && -f $f ]] || { echo "server-data hook needs --server-sql-file, --server-undo-sql-file and --server-dump-sql-file" >&2; exit 64; }
+    done
+    export ORACLE_SERVER_SQL="$(cat "$SRV_FILE")" ORACLE_SERVER_UNDO_SQL="$(cat "$SRV_UNDO_FILE")" ORACLE_SERVER_DUMP_SQL="$(cat "$SRV_DUMP_FILE")"
+fi
 PLAN=$(realpath "$PLAN") OUT=$(realpath -m "$OUT")
 
 # 1. offline: the leg starts with --gems memorised (the previous leg's undo).

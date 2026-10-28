@@ -474,6 +474,14 @@ ADD_TEST(NAME PruneRefBuildTrees
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_prune_ref_build_trees.py -v)
 SET_TESTS_PROPERTIES(PruneRefBuildTrees PROPERTIES LABELS "hygiene")
 
+# B1171 (#490): the FX harness sweeps cast at the level the ORACLE capture ran
+# (its executed `#level`, scripts/fx/capture_level.py), and a comparison row
+# whose harness level differs from the oracle row's is refused. Pure temp-dir
+# fixtures (a capture's plan.tsv + steps.tsv, a run's timing.tsv / plan).
+ADD_TEST(NAME FxCaptureLevel
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_fx_capture_level.py -v)
+SET_TESTS_PROPERTIES(FxCaptureLevel PROPERTIES LABELS "hygiene")
+
 # B1026 (#346): two runners carry `x86-build`, so a pipeline's build and test
 # jobs can land on different hosts (fable pipeline 809: false red). Pins the
 # .gitlab-ci.yml shape that makes that safe: build-test/client-ledger-live verify

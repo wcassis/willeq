@@ -180,6 +180,17 @@ struct SpellCastVisualCompleteData {
     // B1165 (#484): the landing's On-For inputs (stage 2 on caster + target).
     EQ::SpellFxActor casterFx;
     EQ::SpellFxActor targetFx;
+    // B1174 (#493): what eqgame's OP_Action handler needs to play the spell's
+    // CastingAnim on the source (EQ::ActionPlaysSourceCastAnim,
+    // spell_action_anim.h): field 120, whether the client's spell table has
+    // the id and its field 98 target type, the source spawn's stand byte and
+    // class (0 = unknown) and the packet's instrument_mod.
+    int castAnim = 0;
+    bool spellRecordExists = false;
+    uint8_t targetType = 0;
+    uint8_t sourceStandState = 0;
+    int sourceClass = 0;
+    uint32_t instrumentMod = 0;
 };
 
 struct SpellCastVisualInterruptedData {
