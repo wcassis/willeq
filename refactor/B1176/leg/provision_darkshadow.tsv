@@ -1,0 +1,16 @@
+# action	target	hold_ms	still_name
+# B1176: make the dark-elf OBSERVER character Darkshadow (race 14, Enchanter = the
+# size-5 class, scale 1.0 -- Testcaster's own troll-enchanter wire z 3.128 is the
+# measured size-5 precedent, T311) on account willeqwatch, through the official
+# client's own creation screen (the B1134 P1 pattern, template clicks). The main
+# (Xvfb) client logs in as Testcaster as the display probe only; it does no leg
+# work here. The created character persists (it is the dark-elf subject of the
+# live leg); the driver records it in provisioned.tsv.
+# observer=Darkshadow
+# provision=Darkshadow
+# create-clicks=template
+login	Testcaster	0	char_select
+obs	login	Darkshadow	0	obs_char_select
+obs	wait-template	charselect_create_new	30000	obs_charselect_ready
+obs	create	Darkshadow	DarkElf	Enchanter	Male	obs_created
+obs	still	after_create	0	obs_after_create

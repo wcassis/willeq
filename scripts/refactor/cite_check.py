@@ -47,7 +47,7 @@ def resolve(f):
     c=by_base.get(os.path.basename(f),[]) if '/' not in f else [t for t in tracked if t.endswith('/'+f)]
     return c[0] if len(c)==1 else None
 # file:line cites (paths with a slash or a known extension)
-for m in re.finditer(r'`?([\w./-]+\.(?:cpp|h|py|sh|tsv|md|json|txt)):(\d+)(?:-(\d+))?`?', text):
+for m in re.finditer(r'`?([\w./-]+\.(?:cpp|h|c|py|sh|tsv|md|json|txt)):(\d+)(?:-(\d+))?`?', text):
     f, a, b = m.group(1), int(m.group(2)), int(m.group(3) or m.group(2))
     checked+=1
     r=resolve(f)

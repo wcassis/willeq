@@ -262,14 +262,23 @@ void EQAnimatedMeshSceneNode::render() {
     if (!driver) return;
 
     // Set transformation
-    // For player: use position-only transform since rotation is baked into vertices
-    // For NPCs: use full AbsoluteTransformation
+    // For player: position + uniform scale (B1176) -- rotation stays out of
+    // the matrix since it is baked into the vertices; for NPCs the full
+    // AbsoluteTransformation.
     if (isPlayerNode_) {
-        // Create a position-only transform (no rotation) for player
-        // The rotation is already baked into the vertices in applyAnimation()
-        irr::core::matrix4 posOnlyTransform;
-        posOnlyTransform.setTranslation(AbsoluteTransformation.getTranslation());
-        driver->setTransform(irr::video::ETS_WORLD, posOnlyTransform);
+        // B1176 (#495): the client scales the local player's model like every
+        // other actor's (FUN_0047fa9e then FUN_0043c84b on both EQPlayer build
+        // paths, eqgame.exe.c:106152->:106154 and :106406->:106416), so the
+        // world matrix carries the node's uniform scale (set by
+        // entityNodeScale, B1172's clientActorScale). The rotation remains
+        // baked into the vertices (applyAnimation), and the equipment children
+        // inherit the same scale through their absolute transforms.
+        irr::core::matrix4 world;
+        world.setTranslation(AbsoluteTransformation.getTranslation());
+        irr::core::matrix4 modelScale;
+        modelScale.setScale(AbsoluteTransformation.getScale());
+        world *= modelScale;
+        driver->setTransform(irr::video::ETS_WORLD, world);
     } else {
         driver->setTransform(irr::video::ETS_WORLD, AbsoluteTransformation);
     }

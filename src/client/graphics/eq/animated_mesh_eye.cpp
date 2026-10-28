@@ -18,6 +18,7 @@
 // drift to harmonize.
 
 #include "client/graphics/eq/animated_mesh_scene_node.h"
+#include "client/graphics/actor_scale.h"
 #include "client/graphics/first_person_eye.h"
 
 #include <cmath>
@@ -111,6 +112,22 @@ bool EQAnimatedMeshSceneNode::getFirstPersonEyeOffset(
     float ez = eyeLocalPoint.z;
     headTransform.transformPoint(ex, ey, ez);
 
+    // B1176 (#495): for the PLAYER the eye HEIGHT is the client's own
+    // derivation, not the head cluster's. The client's first-person camera
+    // sits 0x234 - 0x238 = 6.2 - 3.125 model units above the player's z
+    // (actor_scale.h, kClientEyeModelHeight / kClientROffsetModelHeight;
+    // 005701c0:284515-284524 via FUN_00489bf5). The node origin IS the
+    // client's z -- ground + 3.125 x s, the ROffset placement
+    // (entityNodeCollisionZOffset) -- so standing eye = ground + 6.2 x s,
+    // exactly as in the client. The cluster still supplies the HORIZONTAL:
+    // the client's unmounted first-person camera is on the player's own
+    // axis (005701c0 sets cam.x/y from the player's x/y with no offset, the
+    // ini FPCOffset defaulting to 0), and fable keeps its small measured
+    // head-centroid offset; the B1176 live leg measures the effect.
+    if (isPlayerNode_) {
+        ez = kClientEyeModelHeight - kClientROffsetModelHeight;
+    }
+
     // POSTURE. Applied in MODEL space, on the up axis, as a fraction of this
     // model's OWN standing height -- so it scales per race from the mesh
     // rather than from a table, and so a Troll's sit drop is a Troll's.
@@ -118,6 +135,9 @@ bool EQAnimatedMeshSceneNode::getFirstPersonEyeOffset(
     // This is the one place the whole-body bounding box is legitimately read:
     // its HEIGHT, which is a real property of the mesh. Its MaxEdge (the
     // crown) is what T300 mistook for an eye and is not read anywhere.
+    // (B1176 note: the client's camera code has no posture branch -- its
+    // seated eye comes from the seated z itself -- the fable's measured
+    // drop is kept, and it now rides on the client's standing height.)
     if (kFirstPersonEyeSource == EyePoseSource::PostureDriven) {
         const float drop = eyeDropFractionForPosture(posture);
         if (drop != 0.0f) {
@@ -134,16 +154,20 @@ bool EQAnimatedMeshSceneNode::getFirstPersonEyeOffset(
     const irr::core::vector3df nodeScale = getScale();
 
     if (isPlayerNode_) {
-        // Rotation baked into the vertices with the +90 offset; render()
-        // then uses a translation-only world matrix (no scale either).
+        // Rotation baked into the vertices with the +90 offset; the world
+        // matrix carries position and the uniform actor scale (B1176), so
+        // the offset -- model units here, the client's 3.075 standing eye
+        // for the player (above) -- is multiplied by that scale, exactly
+        // like the NPC branch does.
+        const float scale = nodeScale.X;
         const float rad = (nodeRot.Y + 90.0f) * 3.14159265358979323846f / 180.0f;
         const float c = std::cos(rad);
         const float s = std::sin(rad);
         const float rx = ex * c - ey * s;
         const float ry = ex * s + ey * c;
-        outOffset.X = rx;
-        outOffset.Y = ez;   // EQ Z (up) -> Irrlicht Y
-        outOffset.Z = ry;   // EQ Y      -> Irrlicht Z
+        outOffset.X = rx * scale;
+        outOffset.Y = ez * scale;   // EQ Z (up) -> Irrlicht Y
+        outOffset.Z = ry * scale;   // EQ Y      -> Irrlicht Z
     } else {
         // NPC path: the node's own transform carries rotation and scale.
         const float lx = ex * nodeScale.X;

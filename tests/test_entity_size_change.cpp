@@ -58,6 +58,7 @@
 using namespace zonetest;
 using EQT::Graphics::clientActorScale;
 using EQT::Graphics::entityNodeScale;
+using EQT::Graphics::entityNodeCollisionZOffset;
 
 namespace {
 
@@ -223,14 +224,34 @@ TEST(EntitySizeScale, NoSizeFromTheServerIsTheRaceDefaultNotZero) {
     EXPECT_FLOAT_EQ(clientActorScale(8, 0, -1.0f), 0.8f);  // Dwarf: 4.0
 }
 
-// The local player's node draws translation-only, so its node scale (and its
-// collisionZOffset) is the 1.0 it is drawn at; every other spawn gets the
-// client's actor scale. The 1.0 is a DEVIATION from the client (which scales
-// its own player too), owned by B1176 (#495); this pins today's behaviour.
-TEST(EntitySizeScale, TheLocalPlayerNodeKeepsTheScaleItIsDrawnAt) {
-    EXPECT_FLOAT_EQ(entityNodeScale(false, 1, 0, 6.0f), 1.2f);
-    EXPECT_FLOAT_EQ(entityNodeScale(true, 1, 0, 6.0f), 1.0f);
-    EXPECT_FLOAT_EQ(entityNodeScale(true, 8, 0, 4.0f), 1.0f);
+// B1176 (#495): the local player node now HAS the client's actor scale --
+// the client has no local-player branch (both EQPlayer build paths run
+// FUN_0047fa9e then FUN_0043c84b, eqgame.exe.c:106152->:106154 and
+// :106406->:106416), so entityNodeScale dropped its isLocalPlayer argument
+// entirely. A human player is 1.2 on both sides; a dwarf 0.8 on both; a
+// dark elf at her default 5 stays 1.0.
+TEST(EntitySizeScale, TheLocalPlayerNodeHasTheClientActorScale) {
+    EXPECT_FLOAT_EQ(entityNodeScale(1, 0, 6.0f), 1.2f);
+    EXPECT_FLOAT_EQ(entityNodeScale(8, 0, 4.0f), 0.8f);
+    EXPECT_FLOAT_EQ(entityNodeScale(6, 1, 0.0f), 1.0f);  // dark elf default
+}
+
+// B1176 (#495): the node origin sits at the client's ROffset placement for
+// the local player -- ground + 3.125 x scale (actor_scale.h,
+// clientPlayerZOffsetFromGround) -- and every other entity keeps the
+// measured bbox origin-to-feet distance.
+TEST(EntitySizeScale, TheLocalPlayerNodeSitsAtTheClientROffsetPlacement) {
+    // Human male size 6, scale 1.2: 3.125 x 1.2 = 3.75 -- the T311 Leg A
+    // wire z for exactly this spawn, so the rendered feet land on the
+    // transmitted z (the bbox of a Human male spans [-3.05, 3.65] and would
+    // have said 3.05).
+    irr::core::aabbox3df human(-1.5f, -3.05f, -1.5f, 1.5f, 3.65f, 1.5f);
+    EXPECT_FLOAT_EQ(entityNodeCollisionZOffset(true, human, 1.2f, 1, 0, 6.0f), 3.75f);
+    // The non-player side of the same call is still the measured bbox.
+    EXPECT_FLOAT_EQ(entityNodeCollisionZOffset(false, human, 1.2f, 1, 0, 6.0f), 3.05f * 1.2f);
+    // Dark elf default: 3.125 x 1.0.
+    irr::core::aabbox3df elf(-1.0f, -2.5f, -1.0f, 1.0f, 3.5f, 1.0f);
+    EXPECT_FLOAT_EQ(entityNodeCollisionZOffset(true, elf, 1.0f, 6, 1, 0.0f), 3.125f);
 }
 
 // -------------------------------------------------------------------------

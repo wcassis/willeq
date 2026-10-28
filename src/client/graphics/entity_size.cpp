@@ -43,13 +43,17 @@ bool EntityRenderer::setEntitySize(uint16_t spawnId, float serverSize) {
     }
 
     // B1172: the client's AT_Size path (0x4524e9 -> 0x481d5d) re-runs the
-    // same actor-scale rule on the new size (actor_scale.h).
-    float scale = entityNodeScale(visual.isPlayer, visual.raceId, visual.gender, serverSize);
+    // same actor-scale rule on the new size (actor_scale.h); B1176: the
+    // local player included.
+    float scale = entityNodeScale(visual.raceId, visual.gender, serverSize);
     visual.sceneNode->setScale(irr::core::vector3df(scale, scale, scale));
     // The node origin stays on the server Z, so the origin-to-feet distance
-    // has to follow the scale or the entity sinks into / floats over the floor.
-    visual.collisionZOffset =
-        collisionZOffsetFromBounds(visual.sceneNode->getBoundingBox(), scale);
+    // has to follow the scale or the entity sinks into / floats over the
+    // floor. B1176: the local player's is the client's ROffset placement,
+    // not the measured bbox.
+    visual.collisionZOffset = entityNodeCollisionZOffset(
+        visual.isPlayer, visual.sceneNode->getBoundingBox(), scale,
+        visual.raceId, visual.gender, serverSize);
 
     // T359 (board B011) -- THE DOCUMENTED LIMIT. A boat's collisionHeight and
     // deckZ (EntityVisual, used by findBoatDeckZ to stand the player on a deck)
