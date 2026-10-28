@@ -256,6 +256,16 @@ public:
     // entity's skeleton) and by tools/model_viewer's FX harness.
     using CastAnimationLengthCallback = std::function<int32_t(uint16_t entity_id, const char* animCode)>;
     void setCastAnimationLengthCallback(CastAnimationLengthCallback cb) { m_cast_anim_length_cb = std::move(cb); }
+
+    // B1180 (#499): the anchor entity's rendered uniform scale -- the norm of
+    // the attach point's world-matrix row 0, the client's s6C word. The Target
+    // stage passes it as its attach scale (spell_emitter_presets' `attachScale`)
+    // instead of the constant 1.0, so a size-6 / race-scale-1.2 target draws
+    // its sprites at 1.2x the unit size, the oracle's way. 1.0 when the entity
+    // is unknown (the pre-B1180 value). Set by the renderer (the entity's race
+    // + server size) and by tools/model_viewer's FX harness.
+    using ModelScaleCallback = std::function<float(uint16_t entity_id)>;
+    void setModelScaleCallback(ModelScaleCallback cb) { m_model_scale_cb = std::move(cb); }
     // The CastingAnim term for this caster in ms (castAnim's track length),
     // < 0 when it does not resolve.
     int32_t castAnimationMs(uint16_t caster_id, int castAnim) const;
@@ -502,6 +512,7 @@ private:
     irr::video::IVideoDriver* m_driver;
     EntityPositionCallback m_entity_pos_callback;
     CastAnimationLengthCallback m_cast_anim_length_cb;  // B1148
+    ModelScaleCallback m_model_scale_cb;  // B1180 (#499)
 
     // T381 (B160): spell id -> render vocabulary, fed by the bridge from the
     // SpellCastVisual* event payloads. Replaces the never-set SpellDatabase*.

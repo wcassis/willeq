@@ -1050,11 +1050,18 @@ uint16_t SpellVisualFX::createLandingFromSlots(uint16_t caster_id, uint16_t targ
         // B1149 (#469): the slot's file population is shared by the two
         // halves (the row's measured geometry split), with its sprite size.
         SpellFxSlotTiming timing;
-        if (slotTiming(d.slot.emitter, SpellFxCallerDurationMs(SpellFxStage::Target, 0, 0), timing))
+        if (slotTiming(d.slot.emitter, SpellFxCallerDurationMs(SpellFxStage::Target, 0, 0), timing)) {
+            // B1180 (#499): the attach scale is the anchor entity's rendered
+            // scale (the client's s6C word), not the constant 1.0 (B1149).
+            // `entity` is the target (or the caster for a caster-anchored slot),
+            // so this is the scale the client multiplies the sprite size by.
+            const float attachScale =
+                m_model_scale_cb ? m_model_scale_cb(entity) : kSpellFxAttachScale;
             Presets::applySlotEmitter({&complete, &impact}, timing, m_spells_new_eff.edd().sprite(d.slot.emitter),
-                                      targetLatency, kSpellFxAttachScale,
+                                      targetLatency, attachScale,
                                       m_spells_new_eff.edd().shape(d.slot.emitter),  // B1150
                                       m_spells_new_eff.edd().motion(d.slot.emitter));  // B1151
+        }
         pending.push_back({std::move(complete), follow, 0});
         pending.push_back({std::move(impact), 0, follow});
         if (first == 0) first = follow;

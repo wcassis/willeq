@@ -1,6 +1,7 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/spell_fx_bone_anchor.h"  // B1138: hand/head anchors, shared with model_viewer
+#include "client/graphics/eq/race_codes.h"  // B1180 (#499): getRaceScale for the attach scale
 #include "client/graphics/light_source.h"
 #include "client/graphics/renderer_zone_merge.h"  // ForwardingTextureGuard (T124)
 #include "client/graphics/ui/character_model_view.h"  // T294: markDirty() on popup open
@@ -306,6 +307,20 @@ void IrrlichtRenderer::initDeferredGraphics() {
                 auto it = entities.find(entity_id);
                 if (it == entities.end() || !it->second.animatedNode) return -1;
                 return CastAnimationTrackMs(it->second.animatedNode, code);
+            });
+
+        // B1180 (#499): the anchor entity's rendered uniform scale -- the
+        // client's s6C word (the attach point's world-matrix row-0 norm).
+        // The race's art scale at the server size, entityScaleForServerSize;
+        // 1.0 (kSpellFxAttachScale) when the entity is unknown.
+        SimBridge().spellVisualFX()->setModelScaleCallback(
+            [this](uint16_t entity_id) -> float {
+                if (!entityRenderer_) return EQ::kSpellFxAttachScale;
+                const auto& entities = entityRenderer_->getEntities();
+                auto it = entities.find(entity_id);
+                if (it == entities.end()) return EQ::kSpellFxAttachScale;
+                return entityScaleForServerSize(
+                    EQT::Graphics::getRaceScale(it->second.raceId), it->second.serverSize);
             });
 
         // B1163 (#482): the local player, for spell 859's removal gate.

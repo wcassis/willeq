@@ -695,6 +695,14 @@ bool initHarnessParticles() {
     spellVisualFX->setCastAnimationLengthCallback([nodeFor](uint16_t id, const char* code) -> int32_t {
         return CastAnimationTrackMs(nodeFor(id), code);
     });
+    // B1180 (#499): the anchor entity's rendered uniform scale -- the client's
+    // s6C word. The node's scale is set to entityScaleForServerSize(raceScale,
+    // size) by createSpellTestEntity, so it IS the client's attach scale.
+    spellVisualFX->setModelScaleCallback([nodeFor](uint16_t id) -> float {
+        EQAnimatedMeshSceneNode* n = nodeFor(id);
+        if (!n) return EQ::kSpellFxAttachScale;
+        return n->getScale().X;
+    });
     // B1152 (#472): the missile gate reads the launch/arrival times from the
     // SPELL module's log, so un-filter it (the model_viewer does not InitLogging,
     // so the module is at the default NONE).
