@@ -1,0 +1,118 @@
+file	record	column	old	new
+/mnt/projects/fable/review/B1130/record_table.tsv	2	target_centroid	cen_h 0.89 h 0.32..1.59 (target heights)	cen_h 0.88 h 0.23..1.68 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	7	target_centroid	cen_h 0.59 h 0.25..0.94 (target heights)	cen_h 0.54 h 0.16..0.94 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	7	sprite_p90_land	0.102	0.101
+/mnt/projects/fable/review/B1130/record_table.tsv	7	demand_landing	377	384
+/mnt/projects/fable/review/B1130/record_table.tsv	7	demand_overlap	373 (cov 3.049)	381 (cov 3.049)
+/mnt/projects/fable/review/B1130/record_table.tsv	1	target_centroid	cen_h 0.69 h 0.23..1.22 (target heights)	cen_h 0.66 h 0.13..1.26 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	1	sprite_p90_land	0.112	0.111
+/mnt/projects/fable/review/B1130/record_table.tsv	1	demand_landing	310	315
+/mnt/projects/fable/review/B1130/record_table.tsv	1	demand_overlap	271 (cov 2.673)	276 (cov 2.673)
+/mnt/projects/fable/review/B1130/record_table.tsv	12	target_centroid	cen_h 0.72 h 0.22..1.29 (target heights)	cen_h 0.69 h 0.12..1.33 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	12	sprite_p90_land	0.107	0.108
+/mnt/projects/fable/review/B1130/record_table.tsv	12	demand_landing	644	632
+/mnt/projects/fable/review/B1130/record_table.tsv	12	demand_overlap	627 (cov 5.642)	616 (cov 5.642)
+/mnt/projects/fable/review/B1130/record_table.tsv	20	target_centroid	cen_h 0.74 h 0.25..1.34 (target heights)	cen_h 0.70 h 0.15..1.38 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	20	sprite_p90_land	0.107	0.105
+/mnt/projects/fable/review/B1130/record_table.tsv	20	demand_landing	520	540
+/mnt/projects/fable/review/B1130/record_table.tsv	20	demand_overlap	514 (cov 4.622)	534 (cov 4.622)
+/mnt/projects/fable/review/B1130/record_table.tsv	25	target_centroid	cen_h 0.62 h 0.21..1.12 (target heights)	cen_h 0.57 h 0.10..1.15 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	25	sprite_p90_land	0.092	0.095
+/mnt/projects/fable/review/B1130/record_table.tsv	25	demand_landing	729	684
+/mnt/projects/fable/review/B1130/record_table.tsv	25	demand_overlap	734 (cov 4.879)	688 (cov 4.879)
+/mnt/projects/fable/review/B1130/record_table.tsv	18	target_centroid	cen_h 0.64 h 0.22..1.11 (target heights)	cen_h 0.60 h 0.13..1.13 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	16	target_centroid	cen_h 0.53 h 0.21..1.03 (target heights)	cen_h 0.47 h 0.10..1.05 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	16	sprite_p90_land	0.076	0.072
+/mnt/projects/fable/review/B1130/record_table.tsv	16	demand_landing	296	330
+/mnt/projects/fable/review/B1130/record_table.tsv	16	demand_overlap	249 (cov 1.129)	277 (cov 1.129)
+/mnt/projects/fable/review/B1130/record_table.tsv	0	target_centroid	cen_h 0.80 h 0.25..1.46 (target heights)	cen_h 0.78 h 0.15..1.52 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	5	target_centroid	cen_h 0.87 h 0.66..1.04 (target heights)	cen_h 0.87 h 0.67..1.06 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	23	target_centroid	cen_h 0.59 h 0.20..1.08 (target heights)	cen_h 0.58 h 0.38..0.83 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	31	target_centroid	cen_h 0.60 h 0.20..1.21 (target heights)	cen_h 0.55 h 0.11..1.22 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	31	sprite_p90_land	0.194	0.192
+/mnt/projects/fable/review/B1130/record_table.tsv	31	demand_landing	124	127
+/mnt/projects/fable/review/B1130/record_table.tsv	31	demand_overlap	113 (cov 3.345)	116 (cov 3.345)
+/mnt/projects/fable/review/B1130/record_table.tsv	13	target_centroid	cen_h 0.77 h 0.23..1.63 (target heights)	cen_h 0.76 h 0.13..1.72 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	13	sprite_p90_land	0.108	0.105
+/mnt/projects/fable/review/B1130/record_table.tsv	13	demand_landing	356	377
+/mnt/projects/fable/review/B1130/record_table.tsv	13	demand_overlap	319 (cov 2.918)	337 (cov 2.918)
+/mnt/projects/fable/review/B1130/record_table.tsv	3	target_centroid	cen_h 0.60 h 0.25..0.84 (target heights)	cen_h 0.97 h 0.16..1.80 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	3	sprite_p90_land	0.043	0.047
+/mnt/projects/fable/review/B1130/record_table.tsv	3	demand_landing	8048	6737
+/mnt/projects/fable/review/B1130/record_table.tsv	3	demand_overlap	7458 (cov 10.831)	6243 (cov 10.831)
+/mnt/projects/fable/review/B1130/record_table.tsv	15	target_centroid	cen_h 0.84 h 0.25..1.66 (target heights)	cen_h 0.83 h 0.16..1.75 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	15	sprite_p90_land	0.065	0.064
+/mnt/projects/fable/review/B1130/record_table.tsv	15	demand_landing	875	903
+/mnt/projects/fable/review/B1130/record_table.tsv	15	demand_overlap	875 (cov 2.905)	903 (cov 2.905)
+/mnt/projects/fable/review/B1130/record_table.tsv	24	target_centroid	cen_h 0.68 h 0.22..1.20 (target heights)	cen_h 0.64 h 0.13..1.23 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	24	sprite_p90_land	0.100	0.098
+/mnt/projects/fable/review/B1130/record_table.tsv	24	demand_landing	489	509
+/mnt/projects/fable/review/B1130/record_table.tsv	24	demand_overlap	486 (cov 3.819)	506 (cov 3.819)
+/mnt/projects/fable/review/B1130/record_table.tsv	21	target_centroid	cen_h 0.72 h 0.22..1.28 (target heights)	cen_h 0.69 h 0.12..1.32 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	41	target_centroid	cen_h 0.63 h 0.26..1.00 (target heights)	cen_h 0.57 h 0.19..0.98 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	41	sprite_p90_land	0.167	0.158
+/mnt/projects/fable/review/B1130/record_table.tsv	41	demand_landing	86	96
+/mnt/projects/fable/review/B1130/record_table.tsv	41	demand_overlap	85 (cov 1.868)	95 (cov 1.868)
+/mnt/projects/fable/review/B1130/record_table.tsv	22	target_centroid	cen_h 0.87 h 0.27..1.49 (target heights)	cen_h 0.85 h 0.18..1.56 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	35	target_centroid	cen_h 0.94 h 0.27..1.67 (target heights)	cen_h 0.93 h 0.17..1.76 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	35	sprite_p90_land	0.080	0.082
+/mnt/projects/fable/review/B1130/record_table.tsv	35	demand_landing	1449	1379
+/mnt/projects/fable/review/B1130/record_table.tsv	35	demand_overlap	1309 (cov 6.580)	1246 (cov 6.580)
+/mnt/projects/fable/review/B1130/record_table.tsv	33	target_centroid	cen_h 0.81 h 0.24..1.54 (target heights)	cen_h 0.79 h 0.14..1.63 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	33	sprite_p90_land	0.072	0.073
+/mnt/projects/fable/review/B1130/record_table.tsv	33	demand_landing	619	603
+/mnt/projects/fable/review/B1130/record_table.tsv	33	demand_overlap	467 (cov 1.900)	454 (cov 1.900)
+/mnt/projects/fable/review/B1130/record_table.tsv	29	target_centroid	cen_h 0.60 h 0.19..0.98 (target heights)	cen_h 0.55 h 0.09..0.98 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	29	sprite_p90_land	0.114	0.107
+/mnt/projects/fable/review/B1130/record_table.tsv	29	demand_landing	199	226
+/mnt/projects/fable/review/B1130/record_table.tsv	29	demand_overlap	195 (cov 1.989)	221 (cov 1.989)
+/mnt/projects/fable/review/B1130/record_table.tsv	28	target_centroid	cen_h 0.52 h 0.20..0.85 (target heights)	cen_h 0.47 h 0.10..0.84 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	28	sprite_p90_land	0.115	0.111
+/mnt/projects/fable/review/B1130/record_table.tsv	28	demand_landing	225	241
+/mnt/projects/fable/review/B1130/record_table.tsv	28	demand_overlap	228 (cov 2.371)	245 (cov 2.371)
+/mnt/projects/fable/review/B1130/record_table.tsv	34	target_centroid	cen_h 1.00 h 0.36..1.54 (target heights)	cen_h 1.01 h 0.28..1.62 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	34	sprite_p90_land	0.103	0.104
+/mnt/projects/fable/review/B1130/record_table.tsv	34	demand_landing	394	387
+/mnt/projects/fable/review/B1130/record_table.tsv	34	demand_overlap	319 (cov 2.655)	313 (cov 2.655)
+/mnt/projects/fable/review/B1130/record_table.tsv	26	target_centroid	cen_h 0.90 h 0.24..1.56 (target heights)	cen_h 0.89 h 0.15..1.64 (target heights)
+/mnt/projects/fable/review/B1130/record_table.tsv	26	sprite_p90_land	0.038	0.031
+/mnt/projects/fable/review/B1130/record_table.tsv	26	demand_landing	7057	10603
+/mnt/projects/fable/review/B1130/record_table.tsv	26	demand_overlap	6662 (cov 7.555)	10010 (cov 7.555)
+refactor/B1157/b1130_table.tsv.after.tsv	1	oracle_p90_land	0.112	0.111
+refactor/B1157/b1130_table.tsv.after.tsv	3	oracle_p90_land	0.043	0.047
+refactor/B1157/b1130_table.tsv.after.tsv	7	oracle_p90_land	0.102	0.101
+refactor/B1157/b1130_table.tsv.after.tsv	12	oracle_p90_land	0.107	0.108
+refactor/B1157/b1130_table.tsv.after.tsv	13	oracle_p90_land	0.108	0.105
+refactor/B1157/b1130_table.tsv.after.tsv	15	oracle_p90_land	0.065	0.064
+refactor/B1157/b1130_table.tsv.after.tsv	16	oracle_p90_land	0.076	0.072
+refactor/B1157/b1130_table.tsv.after.tsv	20	oracle_p90_land	0.107	0.105
+refactor/B1157/b1130_table.tsv.after.tsv	24	oracle_p90_land	0.100	0.098
+refactor/B1157/b1130_table.tsv.after.tsv	25	oracle_p90_land	0.092	0.095
+refactor/B1157/b1130_table.tsv.after.tsv	26	oracle_p90_land	0.038	0.031
+refactor/B1157/b1130_table.tsv.after.tsv	28	oracle_p90_land	0.115	0.111
+refactor/B1157/b1130_table.tsv.after.tsv	29	oracle_p90_land	0.114	0.107
+refactor/B1157/b1130_table.tsv.after.tsv	29	verdict_p90_land	PASS	over
+refactor/B1157/b1130_table.tsv.after.tsv	31	oracle_p90_land	0.194	0.192
+refactor/B1157/b1130_table.tsv.after.tsv	33	oracle_p90_land	0.072	0.073
+refactor/B1157/b1130_table.tsv.after.tsv	34	oracle_p90_land	0.103	0.104
+refactor/B1157/b1130_table.tsv.after.tsv	35	oracle_p90_land	0.080	0.082
+refactor/B1157/b1130_table.tsv.after.tsv	41	oracle_p90_land	0.167	0.158
+refactor/B1157/b1130_table.tsv.after.tsv	41	verdict_p90_land	PASS	over
+tests/spell_fx_population_oracle.h	1	spriteP90Landing	0.112f	0.111f
+tests/spell_fx_population_oracle.h	3	spriteP90Landing	0.043f	0.047f
+tests/spell_fx_population_oracle.h	7	spriteP90Landing	0.102f	0.101f
+tests/spell_fx_population_oracle.h	12	spriteP90Landing	0.107f	0.108f
+tests/spell_fx_population_oracle.h	13	spriteP90Landing	0.108f	0.105f
+tests/spell_fx_population_oracle.h	15	spriteP90Landing	0.065f	0.064f
+tests/spell_fx_population_oracle.h	16	spriteP90Landing	0.076f	0.072f
+tests/spell_fx_population_oracle.h	20	spriteP90Landing	0.107f	0.105f
+tests/spell_fx_population_oracle.h	24	spriteP90Landing	0.1f	0.098f
+tests/spell_fx_population_oracle.h	25	spriteP90Landing	0.092f	0.095f
+tests/spell_fx_population_oracle.h	26	spriteP90Landing	0.038f	0.031f
+tests/spell_fx_population_oracle.h	28	spriteP90Landing	0.115f	0.111f
+tests/spell_fx_population_oracle.h	29	spriteP90Landing	0.114f	0.107f
+tests/spell_fx_population_oracle.h	31	spriteP90Landing	0.194f	0.192f
+tests/spell_fx_population_oracle.h	33	spriteP90Landing	0.072f	0.073f
+tests/spell_fx_population_oracle.h	34	spriteP90Landing	0.103f	0.104f
+tests/spell_fx_population_oracle.h	35	spriteP90Landing	0.08f	0.082f
+tests/spell_fx_population_oracle.h	41	spriteP90Landing	0.167f	0.158f
