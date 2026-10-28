@@ -17,13 +17,13 @@ dev-u24), e.g. `python3 -I peread.py eqgame.exe 00793b4c 8 i`.
 | Density Off/Low/Medium/High | 0 / 0x3e800000 = 0.25 / 0x3f000000 = 0.5 / 0x3f800000 = 1.0 | options handler eqgame.exe.c 245163-245180 (Spell), 245207-245224 (Env) | `kDensityIniValues` unchanged (already right) |
 | Near Clip Near/Medium/Far/Farthest | 0x40000000 = 2 / 0x40800000 = 4 / 0x40c00000 = 6 / 0x41000000 = 8 | eqgame.exe.c 245189-245204 (Spell), 245225-245240 (Env) | `kNearClipIniValues` was {1, 2, 4, 8}; now include/client/graphics/environment/particle_options.h:134 |
 | loader clamp | density, opacity to [0, 1]; near clip to [1, _DAT_00641fa0]; default _DAT_006410b4 | eqgame.exe.c 132608-132637; peread: 0x641fa0 = 0x41000000 = 8.0, 0x6410b4 = 0x40000000 = 2.0 | `clampUnitIni` / `clampNearClipIni` (particle_options.h:141), applied in `parseSettingIniText` |
-| ini float -> combobox choice | the first choice whose value is >= the float, else the last (`fcom; test ah,0x41; jp` = next while f > v) | near clip 0x53b93f..0x53b985 vs 0x659378.. = 2/4/6/8; density 0x53b994..0x53b9da vs 0x659368.. = 0/0.25/0.5/1 | `choiceForIniFloat` (particle_options.h:148), used at src/client/graphics/ui/options_settings.cpp:420, which used to take the nearest choice |
+| ini float -> combobox choice | the first choice whose value is >= the float, else the last (`fcom; test ah,0x41; jp` = next while f > v) | near clip 0x53b93f..0x53b985 vs 0x659378.. = 2/4/6/8; density 0x53b994..0x53b9da vs 0x659368.. = 0/0.25/0.5/1 | `choiceForIniFloat` (particle_options.h:148), used at src/client/graphics/ui/options_settings.cpp:442, which used to take the nearest choice |
 
 So the shipped `SpellParticleNearClipPlane=2.000000` is **Near**, and fable's default
 near-clip choice is now Near (index 0) for both pages; the knob value stays 2.0 at the
-default. Tests: tests/test_options_particles.cpp:185 (`TheNearClipTableIsTheOraclesAndTwoIsNear`,
+default. Tests: tests/test_options_particles.cpp:206 (`TheNearClipTableIsTheOraclesAndTwoIsNear`,
 the ini round trip pins 2.0 = Near and 4/6/8 = Medium/Far/Farthest) and
-tests/test_options_particles.cpp:208 (`TheLoaderClampsAndTheComboboxRoundsUp`).
+tests/test_options_particles.cpp:227 (`TheLoaderClampsAndTheComboboxRoundsUp`).
 
 Applied vs shown (fix leg, MR !318 note 7756 finding 3): the oracle APPLIES the clamped ini
 float itself -- the loader stores it as read (eqgame.exe.c 132608-132636 -> _DAT_00985810 /
@@ -31,18 +31,18 @@ _DAT_00985814 / _DAT_00985818) and eqgame 0x495f29 pushes the density unrounded 
 CreateEmitter (sec. 6) -- and only the combobox DISPLAY rounds it to a choice
 (0x53b93f..0x53b9da). The first pass stored only the choice, so an ini 0.3 density created
 at 0.5. fable now keeps both: the settings slot holds the choice the window shows, and
-`OptionIniFloats` (include/client/graphics/ui/options_settings.h:229; `iniFloats` in
+`OptionIniFloats` (include/client/graphics/ui/options_settings.h:246; `iniFloats` in
 include/client/graphics/ui/options_panel.h:106, `optionIniFloats` in
-include/client/graphics/ui/ui_preferences.h:147) holds the clamped float whenever it is
+include/client/graphics/ui/ui_preferences.h:161) holds the clamped float whenever it is
 not the shown choice's own table value. `parseSettingIniFloat`
-(src/client/graphics/ui/options_settings.cpp:399) produces both,
+(src/client/graphics/ui/options_settings.cpp:420) produces both,
 src/client/graphics/ui/ui_preferences.cpp:137 stores both, the save writes the float back
 (src/client/graphics/ui/ui_preferences.cpp:418), and the knobs read the applied value
 (`particleKnobsFromOptions`, src/client/graphics/ui/options_particles.cpp:74; `spellFxOptionsFromOptions`,
 src/client/graphics/ui/options_particles.cpp:95). A change through the window or
 `/option` stores the table value, as the oracle's handler does (eqgame.exe.c 245163-245204),
 so it clears the float (src/client/graphics/ui/options_values.cpp:27). The same holds for the
-Env page's floats and both opacities. Test: tests/test_options_particles.cpp:227
+Env page's floats and both opacities. Test: tests/test_options_particles.cpp:246
 (`AnOffTableIniFloatIsAppliedRawAndShownAsTheChoice`: ini 0.3 density -> shown Medium,
 applied 0.3, saved as 0.300000; 3.0 near clip -> shown Medium, applied 3.0; choosing Medium
 in the window -> 0.5). Every shipped and captured ini carries table values, so no measured
@@ -71,10 +71,10 @@ in particle_options.h; FOLLOW-UP below.
   `FUN_00491cff` tests its BITS (0x491d0f..0x491d41), so an off-table value acts by its bits:
   ini 6 (0x04 | 0x02) behaves as "Raid spells" (4) and the combobox shows index 7, "All
   spells". The first pass REJECTED such an int at parse and kept 24 (review note 7756); the
-  fix leg marks the row `rawIniInt` (src/client/graphics/ui/options_settings.cpp:179, any int
+  fix leg marks the row `rawIniInt` (src/client/graphics/ui/options_settings.cpp:196, any int
   is legal: src/client/graphics/ui/options_settings.cpp:263) and the combobox shows
-  `choiceDisplayIndex` (src/client/graphics/ui/options_settings.cpp:298: the value's index,
-  else the last). Test: tests/test_options_particles.cpp:277
+  `choiceDisplayIndex` (src/client/graphics/ui/options_settings.cpp:319: the value's index,
+  else the last). Test: tests/test_options_particles.cpp:294
   (`AnOffTableCastFilterIntIsKeptRawAndDecodedByItsBits`: 6 is kept, shown "All spells", and
   decides like 4 for every pair of self / group / raid / other PC / NPC).
 * The decision, `FUN_00491cff(stage, caster, target)` (eqgame.exe.c 115163-115221,
@@ -107,7 +107,7 @@ in particle_options.h; FOLLOW-UP below.
   hidden Source means a hidden Middle; the Target has its own answer (another PC's bolt
   at me under "My spells" draws only its landing).
 * fable: `SpellParticleCastFilterShows` (include/client/spell/spell_fx_options.h:54),
-  the `Setting::SpellParticleCastFilter` row (src/client/graphics/ui/options_settings.cpp:177,
+  the `Setting::SpellParticleCastFilter` row (src/client/graphics/ui/options_settings.cpp:194,
   choices src/client/graphics/ui/options_settings.cpp:74, default 24, persisted as the int), the
   `ODP_SpellParticlesFilter*` rows now wired (options_layout.h, options_classification.cpp),
   the game thread fills what the filter reads (`fxActorOf`,
@@ -122,7 +122,7 @@ in particle_options.h; FOLLOW-UP below.
   tests/test_spell_fx_options.cpp:64, tests/test_spell_fx_options.cpp:86,
   tests/test_spell_fx_options.cpp:95; per stage through SpellVisualFX with record 80:
   tests/test_spell_slot_rules.cpp:646 (`TheOnForFilterGatesEachStage`); the combobox,
-  labels, persistence and `/option`: tests/test_options_particles.cpp:315.
+  labels, persistence and `/option`: tests/test_options_particles.cpp:330.
 
 ## 4. The stage gate and ShowSpellEffects (acceptance C, part 1)
 
@@ -144,13 +144,13 @@ eqstr 0x3370 / 0x3371 (13168 "FORMAT: /showspelleffects <ON | OFF> (default is O
 then 0x3372 / 0x3373 (13170 / 13171 "Spell particle effects are currently ON/OFF.").
 
 fable: `SpellFxStageDraws` (include/client/spell/spell_fx_options.h:101);
-`Setting::ShowSpellEffects` (src/client/graphics/ui/options_settings.cpp:179, persisted,
+`Setting::ShowSpellEffects` (src/client/graphics/ui/options_settings.cpp:197, persisted,
 no window control -- as the oracle); `/showspelleffects` (`runShowSpellEffects`,
 src/client/graphics/ui/options_command.cpp:231, routed with /option, in the renderer
 command catalog). The Options record reaches SpellVisualFX every frame
 (`spellFxOptionsFromOptions`, src/client/graphics/ui/options_particles.cpp:95;
 src/client/graphics/sim/renderer_sim_bridge.cpp:459). Tests:
-the gate in tests/test_spell_fx_options.cpp:124, tests/test_options_particles.cpp:346 (the
+the gate in tests/test_spell_fx_options.cpp:124, tests/test_options_particles.cpp:359 (the
 command and its text), tests/test_spell_slot_rules.cpp:646 (ShowSpellEffects 0 creates no
 Source and no landing for record 80).
 

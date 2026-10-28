@@ -92,6 +92,11 @@ std::string optionsSettingText(const OptionsPanelState& state, Setting setting) 
         return std::to_string(optionsSettingStep(state, setting) * 5) + " %" +
                (capped ? " (max)" : "");
     }
+    // B1175 (#494): the particle opacity sliders print their 0..100 position
+    // itself, "%d %c" with '%' (eqgame 0x65944c, eqgame.exe.c:245436).
+    if (OptionsLayout::settingInfo(setting).iniStepValue > 0.0f) {
+        return OptionsLayout::opacitySliderLabel(optionsSettingStep(state, setting));
+    }
     // The oracle's own readout: the stored 0..20 integer times five, as a
     // percentage. See the measurement in options_panel.h.
     return std::to_string(optionsSettingStep(state, setting) * 5) + " %";
@@ -209,7 +214,8 @@ void renderOptionsWindow(UIRenderer& ui, const UILayout& layout,
                 ui.drawRect(r, kSliderTrack);
                 ui.drawFrame(r, frame);
                 const int step = optionsSettingStep(state, c.setting);
-                ui.drawRect(OptionsLayout::sliderKnobRect(layout, i, step),
+                ui.drawRect(OptionsLayout::sliderKnobRect(layout, i, step,
+                                                          OptionsLayout::sliderSteps(c.setting)),
                             on ? kKnobEnabled : kKnobDisabled);
                 if (on && state.hoveredControl == i) ui.drawRect(r, kHover);
                 break;

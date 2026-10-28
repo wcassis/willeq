@@ -944,6 +944,8 @@ IF(EQT_GRAPHICS)
         # T432 (board B275): per-character UI persistence -- the ONE reader and
         # writer of UI_<char>_<server>.ini.
         src/client/graphics/ui/ui_preferences.cpp
+        # B1175 (#494): the global eqclient.ini [Defaults] (particle keys).
+        src/client/graphics/ui/eqclient_ini.cpp
         src/client/graphics/ui/character_model_view.cpp
         src/client/graphics/spell_visual_fx.cpp
         src/client/graphics/spell_visual_fx_nodes.cpp

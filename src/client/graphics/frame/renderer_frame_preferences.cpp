@@ -67,7 +67,26 @@ void FrameComponent::setUiPreferencesIdentity(const std::string& character,
     LOG_INFO(MOD_UI, "UI preferences identity: {} on {}", character, server);
 }
 
+void FrameComponent::syncEqClientIni() {
+    // B1175 (#494): the client reads eqclient.ini [Defaults] once at start
+    // (eqgame.exe.c:132608-132671) and writes it when a value changes; the
+    // same compare-against-the-last-write device as the per-character file.
+    if (!eqclientLoaded_) {
+        EqClientIni p = CollectEqClientIni(optionsState_);
+        if (LoadEqClientIni(p)) ApplyEqClientIni(p, optionsState_);
+        eqclientLastSaved_ = CollectEqClientIni(optionsState_);
+        eqclientLoaded_ = true;
+        return;
+    }
+    const EqClientIni current = CollectEqClientIni(optionsState_);
+    if (current == eqclientLastSaved_) return;
+    SaveEqClientIni(current);
+    eqclientLastSaved_ = current;
+}
+
 void FrameComponent::syncUiPreferences() {
+    // B1175: the global file first -- it needs no character.
+    syncEqClientIni();
     if (uiPrefsCharacter_.empty()) return;
 
     // T461: the camera half of the value -- the mode and the two user cameras.

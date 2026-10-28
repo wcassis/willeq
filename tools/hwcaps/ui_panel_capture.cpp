@@ -899,12 +899,13 @@ std::vector<PanelCapture> buildCaptureList() {
             o.colorPicker.working = ColorPickerLayout::swatchColor(1);
             renderOptionsWindow(u.layer(), l, o); }},
         // B995 (#315): the Display page with the Particles box on its Env
-        // and Player sub-tabs (Env: density Medium, opacity 60 %).
+        // and Player sub-tabs (Env: density Medium, opacity 60 % -- B1175:
+        // position 60 of the client's 0..100, the knob pixel of the old 12/20).
         {"options_display_particles_env", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             OptionsPanelState o = s.options;
             o.isOpen = true; o.activeTab = 1; o.particlesTab = 1;
             setOptionsValue(o, OptionsLayout::Setting::EnvParticleDensity, 2);
-            setOptionsValue(o, OptionsLayout::Setting::EnvParticleOpacity, 12);
+            setOptionsValue(o, OptionsLayout::Setting::EnvParticleOpacity, 60);
             renderOptionsWindow(u.layer(), l, o); }},
         {"options_display_particles_player", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             OptionsPanelState o = s.options;
