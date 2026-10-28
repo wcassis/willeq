@@ -447,7 +447,7 @@ source_cov moves 0.211 → 0.144 (B1173's diagnostic patch measured
 ## (H) Citations
 
 - `python3 -I scripts/refactor/cite_check.py refactor/B1170/README.md --tree . --extra /mnt/projects/fable --dis /mnt/projects/fable/review/B1141/ghidra/out/eqgame.dis --dis /mnt/projects/fable/review/B1141/ghidra/out/EQGraphicsDX9.dis`
-  → `checked 37 cites, 0 problems, 3 address warnings` (the warnings: `0x101ec4b0` twice, a data constant cited as data; `0x4365db`, the wrap helper whose entry the .dis decodes as a jump table, see below).
+  → `checked 38 cites, 0 problems, 4 address warnings` (the warnings: `0x101ec4b0` twice, a data constant cited as data; `0x4365db` twice, the wrap helper whose entry the .dis decodes as a jump table, see below).
 - Every bare address and quoted `address instruction` pair:
   `python3 -I refactor/B1168/scripts/check_addrs.py refactor/B1170/README.md /mnt/projects/fable/review/B1141/ghidra/out/eqgame.dis /mnt/projects/fable/review/B1141/ghidra/out/EQGraphicsDX9.dis`
   → `checked 152 bare addresses, 135 quoted instructions, 0 problems`. The same check over the new code
@@ -460,37 +460,44 @@ source_cov moves 0.211 → 0.144 (B1173's diagnostic patch measured
 
 ## RULING REQUEST
 
-BLESS-ONLY items this branch touches or invalidates (nothing below was edited
-except item 1, which the dispatch net requires):
+BLESS-ONLY items this branch touches or invalidates, with their rulings:
 
 1. **`tests/goldens/zone_opcodes_g01.txt` +1 line** `0x4033 HC_OP_SomeItemPacketMaybe`
    (and `ZoneDispatchTable.GoldenListIsTheMeasured145Arms` now expects 146):
-   the new 0x4033 handler. The test file's own header says a genuinely new
-   handler "is meant to require a line in the golden list -- that edit is the
-   review moment". Bless or reject; without it the handler cannot be wired.
-2. **No longer oracle facts — to be removed from the gate tables by Will's bless:**
+   the new 0x4033 handler. **Blessed by Will 2026-10-28** (the #489 note):
+   the line and the 146-arm expectation are approved and stand; the golden's
+   comment says so.
+2. **No longer oracle facts — removed from the gate tables** (orchestrator
+   ruling 2 on #489, 2026-10-27: they are derived tables built on a flight
+   the oracle never drew, B1168; remove them in a continuation leg,
+   replacement values = section F's after column, no bless needed): applied
+   in the B1170 continuation commits of 2026-10-28. For every row the
+   missile-era values are replaced by section F's after column; cells without
+   an after value are marked RETIRED, and the reason is recorded on the row:
    - `refactor/B1157/b1118_table.tsv`: rows `tour 93`, `tour 38`, `r0`, `r1`,
-     `r2`, `r6`, `r7`, `r18`, `r25`, `r26` — columns `land_cov_n`, `end_n`,
-     `src_cov_n`, `src_on25_n`, `src_cen_n` (measured with the B1152 missile)
-     and, for the eight `r*` rows, `land_cov_b`, `end_b`, `src_cov_b`,
-     `src_on25_b`, `src_cen_b` (the `b1152_*` baselines, also missile renders);
-     the tour 93 / 38 `owner` text ("B1152 sim delta").
+     `r2`, `r6`, `r7`, `r18`, `r25`, `r26` — `land_cov_n`, `end_n`,
+     `src_cov_n` now hold section F's after; `src_on25_n`, `src_cen_n`
+     (no section F re-measure) and, for the eight `r*` rows, the `*_b` B1152
+     baselines (missile-era renders) are marked RETIRED; the tour 93 / 38
+     `owner` text fixed.
    - `refactor/B1157/b1130_table.tsv`: records 0, 1, 2, 6, 7, 25, 26 — the
-     `b1157_*` and `delta_*` / `v57_*` columns.
+     `b1157_*` columns now hold section F's after; the `delta_*` columns
+     (no section F re-measure) are marked RETIRED; the `v57_*` verdicts were
+     re-checked against section F's after verdicts and are unchanged.
    - `refactor/B1152/missile_oracle.tsv`: `flight_start*`, `flight_end*`,
-     `middle_onset*`, `middle_end*` (not a flight, refactor/B1168/README.md A5),
-     and with them the B1152 gate rows launch@−0.486 / reach@−0.184 / land@+0.116
+     `middle_onset*`, `middle_end*` (not a flight, refactor/B1168/README.md A5)
+     struck as RETIRED in the headers with the reason in a comment, and with
+     them the B1152 gate rows launch@−0.486 / reach@−0.184 / land@+0.116
      for 38 / 93 (refactor/B1152/README.md "The missile timing gate",
-     refactor/B1163/README.md (B) band table).
+     refactor/B1163/README.md (B) band / harness tables).
    - `/mnt/projects/fable/review/B1142/gate/regression_table.tsv`: **none** — its
      fable columns were rendered before B1152 existed and its oracle columns
      are oracle captures with no Middle stage, so no cell holds the missile.
-   The replacement values for every row above are section F's after column.
 3. **The event**: the 0x4033 object rides `SpellCastVisualStarted`
    (`SpellCastVisualStartedData::missileObject`) because a new
    `GameEventType` changes the event-type count root CLAUDE.md states in three
-   places, which this card may not edit. Rule: keep it, or allow a dedicated
-   `SpellMissileObject` event with the CLAUDE.md count edits.
+   places, which this card may not edit. **Ruled (orchestrator note on #489,
+   2026-10-27): keep it on `SpellCastVisualStarted`; no new event type.**
 
 ## FOLLOW-UP
 
@@ -523,6 +530,6 @@ except item 1, which the dispatch net requires):
 - `tools/model_viewer/` — `--missile-payload` / `--missile-at`, `missile.tsv`.
 - `tests/test_b1170_missile_object.cpp`, `tests/test_spell_visual_vocabulary.cpp`,
   `tests/test_b1163_missile_rules.cpp`, `tests/test_spell_impact_visual.cpp`,
-  `tests/test_zone_dispatch_table.cpp`, `tests/goldens/zone_opcodes_g01.txt` (BLESS), `tests/cmake/spells.cmake`.
+  `tests/test_zone_dispatch_table.cpp`, `tests/goldens/zone_opcodes_g01.txt` (blessed by Will 2026-10-28), `tests/cmake/spells.cmake`.
 - `refactor/B1170/scripts/` — `rdata.py`, `make_payload.py`, `missile_flight_model.py`,
   `frame_diff_series.py`, `render_b1130gate_tp.sh`, `regate_tp.sh`, `regate_identity.py`.
