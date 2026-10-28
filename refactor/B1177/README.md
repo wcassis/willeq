@@ -11,7 +11,7 @@ exit code in `runs/rc.tsv`, the ctest and hygiene logs beside them). Built on th
 
 - **Ask 1, the crash.** The failure path dropped the device and returned 2, skipping the teardown
   the normal exit runs. Two namespace-scope `unique_ptr<ConstrainedTextureCache>`s
-  (`fxTextureCache` at `tools/model_viewer/model_viewer_fx_harness.cpp:35`, and
+  (`fxTextureCache` at `tools/model_viewer/model_viewer_fx_harness.cpp:38`, and
   `equipmentTextureCache` at `tools/model_viewer/model_viewer_state.cpp:53`) were then destroyed by the
   C runtime's exit handlers after the driver was gone. gdb on the ThinkPad, same failure forced
   with `--target-fit-iterations 1`:
@@ -20,7 +20,7 @@ exit code in `runs/rc.tsv`, the ctest and hygiene logs beside them). Built on th
   `~unique_ptr` <- `__run_exit_handlers (status=2, ...)`
   (`/mnt/projects/fable/review/B1177/worker/runs/tp_gdb_iter1.log:116-120`). The Release frame does not
   say which of the two caches it was; the teardown resets both. The same pattern was already
-  written down for the normal exit (`tools/model_viewer/model_viewer_fx_harness.cpp:659`, B1139's
+  written down for the normal exit (`tools/model_viewer/model_viewer_fx_harness.cpp:473`, B1139's
   "SIGSEGV at exit" comment).
   **Fix:** one teardown, `shutdownViewer` (`tools/model_viewer.cpp:84`), used by every exit after
   the device exists: init failure 3 (`tools/model_viewer.cpp:95`), mesh failure 1
@@ -50,7 +50,7 @@ preset cannot solve on any renderer. That is the deterministic non-solving prese
 | this branch, `--target-fit-iterations 1` | ThinkPad / gitlab-runner-2 | 2 / 2 | `runs/tp_after_iter1.log`, `runs/r2_after_iter1.log` |
 
 Test: `FxHarness.B1130PresetThatDoesNotSolveExitsTwoWithoutASignal`
-(`tests/test_fx_harness.cpp:504`) runs that preset and asserts no signal, exit status 2 (a child
+(`tests/test_fx_harness.cpp:525`) runs that preset and asserts no signal, exit status 2 (a child
 killed by signal n reaches `std::system` through the shell as 128 + n, so 139 fails it), the
 "did not solve" line and the diagnostic naming the one candidate. Passed on gitlab-runner-2
 (`/mnt/projects/fable/review/B1177/worker/ctest_runner2.log`).
@@ -97,35 +97,35 @@ A second defect on the same path: when the loop ran out, the printed and stored 
 (`/mnt/projects/fable/review/B1177/worker/runs/r2_before_6_1_6.log:129`) while the summary line
 says "target (x -8.887, y 0.580, z 0.977) -> rendered target feet row 618 at column 935"
 (`/mnt/projects/fable/review/B1177/worker/runs/r2_before_6_1_6.log:130`). The solve now reports and
-stores the measured point (`tools/model_viewer/model_viewer_fx_harness.cpp:407`). On a solve that
+stores the measured point (`tools/model_viewer/fx_target_fit.cpp:197`). On a solve that
 converges (the loop breaks right after the measure) nothing changes.
 
 ## 3. The terminating solver and its diagnostic
 
-The target solve (its B1177 comment at `tools/model_viewer/model_viewer_fx_harness.cpp:337`, loop at
-`tools/model_viewer/model_viewer_fx_harness.cpp:353`):
+The target solve (its B1177 comment at `tools/model_viewer/fx_target_fit.cpp:127`, loop at
+`tools/model_viewer/fx_target_fit.cpp:143`):
 - the finite difference retries at d 0.2 and 0.8 when the Jacobian is singular
-  (`tools/model_viewer/model_viewer_fx_harness.cpp:369`), printing each singular one;
+  (`tools/model_viewer/fx_target_fit.cpp:159`), printing each singular one;
 - if all three are singular, the nudge (0.05 units) moves only the axis that is out, toward its
-  pixel (`tools/model_viewer/model_viewer_fx_harness.cpp:390`);
+  pixel (`tools/model_viewer/fx_target_fit.cpp:184`);
 - every non-converged measure is a `FitSample`; `fxharness::fitCyclePeriod`
   (`tools/model_viewer/fx_target_anchor.h:177`) stops the solve when the pixel states (feet row,
   column rounded to 1 px) repeat with period 2 or 3 over the last 3p samples (two full repeats);
   a constant run is a stall, not a cycle;
 - on failure `fxharness::fitDiagnostic` (`tools/model_viewer/fx_target_anchor.h:205`) prints the
   cycle's candidates, or the closest candidate after the cap, each through `fitSampleWhy`
-  (`tools/model_viewer/fx_target_anchor.h:192`), e.g. "closest (x -2.000, z 2.000) -> feet row 636
+  (`tools/model_viewer/fx_target_anchor.h:191`), e.g. "closest (x -2.000, z 2.000) -> feet row 636
   (d +21: misses |d| < 1), column 710.1 (d -229.9: misses |d| < 1)"
   (`/mnt/projects/fable/review/B1177/worker/runs/r2_after_iter1.log:114`).
 
 On the recorded pre-fix sequence (fits 0..14 of r1_6_1_6.log) the detector fires at fit 14 with
 period 3, and its three candidates are rows 616 (d +1), 616 (d +1) and 618 (d +3, column 948.6,
-d +8.6): `B1177TargetSolve.ThePreB1177CycleIsDetected` (`tests/test_fx_harness.cpp:770`).
-`B1177TargetSolve.AStallOrAnApproachIsNotACycle` (`tests/test_fx_harness.cpp:799`) keeps a stall
+d +8.6): `B1177TargetSolve.ThePreB1177CycleIsDetected` (`tests/test_fx_harness.cpp:791`).
+`B1177TargetSolve.AStallOrAnApproachIsNotACycle` (`tests/test_fx_harness.cpp:820`) keeps a stall
 and a damped approach with one repeated swing from stopping the solve. With the fix the live
 6:1:6 solve converges in four fits, so the cycle path is exercised offline only.
 
-`FxHarness.B1130DarkElfFemaleTargetSolvesAndFailsTheSelfCheck` (`tests/test_fx_harness.cpp:532`)
+`FxHarness.B1130DarkElfFemaleTargetSolvesAndFailsTheSelfCheck` (`tests/test_fx_harness.cpp:553`)
 re-runs 6:1:6 and requires the solve to reach "feet row 615 at column 940" and the self-check to
 FAIL with exit 5: rows 355..615, 261 px against the 285 px ratchet
 (`/mnt/projects/fable/review/B1177/worker/runs/r2_after_6_1_6.log:123`). That is B1166's original
@@ -157,6 +157,39 @@ not re-run: the default solve never entered the singular branch, so its trajecto
   6:1:6 tests among them (`/mnt/projects/fable/review/B1177/worker/ctest_runner2_merged.log`), hygiene
   48/48 (`/mnt/projects/fable/review/B1177/worker/hygiene_runner2_merged.log`).
 - CI: the MR pipeline. Until B1172 (MR !325) merges, this branch carries its commits.
+
+## 6. The merge-fix leg (merged tip 61fbe71bb, this card)
+
+origin/fable carried B1172's fix leg (81ff46fb5): the b1130 target-fit block (the
+solved-placement globals, `fitFixedNpcTarget`, the frame-0 self-check) moved verbatim out of
+`model_viewer_fx_harness.cpp` into `tools/model_viewer/fx_target_fit.{h,cpp}` after the fable
+merge put the harness at 1,507 lines. B1177's only delta in that file was inside the block, so
+the merge (commit `1c6d06761`) takes fable's layout and re-applies the B1177 solver hunk onto
+`fx_target_fit.cpp` (the comment at `tools/model_viewer/fx_target_fit.cpp:127`); the exit
+teardown, the solver helpers, the `--target-fit-iterations` flag and the tests never left their
+homes and merged without a conflict. `git diff origin/fable --stat` = the seven B1177 files only;
+`model_viewer_fx_harness.cpp` is byte-identical to fable's (1,318 lines), `fx_target_fit.cpp`
+is fable's plus the hunk (242 lines) -- both under the ceiling, no allowlist entry.
+
+Re-verified on the merged tip (ThinkPad, the same run as the ctest's `runPlan`,
+`--client /mnt/projects/EverQuestP1999 --eqe1 /mnt/projects/EverQuest_ETC1/willeq.eqe1`,
+0.5 s b1130 plan; logs `runs/merged_*`):
+
+| run | host | rc | file |
+|---|---|---|---|
+| merged tip, `--target-fit-iterations 1` | ThinkPad (NVIDIA) | 2, no signal | `runs/merged_iter1/run.log:122-124` (the diagnostic names the one candidate) |
+| merged tip, `--target 6:1:6` | ThinkPad (NVIDIA) | 5 | `runs/merged_6_1_6/run.log:128` (solves to feet row 615 at column 940), `:135` (self-check FAIL, 261 px vs the 285 px ratchet) |
+| merged tip, default b1130 | ThinkPad (NVIDIA) | 0 | frame 0 md5 `2b278613e89a9e589cb1f22734432128` |
+| origin/fable tip (61fbe71bb) binary, default b1130 | ThinkPad (NVIDIA) | 0 | frame 0 md5 identical to the merged tip's; every `tgt fit` / summary / self-check line identical (`runs/fablebase_default/run.log`) |
+
+The runner-VM rows (the rc.tsv's `r2_*`) are covered by CI's build-test stage, which runs the
+full suite -- including `FxHarness.B1130PresetThatDoesNotSolveExitsTwoWithoutASignal` and
+`FxHarness.B1130DarkElfFemaleTargetSolvesAndFailsTheSelfCheck` -- on the x86 runners; this host
+has no direct ssh to them.
+
+- Targeted ctest on the merged tip, `-R 'FxHarness|B1166TargetAnchor|B1177TargetSolve'`: 17/17
+  (ThinkPad, `runs/ctest_merged.log`); hygiene: all executed passed (one test skipped,
+  `MemoryCapHuntScript`, `runs/hygiene_merged.log`).
 
 ## RULING REQUEST
 
