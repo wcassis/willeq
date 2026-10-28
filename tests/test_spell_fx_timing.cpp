@@ -235,6 +235,59 @@ TEST_F(SpellFxTimingFiles, TheTwoOutliersAreTheCapturesNotTheFile) {
     EXPECT_NEAR(5.71f - song, -0.11f, 0.35f) << "within the 39 records' own spread of the median";
 }
 
+// B1179 (#498): the five b1130 rows that end "later" than the oracle in
+// refactor/B1171/tables/b1130_table.tsv. Each decodes (the verified EDD/EFF
+// indexing, a level-60 caster, all Target slots level-gated <= 60) to the
+// file's nominal Target death -- the UPPER BOUND on the measured visible end,
+// because the alpha fades to 0 over the fade-out before the hard death, so the
+// instrument's threshold crossing is earlier. No lifetime word is mis-applied:
+// fable draws the full file lifetime and its measured end is the nominal death
+// minus the fade, as the client's. refactor/B1179/README.md has the per-record
+// words; the r41 ROI and the r40 port are pinned by the surrounding tests.
+TEST_F(SpellFxTimingFiles, TheFiveB1130LandingRowsDecodeToTheOracleSpread) {
+    auto rowById = [](int id) -> const oracle::Row* {
+        for (const auto& r : oracle::Rows())
+            if (r.row == id) return &r;
+        return nullptr;
+    };
+    // (row, the file's nominal Target death, the oracle's measured visible end,
+    // the max allowed gap = the latest slot's life + fade).
+    struct Case { int row; float end; float oracle; float maxGap; };
+    const std::vector<Case> withinSpread = {
+        {6,  6.75f, 6.260f, 3.35f},  // e6  Jaxan: T=5 slots' 1.75 life + 1.60 fade
+        {10, 7.00f, 5.720f, 2.75f},  // r43 Illusion: the T=5 slot's 2.00 life
+        {29, 8.00f, 7.340f, 2.75f},  // e29 Shallow Breath: the T=6 slots' 2.00 life
+        {43, 5.75f, 4.430f, 3.20f},  // e43 Lyssa: the long slot's 3.00 life
+    };
+    for (const auto& c : withinSpread) {
+        const auto* r = rowById(c.row);
+        ASSERT_NE(r, nullptr) << "row " << c.row;
+        const float p = stageEnd(r->f145, kSpellsNewEffTarget, 60, 0);
+        EXPECT_FLOAT_EQ(p, c.end) << "row " << c.row << ": the file's nominal Target death";
+        EXPECT_LT(r->landingEnd, p) << "row " << c.row
+                                    << ": the measured visible end is below the nominal death (the fade)";
+        EXPECT_LE(p - r->landingEnd, c.maxGap + 0.01f) << "row " << c.row
+                                                       << ": within the latest slot's life + fade";
+    }
+    // r41 (row 41, 703 Chords): the B1130 RUN line (2.75) is the TARGET ROI; the
+    // whole crop runs to the file's 5.5 (the T=5 slots). The +2.8 in the table is
+    // that ROI measurement, not a lifetime defect.
+    const auto* r41 = rowById(41);
+    ASSERT_NE(r41, nullptr);
+    EXPECT_FLOAT_EQ(stageEnd(r41->f145, kSpellsNewEffTarget, 60, 0), 5.5f);
+    EXPECT_NEAR(5.71f - 5.5f, -0.11f, 0.35f) << "the whole crop (5.71) is inside the spread";
+    EXPECT_LT(r41->landingEnd, 5.5f) << "the TARGET-ROI line (2.75) is below the file's end";
+    // r40 (row 40, 602 Evacuate, the port): the file's nominal death is 6.00, but
+    // the measured 0.73 is the caster leaving (model gone by 0.79-0.81), not the
+    // emitters running out. --caster-despawn at the model-gone time ends fable's
+    // landing where the oracle's does; the mechanism is pinned by
+    // SlotRules.ADeletedSpawnTakesItsAttachedEffectsWithIt.
+    const auto* r40 = rowById(40);
+    ASSERT_NE(r40, nullptr);
+    EXPECT_FLOAT_EQ(stageEnd(r40->f145, kSpellsNewEffTarget, 60, 0), 6.0f);
+    EXPECT_NEAR(r40->landingEnd, 0.73f, 0.01f) << "the port's measured end is the caster leaving";
+}
+
 TEST_F(SpellFxTimingFiles, Spell93AtLevelOneEndsWhereTheObserverSawIt) {
     // Record 80 at level 1: Target slots 0 (280: 1 s fixed, 0.25 s delay,
     // 1.5 s life) and 1 (281: a one-particle burst living 1 s).
