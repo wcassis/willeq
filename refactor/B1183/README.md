@@ -214,7 +214,33 @@ spawn (char 67 Testcaster, the observer is char 103 Oraclewatch), the same
 sequence on fable with its state logged, and the two tables must be identical
 step by step. Rig: `EQEMU_LANE=5` through the repo scripts
 (`scripts/eqemu/env.sh`, `scripts/eqemu/oracle/oracle_class_leg.sh 5`, the
-B1134 observer rig). Status: pending — see the task run.
+B1134 observer rig).
+
+**The fable column is measured, not asserted.** `tests/test_stand_state.cpp`
+(`TheLane5FullSequenceTable`) drives the real machine through the exact
+sequence and prints the byte at each step; the output is
+`/home/user/kb-evidence/kb-b1183-stand-state/fable_step_table.tsv`:
+
+| step | feed (eqgame.exe.c) | fable byte |
+|---|---|---|
+| stand | zone-in default (128478) | 100 |
+| duck | key C (setter 104878) | 111 |
+| stand | key (setter 104878) | 100 |
+| sit | key (setter 104878) | 110 |
+| stand | key (setter 104878) | 100 |
+| cast | cast start (71254) | 100 |
+| stunned | stun msg 0x3050 (80377) | 102 |
+| stun end | stun end (80336) | 100 |
+| loot | loot open (28061) | 105 |
+
+**The oracle column is the pending lane-5 leg.** The rig is up
+(`eqemu_lane=5` READY: login/world listening inside, container, 5) but
+`eqgame.exe` is not logged in. The lane is a live leg that must be driven
+FROM this host: the official client (char 67) through the sequence with a
+per-step B1164 gdb pin reading `+0x251` of the caster's spawn, then this table
+filled in column by column and the two compared. The stun and loot steps need
+a live trigger (a stun on the caster, a corpse to loot); the pose steps are
+key-driven. Exact next command: see the task block note.
 
 ## 8. What is verified
 

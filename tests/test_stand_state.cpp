@@ -20,6 +20,8 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <iostream>
+#include <sstream>
 
 #include "client/state/stand_state.h"
 #include "client/spell/spell_action_anim.h"  // the B1174 gate (the reader)
@@ -247,6 +249,60 @@ TEST(StandState, TheReaderGateReadsTheMachinesByte) {
     EXPECT_FALSE(gate(static_cast<uint8_t>(s)));
     s.apply(StandValue::Corpse);
     EXPECT_FALSE(gate(static_cast<uint8_t>(s)));
+}
+
+// The full lane-5 sequence (the card's step list) driven through the machine,
+// printed as the fable-side column of the acceptance-C step table. The
+// oracle-side column (the client's +0x251 under the B1164 gdb pin) is the
+// pending live leg; this column is what fable's state machine actually
+// produces, measured by running it -- not asserted by hand. The stun ends
+// (80336 -> 100) before the loot, so the 28061 gate (standing -> looting)
+// fires from standing, not from the frozen byte.
+TEST(StandState, TheLane5FullSequenceTable) {
+    StandState s;
+    StandStateContext ctx;
+    ctx.in_world = true;
+    std::ostringstream out;
+    out << "step\tfeed\tfable_byte\n";
+    auto step = [&](const char* name, const char* feed) {
+        out << name << '\t' << feed << '\t' << static_cast<int>(s) << '\n';
+    };
+    // stand (zone-in: the local player starts standing, 100)
+    EXPECT_EQ(static_cast<int>(s), 100);
+    step("stand", "zone-in default (128478)");
+    // duck
+    ASSERT_TRUE(s.transition(StandValue::Crouching, ctx));
+    EXPECT_EQ(static_cast<int>(s), 111);
+    step("duck", "key C (setter 104878)");
+    // stand
+    ASSERT_TRUE(s.transition(StandValue::Standing, ctx));
+    EXPECT_EQ(static_cast<int>(s), 100);
+    step("stand", "key (setter 104878)");
+    // sit
+    ASSERT_TRUE(s.transition(StandValue::Sitting, ctx));
+    EXPECT_EQ(static_cast<int>(s), 110);
+    step("sit", "key (setter 104878)");
+    // stand
+    ASSERT_TRUE(s.transition(StandValue::Standing, ctx));
+    EXPECT_EQ(static_cast<int>(s), 100);
+    step("stand", "key (setter 104878)");
+    // cast start (71254: the cast path writes 100; a standing actor is a no-op)
+    s.apply(StandValue::Standing);
+    EXPECT_EQ(static_cast<int>(s), 100);
+    step("cast", "cast start (71254)");
+    // stun start (80377: frozen)
+    s.apply(StandValue::Frozen);
+    EXPECT_EQ(static_cast<int>(s), 102);
+    step("stunned", "stun msg 0x3050 (80377)");
+    // stun end (80336: back to standing)
+    s.apply(StandValue::Standing);
+    EXPECT_EQ(static_cast<int>(s), 100);
+    step("stun end", "stun end (80336)");
+    // loot start (28061 gate: standing -> looting, via the setter)
+    ASSERT_TRUE(s.transition(StandValue::Looting, ctx));
+    EXPECT_EQ(static_cast<int>(s), 105);
+    step("loot", "loot open (28061)");
+    std::cout << out.str() << std::flush;
 }
 
 }  // namespace
