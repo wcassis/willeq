@@ -1,0 +1,80 @@
+# action	target	hold_ms	still_name
+# B1178 re-run leg v3 (cause fixes C1-C5, see refactor/B1178/README.md
+# "Root cause of the 'off-crop' landings -- MEASURED"):
+#  camera PINNED (CameraI, the b1118-equivalent geometry: caster 205 px,
+#  feet row ~590), chat window moved OFF the frame (ui-ini-set -> -427,700),
+#  observer rig pinned, 30 fps, level 60.
+#  C2: # caster-video=1 -- the CASTER's display is recorded (video-caster.mp4,
+#      30 fps); the :99 session video stays the observer's display (witness).
+#      The landing coverage is measured from video-caster.mp4.
+#  C4: the guessed ini key Tips.ShowTotD does not exist in the client; the
+#      Tip of the Day is closed by the click B1118 proved (1229,555).
+#  C1: the Troll is TARGETED before it is STUNNED (v4 stunned the still
+#      current target -- the caster -- for 120 s, so every Troll gem click
+#      was refused). A troll_geom still after the stun verifies the Troll's
+#      position before any cast (C3: feet row must be <= ~640, in crop).
+# 7-gem memorisation (B1118's proven layout) so the gem-click coords map.
+# pose=-74,428,3.75,160
+# observer=Oraclewatch
+# observer-pose=-67,8,710,160
+# fps=30
+# caster-video=1
+# ini-set=Options.CameraI-Distance=30.000000
+# ini-set=Options.CameraI-DirHeading=192.000000
+# ini-set=Options.CameraI-Heading=0.000000
+# ini-set=Options.CameraI-Pitch=0.000000
+# ini-set=Options.CameraI-Height=5.000000
+# ini-set=Options.CameraI-Zoom=90.000000
+# ui-ini-set=MainChat.XPos1280x800=-427
+# ui-ini-set=MainChat.YPos1280x800=700
+# ui-ini-set=ChatWindow.XPos1280x800=-427
+# ui-ini-set=ChatWindow.YPos1280x800=700
+# ui-ini-set=Chat 1.XPos1280x800=-427
+# ui-ini-set=Chat 1.YPos1280x800=700
+# obs-ini-set=Options.CameraI-Distance=30.000000
+# obs-ini-set=Options.CameraI-DirHeading=192.000000
+# obs-ini-set=Options.CameraI-Heading=0.000000
+# obs-ini-set=Options.CameraI-Pitch=0.000000
+# obs-ini-set=Options.CameraI-Height=5.000000
+# obs-ini-set=Options.CameraI-Zoom=90.000000
+# Druid leg v3: casts 253 (gem 5, self), 93 (gem 1, TrollF).
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0 0	0	clear
+command	#memspell 93 0	0	m1
+command	#memspell 38 1	0	m2
+command	#memspell 54 2	0	m3
+command	#memspell 41 3	0	m4
+command	#memspell 253 4	0	m5
+command	#memspell 458 5	0	m6
+command	#memspell 656 6	0	m7
+command	#level 60	0	lvl
+command	#mana	0	mana
+press	F9	0	cam1
+press	F9	0	cam2
+press	F9	0	cam3
+wait	3000	0	cam_settle
+command	/target Testcaster	0	tgt_self
+wait	1500	0	tgt_self_settle
+click	25,363	0	gem5_cast253
+wait	12000	0	fx253
+command	#mana	0	mana253
+command	#spawn TrollF	0	spawn93
+wait	4000	0	spawn93_settle
+command	/target TrollF	0	tgt93
+wait	1500	0	tgt93_settle
+command	#stun 120000	0	stun93
+wait	1500	0	stun93_settle
+wait	2000	0	troll93_geom
+click	25,243	0	gem1_cast93
+wait	12000	0	fx93
+command	#mana	0	mana93
+obs	command	/q	0	obs_quit
+command	/q	0	quit

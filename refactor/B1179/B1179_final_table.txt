@@ -1,0 +1,42 @@
+B1179 (#498) final table -- old (B1171 before) -> new (post-B1169 + this MR) vs the oracle
+All Act-relative seconds, level-60 caster (B1171 capture-level rule). "new" for the
+four within-spread rows equals "before" (no lifetime code change -- B1169 determinism,
+the frames are identical); the only new measurement is r40 with --caster-despawn.
+
+row  spell  before  new    oracle  verdict
+r6   722    6.400   6.400  6.260   within the B1145 spread (file's nominal death 6.75;
+                                              fable + oracle both fall below it by the 1.60 s fade;
+                                              +0.140 is the threshold crossing, not a lifetime word)
+r10  590    6.067   6.067  5.720   within the B1145 spread (file's nominal death 7.00; the
+                                              T=5 slot's 2.0 s life; +0.347 within the 39-records spread)
+r29  286    7.467   7.467  7.340   within the B1145 spread (file's nominal death 8.00; the
+                                              T=6 slots' 0.75 s fade; +0.127)
+r41  703    5.533   5.533  2.750   TARGET-ROI measurement: the table's oracle cell is the target
+                                              ROI (2.75); the whole crop runs to the file's 5.5 (the T=5
+                                              slots). fable draws the full 5.5 correctly; not a lifetime defect.
+r43  720    4.667   4.667  4.430   within the B1145 spread (file's nominal death 5.75; the long
+                                              slot's 3.0 s life; +0.237)
+r40  602    4.167   0.767  0.730   the port (scene): the caster zones out. The fixed_npc r40 (B1171
+                                              row 12, no zone-out in that capture) is a separate PASS row
+                                              (7.033 vs 7.040). With --caster-despawn 0.80 (the model-gone
+                                              time 0.79-0.81) fable's landing ends at 0.767 (the 0.80 run's
+                                              LANDING end10% f338 +0.767 s, dev evidence measure_cd080b),
+                                              within 0.10 of 0.730.
+
+Finding: no lifetime-word defect. The Target emitters' lifetime/fade words decode
+(verified EDD/EFF indexing, 1-based EFF R*268 / 1-based EDD block 8+E*416) to the
+values fable already draws; the DX9 death rule (emitter run +0x78 vs per-particle
+life +0x7C vs fade-out +0x94) is traced in EQGraphicsDX9.dll.c and mirrored in
+spell_fx_timing.h / sim_particles.cpp; the per-particle alpha is byte-identical to
+the client's. A lifetime is the client's words applied the client's way, never a
+tuned number (Will's rule) -- so there is no lifetime fix to make without inventing
+a number. The rows that read "later" are the measured visible end (the instrument's
+threshold crossing), earlier than the file's nominal death by the fade, and within
+the B1145 39-records spread. r41 is a ROI measurement; r40 is a scene (fixed by
+--caster-despawn).
+
+Tests: SpellFxTimingFiles.TheFiveB1130LandingRowsDecodeToTheOracleSpread (new, pins
+each row's stageEnd 6.75/7.00/8.00/5.50/5.75/6.00 + the per-record relationship),
+SpellFxTimingFiles.* (7/7), SlotRules.ADeletedSpawnTakesItsAttachedEffectsWithIt
+(the --caster-despawn mechanism), hygiene 48/48. CI pipeline 2394 (382392ec1) success.
+MR !331 "Closes #498".

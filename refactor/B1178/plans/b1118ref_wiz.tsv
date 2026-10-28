@@ -1,0 +1,74 @@
+# action	target	hold_ms	still_name
+# B1178 leg WIZ: B1118 wizard leg (class 12: 458 self, 38/54/656 on TrollF)
+# re-run with the b1118 camera PINNED to the standing eqclient.ini Camera1
+# keys (Distance 30, DirHeading 192, Heading 0, Pitch 0, Height 5, Zoom 90)
+# and the Main Chat window moved to (-427,700) so no figure is clipped
+# (restored byte-identically by the driver after the leg). Observer
+# Oraclewatch at the B1130 fixed vantage (-67.6,434.4) with its camera
+# pinned too. 30 fps (the original leg was 25). TrollF is stunned; the
+# casts are 458 (self) then 38/54/656 on the Troll, as in B1118.
+# pose=-74,428,3.75,160
+# observer=Oraclewatch
+# observer-pose=-67.6,434.4,3.75,160
+# fps=30
+# ini-set=Options.Camera1-Distance=30.000000
+# ini-set=Options.Camera1-DirHeading=192.000000
+# ini-set=Options.Camera1-Heading=0.000000
+# ini-set=Options.Camera1-Pitch=0.000000
+# ini-set=Options.Camera1-Height=5.000000
+# ini-set=Options.Camera1-Zoom=90.000000
+# ini-set=Tips.ShowTOTD=0
+# ui-ini-set=MainChat.XPos1280x800=-427
+# ui-ini-set=MainChat.YPos1280x800=700
+# ui-ini-set=ChatWindow.XPos1280x800=-427
+# ui-ini-set=ChatWindow.YPos1280x800=700
+# ui-ini-set=Chat 1.XPos1280x800=-427
+# ui-ini-set=Chat 1.YPos1280x800=700
+# obs-ini-set=Options.Camera1-Distance=30.000000
+# obs-ini-set=Options.Camera1-DirHeading=192.000000
+# obs-ini-set=Options.Camera1-Heading=0.000000
+# obs-ini-set=Options.Camera1-Pitch=0.000000
+# obs-ini-set=Options.Camera1-Height=5.000000
+# obs-ini-set=Options.Camera1-Zoom=90.000000
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#memspell 458 0	0	m1
+command	#memspell 38 1	0	m2
+command	#memspell 54 2	0	m3
+command	#memspell 656 3	0	m4
+command	#level 60	0	lvl
+command	#mana	0	mana
+press	F9	0	cam1
+press	F9	0	cam2
+press	F9	0	cam3
+wait	3000	0	cam_settle
+command	/target Testcaster	0	tgt_self
+wait	1500	0	tgt_self_settle
+click	25,243	0	gem1_cast458
+wait	12500	0	fx458
+command	#spawn TrollF 1 1 0 30000	0	spawn
+wait	4000	0	spawn_settle
+command	#stun 120000	0	stun
+wait	1500	0	stun_settle
+command	/target TrollF	0	tgt_troll
+wait	1500	0	tgt_troll_settle
+click	25,273	0	gem2_cast38
+wait	12500	0	fx38
+command	/target TrollF	0	tgt_troll2
+wait	1500	0	tgt_troll2_settle
+click	25,303	0	gem3_cast54
+wait	13500	0	fx54
+command	/target TrollF	0	tgt_troll3
+wait	1500	0	tgt_troll3_settle
+click	25,333	0	gem4_cast656
+wait	15500	0	fx656
+obs	command	/q	0	obs_quit
+command	/q	0	quit
