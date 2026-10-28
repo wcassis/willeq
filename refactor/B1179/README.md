@@ -4,7 +4,8 @@
 emitters' lifetime/fade words decode to the values fable already draws (the
 per-particle alpha is byte-identical to the client, pinned by
 `tests/test_spell_edd_colour.cpp`: `eddParticleAlpha` vs the client's
-`fun_1005f940`), and the computed Target end of each row is
+alpha sites 0x10060748/0x10060761/0x10063a42 (fade-in), 0x1006076e/0x10060787/0x10063a5f
+(fade-out) and 0x10063a76/0x10063a85 (peak cap), PROVEN-BY-CODE in review/B1141), and the computed Target end of each row is
 the latest the file allows. The rows that read "later" in
 `refactor/B1171/tables/b1130_table.tsv` are the **measured visible end** of the
 landing (the instrument's last frame above the lit-pixel threshold), which is
@@ -53,8 +54,9 @@ end (the threshold crossing the instrument measures) is earlier than the
 nominal `T + L` by up to the fade. Fable mirrors this exactly
 (`include/client/spell/spell_fx_timing.h` `SpellFxSlotTiming`,
 `src/client/graphics/sim_particles.cpp`); the per-particle alpha is
-byte-identical to the client's (`eddParticleAlpha` vs `fun_1005f940`, pinned by
-`tests/test_spell_edd_colour.cpp`).
+byte-identical to the client's (`eddParticleAlpha` vs the client's alpha sites 0x10060748/0x10060761/0x10063a42,
+0x1006076e/0x10060787/0x10063a5f and 0x10063a76/0x10063a85, PROVEN-BY-CODE in
+review/B1141, pinned by `tests/test_spell_edd_colour.cpp`).
 So the file's `stageEnd` (the nominal death) is an **upper bound** on the
 measured visible end, and both the oracle's and fable's measured ends fall
 below it by the fade.
