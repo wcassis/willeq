@@ -160,30 +160,38 @@ same file.
   byte-identical (the junk density stays `banana`). That is pinned by
   `TheLoadRewriteWritesOnlyShowSpellEffects`, so fable's after-file is the identical
   transform of the identical before-file.
-  * **The LIVE fable leg is MEASURED** (2026-10-28 22:30-22:34 UTC, lane 5):
-    `scripts/b1182_fable_run.sh` (in the repo) seeds the cache dir with the before-ini,
-    runs fable as a PLAIN GRAPHICS run against the lane, and reads the ini back.
-    **It needs no working world**: the load path (`FrameComponent::syncEqClientIni`,
-    `src/client/graphics/frame/renderer_frame_preferences.cpp:70`) runs on the first
-    `processFrame()` frame — which starts only when the loading progress reaches 50 %,
-    i.e. zone data arriving (before that the loading screen is drawn directly,
+  * **The LIVE fable leg is MEASURED** (2026-10-28 23:17 UTC, lane 5, script
+    verdict PASS): the committed one-command leg `scripts/b1182_fable_run.sh`
+    seeds the cache dir with the before-ini, runs fable as a PLAIN GRAPHICS run
+    against the lane, settles 60 s, sends the clean-quit SIGTERM, and greps the
+    ini back. **It needs no working world**: the load path
+    (`FrameComponent::syncEqClientIni`, `src/client/graphics/frame/renderer_frame_preferences.cpp:70`)
+    runs on the first `processFrame()` frame — which starts only when the
+    loading progress reaches 50 %, i.e. zone data arriving (before that the
+    loading screen is drawn directly,
     `src/client/application_frame.cpp:180`) — AND again on EVERY clean shutdown
-    (`IrrlichtRenderer::shutdown()` calls `syncUiPreferences`). So a run that never
-    connects still loads and rewrites on the way out: in graphics mode a pre-zone
-    connect failure keeps the loading screen up (B1099) and SIGTERM turns it into a
-    clean shutdown. (A `--scenario` run would never run the load path at all:
-    Automated mode is headless — no renderer is created, `Application::initGraphics`
-    only initialises in GraphicalInteractive mode.) This run could not connect
-    (22:18 the loginserver answered but was not advertising the world "WillEQ Private
-    Server" — the world container was not registered with the freshly started
-    loginserver, an eqemu server-state issue outside this card's code; by 22:30 the
-    login itself sat in `LOGIN_CONNECTING` 30 s and gave up), so it exited 3 on the
-    pre-zone connect failure and the rewrite ran on the SIGTERM clean shutdown —
-    the log's one `eqclient.ini loaded from` line is the shutdown's, 2 ms after
-    "Shutting down application...". The after-ini is the oracle's own diff,
-    `115a116 > ShowSpellEffects=1`, the junk density byte-identical. Artifacts:
-    `kb-evidence/kb-b1182-ini-junk/live-leg/` (`eqclient-fable-before.ini`,
-    `eqclient-fable-after.ini`, the run log).
+    (`IrrlichtRenderer::shutdown()` calls `syncUiPreferences`). So a run that
+    never connects still loads and rewrites on the way out: in graphics mode a
+    pre-zone connect failure keeps the loading screen up (B1099) and SIGTERM
+    turns it into a clean shutdown. (A `--scenario` run would never run the load
+    path at all: Automated mode is headless — no renderer is created,
+    `Application::initGraphics` only initialises in GraphicalInteractive mode.)
+    This run could not connect (the loginserver answered but the world "WillEQ
+    Private Server" was not registered with the freshly started loginserver —
+    the client "sat in `LOGIN_AUTHENTICATING` for 30000 ms with no answer;
+    giving up (no reconnect)"), so it exited 3 on the pre-zone connect failure
+    and the rewrite ran on the SIGTERM clean shutdown — the log's one
+    `eqclient.ini loaded from` line is the shutdown's, 2 ms after "Shutting down
+    application...". The after-ini is the oracle's own diff,
+    `115a116 > ShowSpellEffects=1`, the junk density byte-identical.
+    **Mechanism, measured:** the script's shutdown is a plain `kill -TERM
+    <pid>` (the clean-quit path, `include/client/quit_signal.h`), NOT
+    `timeout --signal=TERM`: under `timeout` the client died on the group
+    signal without `Application::shutdown()` (no load path, the log ends
+    mid-frame and the after-ini is untouched), while a plain `kill -TERM` at
+    the same run time took the clean-quit path and the load path ran.
+    Artifacts: `kb-evidence/kb-b1182-ini-junk/live-leg/`
+    (`eqclient-fable-before.ini`, `eqclient-fable-after.ini`, the run log).
 
 ## 4. Tests and verification (acceptance D)
 
@@ -221,7 +229,7 @@ success.
 
 ## 5. Hand-off
 
-* Cite checker on this README: `checked 15 cites, 0 problems, 0 address warnings`
+* Cite checker on this README: `checked 12 cites, 0 problems, 0 address warnings`
   (the full command with `--tree . --extra /mnt/projects/fable --dis .../eqgame.dis
   --dis .../EQGraphicsDX9.dis`; the `eqgame.exe.c` line cites are re-read by hand,
   as noted in sec. 1).
