@@ -72,10 +72,27 @@ int main(int argc, char* argv[]) {
     }
     initViewerSubsystems();
 
-    if (spellTestMode && !initSpellTestMode()) {
+    // B1177 (#496): EVERY exit after the device exists tears down in this one
+    // order -- the spell effects, the harness chain (particle manager, then the
+    // texture caches and the held items' equipment cache), then the device.
+    // The texture caches are namespace-scope unique_ptrs (fxTextureCache,
+    // equipmentTextureCache); left to the exit handlers they free GL textures
+    // through the dropped driver: the "did not solve" exit used to skip this
+    // and died in ~ConstrainedTextureCache -> destroyTextures under
+    // __run_exit_handlers (SIGSEGV, rc 139; gdb on the ThinkPad,
+    // review/B1177/worker/runs/tp_gdb_iter1.log).
+    auto shutdownViewer = [](int rc) {
+        spellFX.clearAllEffects();
+        if (spellVisualFX) spellVisualFX->clearAllEffects();
+        shutdownHarness();  // B1138: particle manager, then the texture cache
+        spellVisualFX.reset();
+        spellDatabase.reset();
         device->drop();
-        return 3;
-    }
+        std::fflush(stdout);
+        return rc;
+    };
+
+    if (spellTestMode && !initSpellTestMode()) return shutdownViewer(3);
 
     // If we have loaded entities and a specific entity was requested, load it
     bool loadedEntityFromFile = spellTestMode;  // Spell test mode already created entities
@@ -110,9 +127,7 @@ int main(int argc, char* argv[]) {
             scene::IMesh* mesh = buildMesh(*characterGeometry, swapXY);
             if (!mesh) {
                 LOG_ERROR(MOD_MAIN, "Failed to build mesh");
-                spellFX.clearAllEffects();  // Clear before device destruction
-                device->drop();
-                return 1;
+                return shutdownViewer(1);
             }
 
             modelNode = smgr->addMeshSceneNode(mesh);
@@ -133,11 +148,11 @@ int main(int argc, char* argv[]) {
     // Add camera
     if (spellTestMode) {
         // B1155: a preset that does not solve to its recorded pixels is a
-        // framing defect, not something to render through.
+        // framing defect, not something to render through: exit 2
+        // (kHarnessExitPresetDidNotSolve), with the normal exit's cleanup.
         if (!setupSpellTestCamera()) {
             std::fprintf(stderr, "[fx-harness] the --camera preset did not solve to its recorded geometry\n");
-            device->drop();
-            return 2;
+            return shutdownViewer(kHarnessExitPresetDidNotSolve);
         }
     } else {
         camera = smgr->addCameraSceneNode(
@@ -152,12 +167,5 @@ int main(int argc, char* argv[]) {
     }
 
     // Clean up spell effects before device destruction to avoid segfault
-    spellFX.clearAllEffects();
-    if (spellVisualFX) spellVisualFX->clearAllEffects();
-    shutdownHarness();  // B1138: particle manager, then the texture cache
-    spellVisualFX.reset();
-    spellDatabase.reset();
-
-    device->drop();
-    return rc;
+    return shutdownViewer(rc);
 }
