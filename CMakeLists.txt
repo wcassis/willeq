@@ -1313,6 +1313,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         tools/model_viewer/model_viewer_equipment.cpp
         tools/model_viewer/model_viewer_spell_test.cpp
         tools/model_viewer/model_viewer_fx_harness.cpp  # B1138: the scripted FX harness
+        tools/model_viewer/fx_target_fit.cpp  # B1172 FIX leg: the b1130 target fit (split out, pure move)
         tools/tool_race_db.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
