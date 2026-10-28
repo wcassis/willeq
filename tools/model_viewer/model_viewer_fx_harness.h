@@ -26,6 +26,7 @@
 
 #include "client/bridge/cast_glow_route.h"
 #include "client/spell/spell_fx_options.h"
+#include "fx_target_anchor.h"
 
 namespace EQ { struct SpellData; }
 
@@ -76,6 +77,11 @@ struct HarnessOptions {
     // ("FPS: 60" on its frames) while x11grab writes 30 (B1139).
     int simHz = 0;
     bool ground = true;                // a preset's depth-only ground plane (--no-ground)
+    // B1177 (#496): the b1130 target solve's iteration cap
+    // (--target-fit-iterations, default 24 = B1166's loop). A cap the solve
+    // cannot converge in (1: only the start point is measured) makes the
+    // preset not solve -- the deterministic failure the exit-2 test runs.
+    int targetFitIterations = 24;
     bool casterGiven = false;          // --caster / --target win over a preset
     bool targetGiven = false;
     // B1139 (#459) lane-parity factors, each measured in refactor/B1139/README.md.
@@ -127,6 +133,10 @@ struct HarnessOptions {
 // B1165: the exit code of a run whose particle options differ from the
 // oracle capture's without --particle-options (sysexits EX_DATAERR).
 constexpr int kHarnessExitParticleOptions = 65;
+// B1155 / B1177: the exit code of a --camera preset that does not solve to its
+// recorded geometry (setupSpellTestCamera false; refactor/B1155/README.md "The
+// solve"). It exits through the normal teardown, never a signal (B1177).
+constexpr int kHarnessExitPresetDidNotSolve = fxharness::kExitPresetDidNotSolve;
 extern HarnessOptions harnessOpts;
 
 // The Y rotation that turns a race model to face +Z, toward a face-on preset
