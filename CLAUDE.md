@@ -409,7 +409,7 @@ drops the resist tint to white (T441), then `applyStageEmitterColours()` gives e
 texture region its emitter's start->end RGB and (B1149) the client's fade x
 peak alpha and +0x68 blend (`docs/spellsnew_format.md`). `resistColors` and `colorForVocabulary()` serve only
 spells with no usable record. All three stages route their
-names: Source → cast glow and spellComplete, Middle → projectile trail, Target →
+names: Source → cast glow and spellComplete, Middle → 0x4033 object only, Target →
 impact. The landing is a VOLUME, not a disc (B1120). Source and Target are drawn
 per spellsnew.eff SLOT (B1144): minLevel <= caster level (NPC 1), on its anchor
 at its attach point; no Target slot, no landing; no OP_BeginCast, no Source;

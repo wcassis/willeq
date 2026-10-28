@@ -77,6 +77,18 @@ void eqt::player::PlayerComponent::ZoneProcessDzExpeditionLockoutTimers(const EQ
 	}
 }
 
+// B1170 (#489): OP_SomeItemPacketMaybe (0x4033). eqgame's message arm builds
+// the missile object from the payload (004606f9 je 0x46070f -> 00460737 call
+// 0x476f34); SpellManager decodes it and hands it to the renderer.
+void eqt::player::PlayerComponent::ZoneProcessSomeItemPacketMaybe(const EQ::Net::Packet &p)
+{
+	if (p.Length() < 2) return;
+	if (ctx_.spell_manager) {
+		ctx_.spell_manager->handleMissileObject(
+			static_cast<const uint8_t*>(p.Data()) + 2, p.Length() - 2);
+	}
+}
+
 void eqt::player::PlayerComponent::ZoneProcessBeginCast(const EQ::Net::Packet &p)
 {
 	// BeginCast indicates an entity is starting to cast a spell

@@ -8,7 +8,7 @@
       "name": "Human",
       "gender_variants": true,
       "female_code": "HUF",
-      "scale": 1.0,
+      "scale": 1.2,
       "s3d_file": "global_chr.s3d",
       "color": "#FFC8B4A0"
     },
