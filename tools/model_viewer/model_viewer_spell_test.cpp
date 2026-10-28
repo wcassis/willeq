@@ -285,13 +285,22 @@ bool initSpellTestMode() {
 
     // B1138: in a preset the caster (and the `#spawn` target beside her)
     // faces the camera; otherwise the caster faces the target. B1167 (#486):
-    // the b1130 presets fit on these face-on actors, then turnB1130Rig turns
-    // the rig -- actors included -- to the capture's world yaw
-    // (fx_capture_pose.h); the actors' own capture headings are the README's
-    // RULING REQUEST.
+    // every preset fits its camera on the actors AT their capture headings
+    // (the orchestrator's ruling: b1130 on the back-turned caster; b1118 on
+    // the caster with his back to the chase camera), then turnB1130Rig turns
+    // the rig -- actors included -- by the capture's yaw, leaving each actor
+    // at rotYForHeading(its capture heading) (fx_capture_pose.h
+    // presetRotYDeg: the heading expressed against the fitted camera).
     const bool preset = !harnessOpts.cameraPreset.empty();
-    const float casterRotY = preset ? kHarnessFaceOnRotY : 90.0f;
-    const float targetRotY = preset ? kHarnessFaceOnRotY : -90.0f;
+    const fxharness::CapturePose* capPose = preset ? fxharness::poseForPreset(harnessOpts.cameraPreset.c_str()) : nullptr;
+    const float casterRotY = preset
+                                 ? (capPose ? fxharness::presetRotYDeg(*capPose, capPose->casterHeading512)
+                                            : kHarnessFaceOnRotY)
+                                 : 90.0f;
+    const float targetRotY = preset
+                                 ? (capPose ? fxharness::presetRotYDeg(*capPose, capPose->targetHeading512)
+                                            : kHarnessFaceOnRotY)
+                                 : -90.0f;
     EntityAppearance casterLook;
     casterLook.face = harnessOpts.casterFace;
     casterLook.texture = harnessOpts.casterTexture;

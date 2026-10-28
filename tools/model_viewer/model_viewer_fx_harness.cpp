@@ -341,7 +341,9 @@ bool fitFixedNpcTarget(const PresetGeometry& g) {
             std::printf("[fx-harness]   tgt fit %d: (x %.3f, z %.3f) -> feet row %.1f at column %.1f, %.0f px (surface)\n",
                         iter, x, z, m[1], m[0], m[2]);
             if (std::fabs(r0) < 0.5f * Sx && std::fabs(r1) < 0.5f * Sy) break;
-            const float d = 0.05f;
+            // B1167 continuation: 0.05 units moves the silhouette < 1 px at
+            // ~30 units range (Jacobian 0/noise); 0.25 moves it 4-9 px.
+            const float d = 0.25f;
             const auto mx = measure(x + d, z);
             const auto mz = measure(x, z + d);
             if (mx[0] < 1e8f && mz[0] < 1e8f) {
@@ -357,9 +359,9 @@ bool fitFixedNpcTarget(const PresetGeometry& g) {
                     continue;
                 }
             }
-            // singular Jacobian: nudge toward the target pixels
-            x -= 0.2f * std::copysign(1.0f, r0);  // column right = world -X
-            z += 0.2f * std::copysign(1.0f, r1);  // feet row down = closer
+            // singular Jacobian: nudge (screen right = world -X, feet down = closer).
+            x += 0.2f * std::copysign(1.0f, r0);
+            z -= 0.2f * std::copysign(1.0f, r1);
         }
     }
     if (animatedNode) animatedNode->setVisible(casterWasVisible);
@@ -840,8 +842,14 @@ void placeHarnessTarget(bool self, float distance) {
     if (harnessOpts.cameraPreset == "b1130") {
         targetAnimatedNode->setPosition(core::vector3df(b1130TargetX, b1130TargetY, b1130TargetZ));
     } else {
-        const core::vector3df right = harnessOpts.cameraPreset.empty() ? core::vector3df(1, 0, 0)
-                                                                       : targetRightOfCaster();
+        core::vector3df right = harnessOpts.cameraPreset.empty() ? core::vector3df(1, 0, 0)
+                                                                 : targetRightOfCaster();
+        // B1167 continuation: the offset is in the FITTED frame (screen
+        // right) but the rig has turned by the capture's yaw (turnB1130Rig)
+        // -- turn it or a distance-14 target lands 90 deg wrong (b1118).
+        if (harnessOpts.cameraPreset != "b1130")
+            if (const fxharness::CapturePose* pose = fxharness::poseForPreset(harnessOpts.cameraPreset.c_str()))
+                fxharness::turnXZ(fxharness::rigYawDeg(*pose), right.X, right.Z);
         targetAnimatedNode->setPosition(animatedNode->getPosition() + right * distance);
     }
     targetAnimatedNode->updateAbsolutePosition();
@@ -882,25 +890,15 @@ void addGroundPlane() {
     std::fflush(stdout);
 }
 
-const fxharness::CapturePose* b1130CapturePose() {
-    if (harnessOpts.cameraPreset == "b1130") return &fxharness::kB1130NpcPose;
-    if (harnessOpts.cameraPreset == "b1130-self") return &fxharness::kB1130SelfPose;
-    return nullptr;
-}
-
-// B1167 (#486): turn the fitted b1130 rig -- camera, caster, target -- about the
-// caster's vertical axis by the capture's rig yaw (fx_capture_pose.h), so the
-// world axes sit where the oracle's did relative to the camera: spellsnew.edd
-// +0x12C drifts along world +X (EQGraphicsDX9 0x10062917), which before this
-// turn ran straight across the screen while the oracle's ran into the scene.
-// The turn is rigid, so every pixel fact the fit solved (caster feet/height,
-// target feet) holds. Both actors turn WITH the rig and keep facing the
-// camera: their capture headings (caster 0 = her back three-quarters to the
-// camera, target 160) wait on a ruling, because fitting on the back-turned
-// caster moves the camera to 30.28 units and the target to 245 px, outside
-// the bless-only standing-height ratchet, while turning her after the fit
-// leaves her 200 px with feet row 591, off B1130's 209 px / 598
-// (refactor/B1167/README.md sec. 2 and RULING REQUEST).
+// B1167 (#486): turn the fitted preset rig -- camera, caster, target -- about
+// the caster's vertical axis by the capture's rig yaw (fx_capture_pose.h), so
+// the world axes sit where the capture's did: spellsnew.edd +0x12C drifts
+// along world +X (EQGraphicsDX9 0x10062917). The turn is rigid, so every
+// pixel fact the fit solved holds. The actors' capture headings are applied
+// by fitting on them (presetRotYDeg; the b1130 fit runs on the back-turned
+// caster so B1130's caster box 209 px / feet 598 holds, camera at 30.28 vs
+// the capture's 30) and the turn leaves exactly rotYForHeading(heading)
+// (refactor/B1167/README.md sec. 2 and 7; ratchet: fx_target_anchor.h).
 void turnB1130Rig(const fxharness::CapturePose& pose) {
     const float psi = fxharness::rigYawDeg(pose);
     const core::vector3df pivot = animatedNode ? animatedNode->getAbsolutePosition() : core::vector3df(0, 0, 0);
@@ -962,7 +960,7 @@ bool setupSpellTestCamera() {
             g.targetPx = fxharness::kB1130TargetAnchor.px;
             if (!fitFixedNpcTarget(g)) return false;
         }
-        if (const fxharness::CapturePose* pose = b1130CapturePose()) turnB1130Rig(*pose);
+        if (const fxharness::CapturePose* pose = fxharness::poseForPreset(harnessOpts.cameraPreset.c_str())) turnB1130Rig(*pose);
         if (harnessOpts.ground) addGroundPlane();
         return true;
     }

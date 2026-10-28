@@ -1,0 +1,214 @@
+r	e	c	o	r	d
+k	i	n	d
+a	x	i	s
+b	e	f	o	r	e
+a	f	t	e	r
+o	r	a	c	l	e
+b	1	1	7	1
+d	i	r	e	c	t	i	o	n
+o	w	n	e	r
+0	fixed_npc	landing_cov	2.206	2.278	3.945	2.243	nearer	B1167 continuation (the capture headings, this MR)
+0	fixed_npc	landing_end_s	6.700	6.667	6.670	6.667	nearer	B1167 continuation (the capture headings, this MR)
+0	fixed_npc	p90_land	0.047	0.044	0.061	0.044	farther	moved away by the heading; residual p90_land: B1164 (#483) attach scale s
+0	fixed_npc	source_cov	0.321	0.365	0.170	0.350	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+1	fixed_npc	landing_cov	1.281	1.358	3.050	1.380	nearer	B1167 continuation (the capture headings, this MR)
+1	fixed_npc	landing_end_s	6.533	6.467	6.580	6.567	farther	moved away by the heading; residual landing_end_s: unowned -- the row owner
+1	fixed_npc	p90_land	0.088	0.093	0.112	0.094	nearer	B1167 continuation (the capture headings, this MR)
+1	fixed_npc	source_cov	0.253	0.261	0.290	0.259	nearer	B1167 continuation (the capture headings, this MR)
+2	fixed_npc	landing_cov	0.611	0.591	2.250	0.687	farther	moved away by the heading; residual landing_cov: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288
+2	fixed_npc	landing_end_s	4.967	4.733	5.480	4.900	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+2	fixed_npc	p90_land	0.079	0.086	0.117	0.086	nearer	B1167 continuation (the capture headings, this MR)
+2	fixed_npc	source_cov	0.337	0.353	0.147	0.323	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+3	fixed_npc	landing_cov	6.300	6.584	11.688	6.093	nearer	B1167 continuation (the capture headings, this MR)
+3	fixed_npc	landing_end_s	4.100	4.067	9.000	4.100	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+3	fixed_npc	p90_land	0.134	0.073	0.043	0.166	nearer	B1167 continuation (the capture headings, this MR)
+3	fixed_npc	source_cov	0.103	0.113	0.076	0.077	farther	moved away by the heading; residual source_cov: unowned -- the row owner
+5	fixed_npc	landing_cov	0.252	0.283	0.559	0.267	nearer	B1167 continuation (the capture headings, this MR)
+5	fixed_npc	p90_land	0.040	0.042	0.042	0.039	nearer	B1167 continuation (the capture headings, this MR)
+5	fixed_npc	source_cov	0.182	0.218	0.180	0.192	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+7	fixed_npc	landing_cov	0.965	1.001	3.077	0.962	nearer	B1167 continuation (the capture headings, this MR)
+7	fixed_npc	landing_end_s	5.800	5.667	6.810	5.400	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+7	fixed_npc	p90_land	0.112	0.117	0.102	0.124	farther	moved away by the heading; residual p90_land: B1164 (#483) attach scale s
+7	fixed_npc	source_cov	0.465	0.499	0.390	0.435	farther	moved away by the heading; residual source_cov: B1170 (#489), per the B1173 (#492) analysis: the record-driven Middle-stage missile crosses the Source window
+10	fixed_self	landing_cov	1.579	2.249	5.476	1.573	nearer	B1167 continuation (the capture headings, this MR)
+10	fixed_self	landing_end_s	5.833	5.800	5.720	6.067	nearer	B1167 continuation (the capture headings, this MR)
+10	fixed_self	p90_land	0.137	0.124	0.101	0.126	nearer	B1167 continuation (the capture headings, this MR)
+10	fixed_self	source_cov	1.206	1.161	1.322	1.126	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+11	fixed_self	landing_cov	0.231	0.266	0.997	0.237	nearer	B1167 continuation (the capture headings, this MR)
+11	fixed_self	landing_end_s	4.367	4.100	5.510	4.400	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+11	fixed_self	source_cov	0.143	0.160	0.115	0.140	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+12	fixed_npc	landing_cov	4.571	4.784	5.788	4.563	nearer	B1167 continuation (the capture headings, this MR)
+12	fixed_npc	landing_end_s	6.967	6.833	7.040	7.033	farther	moved away by the heading; residual landing_end_s: unowned -- the row owner
+12	fixed_npc	p90_land	0.125	0.135	0.107	0.143	farther	moved away by the heading; residual p90_land: B1164 (#483) attach scale s
+12	fixed_npc	source_cov	1.554	1.699	1.096	1.442	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+13	fixed_npc	landing_cov	0.585	0.675	3.264	0.598	nearer	B1167 continuation (the capture headings, this MR)
+13	fixed_npc	landing_end_s	5.600	5.567	6.390	5.800	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+13	fixed_npc	p90_land	0.086	0.089	0.108	0.093	nearer	B1167 continuation (the capture headings, this MR)
+13	fixed_npc	source_cov	0.388	0.398	0.296	0.459	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+14	fixed_self	landing_cov	1.680	1.992	3.995	1.784	nearer	B1167 continuation (the capture headings, this MR)
+14	fixed_self	landing_end_s	8.467	8.433	8.600	8.433	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+14	fixed_self	p90_land	0.203	0.115	0.135	0.169	nearer	B1167 continuation (the capture headings, this MR)
+14	fixed_self	source_cov	0.119	0.136	0.083	0.112	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+15	fixed_npc	landing_cov	0.877	0.882	2.904	0.831	nearer	B1167 continuation (the capture headings, this MR)
+15	fixed_npc	landing_end_s	5.867	5.500	6.570	5.967	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+15	fixed_npc	source_cov	0.811	0.851	0.806	0.788	farther	moved away by the heading; residual source_cov: unowned -- the row owner
+16	fixed_npc	landing_cov	nan	0.811	1.343	0.724	farther	moved away by the heading; residual landing_cov: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288
+16	fixed_npc	landing_end_s	nan	5.167	5.700	5.300	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+16	fixed_npc	p90_land	nan	0.113	0.076	0.117	farther	moved away by the heading; residual p90_land: B1164 (#483) attach scale s
+16	fixed_npc	source_cov	0.251	0.236	0.169	0.252	nearer	B1167 continuation (the capture headings, this MR)
+17	fixed_self	landing_cov	1.155	1.215	3.655	1.245	nearer	B1167 continuation (the capture headings, this MR)
+17	fixed_self	landing_end_s	4.833	4.800	5.160	4.833	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+17	fixed_self	p90_land	0.099	0.095	0.097	0.105	farther	moved away by the heading; residual p90_land: unowned -- the row owner
+17	fixed_self	source_cov	0.607	0.661	0.663	0.631	nearer	B1167 continuation (the capture headings, this MR)
+18	fixed_npc	landing_cov	0.826	0.810	4.042	0.786	farther	moved away by the heading; residual landing_cov: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288
+18	fixed_npc	landing_end_s	5.200	5.133	5.360	5.233	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+18	fixed_npc	p90_land	0.143	0.135	0.132	0.141	nearer	B1167 continuation (the capture headings, this MR)
+18	fixed_npc	source_cov	0.517	0.545	0.296	0.519	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+19	fixed_self	landing_cov	1.311	1.497	2.332	1.355	nearer	B1167 continuation (the capture headings, this MR)
+19	fixed_self	landing_end_s	5.567	5.500	5.580	5.600	farther	moved away by the heading; residual landing_end_s: unowned -- the row owner
+19	fixed_self	source_cov	1.167	1.244	1.325	1.189	nearer	B1167 continuation (the capture headings, this MR)
+20	fixed_npc	landing_cov	2.087	2.390	4.679	2.115	nearer	B1167 continuation (the capture headings, this MR)
+20	fixed_npc	landing_end_s	6.067	5.800	6.260	6.000	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+20	fixed_npc	p90_land	0.105	0.101	0.107	0.099	farther	moved away by the heading; residual p90_land: unowned -- the row owner
+20	fixed_npc	source_cov	0.756	0.749	0.631	0.768	nearer	B1167 continuation (the capture headings, this MR)
+21	fixed_npc	landing_cov	3.621	3.851	5.976	3.521	nearer	B1167 continuation (the capture headings, this MR)
+21	fixed_npc	p90_land	0.066	0.070	0.068	0.069	farther	moved away by the heading; residual p90_land: unowned -- the row owner
+21	fixed_npc	source_cov	0.901	0.957	0.825	0.901	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+22	fixed_npc	landing_cov	2.770	2.970	4.636	2.543	nearer	B1167 continuation (the capture headings, this MR)
+22	fixed_npc	landing_end_s	4.800	4.700	4.830	4.800	farther	moved away by the heading; residual landing_end_s: unowned -- the row owner
+22	fixed_npc	p90_land	0.042	0.046	0.040	0.045	farther	moved away by the heading; residual p90_land: unowned -- the row owner
+22	fixed_npc	source_cov	0.335	0.449	0.256	0.361	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+23	fixed_npc	landing_cov	0.782	0.842	2.320	0.843	nearer	B1167 continuation (the capture headings, this MR)
+23	fixed_npc	landing_end_s	6.433	6.333	6.480	6.433	farther	moved away by the heading; residual landing_end_s: unowned -- the row owner
+23	fixed_npc	p90_land	0.037	0.035	0.052	0.031	farther	moved away by the heading; residual p90_land: B1164 (#483) attach scale s
+23	fixed_npc	source_cov	0.445	0.444	0.429	0.455	nearer	B1167 continuation (the capture headings, this MR)
+24	fixed_npc	landing_cov	1.959	2.166	3.839	2.039	nearer	B1167 continuation (the capture headings, this MR)
+24	fixed_npc	landing_end_s	6.050	5.883	6.400	6.183	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+24	fixed_npc	p90_land	0.110	0.109	0.100	0.117	nearer	B1167 continuation (the capture headings, this MR)
+24	fixed_npc	source_cov	0.992	0.936	0.703	0.960	nearer	B1167 continuation (the capture headings, this MR)
+25	fixed_npc	landing_cov	1.944	1.893	4.847	1.845	farther	moved away by the heading; residual landing_cov: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288
+25	fixed_npc	landing_end_s	6.633	6.600	6.640	6.567	farther	moved away by the heading; residual landing_end_s: unowned -- the row owner
+25	fixed_npc	p90_land	0.138	0.127	0.092	0.151	nearer	B1167 continuation (the capture headings, this MR)
+25	fixed_npc	source_cov	0.427	0.455	0.284	0.392	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+26	fixed_npc	landing_cov	1.363	1.546	8.003	1.682	nearer	B1167 continuation (the capture headings, this MR)
+26	fixed_npc	landing_end_s	4.700	4.667	5.050	4.900	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+26	fixed_npc	p90_land	0.099	0.096	0.038	0.100	nearer	B1167 continuation (the capture headings, this MR)
+26	fixed_npc	source_cov	0.473	0.430	0.405	0.396	nearer	B1167 continuation (the capture headings, this MR)
+27	fixed_npc	landing_cov	0.296	0.302	0.747	0.297	nearer	B1167 continuation (the capture headings, this MR)
+27	fixed_npc	landing_end_s	6.467	4.567	6.550	6.567	farther	moved away by the heading; residual landing_end_s: unowned -- the row owner
+27	fixed_npc	p90_land	0.031	0.033	0.037	0.032	nearer	B1167 continuation (the capture headings, this MR)
+27	fixed_npc	source_cov	0.202	0.189	0.179	0.220	nearer	B1167 continuation (the capture headings, this MR)
+28	fixed_npc	landing_cov	1.686	1.920	2.332	1.739	nearer	B1167 continuation (the capture headings, this MR)
+28	fixed_npc	landing_end_s	6.200	6.133	7.620	6.200	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+28	fixed_npc	p90_land	0.141	0.143	0.115	0.147	farther	moved away by the heading; residual p90_land: B1164 (#483) attach scale s
+28	fixed_npc	source_cov	0.790	0.825	0.612	0.798	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+29	fixed_npc	landing_cov	1.001	1.061	2.033	0.928	nearer	B1167 continuation (the capture headings, this MR)
+29	fixed_npc	landing_end_s	7.400	7.133	7.340	7.467	farther	moved away by the heading; residual landing_end_s: unattributed: over by <=0.35 s (FOLLOW-UP 3)
+29	fixed_npc	p90_land	0.139	0.135	0.114	0.145	nearer	B1167 continuation (the capture headings, this MR)
+29	fixed_npc	source_cov	0.270	0.229	0.148	0.275	nearer	B1167 continuation (the capture headings, this MR)
+30	fixed_npc	landing_cov	2.265	2.322	5.939	2.152	nearer	B1167 continuation (the capture headings, this MR)
+30	fixed_npc	landing_end_s	6.333	6.267	6.650	6.267	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+30	fixed_npc	p90_land	0.115	0.117	0.060	0.125	farther	moved away by the heading; residual p90_land: B1164 (#483) attach scale s
+30	fixed_npc	source_cov	0.142	0.178	0.074	0.141	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+31	fixed_npc	landing_cov	3.361	3.527	3.668	3.258	nearer	B1167 continuation (the capture headings, this MR)
+31	fixed_npc	p90_land	0.212	0.197	0.194	0.217	nearer	B1167 continuation (the capture headings, this MR)
+31	fixed_npc	source_cov	1.081	1.111	0.887	1.117	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+32	fixed_npc	landing_cov	4.562	4.591	6.547	4.406	nearer	B1167 continuation (the capture headings, this MR)
+32	fixed_npc	landing_end_s	7.183	7.117	8.800	7.183	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+32	fixed_npc	p90_land	0.047	0.043	0.035	0.061	nearer	B1167 continuation (the capture headings, this MR)
+32	fixed_npc	source_cov	0.818	0.858	0.535	0.825	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+33	fixed_npc	landing_cov	0.416	0.390	2.522	0.358	farther	moved away by the heading; residual landing_cov: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288
+33	fixed_npc	landing_end_s	5.050	4.883	5.260	5.117	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+33	fixed_npc	p90_land	0.041	0.042	0.072	0.040	nearer	B1167 continuation (the capture headings, this MR)
+33	fixed_npc	source_cov	0.103	0.151	0.051	0.104	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+34	fixed_npc	landing_cov	1.396	1.481	3.285	1.294	nearer	B1167 continuation (the capture headings, this MR)
+34	fixed_npc	landing_end_s	6.133	5.967	7.150	6.133	farther	moved away by the heading; residual landing_end_s: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold
+34	fixed_npc	p90_land	0.109	0.112	0.103	0.115	farther	moved away by the heading; residual p90_land: unowned -- the row owner
+34	fixed_npc	source_cov	0.416	0.464	0.435	0.451	farther	moved away by the heading; residual source_cov: B1164 (#483) attach scale s
+35	fixed_npc	landing_cov	4.341	4.855	7.283	4.612	nearer	B1167 continuation (the capture headings, this MR)
+35	fixed_npc	landing_end_s	5.317	5.283	6.950	5.350	farther	moved away by the heading; residual landing_end_s: B1167 (#486)
+35	fixed_npc	p90_land	0.102	0.095	0.080	0.121	nearer	B1167 continuation (the capture headings, this MR)
+35	fixed_npc	source_cov	1.838	1.257	1.142	1.855	nearer	B1167 continuation (the capture headings, this MR)
+41	fixed_npc	landing_cov	0.816	0.868	1.892	0.847	nearer	B1167 continuation (the capture headings, this MR)
+41	fixed_npc	p90_land	0.153	0.149	0.167	0.151	farther	moved away by the heading; residual p90_land: unowned -- the row owner
+41	fixed_npc	source_cov	0.211	0.190	0.150	0.216	nearer	B1167 continuation (the capture headings, this MR)
+tour 38	b1118	src	0.398	0.471	0.385		farther	moved away by the heading; residual src: unowned -- the row owner
+tour 41	b1118	land	2.502	2.770	2.478	2.666	nearer	B1167 continuation (the capture headings, this MR)
+tour 41	b1118	src	1.124	1.177	1.129		farther	moved away by the heading; residual src: unowned -- the row owner
+tour 54	b1118	land	1.131	1.219	1.204	1.696	nearer	B1167 continuation (the capture headings, this MR)
+tour 93	b1118	src	0.398	0.471	0.385		farther	moved away by the heading; residual src: unowned -- the row owner
+tour 253	b1118	land	4.292	5.018	5.306	5.028	nearer	B1167 continuation (the capture headings, this MR)
+tour 253	b1118	src	3.487	3.852	3.804		farther	B1167 continuation (the capture headings, this MR)
+tour 458	b1118	land	0.500	0.541	0.5	1.732	nearer	B1167 continuation (the capture headings, this MR)
+tour 458	b1118	src	0.115	0.093	0.12		farther	moved away by the heading; residual src: unowned -- the row owner
+tour 656	b1118	land	1.131	1.219	1.204	0.957	farther	B1167 continuation (the capture headings, this MR)
+r0	b1118	src	0.398	0.471	0.385		farther	moved away by the heading; residual src: unowned -- the row owner
+r1	b1118	src	0.309	0.258	0.304		farther	moved away by the heading; residual src: unowned -- the row owner
+r2	b1118	land	0.624	0.504	0.694		farther	moved away by the heading; residual land: unowned -- the row owner
+r2	b1118	src	0.327	0.396			farther	moved away by the heading; residual src: unowned -- the row owner
+r3	b1118	land	8.076	8.930	7.413		farther	moved away by the heading; residual land: unowned -- the row owner
+r3	b1118	src	0.141	0.089			farther	moved away by the heading; residual src: unowned -- the row owner
+r4	b1118	land	1.504	1.563	1.431		farther	moved away by the heading; residual land: unowned -- the row owner
+r5	b1118	land	0.247	0.262	0.248		farther	moved away by the heading; residual land: unowned -- the row owner
+r5	b1118	src	0.205	0.177	0.214		farther	moved away by the heading; residual src: unowned -- the row owner
+r6	b1118	land	0.395	0.421	0.401		farther	moved away by the heading; residual land: unowned -- the row owner
+r6	b1118	src	0.305	0.316	0.34		farther	B1167 continuation (the capture headings, this MR)
+r7	b1118	src	0.504	0.485	0.524		farther	moved away by the heading; residual src: unowned -- the row owner
+r8	b1118	land	0.458	0.297	0.261		farther	B1167 continuation (the capture headings, this MR)
+r8	b1118	src	0.562	0.585	0.55		farther	moved away by the heading; residual src: unowned -- the row owner
+r9	b1118	src	0.862	0.905	0.866		farther	moved away by the heading; residual src: unowned -- the row owner
+r10	b1118	land	1.533	1.744	1.57		farther	moved away by the heading; residual land: unowned -- the row owner
+r10	b1118	src	1.148	1.091			farther	moved away by the heading; residual src: unowned -- the row owner
+r11	b1118	land	0.226	0.235	0.232		farther	B1167 continuation (the capture headings, this MR)
+r11	b1118	src	0.137	0.132			farther	moved away by the heading; residual src: unowned -- the row owner
+r12	b1118	land	3.394	3.566	3.409		farther	moved away by the heading; residual land: unowned -- the row owner
+r12	b1118	src	1.778	1.908	1.744		farther	moved away by the heading; residual src: unowned -- the row owner
+r13	b1118	land	0.592	0.617	0.621		farther	B1167 continuation (the capture headings, this MR)
+r13	b1118	src	0.561	0.622	0.61		farther	B1167 continuation (the capture headings, this MR)
+r15	b1118	src	0.787	0.829	0.789		farther	moved away by the heading; residual src: unowned -- the row owner
+r16	b1118	land	0.791	0.865	0.846		farther	B1167 continuation (the capture headings, this MR)
+r16	b1118	src	0.747	0.722	0.76		farther	moved away by the heading; residual src: unowned -- the row owner
+r17	b1118	land	1.118	1.209	1.237		farther	B1167 continuation (the capture headings, this MR)
+r17	b1118	src	0.587	0.664	0.603		farther	moved away by the heading; residual src: unowned -- the row owner
+r18	b1118	src	0.415	0.449	0.433		farther	B1167 continuation (the capture headings, this MR)
+r19	b1118	land	1.278	1.403	1.297		farther	moved away by the heading; residual land: unowned -- the row owner
+r19	b1118	src	1.117	1.186	1.129		farther	moved away by the heading; residual src: unowned -- the row owner
+r20	b1118	land	2.111	2.260	2.113		farther	moved away by the heading; residual land: unowned -- the row owner
+r20	b1118	end	+5.633	+5.467	+5.567		farther	moved away by the heading; residual end: unowned -- the row owner
+r20	b1118	src	1.083	1.145	1.079		farther	moved away by the heading; residual src: unowned -- the row owner
+r21	b1118	src	0.938	0.985			farther	moved away by the heading; residual src: unowned -- the row owner
+r22	b1118	land	2.384	2.468	2.125		farther	moved away by the heading; residual land: unowned -- the row owner
+r22	b1118	src	0.296	0.443	0.325		farther	moved away by the heading; residual src: unowned -- the row owner
+r23	b1118	land	0.815	0.947	0.838		farther	moved away by the heading; residual land: unowned -- the row owner
+r24	b1118	land	1.780	1.850	1.76		farther	moved away by the heading; residual land: unowned -- the row owner
+r24	b1118	src	1.336	1.418	1.282		farther	moved away by the heading; residual src: unowned -- the row owner
+r25	b1118	land	2.094	2.168	2.088		farther	moved away by the heading; residual land: unowned -- the row owner
+r25	b1118	end	+6.567	+6.467	+6.533		farther	moved away by the heading; residual end: unowned -- the row owner
+r25	b1118	src	0.425	0.522			farther	moved away by the heading; residual src: unowned -- the row owner
+r26	b1118	land	1.561	1.882	1.87		farther	B1167 continuation (the capture headings, this MR)
+r26	b1118	end	+4.500	+4.700	+4.667		farther	B1167 continuation (the capture headings, this MR)
+r27	b1118	land	0.247	0.273	0.244		farther	moved away by the heading; residual land: unowned -- the row owner
+r27	b1118	src	0.175	0.166	0.178		farther	moved away by the heading; residual src: unowned -- the row owner
+r28	b1118	land	1.581	1.759	1.635		farther	moved away by the heading; residual land: unowned -- the row owner
+r28	b1118	src	1.383	1.518	1.419		farther	moved away by the heading; residual src: unowned -- the row owner
+r29	b1118	land	0.995	1.064	0.897		farther	moved away by the heading; residual land: unowned -- the row owner
+r29	b1118	src	0.407	0.460	0.411		farther	moved away by the heading; residual src: unowned -- the row owner
+r30	b1118	land	2.402	2.536	2.286		farther	moved away by the heading; residual land: unowned -- the row owner
+r30	b1118	src	0.185	0.143	0.185		farther	moved away by the heading; residual src: unowned -- the row owner
+r31	b1118	land	2.489	2.799	2.498		farther	moved away by the heading; residual land: unowned -- the row owner
+r31	b1118	src	1.183	1.240	1.166		farther	moved away by the heading; residual src: unowned -- the row owner
+r32	b1118	land	4.203	4.335	4.09		farther	moved away by the heading; residual land: unowned -- the row owner
+r32	b1118	src	0.837	0.938	0.852		farther	moved away by the heading; residual src: unowned -- the row owner
+r33	b1118	land	0.395	0.414	0.361		farther	moved away by the heading; residual land: unowned -- the row owner
+r33	b1118	src	0.116	0.094			farther	moved away by the heading; residual src: unowned -- the row owner
+r34	b1118	land	1.103	1.152	1.068		farther	moved away by the heading; residual land: unowned -- the row owner
+r34	b1118	src	0.414	0.451			farther	moved away by the heading; residual src: unowned -- the row owner
+r35	b1118	land	4.293	5.010	5.297		farther	B1167 continuation (the capture headings, this MR)
+r35	b1118	src	3.491	3.853	3.806		farther	B1167 continuation (the capture headings, this MR)
+r40	b1118	land	0.663	0.922	0.639		farther	moved away by the heading; residual land: unowned -- the row owner
+r40	b1118	src	1.314	1.099	0.986		farther	B1167 continuation (the capture headings, this MR)
+r41	b1118	land	1.016	0.651	0.8		farther	B1167 continuation (the capture headings, this MR)
+r41	b1118	src	0.235	0.169	0.222		farther	moved away by the heading; residual src: unowned -- the row owner
+r42	b1118	land	0.187	0.209	0.204		farther	B1167 continuation (the capture headings, this MR)
+r43	b1118	land	0.545	0.381	0.39		farther	B1167 continuation (the capture headings, this MR)
+r43	b1118	src	0.352	0.336	0.328		farther	B1167 continuation (the capture headings, this MR)

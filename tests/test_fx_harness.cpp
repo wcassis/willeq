@@ -372,8 +372,9 @@ TEST_F(FxHarness, ALevelOneCasterDrawsOnlyItsLevelZeroSlots) {
 // fx_target_anchor.h -- B1130's 652/325 began at the name label). Its height
 // is the model's own at that spot (two feet pixels fix x, z): the harness's
 // self-check asserts it equals the solved standing height and the MEASURED
-// standing height 238 +-3 px (0.826x the oracle's 288; fx_target_anchor.h
-// kStandingPx), and prints PASS in run.log.
+// standing height 245 +-3 px (0.851x the oracle's 288 at the capture-heading
+// pose; fx_target_anchor.h kStandingPx, re-measured by B1167's continuation),
+// and prints PASS in run.log.
 struct Silhouette {
     int top = -1, bottom = -1, n = 0;
     double col = 0;
@@ -435,8 +436,9 @@ void checkB1130Frame(const fs::path& frames, bool expectTarget, irr::video::IVid
         EXPECT_NEAR(t.bottom, a.feetY, fxharness::kFeetTolPx) << "target feet row (the oracle's measured feet)";
         EXPECT_NEAR(t.col, a.feetX, fxharness::kColumnTolPx) << "target column centroid";
         EXPECT_NEAR(t.bottom - t.top + 1, fxharness::kStandingPx, fxharness::kStandingTolPx)
-            << "target pixel height: not the measured standing human (238 px; the B1155 rest-pose strip was 50 "
-               "px, a dark-elf female at the spot 219)";
+            << "target pixel height: not the measured standing human (245 px at the capture "
+               "heading; the B1155 rest-pose strip was 50 px, a dark-elf female at the spot 219 "
+               "face-on)";
     }
     img->drop();
 }
@@ -635,27 +637,27 @@ TEST(B1166TargetAnchor, AStandingBodyOnTheAnchorPasses) {
     const auto& a = fxharness::kB1130TargetAnchor;
     SynthFrame f;
     f.box(620, 389, 660, 598);  // the caster, outside the window
-    f.box(920, 378, 960, 615);  // 238 px, feet 615, centroid 940
+    f.box(920, 371, 960, 615);  // 245 px, feet 615, centroid 940 (the turned target)
     const auto s = f.measure(a);
-    EXPECT_EQ(s.top, 378);
+    EXPECT_EQ(s.top, 371);
     EXPECT_EQ(s.bottom, 615);
-    EXPECT_EQ(s.height(), 238);
+    EXPECT_EQ(s.height(), 245);
     EXPECT_DOUBLE_EQ(s.col, 940.0);
-    const auto c = fxharness::checkTargetAnchor(s, a, 238.0f);
+    const auto c = fxharness::checkTargetAnchor(s, a, 245.0f);
     EXPECT_TRUE(c.ok());
-    EXPECT_NEAR(c.ratio, 238.0f / 288.0f, 1e-6f);
+    EXPECT_NEAR(c.ratio, 245.0f / 288.0f, 1e-6f);
 }
 
-// The standing-height ratchet (fx_target_anchor.h kStandingPx 238 +-3): the
-// heights other bodies rendered at the anchor with `--target`
-// (review/B1166/worker/wrong_model/wrong_model_heights.tsv) all fail it, though
-// every one of them passed the earlier +-25 %-of-288 bound (216..360 px);
-// 235..241 passes. Each body is fitted to itself (fitPx = its own height), so
-// only the ratchet can reject it.
+// The standing-height ratchet (fx_target_anchor.h kStandingPx 245 +-3 at the
+// capture-heading pose): the heights other bodies rendered at the anchor with
+// `--target` (review/B1166/worker/wrong_model/wrong_model_heights.tsv, face-on)
+// all fail it, though every one of them passed the earlier +-25 %-of-288 bound
+// (216..360 px); 242..248 passes. Each body is fitted to itself (fitPx = its
+// own height), so only the ratchet can reject it.
 TEST(B1166TargetAnchor, TheStandingHeightRatchetRejectsOtherBodies) {
     const auto& a = fxharness::kB1130TargetAnchor;
-    EXPECT_FLOAT_EQ(fxharness::kStandingPx, 238.0f);
-    EXPECT_NEAR(fxharness::kStandingPx / a.px, 0.826f, 0.001f);
+    EXPECT_FLOAT_EQ(fxharness::kStandingPx, 245.0f);
+    EXPECT_NEAR(fxharness::kStandingPx / a.px, 0.851f, 0.001f);
     struct Body { const char* what; int px; };
     for (const Body b : {Body{"human female 1:1:6", 217}, Body{"dark-elf female 6:1:6 (the caster model)", 219},
                          Body{"human male at size 7", 277}, Body{"barbarian male 2:0:6", 285},
@@ -670,7 +672,7 @@ TEST(B1166TargetAnchor, TheStandingHeightRatchetRejectsOtherBodies) {
         EXPECT_FALSE(c.standOk) << b.what << " passed the standing-height ratchet";
         EXPECT_FALSE(c.ok()) << b.what;
     }
-    for (int px : {235, 238, 241}) {
+    for (int px : {242, 245, 248}) {
         SynthFrame f;
         f.box(920, 616 - px, 960, 615);
         EXPECT_TRUE(fxharness::checkTargetAnchor(f.measure(a), a, static_cast<float>(px)).ok()) << px << " px";
@@ -684,7 +686,7 @@ TEST(B1166TargetAnchor, TheRestPoseStripAndAnOffsetBodyFail) {
         f.box(930, 566, 950, 615);
         const auto c = fxharness::checkTargetAnchor(f.measure(a), a, 50.0f);
         EXPECT_TRUE(c.feetOk && c.colOk && c.pxOk);
-        EXPECT_FALSE(c.standOk) << "a 50 px body is not the measured 238 px standing human";
+        EXPECT_FALSE(c.standOk) << "a 50 px body is not the measured 245 px standing human";
         EXPECT_FALSE(c.ok());
     }
     {   // ... and its running frames: the standing body 316 px with feet at 782
@@ -708,14 +710,16 @@ TEST(B1166TargetAnchor, TheRestPoseStripAndAnOffsetBodyFail) {
     }
 }
 
-// B1167 (#486): the b1130 rig's world yaw from the capture facts
-// (fx_capture_pose.h; refactor/B1167/README.md sec. 2).
+// B1167 (#486): the presets' world yaw from the capture facts
+// (fx_capture_pose.h; refactor/B1167/README.md sec. 2 and 7).
 TEST(B1167CapturePose, TheRigYawPutsTheCameraAtTheCapturesDirHeading) {
     EXPECT_FLOAT_EQ(fxharness::rigYawDeg(fxharness::kB1130NpcPose), 45.0f);    // heading 0 + 135 - 90
     EXPECT_FLOAT_EQ(fxharness::rigYawDeg(fxharness::kB1130SelfPose), 157.5f);  // heading 160 (112.5) + 135 - 90
+    EXPECT_FLOAT_EQ(fxharness::rigYawDeg(fxharness::kB1118Pose), 202.5f);      // heading 112.5 + 180 - 90
     // The fitted camera sits on +Z of the caster (angle 90); turned, it sits
-    // at the capture's caster heading + Camera1-DirHeading 192 (135 deg).
-    for (const auto* pose : {&fxharness::kB1130NpcPose, &fxharness::kB1130SelfPose}) {
+    // at the capture's caster heading + its DirHeading (135 deg for B1130's
+    // user camera 1, 180 deg for B1118's pinned chase camera).
+    for (const auto* pose : {&fxharness::kB1130NpcPose, &fxharness::kB1130SelfPose, &fxharness::kB1118Pose}) {
         float x = 0.0f, z = 30.0f;
         fxharness::turnXZ(fxharness::rigYawDeg(*pose), x, z);
         const float at = std::atan2(z, x) * 180.0f / 3.14159265f;
@@ -726,20 +730,52 @@ TEST(B1167CapturePose, TheRigYawPutsTheCameraAtTheCapturesDirHeading) {
     EXPECT_FLOAT_EQ(fxharness::rotYForHeading(160.0f), -112.5f);
 }
 
+// B1167's continuation: the actors' fit-frame rotations -- after the rig turn
+// subtracts psi, each actor sits at rotYForHeading(its capture heading).
+TEST(B1167CapturePose, TheActorsFitOnTheirCaptureHeadingsAndEndAtThem) {
+    for (const auto* pose : {&fxharness::kB1130NpcPose, &fxharness::kB1130SelfPose, &fxharness::kB1118Pose}) {
+        const float psi = fxharness::rigYawDeg(*pose);
+        for (const float h : {pose->casterHeading512, pose->targetHeading512}) {
+            const float r0 = fxharness::presetRotYDeg(*pose, h);
+            EXPECT_NEAR(std::remainder(r0 - psi - fxharness::rotYForHeading(h), 360.0f), 0.0f, 1e-4f)
+                << "the turn does not leave the actor at its capture heading";
+        }
+    }
+    // b1130: the caster three-quarters back (45 deg), the target 22.5 deg off
+    // face-on (-67.5); b1118: both fully back to the chase camera (90).
+    EXPECT_FLOAT_EQ(fxharness::presetRotYDeg(fxharness::kB1130NpcPose, 0.0f), 45.0f);
+    EXPECT_FLOAT_EQ(fxharness::presetRotYDeg(fxharness::kB1130NpcPose, 160.0f), -67.5f);
+    EXPECT_FLOAT_EQ(fxharness::presetRotYDeg(fxharness::kB1118Pose, 160.0f), 90.0f);
+}
+
 TEST(B1167CapturePose, TheTurnedTargetStandsOnTheCapturesBearing) {
     // B1166's solved target offset (review/B1166/worker/probe/after.log:125:
-    // x -8.888, z 0.924), turned by the npc yaw, against the capture's offset
-    // from the caster: #spawn at (-74, 428), caster #goto (-67.6, 434.4) in
-    // server x/y, i.e. (zone x, zone y) = (server y, server x) = (-6.4, -6.4)
-    // -> Irrlicht (x, z) = (-6.4, -6.4).
-    const float cx = -6.4f, cz = -6.4f;
-    float x = -8.888f, z = 0.924f;
-    const float before = std::atan2(z, x) - std::atan2(cz, cx);
-    fxharness::turnXZ(fxharness::rigYawDeg(fxharness::kB1130NpcPose), x, z);
-    const float after = std::atan2(z, x) - std::atan2(cz, cx);
-    const float d = std::fabs(std::remainder(after * 180.0f / 3.14159265f, 360.0f));
-    EXPECT_LT(d, 6.0f) << "turned target bearing off the capture's by " << d << " deg";
-    EXPECT_GT(std::fabs(std::remainder(before * 180.0f / 3.14159265f, 360.0f)), 50.0f)
-        << "the un-turned rig already matched the capture";
-    EXPECT_LT(std::hypot(x - cx, z - cz), 1.0f);
+    // x -8.888, z 0.924, the face-on target), turned by the npc yaw, against
+    // the capture's offset from the caster: #spawn at (-74, 428), caster
+    // #goto (-67.6, 434.4) in server x/y, i.e. (zone x, zone y) = (server y,
+    // server x) = (-6.4, -6.4) -> Irrlicht (x, z) = (-6.4, -6.4). The continuation
+    // re-measured the solve on the turned target (heading 160,
+    // 22.5 deg off face-on): x -8.685, z 0.272 (review/B1167/worker/settle5/
+    // settle5_b1130/run.log, tgt fit 2; post-turn target -6.334/-5.949 in the
+    // same log's rig line).
+    struct Probe { const char* what; float x, z; float tolAfterDeg; float tolUnits; };
+    // The face-on solve lands 5.9 deg / 0.94 units from the capture; the
+    // turned solve 1.6 deg / 0.49 units. The face-on probe is the case that
+    // proves the turn is doing the work: 50.9 deg off the bearing pre-turn.
+    // The turned probe sits 47.0 deg off pre-turn (its heading is already
+    // 22.5 deg off face-on), so it does not claim the >50 deg bound.
+    for (const Probe& p : {Probe{"face-on (B1166)", -8.888f, 0.924f, 6.0f, 1.0f},
+                           Probe{"turned (B1167 cont.)", -8.685f, 0.272f, 3.0f, 0.6f}}) {
+        const float cx = -6.4f, cz = -6.4f;
+        float x = p.x, z = p.z;
+        const float before = std::atan2(z, x) - std::atan2(cz, cx);
+        fxharness::turnXZ(fxharness::rigYawDeg(fxharness::kB1130NpcPose), x, z);
+        const float after = std::atan2(z, x) - std::atan2(cz, cx);
+        const float d = std::fabs(std::remainder(after * 180.0f / 3.14159265f, 360.0f));
+        EXPECT_LT(d, p.tolAfterDeg) << p.what << ": turned target bearing off the capture's by " << d << " deg";
+        EXPECT_LT(std::hypot(x - cx, z - cz), p.tolUnits) << p.what << ": turned target " << x << "/" << z;
+        if (p.what[0] == 'f')
+            EXPECT_GT(std::fabs(std::remainder(before * 180.0f / 3.14159265f, 360.0f)), 50.0f)
+                << "the un-turned rig already matched the capture";
+    }
 }

@@ -133,9 +133,18 @@ int main(int argc, char* argv[]) {
     // Add camera
     if (spellTestMode) {
         // B1155: a preset that does not solve to its recorded pixels is a
-        // framing defect, not something to render through.
+        // framing defect, not something to render through. B1167's
+        // continuation: the failure path must run the same cleanup as the
+        // normal return (shutdownHarness drops the texture caches and
+        // equipment nodes) BEFORE device->drop(), or their static
+        // destructors free GL resources through the dead driver at exit
+        // (SIGSEGV in ConstrainedTextureCache::destroyTextures -- the
+        // shutdownHarness comment says this exact thing).
         if (!setupSpellTestCamera()) {
             std::fprintf(stderr, "[fx-harness] the --camera preset did not solve to its recorded geometry\n");
+            spellFX.clearAllEffects();
+            if (spellVisualFX) spellVisualFX->clearAllEffects();
+            shutdownHarness();
             device->drop();
             return 2;
         }

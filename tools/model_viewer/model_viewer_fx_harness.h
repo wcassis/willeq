@@ -126,9 +126,9 @@ extern HarnessOptions harnessOpts;
 // harness frames: a profile view from a +Z camera).
 constexpr float kHarnessFaceOnRotY = -90.0f;
 
-// B1167 (#486): the b1130 presets' capture pose (fx_capture_pose.h) -- null for
-// b1118 and the interactive framing, which keep kHarnessFaceOnRotY.
-const fxharness::CapturePose* b1130CapturePose();
+// B1167 (#486): the preset's capture pose is fxharness::poseForPreset in
+// fx_capture_pose.h (non-null for all three presets b1118, b1130, b1130-self;
+// null for the interactive framing, which keeps kHarnessFaceOnRotY).
 
 // Parses a plan; false (with `err`) on a malformed row. '#' lines are comments.
 bool parseHarnessPlan(const std::string& path, std::vector<HarnessCast>& out, std::string& err);

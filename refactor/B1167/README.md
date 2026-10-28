@@ -57,7 +57,8 @@ to their plain binaries in every number: `mx_pristine_before_all` = `mx_before_a
    passes as 1 (B1164 sec. 4). Not attributable to a word from evidence here: FOLLOW-UP 1.
 5. **Acceptance C**: on this branch p90_src moves toward the oracle (0.335 -> 0.106; |d| 0.177 ->
    0.052), source_cov does not move (1.855 -> 1.842), landing_cov moves away (4.612 -> 4.359). With
-   the capture headings (the ruling) all three move toward it: 1.263 / 4.858 / 0.117. tour-7 on
+   the capture headings (the ruling, granted 2026-10-27) the final sweep moves land and source
+   toward it: 4.341 -> 4.855 / 1.838 -> 1.257 (sec. 7). tour-7 on
    b1118 moves (the orient fix is the client's, b1118 included): sec. 5.
 
 ## 1. Re-measured at the fixed anchor: level 5 vs level 60
@@ -100,25 +101,26 @@ The b1130 rig before B1167: caster at the origin facing +Z, the camera fitted on
 (`kHarnessFaceOnRotY`), the target solved at the anchor (B1166) -- world +X ran exactly to
 screen-left. The client's camera sits at DirHeading from the player's heading, so in the
 capture's world the camera is at 0 + 135 = 135 deg from the caster, i.e. the fitted rig is
-45 deg off. `turnB1130Rig` (`tools/model_viewer/model_viewer_fx_harness.cpp:904`) turns camera,
+45 deg off. `turnB1130Rig` (`tools/model_viewer/model_viewer_fx_harness.cpp:925`) turns camera,
 caster and target about the caster's vertical axis by
-`rigYawDeg = caster heading + DirHeading - 90` (`tools/model_viewer/fx_capture_pose.h:67`; 45 deg
-for b1130, 157.5 deg for b1130-self, `kB1130NpcPose` / `kB1130SelfPose` at
-`tools/model_viewer/fx_capture_pose.h:53-54`). A rigid turn moves no pixel the fit solved (the
+`rigYawDeg = caster heading + DirHeading - 90` (`tools/model_viewer/fx_capture_pose.h:82`; 45 deg
+for b1130, 157.5 deg for b1130-self, 202.5 deg for b1118, `kB1130NpcPose` / `kB1130SelfPose` /
+`kB1118Pose` at `tools/model_viewer/fx_capture_pose.h:63-64, 69`). A rigid turn moves no pixel the
+fit solved (the
 frame-0 self-check still reads the target at 238 px, feet 615, column 940.2:
 `/mnt/projects/fable/review/B1167/worker/runs/fix3_b1130_l60/run.log`).
 
 **Independent check.** B1166's fit knows only two screen pixels, yet its solved target offset
 (x -8.888, z 0.924; `review/B1166/worker/probe/after.log:125`), turned by 45 deg, is
 (-6.938, -5.632) -- 5.9 deg and 0.94 units from the capture's own offset (-6.4, -6.4)
-(`B1167CapturePose.TheTurnedTargetStandsOnTheCapturesBearing`, `tests/test_fx_harness.cpp:729`;
+(`B1167CapturePose.TheTurnedTargetStandsOnTheCapturesBearing`, `tests/test_fx_harness.cpp:751`;
 un-turned it is 50.9 deg off). The camera distance the fit solves on a back-turned caster,
 30.28 units (`runs/fix1_b1130_l60/run.log`), also lands on the capture's `Camera1-Distance=30`.
 
 **The actors' own headings are NOT applied** (RULING REQUEST): the oracle's caster has her back
 three-quarters to the camera (heading 0, camera at 135 deg), its target stands 22.5 deg off
 face-on. On this branch both turn with the rig and keep facing the camera
-(`tools/model_viewer/model_viewer_spell_test.cpp:293-294`). The two ways to apply them each break a
+(`tools/model_viewer/model_viewer_spell_test.cpp:296-303`). The two ways to apply them each break a
 standing check:
 
 | variant | caster frame 0 | target frame 0 | blocked by |
@@ -160,7 +162,7 @@ client it follows the world, not the actor.
   direction an attached emitter orients to -- a hand id its bone's direction (as before), every
   other id the node's +X in world space (row 0); used by the live renderer
   (`src/client/graphics/renderer/renderer_entities.cpp:357`) and the harness
-  (`tools/model_viewer/model_viewer_fx_harness.cpp:663`).
+  (`tools/model_viewer/model_viewer_fx_harness.cpp:672`).
 - Tests: `SlotRules.AnAttachedSlotOrientsToItsActor` (`tests/test_spell_slot_rules.cpp:310`, record
   80 at level 60: all Source and all 8 landing commands request the direction) and
   `SlotRulesSim.AnAttachedRecordEmitterSpawnsInItsActorsFrame` (`tests/test_spell_slot_rules.cpp:374`:
@@ -307,7 +309,90 @@ land and end hold. Owner: the frame change (sec. 3), the client's rule; the b111
 - Bless-only files: none changed (no golden, manifest, baseline, ratchet or
   `config/constrained_presets.json`); the throwaway instrument worktrees are not part of the branch.
 
-## RULING REQUEST
+## 7. Continuation: the capture's actor headings (the ruling, MR !328 note 8011, 2026-10-27)
+
+**The ruling.** Yes to the headings: the turned target is re-solved on the turned heading, the
+standing-height ratchet re-measured for the new pose (238 -> ~245 px), the camera fitted on the
+back-turned caster so B1130's caster box (209 px, feet 598) holds and the distance lands at ~30
+(the capture's `Camera1-Distance=30`), and the b1118 preset gets the same treatment from its own
+capture (FOLLOW-UP 2) in the same leg. Will's rule: the oracle is reproduced exactly, never
+approximated.
+
+**The change.** The capture poses gain the actors' headings -- b1130 caster 0 / target 160,
+b1130-self caster 160, b1118 caster 160 / target 160 (`kB1130NpcPose` / `kB1130SelfPose` /
+`kB1118Pose`, `tools/model_viewer/fx_capture_pose.h:64-70`; the pcaps of sec. 2 and
+`review/B1118/oracle_druid/capture.pcap`) -- and `fxharness::poseForPreset`
+(`fx_capture_pose.h:73`) names them per preset. The preset's rig turn (`rigYawDeg`, unchanged:
+45 / 157.5 / 202.5 deg) now applies to all three presets (`turnB1130Rig`,
+`tools/model_viewer/model_viewer_fx_harness.cpp:902, 963`); each actor is fitted at
+`presetRotYDeg(pose, heading)` (`fx_capture_pose.h:100`) in the fitted frame, so after the turn
+it sits at exactly `rotYForHeading(its capture heading)` -- b1130: caster rotY 0, target rotY
+-112.5 (the caster with her back to the camera, as the capture shows); applied to the actors by
+`tools/model_viewer/model_viewer_spell_test.cpp:295-301`. The b1130 target is re-solved on the
+turned bearing by the frame-0 silhouette fit (`fitFixedNpcTarget`, `:250`; finite-difference
+step 0.05 -> 0.25 units, `:346` -- 0.05 moves the silhouette less than a pixel at ~30 units
+range): **x -8.685 z 0.272**, post-turn x -6.334 z -5.949
+(`/mnt/projects/fable/review/B1167/continuation/settle5/settle5_b1130/run.log`, `tgt fit 2`); the
+spell test's distance offset turns with the rig (`:851`) or a distance-14 target lands 90 deg
+the wrong way round.
+
+**The proofs (settle5, caster level 60, `/mnt/projects/fable/review/B1167/continuation/settle5/`).** All three presets settle solid:
+- **b1130** (fixed_npc): the B1130 caster box holds at **209 px, feet row 598**, distance
+  **30.28** (the capture's 30), the caster turned to heading 0 with her back to the camera; the
+  target stands on the capture's bearing 160 at **245 px** standing (rows 370..615), feet at row
+  615, column 940 -- B1166's anchor rule unchanged (its run.log self-check line).
+- **b1130-self** (fixed_self): the caster is the back-turned actor (heading 160); the box holds;
+  the target is unused.
+- **b1118**: caster heading 160 (90 deg off the pinned chase camera, az 180 = 256/512), target
+  heading 160 at the solved x -6.334 z -5.949.
+
+The turned target's bearing is pinned by
+`B1167CapturePose.TheTurnedTargetStandsOnTheCapturesBearing`
+(`tests/test_fx_harness.cpp:751`): the pre-turn offset sits 47.0 deg off the facing and the
+post-turn offset on the 160 bearing within 3 deg / 0.6 units -- per-probe tolerances, because
+the face-on probe of the same test still claims the old > 50 deg off-heading bound.
+
+**The ratchet.** `kStandingPx` 238 -> **245** (`tools/model_viewer/fx_target_anchor.h:82`),
+re-measured for the back-turned target at the b1130 solved position (x -8.685 z 0.272): the box
+is rows 370..615 = 245 px on frame 0 (246 px on the solved frame), feet at row 615, column 940
+(settle5_b1130 run.log self-check line). B1166's self-check (`B1130SelfCheckRejectsAWrongTargetModel`,
+`tests/test_fx_harness.cpp:465`) still passes on the new preset and fails on a wrong body. B1172
+#491 (285) is not on this branch's cut (eff3de46); whichever value lands on fable re-measures
+the same way.
+
+**b1118 (FOLLOW-UP 2, closed).** Decoded from B1118's own capture the same way:
+`review/B1118/oracle_druid/capture.pcap` shows the SELF caster heading **160 on 168/168 frames**
+and the TrollF spawn at heading 160; the committed fable leg B matches
+(`fable_B/capture.pcap`: caster heading 160, TrollF x -74.000 y 428.000 z 3.750 heading 160.000
+-- `/mnt/projects/fable/review/B1167/continuation/b1118_poses/`). The preset is turned to it (`kB1118Pose`, rig yaw 202.5 deg). Delta
+vs the committed B1118 framing: those PNGs were deleted in that leg's cleanup, so the proof is
+against the pcaps; B1178 #497 is re-capturing the frame references.
+
+**Re-gate (before = branch tip eff3de46, after = this tip; level 60; ThinkPad).** Tables in
+`refactor/B1167/contintables/` (`refactor/B1167/scripts/tables_cont.sh`):
+- **r35 at the ruling's numbers**: land 4.341 -> **4.855** (oracle 7.283; the ruling's throwaway
+  single-row measurement: 4.359 -> 4.858), source 1.838 -> **1.257** (oracle 1.142; ruling:
+  1.842 -> 1.263), p90_land 0.102 -> 0.095 (oracle 0.080; ruling's p90_src 0.106 -> 0.117).
+- **r16 (FOLLOW-UP 4, closed)**: the landing run lost in the attached-frame change (nan in
+  before) comes back with the turned heading: land **0.811** (oracle 1.343; B1171's face-on
+  level-60 0.724). The run was geometry-bound, not word-bound: face-on actors put it outside the
+  crop; the residual to the oracle's 1.343 is the landing family (B1164's s + B1172's target
+  height, `owners_cont.tsv`).
+- b1130 40 records: landing_cov **28 nearer / 5 farther**; p90_land 17/13 (PASS 14 -> 19);
+  landing_end_s 2/27 (PASS 9 -> 5); source_cov 12/21 (PASS 2 -> 2). The end-time axis moves
+  ~0.07 s earlier on most rows -- the fixed crop window sees a different world slice after the
+  turn; each moved row's owner is `owners_cont.tsv` (the farther ones carry the same families
+  B1171 already named).
+- b1118 47 rows: **46 moved**, 0 frames identical (the turn moves every frame). Tour land vs the
+  lane-5 reference: 253 **5.018 vs 5.028** (before 4.292), 41 2.770 vs 2.666, 54 1.219 vs 1.696,
+  656 1.219 vs 0.957, 458 0.541 vs 1.732, 38 1.978 vs 2.650, 93 1.978 vs 3.049.
+
+**Verification.** Targeted ctest on the ThinkPad (all 15 `test_fx_harness` tests including the
+four live B1130 renders and the new bearing test), hygiene, the cite check and the MR pipeline
+-- results in the MR note. Bless-only: `kStandingPx` 238 -> 245 is the ruling's re-measured
+ratchet (the RULING below, granted); no other bless-only file changed.
+
+## RULING (granted 2026-10-27, MR !328 note 8011 -- applied in sec. 7)
 
 Apply the B1130 capture's actor headings in the b1130 presets (caster 0 / target 160 on
 b1130, caster 160 on b1130-self; `tools/model_viewer/fx_capture_pose.h`) by fitting the camera on
@@ -323,13 +408,15 @@ effect on r35: source 1.842 -> 1.263, landing 4.359 -> 4.858, p90_src 0.106 -> 0
    |dx| < 0.5 vs willeq 0.118 (sec. 4); the Target emitters' speeds are x s in the client and
    willeq passes s = 1. Owner: B1164's attach-scale line (#483 FOLLOW-UP) -- the target model's
    point matrix needs a runtime read (lane 5) or the model-data trace of `0x10039480`'s input.
-2. **b1118's rig yaw.** The b1118 preset is not turned (its capture, B1118's, has its own headings
-   and camera); record 104's drift and every actor-oriented emitter there still sit in the
-   pre-B1167 world frame relative to that camera. Owner: the b1118 preset (B1139 layout); same
-   method as sec. 2 on `review/B1118/oracle_druid/capture.pcap`.
+2. **b1118's rig yaw -- CLOSED by sec. 7.** The b1118 preset is now turned to B1118's own
+   capture (caster 160 / target 160, chase camera az 180 = 256/512, `kB1118Pose`); proof against
+   the pcaps (the committed frames were deleted in that leg's cleanup); B1178 #497 re-captures
+   the frame references.
 3. **The knock-back.** Whirling Wind pushes the oracle's target 2 units (server y +2, z +2) at
    OP_Action (`/mnt/projects/fable/review/B1167/worker/oracle_poses/e35_target.txt:5`); the harness
    target does not move. Owner: the harness's plan packets (no ClientUpdate replay).
-4. **r16 (spell 242) loses its b1130 landing run** with the frame change (0.720 -> n-a,
-   `refactor/B1167/tables/b1130_table.tsv`); not traced here. Owner: the attached-frame change
-   (sec. 3) together with the face-on harness actors (RULING REQUEST): re-measure after the ruling.
+4. **r16 (spell 242) loses its b1130 landing run -- CLOSED by sec. 7.** The attached-frame
+   change's lost run (0.720 -> n-a) comes back with the capture's headings: land 0.811
+   (oracle 1.343; B1171's face-on level-60 0.724). The run was geometry-bound (face-on actors
+   put it outside the crop); the residual is the landing family (B1164's s + B1172's target
+   height, `refactor/B1167/contintables/owners_cont.tsv`).
