@@ -45,6 +45,7 @@ EQT::Graphics::SimulationOutput fxOutputs[2];
 int fxComputed = 0;  // the index computeOnce() last wrote
 float fxSpellDensity = 1.0f;  // B1165: the Spell page density handed to the worker
 bool fxTargetGone = false;  // --target-despawn: the target left the scene
+bool fxCasterGone = false;  // --caster-despawn: the caster left the scene (group port)
 std::unordered_map<uint16_t, glm::vec3> fxPendingPositions;
 std::unordered_map<uint16_t, glm::vec3> fxPendingDirections;
 eqt::bridge::CastGlowRoute fxRoute;
@@ -496,7 +497,7 @@ bool initHarnessParticles() {
     spellVisualFX->setParticleManager(particleManager.get());
 
     auto nodeFor = [](uint16_t id) -> EQAnimatedMeshSceneNode* {
-        if (id == casterEntityId) return animatedNode;
+        if (id == casterEntityId && !fxCasterGone) return animatedNode;  // a despawned caster resolves nothing
         if (id == targetEntityId && !fxTargetGone) return targetAnimatedNode;  // a despawned entity resolves nothing
         return nullptr;
     };
@@ -1072,6 +1073,7 @@ int runScriptedHarness() {
     double lastAction = -1.0;  // scripted time of the latest OP_Action
     bool targetDied = false;
     bool targetDespawned = false;
+    bool casterDespawned = false;  // B1179: the caster's OP_DeleteSpawn has run
     double corpseFadeStart = -1.0;  // B1148: scripted time of a corpse's OP_DeleteSpawn
     float corpseFadeAlpha = 1.0f;
     // B1157 (#476): the Source-stage emitter ids of the in-flight cast (the
@@ -1207,6 +1209,18 @@ int runScriptedHarness() {
                 targetAnimatedNode->setVisible(false);
                 std::printf("[fx-harness] target despawned at t %.3f\n", t);
             }
+        }
+        // B1179 (#498): a caster that zones out (a group teleport like the r40
+        // 602): its OP_DeleteSpawn removes the caster and its attached spell
+        // emitters -- the production non-corpse path (onSpawnDeleted with
+        // corpse=false -> removeAttachedEffects) -- and the model leaves.
+        if (lastAction >= 0.0 && animatedNode && !casterDespawned && harnessOpts.casterDespawnAfterAction >= 0.0 &&
+            t + 1e-9 >= lastAction + harnessOpts.casterDespawnAfterAction) {
+            casterDespawned = true;
+            spellVisualFX->onSpawnDeleted(casterEntityId, false, 0);
+            fxCasterGone = true;
+            animatedNode->setVisible(false);
+            std::printf("[fx-harness] caster despawned at t %.3f (OP_DeleteSpawn, attached emitters removed)\n", t);
         }
         if (corpseFadeStart >= 0.0 && !fxTargetGone) {
             const auto elapsedMs = static_cast<uint32_t>(std::llround((t - corpseFadeStart) * 1000.0));
