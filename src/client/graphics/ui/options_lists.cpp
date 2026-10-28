@@ -142,7 +142,10 @@ Setting resolveOptionsClick(const UILayout& layout, OptionsPanelState& state, in
 
     switch (c.kind) {
         case Kind::Slider: {
-            const int step = OptionsLayout::sliderStepAt(layout, i, mouseX);
+            // B1175: the slider's own position count (0..maxValue): 20 for the
+            // T434 / mouse sliders, 100 for the particle opacity sliders.
+            const int step = OptionsLayout::sliderStepAt(layout, i, mouseX,
+                                                         OptionsLayout::sliderSteps(c.setting));
             return setOptionsValue(state, c.setting, step) ? c.setting : Setting::None;
         }
         case Kind::Checkbox: {

@@ -47,7 +47,7 @@ before/after delta is this card's alone, the merged tip is covered by the ctests
   fixed_self rows (r11 end +2.000, not +1.600) and B1166's target-fit numbers on the fixed_npc
   rows; b1118 differs in 253 (B1161) and, unowned, 54 / 656 src_cov 0.415 -> 0.416.
 - **Per-target-height FX rows** (sec. 5): B1166's Fear 229 below-the-feet shortfall closes
-  (h_p5 -0.06 -> -0.23, ground 0.14 -> 0.20 against the oracle's -0.26 / 0.17); the spell-93
+  (h_p5 -0.06 -> -0.23 against the oracle's -0.26, ground 0.14 -> 0.20 against 0.21: the row reaches B1166's reference range 0.18-0.21, 0.03 short on h_p5); the spell-93
   landing's lit pixels grow only 6.3 % (b1130) and 14.6 % (b1118), because fable still attaches the landing at s = 1 where
   the client multiplies it by this same actor scale (FOLLOW-UP 2).
 
@@ -381,14 +381,14 @@ B1164's `b1164_regions.py` window -1.5,0.6,0.16,1.8, B1166's excludes; files und
 
 | run | target px | run cov | cen_h | h p5..p95 | ground | file |
 |---|---|---|---|---|---|---|
-| oracle e13, spell 209 (B1166) | 288 | 0.930 | 0.65 | -0.26..1.71 | 0.17 | `review/B1166/worker/named_measure/oracle_e13_a615_288_c740/row.tsv:2` |
+| oracle e13, spell 209 (B1166) | 288 | 1.002 | 0.61 | -0.26..1.70 | 0.21 | `review/B1166/worker/named_measure/oracle_e13_a615_288_c740ff/row.tsv:2` (the `c740` dir is superseded, B1166 README:314-319) |
 | before | 288 | 0.224 | 0.72 | -0.06..1.63 | 0.14 | `review/B1172/worker/named_measure2/fear229_before_a615_288_c740/row.tsv:2` |
 | after | 288 | 0.278 | 0.63 | -0.23..1.62 | 0.20 | `review/B1172/worker/named_measure2/fear229_after_a615_288_c740/row.tsv:2` |
 | after, own height | 285 | 0.284 | 0.63 | -0.23..1.64 | 0.20 | `review/B1172/worker/named_measure2/fear229_after_a615_285_c740/row.tsv:2` |
 
 **Verdict change**: B1166's FOLLOW-UP 4, the landing reaching less far below the feet than the
-oracle, was the target's size: h_p5 -0.06 -> -0.23 against -0.26, ground 0.14 -> 0.20 against
-0.17, cen_h 0.72 -> 0.63 against 0.65. The run coverage stays 0.28 against 0.93 (FOLLOW-UP 2).
+oracle, was the target's size: h_p5 -0.06 -> -0.23 against -0.26 (0.03 short), ground 0.14 -> 0.20 against
+0.21 (inside B1166's 0.18-0.21 range), cen_h 0.72 -> 0.63 against 0.61. The run coverage stays 0.28 against 1.002 (FOLLOW-UP 2).
 
 **Spell 93, window in target heights^2 (peak frame f154):**
 
@@ -423,6 +423,21 @@ are README, scripts and a file mode), `RBUILD_HOST=user@gitlab-runner-1 tbuild`:
   182 / 182 (`review/B1172/worker/fix/ctest_final.log`), hygiene 48 / 48
   (`review/B1172/worker/fix/hygiene_final.log`, DocCitations included).
 - the earlier legs' logs: `review/B1172/worker/ctest_final.log`, `review/B1172/worker/hygiene_final.log`.
+- FIX leg (the hygiene split, 2026-10-28), on the ThinkPad (rbuild): the fable merge left
+  `model_viewer_fx_harness.cpp` at 1507 lines and pipeline 2370 on ba62111a failed only the
+  hygiene FileSizeCeiling, so the B1166/B1177 target-fit block moved to
+  `tools/model_viewer/fx_target_fit.{h,cpp}`. `python3 -I scripts/refactor/verify_move_only.py
+  ba62111a..HEAD` lists exactly five substantive added lines (the new header's declarations and
+  its `irr::video::IImage` forward declaration) and zero substantive removals -- the 182 moved
+  lines are byte-for-byte in the line multiset. The harness is 1310 lines; the allowlist is
+  untouched (headroom for B1177's and B1167's additions to this file). Frame identity: the
+  b1130 preset rendered once with the pre-split binary (built at ba62111a) and once with the
+  post-split one, same command and plan (`100.0 93 other 0 250 60`, `--seconds 0.5`); frame 0 is
+  sha256 `177839e239f760d47d9623bd7c825dad2ebbc81cc9186677f46c0f5bcece54de` on both sides,
+  15/15 frames byte-identical, and the b1130 self-check line is identical (PASS, 285 px).
+  Targeted `-R 'FxHarness|B1166TargetAnchor|ActorScale|EntitySize'` 30/30 (one gtest self-skip:
+  the real-node fixture wants the client tree, absent on that host); hygiene 49/49
+  (FileSizeCeiling, DocCitations, DocCounts, DocClaims, ZeroCallers all green; one env skip).
 - cite checker: `python3 -I scripts/refactor/cite_check.py refactor/B1172/README.md --tree .
   --extra /mnt/projects/fable --dis .../eqgame.dis --dis .../EQGraphicsDX9.dis`; the result line
   is in the MR note. Its address warnings are data words: the vtable 0x101c9ba0 and the float
@@ -457,7 +472,7 @@ ratchet moved with its provenance, as the orchestrator asked: B1166's `kStanding
    SIGSEGV, rc 139 (`review/B1172/worker/fix/crash_616/rc.txt`, at 20082d7d). The failure path at
    `tools/model_viewer.cpp:137` drops the device without the teardown the normal exit runs. This
    card's negative test runs 1:0:5 instead; that avoids the crash, it does not fix it.
-5. **Merging B1164 (MR !323, branch task/kb-b1164-pin-s, 9938bbfa; not on fable at this tip)**:
+4. **Merging B1164 (MR !323, branch task/kb-b1164-pin-s, 9938bbfa; not on fable at this tip)**:
    `git merge-tree` against it shows four conflicts. `include/client/graphics/actor_scale.h`
    add/add: B1164 committed this card's earlier copy at mode 100755 -- take this card's (mode 100644,
    and it adds the size resolver of sec. 3a); comments only at
@@ -468,5 +483,5 @@ ratchet moved with its provenance, as the orchestrator asked: B1166's `kStanding
    the raw word (0.0) in the entity record and a 6.0 profile placeholder; under sec. 3a the record
    holds the resolved size (5.0 for the dark elf; the attach scale is 1.0 either way), so
    whichever MR lands second updates those expectations.
-4. **0x923798** (sec. 1d), the byte that drops the 1.3 for races 403 / >= 405, is not traced past
+5. **0x923798** (sec. 1d), the byte that drops the 1.3 for races 403 / >= 405, is not traced past
    its two reset stores; `clientSizeToActorScale` takes it as an argument, 0 by default.

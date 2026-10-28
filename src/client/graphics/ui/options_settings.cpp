@@ -80,6 +80,16 @@ const Choice kCastFilter[] = {{1, "My spells"},     {2, "Group spells"},  {4, "R
 
 constexpr GameOption kNoGame = GameOption::Count;
 
+// B1175 (#494): the eqclient.ini section every particle key is read from and
+// written to -- the "Defaults" string (eqgame 0x641a60) the loader
+// (eqgame.exe.c:132608-132671) and the writers (:245163-245204, :245434-245467)
+// pass to the profile calls.
+constexpr const char* kDefaults = "Defaults";
+// The opacity sliders' handler: opacity = position x _DAT_00640038, a float32
+// 0x3c23d70a = 0.01f (eqgame.exe.c:245434; `fmul dword ptr [0x640038]` at
+// 0x53ee56 / 0x53eec4 / 0x53ef6c).
+constexpr float kOpacityStep = 0.01f;
+
 // clang-format off
 const SettingInfo kSettings[kSettingCount] = {
 {Setting::None, Owner::None, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", ""},
@@ -166,25 +176,36 @@ const SettingInfo kSettings[kSettingCount] = {
 // --- Display > Particles (B995): eqclient.ini keys, its floats.
 // Choices are EQUI_OptionsWindow.xml's <Choices>; the floats per choice are
 // the decompile's (N1 PROVEN, B1165); the near-clip meaning is still N2
-// (particle_options.h).
+// (particle_options.h). B1175 (#494): the opacity sliders are the client's
+// 101 positions x 0.01f (kParticleOpacitySliderPositions), and every row
+// here lives in the GLOBAL eqclient.ini [Defaults] (kDefaults), where the
+// client's loader (eqgame.exe.c:132608-132671, :126007) and writers
+// (:245163-245204, :245310, :245434-245467) keep it.
 {Setting::ParticlesTab, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "ODP_ParticlesTabs"},
-{Setting::SpellParticleOpacity, Owner::Renderer, ValueKind::Step, "spellparticleopacity", "SpellParticleOpacity", 20, 20, NO_CHOICES, -1, kNoGame,
- "Spell Particle Opacity", "eqclient.ini SpellParticleOpacity=1.000000 (N1)", 20.0f, nullptr},
+{Setting::SpellParticleOpacity, Owner::Renderer, ValueKind::Step, "spellparticleopacity", "SpellParticleOpacity", 100, 100, NO_CHOICES, -1, kNoGame,
+ "Spell Particle Opacity", "eqclient.ini [Defaults] SpellParticleOpacity=1.000000; 101 positions x 0.01 (B1175)", kOpacityStep, nullptr,
+ false, kDefaults},
 {Setting::SpellParticleDensity, Owner::Renderer, ValueKind::Choice, "spellparticledensity", "SpellParticleDensity", 3, 0, CHOICES(kDensity), -1, kNoGame,
- "Spell Particle Density", "eqclient.ini SpellParticleDensity=1.000000 (N1)", 0.0f, Environment::kDensityIniValues},
+ "Spell Particle Density", "eqclient.ini [Defaults] SpellParticleDensity=1.000000 (N1)", 0.0f, Environment::kDensityIniValues,
+ false, kDefaults},
 {Setting::SpellParticleNearClip, Owner::Renderer, ValueKind::Choice, "spellparticlenearclip", "SpellParticleNearClipPlane", 0, 0, CHOICES(kNearClip), -1, kNoGame,
- "Spell Particle Near Clip", "eqclient.ini SpellParticleNearClipPlane=2.000000 = Near (N1 PROVEN, N2)", 0.0f, Environment::kNearClipIniValues},
+ "Spell Particle Near Clip", "eqclient.ini [Defaults] SpellParticleNearClipPlane=2.000000 = Near (N1 PROVEN, N2)", 0.0f, Environment::kNearClipIniValues,
+ false, kDefaults},
 {Setting::SpellParticleCastFilter, Owner::Renderer, ValueKind::Choice, "spellparticlecastfilter", "SpellParticleCastFilter", 24, 0, CHOICES(kCastFilter), -1, kNoGame,
- "Spell Particles On For", "eqclient.ini SpellParticleCastFilter=24; eqgame.exe.c:132638 default 0x18, kept raw (B1165)",
- 0.0f, nullptr, /*rawIniInt=*/true},
+ "Spell Particles On For", "eqclient.ini [Defaults] SpellParticleCastFilter=24; eqgame.exe.c:132638 default 0x18, kept raw (B1165)",
+ 0.0f, nullptr, /*rawIniInt=*/true, kDefaults},
 {Setting::ShowSpellEffects, Owner::Renderer, ValueKind::Bool, "showspelleffects", "ShowSpellEffects", 1, 1, NO_CHOICES, -1, kNoGame,
- "Show Spell Effects", "eqclient.ini ShowSpellEffects=1; eqgame.exe.c:126007-126011 (B1165)"},
-{Setting::EnvParticleOpacity, Owner::Renderer, ValueKind::Step, "envparticleopacity", "EnvironmentParticleOpacity", 20, 20, NO_CHOICES, -1, kNoGame,
- "Environment Particle Opacity", "eqclient.ini EnvironmentParticleOpacity=1.000000 (N1)", 20.0f, nullptr},
+ "Show Spell Effects", "eqclient.ini [Defaults] ShowSpellEffects=1; eqgame.exe.c:126007-126011 (B1165)", 0.0f, nullptr,
+ false, kDefaults},
+{Setting::EnvParticleOpacity, Owner::Renderer, ValueKind::Step, "envparticleopacity", "EnvironmentParticleOpacity", 100, 100, NO_CHOICES, -1, kNoGame,
+ "Environment Particle Opacity", "eqclient.ini [Defaults] EnvironmentParticleOpacity=1.000000; 101 positions x 0.01 (B1175)", kOpacityStep, nullptr,
+ false, kDefaults},
 {Setting::EnvParticleDensity, Owner::Renderer, ValueKind::Choice, "envparticledensity", "EnvironmentParticleDensity", 3, 0, CHOICES(kDensity), -1, kNoGame,
- "Environment Particle Density", "eqclient.ini EnvironmentParticleDensity=1.000000 (N1)", 0.0f, Environment::kDensityIniValues},
+ "Environment Particle Density", "eqclient.ini [Defaults] EnvironmentParticleDensity=1.000000 (N1)", 0.0f, Environment::kDensityIniValues,
+ false, kDefaults},
 {Setting::EnvParticleNearClip, Owner::Renderer, ValueKind::Choice, "envparticlenearclip", "EnvironmentParticleNearClipPlane", 0, 0, CHOICES(kNearClip), -1, kNoGame,
- "Environment Particle Near Clip", "eqclient.ini EnvironmentParticleNearClipPlane=2.000000 = Near (N1 PROVEN, N2)", 0.0f, Environment::kNearClipIniValues},
+ "Environment Particle Near Clip", "eqclient.ini [Defaults] EnvironmentParticleNearClipPlane=2.000000 = Near (N1 PROVEN, N2)", 0.0f, Environment::kNearClipIniValues,
+ false, kDefaults},
 
 // --- Mouse (B433) --- eqclient.ini [Options], every shipped file:
 // InverseMouse=0 LookSpring=0 MouseActive=1 MouseWheelZoom=1
@@ -353,8 +374,8 @@ std::string settingIniText(Setting s, int v) {
     const auto& info = settingInfo(s);
     float f = 0.0f;
     bool isFloat = false;
-    if (info.kind == ValueKind::Step && info.iniDivisor > 0.0f) {
-        f = static_cast<float>(v) / info.iniDivisor;
+    if (info.kind == ValueKind::Step && info.iniStepValue > 0.0f) {
+        f = static_cast<float>(v) * info.iniStepValue;
         isFloat = true;
     } else if (info.kind == ValueKind::Choice && info.iniFloats) {
         for (int i = 0; i < info.choiceCount; ++i) {
@@ -369,14 +390,14 @@ std::string settingIniText(Setting s, int v) {
 
 bool isIniFloatSetting(Setting s) {
     const auto& info = settingInfo(s);
-    return (info.kind == ValueKind::Step && info.iniDivisor > 0.0f) ||
+    return (info.kind == ValueKind::Step && info.iniStepValue > 0.0f) ||
            (info.kind == ValueKind::Choice && info.iniFloats);
 }
 
 float settingTableFloat(Setting s, int v) {
     const auto& info = settingInfo(s);
-    if (info.kind == ValueKind::Step && info.iniDivisor > 0.0f)
-        return static_cast<float>(v) / info.iniDivisor;
+    if (info.kind == ValueKind::Step && info.iniStepValue > 0.0f)
+        return static_cast<float>(v) * info.iniStepValue;
     if (info.kind == ValueKind::Choice && info.iniFloats) {
         for (int i = 0; i < info.choiceCount; ++i)
             if (info.choices[i].value == v) return info.iniFloats[i];
@@ -411,8 +432,9 @@ bool parseSettingIniFloat(Setting s, const std::string& text, int& display,
     f = clampSettingIniFloat(s, f);
     int v = 0;
     if (info.kind == ValueKind::Step) {
-        // fable's slider shows the nearest step.
-        v = static_cast<int>(std::lround(f * info.iniDivisor));
+        // B1175: the slider position the client derives from the float
+        // (FUN_0053ac98(f x 100.0), eqgame.exe.c:243666).
+        v = opacitySliderPosition(f);
         if (!isValidSettingValue(s, v)) return false;
     } else {
         // The oracle's combobox shows the first choice whose value is >= the
@@ -449,6 +471,33 @@ std::string settingIniText(Setting s, int v, const std::optional<float>& raw) {
     char buf[32];
     std::snprintf(buf, sizeof(buf), "%f", static_cast<double>(*raw));
     return buf;
+}
+
+int opacitySliderPosition(float f) {
+    // FUN_0053ac98 (0x53ac98..0x53acd4): fld [arg]; FUN_004c0adc(x, 1.0) =
+    // fmod; `fcomp [0x6410bc]` (0.5f); below -> FUN_0060fac0 (floor), else
+    // FUN_00612b00 (ceil); then ftol. Its argument is the float
+    // `_DAT_00985814 * 100.0` (fmul qword [0x640fc8], stored as a float).
+    const float x = static_cast<float>(static_cast<double>(f) * 100.0);
+    const double frac = std::fmod(static_cast<double>(x), 1.0);
+    const double r = frac < 0.5 ? std::floor(static_cast<double>(x)) : std::ceil(static_cast<double>(x));
+    // CSliderWnd::SetValue (0x5bcd10) clamps to [0, ticks - 1].
+    int p = static_cast<int>(r);
+    if (p < 0) p = 0;
+    if (p > kParticleOpacitySliderPositions - 1) p = kParticleOpacitySliderPositions - 1;
+    return p;
+}
+
+std::string opacitySliderLabel(int p) {
+    // FUN_005738b0(buf, "%d %c", position, 0x25) (0x53ee5f..0x53ee74).
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%d %c", p, '%');
+    return buf;
+}
+
+bool isEqClientIniSetting(Setting s) {
+    const auto& info = settingInfo(s);
+    return info.eqclientSection != nullptr && info.iniKey != nullptr;
 }
 
 // The `/filter` reply text, eqstr_us.txt 1316-1353 (the name each one's
