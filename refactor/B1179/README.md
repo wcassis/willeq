@@ -3,7 +3,8 @@
 **Status:** analysis complete; **no lifetime-word defect found.** The Target
 emitters' lifetime/fade words decode to the values fable already draws (the
 per-particle alpha is byte-identical to the client, pinned by
-`tests/test_spell_fx_timing.cpp`), and the computed Target end of each row is
+`tests/test_spell_edd_colour.cpp`: `eddParticleAlpha` vs the client's
+`fun_1005f940`), and the computed Target end of each row is
 the latest the file allows. The rows that read "later" in
 `refactor/B1171/tables/b1130_table.tsv` are the **measured visible end** of the
 landing (the instrument's last frame above the lit-pixel threshold), which is
@@ -42,7 +43,7 @@ without inventing a number, which the rule forbids. The one real change is the
 
 ## The DX9 death rule (what removes the last particle)
 
-`CParticleSystem::Update` (`review/B11414/ghidra/out/EQGraphicsDX9.dll.c`): the
+`CParticleSystem::Update` (`review/B1141/ghidra/out/EQGraphicsDX9.dll.c`): the
 emitter stops EMITTING at `elapsed > T` (the run, +0x78 fixed or the caller's
 duration); each live particle dies at `age > life` (+0x7C); a burst emits
 `burst` at age 0, a stream `burst + tick*floor(age/tps)`. The last particle
@@ -52,7 +53,8 @@ end (the threshold crossing the instrument measures) is earlier than the
 nominal `T + L` by up to the fade. Fable mirrors this exactly
 (`include/client/spell/spell_fx_timing.h` `SpellFxSlotTiming`,
 `src/client/graphics/sim_particles.cpp`); the per-particle alpha is
-byte-identical to the client's (`eddParticleAlpha` vs `fun_1005f940`, pinned).
+byte-identical to the client's (`eddParticleAlpha` vs `fun_1005f940`, pinned by
+`tests/test_spell_edd_colour.cpp`).
 So the file's `stageEnd` (the nominal death) is an **upper bound** on the
 measured visible end, and both the oracle's and fable's measured ends fall
 below it by the fade.
@@ -145,6 +147,31 @@ the oracle's 0.73. The fixed_npc r40 (B1171 row 12) is a separate, already-PASS
 row (no zone-out in that capture). So the r40 "too long" is a **scene** issue
 (the caster never despawns in the harness), fixed by the `--caster-despawn` at
 the model-gone time — **not a lifetime word**.
+
+## The gate table of record (the review fix, owned by B1179 / this card)
+
+This MR annotates two rows of `refactor/B1171/tables/b1130_table.tsv` (the gate
+table of record). No measured value in the table changed — both rows keep their
+measured cells; the fix is the attribution:
+
+- **Row 41 (fixed_npc, e41, 703 Chords) — like-for-like, not a lifetime
+  defect.** The table's oracle cell (2.750) is a **TARGET-ROI** measurement
+  (the target's body goes dark at 2.75 s as the flame swirl leaves it);
+  fable's 5.533 is the whole landing. Whole crop vs whole crop, the oracle
+  capture stays lit to Act+5.674 / 5.754 (`e41_fixed_npc`, lit80 2703 px /
+  83 px) — inside the file's 5.5 (the T=5 slots run in full), and fable's
+  5.533 is within the B1145 39-records spread (median -0.11 s) of it. The row
+  now carries that note and verdict; owner **B1179 (#498)**.
+- **Row 40 (fixed_self, r84, 602 Evacuate) — the port, resolved by
+  `--caster-despawn`.** The row's "end over" (4.167 vs 0.730) is the harness
+  scene: the oracle caster zones out (OP_DeleteSpawn at Act+0.36-0.40) and the
+  harness default never despawns it. With `--caster-despawn 0.80` (the
+  model-gone time 0.79-0.81) fable's landing ends at **0.767** (the 0.80 run's
+  harness LANDING end10% f338 +0.767 s, dev evidence `measure_cd080b`), within
+  0.10 of the oracle's 0.730. The row now points there; owner **B1179 (#498)**.
+
+The old -> new table for all five rows plus the port is committed at
+`refactor/B1179/B1179_final_table.txt` (dev evidence `B1179_final_table.txt`).
 
 ## The unit test
 

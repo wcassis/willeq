@@ -255,7 +255,7 @@ TEST_F(SpellFxTimingFiles, TheFiveB1130LandingRowsDecodeToTheOracleSpread) {
     struct Case { int row; float end; float oracle; float maxGap; };
     const std::vector<Case> withinSpread = {
         {6,  6.75f, 6.260f, 3.35f},  // e6  Jaxan: T=5 slots' 1.75 life + 1.60 fade
-        {10, 7.00f, 5.720f, 2.75f},  // r43 Illusion: the T=5 slot's 2.00 life
+        {10, 7.00f, 5.720f, 2.50f},  // r10 Illusion: the T=5 slot's 2.00 life + 0.50 fade
         {29, 8.00f, 7.340f, 2.75f},  // e29 Shallow Breath: the T=6 slots' 2.00 life
         {43, 5.75f, 4.430f, 3.20f},  // e43 Lyssa: the long slot's 3.00 life
     };
