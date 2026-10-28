@@ -230,9 +230,10 @@ p90_src 10 -> 23, p90_land 8 -> 18, source_centroid 20 -> 27, src_h_lo
 14 -> 28, src_h_hi 14 -> 27, and tour end 38 flipped short -> PASS. What
 holds the tables open is two measurement-domain units and one timing
 regression: **landing_cov (38/40 rows, 0.68x on 93) -> FU1 (the window
-method)**; **source_onset_s (38/40 rows, the 10-frame collapse) -> FU2**;
+method)**; **source_onset_s (38/40 rows, the 0.100 s collapse) -> FU2**;
 and the tour landings all sit short of the B1178 v3 references (the same
-window domain — the pinned-camera landings are the longer ones). When FU1
+window domain — the tour's land_cov is the same per-target-height^2 window
+metric, just on the pinned b1118 rig). When FU1
 bands the harness window to the capture's own and FU2 restores the per-row
 source onset, the b1130 table's red set is the source_cov/p90 sprite-size
 residual and the b1118 net returns to green-by-construction.
