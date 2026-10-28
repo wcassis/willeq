@@ -246,10 +246,10 @@ framing; `measure_chase.py` + head/feet rows read on the gridded crops):
 
 | race | fable BEFORE (frame, head→feet, px) | fable AFTER (frame, head→feet, px) |
 |---|---|---|
-| Human (6) | `fable-before-human/frame_000237.png` ~340→~500, ~230px | `fable-after-human/frame_000156.png` 293→573, 280px |
+| Human (6) | `fable-before-human/frame_000237.png` ~340→~573, ~233px | `fable-after-human/frame_000156.png` 293→573, 280px |
 | Dark Elf (5) | `fable-before-elf/frame_000143.png` 356→573, 217px | `fable-after-elf/frame_000180.png` 355→573, 218px |
 
-The human's chase figure grows **~1.2×** (230→280px; the node-z ratio 1.202 is
+The human's chase figure grows **~1.2×** (233→280px; the node-z ratio 1.202 is
 the precise factor — the px ratio carries a few px of boot/feet reading error,
 and the before/after camera heights differ by the 0.63 node-z delta); the dark
 elf's is **unchanged** (217→218px). A side-by-side of the human's chase figure
@@ -259,7 +259,7 @@ before.
 **Conclusion (acceptance C):** the dark-elf first-person view is **UNCHANGED**
 (eye height 6.171 → 6.20, node z 3.121 → 3.125, chase px 217 → 218); the human
 moves by the **1.2 factor** (node z 3.119 → 3.75 = ×1.202, eye height 6.023 →
-7.44, chase px ~230 → 280); and fable-after's wire z matches the oracle
+7.44, chase px ~233 → 280); and fable-after's wire z matches the oracle
 (3.751 / 3.126 → 3.75 / 3.125). The fix is confirmed live on lane 5.
 
 ### How the live leg was run (lane 5, 2026-10-28)
