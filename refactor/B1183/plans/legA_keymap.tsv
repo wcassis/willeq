@@ -1,0 +1,37 @@
+# action	target	hold_ms	still_name
+# B1183 (#502) leg A -- keymap discovery. The gdb watcher (b1183_watch.sh,
+# B1164 pattern) arms at `gdb_arm` and dumps the live keymap object
+# (DAT_0098599c) + pins the caster spawn +0x251. The probe presses then
+# verify which of the client's own bindings move the stand byte: the
+# watchpoint logs every byte-changing write with its writer backtrace, so
+# the duck/sit key is PROVEN by the byte itself, and the dump is the record
+# of the client's own hotkey state (never inferred from fable's key table).
+# Candidates: Down (the client's eqclient.ini KEYMAPPING_DUCK_2=208), then
+# the generic fable/common candidates c / x / z.
+# pose=-74,428,3.75,160
+# observer=Oraclewatch
+# observer-pose=-67.6,434.4,3.75,160
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+wait	3000	0	gdb_arm
+wait	25000	0	gdb_dump
+press	Down	0	probe_down
+wait	2000	0	probe_down_settle
+press	c	0	probe_c
+wait	2000	0	probe_c_settle
+press	x	0	probe_x
+wait	2000	0	probe_x_settle
+press	z	0	probe_z
+wait	2000	0	probe_z_settle
+press	Down	0	probe_down_off
+wait	2000	0	probe_down_off_settle
+command	/q	0	quit
+obs	command	/q	0	obs_quit

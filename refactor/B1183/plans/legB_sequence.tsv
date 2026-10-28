@@ -1,0 +1,57 @@
+# action	target	hold_ms	still_name
+# B1183 (#502) leg B -- the nine-step sequence, 1:1 with
+# tests/test_stand_state.cpp TheLane5FullSequenceTable (the fable column),
+# with the B1183 watch (b1183_watch.sh) on the caster spawn +0x251.
+# Keys are the client's own live keymap, read from leg A's dump -- never
+# inferred from fable's key table:
+#   DUCK = <K_DUCK>      SIT/STAND = <K_SIT>      USE = <K_USE>
+# (filled in from leg A's KEYMAP dump + probe evidence before this runs).
+#
+# Loot step: #spawn TrollF at the caster's own position, /target, #kill,
+# then press USE on the targeted corpse. No pixel geometry, no camera
+# switch: the client USEs on the target, and the corpse is 0 units from
+# the caster. The stand byte's 28061-gate writer (loot open) is the step
+# under test; the loot window opening is visible in the loot still.
+#
+# Everything runs in the default chase camera -- the gate context the
+# fable column was measured in (the camera follows from above the spawn's
+# top, so the 0x450c2f cast-path camera gate is satisfied throughout).
+# pose=-74,428,3.75,160
+# observer=Oraclewatch
+# observer-pose=-67.6,434.4,3.75,160
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+wait	3000	0	gdb_arm
+wait	12000	0	gdb_attached
+still	0	0	stand
+press	<K_DUCK>	0	duck
+wait	2000	0	duck_settle
+press	<K_DUCK>	0	stand1
+wait	2000	0	stand1_settle
+press	<K_SIT>	0	sit
+wait	2000	0	sit_settle
+press	<K_SIT>	0	stand2
+wait	2000	0	stand2_settle
+command	#castspell 93 0	0	cast
+wait	4000	0	cast_settle
+command	#stun 8000	0	stun
+wait	1500	0	stunned
+command	#stun 0	0	stunend
+wait	1500	0	stunend_settle
+command	#spawn TrollF 1 1 0 600000	0	spawn
+wait	4000	0	spawn_settle
+command	/target TrollF	0	tgt_troll
+command	#kill	0	kill
+wait	4000	0	corpse
+press	<K_USE>	0	loot
+wait	2000	0	loot_settle
+command	/q	0	quit
+obs	command	/q	0	obs_quit
