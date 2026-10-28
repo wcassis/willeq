@@ -53,25 +53,42 @@ constexpr TargetAnchor kB1130TargetAnchor{940.0f, 615.0f, 288.0f};
 // - height +-3 vs the STANDING height the solve rendered (the written frame
 //   must show the body the solve fitted -- the B1155 defect was a 50 px fit vs
 //   a 316 px frame);
-// - AND the standing height itself, 285 +-3 px (ratio 0.990 of the anchor's
+// - AND the standing height itself, 294 +-3 px (ratio 1.021 of the anchor's
 //   288). The height is NOT solved: the two feet pixels fix the world (x, z),
-//   and the height is the model's own. B1166 ratcheted the human male (race 1,
-//   gender 0, size 6) at 238 px (0.826x) when fable drew it at scale 1.0;
-//   B1172 (#491) draws it at the official client's actor scale, size x 0.2 =
-//   1.2 (include/client/graphics/actor_scale.h), and it renders rows 331..615
-//   = 285 px (review/B1172/worker/wrong_model/default_final.log, the self-check
-//   line; refactor/B1172/README.md sec. 2). This ratchets that measured value
-//   so a model or scale regression fails. At the anchor with `--target`
-//   (review/B1172/worker/wrong_model/*.log): human female 1:1:6 260 px,
-//   dark-elf female 6:1:6 261, the human at size 7 332, troll 9:0:6 280 --
-//   all rejected; the barbarian 2:0:6 renders 284, inside the band: under the
-//   client's rule every classic race at the same size word is drawn about the
-//   same height, and a body of the SAME height cannot be told apart by height;
-//   this check does not claim to.
+//   and the height is the model's own at the pose the rig draws. History:
+//   B1166 ratcheted the human male (race 1, gender 0, size 6) at 238 px
+//   (0.826x) face-on at scale 1.0; B1172 (#491) draws it at the official
+//   client's actor scale, size x 0.2 = 1.2 (include/client/graphics/
+//   actor_scale.h), face-on 285 px (0.990x) (review/B1172/worker/wrong_model/
+//   default_final.log, the self-check line; refactor/B1172/README.md sec. 2);
+//   B1167's continuation (the orchestrator's 2026-10-27 ruling on #486: the
+//   actors face where the capture's actors faced) turns the target to its
+//   capture heading 160 (fx_capture_pose.h), 22.5 deg off face-on to the
+//   camera, and re-measured the back-turned box at 245 px (0.851x) at scale
+//   1.0 (refactor/B1167/README.md sec. 7); the merge with B1172 re-measures
+//   it at the client's scale 1.2 in the SAME turned pose: rows 322..615 =
+//   294 px on frame 0 (294 px solved; feet row 615 at column 940; the solve
+//   at x -8.727 z -0.039, post-turn x -6.144 z -6.199; the caster box holds
+//   at 209 px / feet 598 / dist 30.135, the target stands at y 0.850 on the
+//   caster's ground) -- measured on the merged binary at caster level 60 in
+//   the NVIDIA context like every run above (setme_b1130 run.log, the
+//   self-check line; /mnt/projects/fable/review/B1167/continuation/merge/
+//   measure/), not any scaling of 245 or 285. This ratchets that measured
+//   value so a model or scale regression fails: the earlier +-25 %-of-288
+//   bound (216..360 px) passed a dark-elf female, a human female, a barbarian,
+//   a troll and the human at size 7 placed by `--target` at the anchor
+//   (review/B1166/worker/wrong_model/ and review/B1172/worker/wrong_model/),
+//   and every face-on reading in those two tables sits outside 291..297
+//   (the negatives the tests carry); the size-5 human (scale 1.0, 246 px
+//   back-turned, setme_b1130_wrong) is the self-check's wrong-body test,
+//   tests/test_fx_harness.cpp B1130SelfCheckRejectsAWrongTargetModel. A body
+//   of the SAME height (under the client's rule, every classic race at the
+//   same size word is drawn about the same height) cannot be told apart by
+//   height; this check does not claim to.
 constexpr float kFeetTolPx = 1.0f;
 constexpr float kColumnTolPx = 3.0f;
 constexpr float kHeightTolPx = 3.0f;
-constexpr float kStandingPx = 285.0f;
+constexpr float kStandingPx = 294.0f;
 constexpr float kStandingTolPx = 3.0f;
 
 // The harness's clear colour (50,50,80) -- the ground plane paints it too --

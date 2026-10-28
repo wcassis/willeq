@@ -32,8 +32,10 @@ float b1130TargetFitPx = 0.0f;
 // by difference against a target-free still; B1130's 325 px / (940,652)
 // began at the name label), the solve sees the STANDING frame, and the
 // rendered height is the model's own -- a self-check, never a fitted input
-// (the FABLE human renders 285 px there at the client's actor scale 1.2,
-// refactor/B1172/README.md sec. 2; 238 px at fable's old 1.0, B1166).
+// (the FABLE human renders 294 px there at the client's actor scale 1.2 and
+// the preset's back-turned pose, the B1167/B1172 merge, fx_target_anchor.h
+// kStandingPx; 285 px face-on, refactor/B1172/README.md sec. 2; 238 px at
+// fable's old 1.0, B1166).
 //
 // Screen right for a camera looking along -kCasterFacing is world -X
 // (targetRightOfCaster), so the target at column 940 sits at x < 0, and its
@@ -156,6 +158,8 @@ bool fitFixedNpcTarget(const PresetGeometry& g) {
         cycle = fxharness::fitCyclePeriod(samples);
         if (cycle) break;
         bool stepped = false;
+        // B1167 (#486) continuation: 0.05 units moves the silhouette < 1 px at
+        // ~30 units range (Jacobian 0/noise); 0.25 moves it 4-9 px.
         for (float d = 0.05f; d <= 0.8f && !stepped; d *= 4.0f) {
             const auto mx = measure(x + d, z);
             const auto mz = measure(x, z + d);
@@ -231,11 +235,12 @@ bool b1130TargetSelfCheck(video::IImage* img) {
     const auto chk = fxharness::checkTargetAnchor(sil, a, b1130TargetFitPx);
     std::printf("[fx-harness] b1130 target self-check (frame 0, cols %d..%d): rows %d..%d (%d px, feet row %d), "
                 "column %.1f | anchor feet %.0f at %.0f: d feet %+.0f (tol %.0f), d col %+.1f (tol %.0f) | "
-                "solved standing height %.0f px: d %+.0f (tol %.0f) | measured standing height %.0f px: d %+.0f "
-                "(tol %.0f; ratio %.3f of the oracle's %.0f px): %s\n",
+                "solved standing height %.0f px: d %+.0f (tol %.0f) | measured standing height %.0f px vs ratchet "
+                "%.0f: d %+.0f (tol %.0f; ratio %.3f of the oracle's %.0f px): %s\n",
                 win.x0, win.x1, sil.top, sil.bottom, sil.height(), sil.bottom, sil.col, a.feetY, a.feetX,
                 chk.dFeet, fxharness::kFeetTolPx, chk.dCol, fxharness::kColumnTolPx, b1130TargetFitPx, chk.dPx,
-                fxharness::kHeightTolPx, fxharness::kStandingPx, chk.dStand, fxharness::kStandingTolPx, chk.ratio,
+                fxharness::kHeightTolPx, static_cast<double>(sil.height()), fxharness::kStandingPx, chk.dStand,
+                fxharness::kStandingTolPx, chk.ratio,
                 a.px, chk.ok() ? "PASS" : "FAIL");
     std::fflush(stdout);
     return chk.ok();

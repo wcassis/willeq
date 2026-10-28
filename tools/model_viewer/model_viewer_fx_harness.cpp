@@ -521,7 +521,7 @@ bool initHarnessParticles() {
     });
     particleManager->setEntityDirectionCallback([nodeFor](uint16_t id, glm::vec3& out) -> bool {
         core::vector3df d;
-        if (!resolveSpellFxBoneDirection(nodeFor(EQ::SpellVisualFX::realEntityId(id)), id, d)) return false;
+        if (!resolveSpellFxAttachDirection(nodeFor(EQ::SpellVisualFX::realEntityId(id)), id, d)) return false;
         out = glm::vec3(d.X, d.Y, d.Z);
         return true;
     });
@@ -686,8 +686,13 @@ void placeHarnessTarget(bool self, float distance) {
     if (harnessOpts.cameraPreset == "b1130") {
         targetAnimatedNode->setPosition(core::vector3df(b1130TargetX, b1130TargetY, b1130TargetZ));
     } else {
-        const core::vector3df right = harnessOpts.cameraPreset.empty() ? core::vector3df(1, 0, 0)
-                                                                       : targetRightOfCaster();
+        core::vector3df right = harnessOpts.cameraPreset.empty() ? core::vector3df(1, 0, 0)
+                                                                 : targetRightOfCaster();
+        // B1167 (#486): the offset is in the FITTED frame (screen right) but the rig has
+        // turned by the capture's yaw (turnB1130Rig) -- turn it or a distance-14 target
+        // lands 90 deg wrong (b1118).
+        if (const fxharness::CapturePose* pose = fxharness::poseForPreset(harnessOpts.cameraPreset.c_str()))
+            fxharness::turnXZ(fxharness::rigYawDeg(*pose), right.X, right.Z);
         core::vector3df pos = animatedNode->getPosition() + right * distance;
         if (!harnessOpts.cameraPreset.empty()) {
             // B1172 (#491): stand the target on the caster's ground, the rule
@@ -758,6 +763,48 @@ void addGroundPlane() {
     std::fflush(stdout);
 }
 
+// B1167 (#486): turn the fitted preset rig -- camera, caster, target -- about
+// the caster's vertical axis by the capture's rig yaw (fx_capture_pose.h), so
+// the world axes sit where the capture's did: spellsnew.edd +0x12C drifts
+// along world +X (EQGraphicsDX9 0x10062917). The turn is rigid, so every
+// pixel fact the fit solved holds. The actors' capture headings are applied
+// by fitting on them (presetRotYDeg; the b1130 fit runs on the back-turned
+// caster so B1130's caster box 209 px / feet 598 holds, camera at 30.28 vs
+// the capture's 30) and the turn leaves exactly rotYForHeading(heading)
+// (refactor/B1167/README.md sec. 2 and 7; ratchet: fx_target_anchor.h).
+void turnB1130Rig(const fxharness::CapturePose& pose) {
+    const float psi = fxharness::rigYawDeg(pose);
+    const core::vector3df pivot = animatedNode ? animatedNode->getAbsolutePosition() : core::vector3df(0, 0, 0);
+    auto turn = [&](core::vector3df p) {
+        float x = p.X - pivot.X, z = p.Z - pivot.Z;
+        fxharness::turnXZ(psi, x, z);
+        return core::vector3df(pivot.X + x, p.Y, pivot.Z + z);
+    };
+    const core::vector3df eye = turn(camera->getAbsolutePosition()), look = turn(camera->getTarget());
+    camera->setPosition(eye);
+    camera->setTarget(look);
+    camera->updateAbsolutePosition();
+    if (animatedNode) {
+        animatedNode->setRotation(animatedNode->getRotation() - core::vector3df(0, psi, 0));
+        animatedNode->updateAbsolutePosition();
+    }
+    if (targetAnimatedNode) {
+        const core::vector3df t = turn(core::vector3df(b1130TargetX, b1130TargetY, b1130TargetZ));
+        b1130TargetX = t.X;
+        b1130TargetZ = t.Z;
+        targetAnimatedNode->setRotation(targetAnimatedNode->getRotation() - core::vector3df(0, psi, 0));
+        targetAnimatedNode->updateAbsolutePosition();
+    }
+    std::printf("[fx-harness] %s: rig turned %.2f deg about the caster (capture headings caster %.1f / target %.1f, "
+                "Camera1-DirHeading %.1f, 512ths): caster rotY %.2f, target rotY %.2f at (x %.3f, z %.3f), "
+                "camera eye (%.3f, %.3f, %.3f)\n",
+                harnessOpts.cameraPreset.c_str(), psi, pose.casterHeading512, pose.targetHeading512,
+                pose.cameraDirHeading512, animatedNode ? animatedNode->getRotation().Y : 0.0f,
+                targetAnimatedNode ? targetAnimatedNode->getRotation().Y : 0.0f, b1130TargetX, b1130TargetZ, eye.X,
+                eye.Y, eye.Z);
+    std::fflush(stdout);
+}
+
 bool setupSpellTestCamera() {
     // Scripted mode freezes the scene clock BEFORE the preset's fit renders
     // anything: drawAll() animates every node off the device timer, and a
@@ -786,6 +833,7 @@ bool setupSpellTestCamera() {
             g.targetPx = fxharness::kB1130TargetAnchor.px;
             if (!fitFixedNpcTarget(g)) return false;
         }
+        if (const fxharness::CapturePose* pose = fxharness::poseForPreset(harnessOpts.cameraPreset.c_str())) turnB1130Rig(*pose);
         if (harnessOpts.ground) addGroundPlane();
         return true;
     }
