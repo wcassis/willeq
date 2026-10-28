@@ -212,7 +212,8 @@ Unit tests, `tests/test_options_particles.cpp` (`OptionsParticlesB1182`):
 
 Targeted ctest (gitlab-runner, Release GLES2): `OptionsParticlesB1182` 8/8 and the
 wider `Options|EqClient|UiPreferences|FrameComponent|SpellFx|SpellSlot|CameraZoneIn`
-selection 29/29. Hygiene: 49/49 (`rbuild hygiene`, the full `hygiene` label).
+selection 51/51 at this head (29/29 at 7cc396d3; other units' tests matching the
+selection landed on fable since). Hygiene: 49/49 (`rbuild hygiene`, the full `hygiene` label).
 CI: green — the MR pipeline passes every auto stage (hygiene, build-test:
 Release GLES2 build + full ctest, gate: visual gate across the 5 manifest
 zones; the arm jobs are manual/opt-in). First full run: pipeline #2445,
@@ -220,7 +221,7 @@ success.
 
 ## 5. Hand-off
 
-* Cite checker on this README: `checked 12 cites, 0 problems, 0 address warnings`
+* Cite checker on this README: `checked 15 cites, 0 problems, 0 address warnings`
   (the full command with `--tree . --extra /mnt/projects/fable --dis .../eqgame.dis
   --dis .../EQGraphicsDX9.dis`; the `eqgame.exe.c` line cites are re-read by hand,
   as noted in sec. 1).
