@@ -206,6 +206,23 @@ void eqt::bridge::BridgeComponent::RequestLootCorpse(uint16_t corpseId) {
 	ctx_.game_state.player().setLootingCorpse(corpseId);  // Phase 7.7
 	LOG_TRACE(MOD_INVENTORY, "Set lootingCorpseId={}", ctx_.game_state.player().lootingCorpseId());
 
+	// B1183 (#502): the client's loot-start puts the looter into looting (0x69
+	// = 105) through the SETTER, and only from standing (the 28061 gate,
+	// 'd' -> FUN_00483556(0x69)). A direct 0x69 write also appears at
+	// 105797 (FUN_004849b2); lane-5 arbitrates which path a real loot takes.
+	{
+		auto self = ctx_.entities.find(ctx_.self.MySpawnId());
+		if (self != ctx_.entities.end()) {
+			auto& st = self->second.stand_state;
+			if (st == 100) {
+				eqt::state::StandStateContext sctx;
+				sctx.in_world = ctx_.self.IsFullyZonedIn();
+				sctx.is_local = true;
+				st.transition(eqt::state::StandValue::Looting, sctx);
+			}
+		}
+	}
+
 	// Send loot request packet - server expects only the corpse ID (4 bytes)
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(4);
@@ -325,6 +342,22 @@ void eqt::bridge::BridgeComponent::CloseLootWindow(uint16_t corpseId) {
 	// Clear the looting state
 	m_pending_loot_slots.clear();
 	ctx_.game_state.player().clearLootingCorpse();  // Phase 7.7
+
+	// B1183 (#502): the client's loot-window close stands the looter back up
+	// through the SETTER, and only while looting (eqgame.exe.c:230933, the
+	// FUN_0052b026 window-close: 'i' -> FUN_00483556(100)).
+	{
+		auto self = ctx_.entities.find(ctx_.self.MySpawnId());
+		if (self != ctx_.entities.end()) {
+			auto& st = self->second.stand_state;
+			if (st == 105) {
+				eqt::state::StandStateContext sctx;
+				sctx.in_world = ctx_.self.IsFullyZonedIn();
+				sctx.is_local = true;
+				st.transition(eqt::state::StandValue::Standing, sctx);
+			}
+		}
+	}
 
 	// Send end loot request to server (OP_EndLootRequest, not OP_LootComplete)
 	// Server expects 4 bytes with corpse entity ID as uint16 at offset 0

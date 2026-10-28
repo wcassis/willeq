@@ -600,6 +600,15 @@ void eqt::commands::CommandsComponent::ZoneProcessStun(uint32_t duration_ms)
 			ctx_.out.System(ctx_.strings.GetStringMessage(12480));  // You are no longer stunned.
 		}
 		m_stunned_until = {};
+		// B1183 (#502): the stun-end message's direct write of 100
+		// (standing) on the local player (eqgame.exe.c:80336, the 0x1cee
+		// handler).
+		{
+			auto self = ctx_.entities.find(ctx_.self.MySpawnId());
+			if (self != ctx_.entities.end()) {
+				self->second.stand_state.apply(eqt::state::StandValue::Standing);
+			}
+		}
 		LOG_INFO(MOD_COMBAT, "OP_Stun: unstunned");
 		return;
 	}
@@ -610,6 +619,13 @@ void eqt::commands::CommandsComponent::ZoneProcessStun(uint32_t duration_ms)
 	}
 	if (!was_stunned) {
 		ctx_.out.System(ctx_.strings.GetStringMessage(12479));  // You are stunned!
+		// B1183 (#502): the stun message's direct write of 0x66 (102,
+		// frozen) on the local player (eqgame.exe.c:80377/80459, the
+		// 0x25aa "You are stunned" handler -- message 0x3050's writer).
+		auto self = ctx_.entities.find(ctx_.self.MySpawnId());
+		if (self != ctx_.entities.end()) {
+			self->second.stand_state.apply(eqt::state::StandValue::Frozen);
+		}
 	}
 	LOG_INFO(MOD_COMBAT, "OP_Stun: stunned for {} ms", duration_ms);
 }
