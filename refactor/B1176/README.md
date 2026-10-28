@@ -216,7 +216,41 @@ both cameras; measured (never inferred), fable before/after.
 (scale 1.0, so `3.125 s` and `3.075 s` are the same before and after); the
 human is drawn **1.2×** and its eye/centre and wire z move by the 1.2 factor.
 
-*(table filled by the live leg below)*
+*(table to be filled by the live leg — status below)*
+
+### Live-leg status (2026-10-28, dev)
+
+Everything except this table is done: the fix, the decompile trace (sec. 1-2),
+the unit tests (green), this README (cite-checker clean), and hygiene
+(ZeroCallers / DocCitations / FileSizeCeiling — 49/49). The live leg is the
+remaining piece. State at hand-off:
+
+- **eqemu is up-able on lane 5 with `EQEMU_HOST=local`** (the repo's sanctioned
+  local mode, `scripts/eqemu/env.sh` §local): `up.sh` brings up
+  loginserver/world/zone in ~2 min (verified, exit 0). The default
+  `EQEMU_SSH` self-ssh path (`user@172.16.200.205`, the ThinkPad sshing to
+  itself) is broken on the ThinkPad — no
+  private key in `~/.ssh`, and the safety layer blocks adding one
+  (`>>`/`tee -a` to `authorized_keys` are denied in single-query mode) — so the
+  default (ssh-remote) `up.sh` fails with `Permission denied`. `EQEMU_HOST=local`
+  drives the same containers directly, no ssh.
+- **Characters (verified in `character_data`):** humans (race 1, the live-leg
+  "human", default size 6) exist — ids 74, 77, 78, 80, 81, 103 (103 =
+  Oraclewatch). **No dark-elf (race 14, default size 5) exists** — the first
+  live-leg step is to create one.
+- **Next (the live leg proper):** (1) create a dark-elf; (2) drive the oracle
+  (B1048 driver / the B1134 two-client rig, `x11grab` stills) as the human and
+  the dark-elf at the same spot, chase cam and first-person — oracle drawn
+  height (px) per row, plus the wire z from the capture `pcap`; (3) run fable
+  BEFORE (`origin/fable` build: player scale pinned 1.0) and fable AFTER (this
+  branch) the same way (`x11grab` — `--dump-frames-dir` is forbidden on a live
+  client, B1142) — fable drawn height (px) per row; (4) measure with a
+  calibrated, identical framing for oracle and fable so the px ratio is the
+  world-unit ratio; fill the table; confirm the dark-elf first-person is
+  unchanged and the human moves by the 1.2 factor. (5) push WITH CI, open the
+  MR "Closes #495".
+- **Down** the stack when done: `EQEMU_LANE=5 EQEMU_HOST=local source
+  scripts/eqemu/env.sh; bash scripts/eqemu/down.sh`.
 
 ---
 
