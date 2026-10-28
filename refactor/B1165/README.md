@@ -113,10 +113,10 @@ in particle_options.h; FOLLOW-UP below.
   the game thread fills what the filter reads (`fxActorOf`,
   src/client/spell/spell_packet_handlers.cpp:52: npc_type = +0x244, group by spawn id or
   name, raid roster by name, self) into the SpellCastVisual payloads, and SpellVisualFX
-  gates each stage (`stageDraws`, src/client/graphics/spell_visual_fx.cpp:175; Source
-  src/client/graphics/spell_visual_fx.cpp:533, landing src/client/graphics/spell_visual_fx.cpp:912,
-  Middle src/client/graphics/spell_visual_fx.cpp:1251, missile arrival
-  src/client/graphics/spell_visual_fx.cpp:1294).
+  gates each stage (`stageDraws`, src/client/graphics/spell_visual_fx.cpp:184; Source
+  src/client/graphics/spell_visual_fx.cpp:542, landing src/client/graphics/spell_visual_fx.cpp:924,
+  Middle src/client/graphics/spell_visual_fx.cpp:1262, missile arrival
+  src/client/graphics/spell_visual_fx.cpp:1309).
 * Tests: every table entry x self / group / raid / group+raid / other PC / NPC / PC and
   NPC corpse, the null/null arm and the landing / missile pairs:
   tests/test_spell_fx_options.cpp:64, tests/test_spell_fx_options.cpp:86,
