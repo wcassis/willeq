@@ -264,11 +264,21 @@ moves by the **1.2 factor** (node z 3.119 → 3.75 = ×1.202, eye height 6.023 �
 
 ### How the live leg was run (lane 5, 2026-10-28)
 
-- **Dark-elf created** (race 14, size 5) on lane 5 via the driver seed
-  (`roster_zone_seed.sql` / `zone_place_lib.sh`, `zone_id` = `zoneidnumber` =
-  2 for qeynos2 — the documented column trap, not the zone-table auto-increment
-  PK). Chars 67 (Testcaster) and 103 (Oraclewatch) left as found; nothing
-  removed.
+- **Dark-elf created** (Dark Elf, size 5) on lane 5 through the official
+  client's own character-creation screen, driven by the B1134 P1
+  template-click pattern (the `race_DarkElf` template located and clicked; the
+  character recorded in `provision/provisioned.tsv` as 104 Darkshadow on
+  account willeqwatch). Its leg pose was then seeded with `zone_place_lib.sh`
+  (`zone_id` = `zoneidnumber` = 2 for qeynos2 — the documented column trap,
+  not the zone-table auto-increment PK); that file and `roster_zone_seed.sql`
+  are pure `UPDATE`s (pose/zone), not character creators. The DB row reads
+  `race = 6`, which in the lane-5 eqemu enum (`code/common/races.h`) is
+  exactly `DarkElf` (`Human = 1`, `Werewolf = 14` — the issue's "race 14" is
+  not this server's numbering). The race ID is irrelevant to the scale rule
+  (all classic races < 26 scale by `size × 0.2`); the measured ground truth is
+  the size — the dark-elf's wire z 3.126 = `3.125 × 1.0` proves size 5 / scale
+  1.0. Chars 67 (Testcaster) and 103 (Oraclewatch) left as found (as-found rows
+  diffed unchanged after the leg); nothing removed.
 - **Oracle** (B1134 two-client observer rig, `x11grab` stills, `EQEMU_HOST=local`):
   the o-human and o-elf legs, chase + first-person, each with the capture `pcap`
   for the wire z. Evidence: `/home/user/kb-evidence/b1176/o-human/`, `o-elf/`.
