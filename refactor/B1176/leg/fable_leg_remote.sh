@@ -4,7 +4,7 @@
 #       on willeqwatch. Its screen is fable's own --dump-frames-dir (allowed on
 #       fable; B1142) -- never the official client's. The willeqwatch password
 #       is read at run time from ~/eq-oracle/observer-Oraclewatch.cred (the
-#       B1134 observer credential); it is written into cfgA.json and never
+#       B1134 observer credential; key=value lines, OBS_PASS=*** is written into cfgA.json and never
 #       echoed or logged.
 #   B = a second, HEADLESS willeq (same build tree) as Testcaster on
 #       willeq_test (the B1142 rig's credential, already committed in the
@@ -24,7 +24,7 @@ cp "$LEG_DIR/fable_b_tour.txt" "$OUT/b_tour.txt" 2>/dev/null || true
 # --- credentials -------------------------------------------------------------
 CRED=/home/user/eq-oracle/observer-Oraclewatch.cred
 [ -r "$CRED" ] || { echo "observer credential unreadable" >&2; exit 65; }
-APASS=$(awk -F: '{print $NF}' "$CRED")   # 'user:pass' -> pass; never printed
+APASS=$(awk -F= '/^OBS_PASS=/{print $2}' "$CRED")   # 'OBS_PASS=*** -> pass; never printed
 # --- configs -----------------------------------------------------------------
 mkcfg() { # $1 out  $2 user  $3 pass  $4 char
 cat > "$1" <<JSON

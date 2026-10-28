@@ -42,7 +42,8 @@ def read_datagrams(path):
         elif magic == 0xD4C3B2A1:
             endian = ">"
         else:
-            raise SystemExit("not a little/big-endian pcap: %r" % struct.pack("<I", 0) == gh[:4])
+            raise SystemExit("not a little/big-endian pcap: %r" % gh[:4].hex())
+        linktype = struct.unpack(endian + "I", gh[20:24])[0]
         while True:
             ph = fh.read(24)
             if len(ph) < 24:
@@ -51,18 +52,37 @@ def read_datagrams(path):
             data = fh.read(incl)
             if len(data) < incl:
                 break
-            yield data
+            yield linktype, data
 
 
-def udp_payload(datagram):
-    # Ethernet (linktype 1) -> IPv4 -> UDP
-    if len(datagram) < 14:
-        return None
-    ethertype = datagram[12:14]
-    if ethertype != b"\x08\x00":
-        return None
-    ip = datagram[14:]
-    if ip[0] >> 4 != 4:
+# pcap linktypes we support
+LT_ETHERNET = 1       # IP at 14, ethertype at 12
+LT_LINUX_SLL = 113    # "Linux cooked v1": IP at 16, ethertype at 4
+LT_LINUX_SLL2 = 276   # "Linux cooked v2": IP at 20, ethertype at 14
+
+
+def udp_payload(linktype, datagram):
+    # Branch on the REAL linktype from the global header so the same script
+    # reads the oracle capture (whatever NIC the driver used) and the fable
+    # capture (`tcpdump -i any` = LINUX_SLL) alike.
+    if linktype == LT_ETHERNET:
+        if len(datagram) < 14 or datagram[12:14] != b"\x08\x00":
+            return None
+        ip = datagram[14:]
+    elif linktype == LT_LINUX_SLL:
+        if len(datagram) < 16 or datagram[4:6] != b"\x08\x00":
+            return None
+        ip = datagram[16:]
+    elif linktype == LT_LINUX_SLL2:
+        if len(datagram) < 20 or datagram[14:16] != b"\x08\x00":
+            return None
+        ip = datagram[20:]
+    else:
+        # Unknown: try Ethernet layout, else give up.
+        if len(datagram) < 14 or datagram[12:14] != b"\x08\x00":
+            return None
+        ip = datagram[14:]
+    if len(ip) < 20 or ip[0] >> 4 != 4:
         return None
     ihl = (ip[0] & 0x0F) * 4
     if ip[9] != 17 or len(ip) < ihl + 8:
@@ -74,17 +94,21 @@ def main():
     pcap = sys.argv[1]
     out = sys.argv[2] if len(sys.argv) > 2 else None
     rows = []
-    for i, dg in enumerate(read_datagrams(pcap)):
-        if len(dg) < 40 or dg[0] != 0 or dg[1] != 0:
+    for i, (linktype, frame) in enumerate(read_datagrams(pcap)):
+        payload = udp_payload(linktype, frame)
+        if payload is None or len(payload) < 40:
             continue
-        opcode = struct.unpack("<H", dg[2:4])[0]
+        # daybreak app datagram: [00 00][u16 app_opcode][36-byte payload]
+        if payload[0] != 0 or payload[1] != 0:
+            continue
+        opcode = struct.unpack("<H", payload[2:4])[0]
         if opcode != 0x14CB:
             continue
-        payload = dg[2:]
-        spawn = struct.unpack("<H", payload[0:2])[0]
-        y_pos = struct.unpack("<f", payload[4:8])[0]
-        x_pos = struct.unpack("<f", payload[24:28])[0]
-        z = struct.unpack("<f", payload[28:32])[0]
+        dp = payload[2:]
+        spawn = struct.unpack("<H", dp[0:2])[0]
+        y_pos = struct.unpack("<f", dp[4:8])[0]
+        x_pos = struct.unpack("<f", dp[24:28])[0]
+        z = struct.unpack("<f", dp[28:32])[0]
         rows.append((i, spawn, x_pos, y_pos, z))
     if not rows:
         print("no OP_ClientUpdate (0x14cb) app datagrams found", file=sys.stderr)

@@ -2,17 +2,19 @@
 # B1176 O-H: the live-leg HUMAN row (acceptance C). A = Oraclewatch (103: human,
 # size 6, scale 1.2, wire z 3.75) is the OBSERVER -- its :99 screen is the
 # captured display (the driver's shot() stills are A's screen). B = Testcaster
-# (67: troll, size 5, scale 1.0, wire z 3.125) is the MAIN (Xvfb) client, the
+# (67: race 6, size 5, scale 1.0, wire z 3.125) is the MAIN (Xvfb) client, the
 # standing reference figure.
 #
-# Geometry (qeynos2): A at (-74,428) heading 64 (45 deg world); B = Testcaster
-# (67: race 6, size 5, scale 1.0, wire z 3.125) at (-50.9,437.6)
-# heading 448 (facing A). B is 25.0 units from A at bearing 67.5 deg = 22.5
-# deg to A's RIGHT (the B1134 dot(dir,R)>0 = right anchor), inside A's
-# first-person cone (hfov 62.8, T298) at a distance that keeps B's FEET in
+# Geometry (qeynos2): A at (-74,428) heading 0 (facing +Y); B = Testcaster
+# (67: race 6, size 5, scale 1.0, wire z 3.125) at (-64.4,451.1)
+# heading 448 (facing A). B is 25.0 units from A at bearing 22.5 deg = 22.5
+# deg to A's RIGHT (the B1134 dot(dir,R)>0 = right anchor). Bearing 22.5
+# works under EVERY user-camera azimuth convention (world-az-0: B is 22.5 deg
+# right of frame centre; player-relative behind: also 22.5 deg right), and it
+# keeps B inside A's first-person cone (hfov 62.8, T298) with B's FEET in
 # frame for both eye heights (the feet must clear the 24.6 deg bottom edge:
-# d >= eye/tan(24.6 deg); 25 units does for 7.44 and 6.2). The spot was
-# verified open ground by a zone-in probe (server left the position
+# d >= eye/tan(24.6 deg); 25 units does for 7.44 and 6.2). Both spots were
+# verified open ground by zone-in probes (the server left the positions
 # unmodified). B's feet are the calibration point: a known 3-D point
 # (x,y, ground 0) visible in every A frame; the camera's unknowns are solved
 # from it, never assumed (Will's rule: measured, not inferred).
@@ -25,9 +27,9 @@
 # from B (gm=1); scene = #set time 11 0 / #weather 0 (the B1134 leg
 # conditions).
 # fps=30
-# pose=-50.9,437.6,3.125,448
+# pose=-64.4,451.1,3.125,448
 # observer=Oraclewatch
-# observer-pose=-74,428,3.75,64
+# observer-pose=-74,428,3.75,0
 login	Testcaster	0	char_select
 obs	login	Oraclewatch	0	obs_char_select
 zone	qeynos2	0	in_world

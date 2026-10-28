@@ -1,5 +1,5 @@
 # B1176 fable tour for B (the HEADLESS Testcaster, willeq_test, gm=1). B zones
-# in at its seeded pose (-56.3,445.7), sets the scene to the leg conditions,
+# in at its seeded pose (-64.4,451.1), sets the scene to the leg conditions,
 # then just stands (a headless client with no input stays put) until A's leg
 # ends. The /say'd GM commands are the B1142 tour pattern (the server executes
 # a '#' command arriving in chat from a GM).

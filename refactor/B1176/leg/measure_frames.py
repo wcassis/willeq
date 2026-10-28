@@ -7,11 +7,22 @@ never assumed (Will's rule: measured, not inferred):
 
   fp          first person, camera unknowns (cz_eye, f)
               (official login default: 3.65 deg down, hfov 62.8 -- T298;
-              fable: /fpcam dump in A.log is the cross-check, T470)
-  chase-or    chase, camera unknowns (dist d, look-at height zL), f fixed at
-              550.55 = (H/2)/tan(72/2 deg) (vfov 72, the official default)
-  chase-fb    chase, camera position + look-at KNOWN from fable's /camera get
-              log line; f solved from B's feet py (px is the check)
+              the FP look runs along A's heading, which is 0 (+Y) in every
+              leg; fable: /fpcam dump in A.log is the cross-check, T470)
+  user1-or    the oracle's third-person row (F9 x3 = User Camera 1, B1134).
+              Camera unknowns (world azimuth th, distance d, look-at height
+              zL), 4 residuals (A's feet AND B's feet -- both known 3-D
+              ground points), least squares. Pitch 0: the official user1
+              rig is {pitch 0, dist 30, height 5} per the decompiled ini
+              defaults (camera_rig.h kUser1DefaultRig) -- the fit reports
+              the measured d/zL/th and their deviation from the defaults.
+              f fixed at 1048.5 = (W/2)/tan(62.8/2 deg) (hfov 62.8, T298,
+              1280x800 for both clients). In this geometry A's heading is
+              0, so a world-az-0 camera and a player-relative-behind camera
+              are the same camera -- the fit is unambiguous.
+  chase-fb    fable's third-person row: camera position + look-at KNOWN from
+              fable's /camera get log line (pos + look-at, world coords);
+              f solved in closed form from B's feet (the hfov cross-check).
 
 Silhouette: the figure is the connected component of the ground-distance
 mask that touches the predicted feet point; top row = head, bottom row in
@@ -99,6 +110,31 @@ def solve2(func, x0, tol=0.4, iters=40):
     return x, it
 
 
+def solve_ls(func, x0, tol=0.4, iters=60):
+    """Gauss-Newton least squares: n unknowns, m residuals (finite J)."""
+    x = np.array(x0, dtype=float)
+    h = 1e-3
+    for it in range(iters):
+        r = np.array(func(x), dtype=float)
+        if float(np.sqrt((r ** 2).sum())) / max(1, len(r)) < tol:
+            return x, it
+        m, n = r.shape[0], x.shape[0]
+        J = np.zeros((m, n))
+        for j in range(n):
+            xp = x.copy(); xp[j] += h
+            J[:, j] = (np.array(func(xp), dtype=float) - r) / h
+        A = J.T @ J
+        b = J.T @ r
+        try:
+            dx = np.linalg.solve(A, -b)
+        except np.linalg.LinAlgError:
+            return x, it
+        if not np.all(np.isfinite(dx)) or float(np.hypot(*dx)) > 50:
+            return x, it
+        x = x + dx
+    return x, it
+
+
 class Cam:
     """Pinhole camera in EQ world space (x,y horizontal, z up), with the
     EXACT basis vectors of include/client/graphics/first_person_camera.h
@@ -172,38 +208,44 @@ def calib(frame, mode, ax, ay, az, bx, by, dist=20, gnd=None, sol_in=None):
         if mode == "fp":
             cz, f = x
             eye = (ax, ay, cz)
-            # 3.65 deg down (T298), heading-free: look at (ax, ay+1, cz-0.064)
+            # 3.65 deg down (T298), along A's heading (0 = +Y in every leg):
             look = (ax, ay + 1.0, cz - 1.0 * math.tan(3.65 * DEG))
             return Cam(eye, look, f)
-        if mode == "chase-or":
-            d, zL = x
-            th = 2 * math.pi * 416 / 512.0
-            p = 6.0 * DEG
-            fx, fy = -math.sin(th), math.cos(th)
-            look = (ax, ay, zL)
-            pos = (ax - d * math.sin(th), ay + d * math.cos(th),
-                   zL + d * math.sin(p))
-            return Cam(pos, look, 550.55)
+        if mode == "user1-or":
+            th, d, zL = x
+            # user1: pitch 0, the camera looks horizontally at (ax,ay,zL)
+            # from world azimuth th (0 = on the -Y side, looking +Y).
+            pos = (ax - d * math.sin(th), ay - d * math.cos(th), zL)
+            return Cam(pos, (ax, ay, zL), 1048.5)
         if mode == "chase-fb":
             (cx, cy, cz, lx, ly, lz, f) = x
             return Cam((cx, cy, cz), (lx, ly, lz), f)
         raise SystemExit("mode")
 
-    def func(x):
-        cam = cam_from(x)
-        pr = cam.project((bx, by, 0.0))
+    def feet_res(cam, wx, wy):
+        pr = cam.project((wx, wy, 0.0))
+        if pr is None:
+            return (500.0, 500.0)
         meas = measure_feet(img, mask, pr[0], pr[1])
-        if pr is None or meas is None:
+        if meas is None:
             return (500.0, 500.0)
         return (meas[0] - pr[0], meas[1] - pr[1])
 
     if mode == "fp":
+        def func(x):
+            return feet_res(cam_from(x), bx, by)
         x, it = solve2(func, (7.0, 1100.0))
         sol = {"mode": mode, "cz": x[0], "f": x[1], "iters": it,
                "a-x": ax, "a-y": ay, "b-x": bx, "b-y": by}
-    elif mode == "chase-or":
-        x, it = solve2(func, (20.0, 7.0))
-        sol = {"mode": mode, "dist": x[0], "z_look": x[1], "f": 550.55, "iters": it,
+    elif mode == "user1-or":
+        def func(x):
+            cam = cam_from(x)
+            r = list(feet_res(cam, ax, ay))      # A's feet (known ground point)
+            r += list(feet_res(cam, bx, by))     # B's feet
+            return r
+        x, it = solve_ls(func, (0.0, 30.0, 5.0))
+        sol = {"mode": mode, "th_deg": math.degrees(x[0]), "dist": x[1],
+               "z_look": x[2], "f": 1048.5, "iters": it,
                "a-x": ax, "a-y": ay, "b-x": bx, "b-y": by}
     elif mode == "chase-fb":
         # camera fully known (fable /camera get); f solved in closed form
@@ -243,6 +285,14 @@ def calib(frame, mode, ax, ay, az, bx, by, dist=20, gnd=None, sol_in=None):
     sol["feet_px"] = [pr[0], pr[1]]
     sol["feet_meas"] = meas
     sol["resid_px"] = [abs(meas[0] - pr[0]), abs(meas[1] - pr[1])] if meas else None
+    if mode == "user1-or":
+        # also report A's feet residual (the other half of the fit)
+        pr_a = cam.project((ax, ay, 0.0))
+        meas_a = measure_feet(img, mask, pr_a[0], pr_a[1]) if pr_a else None
+        sol["a_feet_px"] = list(pr_a) if pr_a else None
+        sol["a_feet_meas"] = meas_a
+        sol["a_resid_px"] = ([abs(meas_a[0] - pr_a[0]), abs(meas_a[1] - pr_a[1])]
+                             if meas_a else None)
     print(json.dumps(sol))
     return sol
 
@@ -295,11 +345,10 @@ def main():
         ax, ay = float(sol.get("a-x", 0)), float(sol.get("a-y", 0))
         if mode == "fp":
             cam = Cam((ax, ay, sol["cz"]), (ax, ay + 1.0, sol["cz"] - math.tan(3.65 * DEG)), sol["f"])
-        elif mode == "chase-or":
+        elif mode == "user1-or":
+            th = math.radians(sol["th_deg"])
             d, zL = sol["dist"], sol["z_look"]
-            th = 2 * math.pi * 416 / 512.0
-            p = 6.0 * DEG
-            cam = Cam((ax - d * math.sin(th), ay + d * math.cos(th), zL + d * math.sin(p)),
+            cam = Cam((ax - d * math.sin(th), ay - d * math.cos(th), zL),
                       (ax, ay, zL), sol["f"])
         else:
             cam = Cam((sol["cx"], sol["cy"], sol["cz"]), (sol["lx"], sol["ly"], sol["lz"]), sol["f"])

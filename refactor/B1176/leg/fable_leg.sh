@@ -4,7 +4,7 @@
 # LOCK_HELD discipline: fable legs share one lease and one stack-up).
 #
 #   1. seeds the poses for A (willeqwatch char) and B (Testcaster, 67) in
-#      qeynos2 -- A at (-74,428,A_Z,64), B at (-50.9,437.6,3.125,448) (the
+#      qeynos2 -- A at (-74,428,A_Z,0), B at (-64.4,451.1,3.125,448) (the
 #      same geometry as the oracle legs, o_human.tsv);
 #   2. ships the tour + remote script to the ThinkPad and runs the leg;
 #   3. pulls the evidence back (frames are kept on the ThinkPad except a
@@ -28,9 +28,9 @@ cd "$WT"
 export EQEMU_LANE=5
 source scripts/eqemu/env.sh
 source scripts/eqemu/restore_lib.sh
-eqemu_sql "UPDATE character_data SET zone_id=$ZID, x=-74, y=428, z=$AZ, heading=64 WHERE name='$ACHAR';" \
+eqemu_sql "UPDATE character_data SET zone_id=$ZID, x=-74, y=428, z=$AZ, heading=0 WHERE name='$ACHAR';" \
   || { echo "A seed failed" >&2; exit 65; }
-eqemu_sql "UPDATE character_data SET zone_id=$ZID, x=-50.9, y=437.6, z=3.125, heading=448 WHERE name='Testcaster';" \
+eqemu_sql "UPDATE character_data SET zone_id=$ZID, x=-64.4, y=451.1, z=3.125, heading=448 WHERE name='Testcaster';" \
   || { echo "B seed failed" >&2; exit 65; }
 mkdir -p "$OUT_LOCAL"
 ssh thinkpad "mkdir -p '$OUT_REMOTE'" || { echo "remote mkdir failed" >&2; exit 65; }
