@@ -165,9 +165,9 @@ client it follows the world, not the actor.
   other id the node's +X in world space (row 0); used by the live renderer
   (`src/client/graphics/renderer/renderer_entities.cpp:357`) and the harness
   (`tools/model_viewer/model_viewer_fx_harness.cpp:672`).
-- Tests: `SlotRules.AnAttachedSlotOrientsToItsActor` (`tests/test_spell_slot_rules.cpp:310`, record
+- Tests: `SlotRules.AnAttachedSlotOrientsToItsActor` (`tests/test_spell_slot_rules.cpp:331`, record
   80 at level 60: all Source and all 8 landing commands request the direction) and
-  `SlotRulesSim.AnAttachedRecordEmitterSpawnsInItsActorsFrame` (`tests/test_spell_slot_rules.cpp:374`:
+  `SlotRulesSim.AnAttachedRecordEmitterSpawnsInItsActorsFrame` (`tests/test_spell_slot_rules.cpp:395`:
   a +0xBC offset of 5 lands at (0, 0, 5) for an actor facing +Z, (5, 0, 0) facing +X, and -- the
   pre-B1167 command -- at x 5 whatever the facing).
 
