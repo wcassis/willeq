@@ -966,11 +966,18 @@ TEST(OptionsParticlesB1182, TheIntReaderWrapsLikeTheClientsAtoi) {
     EXPECT_EQ(v("99999999999"), 1215752191) << "wraps mod 2^32 (99999999999 - 23*2^32)";
 }
 
-// Non-finite floats: the client's sscanf %f parses inf/nan (and "1e400"
-// overflows to +/-HUGE_VAL) and the loader clamp (132608-132637) maps -inf
-// to the lower bound and +inf/NaN to the upper one. Asserted through the
-// APPLIED knobs (the clamped endpoint is a table value, so the raw-float
-// slot is empty and the knobs hold the table float).
+// Non-finite floats and ERANGE: the client's sscanf %f parses inf/nan,
+// overflows "1e400" to +/-HUGE_VAL, and underflows "1e-400" to 0.0
+// (strtof("1e-400") = 0.0 with ERANGE, measured on the build host, what
+// the client's sscanf consumes); the loader clamp (132608-132637) then
+// maps the negative half to the LOWER bound and the positive half / NaN to
+// the UPPER one. Pinned per float key -- density and near-clip, spell and
+// environment -- one row per "1e-400" / "-1e-400" / "1e400" / "-1e400",
+// each the value the client's own reader + clamp applies. Asserted through
+// the APPLIED knobs: a density endpoint is a table value (the raw-float
+// slot is empty, the knobs hold the table float), while the near-clip's
+// LOWER endpoint (1.0, below the table's first value 2.0) is applied RAW
+// (B1165: the client applies the clamped float as read).
 TEST(OptionsParticlesB1182, NonFiniteFloatsClampToTheClientsEndpoints) {
     auto knobs = [](const std::string& key, const std::string& val) {
         const EqClientIni p = ParseEqClientIni("[Defaults]\r\n" + key + "=" + val + "\r\n");
@@ -978,15 +985,31 @@ TEST(OptionsParticlesB1182, NonFiniteFloatsClampToTheClientsEndpoints) {
         ApplyEqClientIni(p, s);
         return particleKnobsFromOptions(s.values, s.iniFloats);
     };
+    // Overflow: +/-HUGE_VAL -> the upper / lower endpoint.
     EXPECT_FLOAT_EQ(knob(knobs("SpellParticleDensity", "inf"), Env::ParticleFamily::Spell).density, 1.0f);
     EXPECT_FLOAT_EQ(knob(knobs("SpellParticleDensity", "-inf"), Env::ParticleFamily::Spell).density, 0.0f);
     EXPECT_FLOAT_EQ(knob(knobs("SpellParticleDensity", "nan"), Env::ParticleFamily::Spell).density, 1.0f);
     EXPECT_FLOAT_EQ(knob(knobs("SpellParticleDensity", "1e400"), Env::ParticleFamily::Spell).density, 1.0f);
     EXPECT_FLOAT_EQ(knob(knobs("SpellParticleDensity", "-1e400"), Env::ParticleFamily::Spell).density, 0.0f);
+    // Underflow: 0.0 (the client's own strtof result) -> the LOWER endpoint,
+    // never the upper one the sign-only fold sent it to (MR !334 note 8311).
+    EXPECT_FLOAT_EQ(knob(knobs("SpellParticleDensity", "1e-400"), Env::ParticleFamily::Spell).density, 0.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("SpellParticleDensity", "-1e-400"), Env::ParticleFamily::Spell).density, 0.0f);
     EXPECT_FLOAT_EQ(knob(knobs("SpellParticleNearClipPlane", "inf"), Env::ParticleFamily::Spell).nearClip, 8.0f);
     EXPECT_FLOAT_EQ(knob(knobs("SpellParticleNearClipPlane", "-inf"), Env::ParticleFamily::Spell).nearClip, 1.0f);
     EXPECT_FLOAT_EQ(knob(knobs("SpellParticleNearClipPlane", "1e400"), Env::ParticleFamily::Spell).nearClip, 8.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("SpellParticleNearClipPlane", "-1e400"), Env::ParticleFamily::Spell).nearClip, 1.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("SpellParticleNearClipPlane", "1e-400"), Env::ParticleFamily::Spell).nearClip, 1.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("SpellParticleNearClipPlane", "-1e-400"), Env::ParticleFamily::Spell).nearClip, 1.0f);
     EXPECT_FLOAT_EQ(knob(knobs("EnvironmentParticleDensity", "nan"), Env::ParticleFamily::Environment).density, 1.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("EnvironmentParticleDensity", "1e-400"), Env::ParticleFamily::Environment).density, 0.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("EnvironmentParticleDensity", "-1e-400"), Env::ParticleFamily::Environment).density, 0.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("EnvironmentParticleDensity", "1e400"), Env::ParticleFamily::Environment).density, 1.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("EnvironmentParticleDensity", "-1e400"), Env::ParticleFamily::Environment).density, 0.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("EnvironmentParticleNearClipPlane", "1e-400"), Env::ParticleFamily::Environment).nearClip, 1.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("EnvironmentParticleNearClipPlane", "-1e-400"), Env::ParticleFamily::Environment).nearClip, 1.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("EnvironmentParticleNearClipPlane", "1e400"), Env::ParticleFamily::Environment).nearClip, 8.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("EnvironmentParticleNearClipPlane", "-1e400"), Env::ParticleFamily::Environment).nearClip, 1.0f);
     const int op = static_cast<int>(OL::Setting::SpellParticleOpacity);
     EXPECT_EQ(ParseEqClientIni("[Defaults]\r\nSpellParticleOpacity=inf\r\n").optionValues[op], 100);
     EXPECT_EQ(ParseEqClientIni("[Defaults]\r\nSpellParticleOpacity=-inf\r\n").optionValues[op], 0);

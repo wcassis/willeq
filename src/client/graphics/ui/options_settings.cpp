@@ -46,6 +46,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>  // B1182 fix: std::strtof (the client's sscanf %f semantics)
 #include <cstdio>
 #include <stdexcept>
 
@@ -422,26 +423,25 @@ bool parseSettingIniFloat(Setting s, const std::string& text, int& display,
                           std::optional<float>& applied) {
     if (!isIniFloatSetting(s)) return false;
     const auto& info = settingInfo(s);
-    float f = 0.0f;
-    try {
-        size_t used = 0;
-        f = std::stof(text, &used);
-        if (used == 0) return false;
-    } catch (const std::out_of_range&) {
-        // B1182 (#501): "1e400" -- the client's sscanf %f overflows to
-        // +/-HUGE_VAL (ERANGE), not a failure; fold to the same magnitude.
-        size_t k = 0;
-        while (k < text.size() && std::isspace(static_cast<unsigned char>(text[k]))) ++k;
-        f = (k < text.size() && text[k] == '-') ? -1e30f : 1e30f;
-    } catch (...) {
-        return false;
-    }
+    // B1182 (#501): the client's sscanf %f (0x4ae705 -> 0x610837,
+    // eqgame.exe.c 132182-132197) IS the C float conversion, so parse with
+    // strtof itself rather than std::stof: on ERANGE strtof already folds by
+    // MAGNITUDE -- overflow to +/-HUGE_VAL, underflow to +/-0.0 ("1e-400"
+    // measured as 0.0 on the build host, the value the client's clamp pins to
+    // its LOWER endpoint) -- while libstdc++'s std::stof throws out_of_range
+    // for BOTH halves, and the sign-only fold the catch used to do sent a
+    // positive underflow to the UPPER one (MR !334 review, note 8311). A
+    // missed parse (junk) is a no-conversion, as the client's sscanf miss
+    // returns the pre-seeded default.
+    char* end = nullptr;
+    float f = std::strtof(text.c_str(), &end);
+    if (end == text.c_str()) return false;
     if (!std::isfinite(f)) {
-        // B1182 (#501): the client's sscanf %f (0x4ae67a -> 0x610837,
-        // eqgame.exe.c 132182-132197) parses inf/nan too, and the loader
-        // clamp (132608-132637) maps -inf to the LOWER bound and +inf/NaN
-        // to the UPPER one (a NaN fails every comparison, so it takes the
-        // else arm). Fold to a finite magnitude the clamp then pins.
+        // B1182 (#501): an overflow (and the sscanf's inf/nan text) reaches
+        // the loader clamp (132608-132637) non-finite, and the client's
+        // clamp maps -inf to the LOWER bound and +inf/NaN to the UPPER one
+        // (a NaN fails every comparison, so it takes the else arm). Fold to
+        // a finite magnitude the clamp then pins.
         f = (std::isinf(f) && f < 0.0f) ? -1e30f : 1e30f;
     }
     f = clampSettingIniFloat(s, f);
