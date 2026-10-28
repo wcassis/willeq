@@ -1,7 +1,8 @@
 # action	target	hold_ms	still_name
 # B1176 O-H: the live-leg HUMAN row (acceptance C). A = Oraclewatch (103: human,
 # size 6, scale 1.2, wire z 3.75) is the OBSERVER -- its :99 screen is the
-# captured display (the driver's shot() stills are A's screen). B = Testcaster
+# captured display (the measurement stills are obs steps, which capture A's
+# :99 screen; a non-obs step stills B's :98 Xvfb screen). B = Testcaster
 # (67: race 6, size 5, scale 1.0, wire z 3.125) is the MAIN (Xvfb) client, the
 # standing reference figure.
 #
@@ -46,13 +47,19 @@ obs	press	Escape	0	obs_clean
 command	#set time 11 0	0	noon
 wait	1500	0	noon_settle
 command	#weather 0	0	clear
-wait	6000	0	a_fp1
-wait	2000	0	a_fp2
+# B1176 (#495) re-run 2: the driver stills the CURRENT role's display
+# (shot() = `import -window root` of $DISPLAY: obs steps -> :99 = A's
+# NVIDIA screen; non-obs steps -> :98 = B's Xvfb screen, never measured).
+# The first run's measurement stills were non-obs steps, so they captured
+# B's (Testcaster) screen -- wrong client; the F9 presses had gone to A.
+# The measurement stills are obs steps so they capture A's screen.
+obs	wait	6000	0	a_fp1
+obs	wait	2000	0	a_fp2
 obs	press	F9	0	a_cam1
 obs	press	F9	0	a_cam2
 obs	press	F9	0	a_cam3
-wait	4000	0	a_chase_settle
-wait	4000	0	a_chase1
-wait	2000	0	a_chase2
+obs	wait	4000	0	a_chase_settle
+obs	wait	4000	0	a_chase1
+obs	wait	2000	0	a_chase2
 obs	command	/q	0	obs_quit
 command	/q	0	quit

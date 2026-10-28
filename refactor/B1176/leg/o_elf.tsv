@@ -25,13 +25,15 @@ obs	press	Escape	0	obs_clean
 command	#set time 11 0	0	noon
 wait	1500	0	noon_settle
 command	#weather 0	0	clear
-wait	6000	0	a_fp1
-wait	2000	0	a_fp2
+# B1176 (#495) re-run 2: stills capture the CURRENT role's display; the
+# measurement stills are obs steps so they capture A's (:99) screen.
+obs	wait	6000	0	a_fp1
+obs	wait	2000	0	a_fp2
 obs	press	F9	0	a_cam1
 obs	press	F9	0	a_cam2
 obs	press	F9	0	a_cam3
-wait	4000	0	a_chase_settle
-wait	4000	0	a_chase1
-wait	2000	0	a_chase2
+obs	wait	4000	0	a_chase_settle
+obs	wait	4000	0	a_chase1
+obs	wait	2000	0	a_chase2
 obs	command	/q	0	obs_quit
 command	/q	0	quit
