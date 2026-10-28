@@ -387,6 +387,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_caster_own_landing DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1180 (#499): the EDD sprite's attach scale is the anchor entity's rendered
+# scale (the client's s6C word), not the constant 1.0 (B1149's ruling). Same
+# seam as test_caster_own_landing (real SpellVisualFX -> ParticleManager ->
+# SimulationWorker); the readout is the particle's sizeStart, so a landing on
+# a 1.2x entity draws its Target sprites 1.2x a unit-scale entity's (the
+# pinned TrollF s6C = 1.2).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_b1180_attach_scale
+        test_b1180_attach_scale.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_b1180_attach_scale PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_b1180_attach_scale GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_b1180_attach_scale DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B1106 (#426, from B1104 #424 F2): a spell landing's command must not be
 # DROPPED because the frame it rides on was slow. Same seam as
 # test_caster_own_landing (real SpellVisualFX -> ParticleManager ->
