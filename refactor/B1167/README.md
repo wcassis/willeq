@@ -356,7 +356,8 @@ the face-on probe of the same test still claims the old > 50 deg off-heading bou
 
 **The ratchet.** `kStandingPx` 238 -> **245** (`tools/model_viewer/fx_target_anchor.h:86`),
 re-measured for the back-turned target at the b1130 solved position (x -8.685 z 0.272): the box
-is rows 370..615 = 245 px on frame 0 (246 px on the solved frame), feet at row 615, column 940
+is rows 370..615 = 246 px on frame 0; the solved standing height 246 px is d +0 and the
+measured 245 px is d +1 (tol 3): PASS, feet at row 615, column 940
 (settle5_b1130 run.log self-check line). B1166's self-check (`B1130SelfCheckRejectsAWrongTargetModel`,
 `tests/test_fx_harness.cpp:492`) still passes on the new preset and fails on a wrong body. B1172
 #491 (285 face-on at the client's actor scale 1.2) landed on fable after this section was
@@ -372,7 +373,18 @@ vs the committed B1118 framing: those PNGs were deleted in that leg's cleanup, s
 against the pcaps; B1178 #497 is re-capturing the frame references.
 
 **Re-gate (before = branch tip eff3de46, after = this tip; level 60; ThinkPad).** Tables in
-`refactor/B1167/contintables/` (`refactor/B1167/scripts/tables_cont.sh`):
+`refactor/B1167/contintables/` (`refactor/B1167/scripts/tables_cont.sh`). `owners_cont.tsv`
+was regenerated in this leg by the script's owners step run against the committed
+`contintables/` tables (`python3 -I - refactor/B1167/contintables` over the script's owners
+heredoc; its two compare steps' sweep frames stay on the worker host, and the committed
+tables are those steps' output). The step's invocation is fixed by this leg: `python3 -I
+"$T"` is rejected by python (`can't find '__main__' module in '<dir>'` -- `$T` was taken as
+the script file and the heredoc never ran), so the previously committed `owners_cont.tsv`
+was not produced by the script (nine mangled header lines; 19 farther rows carried the
+nearer-owner text). It is now `python3 -I - "$T"`. The regeneration also drops the named
+B1164 residual fragments of the old file: the script's keymap looks up one-word keys in a
+frags dict whose keys are the two-word labels of b1171's owner column, so every b1130
+farther row reads `unowned -- the row owner` (FOLLOW-UP 5). The re-gate results:
 - **r35 at the ruling's numbers**: land 4.341 -> **4.855** (oracle 7.283; the ruling's throwaway
   single-row measurement: 4.359 -> 4.858), source 1.838 -> **1.257** (oracle 1.142; ruling:
   1.842 -> 1.263), p90_land 0.102 -> 0.095 (oracle 0.080; ruling's p90_src 0.106 -> 0.117).
@@ -448,14 +460,15 @@ measured here; tables `refactor/B1167/contintables/merged/`, `merge/tables_merge
   their residual is the row owner's (B1164's attach-scale + target-height family) --
   `owners_merged.tsv`.
 - r35: source 1.257 (unchanged, the ruling's number -- the source is on the caster); landing
-  4.855 -> 4.865, p90_land 0.119 -> 0.092, landing_end 5.283 -> 5.317 -- landing and p90 nearer
+  4.855 -> 4.865, p90_land 0.095 -> 0.092, landing_end 5.283 -> 5.317 -- landing and p90 nearer
   the oracle's 7.283 / 0.080 than before the merge (and better than B1171's face-on
   4.612 / 0.121 / 5.350 / 1.855).
 - r16's landing run holds: 0.811 -> 0.812 (oracle 1.343; B1171's face-on 0.724); p90 0.113 ->
   0.109 (nearer the oracle's 0.076).
 - b1118 47 rows: **13 byte-identical** (the self-target rows -- the target hides), 29 moved,
   5 with frames differing but every axis inside tolerance (r16 r28 r32 r35 r41). Moved axis
-  counts vs the lane-5 / B1157 reference: land 6 nearer / 20 away, end 1/1, src 8/4. The moved
+  counts vs the lane-5 / B1157 reference: land 6 nearer / 20 away, end 1/1, src 8 nearer /
+  6 away (r1 r3 r5 r7 r30 r33). The moved
   frames differ because the target body changed; the reference for those rows predates this
   pose/scale and is itself what B1178 #497 re-captures -- the row owners stand as in sec. 7.
 
@@ -492,3 +505,9 @@ effect on r35: source 1.842 -> 1.263, landing 4.359 -> 4.858, p90_src 0.106 -> 0
    (oracle 1.343; B1171's face-on level-60 0.724). The run was geometry-bound (face-on actors
    put it outside the crop); the residual is the landing family (B1164's s + B1172's target
    height, `refactor/B1167/contintables/owners_cont.tsv`).
+5. **`tables_cont.sh`'s keymap never matches its own regex.** The frags parse
+   `(\w+ \w+): ` yields keys like `cov short` / `p90 short` / `src over`, but the keymap
+   looks up `cov` / `p90` / `src` -- one word, which the regex can never produce -- so the
+   named B1164 residual fragments of the pre-fix `owners_cont.tsv` cannot come from the
+   committed script (sec. 7). Owner: whoever re-points b1171's owner column or the keymap;
+   the table stays the script's verbatim output until then.

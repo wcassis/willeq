@@ -20,7 +20,7 @@ mkdir -p "$T"
 python3 -P refactor/B1166/scripts/compare_b1130.py "$EV/sweeps_beforeH" "$EV/sweeps_afterH" "$T/b1130_table.tsv" > /dev/null
 python3 -I refactor/B1167/scripts/compare_b1118.py "$EV/sweeps_beforeH" "$EV/sweeps_afterH" "$T/b1118_table.tsv" > /dev/null
 git show origin/fable:refactor/B1171/tables/b1130_table.tsv > "$T/b1171_b1130_table.tsv"
-python3 -I "$T" <<'PY'
+python3 -I - "$T" <<'PY'
 import sys, re
 T = sys.argv[1]
 def load(p, delim='\t'):
