@@ -5,6 +5,7 @@
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/light_source.h"
 #include "client/graphics/spell_cast_animation.h"
+#include "client/spell/spell_action_anim.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
@@ -50,6 +51,7 @@ void EntityRenderer::startEntityCast(uint16_t spawnId, uint32_t spellId, const s
 
     // Set casting state
     visual.isCasting = true;
+    visual.actionAnimCode.clear();  // B1174: the cast track replaces an action one
     visual.castSpellId = spellId;
     visual.castSpellName = spellName;
     visual.castDurationMs = castTimeMs;
@@ -95,6 +97,32 @@ void EntityRenderer::cancelEntityCast(uint16_t spawnId) {
     visual.castSpellName.clear();
     visual.castDurationMs = 0;
     endEntityCastAnim(visual);
+}
+
+// B1174 (#493): eqgame's OP_Action handler (0x47f4af) asks the standing
+// source's animation manager for the spell's CastingAnim, the call
+// OP_BeginCast makes (spell_action_anim.h). A source in its cast state
+// already plays that track (the client's same-id no-op), so only a source
+// with no cast -- a /disc -- starts one here; the per-frame walk returns it
+// to the idle when the track stops (updateMainThreadEntityState).
+std::string EntityRenderer::actionEntityCastAnim(uint16_t spawnId, int castAnimId,
+                                                 const EQ::ActionCastAnimInputs& in) {
+    auto it = entities_.find(spawnId);
+    if (it == entities_.end()) return std::string();
+    EntityVisual& visual = it->second;
+    if (visual.isCasting || visual.isCorpse || visual.isFading || !visual.animatedNode) return std::string();
+    // The client's conditions, as read (spell id, record, target type, the
+    // source's stand byte, field 123, Bard/instrument_mod): the stand byte
+    // is the spawn's Entity::stand_state, not the renderer's poseState.
+    if (!EQ::ActionPlaysSourceCastAnim(in)) return std::string();
+    const std::string code = playCastAnim(visual.animatedNode, castAnimId);
+    if (!code.empty()) {
+        visual.actionAnimCode = code;
+        visual.currentAnimation = code;
+    }
+    LOG_DEBUG(MOD_GRAPHICS, "Entity {} ({}) OP_Action cast-anim track '{}' (CastingAnim {})", spawnId, visual.name,
+              code, castAnimId);
+    return code;
 }
 
 void EntityRenderer::completeEntityCast(uint16_t spawnId) {

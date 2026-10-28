@@ -17,6 +17,7 @@
 #include "client/skill/skill_manager.h"
 #include "client/zone_lines.h"
 #include "client/position_frames.h"  // T332: the wire<->render z conversion
+#include "client/graphics/actor_scale.h"  // B1172: the client's resolved size (one number)
 #include "client/zone/zone_display_name.h"  // B1088 (#408): the loading screen's zone name
 #include "client/formatted_message.h"
 #include "common/logging.h"
@@ -466,6 +467,18 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 	// (no model yet -- the usual case here, this packet is the first thing that
 	// arrives) say so, so onPlayerModelGeometryChanged converts it exactly once
 	// when the mesh offset becomes measurable.
+	//
+	// B1172 (#491) fix leg: our size. The profile carries none; the server's
+	// OP_ZoneEntry Spawn_Struct, which follows this packet, does (read in
+	// ZoneComponent::OnZoneEntry). Until it arrives we hold what the client
+	// holds for a size word of 0 -- the value every oracle and fable capture
+	// decoded for B1172 carries: the race/gender default, written back as the
+	// size (eqgame 0x47fb30). ONE number: PlayerState (the wire-z offset of the
+	// conversion below, position_frames.h) and our entity record (the actor
+	// scale) both take it. Set before the conversion so it reads this zone's
+	// size, not the previous character's.
+	ctx_.game_state.player().setSize(EQT::Graphics::clientResolvedActorSize(
+		static_cast<uint16_t>(race), static_cast<uint8_t>(gender), 0.0f));
 	ctx_.self.SetPosition(server_y, server_x,
 	            eqt::wireZToRenderZ(z, ctx_.game_state.player().collisionZOffset(),
 	                                ctx_.game_state.player().size()));
@@ -622,9 +635,7 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 		ctx_.self.SetMySpawnId(new_spawn_id);
 	}
 	
-	// For size, we need to check if it's sent in the profile or if we get it from spawn
-	// It's not in the standard PlayerProfile_Struct, so we'll use default
-	float size = 6.0f;  // Default player size
+	const float size = ctx_.game_state.player().size();  // B1172: the one resolved size (set above)
 	
 	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "=== CHARACTER DATA ===");
@@ -637,7 +648,7 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 			server_x, server_y, z, heading);
 		LOG_DEBUG(MOD_MAIN, "Internal (swapped): x={:.2f} y={:.2f} z={:.2f} heading={:.2f}",
 			ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), ctx_.self.HeadingDeg());
-		LOG_DEBUG(MOD_MAIN, "Size: {:.2f} (default, will be updated from spawn)", size);
+		LOG_DEBUG(MOD_MAIN, "Size: {:.2f} (race default, until OP_ZoneEntry says otherwise)", size);
 		LOG_DEBUG(MOD_MAIN, "=== BIND POINT ===");
 		LOG_DEBUG(MOD_MAIN, "Bind raw: zone={} x={:.2f} y={:.2f} z={:.2f} heading={:.2f}",
 			bind_zone_id, bind_x, bind_y, bind_z, bind_heading);
@@ -671,16 +682,13 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 	self_entity.hp_percent = 100;  // We'll get actual HP from spawn or HP update packets
 	self_entity.cur_mana = static_cast<uint16_t>(mana);
 	self_entity.max_mana = static_cast<uint16_t>(mana);  // Will be updated from spawn
-	self_entity.size = size;
+	self_entity.size = size;  // B1172: the same number as player().size()
 	self_entity.animation = 0;
 	self_entity.delta_x = 0;
 	self_entity.delta_y = 0;
 	self_entity.delta_z = 0;
 	self_entity.delta_heading = 0;
 	self_entity.last_update_time = std::time(nullptr);
-	
-	// Update our own size
-	ctx_.game_state.player().setSize(size);
 	
 	// Store in entity list (sync to both local map and EntityManager)
 	ctx_.entities[ctx_.self.MySpawnId()] = self_entity;

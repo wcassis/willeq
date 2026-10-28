@@ -101,7 +101,7 @@ The b1130 rig before B1167: caster at the origin facing +Z, the camera fitted on
 (`kHarnessFaceOnRotY`), the target solved at the anchor (B1166) -- world +X ran exactly to
 screen-left. The client's camera sits at DirHeading from the player's heading, so in the
 capture's world the camera is at 0 + 135 = 135 deg from the caster, i.e. the fitted rig is
-45 deg off. `turnB1130Rig` (`tools/model_viewer/model_viewer_fx_harness.cpp:902`) turns camera,
+45 deg off. `turnB1130Rig` (`tools/model_viewer/model_viewer_fx_harness.cpp:756`) turns camera,
 caster and target about the caster's vertical axis by
 `rigYawDeg = caster heading + DirHeading - 90` (`tools/model_viewer/fx_capture_pose.h:91`; 45 deg
 for b1130, 157.5 deg for b1130-self, 202.5 deg for b1118, `kB1130NpcPose` / `kB1130SelfPose` /
@@ -113,7 +113,7 @@ frame-0 self-check still reads the target at 238 px, feet 615, column 940.2:
 **Independent check.** B1166's fit knows only two screen pixels, yet its solved target offset
 (x -8.888, z 0.924; `review/B1166/worker/probe/after.log:125`), turned by 45 deg, is
 (-6.938, -5.632) -- 5.9 deg and 0.94 units from the capture's own offset (-6.4, -6.4)
-(`B1167CapturePose.TheTurnedTargetStandsOnTheCapturesBearing`, `tests/test_fx_harness.cpp:751`;
+(`B1167CapturePose.TheTurnedTargetStandsOnTheCapturesBearing`, `tests/test_fx_harness.cpp:780`;
 un-turned it is 50.9 deg off). The camera distance the fit solves on a back-turned caster,
 30.28 units (`runs/fix1_b1130_l60/run.log`), also lands on the capture's `Camera1-Distance=30`.
 
@@ -324,16 +324,18 @@ b1130-self caster 160, b1118 caster 160 / target 160 (`kB1130NpcPose` / `kB1130S
 `review/B1118/oracle_druid/capture.pcap`) -- and `fxharness::poseForPreset`
 (`fx_capture_pose.h:73`) names them per preset. The preset's rig turn (`rigYawDeg`, unchanged:
 45 / 157.5 / 202.5 deg) now applies to all three presets (`turnB1130Rig`,
-`tools/model_viewer/model_viewer_fx_harness.cpp:902, 963`); each actor is fitted at
+`tools/model_viewer/model_viewer_fx_harness.cpp:756, 817`); each actor is fitted at
 `presetRotYDeg(pose, heading)` (`fx_capture_pose.h:100`) in the fitted frame, so after the turn
 it sits at exactly `rotYForHeading(its capture heading)` -- b1130: caster rotY 0, target rotY
 -112.5 (the caster with her back to the camera, as the capture shows); applied to the actors by
-`tools/model_viewer/model_viewer_spell_test.cpp:295-301`. The b1130 target is re-solved on the
-turned bearing by the frame-0 silhouette fit (`fitFixedNpcTarget`, `:250`; finite-difference
-step 0.05 -> 0.25 units, `:346` -- 0.05 moves the silhouette less than a pixel at ~30 units
-range): **x -8.685 z 0.272**, post-turn x -6.334 z -5.949
+`tools/model_viewer/model_viewer_spell_test.cpp:298-303`. The b1130 target is re-solved on the
+turned bearing by the frame-0 silhouette fit (`fitFixedNpcTarget`,
+`tools/model_viewer/fx_target_fit.cpp:43`; finite-difference
+step 0.05 -> 0.25 units, `fx_target_fit.cpp:139` -- 0.05 moves the silhouette less than a pixel
+at ~30 units range): **x -8.685 z 0.272**, post-turn x -6.334 z -5.949
 (`/mnt/projects/fable/review/B1167/continuation/settle5/settle5_b1130/run.log`, `tgt fit 2`); the
-spell test's distance offset turns with the rig (`:851`) or a distance-14 target lands 90 deg
+spell test's distance offset turns with the rig (`model_viewer_fx_harness.cpp:676`) or a
+distance-14 target lands 90 deg
 the wrong way round.
 
 **The proofs (settle5, caster level 60, `/mnt/projects/fable/review/B1167/continuation/settle5/`).** All three presets settle solid:
@@ -348,17 +350,18 @@ the wrong way round.
 
 The turned target's bearing is pinned by
 `B1167CapturePose.TheTurnedTargetStandsOnTheCapturesBearing`
-(`tests/test_fx_harness.cpp:751`): the pre-turn offset sits 47.0 deg off the facing and the
+(`tests/test_fx_harness.cpp:780`): the pre-turn offset sits 47.0 deg off the facing and the
 post-turn offset on the 160 bearing within 3 deg / 0.6 units -- per-probe tolerances, because
 the face-on probe of the same test still claims the old > 50 deg off-heading bound.
 
-**The ratchet.** `kStandingPx` 238 -> **245** (`tools/model_viewer/fx_target_anchor.h:82`),
+**The ratchet.** `kStandingPx` 238 -> **245** (`tools/model_viewer/fx_target_anchor.h:86`),
 re-measured for the back-turned target at the b1130 solved position (x -8.685 z 0.272): the box
 is rows 370..615 = 245 px on frame 0 (246 px on the solved frame), feet at row 615, column 940
 (settle5_b1130 run.log self-check line). B1166's self-check (`B1130SelfCheckRejectsAWrongTargetModel`,
-`tests/test_fx_harness.cpp:465`) still passes on the new preset and fails on a wrong body. B1172
-#491 (285) is not on this branch's cut (eff3de46); whichever value lands on fable re-measures
-the same way.
+`tests/test_fx_harness.cpp:492`) still passes on the new preset and fails on a wrong body. B1172
+#491 (285 face-on at the client's actor scale 1.2) landed on fable after this section was
+written; the merge with it re-measured the ratchet for the SAME turned pose at that scale:
+**294 px** (sec. 8).
 
 **b1118 (FOLLOW-UP 2, closed).** Decoded from B1118's own capture the same way:
 `review/B1118/oracle_druid/capture.pcap` shows the SELF caster heading **160 on 168/168 frames**
@@ -391,6 +394,75 @@ against the pcaps; B1178 #497 is re-capturing the frame references.
 four live B1130 renders and the new bearing test), hygiene, the cite check and the MR pipeline
 -- results in the MR note. Bless-only: `kStandingPx` 238 -> 245 is the ruling's re-measured
 ratchet (the RULING below, granted); no other bless-only file changed.
+
+## 8. Post-B1172 merge (2026-10-28): the client's actor scale meets the capture headings
+
+**What landed on fable.** B1172 (#491, MR !325; tip `0f4c40ac7`): the official client's actor
+scale -- a spawn draws at `size x 0.2` (`include/client/graphics/actor_scale.h`) -- so the b1130
+human target (the capture's own wire word, `race 1 gender 0 size 6`) now draws at **1.2** instead
+of 1.0; its pose box stands on the caster's ground (B1172's standY, feet y 0.850 at 1.2); and the
+b1130 target solve split out of `model_viewer_fx_harness.cpp` into
+`tools/model_viewer/fx_target_fit.{h,cpp}` (a pure move for the 1,500-line ceiling). The dark-elf
+caster (size word 0 -> default 5 x 0.2 = **1.0**) is untouched, so the camera fit and the caster
+box are untouched.
+
+**The merge** (`origin/fable` merged into tip `2e6143258`; four conflicts, resolved by hand):
+- `tools/model_viewer/model_viewer_fx_harness.cpp` -- the solver now lives in
+  `fx_target_fit.cpp`: this leg's finite-difference step 0.05 -> 0.25 re-applied there
+  (`fx_target_fit.cpp:139`), the spell-check's right vector corrected to the B1167 rig turn
+  (`turnXZ(rigYawDeg)` merged with B1172's `targetRightOfCaster()`), and the spell test's
+  distance-offset turn merged with B1172's standY block (`model_viewer_fx_harness.cpp:676`).
+  Harness 1,358 lines, under the ceiling (the operator's 2026-10-28 01:56 note).
+- `tools/model_viewer/fx_target_anchor.h` -- B1172's 285 (face-on, scale 1.2) and this leg's 245
+  (back-turned, scale 1.0) describe the same ratchet at different poses/scales; the merged value
+  is the RE-MEASURED back-turned box at the client's scale 1.2 (below).
+- `tests/test_fx_harness.cpp` -- the ratchet constant and its negatives updated to the merged
+  pose (291..297 passes; the B1166/B1172 readings become the negatives; the wrong body is now
+  the size-5 human at scale 1.0).
+- `refactor/B1165/README.md` -- the two stale line cites re-pointed per line (740 / 330 / 359).
+
+**The ratchet, re-measured (the card: measure, do not scale).** `kStandingPx` 245 -> **294**
+(+-3, ratio 1.021 of the oracle's 288), rows 322..615 on frame 0, 294 px solved, feet row 615 at
+column 940; the b1130 target re-solved on the turned bearing at x -8.727 z -0.039 (post-turn x
+-6.144 z -6.199) and standing at y 0.850 on the caster's ground; the B1130 caster box holds at
+209 px / feet 598 / distance 30.135 (setme_b1130 run.log self-check line; caster level 60;
+NVIDIA context; `/mnt/projects/fable/review/B1167/continuation/merge/measure/`). The measured 294
+agrees with the scale-1.0 back-turned 245 x 1.2 to the pixel (the back-turned premium over
+face-on is +9 here, +7 at scale 1.0) -- the value is still the measured one, not a derivation.
+B1166's self-check PASSES on the new preset; the wrong body (the size-5 human, scale 1.0)
+renders 246 px back-turned (238 face-on) -- d -48 against the 294 ratchet -- and FAILs
+(setme_b1130_wrong; `B1130SelfCheckRejectsAWrongTargetModel` in ctest). All three presets settle
+on the merged binary (setme_b1130 / setme_b1130self / setme_b1118: caster 209/209/228 px, feet
+598/598/605, rig turns 45/157.5/202.5 deg).
+
+**Re-gate** (before = the continuation tip `2e6143258`, scale 1.0 = sweeps_afterH; after = this
+merged tip, scale 1.2 = sweeps_m; caster level 60; rendered ON the ThinkPad (NVIDIA context),
+measured here; tables `refactor/B1167/contintables/merged/`, `merge/tables_merged.sh`):
+- b1130 40 rows: **12 byte-identical** (the fixed_self rows -- the caster is scale 1.0 and its
+  pose/heading are untouched by the merge, so its frames are byte-identical: the merge's proof,
+  in B1172's own style); the 28 fixed_npc rows all differ in every frame (the target now draws
+  at 1.2 on the standing pose box). Axis moves vs the oracle: landing_cov **23 nearer / 4 away**
+  (up 23 / down 4), p90_land 13/7 (up 8 / down 12 -- the bigger target dilutes the landing
+  peak), landing_end_s 6/5, source_cov 0/0 (the source emitters live on the scale-unchanged
+  caster). The rows that moved away are the scale change itself (the target draws 20 % larger);
+  their residual is the row owner's (B1164's attach-scale + target-height family) --
+  `owners_merged.tsv`.
+- r35: source 1.257 (unchanged, the ruling's number -- the source is on the caster); landing
+  4.855 -> 4.865, p90_land 0.119 -> 0.092, landing_end 5.283 -> 5.317 -- landing and p90 nearer
+  the oracle's 7.283 / 0.080 than before the merge (and better than B1171's face-on
+  4.612 / 0.121 / 5.350 / 1.855).
+- r16's landing run holds: 0.811 -> 0.812 (oracle 1.343; B1171's face-on 0.724); p90 0.113 ->
+  0.109 (nearer the oracle's 0.076).
+- b1118 47 rows: **13 byte-identical** (the self-target rows -- the target hides), 29 moved,
+  5 with frames differing but every axis inside tolerance (r16 r28 r32 r35 r41). Moved axis
+  counts vs the lane-5 / B1157 reference: land 6 nearer / 20 away, end 1/1, src 8/4. The moved
+  frames differ because the target body changed; the reference for those rows predates this
+  pose/scale and is itself what B1178 #497 re-captures -- the row owners stand as in sec. 7.
+
+**Verification.** Targeted ctest 16/16 on the ThinkPad (the 15 of sec. 7 + B1172's new ratchet
+test), hygiene, the cite check and the MR pipeline -- results in the MR note. Bless-only:
+`kStandingPx` 245 -> 294, the ruling's re-measured ratchet for the merged pose (the same
+bless-only file); no other bless-only file changed.
 
 ## RULING (granted 2026-10-27, MR !328 note 8011 -- applied in sec. 7)
 

@@ -22,7 +22,7 @@
 // 940,652 / tmpx 325) is NOT the target's box: its extent began at the name
 // label's top row (290) and its feet row is not the boots'. The harness solves
 // the feet (row, column) -- the two world unknowns x, z -- and the height is
-// then the model's own, ratcheted at its measured 238 px (below).
+// then the model's own, ratcheted at its measured 285 px (below).
 //
 // Header-only and Irrlicht-free so the geometry is unit-tested offline
 // (tests/test_fx_harness.cpp, B1166TargetAnchor*).
@@ -48,38 +48,42 @@ constexpr TargetAnchor kB1130TargetAnchor{940.0f, 615.0f, 288.0f};
 // - height +-3 vs the STANDING height the solve rendered (the written frame
 //   must show the body the solve fitted -- the B1155 defect was a 50 px fit vs
 //   a 316 px frame);
-// - AND the standing height itself, 245 +-3 px (ratio 0.851 +-0.01 of the
-//   anchor's 288). The height is NOT solved: the two feet pixels fix the world
-//   (x, z), and the FABLE human male (race 1, gender 0, size 6) solved at the
-//   anchor renders 245 px = 0.851x the oracle's 288 for the CURRENT pose. The
-//   ratchet is re-measured when the pose changes (below): it was set at 238
-//   px (0.826) on the face-on target (review/B1166/worker/probe/after.log:128,
-//   refactor/B1166/README.md sec. 2), and B1167's continuation (the
-//   orchestrator's 2026-10-27 ruling on #486: the actors face where the
-//   capture's actors faced) turns the target to its capture heading 160
-//   (fx_capture_pose.h), 22.5 deg off face-on to the camera -- the harness's
-//   own settle run on the turned rig reads the target at rows 370..615
-//   (245 px measured on frame 0, 246 px solved, feet row 615, column 940) at
-//   the solved spot (x -8.685, z 0.272 pre-turn;
-//   review/B1167/worker/settle5/settle5_b1130/run.log, tgt fit 2 + self-check
-//   line). This
-//   ratchets that measured value so a model or scale regression fails: the
-//   earlier +-25 %-of-288 bound (216..360 px) passed a dark-elf female (219 px),
-//   a human female (217), a barbarian (285), a troll (324) and the human at
-//   size 7 (277) placed by `--target` at the anchor
-//   (review/B1166/worker/wrong_model/, README sec. 2); the face-on readings
-//   carry over as the ratchet's negatives (217/219/277/285/324 all sit
-//   outside 245 +-3, and the dark-elf female is the self-check's wrong-body
-//   test, tests/test_fx_harness.cpp B1130SelfCheckRejectsAWrongTargetModel).
-//   A body of the SAME height (dark-elf male 238, high-elf male 239, erudite
-//   male 236, face-on) cannot be told apart by height at this pose; this check
-//   does not claim to. If the human model's height is ever corrected toward
-//   the oracle's 288 (B1166 FOLLOW-UP 2), re-measure and move kStandingPx
-//   with it.
+// - AND the standing height itself, 294 +-3 px (ratio 1.021 of the anchor's
+//   288). The height is NOT solved: the two feet pixels fix the world (x, z),
+//   and the height is the model's own at the pose the rig draws. History:
+//   B1166 ratcheted the human male (race 1, gender 0, size 6) at 238 px
+//   (0.826x) face-on at scale 1.0; B1172 (#491) draws it at the official
+//   client's actor scale, size x 0.2 = 1.2 (include/client/graphics/
+//   actor_scale.h), face-on 285 px (0.990x) (review/B1172/worker/wrong_model/
+//   default_final.log, the self-check line; refactor/B1172/README.md sec. 2);
+//   B1167's continuation (the orchestrator's 2026-10-27 ruling on #486: the
+//   actors face where the capture's actors faced) turns the target to its
+//   capture heading 160 (fx_capture_pose.h), 22.5 deg off face-on to the
+//   camera, and re-measured the back-turned box at 245 px (0.851x) at scale
+//   1.0 (refactor/B1167/README.md sec. 7); the merge with B1172 re-measures
+//   it at the client's scale 1.2 in the SAME turned pose: rows 322..615 =
+//   294 px on frame 0 (294 px solved; feet row 615 at column 940; the solve
+//   at x -8.727 z -0.039, post-turn x -6.144 z -6.199; the caster box holds
+//   at 209 px / feet 598 / dist 30.135, the target stands at y 0.850 on the
+//   caster's ground) -- measured on the merged binary at caster level 60 in
+//   the NVIDIA context like every run above (setme_b1130 run.log, the
+//   self-check line; /mnt/projects/fable/review/B1167/continuation/merge/
+//   measure/), not any scaling of 245 or 285. This ratchets that measured
+//   value so a model or scale regression fails: the earlier +-25 %-of-288
+//   bound (216..360 px) passed a dark-elf female, a human female, a barbarian,
+//   a troll and the human at size 7 placed by `--target` at the anchor
+//   (review/B1166/worker/wrong_model/ and review/B1172/worker/wrong_model/),
+//   and every face-on reading in those two tables sits outside 291..297
+//   (the negatives the tests carry); the size-5 human (scale 1.0, 246 px
+//   back-turned, setme_b1130_wrong) is the self-check's wrong-body test,
+//   tests/test_fx_harness.cpp B1130SelfCheckRejectsAWrongTargetModel. A body
+//   of the SAME height (under the client's rule, every classic race at the
+//   same size word is drawn about the same height) cannot be told apart by
+//   height; this check does not claim to.
 constexpr float kFeetTolPx = 1.0f;
 constexpr float kColumnTolPx = 3.0f;
 constexpr float kHeightTolPx = 3.0f;
-constexpr float kStandingPx = 245.0f;
+constexpr float kStandingPx = 294.0f;
 constexpr float kStandingTolPx = 3.0f;
 
 // The harness's clear colour (50,50,80) -- the ground plane paints it too --
