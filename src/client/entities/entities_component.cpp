@@ -31,6 +31,8 @@
 // note in this family's component header.
 
 #include "client/eq.h"
+#include "client/graphics/actor_scale.h"  // B1172: the client's resolved size
+#include "client/spell/spell_action_anim.h"  // B1174: SpawnStandStateAfterAppearance
 #include "client/corpse_predicate.h"  // T486: IsCorpseNpcType
 #include "client/entities/entities_component.h"
 #include "client/movement/movement_component.h"  // T344: ApplyPositionState
@@ -286,6 +288,10 @@ void eqt::entities::EntitiesComponent::ZoneProcessZoneSpawns(const EQ::Net::Pack
 				// This ensures the loading screen stays visible until the player model is fully loaded
 				ctx_.Zone().PlayerGraphicsEntityPending() = true;
 #endif
+				// B1172 (#491) fix leg: our size is the client's ONE resolved number
+				// (a size word not > 0 -> the race/gender default, written back at eqgame
+				// 0x47fb30): the entity record and PlayerState carry the same value.
+				entity.size = EQT::Graphics::clientResolvedActorSize(entity.race_id, entity.gender, entity.size);
 				// Update our position to match server spawn position
 				ctx_.game_state.player().setSize(entity.size);
 				// T311 (closes T310 Leg B's note): the spawn struct's z is the
@@ -619,6 +625,10 @@ void eqt::entities::EntitiesComponent::ZoneProcessSpawnAppearance(const EQ::Net:
 			auto it = ctx_.entities.find(spawn_id);
 			if (it != ctx_.entities.end()) {
 				it->second.animation = static_cast<uint8_t>(parameter);
+				// B1174 (#493): the stand byte the OP_Action cast-anim gate
+				// reads (spell_action_anim.h).
+				it->second.stand_state =
+					EQ::SpawnStandStateAfterAppearance(it->second.stand_state, parameter);
 			}
 
 			// T344 (B001): a pose the SERVER forces on US (root/mez

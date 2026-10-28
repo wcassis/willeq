@@ -102,6 +102,8 @@ gen_sweep_b1130() {
         tgt=other; case "$targettype" in self|group|group-teleport) tgt=self ;; esac
         local secs; secs=$(awk -v c="$cast_ms" 'BEGIN{printf "%.1f", 1.5 + c/1000 + 13.5}')
         tag=after_${kind}_r${rec}
+        # B1171 (#490): the capture's executed `#level`, not the table's class level.
+        caster_level=$(python3 -I "$(dirname "$0")/../../../scripts/fx/capture_level.py" b1130 "$rec") || return 1
         printf 'after\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t1\t%s\n' \
             "$tag" "$cam" "$spell" "$tgt" "$cast_ms" "$caster_level" "$secs" "$kind" >> "$out"
     done < <(python3 - "$TABLE" <<'PY'

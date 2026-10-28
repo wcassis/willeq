@@ -330,7 +330,7 @@ struct EmitterConfig {
     // (+0x130/+0x134) and the flags (+0x60 orient, +0x64 depth write off,
     // +0x70 sprite mode, +0x74 follow, +0x198 draw at r < 0). `scale` is s,
     // the attach scale every word above multiplies by (the +0x6C read path,
-    // TRACE.md (a): entityScaleForServerSize; fable passes 1.0). Inactive:
+    // B1164: the client's actor scale, actor_scale.h via spell_fx_attach_scale.h). Inactive:
     // config/preset emitters (fire, weather, non-record spells), which keep
     // their existing paths.
     struct EddMotion {

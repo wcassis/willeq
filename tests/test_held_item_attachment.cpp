@@ -496,8 +496,15 @@ TEST_F(HeldItemTest, StationaryPlayerIsDrawnAtTheRendererHeading) {
     // Same animation clock as the player below, so the idle pose matches.
     for (int t = 0; t < 3; ++t) npc->OnAnimate(400 + t * 16);
     npc->updateAbsolutePosition();
-    const irr::core::vector3df npcR = drawn(npc, boneOrigin(npc, "humr_point")) - npc->getAbsolutePosition();
-    const irr::core::vector3df npcL = drawn(npc, boneOrigin(npc, "huml_point")) - npc->getAbsolutePosition();
+    // B1172: the NPC node carries the client's actor scale (a human at its
+    // default size 6 -> 1.2, actor_scale.h) and the player node draws with a
+    // translation-only matrix (unscaled), so the facing is compared in the
+    // model's own units: the NPC's offsets divided by its node scale.
+    const float npcScale = npc->getScale().X;
+    const irr::core::vector3df npcR =
+        (drawn(npc, boneOrigin(npc, "humr_point")) - npc->getAbsolutePosition()) / npcScale;
+    const irr::core::vector3df npcL =
+        (drawn(npc, boneOrigin(npc, "huml_point")) - npc->getAbsolutePosition()) / npcScale;
 
     // The player, built the way zone-in builds it: from the self row's raw heading.
     EQAnimatedMeshSceneNode* node = spawnIdle(7, true, kServerDeg, 0, 0);

@@ -57,6 +57,13 @@ struct Entity
 	uint8_t gender = 0;
 	uint32_t guild_id = 0;
 	uint8_t animation = 0;
+	// B1174 (#493): the spawn's stand byte as fable knows it (the client's
+	// spawn +0x251; EQ::SpawnStandStateAfterAppearance, spell_action_anim.h):
+	// the server's last AT_Anim stand value, 100 = standing by default (the
+	// Titanium Spawn_Struct has no stand state: eqemu fills SoF+'s
+	// StandState, akk-stack zone/mob.cpp:1328, and sends Titanium
+	// animation 0, :1304).
+	uint8_t stand_state = 100;
 	uint8_t hp_percent = 100;
 	uint16_t cur_mana = 0;
 	uint16_t max_mana = 0;

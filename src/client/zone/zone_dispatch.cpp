@@ -20,7 +20,9 @@
 #include "common/packet_structs.h"
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
+#include "client/graphics/actor_scale.h"  // B1172: the client's resolved size
 
+#include <cstddef>
 #include <cstring>
 
 // P28: inventory/chat/hotbar/command-registry are plain data-model headers
@@ -121,6 +123,34 @@ void eqt::zone::ZoneComponent::OnZoneEntry(const EQ::Net::Packet & p)
 		if (p.Length() > 71) {
 			auto spawn_name = p.GetCString(9); // offset 2 + 7
 			LOG_DEBUG(MOD_MAIN, "  Spawn name at offset 7: '{}'", spawn_name);
+		}
+	}
+
+	// B1172 (#491) fix leg: this packet is our own Spawn_Struct (385 bytes,
+	// include/common/packets/spawn.h), the server's answer that follows
+	// OP_PlayerProfile; on a graphical zone-in no other spawn packet for
+	// ourselves arrives (T332). The official client builds its own EQPlayer
+	// from it (FUN_004816d7: size +75 -> EQPlayer+0x23c at 0x4816fd) and
+	// resolves the size at once (FUN_0047fa9e: not > 0 -> the race/gender
+	// default, written back at 0x47fb30). That ONE number is our entity
+	// record's size (the actor scale) and PlayerState's (the wire-z offset).
+	// Same read as B1164's leg (MR !323), plus the resolution.
+	if (p.Length() >= 2 + sizeof(EQT::Spawn_Struct)) {
+		const uint32_t spawn_id = p.GetUInt32(2 + offsetof(EQT::Spawn_Struct, spawnId));
+		auto it = ctx_.entities.find(ctx_.self.MySpawnId());
+		if (it != ctx_.entities.end() && spawn_id == ctx_.self.MySpawnId()) {
+			float wire_size = 0.0f;
+			std::memcpy(&wire_size,
+			            static_cast<const char*>(p.Data()) + 2 + offsetof(EQT::Spawn_Struct, size),
+			            sizeof(wire_size));
+			const uint16_t race = static_cast<uint16_t>(p.GetUInt32(2 + offsetof(EQT::Spawn_Struct, race)));
+			const uint8_t gender = p.GetUInt8(2 + offsetof(EQT::Spawn_Struct, gender));
+			const float size = EQT::Graphics::clientResolvedActorSize(race, gender, wire_size);
+			it->second.size = size;
+			ctx_.game_state.player().setSize(size);
+			ctx_.Player().SyncEntityToGameState(it->second);
+			LOG_DEBUG(MOD_MAIN, "OP_ZoneEntry: own spawn {} race {} gender {} size word {:.3f} -> size {:.3f}",
+			          spawn_id, race, gender, wire_size, size);
 		}
 	}
 }

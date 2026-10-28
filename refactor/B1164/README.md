@@ -14,6 +14,16 @@ leg: renders, measurements, the B1118 frame extractions). Scripts are committed 
 `refactor/B1164/scripts/`; every number below is printed by the command beside it, run from
 `dev2/` (paths in the commands are relative to it).
 
+## Continuation "pin s" (dev5) — read §10 first
+
+§10 pins the attach scale s on lane 5 (a read-only gdb probe of the official client) and from the
+client's code: record 80's slots are TRACK-attached (not point-attached as §4's table assumed), and
+s is the actor's scale, 0.2 × the spawn's size = **1.2** on the size-6 human target of 93 and 1.0 on
+the caster. Fable now passes it (`include/client/spell/spell_fx_attach_scale.h`). An unoccluded
+reference shows willeq's TARGET model is the one drawn small (client 1.2, willeq 1.0). With the
+target at the client's scale the landing is still ~0.72–0.77× per target height²: acceptance B is
+NOT met.
+
 ## README fix (dev4, review 7754) — read with the dev3 list below
 
 Evidence: `/mnt/projects/fable/review/B1164/worker/dev4/` (no new captures or renders; every
@@ -560,3 +570,355 @@ table in §5, not the clip (the clip's oracle side is B1118's capture, §5 (d)).
    least ~6 % smaller (both clipped at row 600 by the Main Chat window; B1118's plan sets no
    `Camera2` ini keys). Re-capture the b1118 oracle references
    with the camera pinned before 5.847 (or B1157's 3.049 lane band) is used as a target.
+
+## 10. Continuation "pin s" (dev5): s pinned at runtime and implemented; the unoccluded 93 reference
+
+Evidence: `/mnt/projects/fable/review/B1164/worker/dev5/` (lane-5 legs `oracle/`, the gdb probe
+logs `review/B1164/worker/dev5/gdb/`, the gate re-run `gate/before` / `gate/after`, the measurements beside them). Three
+lane-5 legs under the lease (`oracle_class_leg.sh 5 6 <plan> <out>` from hermes-ext, owner
+`kb-b1164-pin-s_*`), each ended `cleanup exit=0 lane=5 lock=state=FREE` and `char 67 restored:
+class 12, gems 93,38,54,41,253,458,656` (`review/B1164/worker/dev5/leg1.console.log`, `review/B1164/worker/dev5/leg2.console.log`,
+`review/B1164/worker/dev5/leg3.console.log`); char 103 (Oraclewatch) was not logged in (its corpse lies beside the caster
+in every still, as found). Plans: `refactor/B1164/plans/pin_s_unoccluded.tsv` (leg 1),
+`pin_s_gdb.tsv` (leg 2), `pin_s_gdb2.tsv` (leg 3).
+
+### 10.1 s pinned: method (b), the lane-5 read, cross-checked by (a), the client's code
+
+**The probe.** `refactor/B1164/scripts/b1164_s_watch.sh` runs on the ThinkPad, waits for the
+leg's `END <n>_gdb_arm` row in `timeline.tsv`, and attaches gdb (`sudo gdb -p <eqgame.exe>
+--batch -x b1164_s_gdb.py`) for a fixed window, then detaches. The probe only reads registers and
+memory; its breakpoints are gdb's own int3s, removed at detach, and it refuses to insert any
+until the bytes at every address match the disassembly. That check saved leg 1: Wine loads
+EQGraphicsDX9.dll at 0x01d70000, not its preferred 0x10000000 (`review/B1164/worker/dev5/gdb/run1/maps.txt:1`), and leg 1's
+probe read zeros there and refused (`review/B1164/worker/dev5/gdb/run1/s_probe.log:1`). A manual re-attach with the
+base (`review/B1164/worker/dev5/gdb/run2/`) came after leg 1's second cast had ended and logged only
+zone light emitters (SKTGLW_PCD, point-attached, s 1.199892..1.199971 -- object scale 1.2). Legs 2 and 3 pass the loaded base
+(`review/B1164/worker/dev5/gdb/run4/watch.log:3`); every expected byte matched (`review/B1164/worker/dev5/gdb/run4/s_probe.log:1`..`:3`).
+Breakpoints (DLL VAs; + 0xf1d70000 at runtime): 0x100609ee (the point path's `fstp` of
+`0x10039480`'s return), 0x10060b82 (every attach path joined: the final s6C `[esp+0x30]` and
+s19C `[esp+0x48]`), 0x10060b27 (the track path, after s6C = `0x1005c4f0(track)` × √(row0·row0)).
+
+**What it read** (spell 93 cast on TrollF from r51's set-up; `review/B1164/worker/dev5/gdb/run3/s_probe.log`,
+`review/B1164/worker/dev5/gdb/run4/s_probe.log`):
+
+- **Record 80's slots are TRACK-attached (+0x70), not point-attached.** Every Source and Target
+  instance has `point=0x00000000` and a non-zero `track` (`review/B1164/worker/dev5/gdb/run3/s_probe.log:589`, S3-1 on the
+  target). So §4's "attach point (+0x6C) — record 80's case" row is wrong: the path that runs is
+  the track row of §4's table, 0x10060ae8..0x10060b23, and `0x10039480` is not reached for these
+  slots.
+- **Target slots (on TrollF, race 1, OP_NewSpawn size 6.000): s = 1.200000**, for all four
+  emitters with +0x6C = 1 (280, 282, 9; 281 has +0x6C = 0 and reads s6C = 1.000000, s19C =
+  1.200000). The factors: row 0 of the track's world matrix = (−0.459220, 1.108655, 0.000000),
+  length **1.200000**, `0x1005c4f0` = **1.000000** (`review/B1164/worker/dev5/gdb/run4/s_probe.log:704`, IgniteTargetill
+  Imp01; `review/B1164/worker/dev5/gdb/run4/s_probe.log:708`, SFofSeukor S3-1). The value is the same in every sample over
+  the landing (the probe logs the 1st..3rd hit and every 50th per emitter).
+- **Source slots (on the caster Testcaster, race 6, OP_ZoneEntry size 0.000): s = 1.000000** on
+  the DEFAULT slots 277/278 (row 0 = (1, 0, 0); `review/B1164/worker/dev5/gdb/run4/s_probe.log:626`) and 0.999755 on the
+  hand slot 276 (`review/B1164/worker/dev5/gdb/run4/s_probe.log:622`; a hand bone's row, length 0.999755).
+- **Target slots on DarkF (race 6 female, OP_NewSpawn size 5.000, id 262, after TrollF's
+  OP_DeleteSpawn in `31_depop`): s = 1.000000.** Leg 3's second 93 cast was read: the probe
+  ran until the client quit (`review/B1164/worker/dev5/gdb/run4/s_probe.log:5888`, `DONE ... t=113.785`), and its
+  clock starts at the attach (`review/B1164/worker/dev5/gdb/run4/watch.log:2`, epoch 1793115854.17), so
+  `43_cast_daf` (BEGIN 1793115944.675, `review/B1164/worker/dev5/oracle/pin_s_gdb2/timeline.tsv:85`) is t ≈ 90.5
+  and `44_fx_daf` ends at t ≈ 108.8 (`review/B1164/worker/dev5/oracle/pin_s_gdb2/timeline.tsv:88`). The landing reads
+  from t = 92.797 to 99.155 (`review/B1164/worker/dev5/gdb/run4/s_probe.log:4852` .. `review/B1164/worker/dev5/gdb/run4/s_probe.log:5271`), on the reused
+  actor 0x248083a8 / track 0x1520f860 (TrollF's at `review/B1164/worker/dev5/gdb/run4/s_probe.log:705`): S3-3
+  (`review/B1164/worker/dev5/gdb/run4/s_probe.log:4853`), S3-1 (`review/B1164/worker/dev5/gdb/run4/s_probe.log:4857`) and IgniteTargetill Imp01 (`review/B1164/worker/dev5/gdb/run4/s_probe.log:4859`)
+  have +0x6C = 1 and s6C = s19C = 1.000000 (row 0 = (1, 0, 0), norm 1.000000); S3-2 has +0x6C =
+  0 and s19C = 1.000000 (`review/B1164/worker/dev5/gdb/run4/s_probe.log:4861`). A size-5 dark elf reads 0.2 × 5 = 1.0: the
+  second live point of the rule, on a second race and size (spawn sizes: `python3 -P
+  refactor/B1164/scripts/b1164_spawns.py oracle/pin_s_gdb2/capture.pcap DarkF TrollF`). Its
+  `#stun` effect's track read 0.999714 before the cast (`review/B1164/worker/dev5/gdb/run4/s_probe.log:4082`).
+
+**(a) The client's code behind the numbers.**
+
+- Which track: `0x10046830` (`EQGraphicsDX9.dll.c:50613`) builds the actor's SPELLPOINT_* table;
+  SPELLPOINT_DEFAULT's track name is the model tag with no suffix (`EQGraphicsDX9.dll.c:50779`,
+  the tag copied from the actor's +0x8c just above), i.e. the model's root track. For the old-world human that is `HUM_TRACKDEF` in
+  `global_chr.s3d`: one frame, rotation (16384, 0, 0, 0) / 16384 = identity, |q| = 1.000000
+  (DAF_TRACKDEF: (−16384, 0, 0, 0), |q| = 1.000000): `python3 -I
+  refactor/B1164/scripts/b1164_root_track.py /mnt/projects/EverQuestP1999/global_chr.s3d HUM`
+  (and `globaldaf_chr.s3d DAF`) → `review/B1164/worker/dev5/root_track.txt`, the WLD 0x12 fragment's int16 frame. A root
+  track with a unit quaternion adds no scale, so the row's length is the actor's world scale.
+- The actor's scale: eqgame `0x47fa9e` (`eqgame.exe.c:102153`) reads the spawn's size (+0x23c;
+  when it is not > 0 it takes the race default from `0x47a147` and stores it back), calls
+  `0x47a0e9` at `0x47fb82` and stores the result in the actor at `0x47fb87` (+0xC4).
+  `0x47a0e9` (`eqgame.exe.c:97640`) returns size × 0.2 (`_DAT_00640fec` = 0.2f,
+  `eqgame.exe.c:97652`) for every race `0x47937c` (`eqgame.exe.c:96795`) lets through (all but
+  0x193 and ≥ 0x195), × 0.769 more only while the global DAT_00923c30 is set — it was not on lane 5:
+  s is exactly 0.2 × 6. `0x47a147` (`eqgame.exe.c:97667`): human 6.0 (the default case), barbarian
+  7.0, wood / dark elf 5.0, half elf 5.5, dwarf 4.0, troll 8.0, ogre 9.0, halfling 3.5, gnome 3.0
+  (the constants read from eqgame.exe's .rdata). `0x47a239` (`eqgame.exe.c:97743`) is the
+  per-race override, read in full in 10.2; it does not touch the scale of races 1 and 6.
+- So for this target: s = 1.0 (root track) × 0.2 × 6 = **1.2**, for DarkF 0.2 × 5 = **1.0**, and
+  for the caster 0.2 × 5 (race default, size 0) = **1.0**. (a) and (b) agree to the printed digit
+  at all three points.
+
+**s is not 1.0 for this point.** It is the target's actor scale, 1.2.
+
+### 10.2 Implemented: the client's whole actor-scale rule, no cut-off
+
+**The rule, every branch read** (fix leg, review note 7941 finding 2; dev5 had kept 1.0 for every
+race ≥ 0x1a, which is not a client number). The constants are read from eqgame.exe's sections by
+`python3 -I refactor/B1164/scripts/b1164_rdata.py /mnt/projects/EverQuestP1999/eqgame.exe 640fec
+647cd0 647cd4 642d50 64264c 642658 640e58 64263c 642650 641fa0 6410cc 642d68 640e24 647cd8 6410b4
+642ae8 640e38 63fda4 63f4cc 923c30 923798` (0.2, 0.7692308, 1/6, 1.3, 6, 7, 5, 5.5, 4, 8, 9, 3.5,
+3, 4.7, 2.0, 0.05, 0.1, −1.0, 0.0; the two globals are .bss, 0 at load).
+
+1. **Size.** `0x47fa9e` (`eqgame.exe.c:102153`) tests the spawn's size +0x23c against 0.0 at
+   `0x47fb07` (`eqgame.dis:164242`; `test ah,0x41 / jp` = "> 0"); when it is not > 0 it calls
+   `0x47a147(race +0x260, gender +0x24e)` and stores the result back at `0x47fb30`
+   (`eqgame.dis:164253`).
+2. **The default, `0x47a147`** (`eqgame.exe.c:97667`, `eqgame.dis:156857`): races 1..12 through
+   the jump table at 0x47a209 (its 12 entries read from the file: 1 → 6.0, 2 → 7.0, 3 → 6.0, 4 →
+   5.0, 5 → 6.0, 6 → 5.0, 7 → 5.5, 8 → 4.0, 9 → 8.0, 10 → 9.0, 11 → 3.5, 12 → 3.0), then compares:
+   0x2a and 0x78 → 3.0 for gender 2 else 6.0; 0x2b → 4.7; 0x4d, 0x70, 0x14a → 5.0; 0x51 → 3.5;
+   0x58 → 3.0; 0x5a, 0x82 → 7.0; 0x5c → 8.0; 0x5d → 9.0; 0x5e → 4.0; every other race (0, 0x18,
+   0x4e, 0x80, …) → 6.0.
+3. **Size → scale, `0x47a0e9`** (`eqgame.exe.c:97640`; called at `0x47fb82`, stored at actor +0xC4
+   at `0x47fb87`, `eqgame.dis:164276`..`eqgame.dis:164277`): size × 0.2, × 0.7692308 more while
+   0x923c30 is set; for the races `0x47937c` (`eqgame.exe.c:96795`) selects, 0x193 and ≥ 0x195,
+   size × 1/6 × 1.3 while 0x923c30 and the byte 0x923798 are both 0, else size × 1/6. 0x923c30 is
+   NewZone_Struct offset 592 (`0x45c006` copies the 700-byte OP_NewZone to 0x9239e0); both read 0
+   on lane 5 (s = 0.2 × 6 exactly).
+4. **The override, `0x47a239`** (`eqgame.exe.c:97743`..`eqgame.exe.c:97846`; the linear
+   `eqgame.dis` decodes it from `0x47a23c`, `eqgame.dis:156939`..`eqgame.dis:157035`): called at `0x47fbff`
+   (`eqgame.exe.c:102217`) with the scale slot preset to −1.0 at `0x47fbbe` (`eqgame.exe.c:102212`),
+   and the slot is written over +0xC4 at `0x47fc41` only when it is not −1.0
+   (`eqgame.exe.c:102223`). It writes that slot for twelve races only: 0x31, 0x49, 0x72, 0x8d,
+   0x8e, 0x8f, 0x9e, 0xc4, 0xfc, 0x194 → 1.0 (`fld1` at `0x47a371`, `eqgame.dis:157027`); 0x48 →
+   2.0 (`0x47a29b`, `eqgame.dis:156964`); 0x6c → 0.05 (`0x47a2d7`, `eqgame.dis:156980`). Races
+   0x1a, 0x1b, 0x24, 0x32, 0x5b, 0x78, 0xab, 0x14a, 0x164 write only its other outputs (+0x234,
+   +0x238, +0x22c); every other race returns at once. So every race not in the twelve keeps step
+   3's scale.
+
+**Where it lives — one shared header.** `include/client/graphics/actor_scale.h` holds the rule as
+`EQT::Graphics::clientActorScale(race, gender, size, zoneScaleFlag, flag923798)`
+(`actor_scale.h:105`; the default table `actor_scale.h:30`, the size/6 races `actor_scale.h:59`,
+`0x47a0e9` `actor_scale.h:69`, `0x47a239` `actor_scale.h:81`, the size resolution of step 1
+`actor_scale.h:100`). It is B1172's file (#491, branch `task/kb-b1172-model-height`, the entity
+model's drawn scale): the fix leg first added it byte-identically (blob ff57980f), every branch and
+constant re-read above and agreeing, then merged B1172's fix leg a7798e47, which added
+`clientResolvedActorSize`; nothing of B1164's own is in it. `EQ::SpellFxAttachScale(race,
+gender, serverSize)` (`spell_fx_attach_scale.h:52`) returns `clientActorScale()`; the flags default
+to the lane-5 0. The root track's |row 0| factor (1.000000 for HUM and DAF, 10.1 (a)) is taken as 1
+for every model.
+
+**The EDD path.** `SpellVisualFX::entityAttachScale()` (`spell_visual_fx.cpp:138`) replaces the
+constant: Source slots pass the caster's s (`spell_visual_fx.cpp:731`), Target slots the landing
+entity's (`spell_visual_fx.cpp:1064`); the +0x6C / +0x19C sites downstream are unchanged
+(`spell_emitter_presets.cpp:395`, `:420`, `:463`) and now receive s. The Middle stage's missile
+actor keeps `kSpellFxAttachScale` (`spell_visual_fx.cpp:1279`, `spells_new_edd_reader.h:263`, not
+traced). The renderer resolves s from the entity's race, gender and Spawn_Struct size
+(`renderer_entities.cpp:319`); the FX harness from its caster / target options
+(`model_viewer_fx_harness.cpp:689`). The harness caster's server size is 0
+(`model_viewer_fx_harness.cpp:515`): the oracle's OP_ZoneEntry carries size=0.000 for Testcaster
+(`python3 -P refactor/B1164/scripts/b1164_spawns.py oracle/pin_s_25fps/capture.pcap Testcaster`)
+and the probe read her s as 1.000000; in the gate's binaries (before the B1172 merge) the drawn
+model did not change (`entityScaleForServerSize` gave the race scale at size 0, as at 6/6).
+
+**The local player's own size** (review finding 7, verified, then fixed). Before this leg the
+player's entity kept fable's `zone_entry.cpp` placeholder size 6.0: willeq read no spawn packet
+for itself (`OnZoneEntry` only logged; T332 measured that no ZoneSpawns / NewSpawn self branch runs
+on a graphical zone-in). Replaying a dark-elf OP_PlayerProfile on the pre-fix tree read entity size
+6.0 → s = 1.2, where the client's is 1.0 (RED 2/4,
+`review/B1164/worker/dev5/fix/local_player_red.txt`; GREEN 4/4 after the fix,
+`review/B1164/worker/dev5/fix/local_player_green.txt`). The server's OP_ZoneEntry, which follows
+OP_PlayerProfile in the oracle capture (S→C at 1793114146.115, 385 bytes; Testcaster size 0.000), is
+our own Spawn_Struct. After the merge with B1172 there is ONE read of it (`zone_dispatch.cpp:138`,
+B1172's form of the same read): its size (+75) resolved by `clientResolvedActorSize` (race default
+for 0, eqgame `0x47fb30`) goes to both our entity record (the actor scale, so the Source slots' s)
+and PlayerState (the wire-z offset); the profile holds the same resolved default until it arrives
+(`zone_entry.cpp:480`). `tests/test_local_player_spawn_size.cpp` pins it: the profile alone gives a
+dark elf 5.0 / s 1.0 (`test_local_player_spawn_size.cpp:73`), a size word 0 resolves to 5.0 / s 1.0
+(`test_local_player_spawn_size.cpp:83`), a sent size is taken (`test_local_player_spawn_size.cpp:94`),
+another spawn's OP_ZoneEntry is ignored (`test_local_player_spawn_size.cpp:104`).
+
+**Tests.** `tests/test_spell_fx_attach_scale.cpp`, table-driven: the three live points
+(`test_spell_fx_attach_scale.cpp:41`), 32 size-0 defaults incl. both gender-2 races
+(`:49`), the fifth for every unforced race incl. the nine that reach `0x47a239` without touching
+the scale (`:88`), the size/6 races 0x193 / 0x195 / 500 (`:106`), all twelve forced races at
+several sizes (`:115`), and the two flags (`:156`); 6/6 pass. `tests/test_local_player_spawn_size.cpp`
+4/4.
+
+### 10.3 The unoccluded oracle reference (follow-up 2)
+
+Leg 1 (`review/B1164/worker/dev5/oracle/pin_s_25fps/`) set `[Defaults] HideChatWin=TRUE` (restored byte-identically:
+`review/B1164/worker/dev5/oracle/pin_s_25fps/eqclient-iniset-restored`), and the client still drew the Main Chat window (top border row 601,
+`(640,601)` = BGR (115,130,140) in every still, `review/B1164/worker/dev5/hostpx_sweep_dev5.txt`): that key does not hide
+this UI's chat. It is not needed at r51's geometry: the target stands at x 860..1010, right of the
+window, and the caster's rows end at 595 with 0 px in rows 596..600, above the border. Both
+figures are measured unclipped by difference (`refactor/B1164/scripts/b1164_hostpx_sweep.py`, run
+from `review/B1164/worker/dev5/oracle/pin_s_25fps/`, output `review/B1164/worker/dev5/hostpx_sweep_dev5.txt`):
+
+| figure | with − without (same camera) | rows (thr 40 / 20 / 15) | height |
+|---|---|---|---|
+| target TrollF (race 1, size 6) | `33_tgt_npc_settle` − `16_empty_r51cam` | 333..600 / 333..606 / 333..606 (rows 601..606 at thr 20/15 are the selection ring's glow; the boots' colour test B<25 ends at 600) | **268 px** |
+| caster Testcaster (race 6, size 0) | `16_empty_r51cam` − `18_bg_r51cam` (the caster drawn as race 127 by `#set race 127`, restored by `#set race 0`) | 389..595 at every threshold | **207 px** |
+| DarkF (race 6 female, size 5), on the target's spot | `51_daf_settle` − `16_empty_r51cam` | 389..593 at every threshold | **205 px** |
+
+- **Target / caster = 268 / 207 = 1.295** (r51's 286 / 209 = 1.37 of §5 was a different target
+  height on the same plan; this leg's 268 equals dev3's (b), 268, at the same spot).
+- The two spots stand at one depth: a DarkF drawn at the target's spot is 205 px, the caster at
+  hers 207. So 268 / 205 = **1.307** is the human / dark-elf model ratio as the client draws them
+  at sizes 6 and 5.
+- willeq draws the same pair 241 / 228 = **1.057** (§5). Times the client's 0.2 × 6 / (0.2 × 5) =
+  1.2 for these sizes that is 1.268, within 3 % of 1.307.
+- **Which model is off: the TARGET.** willeq (the gate's binaries, before B1172) drew the size-6
+  human at its race scale × 6/6 = 1.0 (`entityScaleForServerSize`, which B1172 replaced with
+  `clientActorScale`); the client draws it at 0.2 × 6 = 1.2 (`0x47a0e9`). The dark-elf caster is 1.0 in both. The 0.60× "relative target size" factor of §5
+  carries this 1.2 (1/1.2² = 0.69); the rest of it is r51's 286-px target reading (this leg: 268).
+  Fixed by B1172 (merged into this branch, 10.6 item 1), not by this card's code.
+- The 93 landing of leg 1: gate instrument 4.086 caster² (`review/B1164/worker/dev5/measure/pin_s25_fixed_npc.txt`,
+  `cast_measure.py oracle/pin_s_25fps 93 measure pin_s25 geom_r51_fixed_only.json`), within dev3's
+  3.95–4.24; window method (§5's) at this leg's 268 px / feet (955,600): **1.949** target
+  heights² at f10626 (`review/B1164/worker/dev5/regions_win2_pin_s25_h268.txt`), sprite p90 diameter 0.043 target heights
+  (`review/B1164/worker/dev5/sparks_oracle_pin_s25_h268.txt`, window −2.4,0.6,0.16,2.0).
+
+### 10.4 The 93 like-for-like ratio, before / after (b1118 tour 93, `gate/<label>/frames/b1118_tour_93`)
+
+(Fix leg: the re-gate of 10.5 on the merged tree rendered tour 93 again for both binaries; all 435
+frames of each are byte-identical to dev5's (`cmp`), so every number in this section stands.)
+
+Window method of §5 (`WIN=-1.5,0.6,0.16,1.8 b1164_regions.py … 140 170 345 390 170,0,1060,650
+640,607 <host> 235`), willeq's own drawn target 241 px; files `review/B1164/worker/dev5/regions_win2_t93_before_h241.txt`,
+`review/B1164/worker/dev5/regions_win2_t93_after_h241.txt`; sprites `review/B1164/worker/dev5/sparks_t93_{before,after}_h241.txt`:
+
+| | gate land_cov (caster²) | window (target²) | vs r51 1.806 (286 px) | vs leg 1 1.949 (268 px) | sprite p90 diam (target) |
+|---|---|---|---|---|---|
+| before | 1.993 | 1.480 f154 | 0.82× | 0.76× | 0.033 |
+| after (s = 1.2 on the target) | **2.719** | **1.906** f157 | **1.06×** | **0.98×** | 0.040 (r51 0.039, leg 1 0.043) |
+
+The ratio moves from 0.82× to 1.06× against r51 (0.76× → 0.98× against the unoccluded leg). The
+gate number moves from 0.505× to 0.689× of r51's 3.945 (0.488× → 0.665× of leg 1's 4.086).
+
+**Read it with 10.3.** The like-for-like unit is the target's height, and willeq still draws the
+target at 1.0 where the client draws it at 1.2. Normalised by the height the client would draw
+(241 × 1.2 = 289.2 px, passed as `289.2`), willeq's window is 1.056 before and 1.396 after
+(`review/B1164/worker/dev5/regions_win2_t93_before_h289.txt`,
+`review/B1164/worker/dev5/regions_win2_t93_after_h289.txt`, regenerated in the fix leg with the committed
+`b1164_regions.py`, whose header now prints the host argument as given, `host 289.2px`; dev5's
+files had been made with 289.2 under a header that printed `289`, so a re-run with 289 read
+1.057 / 1.398) = 0.77× r51 / 0.72× leg 1 after. At the
+gate the remaining 0.665× (leg 1) is that same target scale: 0.98 × (1.057 / 1.295)² = 0.65. So s
+is fixed and it is the client's number, but once the target model is drawn at the client's scale
+(B1172, merged into this branch in the fix leg, 10.5) the landing per target height² is ~0.72–0.77× the oracle's again: **acceptance B
+stays NOT met**. Next candidate: the sprite's projected half-width at `0x1006335a`..`0x1006336f`
+— `[esp+0xc8]` × `[eax+0x18]` × `[esp+0x1c]` × s6C × the particle's
+size × 0.5 (0x101c594c) — whose three non-s factors are not pinned.
+
+### 10.5 Re-gate on the merged tree (fix leg), and every drift from B1157 attributed
+
+**Builds and renderer.** The fix leg merged gitlab/fable f61fafb4 (B1168, B1166, B1169 harness
+determinism, B1173, B1165) into the branch (`tests/cmake/database.cmake`: both appended blocks
+kept; `spell_visual_fx.cpp` auto-merged, B1165's Middle-stage call keeps `kSpellFxAttachScale`,
+`spell_visual_fx.cpp:1279`) and re-rendered the whole gate on the ThinkPad for two binaries:
+**before = f61fafb4** and **after = this branch at 9938bbfa** (both contain B1169;
+`refactor/B1164/scripts/run_gate_fix.sh <before|after> <bin> <b1118|b1130>`, B1157's plans, fps 30,
+seed 1, sim 60 Hz on b1130, NVIDIA surfaceless EGL depth 24 as dev5's gate; 87/87 rows rendered
+and measured in each, `review/B1164/worker/dev5/fix/gate/before/gate.log`, `review/B1164/worker/dev5/fix/gate/after/gate.log`). **Neither binary contains B1172**
+(merged into this branch afterwards, at a7798e47, for the shared header and the local player's
+size): B1172 draws the target at the client's 1.2, which moves the like-for-like unit but not s.
+Tables: `refactor/B1164/fix_b1118_table.tsv`, `refactor/B1164/fix_b1130_table.tsv` (`python3 -I
+refactor/B1164/scripts/compare_fix.py review/B1164/worker/dev5/fix/gate review/B1164/worker/dev5/gate
+review/B1164/worker/dev5/fix/attrib . <out_b1118> <out_b1130>`): per row B1157's number, **base** (dev5's
+before, 4275bc51's code), **base_i915** (b1130 only, below), before, after, and which pair moves
+(> 3 % land / src, > 0.10 s end). dev5's before/after (10.5 of dev5) predate B1169; for the b1118
+rows the two before binaries (4275bc51 and f61fafb4) read identically on every row (mv_tip empty
+on all 47), and tour 93's frames are byte-identical across all four renders (10.4).
+
+**After vs before (this card).**
+- b1118: 32 of 47 rows move, all in landing coverage, all upward, all on the `other` target (the
+  race-1 size-6 `#spawn`, s = 1.2); the 13 `self` rows, r35 (253, +1.6 %) and r27 do not move.
+- b1130: 23 of 40 rows move, all `fixed_npc`, all upward in landing coverage; no `fixed_self` row
+  and no source coverage moves. Three rows gain a landing reading after (r2, r15, r22: `nan` →
+  0.316 / 0.173 / 0.172).
+- **End-time moves, mechanism measured** (finding 5; `python3 -I refactor/B1164/scripts/b1164_end_mechanism.py
+  <before fable_<sid>> <after fable_<sid>>` → `review/B1164/worker/dev5/fix/end_mechanism/<tag>.txt`; it re-derives
+  fx_timing.py's rule from the lit80.tsv it saves). In every case both runs have the **same**
+  thresholds (thr2 from the tail, the onset threshold 1.5 × the source tail), so the moves are the
+  lit series, not the instrument:
+  - b1118 r7 (spell 40): thr2 1460 px in both; after's tail is lower frame by frame (f265 2159 →
+    1584, f274 1471 → 681), so it drops below 1460 at f266 instead of f275: end f274 → f265,
+    5.633 → 5.333 s. The LANDING onset moves too, f147 → f132 (Act+1.400 → +0.900 s): the onset
+    threshold is 45213 px in both, after's rise is larger (f132 35031 → 46099 px) and crosses it 15
+    frames earlier (`review/B1164/worker/dev5/fix/end_mechanism/b1118_r7_40.txt`; dev5's frames read the same,
+    `review/B1164/worker/dev5/gate/before/measure/b1118_r7_40/measure_harness.txt:5`). Fewer particles remain at the end
+    after (connected blobs ≥ 2 px at f270: 49 → 43, f274: 45 → 39, on the fix gate's frames).
+  - b1118 r23 (372) 6.433 → 6.300, r32 (374) 7.217 → 7.083: same thresholds (1412 / 1587 px),
+    after's tail falls below them 4 frames earlier (f283 → f279, f302 → f298); onsets 2 frames
+    earlier. r24 (348): before has no onset (its lit never exceeds the 1.5 × source-tail threshold
+    106160 px), after crosses it at f118 and ends at f277, 5.983 s.
+  - b1130 r7 (40) 6.100 → 4.567: the 0.3-s gap rule. Both runs have a first landing run and a
+    second lit episode from ~f256 to f290 (≈ 650–950 px). Before, the first run's last frame above
+    thr2 312 px is f249 and the second episode is back above it at f258, 0.300 s later, which the
+    rule (a gap > 0.3 s ends the run) bridges, so the end is the second episode's (f288). After, the
+    first run's last frame above 312 is f242 and the second episode returns at f264, 0.733 s later,
+    so the end is f242
+    (`review/B1164/worker/dev5/fix/end_mechanism/b1130_fixed_npc_r7.txt`). b1130 r13 4.567 → 4.300 and r32 7.183 →
+    7.050: RISE end f242 → f234 and f301 → f297 under the same threshold
+    (`review/B1164/worker/dev5/fix/gate/before/measure/b1130_fixed_npc_r13/measure_b1130.txt:7`,
+    `review/B1164/worker/dev5/fix/gate/after/measure/b1130_fixed_npc_r13/measure_b1130.txt:7`).
+  - Owner of every one: s (the only input the two binaries differ in on the EDD path), through the
+    sizes / velocities (+0x6C) and shape / offsets (+0x19C) it multiplies.
+
+**B1157 → base (the reviewer's list, finding 3), attributed by rendering.**
+- **The renderer, not code.** B1157's b1130 sweep ran on the ThinkPad's i915 DRM path, depth 16
+  (all 40 of its run.logs: `DRM: Opened /dev/dri/card1 ... driver=i915`, `EGL: Config depth=16`,
+  e.g. `review/B1157/worker/b1130/frames/b1157_fixed_npc_r0/run.log:38`), its b1118 sweep on NVIDIA surfaceless
+  (`review/B1157/worker/b1118/frames/b1157_r0_/run.log`); dev5's gate forced NVIDIA surfaceless, depth 24, for both.
+  Re-measuring B1157's own frames with 4275bc51's measure script reproduces B1157's rows exactly
+  (`review/B1164/worker/dev5/fix/attrib/remeasure_b1157/`), so the instrument and dev-u24's cv2 are not the cause. Then
+  (`review/B1164/worker/dev5/fix/attrib/E*`, the data trees `src_<sha>` = `git archive <sha> config data`):
+  E1 = B1157's binary on i915 reproduces B1157 on all 7 rows tried; E2 = the same binary on NVIDIA
+  reproduces dev5's base (r0 0.370 / 4.667, r1 3.400, r11 0.064 / 1.600, r29 nan, r33 5.017);
+  E4 = 4275bc51 on NVIDIA reproduces dev5's base (the control); **E3 = 4275bc51 on i915, all 40
+  rows, equals B1157 on 39** (`base_i915` column; mv_code empty) — the 40th is r35 (spell 253,
+  1.791 → 1.206 land, 0.953 → 0.892 src), B1161's retirement of 253's override.
+- So every b1130 drift the review listed is the renderer: r29's landing reading (0.095 / 7.267 on
+  i915, nan on NVIDIA), r11 2.000 → 1.600 and 0.069 → 0.064, r1 3.533 → 3.400, r33 5.117 → 5.017,
+  r0 0.358 → 0.370 and the −0.033 s ends: `mv_gpu` flags exactly r0 (land), r1 (end), r4 / r5 / r8 / r14
+  (src), r11 and r29; no code between B1157 and 4275bc51 moves a b1130 row but r35. b1118: base equals B1157 on
+  every row but the two 253 rows (B1161), both NVIDIA.
+- **Owner:** the gate's renderer choice (B1157's b1130 sweep on i915 depth 16) — not a defect of
+  any card; the tables now compare like with like (NVIDIA for base / before / after).
+
+**Base → before (the merged cards; mv_tip).** b1118: none. b1130: 21 `fixed_npc` rows (e.g. r3
+6.601 → 5.106, r7 end 4.433 → 6.100, r30 2.121 → 1.329). Rendered at B1166's merge 10ffe690 (E5)
+and at B1169's 070a9215 (E6), measured with 4275bc51's script: **E5 equals f61fafb4 on all 21 rows**
+(and E6 on the 8 rendered there), and f61fafb4's frames read the same under both measure-script
+versions. Owner: **B1166** (#485, the harness's b1130 target anchor, `tools/model_viewer/fx_target_anchor.h`);
+B1169, B1165, B1168 and B1173 move no gate row.
+
+### 10.6 FOLLOW-UP
+
+1. **Target model scale** — owned and implemented by B1172 (#491, `task/kb-b1172-model-height`),
+   merged into this branch at a7798e47 (merge b00438a5): `actor_scale.h` is B1172's file (with
+   `clientResolvedActorSize`), `zone_dispatch.cpp`'s `OnZoneEntry` keeps ONE Spawn_Struct size
+   read (B1172's, resolved to the race default for 0, into the entity record and PlayerState), and
+   `test_local_player_spawn_size` expects the resolved size (dark elf 5.0, s 1.0). The one
+   remaining textual conflict with B1172's branch was the `unified_particle.h:333` comment, resolved
+   here. The re-gate of 10.5 predates that merge.
+2. **The local player's size** — fixed in this leg (10.2) and unified with B1172's resolution.
+3. **The remaining per-target-height gap** (owner: FX-sim sprite lane): 10.4's next candidate.
+4. **HideChatWin does not hide the chat window** (owner: oracle rig): leg 1's `# ini-set=
+   Defaults.HideChatWin=TRUE` left Main Chat drawn; a leg that needs the area under it must move
+   the window (the UI_<char>_<server>.ini, which the driver's `char-ini-set` does not reach).
+5. **0x923c30 / 0x923798** (owner: zone entry): `SpellFxAttachScale` passes the lane-5 value 0 for
+   both flags; fable does not read NewZone_Struct offset 592.
+6. **The gate's renderer** (owner: FX gate / B1157's sweep script): B1157's b1130 table was
+   rendered on i915 depth 16, every later gate on NVIDIA depth 24 (10.5); a re-baseline of B1157's
+   b1130 columns on NVIDIA (E2 above for 7 rows) would make the committed table like-for-like.
+
+### 10.7 Acceptance of this leg
+
+| item | status |
+|---|---|
+| s pinned at runtime | **met** — lane-5 gdb read: 1.200000 on the size-6 human target, 1.000000 on the size-5 DarkF target, 1.000000 on the size-0 caster (10.1); the client's code gives the same |
+| s implemented on the EDD path, every race, unit test | **met** — 10.2: the whole rule (0x47a147 / 0x47a0e9 / 0x47a239, no cut-off) in the shared `actor_scale.h`; `test_spell_fx_attach_scale` 6/6 table-driven, `test_local_player_spawn_size` 4/4 |
+| local player's own s from the wire size | **met** — 10.2, merged with B1172's resolution |
+| merge with gitlab/fable | **met** — f61fafb4 merged (e8b21d56), B1172 a7798e47 merged (b00438a5) |
+| tour-7 + both sweeps before/after on the merged tree, owner per moved row, B1157 drifts attributed | **met** — 10.5: 32 + 23 moved rows owned by s; B1157 → base = the renderer (39/40 b1130 rows) + B1161 (r35, both 253 b1118 rows); base → f61fafb4 = B1166 (21 b1130 rows); the gate binaries predate the B1172 merge |
+| 93 like-for-like ratio | moves 0.82× → 1.06× (r51), 0.76× → 0.98× (leg 1) per willeq's drawn target (10.4) |
+| unoccluded oracle reference, which model is off | **met** — the TARGET (client 0.2 × 6 = 1.2); B1172 owns it (10.3) |
+| card acceptance B | **NOT met** — at the client's target scale the landing is still ~0.72–0.77× per target height² (10.4); the MR says Refs #483 |

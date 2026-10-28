@@ -1,6 +1,7 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/spell_fx_bone_anchor.h"  // B1138: hand/head anchors, shared with model_viewer
+#include "client/spell/spell_fx_attach_scale.h"  // B1164: the attach scale s
 #include "client/graphics/light_source.h"
 #include "client/graphics/renderer_zone_merge.h"  // ForwardingTextureGuard (T124)
 #include "client/graphics/ui/character_model_view.h"  // T294: markDirty() on popup open
@@ -311,6 +312,19 @@ void IrrlichtRenderer::initDeferredGraphics() {
         // B1163 (#482): the local player, for spell 859's removal gate.
         SimBridge().spellVisualFX()->setLocalPlayerIdCallback(
             [this]() -> uint16_t { return entityRenderer_ ? entityRenderer_->getPlayerSpawnId() : 0; });
+
+        // B1164 (#483): the attach scale s of an entity's spell slots = the
+        // client's actor scale from its race and Spawn_Struct size
+        // (spell_fx_attach_scale.h). 0 = unknown entity (1.0 is used).
+        SimBridge().spellVisualFX()->setEntityAttachScaleCallback(
+            [this](uint16_t entity_id) -> float {
+                if (!entityRenderer_) return 0.0f;
+                const auto& entities = entityRenderer_->getEntities();
+                auto it = entities.find(entity_id);
+                if (it == entities.end()) return 0.0f;
+                return EQ::SpellFxAttachScale(it->second.raceId, it->second.gender,
+                                               it->second.serverSize);
+            });
 
         LOG_DEBUG(MOD_GRAPHICS, "Spell visual effects initialized");
 

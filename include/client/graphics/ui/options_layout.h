@@ -386,36 +386,44 @@ inline irr::core::rect<irr::s32> controlRect(const UILayout& layout, int i) {
 }
 
 /**
- * A slider's knob, for `step` of `steps + 1` positions (the oracle's
- * sliders are 0..20 — see options_panel.h for where that scale is
- * measured). Width KNOB_W, travelling the slider's usable span.
+ * A slider's knob, for `step` of `steps + 1` positions (the T434 sliders
+ * are 0..20 -- see options_panel.h for where that scale is measured; B1175:
+ * the particle opacity sliders are 0..100, settingInfo().maxValue). Width
+ * KNOB_W, travelling the slider's usable span.
  */
 constexpr irr::s32 KNOB_W = 8;
 constexpr int SLIDER_STEPS = 20;
 
 inline irr::core::rect<irr::s32> sliderKnobRect(const UILayout& layout, int i,
-                                                int step) {
+                                                int step, int steps = SLIDER_STEPS) {
     const auto r = controlRect(layout, i);
-    if (r.getWidth() <= KNOB_W) return r;
+    if (r.getWidth() <= KNOB_W || steps <= 0) return r;
     if (step < 0) step = 0;
-    if (step > SLIDER_STEPS) step = SLIDER_STEPS;
+    if (step > steps) step = steps;
     const irr::s32 travel = r.getWidth() - KNOB_W;
-    const irr::s32 x = r.UpperLeftCorner.X + (travel * step) / SLIDER_STEPS;
+    const irr::s32 x = r.UpperLeftCorner.X + (travel * step) / steps;
     return irr::core::rect<irr::s32>(x, r.UpperLeftCorner.Y, x + KNOB_W,
                                      r.LowerRightCorner.Y);
 }
 
-/** The step a click at `mouseX` selects on slider `i`. Clamped to 0..20. */
-inline int sliderStepAt(const UILayout& layout, int i, int mouseX) {
+/** B1175: how many steps slider setting `s` has (its maxValue; a greyed
+ *  slider with no setting keeps the T434 0..20 geometry). */
+inline int sliderSteps(Setting s) {
+    const int m = settingInfo(s).maxValue;
+    return m > 0 ? m : SLIDER_STEPS;
+}
+
+/** The step a click at `mouseX` selects on slider `i`. Clamped to 0..steps. */
+inline int sliderStepAt(const UILayout& layout, int i, int mouseX, int steps = SLIDER_STEPS) {
     const auto r = controlRect(layout, i);
     const irr::s32 travel = r.getWidth() - KNOB_W;
-    if (travel <= 0) return 0;
+    if (travel <= 0 || steps <= 0) return 0;
     // The click names the knob's CENTRE, so the usable span starts half a
     // knob in; rounding to the nearest step makes both ends reachable.
     irr::s32 rel = mouseX - r.UpperLeftCorner.X - KNOB_W / 2;
     if (rel < 0) rel = 0;
     if (rel > travel) rel = travel;
-    return static_cast<int>((rel * SLIDER_STEPS + travel / 2) / travel);
+    return static_cast<int>((rel * steps + travel / 2) / travel);
 }
 
 /**

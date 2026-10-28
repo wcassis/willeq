@@ -22,14 +22,17 @@
 // 940,652 / tmpx 325) is NOT the target's box: its extent began at the name
 // label's top row (290) and its feet row is not the boots'. The harness solves
 // the feet (row, column) -- the two world unknowns x, z -- and the height is
-// then the model's own, ratcheted at its measured 238 px (below).
+// then the model's own, ratcheted at its measured 285 px (below).
 //
 // Header-only and Irrlicht-free so the geometry is unit-tested offline
 // (tests/test_fx_harness.cpp, B1166TargetAnchor*).
 #pragma once
 
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
+#include <string>
+#include <vector>
 
 namespace fxharness {
 
@@ -41,32 +44,34 @@ struct TargetAnchor {
 constexpr TargetAnchor kB1130TargetAnchor{940.0f, 615.0f, 288.0f};
 
 // The self-check's stated tolerances (px, in the requested 1280x800 frame):
-// - feet row +-1 vs the anchor (the solver's own convergence bound,
-//   fitFixedNpcTarget's `ok`);
+// - feet row +-1 vs the anchor. (The solver itself is stricter and B1177 left
+//   it so: fitFixedNpcTarget's `ok` accepts |d| < 1 px on the feet row AND the
+//   column -- kSolveAcceptPx below -- i.e. the anchor's own row when the
+//   surface is the requested size; the frame-0 self-check then allows +-1.)
 // - column centroid +-3 vs the anchor (a centroid is not a feet column: the
 //   oracle's own reads 938.9-940.3 across thresholds);
 // - height +-3 vs the STANDING height the solve rendered (the written frame
 //   must show the body the solve fitted -- the B1155 defect was a 50 px fit vs
 //   a 316 px frame);
-// - AND the standing height itself, 238 +-3 px (ratio 0.826 +-0.01 of the
-//   anchor's 288). The height is NOT solved: the two feet pixels fix the world
-//   (x, z), and the FABLE human male (race 1, gender 0, size 6) solved at the
-//   anchor renders rows 378..615 = 238 px = 0.826x the oracle's 288
-//   (review/B1166/worker/probe/after.log:128; the 0.826 gap is a model-height
-//   gap owned outside this harness, refactor/B1166/README.md sec. 2 and
-//   FOLLOW-UP 2). This ratchets that measured value so a model or scale
-//   regression fails: the earlier +-25 %-of-288 bound (216..360 px) passed a
-//   dark-elf female (219 px), a human female (217), a barbarian (285), a troll
-//   (324) and the human at size 7 (277) placed by `--target` at the anchor
-//   (review/B1166/worker/wrong_model/, README sec. 2). A body of the SAME
-//   height (dark-elf male 238, high-elf male 239, erudite male 236 there)
-//   cannot be told apart by height; this check does not claim to.
-//   If the human model's height is ever corrected toward the oracle's 288
-//   (FOLLOW-UP 2), re-measure and move kStandingPx with it.
+// - AND the standing height itself, 285 +-3 px (ratio 0.990 of the anchor's
+//   288). The height is NOT solved: the two feet pixels fix the world (x, z),
+//   and the height is the model's own. B1166 ratcheted the human male (race 1,
+//   gender 0, size 6) at 238 px (0.826x) when fable drew it at scale 1.0;
+//   B1172 (#491) draws it at the official client's actor scale, size x 0.2 =
+//   1.2 (include/client/graphics/actor_scale.h), and it renders rows 331..615
+//   = 285 px (review/B1172/worker/wrong_model/default_final.log, the self-check
+//   line; refactor/B1172/README.md sec. 2). This ratchets that measured value
+//   so a model or scale regression fails. At the anchor with `--target`
+//   (review/B1172/worker/wrong_model/*.log): human female 1:1:6 260 px,
+//   dark-elf female 6:1:6 261, the human at size 7 332, troll 9:0:6 280 --
+//   all rejected; the barbarian 2:0:6 renders 284, inside the band: under the
+//   client's rule every classic race at the same size word is drawn about the
+//   same height, and a body of the SAME height cannot be told apart by height;
+//   this check does not claim to.
 constexpr float kFeetTolPx = 1.0f;
 constexpr float kColumnTolPx = 3.0f;
 constexpr float kHeightTolPx = 3.0f;
-constexpr float kStandingPx = 238.0f;
+constexpr float kStandingPx = 285.0f;
 constexpr float kStandingTolPx = 3.0f;
 
 // The harness's clear colour (50,50,80) -- the ground plane paints it too --
@@ -138,6 +143,87 @@ inline AnchorCheck checkTargetAnchor(const Silhouette& s, const TargetAnchor& a,
     c.pxOk = std::fabs(c.dPx) <= pxTol;
     c.standOk = std::fabs(c.dStand) <= standTol;
     return c;
+}
+
+// B1155 / B1177 (#496): the process exit code of a --camera preset that does
+// not solve to its recorded geometry (refactor/B1155/README.md "The solve":
+// "exits 2"). The harness reaches it through the normal teardown, never a
+// signal (tools/model_viewer.cpp shutdownViewer; refactor/B1177/README.md).
+constexpr int kExitPresetDidNotSolve = 2;
+
+// B1166's solve acceptance, in requested px (fitFixedNpcTarget's `ok`, as it
+// was): BOTH the feet row and the column centroid within |d| < 1 px of the
+// anchor. B1177 does not change it (refactor/B1177/README.md sec. 3).
+constexpr float kSolveAcceptPx = 1.0f;
+
+// B1177 (#496): one measured point of the b1130 target solve -- the world
+// (x, z) the target stood at and what that frame drew (requested px).
+struct FitSample {
+    float x = 0, z = 0;
+    float col = 0, row = 0, px = 0;
+};
+
+inline bool fitSampleSolves(const FitSample& f, const TargetAnchor& a) {
+    return std::fabs(f.col - a.feetX) < kSolveAcceptPx && std::fabs(f.row - a.feetY) < kSolveAcceptPx;
+}
+
+// The solve is cycling when its pixel states -- (feet row, column rounded to
+// 1 px) -- repeat with a period p of 2 or 3 over its last 3p samples (two
+// full repeats; one repeat could still be a damped approach). Returns p, or 0.
+// A period of 1 (the same pixels again and again) is not a cycle: a sub-pixel
+// Newton step or a nudge can still leave it. review/B1172/worker/wrong_model/
+// r1_6_1_6.log is the case: rows 616, 616, 618 at columns 940, 940, 949, from
+// fit 6 to fit 23.
+inline int fitCyclePeriod(const std::vector<FitSample>& s) {
+    auto key = [](const FitSample& f) { return std::lround(f.row) * 100000L + std::lround(f.col); };
+    for (int p = 2; p <= 3; ++p) {
+        const int n = static_cast<int>(s.size());
+        if (n < 3 * p) continue;
+        bool cyc = true;
+        for (int i = n - 2 * p; i < n && cyc; ++i) cyc = key(s[i]) == key(s[i - p]);
+        bool moves = false;  // a constant run repeats at every p: that is a stall
+        for (int i = n - p + 1; i < n; ++i) moves = moves || key(s[i]) != key(s[n - p]);
+        if (cyc && moves) return p;
+    }
+    return 0;
+}
+
+// Why one candidate does not satisfy the anchor, for the solver's diagnostic.
+inline std::string fitSampleWhy(const FitSample& f, const TargetAnchor& a) {
+    const float dRow = f.row - a.feetY, dCol = f.col - a.feetX;
+    const bool rowOk = std::fabs(dRow) < kSolveAcceptPx, colOk = std::fabs(dCol) < kSolveAcceptPx;
+    char buf[256];
+    std::snprintf(buf, sizeof(buf), "(x %.3f, z %.3f) -> feet row %.0f (d %+.0f: %s), column %.1f (d %+.1f: %s)",
+                  f.x, f.z, f.row, dRow, rowOk ? "ok" : "misses |d| < 1", f.col, dCol,
+                  colOk ? "ok" : "misses |d| < 1");
+    return buf;
+}
+
+// The solve's failure diagnostic (fitFixedNpcTarget prints each line): with a
+// cycle of period p, its p candidates and why each misses; else the closest
+// candidate (least |d row| + |d col|) after `iterations` fits.
+inline std::vector<std::string> fitDiagnostic(const std::vector<FitSample>& s, int cycle, const TargetAnchor& a,
+                                              int iterations) {
+    std::vector<std::string> out;
+    if (s.empty()) return out;
+    char buf[256];
+    if (cycle) {
+        std::snprintf(buf, sizeof(buf),
+                      "b1130 target solve: CYCLE of period %d after %zu fits; none of its %d candidates is within "
+                      "|d| < %.0f px of the anchor (feet row %.0f, column %.0f):",
+                      cycle, s.size(), cycle, kSolveAcceptPx, a.feetY, a.feetX);
+        out.push_back(buf);
+        for (size_t i = s.size() - cycle; i < s.size(); ++i) out.push_back("  candidate " + fitSampleWhy(s[i], a));
+        return out;
+    }
+    auto miss = [&](const FitSample& f) { return std::fabs(f.row - a.feetY) + std::fabs(f.col - a.feetX); };
+    size_t best = 0;
+    for (size_t i = 1; i < s.size(); ++i)
+        if (miss(s[i]) < miss(s[best])) best = i;
+    std::snprintf(buf, sizeof(buf), "b1130 target solve: no convergence in %d fits (--target-fit-iterations); closest ",
+                  iterations);
+    out.push_back(buf + fitSampleWhy(s[best], a));
+    return out;
 }
 
 }  // namespace fxharness

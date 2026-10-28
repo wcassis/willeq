@@ -85,6 +85,17 @@ inline std::string playCastAnim(EQAnimatedMeshSceneNode* node, int castAnimId) {
     return std::string(code);
 }
 
+// B1174 (#493): a track an OP_Action started (no cast state, a /disc) has
+// played out when the animator stopped on it (one-shot tracks hold their
+// last frame, SkeletalAnimator::holdOnComplete_); the caller then plays the
+// standing idle, as the official client's caster returns to its idle pose
+// (refactor/B1174/README.md, the observer strip).
+inline bool actionCastAnimEnded(EQAnimatedMeshSceneNode* node, const std::string& code) {
+    if (!node || code.empty()) return true;
+    if (node->getAnimator().getCurrentAnimation() != code) return true;  // something else took over
+    return node->getAnimator().getState() == AnimationState::Stopped;
+}
+
 // OP_Action / interrupt: the cast state ends; stop the held/playing cast
 // track (a non-play-through request would only queue behind it) and play the
 // new state's animation -- idleCode, the caster's idle ("p01" the local

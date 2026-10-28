@@ -44,6 +44,7 @@
 #include <string>
 #include <vector>
 
+#include <sys/wait.h>
 #include <unistd.h>
 
 namespace fs = std::filesystem;
@@ -130,7 +131,8 @@ protected:
                                 "' --fps 30 --seconds " + std::to_string(seconds) +
                                 " --headless --camera " + camera + " --seed 1 " + extra + " > '" +
                                 (dir / "run.log").string() + "' 2>&1";
-        return std::system(cmd.c_str()) == 0 ? frames : fs::path();
+        lastStatus_ = std::system(cmd.c_str());
+        return lastStatus_ == 0 ? frames : fs::path();
     }
     static fs::path frameAt(const fs::path& frames, int f) {
         char name[32];
@@ -151,6 +153,31 @@ protected:
         }
         return out;
     }
+    // B1171 (#490): timing.tsv's caster_level per packet row, "event:level"
+    // in file order (the per-frame rows carry '-').
+    static std::vector<std::string> timingLevels(const fs::path& frames) {
+        std::vector<std::string> out;
+        std::ifstream f(frames / "timing.tsv");
+        std::string line;
+        std::getline(f, line);
+        EXPECT_EQ(line, "frame\tt\tevent\tspell\ttarget\tdistance\tcast_ms\tt_event\tcaster_level");
+        while (std::getline(f, line)) {
+            std::istringstream ss(line);
+            std::string c[9];
+            for (auto& x : c) std::getline(ss, x, '\t');
+            if (c[2] != "-") out.push_back(c[2] + ":" + c[8]);
+        }
+        return out;
+    }
+    // B1171: the run log's "[fx-harness] cast N: ..." lines.
+    static std::vector<std::string> castLevelLines(const fs::path& frames) {
+        std::vector<std::string> out;
+        std::ifstream f(frames.parent_path() / "run.log");
+        std::string line;
+        while (std::getline(f, line))
+            if (line.rfind("[fx-harness] cast ", 0) == 0) out.push_back(line);
+        return out;
+    }
     void cleanDirs() {
         if (HasFailure()) return;
         for (const auto& d : dirs_) fs::remove_all(d);
@@ -158,6 +185,7 @@ protected:
     irr::IrrlichtDevice* device_ = nullptr;
     std::string bin_;
     std::vector<fs::path> dirs_;
+    int lastStatus_ = 0;  // runPlan's raw std::system status (B1177)
 };
 
 TEST_F(FxHarness, AnOtherTargetLandingLightsTheTargetAndNotTheCaster) {
@@ -228,94 +256,74 @@ TEST_F(FxHarness, AnOtherTargetLandingLightsTheTargetAndNotTheCaster) {
     if (!HasFailure()) fs::remove_all(dir);
 }
 
-// B1144 (#464): a /disc is OP_CastSpell slot 10 -> OP_Action with NO
-// OP_BeginCast (B1134 leg P4b's pcap), and the official client plays a
-// record's Source from its begin-cast handler only (eqgame.exe 0x49b39d);
-// 4499 Defensive Discipline's record 326 has no Target stage, so no landing.
-// The observer drew no sprite (B1134 record 51; re-observed by B1162 leg
-// b1162_disc4499_v3: OP_Action 4499 with no OP_BeginCast, the observer's
-// caster ROI lit only by the caster's animation, Act+0.454..1.120, peak cov
-// 0.067 -- refactor/B1162/README.md "The /disc landing leg"). The harness's action-only
-// packets must therefore draw NOTHING: every frame equals the frame of a run
-// whose only cast lies past the end (no lit px beyond the two processes'
-// pre-cast noise).
-// RED on fb6d6481: B1105's 2 s action-only glow and the spellComplete half.
-TEST_F(FxHarness, ADisciplineWithoutBeginCastDrawsNothing) {
-    const fs::path disc = runPlan("disc", "0.5\t4499\tself\t0\t0\t60\taction\n", 3.0);
-    const fs::path none = runPlan("none", "100\t4499\tself\t0\t0\t60\taction\n", 3.0);
+// fx_activity.tsv (B1174): per written frame, the harness's live spell
+// effects and missiles and the caster's current track.
+struct FxActivityRow {
+    int frame = 0;
+    int effects = 0;
+    int missiles = 0;
+    std::string anim;
+};
+std::vector<FxActivityRow> fxActivity(const fs::path& frames) {
+    std::vector<FxActivityRow> out;
+    std::ifstream f(frames / "fx_activity.tsv");
+    std::string line;
+    std::getline(f, line);
+    while (std::getline(f, line)) {
+        std::istringstream ss(line);
+        FxActivityRow r;
+        double t = 0.0;
+        if (ss >> r.frame >> t >> r.effects >> r.missiles >> r.anim) out.push_back(r);
+    }
+    return out;
+}
+
+// B1174 (#493): a /disc is OP_CastSpell slot 10 -> OP_Action with NO
+// OP_BeginCast. Its record (field 145: 326 for 4499, 325 for 8604) has
+// Source slots only, and the client plays a Source from its begin-cast
+// handler only (0x49b39d), so no sprite is drawn (B1144); but the OP_Action
+// handler (eqgame 0x47f4af, spell_action_anim.h) asks the standing source for
+// the spell's CastingAnim. That swing is ALL the oracle shows: B1174's lane-5
+// leg b1174_disc8604 (the client's /disc Leechcurse Discipline, the lane's
+// row 8604 pointed at its own Leechcurse for the leg) lit the observer's
+// caster box Act+0.422..+4.355 with the t06 swing and no sprite
+// (refactor/B1174/README.md); B1162's 4499 leg the same with its own track.
+// So the action-only harness run draws no slot, no effect and no missile,
+// and the caster plays the spell's CastingAnim track at the packet, then
+// returns to the idle. Replaces B1162's whole-frame "draws nothing" pins,
+// which the swing (a model animation, measured by the oracle) makes wrong.
+void expectDiscActionSwing(const std::vector<std::string>& slots, const std::vector<FxActivityRow>& act,
+                           const char* track, int heldUntilFrame, int idleByFrame) {
+    EXPECT_TRUE(slots.empty()) << "a /disc drew a spellsnew.eff slot";
+    ASSERT_GT(act.size(), static_cast<size_t>(idleByFrame)) << "fx_activity.tsv is short";
+    for (const auto& r : act) {
+        EXPECT_EQ(r.effects, 0) << "frame " << r.frame << ": a /disc left a live spell effect";
+        EXPECT_EQ(r.missiles, 0) << "frame " << r.frame;
+    }
+    EXPECT_EQ(act[14].anim, "p01") << "the caster idles before the packet";
+    for (int f = 15; f <= heldUntilFrame; ++f)
+        EXPECT_EQ(act[f].anim, track) << "frame " << f << ": the CastingAnim track plays from the packet";
+    EXPECT_EQ(act[idleByFrame].anim, "p01") << "the track played out and the idle returned";
+}
+
+TEST_F(FxHarness, ADisciplineWithoutBeginCastSwingsTheCasterAndDrawsNoSprite) {
+    // 4499 Defensive Discipline: CastingAnim 27 = s01 (eqgame's code table).
+    const fs::path disc = runPlan("disc", "0.5\t4499\tself\t0\t0\t60\taction\n", 6.0, "", "b1130-self");
     ASSERT_FALSE(disc.empty()) << "the /disc harness run failed";
-    ASSERT_FALSE(none.empty()) << "the reference harness run failed";
-    EXPECT_TRUE(slotRows(disc).empty()) << "a /disc drew a spellsnew.eff slot";
-    const Box whole{0, 0, 1279, 799};
-    // Two harness processes differ by 0-4 px at the caster's held orb from
-    // frame 0, before any packet (measured on 9d37d807: (662..667, 463..468),
-    // max channel delta 152..203, the idle cycle's period). A drawn Source or
-    // landing is thousands (93's Source above: 34,483 summed). The bound is
-    // that pre-cast noise, measured in the same two runs, plus 16 px.
-    int noise = 0;
-    for (int f = 0; f < 15; ++f) {
-        irr::video::IImage* a = load(frameAt(disc, f));
-        irr::video::IImage* b = load(frameAt(none, f));
-        ASSERT_NE(a, nullptr);
-        ASSERT_NE(b, nullptr);
-        noise = std::max({noise, lit(a, b, whole), lit(b, a, whole)});
-        a->drop();
-        b->drop();
-    }
-    int peak = 0;
-    for (int f = 15; f < 90; ++f) {  // Act-0.0 .. Act+2.5 s
-        irr::video::IImage* a = load(frameAt(disc, f));
-        irr::video::IImage* b = load(frameAt(none, f));
-        ASSERT_NE(a, nullptr);
-        ASSERT_NE(b, nullptr);
-        peak = std::max({peak, lit(a, b, whole), lit(b, a, whole)});
-        a->drop();
-        b->drop();
-    }
-    std::printf("[fx-gate] /disc 4499 (OP_Action only): peak lit px vs the no-cast run %d (pre-cast noise %d)\n",
-                peak, noise);
-    EXPECT_LE(peak, noise + 16) << "an OP_Action without OP_BeginCast drew something";
+    ASSERT_STREQ(EQ::SpellCastAnimationCode(27), "s01");
+    // s01 on the char-67 Dark Elf female plays 3.0 s (fx_activity.tsv on this
+    // tip: s01 frames 15..104); held to Act+2.5, idle by Act+4.0.
+    expectDiscActionSwing(slotRows(disc), fxActivity(disc), "s01", 15 + 75, 15 + 120);
     cleanDirs();
 }
 
-// B1162 (#481): the same gate on record 325, with the discipline the official
-// client really fired on lane 5: /disc Leechcurse Discipline -> C->S
-// OP_CastSpell slot 10 spell 8604, no OP_BeginCast (leg b1162_disc325_v2,
-// refactor/B1162/README.md "Correction: Leg A did not land"). 8604's
-// spellsnew.eff record (spells_us.txt field 145) is 325, which has no Target
-// stage. The lane server refused the cast (its 8604 row is another spell), so
-// the oracle never drew a real record-325 /disc; this pins the fable side
-// only. The harness's action-only 8604 must draw nothing.
-TEST_F(FxHarness, TheLeechcurseDisciplineWithoutBeginCastDrawsNothing) {
-    const fs::path disc = runPlan("disc8604", "0.5\t8604\tself\t0\t0\t60\taction\n", 3.0);
-    const fs::path none = runPlan("none8604", "100\t8604\tself\t0\t0\t60\taction\n", 3.0);
+TEST_F(FxHarness, TheLeechcurseDisciplineSwingsT06AndDrawsNoSprite) {
+    // 8604 Leechcurse Discipline: CastingAnim 44 = t06, the Dark Elf female's
+    // 4100 ms track (B1148). The oracle's caster box: Act+0.422..+4.355.
+    const fs::path disc = runPlan("disc8604", "0.5\t8604\tself\t0\t0\t60\taction\n", 6.0, "", "b1130-self");
     ASSERT_FALSE(disc.empty()) << "the /disc harness run failed";
-    ASSERT_FALSE(none.empty()) << "the reference harness run failed";
-    EXPECT_TRUE(slotRows(disc).empty()) << "a /disc drew a spellsnew.eff slot";
-    const Box whole{0, 0, 1279, 799};
-    int noise = 0;  // the two processes' pre-cast difference (see the 4499 test)
-    for (int f = 0; f < 15; ++f) {
-        irr::video::IImage* a = load(frameAt(disc, f));
-        irr::video::IImage* b = load(frameAt(none, f));
-        ASSERT_NE(a, nullptr);
-        ASSERT_NE(b, nullptr);
-        noise = std::max({noise, lit(a, b, whole), lit(b, a, whole)});
-        a->drop();
-        b->drop();
-    }
-    int peak = 0;
-    for (int f = 15; f < 90; ++f) {  // Act-0.0 .. Act+2.5 s
-        irr::video::IImage* a = load(frameAt(disc, f));
-        irr::video::IImage* b = load(frameAt(none, f));
-        ASSERT_NE(a, nullptr);
-        ASSERT_NE(b, nullptr);
-        peak = std::max({peak, lit(a, b, whole), lit(b, a, whole)});
-        a->drop();
-        b->drop();
-    }
-    std::printf("[fx-gate] /disc 8604 (OP_Action only): peak lit px vs the no-cast run %d (pre-cast noise %d)\n",
-                peak, noise);
-    EXPECT_LE(peak, noise + 16) << "an OP_Action without OP_BeginCast drew something";
+    ASSERT_STREQ(EQ::SpellCastAnimationCode(44), "t06");
+    expectDiscActionSwing(slotRows(disc), fxActivity(disc), "t06", 15 + 105, 15 + 135);
     cleanDirs();
 }
 
@@ -352,8 +360,24 @@ TEST_F(FxHarness, ALevelOneCasterDrawsOnlyItsLevelZeroSlots) {
     }
     std::printf("[fx-gate] 93 Source, caster box lit px summed BC+0.6..Act: level 1 %ld, level 60 %ld\n", sum1,
                 sum60);
+    // B1171 (#490): the level each run cast at is in its log and its timing.tsv.
+    EXPECT_EQ(timingLevels(l1), (std::vector<std::string>{"BeginCast:1", "Action:1"}));
+    EXPECT_EQ(timingLevels(l60), (std::vector<std::string>{"BeginCast:60", "Action:60"}));
+    EXPECT_EQ(castLevelLines(l1), (std::vector<std::string>{"[fx-harness] cast 0: spell 93 caster_level 1 (plan)"}));
     EXPECT_GT(sum1, 0) << "the level-1 caster's hand slots drew nothing";
     EXPECT_LT(sum1, sum60) << "the level-1 caster drew as much Source as the level-60 caster";
+    cleanDirs();
+}
+
+// B1171 (#490): a plan row without a level casts at --caster-level, and the
+// run log says the level did not come from the plan -- a sweep that means to
+// copy an oracle capture's `#level` writes it into every plan row.
+TEST_F(FxHarness, ThePlanLevelAndItsSourceAreLogged) {
+    const fs::path dflt = runPlan("lvl_dash", "0.1\t93\tother\t14\t200\t-\tbegincast\n", 0.5, "--caster-level 7");
+    ASSERT_FALSE(dflt.empty());
+    EXPECT_EQ(castLevelLines(dflt),
+              (std::vector<std::string>{"[fx-harness] cast 0: spell 93 caster_level 7 (--caster-level)"}));
+    EXPECT_EQ(timingLevels(dflt), (std::vector<std::string>{"BeginCast:7", "Action:7"}));
     cleanDirs();
 }
 
@@ -371,8 +395,8 @@ TEST_F(FxHarness, ALevelOneCasterDrawsOnlyItsLevelZeroSlots) {
 // fx_target_anchor.h -- B1130's 652/325 began at the name label). Its height
 // is the model's own at that spot (two feet pixels fix x, z): the harness's
 // self-check asserts it equals the solved standing height and the MEASURED
-// standing height 238 +-3 px (0.826x the oracle's 288; fx_target_anchor.h
-// kStandingPx), and prints PASS in run.log.
+// standing height 285 +-3 px (0.990x the oracle's 288 at the client's actor
+// scale 1.2, B1172; fx_target_anchor.h kStandingPx), and prints PASS in run.log.
 struct Silhouette {
     int top = -1, bottom = -1, n = 0;
     double col = 0;
@@ -434,8 +458,8 @@ void checkB1130Frame(const fs::path& frames, bool expectTarget, irr::video::IVid
         EXPECT_NEAR(t.bottom, a.feetY, fxharness::kFeetTolPx) << "target feet row (the oracle's measured feet)";
         EXPECT_NEAR(t.col, a.feetX, fxharness::kColumnTolPx) << "target column centroid";
         EXPECT_NEAR(t.bottom - t.top + 1, fxharness::kStandingPx, fxharness::kStandingTolPx)
-            << "target pixel height: not the measured standing human (238 px; the B1155 rest-pose strip was 50 "
-               "px, a dark-elf female at the spot 219)";
+            << "target pixel height: not the measured standing human (285 px at the actor scale 1.2, B1172; "
+               "the B1155 rest-pose strip was 50 px, a dark-elf female at the spot 261)";
     }
     img->drop();
 }
@@ -455,28 +479,32 @@ TEST_F(FxHarness, B1130PresetSolvesTheFixedNpcGeometry) {
 }
 
 // B1166 (MR !320 note 7834 finding 3): a WRONG body at the anchor must fail the
-// harness's own self-check. The caster's model (race 6 dark elf, female, size
-// 6) solved at the anchor renders 218-219 px -- inside the earlier +-25 %-of-288
-// bound, which passed it (review/B1166/worker/wrong_model/old_6_1_6.log) -- and
-// the run must exit non-zero (5) with a FAIL line.
+// harness's own self-check, and the run must exit non-zero (5) with a FAIL
+// line. B1172: the wrong body is the human male at size 5 -- actor scale
+// 5 x 0.2 = 1.0, i.e. the human exactly as fable drew it before B1172 --
+// which renders 238 px (review/B1172/worker/wrong_model/r1_1_0_5.log), inside
+// the earlier +-25 %-of-288 bound. (B1166 used the dark-elf female 6:1:6; at the
+// client's actor scale her solve does not converge on every renderer -- it
+// exits "did not solve" on gitlab-runner-1, r1_6_1_6.log -- so it no longer
+// reaches the self-check everywhere.)
 TEST_F(FxHarness, B1130SelfCheckRejectsAWrongTargetModel) {
-    const fs::path frames = runPlan("b1130wrong", "100.0\t93\tother\t0\t250\t60\n", 0.5, "--target 6:1:6", "b1130");
-    EXPECT_TRUE(frames.empty()) << "the b1130 run with a dark-elf female target exited 0";
+    const fs::path frames = runPlan("b1130wrong", "100.0\t93\tother\t0\t250\t60\n", 0.5, "--target 1:0:5", "b1130");
+    EXPECT_TRUE(frames.empty()) << "the b1130 run with the size-5 (scale 1.0) human target exited 0";
     std::ifstream log(dirs_.back() / "run.log");
     std::string line, check;
     while (std::getline(log, line))
         if (line.find("b1130 target self-check") != std::string::npos) check = line;
     std::printf("%s\n", check.c_str());
     EXPECT_NE(check.find(": FAIL"), std::string::npos) << "no FAILing self-check line for the wrong model";
-    // Its height (219 px in the recorded run, 218 in another -- the harness
-    // jitters by a pixel run to run): outside the ratchet, inside the old bound.
+    // Its height (238 px, fable's pre-B1172 drawing): outside the ratchet,
+    // inside the old bound.
     int px = 0;
     const auto at = check.find("px, feet row");
     ASSERT_NE(at, std::string::npos) << check;
     const auto open = check.rfind('(', at);
     ASSERT_EQ(std::sscanf(check.c_str() + open, "(%d px", &px), 1) << check;
     EXPECT_GT(std::fabs(px - fxharness::kStandingPx), fxharness::kStandingTolPx) << px << " px";
-    EXPECT_GE(px, 216) << "the dark-elf female left the old +-25 % bound; the negative no longer shows finding 3";
+    EXPECT_GE(px, 216) << "the wrong body left the old +-25 % bound; the negative no longer shows finding 3";
     cleanDirs();
 }
 
@@ -484,6 +512,58 @@ TEST_F(FxHarness, B1130SelfPresetSolvesTheCasterAlone) {
     const fs::path frames = runPlan("b1130self", "100.0\t93\tself\t0\t250\t60\n", 0.5, "", "b1130-self");
     ASSERT_FALSE(frames.empty()) << "the b1130-self harness run failed";
     checkB1130Frame(frames, false, device_->getVideoDriver());
+    cleanDirs();
+}
+
+// B1177 (#496): a --camera preset that does not solve exits with its
+// documented code 2 (fxharness::kExitPresetDidNotSolve; refactor/B1155/README.md
+// "The solve") through the normal teardown -- before B1177 this path dropped
+// the device and left the texture caches to the exit handlers, which died in
+// ~ConstrainedTextureCache (SIGSEGV, rc 139 through the shell;
+// review/B1177/worker/runs/tp_gdb_iter1.log). --target-fit-iterations 1 lets
+// the solve measure only its start point, so it cannot solve on any renderer.
+TEST_F(FxHarness, B1130PresetThatDoesNotSolveExitsTwoWithoutASignal) {
+    const fs::path frames =
+        runPlan("b1130nosolve", "100.0\t93\tother\t0\t250\t60\n", 0.5, "--target-fit-iterations 1", "b1130");
+    EXPECT_TRUE(frames.empty()) << "a one-fit solve exited 0";
+    ASSERT_FALSE(WIFSIGNALED(lastStatus_)) << "the shell itself died of signal " << WTERMSIG(lastStatus_);
+    ASSERT_TRUE(WIFEXITED(lastStatus_));
+    // The shell reports a child killed by signal n as 128 + n (139 = SIGSEGV).
+    EXPECT_EQ(WEXITSTATUS(lastStatus_), fxharness::kExitPresetDidNotSolve)
+        << "exit " << WEXITSTATUS(lastStatus_) << " (128 + n = killed by signal n); see " << (dirs_.back() / "run.log");
+    std::ifstream log(dirs_.back() / "run.log");
+    std::string line, closest;
+    bool didNotSolve = false;
+    while (std::getline(log, line)) {
+        if (line.find("did not solve to its recorded geometry") != std::string::npos) didNotSolve = true;
+        if (line.find("b1130 target solve: no convergence in 1 fits") != std::string::npos) closest = line;
+    }
+    EXPECT_TRUE(didNotSolve) << "no 'did not solve' line";
+    std::printf("%s\n", closest.c_str());
+    EXPECT_NE(closest.find("closest (x -2.000, z 2.000)"), std::string::npos)
+        << "the diagnostic does not name the one measured candidate: " << closest;
+    cleanDirs();
+}
+
+// B1177 (#496): the dark-elf female 6:1:6 target (B1166's first wrong body)
+// sent the solve around a 616/616/618 feet-row cycle on llvmpipe until the cap
+// (review/B1172/worker/wrong_model/r1_6_1_6.log). The solve must now TERMINATE
+// on every renderer and reach the self-check, which rejects her height (exit 5
+// with a FAIL line), never "did not solve" (2) or a signal.
+TEST_F(FxHarness, B1130DarkElfFemaleTargetSolvesAndFailsTheSelfCheck) {
+    const fs::path frames = runPlan("b1130de", "100.0\t93\tother\t0\t250\t60\n", 0.5, "--target 6:1:6", "b1130");
+    EXPECT_TRUE(frames.empty()) << "the b1130 run with a dark-elf female target exited 0";
+    ASSERT_TRUE(WIFEXITED(lastStatus_));
+    EXPECT_EQ(WEXITSTATUS(lastStatus_), 5) << "see " << (dirs_.back() / "run.log");
+    std::ifstream log(dirs_.back() / "run.log");
+    std::string line, check, solved;
+    while (std::getline(log, line)) {
+        if (line.find("b1130 target self-check") != std::string::npos) check = line;
+        if (line.find("camera b1130: target (") != std::string::npos) solved = line;
+    }
+    std::printf("%s\n%s\n", solved.c_str(), check.c_str());
+    EXPECT_NE(solved.find("feet row 615 at column 940"), std::string::npos) << "the solve did not reach the anchor";
+    EXPECT_NE(check.find(": FAIL"), std::string::npos) << "no FAILing self-check line for the wrong model";
     cleanDirs();
 }
 
@@ -634,31 +714,31 @@ TEST(B1166TargetAnchor, AStandingBodyOnTheAnchorPasses) {
     const auto& a = fxharness::kB1130TargetAnchor;
     SynthFrame f;
     f.box(620, 389, 660, 598);  // the caster, outside the window
-    f.box(920, 378, 960, 615);  // 238 px, feet 615, centroid 940
+    f.box(920, 331, 960, 615);  // 285 px, feet 615, centroid 940
     const auto s = f.measure(a);
-    EXPECT_EQ(s.top, 378);
+    EXPECT_EQ(s.top, 331);
     EXPECT_EQ(s.bottom, 615);
-    EXPECT_EQ(s.height(), 238);
+    EXPECT_EQ(s.height(), 285);
     EXPECT_DOUBLE_EQ(s.col, 940.0);
-    const auto c = fxharness::checkTargetAnchor(s, a, 238.0f);
+    const auto c = fxharness::checkTargetAnchor(s, a, 285.0f);
     EXPECT_TRUE(c.ok());
-    EXPECT_NEAR(c.ratio, 238.0f / 288.0f, 1e-6f);
+    EXPECT_NEAR(c.ratio, 285.0f / 288.0f, 1e-6f);
 }
 
-// The standing-height ratchet (fx_target_anchor.h kStandingPx 238 +-3): the
-// heights other bodies rendered at the anchor with `--target`
-// (review/B1166/worker/wrong_model/wrong_model_heights.tsv) all fail it, though
-// every one of them passed the earlier +-25 %-of-288 bound (216..360 px);
-// 235..241 passes. Each body is fitted to itself (fitPx = its own height), so
+// The standing-height ratchet (fx_target_anchor.h kStandingPx 285 +-3, B1172):
+// the heights other bodies rendered at the anchor with `--target` at the
+// client's actor scale (review/B1172/worker/wrong_model/*.log) fail it, though
+// every one of them passes the earlier +-25 %-of-288 bound (216..360 px);
+// 282..288 passes. (The barbarian 2:0:6, 284 px, is a same-height body.) Each body is fitted to itself (fitPx = its own height), so
 // only the ratchet can reject it.
 TEST(B1166TargetAnchor, TheStandingHeightRatchetRejectsOtherBodies) {
     const auto& a = fxharness::kB1130TargetAnchor;
-    EXPECT_FLOAT_EQ(fxharness::kStandingPx, 238.0f);
-    EXPECT_NEAR(fxharness::kStandingPx / a.px, 0.826f, 0.001f);
+    EXPECT_FLOAT_EQ(fxharness::kStandingPx, 285.0f);
+    EXPECT_NEAR(fxharness::kStandingPx / a.px, 0.990f, 0.001f);
     struct Body { const char* what; int px; };
-    for (const Body b : {Body{"human female 1:1:6", 217}, Body{"dark-elf female 6:1:6 (the caster model)", 219},
-                         Body{"human male at size 7", 277}, Body{"barbarian male 2:0:6", 285},
-                         Body{"troll male 9:0:6", 324}, Body{"the old bound's low edge", 216},
+    for (const Body b : {Body{"human female 1:1:6", 260}, Body{"dark-elf female 6:1:6 (the caster model)", 261},
+                         Body{"human male at size 7", 332}, Body{"troll male 9:0:6", 280},
+                         Body{"the human at fable's pre-B1172 scale 1.0", 238}, Body{"the old bound's low edge", 216},
                          Body{"the old bound's high edge", 360}}) {
         SynthFrame f;
         f.box(920, 616 - b.px, 960, 615);
@@ -669,7 +749,7 @@ TEST(B1166TargetAnchor, TheStandingHeightRatchetRejectsOtherBodies) {
         EXPECT_FALSE(c.standOk) << b.what << " passed the standing-height ratchet";
         EXPECT_FALSE(c.ok()) << b.what;
     }
-    for (int px : {235, 238, 241}) {
+    for (int px : {282, 285, 288}) {
         SynthFrame f;
         f.box(920, 616 - px, 960, 615);
         EXPECT_TRUE(fxharness::checkTargetAnchor(f.measure(a), a, static_cast<float>(px)).ok()) << px << " px";
@@ -683,7 +763,7 @@ TEST(B1166TargetAnchor, TheRestPoseStripAndAnOffsetBodyFail) {
         f.box(930, 566, 950, 615);
         const auto c = fxharness::checkTargetAnchor(f.measure(a), a, 50.0f);
         EXPECT_TRUE(c.feetOk && c.colOk && c.pxOk);
-        EXPECT_FALSE(c.standOk) << "a 50 px body is not the measured 238 px standing human";
+        EXPECT_FALSE(c.standOk) << "a 50 px body is not the measured 285 px standing human";
         EXPECT_FALSE(c.ok());
     }
     {   // ... and its running frames: the standing body 316 px with feet at 782
@@ -696,13 +776,75 @@ TEST(B1166TargetAnchor, TheRestPoseStripAndAnOffsetBodyFail) {
     }
     {   // feet 2 px low
         SynthFrame f;
-        f.box(920, 380, 960, 617);
-        const auto c = fxharness::checkTargetAnchor(f.measure(a), a, 238.0f);
+        f.box(920, 333, 960, 617);
+        const auto c = fxharness::checkTargetAnchor(f.measure(a), a, 285.0f);
         EXPECT_FALSE(c.feetOk);
         EXPECT_FALSE(c.ok());
     }
     {   // nothing in the window
         SynthFrame f;
-        EXPECT_FALSE(fxharness::checkTargetAnchor(f.measure(a), a, 238.0f).ok());
+        EXPECT_FALSE(fxharness::checkTargetAnchor(f.measure(a), a, 285.0f).ok());
     }
+}
+
+// B1177 (#496): the solve's cycle detector and its diagnostic, offline.
+TEST(B1177TargetSolve, ThePreB1177CycleIsDetected) {
+    // review/B1172/worker/wrong_model/r1_6_1_6.log, tgt fit 0..14 (the
+    // surface is the requested 1280x800 there, so these are requested px).
+    const float rows[] = {631, 621, 624, 626, 633, 620, 616, 616, 618, 616, 616, 618, 616, 616, 618};
+    const float cols[] = {709.3f, 912.0f, 906.9f, 901.7f, 940.6f, 939.5f, 940.3f, 940.2f,
+                          948.8f, 940.2f, 940.1f, 948.7f, 940.1f, 940.0f, 948.6f};
+    std::vector<fxharness::FitSample> s;
+    int firstCycle = -1;
+    for (int i = 0; i < 15; ++i) {
+        fxharness::FitSample f;
+        f.row = rows[i];
+        f.col = cols[i];
+        s.push_back(f);
+        const int p = fxharness::fitCyclePeriod(s);
+        if (p && firstCycle < 0) {
+            firstCycle = i;
+            EXPECT_EQ(p, 3);
+        }
+    }
+    EXPECT_EQ(firstCycle, 14) << "two full repeats of fits 6..8 end at fit 14";
+    // None of the three candidates is within |d| < 1 px of (940, 615).
+    const auto& a = fxharness::kB1130TargetAnchor;
+    for (int i = 12; i < 15; ++i) EXPECT_FALSE(fxharness::fitSampleSolves(s[i], a)) << i;
+    EXPECT_NE(fxharness::fitSampleWhy(s[12], a).find("feet row 616 (d +1: misses |d| < 1)"), std::string::npos)
+        << fxharness::fitSampleWhy(s[12], a);
+    EXPECT_NE(fxharness::fitSampleWhy(s[14], a).find("column 948.6 (d +8.6: misses |d| < 1)"), std::string::npos)
+        << fxharness::fitSampleWhy(s[14], a);
+}
+
+TEST(B1177TargetSolve, AStallOrAnApproachIsNotACycle) {
+    std::vector<fxharness::FitSample> s;
+    auto add = [&](float row, float col) {
+        fxharness::FitSample f;
+        f.row = row;
+        f.col = col;
+        s.push_back(f);
+    };
+    // The same pixels many times over (a sub-pixel stall): period 1 is not a cycle.
+    for (int i = 0; i < 9; ++i) add(616, 940.2f);
+    EXPECT_EQ(fxharness::fitCyclePeriod(s), 0);
+    // A damped approach that swings across the anchor twice (one repeat of a
+    // period-2 swing) and then lands: never a cycle.
+    s.clear();
+    for (float r : {631.f, 621.f, 614.f, 616.f, 614.f, 616.f, 615.f}) {
+        add(r, 940.0f);
+        EXPECT_EQ(fxharness::fitCyclePeriod(s), 0) << s.size();
+    }
+    // Two full repeats of the swing are.
+    s.clear();
+    for (float r : {614.f, 616.f, 614.f, 616.f, 614.f}) add(r, 940.0f);
+    EXPECT_EQ(fxharness::fitCyclePeriod(s), 0);
+    add(616, 940.0f);
+    EXPECT_EQ(fxharness::fitCyclePeriod(s), 2);
+    // The anchor itself solves; the documented exit code is 2.
+    fxharness::FitSample at;
+    at.row = 615;
+    at.col = 940.4f;
+    EXPECT_TRUE(fxharness::fitSampleSolves(at, fxharness::kB1130TargetAnchor));
+    EXPECT_EQ(fxharness::kExitPresetDidNotSolve, 2);
 }
