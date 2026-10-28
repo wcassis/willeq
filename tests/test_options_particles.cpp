@@ -321,8 +321,10 @@ TEST(OptionsParticles, AnOffTableCastFilterIntIsKeptRawAndDecodedByItsBits) {
 
     const std::string t = eqclientText(s);
     EXPECT_NE(t.find("SpellParticleCastFilter=6\n"), std::string::npos) << t;
-    EXPECT_EQ(ParseEqClientIni("[Defaults]\r\nSpellParticleCastFilter=x\r\n").optionValues[i], 24)
-        << "not a number keeps the default";
+    // B1182 (#501): not a number is 0 now, as the client's atoi gives
+    // (0x60e31b), not the default -- pinned per key in IniJunkAbsentAndRewrite.
+    EXPECT_EQ(ParseEqClientIni("[Defaults]\r\nSpellParticleCastFilter=x\r\n").optionValues[i], 0)
+        << "junk is 0, like the client's atoi";
 }
 
 // B1165 (#484): "On For:" is wired -- the eight choices are eqgame's table
@@ -766,4 +768,254 @@ TEST(OptionsParticlesB1175, TheGlobalFileSavesAndLoadsInTheCacheDir) {
     ::rmdir(dir.c_str());
     if (had) ::setenv("WILLEQ_CACHE_DIR", saved.c_str(), 1);
     else ::unsetenv("WILLEQ_CACHE_DIR");
+}
+
+// ===========================================================================
+// B1182 (#501): junk / absent / out-of-range value parity with the client's
+// per-key readers -- refactor/B1182/README.md sec. 1 is the cited table.
+// ===========================================================================
+
+namespace {
+
+struct KeyRow {
+    OL::Setting setting;
+    const char* key;
+    int defaultValue;  // the choice/step the window shows at the default
+};
+
+// The eight eqclient rows, the client's loader default for each (eqgame.exe.c
+// 126006-126011, 132608-132707), and what the window shows at the default.
+const KeyRow kB1182Keys[] = {
+    {OL::Setting::SpellParticleDensity, "SpellParticleDensity", 3},       // 1.0 = High
+    {OL::Setting::SpellParticleOpacity, "SpellParticleOpacity", 100},     // 1.0
+    {OL::Setting::SpellParticleNearClip, "SpellParticleNearClipPlane", 0}, // 2.0 = Near
+    {OL::Setting::SpellParticleCastFilter, "SpellParticleCastFilter", 24}, // All spells
+    {OL::Setting::ShowSpellEffects, "ShowSpellEffects", 1},
+    {OL::Setting::EnvParticleDensity, "EnvironmentParticleDensity", 3},
+    {OL::Setting::EnvParticleOpacity, "EnvironmentParticleOpacity", 100},
+    {OL::Setting::EnvParticleNearClip, "EnvironmentParticleNearClipPlane", 0},
+};
+
+}  // namespace
+
+// Junk ("banana"): the int keys give 0 (the client's atoi, 0x60e31b), the
+// float keys give the DEFAULT (the sscanf at 0x4ae705 misses and the
+// pre-seeded float is returned), ShowSpellEffects gives 0 with NO rewrite.
+// fable used to keep the default for the ints and 1 for ShowSpellEffects.
+TEST(OptionsParticlesB1182, JunkGivesTheClientsZeroOrDefault) {
+    for (const auto& r : kB1182Keys) {
+        if (r.setting == OL::Setting::ShowSpellEffects) continue;  // below: junk is 0, not the default 1
+        // ShowSpellEffects=0 is present and in range, so the flag stays the
+        // junk key's own (the client reads SSE separately: absent there it
+        // would be rewritten regardless of the other key's junk).
+        const std::string text = std::string("[Defaults]\r\nShowSpellEffects=0\r\n") + r.key + "=banana\r\n";
+        const EqClientIni p = ParseEqClientIni(text);
+        const int i = static_cast<int>(r.setting);
+        if (OL::isIniFloatSetting(r.setting))
+            EXPECT_EQ(p.optionValues[i], r.defaultValue) << r.key << ": junk keeps the default";
+        else
+            EXPECT_EQ(p.optionValues[i], 0) << r.key << ": junk is the client's atoi zero";
+        EXPECT_FALSE(p.showSpellEffectsRewrite) << r.key << ": junk never rewrites";
+        if (OL::isIniFloatSetting(r.setting))
+            EXPECT_FALSE(p.optionIniFloats[i].has_value()) << r.key << ": junk applies the table value";
+    }
+    const int sse = static_cast<int>(OL::Setting::ShowSpellEffects);
+    EXPECT_EQ(ParseEqClientIni("[Defaults]\r\nShowSpellEffects=banana\r\n").optionValues[sse], 0)
+        << "atol(\"banana\") is 0, not the default 1, and not TRUE/FALSE (both atol to 0 too)";
+    EXPECT_FALSE(ParseEqClientIni("[Defaults]\r\nShowSpellEffects=banana\r\n").showSpellEffectsRewrite)
+        << "junk is in range (0): the client writes nothing";
+    EXPECT_EQ(ParseEqClientIni("[Defaults]\r\nShowSpellEffects=TRUE\r\n").optionValues[sse], 0);
+    EXPECT_EQ(ParseEqClientIni("[Defaults]\r\nShowSpellEffects=FALSE\r\n").optionValues[sse], 0);
+}
+
+// Absent: every key keeps its default; the absent ShowSpellEffects takes 1
+// AND is marked for the file rewrite the client does at load (126006-126011).
+TEST(OptionsParticlesB1182, AnAbsentKeyGivesTheDefault) {
+    const EqClientIni p = ParseEqClientIni("[Defaults]\r\nGamma=0.500000\r\n");
+    for (const auto& r : kB1182Keys)
+        EXPECT_EQ(p.optionValues[static_cast<int>(r.setting)], r.defaultValue) << r.key;
+    EXPECT_TRUE(p.showSpellEffectsRewrite) << "an absent ShowSpellEffects is rewritten as 1";
+}
+
+// The ShowSpellEffects matrix, one row per value: what the client keeps
+// (atol, 0x92484c = _atol at 126009) and when it writes "1" back (126010).
+TEST(OptionsParticlesB1182, ShowSpellEffectsKeepsRewritesAndJunk) {
+    struct Row {
+        std::string value;  // empty = absent
+        int keep;
+        bool rewrite;
+    };
+    const Row rows[] = {
+        {"", 1, true},        // absent -> "*NULL*" -> 1, written
+        {"0", 0, false},      // in range, kept
+        {"1", 1, false},
+        {"00", 0, false},     // atol's prefix
+        {"  1  ", 1, false},  // whitespace around
+        {"banana", 0, false}, // junk -> 0, kept RAW (no rewrite)
+        {"-1", 1, true},      // < 0 -> 1, written
+        {"2", 1, true},       // > 1 -> 1, written
+        {"10", 1, true},
+        {"12x", 1, true},     // atol's prefix 12 -> out of range
+    };
+    const int sse = static_cast<int>(OL::Setting::ShowSpellEffects);
+    for (const auto& row : rows) {
+        const std::string file = row.value.empty()
+            ? "[Defaults]\r\nGamma=0.500000\r\n"
+            : "[Defaults]\r\nGamma=0.500000\r\nShowSpellEffects=" + row.value + "\r\n";
+        const EqClientIni p = ParseEqClientIni(file);
+        EXPECT_EQ(p.optionValues[sse], row.keep) << "ShowSpellEffects=" << (row.value.empty() ? "<absent>" : row.value);
+        EXPECT_EQ(p.showSpellEffectsRewrite, row.rewrite) << "ShowSpellEffects=" << (row.value.empty() ? "<absent>" : row.value);
+    }
+}
+
+// The FULL save (UpdateEqClientIniText / SaveEqClientIni, the shutdown path)
+// rewrites every row: out-of-range and absent both land in the file as
+// ShowSpellEffects=1, and a junk ShowSpellEffects is normalised to its kept
+// value (0). This is NOT the load path -- the load rewrite is the single-key
+// RewriteShowSpellEffectsInText (tested below), which leaves the junk density
+// untouched. The full save is what normalises the junk on shutdown.
+TEST(OptionsParticlesB1182, TheRewriteWritesOneInTheFile) {
+    const int sse = static_cast<int>(OL::Setting::ShowSpellEffects);
+    {
+        const std::string text = "[Defaults]\r\nGamma=0.500000\r\nShowSpellEffects=2\r\n";
+        const EqClientIni p = ParseEqClientIni(text);
+        ASSERT_TRUE(p.showSpellEffectsRewrite);
+        EXPECT_EQ(p.optionValues[sse], 1);
+        const std::string out = UpdateEqClientIniText(text, p);
+        EXPECT_NE(out.find("ShowSpellEffects=1\r\n"), std::string::npos) << out;
+        EXPECT_EQ(out.find("ShowSpellEffects=2"), std::string::npos) << out;
+        EXPECT_NE(out.find("Gamma=0.500000\r\n"), std::string::npos) << "the other lines stay";
+    }
+    {
+        const std::string text = "[Defaults]\r\nGamma=0.500000\r\n";
+        const EqClientIni p = ParseEqClientIni(text);
+        ASSERT_TRUE(p.showSpellEffectsRewrite);
+        const std::string out = UpdateEqClientIniText(text, p);
+        EXPECT_NE(out.find("ShowSpellEffects=1\r\n"), std::string::npos) << out;
+    }
+    {
+        const std::string text = "[Defaults]\r\nShowSpellEffects=banana\r\n";
+        const EqClientIni p = ParseEqClientIni(text);
+        EXPECT_FALSE(p.showSpellEffectsRewrite) << "junk is kept raw, as the client's";
+        EXPECT_EQ(p.optionValues[sse], 0);
+        // a LATER full save (any change) writes the value, as the client's
+        // bulk writer does: 0, not the junk.
+        const std::string out = UpdateEqClientIniText(text, p);
+        EXPECT_NE(out.find("ShowSpellEffects=0\r\n"), std::string::npos) << out;
+    }
+}
+
+// The load-time rewrite (RewriteShowSpellEffectsInText) is the parity check:
+// it writes ONLY ShowSpellEffects and leaves every other key byte-identical,
+// so a junk density stays junk in the file. This is exactly the live oracle's
+// result (before: "SpellParticleDensity=banana" + absent ShowSpellEffects;
+// after: the same "banana" with "ShowSpellEffects=1" appended to [Defaults]).
+TEST(OptionsParticlesB1182, TheLoadRewriteWritesOnlyShowSpellEffects) {
+    const int sse = static_cast<int>(OL::Setting::ShowSpellEffects);
+    // Out of range: clamped to 1 in place; the junk density is untouched.
+    {
+        const std::string text = "[Defaults]\r\nSpellParticleDensity=banana\r\nShowSpellEffects=2\r\n";
+        const EqClientIni p = ParseEqClientIni(text);
+        ASSERT_TRUE(p.showSpellEffectsRewrite);
+        EXPECT_EQ(p.optionValues[sse], 1);
+        const std::string out = RewriteShowSpellEffectsInText(text, p);
+        EXPECT_NE(out.find("ShowSpellEffects=1\r\n"), std::string::npos) << out;
+        EXPECT_EQ(out.find("ShowSpellEffects=2"), std::string::npos) << out;
+        EXPECT_NE(out.find("SpellParticleDensity=banana\r\n"), std::string::npos)
+            << "the junk density is untouched by the load rewrite: " << out;
+    }
+    // Absent: appended to the end of [Defaults]; the junk density is untouched.
+    {
+        const std::string text = "[Defaults]\r\nSpellParticleDensity=banana\r\nGamma=0.500000\r\n";
+        const EqClientIni p = ParseEqClientIni(text);
+        ASSERT_TRUE(p.showSpellEffectsRewrite);
+        const std::string out = RewriteShowSpellEffectsInText(text, p);
+        EXPECT_NE(out.find("ShowSpellEffects=1\r\n"), std::string::npos) << out;
+        EXPECT_NE(out.find("SpellParticleDensity=banana\r\n"), std::string::npos)
+            << "the junk density is untouched: " << out;
+        const size_t ssePos = out.find("ShowSpellEffects=1\r\n");
+        const size_t gammaPos = out.find("Gamma=0.500000\r\n");
+        ASSERT_NE(ssePos, std::string::npos);
+        ASSERT_NE(gammaPos, std::string::npos);
+        EXPECT_GT(ssePos, gammaPos) << "appended after the section's last entry, as the client does";
+    }
+    // In range: no rewrite, so the transform is a byte no-op (the load path
+    // does not even call it).
+    {
+        const std::string text = "[Defaults]\r\nSpellParticleDensity=banana\r\nShowSpellEffects=0\r\n";
+        const EqClientIni p = ParseEqClientIni(text);
+        EXPECT_FALSE(p.showSpellEffectsRewrite);
+        EXPECT_EQ(RewriteShowSpellEffectsInText(text, p), text) << "in range: a no-op";
+    }
+}
+
+// The int reader is the client's 32-bit wrapping atoi (0x60e31b): the
+// decimal prefix only, junk -> 0, over-int values wrap mod 2^32.
+TEST(OptionsParticlesB1182, TheIntReaderWrapsLikeTheClientsAtoi) {
+    const int i = static_cast<int>(OL::Setting::SpellParticleCastFilter);
+    auto v = [&](const std::string& val) {
+        return ParseEqClientIni("[Defaults]\r\nSpellParticleCastFilter=" + val + "\r\n").optionValues[i];
+    };
+    EXPECT_EQ(v("banana"), 0);
+    EXPECT_EQ(v(""), 0);
+    EXPECT_EQ(v("12abc"), 12) << "the decimal prefix, like atoi";
+    EXPECT_EQ(v("0x10"), 0) << "it stops at the first non-digit";
+    EXPECT_EQ(v("-5"), -5);
+    EXPECT_EQ(v("+7"), 7);
+    EXPECT_EQ(v("  6  "), 6) << "leading whitespace is skipped";
+    EXPECT_EQ(v("99999999999"), 1215752191) << "wraps mod 2^32 (99999999999 - 23*2^32)";
+}
+
+// Non-finite floats: the client's sscanf %f parses inf/nan (and "1e400"
+// overflows to +/-HUGE_VAL) and the loader clamp (132608-132637) maps -inf
+// to the lower bound and +inf/NaN to the upper one. Asserted through the
+// APPLIED knobs (the clamped endpoint is a table value, so the raw-float
+// slot is empty and the knobs hold the table float).
+TEST(OptionsParticlesB1182, NonFiniteFloatsClampToTheClientsEndpoints) {
+    auto knobs = [](const std::string& key, const std::string& val) {
+        const EqClientIni p = ParseEqClientIni("[Defaults]\r\n" + key + "=" + val + "\r\n");
+        OptionsPanelState s;
+        ApplyEqClientIni(p, s);
+        return particleKnobsFromOptions(s.values, s.iniFloats);
+    };
+    EXPECT_FLOAT_EQ(knob(knobs("SpellParticleDensity", "inf"), Env::ParticleFamily::Spell).density, 1.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("SpellParticleDensity", "-inf"), Env::ParticleFamily::Spell).density, 0.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("SpellParticleDensity", "nan"), Env::ParticleFamily::Spell).density, 1.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("SpellParticleDensity", "1e400"), Env::ParticleFamily::Spell).density, 1.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("SpellParticleDensity", "-1e400"), Env::ParticleFamily::Spell).density, 0.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("SpellParticleNearClipPlane", "inf"), Env::ParticleFamily::Spell).nearClip, 8.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("SpellParticleNearClipPlane", "-inf"), Env::ParticleFamily::Spell).nearClip, 1.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("SpellParticleNearClipPlane", "1e400"), Env::ParticleFamily::Spell).nearClip, 8.0f);
+    EXPECT_FLOAT_EQ(knob(knobs("EnvironmentParticleDensity", "nan"), Env::ParticleFamily::Environment).density, 1.0f);
+    const int op = static_cast<int>(OL::Setting::SpellParticleOpacity);
+    EXPECT_EQ(ParseEqClientIni("[Defaults]\r\nSpellParticleOpacity=inf\r\n").optionValues[op], 100);
+    EXPECT_EQ(ParseEqClientIni("[Defaults]\r\nSpellParticleOpacity=-inf\r\n").optionValues[op], 0);
+}
+
+// Well-formed values stay byte-unchanged: a file of table values parses to
+// the same values and writes back identically (the B1175 capture test pins
+// the lane file itself; this pins a minimal one, junk-free).
+TEST(OptionsParticlesB1182, WellFormedValuesAreByteUnchanged) {
+    const std::string text =
+        "[Defaults]\r\n"
+        "SpellParticleDensity=0.500000\r\n"
+        "SpellParticleOpacity=0.400000\r\n"
+        "SpellParticleNearClipPlane=6.000000\r\n"
+        "SpellParticleCastFilter=4\r\n"
+        "ShowSpellEffects=0\r\n"
+        "EnvironmentParticleDensity=0.250000\r\n"
+        "EnvironmentParticleOpacity=0.700000\r\n"
+        "EnvironmentParticleNearClipPlane=4.000000\r\n";
+    const EqClientIni p = ParseEqClientIni(text);
+    EXPECT_FALSE(p.showSpellEffectsRewrite) << "0 is in range";
+    const auto i = [](OL::Setting st) { return static_cast<int>(st); };
+    EXPECT_EQ(p.optionValues[i(OL::Setting::SpellParticleDensity)], 2);   // Medium
+    EXPECT_EQ(p.optionValues[i(OL::Setting::SpellParticleOpacity)], 40);
+    EXPECT_EQ(p.optionValues[i(OL::Setting::SpellParticleNearClip)], 2);  // Far
+    EXPECT_EQ(p.optionValues[i(OL::Setting::SpellParticleCastFilter)], 4);
+    EXPECT_EQ(p.optionValues[i(OL::Setting::ShowSpellEffects)], 0);
+    EXPECT_EQ(p.optionValues[i(OL::Setting::EnvParticleDensity)], 1);     // Low
+    EXPECT_EQ(p.optionValues[i(OL::Setting::EnvParticleOpacity)], 70);
+    EXPECT_EQ(p.optionValues[i(OL::Setting::EnvParticleNearClip)], 1);    // Medium
+    EXPECT_EQ(UpdateEqClientIniText(text, p), text) << "a save changes no byte";
 }

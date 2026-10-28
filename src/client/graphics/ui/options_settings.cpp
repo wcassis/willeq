@@ -47,6 +47,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <stdexcept>
 
 #include "client/graphics/environment/particle_options.h"  // B995: the ini floats
 
@@ -425,9 +426,23 @@ bool parseSettingIniFloat(Setting s, const std::string& text, int& display,
     try {
         size_t used = 0;
         f = std::stof(text, &used);
-        if (used == 0 || !std::isfinite(f)) return false;
+        if (used == 0) return false;
+    } catch (const std::out_of_range&) {
+        // B1182 (#501): "1e400" -- the client's sscanf %f overflows to
+        // +/-HUGE_VAL (ERANGE), not a failure; fold to the same magnitude.
+        size_t k = 0;
+        while (k < text.size() && std::isspace(static_cast<unsigned char>(text[k]))) ++k;
+        f = (k < text.size() && text[k] == '-') ? -1e30f : 1e30f;
     } catch (...) {
         return false;
+    }
+    if (!std::isfinite(f)) {
+        // B1182 (#501): the client's sscanf %f (0x4ae67a -> 0x610837,
+        // eqgame.exe.c 132182-132197) parses inf/nan too, and the loader
+        // clamp (132608-132637) maps -inf to the LOWER bound and +inf/NaN
+        // to the UPPER one (a NaN fails every comparison, so it takes the
+        // else arm). Fold to a finite magnitude the clamp then pins.
+        f = (std::isinf(f) && f < 0.0f) ? -1e30f : 1e30f;
     }
     f = clampSettingIniFloat(s, f);
     int v = 0;
