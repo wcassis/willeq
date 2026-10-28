@@ -1,0 +1,37 @@
+# action	target	hold_ms	still_name
+# B1164 (#483) dev5 leg 2: the gdb read of the attach scale s only. pin_s_unoccluded.tsv's gdb cast found the probe REFUSING (Wine loads EQGraphicsDX9.dll at 0x01d70000, not 0x10000000; b1164_s_watch.sh now passes the loaded base). r51's set-up (review/B1130/plans/r51.tsv) up to the target stun, then ONE cast of 93 on TrollF with refactor/B1164/scripts/b1164_s_watch.sh attached from the gdb_arm row.
+# pose=-74,428,3.75,160
+# ini-set=Options.Camera2-Distance=11.000000
+# ini-set=Options.Camera2-Height=1.000000
+# ini-set=Options.Camera2-DirHeading=192.000000
+# ini-set=Options.Camera2-Pitch=0.000000
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+wait	8000	0	settle
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#memspell 93 0	0	m1
+command	#level 60	0	lvl
+command	#mana	0	mana
+press	F9	0	cam1
+press	F9	0	cam2
+press	F9	0	cam3
+wait	3000	0	cam_settle
+command	#spawn TrollF 1 1 0 30000	0	spawn
+wait	3000	0	spawn_settle
+command	#goto -67.6 434.4 3.75	0	goto
+wait	3000	0	goto_settle
+command	/target TrollF	0	tgt_npc0
+command	#stun 120000	0	stun
+wait	1500	0	stun_settle
+wait	22000	0	time_settle
+command	/target TrollF	0	tgt_npc
+command	#stun 120000	0	stun2
+wait	1500	0	tgt_npc_settle
+wait	1500	0	gdb_arm
+wait	6000	0	gdb_attached
+click	25,243	0	cast_gdb
+wait	15500	0	fx_gdb
+command	/q	0	quit

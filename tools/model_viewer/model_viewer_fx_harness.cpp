@@ -13,6 +13,7 @@
 #include "client/graphics/first_person_camera.h"
 #include "client/graphics/corpse_fade.h"
 #include "client/graphics/spell_fx_bone_anchor.h"
+#include "client/spell/spell_fx_attach_scale.h"
 #include "client/graphics/spell_cast_animation.h"
 #include "client/spell/spell_action_anim.h"
 #include "client/graphics/simulation_worker.h"
@@ -533,6 +534,13 @@ bool initHarnessParticles() {
     // reads it (spell_fx_bone_anchor.h).
     spellVisualFX->setCastAnimationLengthCallback([nodeFor](uint16_t id, const char* code) -> int32_t {
         return CastAnimationTrackMs(nodeFor(id), code);
+    });
+    // B1164 (#483): the attach scale s, the client's actor scale from the
+    // entity's race and server size, as the renderer computes it.
+    spellVisualFX->setEntityAttachScaleCallback([](uint16_t id) -> float {
+        if (id == casterEntityId) return EQ::SpellFxAttachScale(harnessOpts.casterRace, harnessOpts.casterGender, harnessOpts.casterSize);
+        if (id == targetEntityId) return EQ::SpellFxAttachScale(harnessOpts.targetRace, harnessOpts.targetGender, harnessOpts.targetSize);
+        return 0.0f;
     });
     // B1152 (#472): the missile gate reads the launch/arrival times from the
     // SPELL module's log, so un-filter it (the model_viewer does not InitLogging,
