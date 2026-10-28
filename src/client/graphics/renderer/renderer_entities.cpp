@@ -388,13 +388,16 @@ void IrrlichtRenderer::initDeferredGraphics() {
             );
             particleManager_->setEntityDirectionCallback(
                 [this](uint16_t entity_id, glm::vec3& out_dir) -> bool {
-                    if (!EQ::SpellVisualFX::isHandBoneId(entity_id)) return false;
+                    // B1167 (#486): a hand id is its bone's direction (the
+                    // spray), every other id its entity's facing -- the frame
+                    // an attached spellsnew.edd emitter orients to
+                    // (resolveSpellFxAttachDirection).
                     if (!entityRenderer_) return false;
                     const auto& entities = entityRenderer_->getEntities();
                     auto it = entities.find(EQ::SpellVisualFX::realEntityId(entity_id));
                     if (it == entities.end() || !it->second.isAnimated || !it->second.animatedNode) return false;
                     irr::core::vector3df dir;
-                    if (!resolveSpellFxBoneDirection(it->second.animatedNode, entity_id, dir)) return false;
+                    if (!resolveSpellFxAttachDirection(it->second.animatedNode, entity_id, dir)) return false;
                     out_dir = glm::vec3(dir.X, dir.Y, dir.Z);
                     return true;
                 }

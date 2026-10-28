@@ -649,7 +649,7 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
             // population (spellsnew.edd +0x80/+0x84/+0x88), sprite size
             // (+0xCC/+0x184 x +0x17C/+0x180 x +0x16C) and the client's alpha;
             // the row gives only its shape (B1150's).
-            struct Pending { EQT::Graphics::Environment::SpellEffectDef def; uint16_t id; float cap; };
+            struct Pending { EQT::Graphics::Environment::SpellEffectDef def; uint16_t id; float cap; bool orient; };
             std::vector<Pending> pending;
             for (const auto& d : slots.drawn) {
                 if (d.slot.anchorKind() == SpellsNewEffAnchor::Missile ||
@@ -680,11 +680,14 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
                                               m_spells_new_eff.edd().motion(d.slot.emitter));  // B1151
                     slotCap = sourceLatency + timing.end() + 0.1f;
                 }
-                pending.push_back({std::move(def), id, slotCap});
+                // B1167 (#486): an attached slot orients to its actor
+                // (resolveSpellFxAttachDirection, EQGraphicsDX9 0x100605b0);
+                // a World slot keeps the fixed frame.
+                pending.push_back({std::move(def), id, slotCap, d.slot.anchorKind() != SpellsNewEffAnchor::World});
                 made += fmt::format(" {}:{}@{}+{:.2f}..{:.2f}", d.index, d.slot.attachPoint, id,
                                     sourceLatency + timing.start, sourceLatency + timing.end());
             }
-            for (auto& p : pending) m_particle_manager->createSpellEffect(p.def, p.id, 0, p.cap, false);
+            for (auto& p : pending) m_particle_manager->createSpellEffect(p.def, p.id, 0, p.cap, p.orient);
             LOG_INFO(MOD_SPELL, "createCastGlow: caster={} spell={} anim={} level={} row={} slots{} (of {})",
                      caster_id, spell_id, spellVocabulary(spell_id).spellAnim, casterLevel, record, made,
                      slots.measured);
@@ -949,7 +952,7 @@ uint16_t SpellVisualFX::createLandingFromSlots(uint16_t caster_id, uint16_t targ
     const glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f, scolor.getBlue() / 255.0f, 1.0f);
     uint16_t first = 0;
     std::string made;
-    struct Pending { EQT::Graphics::Environment::SpellEffectDef def; uint16_t caster; uint16_t target; };
+    struct Pending { EQT::Graphics::Environment::SpellEffectDef def; uint16_t caster; uint16_t target; bool orient; };
     std::vector<Pending> pending;
     for (const auto& d : slots.drawn) {
         const auto anchor = d.slot.anchorKind();
@@ -1010,13 +1013,15 @@ uint16_t SpellVisualFX::createLandingFromSlots(uint16_t caster_id, uint16_t targ
                                       targetLatency, entityAttachScale(entity),  // B1164
                                       m_spells_new_eff.edd().shape(d.slot.emitter),  // B1150
                                       m_spells_new_eff.edd().motion(d.slot.emitter));  // B1151
-        pending.push_back({std::move(complete), follow, 0});
-        pending.push_back({std::move(impact), 0, follow});
+        // B1167 (#486): an attached slot orients to its actor (see createCastGlow).
+        const bool orient = anchor != SpellsNewEffAnchor::World;
+        pending.push_back({std::move(complete), follow, 0, orient});
+        pending.push_back({std::move(impact), 0, follow, orient});
         if (first == 0) first = follow;
         made += fmt::format(" {}:{}/{}@{}+{:.2f}..{:.2f}", d.index, static_cast<int>(anchor), d.slot.attachPoint,
                             follow, targetLatency + timing.start, targetLatency + timing.end());
     }
-    for (auto& p : pending) m_particle_manager->createSpellEffect(p.def, p.caster, p.target);
+    for (auto& p : pending) m_particle_manager->createSpellEffect(p.def, p.caster, p.target, 0.0f, p.orient);
     LOG_INFO(MOD_SPELL, "createLanding: caster={} target={} spell={} row={} slots{} (of {})",
              caster_id, target_id, spell_id, record, made, slots.measured);
     return first;

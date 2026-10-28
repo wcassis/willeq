@@ -1,0 +1,40 @@
+# action	target	hold_ms	still_name
+# B1180 (#499): pin the sprite half-width factors for spell 93's Target emitters on
+# the size-6 human target (TrollF, race 1, size 6, alive). The gdb probe
+# (refactor/B1180/scripts/b1180_hw_gdb.py) is armed on the gdb_arm row by
+# refactor/B1180/scripts/b1180_hw_watch.sh and reads [esp+0xc8] (A), [esp+0x1c] (B),
+# the matrix [esp+0x514] element [eax+0x18], s6C [esp+0x30], the particle width
+# [esi+0x6c], the 1/depth [esp+0x2c] and the view depth [esp+0x154] at
+# 0x100632f0 (cmp edx,1) of EQGraphicsDX9 CParticleSystem::Render.
+# Based on B1164's pin_s_unoccluded plan (same target, same cast, same class 6).
+# fps=25
+# ini-set=Defaults.HideChatWin=TRUE
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+wait	8000	0	settle
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#memspell 93 0	0	m1
+command	#level 60	0	lvl
+command	#mana	0	mana
+command	#goto -74 428 3.75	0	goto_spot
+wait	3000	0	spot_settle
+command	#spawn TrollF 1 1 0 30000	0	spawn
+wait	3000	0	spawn_settle
+command	/goto -67.6 434.4 3.75	0	goto
+wait	3000	0	goto_settle
+command	/target TrollF	0	tgt_npc
+command	#stun 120000	0	stun
+wait	1500	0	stun_settle
+wait	20000	0	time_settle
+command	/target TrollF	0	tgt_gdb
+command	#stun 120000	0	stun2
+wait	1500	0	gdb_arm
+wait	6000	0	gdb_attached
+click	25,243	0	cast_gdb
+wait	15500	0	fx_gdb
+command	#depop	0	depop
+wait	2000	0	depop_settle
+command	/q	0	quit

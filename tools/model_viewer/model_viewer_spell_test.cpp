@@ -285,15 +285,30 @@ bool initSpellTestMode() {
     if (!initHarnessTextureCache()) return false;
 
     // B1138: in a preset the caster (and the `#spawn` target beside her)
-    // faces the camera; otherwise the caster faces the target.
+    // faces the camera; otherwise the caster faces the target. B1167 (#486):
+    // every preset fits its camera on the actors AT their capture headings
+    // (the orchestrator's ruling: b1130 on the back-turned caster; b1118 on
+    // the caster with his back to the chase camera), then turnB1130Rig turns
+    // the rig -- actors included -- by the capture's yaw, leaving each actor
+    // at rotYForHeading(its capture heading) (fx_capture_pose.h
+    // presetRotYDeg: the heading expressed against the fitted camera).
     const bool preset = !harnessOpts.cameraPreset.empty();
+    const fxharness::CapturePose* capPose = preset ? fxharness::poseForPreset(harnessOpts.cameraPreset.c_str()) : nullptr;
+    const float casterRotY = preset
+                                 ? (capPose ? fxharness::presetRotYDeg(*capPose, capPose->casterHeading512)
+                                            : kHarnessFaceOnRotY)
+                                 : 90.0f;
+    const float targetRotY = preset
+                                 ? (capPose ? fxharness::presetRotYDeg(*capPose, capPose->targetHeading512)
+                                            : kHarnessFaceOnRotY)
+                                 : -90.0f;
     EntityAppearance casterLook;
     casterLook.face = harnessOpts.casterFace;
     casterLook.texture = harnessOpts.casterTexture;
     std::copy(harnessOpts.casterEquipment, harnessOpts.casterEquipment + 9, casterLook.equipment);
     animatedNode = createSpellTestEntity(harnessOpts.casterRace, harnessOpts.casterGender,
                                          harnessOpts.casterSize, core::vector3df(0, 0, 0),
-                                         preset ? kHarnessFaceOnRotY : 90.0f, "p01",
+                                         casterRotY, "p01",
                                          harnessOpts.casterAppearanceSet ? &casterLook : nullptr);
     if (animatedNode) {
         useAnimatedMesh = true;
@@ -324,14 +339,15 @@ bool initSpellTestMode() {
     // B1139 feet-apart rule). B1166 (#485): the 50 px "collapsed" human
     // B1155 recorded was the bind pose the target fit measured before any
     // animation was applied; the fit now forces the p01 pose
-    // (fitFixedNpcTarget) and the standing human renders 285 px at the
-    // oracle's feet at the client's actor scale (refactor/B1172/README.md).
+    // (fitFixedNpcTarget) and the standing human renders 294 px at the
+    // oracle's feet at the client's actor scale and the preset's back-turned
+    // pose (fx_target_anchor.h kStandingPx; refactor/B1167/README.md sec. 8).
     const bool b1130Preset =
         harnessOpts.cameraPreset == "b1130" || harnessOpts.cameraPreset == "b1130-self";
     const char* targetIdle = b1130Preset ? "p01" : "o01";
     targetAnimatedNode = createSpellTestEntity(
         harnessOpts.targetRace, harnessOpts.targetGender, harnessOpts.targetSize,
-        core::vector3df(harnessOpts.interactiveDistance, 0, 0), preset ? kHarnessFaceOnRotY : -90.0f,
+        core::vector3df(harnessOpts.interactiveDistance, 0, 0), targetRotY,
         targetIdle);
 
     uploadHarnessTextures();
