@@ -821,6 +821,14 @@ stop_capture() {
         cmp -s "$DIR/character-original.ini" "$(cat "$DIR/character-file.txt")" || return 65
         touch "$DIR/character-restored"
     fi
+    # B1178: the UI-INI edits (`# ui-ini-set=`) come back after the character
+    # restore; they are a different file (UI_<char>_<server>.ini).
+    if [[ -s $DIR/ui-ini/character-file.txt && -f $DIR/ui-ini/character-original.ini && ! -e $DIR/ui-ini-restored ]]; then
+        cp "$DIR/ui-ini/character-original.ini" "$DIR/ui-ini/character-after.ini" || :
+        cp "$DIR/ui-ini/character-original.ini" "$(cat "$DIR/ui-ini/character-file.txt")" || return 65
+        cmp -s "$DIR/ui-ini/character-original.ini" "$(cat "$DIR/ui-ini/character-file.txt")" || return 65
+        touch "$DIR/ui-ini-restored"
+    fi
     # B1134: the observer's eqclient.ini edits (`# obs-ini-set=`) come back last.
     if [[ -f $DIR/observer-eqclient-original.ini && ! -e $DIR/observer-eqclient-restored ]]; then
         cp "$DIR/observer-eqclient-original.ini" "$OBS_CLIENT/eqclient.ini" || return 65
@@ -935,6 +943,24 @@ if [[ -n $CHAR_INI_SET ]]; then
     [[ $CHAR_INI_SET =~ ^[A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9]*=-?[0-9A-Za-z.]+$ ]] || exit 65
     python3 /home/user/eq-oracle/uigap-scripts/oracle_ini_seed.py \
         "$CLIENT" "$DIR" "$CHARACTER" "$CHAR_INI_SET" || exit 65
+fi
+# B1178: `# ui-ini-set=Section.Key=VALUE` (several allowed) edits the login
+# character's UI INI (UI_<char>_<server>.ini: window positions and Show= keys;
+# eqclient.ini is the ini-set= domain, the character INI the char-ini-set=
+# domain). One backup before the first edit; restored byte-identically at
+# stop (ui-ini/character-original.ini, its own bookkeeping sub-dir so it can
+# coexist with char-ini-set in one plan).
+UI_INI_SETS=$(sed -n 's/^# ui-ini-set=//p' "$DIR/plan.tsv")
+if [[ -n $UI_INI_SETS ]]; then
+    [[ $(ls "$CLIENT"/UI_"${CHARACTER}"_*.ini 2>/dev/null | wc -l) -eq 1 ]] || exit 65
+    cp "$CLIENT"/UI_"${CHARACTER}"_*.ini "$DIR/ui-iniset-original.ini" || exit 65
+    mkdir -p "$DIR/ui-ini"
+    UI_SET_RE='^[A-Za-z][A-Za-z0-9 ]*\.[A-Za-z][A-Za-z0-9-]*=[A-Za-z0-9.-]+$'
+    while IFS= read -r UI_SET; do
+        [[ $UI_SET =~ $UI_SET_RE ]] || exit 65
+        python3 /home/user/eq-oracle/uigap-scripts/oracle_ini_seed.py \
+            "$CLIENT" "$DIR/ui-ini" "UI_${CHARACTER}" "$UI_SET" || exit 65
+    done <<<"$UI_INI_SETS"
 fi
 cp "$CLIENT/${CHARACTER}_"*.ini "$DIR/before-character.ini" 2>/dev/null || :
 # Capture starts before even launching Wine. Save PIDs for interrupted cleanup.
