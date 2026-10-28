@@ -321,6 +321,24 @@ void eqt::movement::MovementComponent::ApplyPositionState(PositionState state)
 	// T286: and it is now the only store.
 	ctx_.game_state.player().setPositionState(static_cast<eqt::state::PositionState>(state));
 
+	// B1174 (#493): the player's own stand byte, the value the pose sends
+	// (SetPositionState below; POS_DEAD takes the lying value the official
+	// client sends when it dies) -- the server does not echo our own
+	// appearance back, so this is where the OP_Action cast-anim gate
+	// (spell_action_anim.h) learns that we sat down.
+	{
+		auto self = ctx_.entities.find(ctx_.self.MySpawnId());
+		if (self != ctx_.entities.end()) {
+			switch (state) {
+				case POS_STANDING:    self->second.stand_state = ANIM_STANDING;  break;
+				case POS_SITTING:     self->second.stand_state = ANIM_SITTING;   break;
+				case POS_CROUCHING:   self->second.stand_state = ANIM_CROUCHING; break;
+				case POS_FEIGN_DEATH:
+				case POS_DEAD:        self->second.stand_state = ANIM_LYING;     break;
+			}
+		}
+	}
+
 	if (ctx_.bridge) {
 		eqt::state::PlayerPositionStateChangedData data;
 		data.state = static_cast<uint8_t>(state);
