@@ -20,14 +20,27 @@ EVID=/home/user/kb-evidence/kb-b1176-player-scale
 OUT_LOCAL=$EVID/fable/$RUN
 OUT_REMOTE=/home/user/kb-evidence-remote/kb-b1176-player-scale/fable/$RUN
 BUILD=/home/user/willeq-builds/$SLUG/build
-ZID=$(cd "$WT" && export EQEMU_LANE=5 && source scripts/eqemu/env.sh >/dev/null 2>&1 \
-      && source scripts/eqemu/restore_lib.sh >/dev/null 2>&1 \
-      && eqemu_sql "SELECT id FROM zone WHERE short_name='qeynos2' LIMIT 1;")
-[ -n "$ZID" ] || { echo "no qeynos2 zone id" >&2; exit 65; }
+mkdir -p "$OUT_LOCAL"
 cd "$WT"
 export EQEMU_LANE=5
 source scripts/eqemu/env.sh
 source scripts/eqemu/restore_lib.sh
+# B1176 (#495): the pose seeds and the client's zone-in both talk to the eqemu
+# stack, and the preceding oracle legs leave it DOWN (their down.sh) -- that is
+# why these legs used to die at the zone-id query with rc=65. Bring it up here
+# if it isn't already (up.sh adopts a running stack quickly). Track whether WE
+# brought it up so the cleanup tears down only what we started: a queue that
+# keeps the stack up across the four fable legs pays one up/down, not four.
+WE_UP=0
+if ! eqemu_stack_ready; then
+  bash "$WT/scripts/eqemu/up.sh" qeynos2 >>"$OUT_LOCAL/stack-up.log" 2>&1 \
+    || { echo "stack up failed" >&2; exit 65; }
+  WE_UP=1
+fi
+eqemu_stack_ready || { echo "stack not ready after up.sh" >&2; exit 65; }
+trap '[[ $WE_UP == 1 ]] && bash "$WT/scripts/eqemu/down.sh" >>"$OUT_LOCAL/stack-down.log" 2>&1 || :' EXIT
+ZID=$(eqemu_sql "SELECT id FROM zone WHERE short_name='qeynos2' LIMIT 1;")
+[ -n "$ZID" ] || { echo "no qeynos2 zone id" >&2; exit 65; }
 eqemu_sql "UPDATE character_data SET zone_id=$ZID, x=-74, y=428, z=$AZ, heading=0 WHERE name='$ACHAR';" \
   || { echo "A seed failed" >&2; exit 65; }
 eqemu_sql "UPDATE character_data SET zone_id=$ZID, x=-64.4, y=451.1, z=3.125, heading=448 WHERE name='Testcaster';" \

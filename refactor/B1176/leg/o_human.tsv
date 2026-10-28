@@ -30,6 +30,11 @@
 # pose=-64.4,451.1,3.125,448
 # observer=Oraclewatch
 # observer-pose=-74,428,3.75,0
+# B1176: the observer account holds two characters (Darkshadow slot 0,
+# Oraclewatch slot 1); Defaults.LastCharSel pre-selects the intended one and
+# the zone action clicks that slot, so the observer enters ORACLEWATCH, not
+# the default slot 0.
+# obs-ini-set=Defaults.LastCharSel=1
 login	Testcaster	0	char_select
 obs	login	Oraclewatch	0	obs_char_select
 zone	qeynos2	0	in_world
