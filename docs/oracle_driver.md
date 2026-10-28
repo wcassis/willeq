@@ -196,6 +196,21 @@ put back exactly in the undo (B1134; `SAVED`/`LEG`/`BACK` row counts in
 undo goes in `--post-sql-file`). The driver then deletes spellbook rows the leg added. The helper exits 66
 when the after-census does not show the home class and exactly `--gems`.
 
+**A leg-only server-data change** (B1174, #493; e.g. one `spells_new` row the
+lane's spell table does not match the client's on): `oracle_class_leg.sh
+--server-sql-file F --server-undo-sql-file F --server-dump-sql-file F` (all
+three or none) sets `ORACLE_SERVER_SQL` / `_UNDO_SQL` / `_DUMP_SQL`. The zone
+reads its spells only at boot (shared memory, built by `bin/shared_memory` in
+`up.sh` and by the container's launcher), so `oracle_session.sh` runs the
+change inside the lease with the stack DOWN and only mariadb started, before
+`up.sh`: dump (`server-data-before.tsv`), change, dump (`server-data-leg.tsv`).
+Once armed, the cleanup runs the undo on EVERY exit path with the world down,
+dumps again (`server-data-after.tsv`) and exits 66 unless that equals the
+before dump byte for byte (`server data restored BYTE-IDENTICALLY` in
+`driver.log`). The change keeps its own copy of the original rows (a helper
+table the undo drops); the dump SQL should include a whole-table checksum.
+Example: `refactor/B1174/sql/b1174_server_8604*.sql`.
+
 ## The observer: a second player character (B1134)
 
 **An FX leg's other target and its camera are a SECOND PLAYER CHARACTER on a

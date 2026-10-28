@@ -32,6 +32,7 @@
 
 #include "client/eq.h"
 #include "client/graphics/actor_scale.h"  // B1172: the client's resolved size
+#include "client/spell/spell_action_anim.h"  // B1174: SpawnStandStateAfterAppearance
 #include "client/corpse_predicate.h"  // T486: IsCorpseNpcType
 #include "client/entities/entities_component.h"
 #include "client/movement/movement_component.h"  // T344: ApplyPositionState
@@ -624,6 +625,10 @@ void eqt::entities::EntitiesComponent::ZoneProcessSpawnAppearance(const EQ::Net:
 			auto it = ctx_.entities.find(spawn_id);
 			if (it != ctx_.entities.end()) {
 				it->second.animation = static_cast<uint8_t>(parameter);
+				// B1174 (#493): the stand byte the OP_Action cast-anim gate
+				// reads (spell_action_anim.h).
+				it->second.stand_state =
+					EQ::SpawnStandStateAfterAppearance(it->second.stand_state, parameter);
 			}
 
 			// T344 (B001): a pose the SERVER forces on US (root/mez

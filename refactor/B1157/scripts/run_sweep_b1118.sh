@@ -47,8 +47,15 @@ render_and_measure() {
     return 0
   fi
   local plan="$EV/plans/$tag.plan"
-  printf 't_begin_s\tspell_id\ttarget\tdistance_units\tcast_ms\tcaster_level\n1.5\t%s\t%s\t0\t%s\t60\n' \
-      "$sid" "$tgt" "$cms" > "$plan"
+  # B1171 (#490): the level the oracle capture behind the row executed, not a
+  # literal: a tour spell's B1118 leg (spell_fx_table.tsv), a record's B1130 capture.
+  local CL="$(dirname "$0")/../../../scripts/fx/capture_level.py" lvl rec
+  case "$tag" in
+    b1157_tour_*) lvl=$(python3 -I "$CL" b1118 "$sid") || return 1 ;;
+    *) rec=${tag#b1157_r}; rec=${rec%%_*}; lvl=$(python3 -I "$CL" b1130 "$rec") || return 1 ;;
+  esac
+  printf 't_begin_s\tspell_id\ttarget\tdistance_units\tcast_ms\tcaster_level\n1.5\t%s\t%s\t0\t%s\t%s\n' \
+      "$sid" "$tgt" "$cms" "$lvl" > "$plan"
   local secs run
   secs=$(python3 -c "print(round(1.5 + $cms/1000.0 + 11.5, 1))" </dev/null)
   run="$TP_BASE/$tag"

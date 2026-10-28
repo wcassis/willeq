@@ -19,7 +19,7 @@ source "$REPO/scripts/eqemu/env.sh"
 source "$REPO/scripts/eqemu/restore_lib.sh"
 OWNER="${ORACLE_OWNER:-oracle_session}_$(date -u +%Y%m%dT%H%M%S)_$$"
 [[ $OWNER =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid ORACLE_OWNER" >&2; exit 64; }
-STATUS=0 LOCKED=0 SNAPSHOT=0 REMOTE_STARTED=0 CREATE_ACCOUNT_ID= BROKER_PID= STATE_CHAR= OBS_ID= VITALS_IDS= PROVISION= PROV_ACC= PROV_LOGIN_ID=
+STATUS=0 LOCKED=0 SNAPSHOT=0 SERVER_DATA=0 REMOTE_STARTED=0 CREATE_ACCOUNT_ID= BROKER_PID= STATE_CHAR= OBS_ID= VITALS_IDS= PROVISION= PROV_ACC= PROV_LOGIN_ID=
 REMOTE_DIR="/home/user/eq-oracle/sessions/$OWNER"
 say() { printf '%s\n' "$*" | tee -a "$OUT/driver.log"; }
 remote() { ssh -n -o BatchMode=yes -o ConnectTimeout=10 "user@$EQEMU_ORACLE_HOST" "$@"; }
@@ -147,6 +147,20 @@ cleanup() {
             diff -q "$OUT/accounts-before.tsv" "$OUT/accounts-after.tsv" >>"$OUT/driver.log" 2>&1 || STATUS=66
             diff -q "$OUT/login-accounts-before.tsv" "$OUT/login-accounts-after.tsv" >>"$OUT/driver.log" 2>&1 || STATUS=66
         fi
+        # B1174 (#493): the server-data undo runs on EVERY exit path once the
+        # change was armed (a failed login or capture included), with the
+        # world down, then the dump must equal the one taken before the change.
+        if (( SERVER_DATA )); then
+            eqemu_world_stop >>"$OUT/driver.log" 2>&1 || STATUS=66
+            say "server-data undo (world down): $ORACLE_SERVER_UNDO_SQL"
+            eqemu_sql "$ORACLE_SERVER_UNDO_SQL" >>"$OUT/driver.log" 2>&1 || STATUS=66
+            eqemu_sql "$ORACLE_SERVER_DUMP_SQL" >"$OUT/server-data-after.tsv" 2>>"$OUT/driver.log" || STATUS=66
+            if cmp -s "$OUT/server-data-before.tsv" "$OUT/server-data-after.tsv"; then
+                say "server data restored BYTE-IDENTICALLY ($(wc -l <"$OUT/server-data-after.tsv") dump lines)"
+            else
+                say "SERVER DATA MISMATCH: server-data-before.tsv vs server-data-after.tsv"; STATUS=66
+            fi
+        fi
         bash "$REPO/scripts/eqemu/down.sh" >>"$OUT/driver.log" 2>&1 || STATUS=66
         eqemu_lease_stop_renewer
         # B1089 review (finding 1): eqemu_lock_release is already owner-checked
@@ -171,6 +185,27 @@ LOCKED=1
 # the oracle leg runs, and dies with this script (never after it).
 eqemu_lease_start_renewer
 printf '%s\n' "$OWNER" >"$OUT/session.started"
+# B1174 (#493): a leg-only change to SERVER data (e.g. one spells_new row)
+# that the zone reads only when it boots (spells live in shared memory, which
+# up.sh's bin/shared_memory and the container's launcher build at start). So
+# it runs with the stack DOWN, before up.sh, with only mariadb started:
+# ORACLE_SERVER_DUMP_SQL is dumped before (server-data-before.tsv) and after
+# the change (server-data-leg.tsv), ORACLE_SERVER_SQL makes it, and the
+# cleanup above runs ORACLE_SERVER_UNDO_SQL with the world down and requires
+# the dump to match server-data-before.tsv byte for byte. All three or none.
+if [[ -n ${ORACLE_SERVER_SQL:-}${ORACLE_SERVER_UNDO_SQL:-}${ORACLE_SERVER_DUMP_SQL:-} ]]; then
+    [[ -n ${ORACLE_SERVER_SQL:-} && -n ${ORACLE_SERVER_UNDO_SQL:-} && -n ${ORACLE_SERVER_DUMP_SQL:-} ]] ||
+        { say "server-data hook needs ORACLE_SERVER_SQL, _UNDO_SQL and _DUMP_SQL"; STATUS=64; exit "$STATUS"; }
+    bash "$REPO/scripts/eqemu/down.sh" >>"$OUT/driver.log" 2>&1 || { STATUS=65; exit "$STATUS"; }
+    compose up -d mariadb >>"$OUT/driver.log" 2>&1 || { STATUS=65; exit "$STATUS"; }
+    for _ in $(seq 1 60); do eqemu_sql "SELECT 1;" >/dev/null 2>&1 && break; sleep 1; done
+    eqemu_sql "$ORACLE_SERVER_DUMP_SQL" >"$OUT/server-data-before.tsv" 2>>"$OUT/driver.log" || { STATUS=65; exit "$STATUS"; }
+    [[ -s $OUT/server-data-before.tsv ]] || { say "server-data dump is empty; refusing"; STATUS=65; exit "$STATUS"; }
+    SERVER_DATA=1
+    say "server-data SQL (stack down): $ORACLE_SERVER_SQL"
+    eqemu_sql "$ORACLE_SERVER_SQL" >>"$OUT/driver.log" 2>&1 || { STATUS=65; exit "$STATUS"; }
+    eqemu_sql "$ORACLE_SERVER_DUMP_SQL" >"$OUT/server-data-leg.tsv" 2>>"$OUT/driver.log" || { STATUS=65; exit "$STATUS"; }
+fi
 if ! bash "$REPO/scripts/eqemu/up.sh" >>"$OUT/driver.log" 2>&1 || ! eqemu_stack_ready; then STATUS=65; exit "$STATUS"; fi
 # B1047 (#367): keep the roster out of timorous, BEFORE the snapshot so the
 # restore keeps it (scripts/eqemu/roster_zone_seed.sql); a plan's zone row

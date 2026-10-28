@@ -153,6 +153,31 @@ protected:
         }
         return out;
     }
+    // B1171 (#490): timing.tsv's caster_level per packet row, "event:level"
+    // in file order (the per-frame rows carry '-').
+    static std::vector<std::string> timingLevels(const fs::path& frames) {
+        std::vector<std::string> out;
+        std::ifstream f(frames / "timing.tsv");
+        std::string line;
+        std::getline(f, line);
+        EXPECT_EQ(line, "frame\tt\tevent\tspell\ttarget\tdistance\tcast_ms\tt_event\tcaster_level");
+        while (std::getline(f, line)) {
+            std::istringstream ss(line);
+            std::string c[9];
+            for (auto& x : c) std::getline(ss, x, '\t');
+            if (c[2] != "-") out.push_back(c[2] + ":" + c[8]);
+        }
+        return out;
+    }
+    // B1171: the run log's "[fx-harness] cast N: ..." lines.
+    static std::vector<std::string> castLevelLines(const fs::path& frames) {
+        std::vector<std::string> out;
+        std::ifstream f(frames.parent_path() / "run.log");
+        std::string line;
+        while (std::getline(f, line))
+            if (line.rfind("[fx-harness] cast ", 0) == 0) out.push_back(line);
+        return out;
+    }
     void cleanDirs() {
         if (HasFailure()) return;
         for (const auto& d : dirs_) fs::remove_all(d);
@@ -231,94 +256,74 @@ TEST_F(FxHarness, AnOtherTargetLandingLightsTheTargetAndNotTheCaster) {
     if (!HasFailure()) fs::remove_all(dir);
 }
 
-// B1144 (#464): a /disc is OP_CastSpell slot 10 -> OP_Action with NO
-// OP_BeginCast (B1134 leg P4b's pcap), and the official client plays a
-// record's Source from its begin-cast handler only (eqgame.exe 0x49b39d);
-// 4499 Defensive Discipline's record 326 has no Target stage, so no landing.
-// The observer drew no sprite (B1134 record 51; re-observed by B1162 leg
-// b1162_disc4499_v3: OP_Action 4499 with no OP_BeginCast, the observer's
-// caster ROI lit only by the caster's animation, Act+0.454..1.120, peak cov
-// 0.067 -- refactor/B1162/README.md "The /disc landing leg"). The harness's action-only
-// packets must therefore draw NOTHING: every frame equals the frame of a run
-// whose only cast lies past the end (no lit px beyond the two processes'
-// pre-cast noise).
-// RED on fb6d6481: B1105's 2 s action-only glow and the spellComplete half.
-TEST_F(FxHarness, ADisciplineWithoutBeginCastDrawsNothing) {
-    const fs::path disc = runPlan("disc", "0.5\t4499\tself\t0\t0\t60\taction\n", 3.0);
-    const fs::path none = runPlan("none", "100\t4499\tself\t0\t0\t60\taction\n", 3.0);
+// fx_activity.tsv (B1174): per written frame, the harness's live spell
+// effects and missiles and the caster's current track.
+struct FxActivityRow {
+    int frame = 0;
+    int effects = 0;
+    int missiles = 0;
+    std::string anim;
+};
+std::vector<FxActivityRow> fxActivity(const fs::path& frames) {
+    std::vector<FxActivityRow> out;
+    std::ifstream f(frames / "fx_activity.tsv");
+    std::string line;
+    std::getline(f, line);
+    while (std::getline(f, line)) {
+        std::istringstream ss(line);
+        FxActivityRow r;
+        double t = 0.0;
+        if (ss >> r.frame >> t >> r.effects >> r.missiles >> r.anim) out.push_back(r);
+    }
+    return out;
+}
+
+// B1174 (#493): a /disc is OP_CastSpell slot 10 -> OP_Action with NO
+// OP_BeginCast. Its record (field 145: 326 for 4499, 325 for 8604) has
+// Source slots only, and the client plays a Source from its begin-cast
+// handler only (0x49b39d), so no sprite is drawn (B1144); but the OP_Action
+// handler (eqgame 0x47f4af, spell_action_anim.h) asks the standing source for
+// the spell's CastingAnim. That swing is ALL the oracle shows: B1174's lane-5
+// leg b1174_disc8604 (the client's /disc Leechcurse Discipline, the lane's
+// row 8604 pointed at its own Leechcurse for the leg) lit the observer's
+// caster box Act+0.422..+4.355 with the t06 swing and no sprite
+// (refactor/B1174/README.md); B1162's 4499 leg the same with its own track.
+// So the action-only harness run draws no slot, no effect and no missile,
+// and the caster plays the spell's CastingAnim track at the packet, then
+// returns to the idle. Replaces B1162's whole-frame "draws nothing" pins,
+// which the swing (a model animation, measured by the oracle) makes wrong.
+void expectDiscActionSwing(const std::vector<std::string>& slots, const std::vector<FxActivityRow>& act,
+                           const char* track, int heldUntilFrame, int idleByFrame) {
+    EXPECT_TRUE(slots.empty()) << "a /disc drew a spellsnew.eff slot";
+    ASSERT_GT(act.size(), static_cast<size_t>(idleByFrame)) << "fx_activity.tsv is short";
+    for (const auto& r : act) {
+        EXPECT_EQ(r.effects, 0) << "frame " << r.frame << ": a /disc left a live spell effect";
+        EXPECT_EQ(r.missiles, 0) << "frame " << r.frame;
+    }
+    EXPECT_EQ(act[14].anim, "p01") << "the caster idles before the packet";
+    for (int f = 15; f <= heldUntilFrame; ++f)
+        EXPECT_EQ(act[f].anim, track) << "frame " << f << ": the CastingAnim track plays from the packet";
+    EXPECT_EQ(act[idleByFrame].anim, "p01") << "the track played out and the idle returned";
+}
+
+TEST_F(FxHarness, ADisciplineWithoutBeginCastSwingsTheCasterAndDrawsNoSprite) {
+    // 4499 Defensive Discipline: CastingAnim 27 = s01 (eqgame's code table).
+    const fs::path disc = runPlan("disc", "0.5\t4499\tself\t0\t0\t60\taction\n", 6.0, "", "b1130-self");
     ASSERT_FALSE(disc.empty()) << "the /disc harness run failed";
-    ASSERT_FALSE(none.empty()) << "the reference harness run failed";
-    EXPECT_TRUE(slotRows(disc).empty()) << "a /disc drew a spellsnew.eff slot";
-    const Box whole{0, 0, 1279, 799};
-    // Two harness processes differ by 0-4 px at the caster's held orb from
-    // frame 0, before any packet (measured on 9d37d807: (662..667, 463..468),
-    // max channel delta 152..203, the idle cycle's period). A drawn Source or
-    // landing is thousands (93's Source above: 34,483 summed). The bound is
-    // that pre-cast noise, measured in the same two runs, plus 16 px.
-    int noise = 0;
-    for (int f = 0; f < 15; ++f) {
-        irr::video::IImage* a = load(frameAt(disc, f));
-        irr::video::IImage* b = load(frameAt(none, f));
-        ASSERT_NE(a, nullptr);
-        ASSERT_NE(b, nullptr);
-        noise = std::max({noise, lit(a, b, whole), lit(b, a, whole)});
-        a->drop();
-        b->drop();
-    }
-    int peak = 0;
-    for (int f = 15; f < 90; ++f) {  // Act-0.0 .. Act+2.5 s
-        irr::video::IImage* a = load(frameAt(disc, f));
-        irr::video::IImage* b = load(frameAt(none, f));
-        ASSERT_NE(a, nullptr);
-        ASSERT_NE(b, nullptr);
-        peak = std::max({peak, lit(a, b, whole), lit(b, a, whole)});
-        a->drop();
-        b->drop();
-    }
-    std::printf("[fx-gate] /disc 4499 (OP_Action only): peak lit px vs the no-cast run %d (pre-cast noise %d)\n",
-                peak, noise);
-    EXPECT_LE(peak, noise + 16) << "an OP_Action without OP_BeginCast drew something";
+    ASSERT_STREQ(EQ::SpellCastAnimationCode(27), "s01");
+    // s01 on the char-67 Dark Elf female plays 3.0 s (fx_activity.tsv on this
+    // tip: s01 frames 15..104); held to Act+2.5, idle by Act+4.0.
+    expectDiscActionSwing(slotRows(disc), fxActivity(disc), "s01", 15 + 75, 15 + 120);
     cleanDirs();
 }
 
-// B1162 (#481): the same gate on record 325, with the discipline the official
-// client really fired on lane 5: /disc Leechcurse Discipline -> C->S
-// OP_CastSpell slot 10 spell 8604, no OP_BeginCast (leg b1162_disc325_v2,
-// refactor/B1162/README.md "Correction: Leg A did not land"). 8604's
-// spellsnew.eff record (spells_us.txt field 145) is 325, which has no Target
-// stage. The lane server refused the cast (its 8604 row is another spell), so
-// the oracle never drew a real record-325 /disc; this pins the fable side
-// only. The harness's action-only 8604 must draw nothing.
-TEST_F(FxHarness, TheLeechcurseDisciplineWithoutBeginCastDrawsNothing) {
-    const fs::path disc = runPlan("disc8604", "0.5\t8604\tself\t0\t0\t60\taction\n", 3.0);
-    const fs::path none = runPlan("none8604", "100\t8604\tself\t0\t0\t60\taction\n", 3.0);
+TEST_F(FxHarness, TheLeechcurseDisciplineSwingsT06AndDrawsNoSprite) {
+    // 8604 Leechcurse Discipline: CastingAnim 44 = t06, the Dark Elf female's
+    // 4100 ms track (B1148). The oracle's caster box: Act+0.422..+4.355.
+    const fs::path disc = runPlan("disc8604", "0.5\t8604\tself\t0\t0\t60\taction\n", 6.0, "", "b1130-self");
     ASSERT_FALSE(disc.empty()) << "the /disc harness run failed";
-    ASSERT_FALSE(none.empty()) << "the reference harness run failed";
-    EXPECT_TRUE(slotRows(disc).empty()) << "a /disc drew a spellsnew.eff slot";
-    const Box whole{0, 0, 1279, 799};
-    int noise = 0;  // the two processes' pre-cast difference (see the 4499 test)
-    for (int f = 0; f < 15; ++f) {
-        irr::video::IImage* a = load(frameAt(disc, f));
-        irr::video::IImage* b = load(frameAt(none, f));
-        ASSERT_NE(a, nullptr);
-        ASSERT_NE(b, nullptr);
-        noise = std::max({noise, lit(a, b, whole), lit(b, a, whole)});
-        a->drop();
-        b->drop();
-    }
-    int peak = 0;
-    for (int f = 15; f < 90; ++f) {  // Act-0.0 .. Act+2.5 s
-        irr::video::IImage* a = load(frameAt(disc, f));
-        irr::video::IImage* b = load(frameAt(none, f));
-        ASSERT_NE(a, nullptr);
-        ASSERT_NE(b, nullptr);
-        peak = std::max({peak, lit(a, b, whole), lit(b, a, whole)});
-        a->drop();
-        b->drop();
-    }
-    std::printf("[fx-gate] /disc 8604 (OP_Action only): peak lit px vs the no-cast run %d (pre-cast noise %d)\n",
-                peak, noise);
-    EXPECT_LE(peak, noise + 16) << "an OP_Action without OP_BeginCast drew something";
+    ASSERT_STREQ(EQ::SpellCastAnimationCode(44), "t06");
+    expectDiscActionSwing(slotRows(disc), fxActivity(disc), "t06", 15 + 105, 15 + 135);
     cleanDirs();
 }
 
@@ -355,8 +360,24 @@ TEST_F(FxHarness, ALevelOneCasterDrawsOnlyItsLevelZeroSlots) {
     }
     std::printf("[fx-gate] 93 Source, caster box lit px summed BC+0.6..Act: level 1 %ld, level 60 %ld\n", sum1,
                 sum60);
+    // B1171 (#490): the level each run cast at is in its log and its timing.tsv.
+    EXPECT_EQ(timingLevels(l1), (std::vector<std::string>{"BeginCast:1", "Action:1"}));
+    EXPECT_EQ(timingLevels(l60), (std::vector<std::string>{"BeginCast:60", "Action:60"}));
+    EXPECT_EQ(castLevelLines(l1), (std::vector<std::string>{"[fx-harness] cast 0: spell 93 caster_level 1 (plan)"}));
     EXPECT_GT(sum1, 0) << "the level-1 caster's hand slots drew nothing";
     EXPECT_LT(sum1, sum60) << "the level-1 caster drew as much Source as the level-60 caster";
+    cleanDirs();
+}
+
+// B1171 (#490): a plan row without a level casts at --caster-level, and the
+// run log says the level did not come from the plan -- a sweep that means to
+// copy an oracle capture's `#level` writes it into every plan row.
+TEST_F(FxHarness, ThePlanLevelAndItsSourceAreLogged) {
+    const fs::path dflt = runPlan("lvl_dash", "0.1\t93\tother\t14\t200\t-\tbegincast\n", 0.5, "--caster-level 7");
+    ASSERT_FALSE(dflt.empty());
+    EXPECT_EQ(castLevelLines(dflt),
+              (std::vector<std::string>{"[fx-harness] cast 0: spell 93 caster_level 7 (--caster-level)"}));
+    EXPECT_EQ(timingLevels(dflt), (std::vector<std::string>{"BeginCast:7", "Action:7"}));
     cleanDirs();
 }
 

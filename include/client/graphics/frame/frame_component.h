@@ -156,6 +156,7 @@
 #include "client/graphics/ui/tip_window.h"  // B834
 #include "client/graphics/ui/item_tooltip.h"  // B1004
 #include "client/graphics/ui/ui_preferences.h"
+#include "client/graphics/ui/eqclient_ini.h"  // B1175
 
 #include <chrono>
 #include <cstdint>
@@ -416,6 +417,11 @@ public:
 	void setUiPreferencesIdentity(const std::string& character,
 	                              const std::string& server);
 	void syncUiPreferences();
+	// B1175 (#494): the GLOBAL eqclient.ini [Defaults] (the particle keys and
+	// ShowSpellEffects, eqclient_ini.h): load-then-apply on the first call,
+	// save-on-difference after. Not per character, so it needs no identity;
+	// syncUiPreferences() calls it first, on both of its call sites.
+	void syncEqClientIni();
 	// The binding over this component's own panel members. Public so a test
 	// can build the identical one over plain structs.
 	UiPreferencesBinding uiPreferencesBinding();
@@ -537,6 +543,9 @@ public:
 	// by the next load -- every persisted field goes back to its default
 	// before the new character's file is read.
 	bool uiPrefsResetPending_ = false;
+	// B1175: the global eqclient.ini's baseline (syncEqClientIni()).
+	EqClientIni eqclientLastSaved_;
+	bool eqclientLoaded_ = false;
 	// T439 (board B432 CLOSED): optionsAppliedMusicStep_ /
 	// optionsAppliedSoundStep_ lived here -- the steps the audio manager was
 	// last TOLD, kept because the volume intents carried a DELTA and

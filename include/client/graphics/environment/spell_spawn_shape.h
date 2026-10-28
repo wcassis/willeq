@@ -40,8 +40,8 @@
  *   +0x19C == 1        s19c = the attach scale multiplies r, z and the
  *                      offsets (fStack_4d8, 0x100608b5/0x1006090d..);
  *                      == 0 -> s19c = 1.0 (attach matrix normalised). Fable
- *                      passes kSpellFxAttachScale = 1.0 (B1149's ruling), so
- *                      s19c is 1.0 either way -- the flag still selects it.
+ *                      passes the entity's s (B1164: 0.2 x the actor's
+ *                      server size, spell_fx_attach_scale.h) when set.
  *
  * The random draws are the client's uniform tables (verified in this unit):
  * the 512-table (0x102347a0, counter 0x10235f4c, FUN_1005d3e0) is a
