@@ -41,10 +41,28 @@ eqemu_stack_ready || { echo "stack not ready after up.sh" >&2; exit 65; }
 trap '[[ $WE_UP == 1 ]] && bash "$WT/scripts/eqemu/down.sh" >>"$OUT_LOCAL/stack-down.log" 2>&1 || :' EXIT
 ZID=$(eqemu_sql "SELECT id FROM zone WHERE short_name='qeynos2' LIMIT 1;")
 [ -n "$ZID" ] || { echo "no qeynos2 zone id" >&2; exit 65; }
+ZID=${ZID//[[:space:]]/}
+# B1176 (#495): the client loads <zone>.s3d from its eq_client_path; a zone
+# whose file is absent is an instant FATAL (A rc=4). Pre-check the target.
+eq_remote test -f /mnt/projects/EverQuestP1999/qeynos2.s3d \
+  || { echo "qeynos2.s3d missing on the eqemu host" >&2; exit 65; }
 eqemu_sql "UPDATE character_data SET zone_id=$ZID, x=-74, y=428, z=$AZ, heading=0 WHERE name='$ACHAR';" \
   || { echo "A seed failed" >&2; exit 65; }
 eqemu_sql "UPDATE character_data SET zone_id=$ZID, x=-64.4, y=451.1, z=3.125, heading=448 WHERE name='Testcaster';" \
   || { echo "B seed failed" >&2; exit 65; }
+# B1176 (#495): verify the seeds landed in the DB this world will read. One
+# mid-migration lane-5 DB state served stale rows (both chars in zone 303 =
+# 'causeway' in the client's table, whose .s3d is absent) and every fable leg
+# of the first run zoned into causeway and FATALed (A rc=4). SELECT-back both
+# rows and abort on any mismatch instead of shipping a doomed client launch.
+seed_zone_got() {
+  local got
+  got=$(eqemu_sql "SELECT zone_id FROM character_data WHERE name='$1' LIMIT 1;")
+  got=${got//[[:space:]]/}
+  [ "$got" = "$ZID" ] || { echo "$1 seed not verified: zone_id=$got want=$ZID" >&2; exit 65; }
+}
+seed_zone_got "$ACHAR"
+seed_zone_got "Testcaster"
 mkdir -p "$OUT_LOCAL"
 ssh thinkpad "mkdir -p '$OUT_REMOTE'" || { echo "remote mkdir failed" >&2; exit 65; }
 scp -q "$LEG_DIR/fable_leg_remote.sh" "$LEG_DIR/fable_tour.txt" "$LEG_DIR/fable_b_tour.txt" \

@@ -60,9 +60,14 @@ def ground_ref(img, gx, gy, gw, gh):
     return patch.reshape(-1, 3).mean(axis=0)
 
 
-def figure_mask(img, ref, dist):
+def figure_mask(img, ref, dist, excl=None):
     d = np.sqrt(((img.astype(np.float32) - ref.astype(np.float32)) ** 2).sum(axis=2))
-    return (d > dist).astype(np.uint8)
+    m = (d > dist).astype(np.uint8)
+    # B1176 (#495): exclusion rects (static UI, a stray corpse, ...) are zeroed
+    # so their pixels can never anchor a feet/head measurement.
+    for (x0, y0, x1, y1) in (excl or ()):
+        m[max(0, y0):y1, max(0, x0):x1] = 0
+    return m
 
 
 def component_at(mask, cx, cy, win=70):
@@ -198,19 +203,48 @@ def measure_feet(img, mask, px, py, wcol=28):
     return (cx + x0, int(bot + y0))
 
 
-def calib(frame, mode, ax, ay, az, bx, by, dist=20, gnd=None, sol_in=None):
+def component_feet(mask, px, py, win=70):
+    """B1176 (#495): the feet of the ONE figure component touching the
+    predicted point -- immune to unrelated mask content (UI, a stray
+    corpse) that is not connected to the figure. Returns None when the
+    component is absent or degenerate."""
+    comp = component_at(mask, px, py, win=win)
+    if comp is None:
+        return None
+    x, y, w, h = comp
+    if h < 30:
+        return None
+    sub = mask[y:y + h, x:x + w]
+    ys, xs = np.nonzero(sub)
+    cx0, cx1 = x + int(w * 0.3), x + int(w * 0.7)
+    central = (xs >= cx0 - x) & (xs <= cx1 - x)
+    if not central.any():
+        return None
+    feet_row = int(ys[central].max())
+    return (int(xs[central].mean()) + x, y + feet_row)
+
+
+def calib(frame, mode, ax, ay, az, bx, by, dist=20, gnd=None, sol_in=None,
+          excl=None, f_fix=1048.5):
     img = load(frame)
     gx, gy, gw, gh = gnd if gnd else (None, None, 120, 60)
     ref = ground_ref(img, gx, gy, gw, gh) if gx is not None else img[600:660, 100:220].reshape(-1, 3).mean(axis=0)
-    mask = figure_mask(img, ref, dist)
+    mask = figure_mask(img, ref, dist, excl)
 
     def cam_from(x):
         if mode == "fp":
-            cz, f = x
+            # B1176 (#495): the in-world heading is NOT the seeded one (the
+            # client keeps its own), so the azimuth th is solved with the eye
+            # height cz; f is fixed at the T298-measured official value
+            # ((W/2)/tan(62.8/2 deg), 1280 wide) and the pitch at 3.65 deg
+            # down (T298). The 2x2 fit is (cz, th) from B's feet (x, y).
+            cz, th = x
+            p = -3.65 * DEG
+            F = (math.sin(th) * math.cos(p), math.cos(th) * math.cos(p),
+                 math.sin(p))
             eye = (ax, ay, cz)
-            # 3.65 deg down (T298), along A's heading (0 = +Y in every leg):
-            look = (ax, ay + 1.0, cz - 1.0 * math.tan(3.65 * DEG))
-            return Cam(eye, look, f)
+            look = (ax + F[0], ay + F[1], cz + F[2])
+            return Cam(eye, look, f_fix)
         if mode == "user1-or":
             th, d, zL = x
             # user1: pitch 0, the camera looks horizontally at (ax,ay,zL)
@@ -226,7 +260,7 @@ def calib(frame, mode, ax, ay, az, bx, by, dist=20, gnd=None, sol_in=None):
         pr = cam.project((wx, wy, 0.0))
         if pr is None:
             return (500.0, 500.0)
-        meas = measure_feet(img, mask, pr[0], pr[1])
+        meas = component_feet(mask, pr[0], pr[1])
         if meas is None:
             return (500.0, 500.0)
         return (meas[0] - pr[0], meas[1] - pr[1])
@@ -234,9 +268,9 @@ def calib(frame, mode, ax, ay, az, bx, by, dist=20, gnd=None, sol_in=None):
     if mode == "fp":
         def func(x):
             return feet_res(cam_from(x), bx, by)
-        x, it = solve2(func, (7.0, 1100.0))
-        sol = {"mode": mode, "cz": x[0], "f": x[1], "iters": it,
-               "a-x": ax, "a-y": ay, "b-x": bx, "b-y": by}
+        x, it = solve2(func, (7.0, 0.6))
+        sol = {"mode": mode, "cz": x[0], "th_deg": math.degrees(x[1]), "f": f_fix,
+               "iters": it, "a-x": ax, "a-y": ay, "b-x": bx, "b-y": by}
     elif mode == "user1-or":
         def func(x):
             cam = cam_from(x)
@@ -260,7 +294,9 @@ def calib(frame, mode, ax, ay, az, bx, by, dist=20, gnd=None, sol_in=None):
         if dF <= 0 or abs(dU) < 1e-6:
             raise SystemExit("feet point behind camera or on horizon")
         pr = cam.project((bx, by, 0.0))
-        meas = measure_feet(img, mask, pr[0], pr[1])
+        if pr is None:
+            raise SystemExit("feet point behind camera")
+        meas = component_feet(mask, pr[0], pr[1])
         if meas is None:
             raise SystemExit("no figure at predicted feet point")
         v_meas = H / 2 - meas[1]
@@ -281,20 +317,32 @@ def calib(frame, mode, ax, ay, az, bx, by, dist=20, gnd=None, sol_in=None):
         raise SystemExit("mode")
     cam = cam_from(x)
     pr = cam.project((bx, by, 0.0))
-    meas = measure_feet(img, mask, pr[0], pr[1])
-    sol["feet_px"] = [pr[0], pr[1]]
+    meas = component_feet(mask, pr[0], pr[1]) if pr else None
+    sol["feet_px"] = list(pr) if pr else None
     sol["feet_meas"] = meas
-    sol["resid_px"] = [abs(meas[0] - pr[0]), abs(meas[1] - pr[1])] if meas else None
+    sol["resid_px"] = [abs(meas[0] - pr[0]), abs(meas[1] - pr[1])] if (meas and pr) else None
     if mode == "user1-or":
         # also report A's feet residual (the other half of the fit)
         pr_a = cam.project((ax, ay, 0.0))
-        meas_a = measure_feet(img, mask, pr_a[0], pr_a[1]) if pr_a else None
+        meas_a = component_feet(mask, pr_a[0], pr_a[1]) if pr_a else None
         sol["a_feet_px"] = list(pr_a) if pr_a else None
         sol["a_feet_meas"] = meas_a
         sol["a_resid_px"] = ([abs(meas_a[0] - pr_a[0]), abs(meas_a[1] - pr_a[1])]
                              if meas_a else None)
     print(json.dumps(sol))
     return sol
+
+
+def _excl(kv):
+    """--excl 'x0:y0:x1:y1;x0:y0:x1:y1' -> list of (x0,y0,x1,y1)."""
+    out = []
+    for part in kv.get("excl", "").split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        x0, y0, x1, y1 = (int(v) for v in part.split(":"))
+        out.append((x0, y0, x1, y1))
+    return out
 
 
 def main():
@@ -318,13 +366,15 @@ def main():
         gnd = None
         if "gnd-x" in kv:
             gnd = (int(kv["gnd-x"]), int(kv["gnd-y"]), int(kv["gnd-w"]), int(kv["gnd-h"]))
+        excl = _excl(kv)
         sol_in = None
         if "sol-in" in kv:
             sol_in = json.load(open(kv["sol-in"]))
         sol = calib(frame, mode,
                     float(kv["a-x"]), float(kv["a-y"]), float(kv.get("a-z", 0)),
                     float(kv["b-x"]), float(kv["b-y"]),
-                    dist=float(kv.get("dist", 20)), gnd=gnd, sol_in=sol_in)
+                    dist=float(kv.get("dist", 20)), gnd=gnd, sol_in=sol_in,
+                    excl=excl, f_fix=float(kv.get("f", 1048.5)))
         if "sol-out" in kv:
             with open(kv["sol-out"], "w") as fh:
                 json.dump(sol, fh)
@@ -344,7 +394,10 @@ def main():
         # rebuild the camera exactly as calib did
         ax, ay = float(sol.get("a-x", 0)), float(sol.get("a-y", 0))
         if mode == "fp":
-            cam = Cam((ax, ay, sol["cz"]), (ax, ay + 1.0, sol["cz"] - math.tan(3.65 * DEG)), sol["f"])
+            th = math.radians(sol.get("th_deg", 0.0))
+            p = -3.65 * DEG
+            F = (math.sin(th) * math.cos(p), math.cos(th) * math.cos(p), math.sin(p))
+            cam = Cam((ax, ay, sol["cz"]), (ax + F[0], ay + F[1], sol["cz"] + F[2]), sol["f"])
         elif mode == "user1-or":
             th = math.radians(sol["th_deg"])
             d, zL = sol["dist"], sol["z_look"]
@@ -354,8 +407,11 @@ def main():
             cam = Cam((sol["cx"], sol["cy"], sol["cz"]), (sol["lx"], sol["ly"], sol["lz"]), sol["f"])
         subject = kv.get("subject", "a")
         sx, sy = (ax, ay) if subject == "a" else (float(kv["b-x"]), float(kv["b-y"]))
-        ref = img[640:700, 100:220].reshape(-1, 3).mean(axis=0)
-        mask = figure_mask(img, ref, float(kv.get("dist", 20)))
+        ref = (ground_ref(img, int(kv["gnd-x"]), int(kv["gnd-y"]),
+                          int(kv["gnd-w"]), int(kv["gnd-h"]))
+               if "gnd-x" in kv
+               else img[640:700, 100:220].reshape(-1, 3).mean(axis=0))
+        mask = figure_mask(img, ref, float(kv.get("dist", 20)), _excl(kv))
         pr = cam.project((sx, sy, 3.0))
         if pr is None:
             raise SystemExit("subject out of frame")
