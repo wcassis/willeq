@@ -102,12 +102,20 @@ Two changes make the readers identical per key:
   use `SaveEqClientIni` (the full save), which would rewrite every key and normalise
   the junk the client never touches at load. The full save is still the shutdown
   path, which is what DOES normalise the junk.
-* **Non-finite floats clamp to the client's endpoints.** `parseSettingIniFloat`
-  (`src/client/graphics/ui/options_settings.cpp:421`) previously rejected a
-  non-finite `std::stof` result; now it folds -inf to the lower magnitude and
-  +inf/NaN to the upper (and folds a `std::out_of_range` overflow by its sign)
-  before the loader clamp, so `inf`/`nan`/`1e400` land on the same bound the
-  client's clamp does. A well-formed finite float is unchanged.
+* **Non-finite and ERANGE floats clamp to the client's endpoints.**
+  `parseSettingIniFloat` (`src/client/graphics/ui/options_settings.cpp:422`)
+  parses with `std::strtof` -- the client's `sscanf %f` (0x4ae705 -> 0x610837,
+  eqgame.exe.c 132182-132197) IS the C float conversion, so the reader consumes
+  exactly what the client's consumes: `inf`/`nan` text, `1e400` overflowing to
+  `+/-HUGE_VAL` (folded to `+/-1e30f` so the clamp can pin it), and `1e-400`
+  underflowing to 0.0 -- strtof's own ERANGE fold, measured on the build host,
+  the value the client's sscanf hands its clamp. libstdc++'s `std::stof`, which
+  the reader used, throws `out_of_range` for BOTH the overflow and the
+  underflow, and a sign-only fold of that exception sent a positive underflow
+  to the UPPER endpoint (MR !334 review, note 8311); folding by magnitude --
+  what strtof does on its own -- lands all of inf/-inf/nan/1e400/-1e400/1e-400
+  on the bound the client's clamp (132608-132637) gives it. A junk miss is a
+  no-conversion as before, and a well-formed finite float is unchanged.
 
 Well-formed values are byte-unchanged: the B1175 capture test still pins the lane
 file, and `WellFormedValuesAreByteUnchanged` (below) pins a minimal junk-free file
@@ -152,15 +160,30 @@ same file.
   byte-identical (the junk density stays `banana`). That is pinned by
   `TheLoadRewriteWritesOnlyShowSpellEffects`, so fable's after-file is the identical
   transform of the identical before-file.
-  * The LIVE fable leg (a zone-in on lane 5 so the post-zone-in frame tick runs the load
-    path) is PENDING: the lane-5 loginserver was not advertising the world to fable
-    (`Got response from login server but could not find world server WillEQ Private
-    Server`), an eqemu server-state issue (the world is auto-started by the container
-    launcher and was not registered with the freshly started loginserver). It is outside
-    this card's code and I left the lane down/clean rather than mutate server state. The
-    leg is one command once the world registers: `scripts/b1182_fable_run.sh` (attached) —
-    it seeds the cache dir with the before-ini, runs fable `--scenario zone_in` against
-    the lane, and greps the ini back.
+  * **The LIVE fable leg is MEASURED** (2026-10-28 22:30-22:34 UTC, lane 5):
+    `scripts/b1182_fable_run.sh` (in the repo) seeds the cache dir with the before-ini,
+    runs fable as a PLAIN GRAPHICS run against the lane, and reads the ini back.
+    **It needs no working world**: the load path (`FrameComponent::syncEqClientIni`,
+    `src/client/graphics/frame/renderer_frame_preferences.cpp:70`) runs on the first
+    `processFrame()` frame — which starts only when the loading progress reaches 50 %,
+    i.e. zone data arriving (before that the loading screen is drawn directly,
+    `src/client/application_frame.cpp:180`) — AND again on EVERY clean shutdown
+    (`IrrlichtRenderer::shutdown()` calls `syncUiPreferences`). So a run that never
+    connects still loads and rewrites on the way out: in graphics mode a pre-zone
+    connect failure keeps the loading screen up (B1099) and SIGTERM turns it into a
+    clean shutdown. (A `--scenario` run would never run the load path at all:
+    Automated mode is headless — no renderer is created, `Application::initGraphics`
+    only initialises in GraphicalInteractive mode.) This run could not connect
+    (22:18 the loginserver answered but was not advertising the world "WillEQ Private
+    Server" — the world container was not registered with the freshly started
+    loginserver, an eqemu server-state issue outside this card's code; by 22:30 the
+    login itself sat in `LOGIN_CONNECTING` 30 s and gave up), so it exited 3 on the
+    pre-zone connect failure and the rewrite ran on the SIGTERM clean shutdown —
+    the log's one `eqclient.ini loaded from` line is the shutdown's, 2 ms after
+    "Shutting down application...". The after-ini is the oracle's own diff,
+    `115a116 > ShowSpellEffects=1`, the junk density byte-identical. Artifacts:
+    `kb-evidence/kb-b1182-ini-junk/live-leg/` (`eqclient-fable-before.ini`,
+    `eqclient-fable-after.ini`, the run log).
 
 ## 4. Tests and verification (acceptance D)
 
@@ -179,8 +202,11 @@ Unit tests, `tests/test_options_particles.cpp` (`OptionsParticlesB1182`):
   oracle's after-file: `banana` + appended `ShowSpellEffects=1`); in-range is a no-op.
 - `TheIntReaderWrapsLikeTheClientsAtoi` — the wrapping atoi (junk 0, prefix,
   0x stops, sign, whitespace, mod 2^32 wrap).
-- `NonFiniteFloatsClampToTheClientsEndpoints` — inf/-inf/nan/1e400 land on the
-  client's clamp bounds through the applied knobs.
+- `NonFiniteFloatsClampToTheClientsEndpoints` — inf/-inf/nan/1e400 AND the
+  underflow rows 1e-400/-1e-400 land on the client's clamp bounds through the
+  applied knobs, one row per value, per float key (spell and environment
+  density and near-clip), each the value the client's own reader + clamp
+  applies (the underflow half is the finding at MR !334 note 8311).
 - `WellFormedValuesAreByteUnchanged` — a junk-free file parses to the same values
   and writes back byte-identically (the B1175 slider tests stay green).
 
@@ -198,4 +224,4 @@ success.
   (the full command with `--tree . --extra /mnt/projects/fable --dis .../eqgame.dis
   --dis .../EQGraphicsDX9.dis`; the `eqgame.exe.c` line cites are re-read by hand,
   as noted in sec. 1).
-* Live fable leg (pending, one command): `scripts/b1182_fable_run.sh` — see sec. 3.
+* Live fable leg (measured, one command): `scripts/b1182_fable_run.sh` — see sec. 3.
