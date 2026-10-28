@@ -151,7 +151,11 @@ substitution: the hermes-ext disk-full at ~11:00Z left three b1130 rows without 
 dropped the last three b1130 rows (r28 measured from its already-streamed frames, r34
 and r26 re-rendered; r34's first measure lost frames to the r34 stream and was
 re-measured from a re-stream, 495/495 frames). Evidence:
-`/home/user/kb-evidence/kb-b1180-sprite-width/gate/after/` (+ `gate/tables/`).
+`/home/user/kb-evidence/kb-b1180-sprite-width/gate/after/` (+ `gate/tables/`); the
+per-row text outputs (anchor fits, `summary.tsv`, timings, logs) are there, while the
+raw frame dirs (the temporal source) stay on the ThinkPad at
+`/home/user/kb-frames/kb-b1180-sprite-width/gate/after/frames/` per the operator's
+keep-it-small rule.
 
 ### tour-7 (b1118 camera, level 60, B1166 anchor)
 
