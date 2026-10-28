@@ -103,7 +103,7 @@ The b1130 rig before B1167: caster at the origin facing +Z, the camera fitted on
 (`kHarnessFaceOnRotY`), the target solved at the anchor (B1166) -- world +X ran exactly to
 screen-left. The client's camera sits at DirHeading from the player's heading, so in the
 capture's world the camera is at 0 + 135 = 135 deg from the caster, i.e. the fitted rig is
-45 deg off. `turnB1130Rig` (`tools/model_viewer/model_viewer_fx_harness.cpp:756`) turns camera,
+45 deg off. `turnB1130Rig` (`tools/model_viewer/model_viewer_fx_harness.cpp:765`) turns camera,
 caster and target about the caster's vertical axis by
 `rigYawDeg = caster heading + DirHeading - 90` (`tools/model_viewer/fx_capture_pose.h:91`; 45 deg
 for b1130, 157.5 deg for b1130-self, 202.5 deg for b1118, `kB1130NpcPose` / `kB1130SelfPose` /
@@ -326,7 +326,7 @@ b1130-self caster 160, b1118 caster 160 / target 160 (`kB1130NpcPose` / `kB1130S
 `review/B1118/oracle_druid/capture.pcap`) -- and `fxharness::poseForPreset`
 (`fx_capture_pose.h:73`) names them per preset. The preset's rig turn (`rigYawDeg`, unchanged:
 45 / 157.5 / 202.5 deg) now applies to all three presets (`turnB1130Rig`,
-`tools/model_viewer/model_viewer_fx_harness.cpp:756, 817`); each actor is fitted at
+`tools/model_viewer/model_viewer_fx_harness.cpp:765, 826`); each actor is fitted at
 `presetRotYDeg(pose, heading)` (`fx_capture_pose.h:100`) in the fitted frame, so after the turn
 it sits at exactly `rotYForHeading(its capture heading)` -- b1130: caster rotY 0, target rotY
 -112.5 (the caster with her back to the camera, as the capture shows); applied to the actors by
@@ -356,12 +356,12 @@ The turned target's bearing is pinned by
 post-turn offset on the 160 bearing within 3 deg / 0.6 units -- per-probe tolerances, because
 the face-on probe of the same test still claims the old > 50 deg off-heading bound.
 
-**The ratchet.** `kStandingPx` 238 -> **245** (`tools/model_viewer/fx_target_anchor.h:86`),
+**The ratchet.** `kStandingPx` 238 -> **245** (`tools/model_viewer/fx_target_anchor.h:91`),
 re-measured for the back-turned target at the b1130 solved position (x -8.685 z 0.272): the box
 is rows 370..615 = 246 px on frame 0; the solved standing height 246 px is d +0 and the
 measured 245 px is d +1 (tol 3): PASS, feet at row 615, column 940
 (settle5_b1130 run.log self-check line). B1166's self-check (`B1130SelfCheckRejectsAWrongTargetModel`,
-`tests/test_fx_harness.cpp:492`) still passes on the new preset and fails on a wrong body. B1172
+`tests/test_fx_harness.cpp:495`) still passes on the new preset and fails on a wrong body. B1172
 #491 (285 face-on at the client's actor scale 1.2) landed on fable after this section was
 written; the merge with it re-measured the ratchet for the SAME turned pose at that scale:
 **294 px** (sec. 8).
