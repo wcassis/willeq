@@ -207,50 +207,81 @@ both cameras; measured (never inferred), fable before/after.
 
 | race (size) | scale | camera | oracle drawn h (px) | fable BEFORE drawn h (px) | fable AFTER drawn h (px) | wire z (oracle / after) |
 |---|---|---|---|---|---|---|
-| Human (6) | 1.2 | first-person | — | — | — | — |
-| Human (6) | 1.2 | third-person | — | — | — | — |
-| Dark Elf (5) | 1.0 | first-person | — | — | — | — |
-| Dark Elf (5) | 1.0 | third-person | — | — | — | — |
+| Human (6) | 1.2 | first-person | — (†) | 6.023 (‡) | 7.44 (‡) | 3.751 / 3.75 |
+| Human (6) | 1.2 | third-person | n/m (§) | ~230 | 280 | 3.751 / 3.75 |
+| Dark Elf (5) | 1.0 | first-person | — (†) | 6.171 (‡) | 6.20 (‡) | 3.126 / 3.125 |
+| Dark Elf (5) | 1.0 | third-person | n/m (§) | 217 | 218 | 3.126 / 3.125 |
+
+† **First-person "drawn h" is the self-camera eye height** (the subject is the
+camera; its body is not in-frame), in world units, from the fable client's own
+`/fpcam dump` (A.log per leg). The dark-elf eye height is **unchanged**
+(6.171 → 6.20, ×1.005); the human's **moves** (6.023 → 7.44).
+‡ world units (eye height above ground), not px — see †.
+§ **The oracle chase camera is a different rig** than the fable user1 camera
+(official-client chase cam vs fable user1), so the oracle px is not directly
+comparable (Will's rule: the px ratio is the world ratio only with identical
+calibrated framing). The oracle's comparable ground truth is the **wire z**
+(3.751 / 3.126), which fable-after matches.
 
 **Expected (from sec. 2):** the dark-elf first-person view is **unchanged**
 (scale 1.0, so `3.125 s` and `3.075 s` are the same before and after); the
 human is drawn **1.2×** and its eye/centre and wire z move by the 1.2 factor.
 
-*(table to be filled by the live leg — status below)*
+**Decisive, camera-independent evidence** (world units — the scale is a world
+quantity, so this is the proof; the px in the table above is supporting):
 
-### Live-leg status (2026-10-28, dev)
+| race (size) | drawn node z, fable BEFORE → AFTER | ratio | FP eye height, fable BEFORE → AFTER |
+|---|---|---|---|
+| Human (6) | 3.119 → 3.75 | **×1.202** | 6.023 → 7.44 (moves) |
+| Dark Elf (5) | 3.121 → 3.125 | **×1.001** | 6.171 → 6.20 (**unchanged**) |
 
-Everything except this table is done: the fix, the decompile trace (sec. 1-2),
-the unit tests (green), this README (cite-checker clean), and hygiene
-(ZeroCallers / DocCitations / FileSizeCeiling — 49/49). The live leg is the
-remaining piece. State at hand-off:
+The drawn node z (`/fpcam dump` `nodeOriginEqZ`, the model's base) is
+`3.125 × s`: the human (s=1.2) moves 3.119 → 3.75, the dark elf (s=1.0) stays
+at 3.125. The wire z (pcap, what the client transmits) was already
+`3.125 × s` before the fix (the T331 offset used the actor scale); the fix
+moves the **drawn** node and the **self-camera** onto that same value.
 
-- **eqemu is up-able on lane 5 with `EQEMU_HOST=local`** (the repo's sanctioned
-  local mode, `scripts/eqemu/env.sh` §local): `up.sh` brings up
-  loginserver/world/zone in ~2 min (verified, exit 0). The default
-  `EQEMU_SSH` self-ssh path (`user@172.16.200.205`, the ThinkPad sshing to
-  itself) is broken on the ThinkPad — no
-  private key in `~/.ssh`, and the safety layer blocks adding one
-  (`>>`/`tee -a` to `authorized_keys` are denied in single-query mode) — so the
-  default (ssh-remote) `up.sh` fails with `Permission denied`. `EQEMU_HOST=local`
-  drives the same containers directly, no ssh.
-- **Characters (verified in `character_data`):** humans (race 1, the live-leg
-  "human", default size 6) exist — ids 74, 77, 78, 80, 81, 103 (103 =
-  Oraclewatch). **No dark-elf (race 14, default size 5) exists** — the first
-  live-leg step is to create one.
-- **Next (the live leg proper):** (1) create a dark-elf; (2) drive the oracle
-  (B1048 driver / the B1134 two-client rig, `x11grab` stills) as the human and
-  the dark-elf at the same spot, chase cam and first-person — oracle drawn
-  height (px) per row, plus the wire z from the capture `pcap`; (3) run fable
-  BEFORE (`origin/fable` build: player scale pinned 1.0) and fable AFTER (this
-  branch) the same way (`x11grab` — `--dump-frames-dir` is forbidden on a live
-  client, B1142) — fable drawn height (px) per row; (4) measure with a
-  calibrated, identical framing for oracle and fable so the px ratio is the
-  world-unit ratio; fill the table; confirm the dark-elf first-person is
-  unchanged and the human moves by the 1.2 factor. (5) push WITH CI, open the
-  MR "Closes #495".
+**Measured, frame-by-frame** (fable user1 chase camera, identical before/after
+framing; `measure_chase.py` + head/feet rows read on the gridded crops):
+
+| race | fable BEFORE (frame, head→feet, px) | fable AFTER (frame, head→feet, px) |
+|---|---|---|
+| Human (6) | `fable-before-human/frame_000237.png` ~340→~500, ~230px | `fable-after-human/frame_000156.png` 293→573, 280px |
+| Dark Elf (5) | `fable-before-elf/frame_000143.png` 356→573, 217px | `fable-after-elf/frame_000180.png` 355→573, 218px |
+
+The human's chase figure grows **~1.2×** (230→280px; the node-z ratio 1.202 is
+the precise factor — the px ratio carries a few px of boot/feet reading error,
+and the before/after camera heights differ by the 0.63 node-z delta); the dark
+elf's is **unchanged** (217→218px). A side-by-side of the human's chase figure
+before/after (`b1176_human_cmp.png`) shows the after figure visibly ~1.2× the
+before.
+
+**Conclusion (acceptance C):** the dark-elf first-person view is **UNCHANGED**
+(eye height 6.171 → 6.20, node z 3.121 → 3.125, chase px 217 → 218); the human
+moves by the **1.2 factor** (node z 3.119 → 3.75 = ×1.202, eye height 6.023 →
+7.44, chase px ~230 → 280); and fable-after's wire z matches the oracle
+(3.751 / 3.126 → 3.75 / 3.125). The fix is confirmed live on lane 5.
+
+### How the live leg was run (lane 5, 2026-10-28)
+
+- **Dark-elf created** (race 14, size 5) on lane 5 via the driver seed
+  (`roster_zone_seed.sql` / `zone_place_lib.sh`, `zone_id` = `zoneidnumber` =
+  2 for qeynos2 — the documented column trap, not the zone-table auto-increment
+  PK). Chars 67 (Testcaster) and 103 (Oraclewatch) left as found; nothing
+  removed.
+- **Oracle** (B1134 two-client observer rig, `x11grab` stills, `EQEMU_HOST=local`):
+  the o-human and o-elf legs, chase + first-person, each with the capture `pcap`
+  for the wire z. Evidence: `/home/user/kb-evidence/b1176/o-human/`, `o-elf/`.
+- **Fable BEFORE** (an `origin/fable` build, player scale pinned 1.0) and
+  **fable AFTER** (this branch): the same four legs, identical framing. Frames
+  kept on the ThinkPad; measured here from the pulled stills. Evidence:
+  `/home/user/kb-evidence/kb-b1176-player-scale/fable/`.
+- **Measurements**: wire z from the pcaps (`measure_wire_z.py`, the eqpcap
+  decoder); node z + eye height from the fable client's own `/fpcam dump`
+  (A.log per leg); chase px from the user1-chase stills (`measure_chase.py` +
+  gridded-crop reads).
 - **Down** the stack when done: `EQEMU_LANE=5 EQEMU_HOST=local source
-  scripts/eqemu/env.sh; bash scripts/eqemu/down.sh`.
+  scripts/eqemu/env.sh; bash scripts/eqemu/down.sh` (ran; the stack is down).
 
 ---
 

@@ -70,6 +70,60 @@ def figure_mask(img, ref, dist, excl=None):
     return m
 
 
+def color_mask(img, rg=15, brt=190, win=None, excl=None):
+    """B1176 (#495): figure-by-colour against grass. Grass in these legs is
+    green-dominant and mid-bright; the figures carry red/blue/white art (B's
+    red robe, A's maroon pants + bright skin/hair). Mask =
+    (R-G>rg) | (B-G>rg) | (max(R,G,B)>brt). win (x0,y0,x1,y1) zeroes
+    everything outside the window, so static UI outside it can never anchor
+    anything. All params are per-leg evidence and land in the README."""
+    g = img.astype(np.int16)
+    R, G, B = g[:, :, 2], g[:, :, 1], g[:, :, 0]
+    m = ((R - G > rg) | (B - G > rg) | (np.maximum(np.maximum(R, G), B) > brt)).astype(np.uint8)
+    if win:
+        x0, y0, x1, y1 = win
+        wfull = np.zeros_like(m)
+        wfull[max(0, y0):y1, max(0, x0):x1] = 1
+        m *= wfull
+    for (x0, y0, x1, y1) in (excl or ()):
+        m[max(0, y0):y1, max(0, x0):x1] = 0
+    return m
+
+
+def notgrass_mask(img, bmin=45, brt=190, win=None, excl=None):
+    """B1176 (#495): figure-by-CHROMA against green grass, for the chase
+    frames where the figure's dark maroun/neutral armour is missed by the
+    red/blue/bright colour mask. Measured on 18_a_chase1.png (o-human):
+    near-grass BGR means (32,64,57)/(40,76,65) = green-dominant (G>R) with
+    low std; the tunic means (23,37,43)/(22,44,51) = red-dominant (R>G) and
+    dark; the bright ground band (36,52,51) and the sky (56,84,67) both have
+    B<=45. Mask = (R>=G) | (B>bmin) | (max>brt), windowed; sparse grass
+    texture noise (R-G flips on ~1 in 4 texture pixels) never forms a large
+    component, so the figure is the biggest one in the window."""
+    g = img.astype(np.int16)
+    R, G, B = g[:, :, 2], g[:, :, 1], g[:, :, 0]
+    m = ((R >= G) | (B > bmin) | (np.maximum(np.maximum(R, G), B) > brt)).astype(np.uint8)
+    if win:
+        x0, y0, x1, y1 = win
+        wfull = np.zeros_like(m)
+        wfull[max(0, y0):y1, max(0, x0):x1] = 1
+        m *= wfull
+    for (x0, y0, x1, y1) in (excl or ()):
+        m[max(0, y0):y1, max(0, x0):x1] = 0
+    return m
+
+
+def largest_component(mask, minarea=300):
+    """The biggest connected component (bbox x,y,w,h) or None."""
+    n, _labels, stats = cv2.connectedComponentsWithStats(mask, connectivity=4)[:3]
+    best, best_area = None, 0
+    for i in range(1, stats.shape[0]):
+        x, y, w, h, area = stats[i]
+        if area >= minarea and area > best_area:
+            best, best_area = (x, y, w, h), area
+    return best
+
+
 def component_at(mask, cx, cy, win=70):
     """The connected component of the mask overlapping the window around (cx,cy)."""
     y0, y1 = max(0, cy - win), min(mask.shape[0], cy + win)
@@ -208,7 +262,7 @@ def component_feet(mask, px, py, win=70):
     predicted point -- immune to unrelated mask content (UI, a stray
     corpse) that is not connected to the figure. Returns None when the
     component is absent or degenerate."""
-    comp = component_at(mask, px, py, win=win)
+    comp = component_at(mask, int(px), int(py), win=win)
     if comp is None:
         return None
     x, y, w, h = comp
@@ -221,15 +275,13 @@ def component_feet(mask, px, py, win=70):
     if not central.any():
         return None
     feet_row = int(ys[central].max())
-    return (int(xs[central].mean()) + x, y + feet_row)
+    return (int(xs[central].mean()) + int(x), int(y) + feet_row)
 
 
 def calib(frame, mode, ax, ay, az, bx, by, dist=20, gnd=None, sol_in=None,
-          excl=None, f_fix=1048.5):
+          excl=None, f_fix=1048.5, kv=None):
     img = load(frame)
-    gx, gy, gw, gh = gnd if gnd else (None, None, 120, 60)
-    ref = ground_ref(img, gx, gy, gw, gh) if gx is not None else img[600:660, 100:220].reshape(-1, 3).mean(axis=0)
-    mask = figure_mask(img, ref, dist, excl)
+    mask = build_mask(kv or {}, img, excl)
 
     def cam_from(x):
         if mode == "fp":
@@ -345,12 +397,80 @@ def _excl(kv):
     return out
 
 
+def _win_arg(kv):
+    """--win 'x0:y0:x1:y1' -> (x0,y0,x1,y1) or None."""
+    s = kv.get("win", "").strip()
+    if not s:
+        return None
+    x0, y0, x1, y1 = (int(v) for v in s.split(":"))
+    return (x0, y0, x1, y1)
+
+
+def build_mask(kv, img, excl):
+    """--mask notgrass|color -> chroma/colour mask (+ --win window); else
+    the ground-distance mask."""
+    mkind = kv.get("mask", "color")
+    if mkind == "notgrass":
+        return notgrass_mask(img, bmin=float(kv.get("bmin", 45)),
+                             brt=float(kv.get("brt", 190)),
+                             win=_win_arg(kv), excl=excl)
+    if mkind == "color":
+        return color_mask(img, rg=float(kv.get("rg", 15)), brt=float(kv.get("brt", 190)),
+                          win=_win_arg(kv), excl=excl)
+    gx, gy, gw, gh = kv.get("gnd", (None, None, 120, 60))
+    ref = ground_ref(img, gx, gy, gw, gh) if gx is not None else img[600:660, 100:220].reshape(-1, 3).mean(axis=0)
+    return figure_mask(img, ref, float(kv.get("dist", 20)), excl)
+
+
 def main():
     args = sys.argv[1:]
     if args[0] == "diff":
         a, b = load(args[1]), load(args[2])
         d = float(np.abs(a.astype(int) - b.astype(int)).mean())
         print("mean_abs_pixel_diff = %.4f" % d)
+        return
+    if args[0] == "figbox":
+        # B1176 (#495): the ONE figure inside --win, measured from its colour
+        # mask: bbox, head row, feet row (central 40%), drawn px, feet point.
+        # Writes a verification crop beside the frame when --crop is given.
+        frame = args[1]
+        kv = {}
+        i = 2
+        while i < len(args):
+            if args[i].startswith("--"):
+                kv[args[i][2:]] = args[i + 1]
+                i += 2
+            else:
+                i += 1
+        win = _win_arg(kv)
+        if win is None:
+            raise SystemExit("figbox needs --win x0:y0:x1:y1")
+        img = load(frame)
+        mask = build_mask(kv, img, _excl(kv))
+        comp = largest_component(mask, minarea=int(kv.get("minarea", 300)))
+        if comp is None:
+            print(json.dumps({"frame": frame, "error": "no figure component", "win": list(win)}))
+            return
+        x, y, w, h = comp
+        sub = mask[y:y + h, x:x + w]
+        ys, xs = np.nonzero(sub)
+        cx0, cx1 = x + int(w * 0.3), x + int(w * 0.7)
+        central = (xs >= cx0 - x) & (xs <= cx1 - x)
+        feet_row = int(ys[central].max()) if central.any() else int(ys.max())
+        top_row = int(y) + int(ys.min())
+        feet_x = int(xs[central].mean()) + x if central.any() else int(xs.mean()) + x
+        out = {"frame": frame, "win": list(win), "rg": float(kv.get("rg", 15)),
+               "brt": float(kv.get("brt", 190)),
+               "component_px": [int(x), int(y), int(w), int(h)], "head_row": top_row,
+               "feet_row": int(y) + feet_row, "drawn_px": (int(y) + feet_row) - top_row,
+               "feet_xy": [int(feet_x), int(y) + feet_row]}
+        print(json.dumps(out))
+        if "crop" in kv:
+            pad = 40
+            c = img[max(0, y - pad):y + h + pad, max(0, x - pad):x + w + pad].copy()
+            m2 = mask[max(0, y - pad):y + h + pad, max(0, x - pad):x + w + pad]
+            c[m2 > 0] = (0, 0, 255)
+            cv2.imwrite(kv["crop"], c)
         return
     if args[0] == "calib":
         frame = args[1]
@@ -374,7 +494,7 @@ def main():
                     float(kv["a-x"]), float(kv["a-y"]), float(kv.get("a-z", 0)),
                     float(kv["b-x"]), float(kv["b-y"]),
                     dist=float(kv.get("dist", 20)), gnd=gnd, sol_in=sol_in,
-                    excl=excl, f_fix=float(kv.get("f", 1048.5)))
+                    excl=excl, f_fix=float(kv.get("f", 1048.5)), kv=kv)
         if "sol-out" in kv:
             with open(kv["sol-out"], "w") as fh:
                 json.dump(sol, fh)
@@ -407,15 +527,13 @@ def main():
             cam = Cam((sol["cx"], sol["cy"], sol["cz"]), (sol["lx"], sol["ly"], sol["lz"]), sol["f"])
         subject = kv.get("subject", "a")
         sx, sy = (ax, ay) if subject == "a" else (float(kv["b-x"]), float(kv["b-y"]))
-        ref = (ground_ref(img, int(kv["gnd-x"]), int(kv["gnd-y"]),
-                          int(kv["gnd-w"]), int(kv["gnd-h"]))
-               if "gnd-x" in kv
-               else img[640:700, 100:220].reshape(-1, 3).mean(axis=0))
-        mask = figure_mask(img, ref, float(kv.get("dist", 20)), _excl(kv))
+        excl = _excl(kv)
+        mask = build_mask(kv, img, excl)
         pr = cam.project((sx, sy, 3.0))
         if pr is None:
             raise SystemExit("subject out of frame")
-        comp = component_at(mask, int(pr[0]), int(pr[1]))
+        comp = component_at(mask, int(pr[0]), int(pr[1])) if kv.get("mask", "color") not in ("color", "notgrass") \
+            else largest_component(mask)
         if comp is None:
             print(json.dumps({"error": "no figure component at predicted point", "pred": list(pr)}))
             return
