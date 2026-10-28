@@ -41,7 +41,7 @@ the 10ffe690 and the 070a9215 bases) were stopped when fable moved and are kept,
   landing_cov PASS stays 0 (39 short, 1 over); source_cov goes from 30 short / 9 over to
   6 short / 30 over. Spell 93 (r0) reads landing_cov 2.243 and end +6.667 against the oracle's
   3.945 / +6.670, B1166's level-60 probe to the digit. Every before verdict is REFUSED
-  (level 1-44 vs 60) except r28's, whose frames are byte-identical at 44 and 60. Every
+  (level 1-44 vs 60), r28 included: its four before verdict cells are written REFUSED(L44!=60) like every other row; r28 is special only in that its raw before cells are identical at 44 and 60 (frames byte-identical), so the refusal is a formality there. Every
   remaining miss has an owner; five landing_end overs have none yet (sec. 3, FOLLOW-UP 3).
   tour-7 on b1118: unchanged, frames byte-identical (it already ran at 60, now read from the
   B1118 legs).
@@ -49,7 +49,7 @@ the 10ffe690 and the 070a9215 bases) were stopped when fable moved and are kept,
   the wrong level. The b1118 tour and the b1118 40-record sweep wrote a literal 60, which the
   B1118 legs and the B1130 captures confirm; they now read it. The B1142 tour gate is the live
   client: its legs ran `/say #level 60` and the client logged `level=60` on every tour cast.
-  Five runners that read column 9 or a literal 60 now call the resolver.
+  Seven sites that read column 9 or a literal 60 now call the resolver: six runner scripts (B1153/B1155/B1157/B1166 run_sweep_b1130.sh, B1157 run_sweep_b1118.sh, B1166 run_tour7_b1118.sh) and one table builder (B1153 batch_after.sh:106).
 - **RULING REQUEST**: B1155's, B1157's and B1166's committed b1130 tables were measured at the
   class level; they stop being valid references (below).
 
@@ -109,9 +109,7 @@ Verdict counts, before (class level) -> after (capture level), raw band verdicts
 | p90_land | 6 PASS, 10 short, 14 over, 10 n-a | 17 PASS, 8 short, 14 over, 1 n-a |
 | source_cov | 1 PASS, 30 short, 9 over | 4 PASS, 6 short, 30 over |
 
-In the table every before verdict is written `REFUSED(L<n>!=60)` except r28's (class level 44:
-its frames are byte-identical at 44 and 60, line 30, so no slot of that record has a minLevel
-between them). The `verdict_changes` column lists, per record, every raw verdict that moved.
+In the table every before verdict is written `REFUSED(L<n>!=60)`, r28's included (line 30, class level 44): r28's raw before cells are identical at 44 and 60 (frames byte-identical, so no slot of that record has a minLevel between them), which makes its refusal a formality, but the verdict cells are REFUSED. The `verdict_changes` column lists, per record, every raw verdict that moved.
 landing_end short -> PASS: r0, r1, r12, r23, r25; n-a -> PASS: r19, r22, r27; PASS -> over:
 r29; PASS -> short: r33. Rows that drew no landing at the class level and now do (n-a ->
 measured): r4, r5, r15, r17, r19, r22, r26, r27, r43.
@@ -139,7 +137,7 @@ every row):
   per-particle area on both stages). The source_cov swing to "over" is the level: at 60 every
   Source slot of a record is drawn (minLevel 0 / 24 / 39), as the oracle drew them.
 - **r35 (spell 253, record 104)**: B1167 (#486), all four axes.
-- **r7 source_cov**: B1173 (#492): the Middle-stage missile crosses the Source window
+- **r7 source_cov**: B1170 (#489), per the B1173 (#492) analysis: the record-driven Middle-stage missile crosses the Source window and B1170 removes it
   (`refactor/B1173/README.md:23`).
 - **r40 (602 Evacuate: North) landing_cov over / end over (+4.167 vs +0.730)**: the scene, not
   the FX. The oracle caster zones out (OP_DeleteSpawn Act+0.36-0.40, model gone by
@@ -214,7 +212,7 @@ invalidated: `review/B1142/gate/regression_table.tsv` and `refactor/B1157/b1118_
 ## FOLLOW-UP
 
 1. The owners above: B1164 (#483) area / attach scale s, B1172 (#491) target height, B1167
-   (#486) r35, B1173 (#492) r7.
+   (#486) r35, B1170 (#489) r7 (per the B1173 #492 analysis).
 2. r40 (602, group teleport): the harness has no caster despawn; the oracle's landing ends with
    the caster's OP_DeleteSpawn. A `--caster-despawn` equivalent of `--target-despawn` would
    make the row comparable.

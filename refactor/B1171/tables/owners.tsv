@@ -6,7 +6,7 @@
 4	cov short: B1164 (#483) landing pixel area; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; src over: B1164 (#483) attach scale s
 5	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; src over: B1164 (#483) attach scale s
 6	cov short: B1164 (#483) landing pixel area; end over: unattributed: over by <=0.35 s (FOLLOW-UP 3); src short: B1164 (#483) attach scale s
-7	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; p90 over: B1164 (#483) attach scale s; src over: B1173 (#492): the Middle-stage missile crosses the Source window
+7	cov short: B1164 (#483) landing pixel area + B1172 (#491) target height 238/288; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; p90 over: B1164 (#483) attach scale s; src over: B1170 (#489), per the B1173 (#492) analysis: the record-driven Middle-stage missile crosses the Source window
 8	cov short: B1164 (#483) landing pixel area; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; p90 short: B1164 (#483) attach scale s; src over: B1164 (#483) attach scale s
 9	cov short: B1164 (#483) landing pixel area; end short: B1164 (#483) via the instrument: end = last frame above an absolute lit-pixel threshold; src over: B1164 (#483) attach scale s
 10	cov short: B1164 (#483) landing pixel area; end over: unattributed: over by <=0.35 s (FOLLOW-UP 3); p90 over: B1164 (#483) attach scale s; src short: B1164 (#483) attach scale s
