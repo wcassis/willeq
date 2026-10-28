@@ -217,7 +217,6 @@ void eqt::bridge::BridgeComponent::RequestLootCorpse(uint16_t corpseId) {
 			if (st == 100) {
 				eqt::state::StandStateContext sctx;
 				sctx.in_world = ctx_.self.IsFullyZonedIn();
-				sctx.is_local = true;
 				st.transition(eqt::state::StandValue::Looting, sctx);
 			}
 		}
@@ -353,7 +352,6 @@ void eqt::bridge::BridgeComponent::CloseLootWindow(uint16_t corpseId) {
 			if (st == 105) {
 				eqt::state::StandStateContext sctx;
 				sctx.in_world = ctx_.self.IsFullyZonedIn();
-				sctx.is_local = true;
 				st.transition(eqt::state::StandValue::Standing, sctx);
 			}
 		}

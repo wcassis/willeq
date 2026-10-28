@@ -72,14 +72,14 @@ enum class StandValue : uint8_t {
 };
 
 // The inputs FUN_00483556 consults, the ones fable can know (README sec. 3
-// names each client line and its fable source).
+// names each client line and its fable source). The client's local-only half
+// (the 0x48359c-0x4835c3 chair/message cleanup, the 0x4836a5-0x4836f0 UI
+// mirror, both gated on the spawn being the local player DAT_00905ce4) has no
+// fable equivalent -- no sit-on-chair, no separate UI byte -- so it is not a
+// context input.
 struct StandStateContext {
     // FUN_0043745d() -- the client is in a zone.
     bool in_world = false;
-    // The spawn is the local player (DAT_00905ce4). The setter's local
-    // half (0x48359c-0x4835c3 chair/message cleanup, the 0x4836a5-0x4836f0
-    // UI mirror) has no fable equivalent (no sit-on-chair, no UI byte).
-    bool is_local = false;
     // The camera-follow check (FUN_0048bb31) and the camera-z vs top-of-
     // spawn compare in the crouch->stand/sit branch (0x483821-0x483844).
     // fable's default third-person camera follows from above the spawn's

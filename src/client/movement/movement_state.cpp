@@ -339,7 +339,6 @@ void eqt::movement::MovementComponent::storeStandByte(PositionState state, bool 
 			if (userInitiated) {
 				eqt::state::StandStateContext ctx;
 				ctx.in_world = ctx_.self.IsFullyZonedIn();
-				ctx.is_local = true;
 				ctx.casting = ctx_.spell_manager != nullptr && ctx_.spell_manager->isCasting();
 				st.transition(V::Standing, ctx);
 			} else {
@@ -350,7 +349,6 @@ void eqt::movement::MovementComponent::storeStandByte(PositionState state, bool 
 			if (userInitiated) {
 				eqt::state::StandStateContext ctx;
 				ctx.in_world = ctx_.self.IsFullyZonedIn();
-				ctx.is_local = true;
 				ctx.casting = ctx_.spell_manager != nullptr && ctx_.spell_manager->isCasting();
 				st.transition(V::Sitting, ctx);
 			} else {
@@ -361,7 +359,6 @@ void eqt::movement::MovementComponent::storeStandByte(PositionState state, bool 
 			if (userInitiated) {
 				eqt::state::StandStateContext ctx;
 				ctx.in_world = ctx_.self.IsFullyZonedIn();
-				ctx.is_local = true;
 				st.transition(V::Crouching, ctx);
 			} else {
 				st.apply(V::Crouching);
@@ -372,7 +369,6 @@ void eqt::movement::MovementComponent::storeStandByte(PositionState state, bool 
 			if (userInitiated) {
 				eqt::state::StandStateContext ctx;
 				ctx.in_world = ctx_.self.IsFullyZonedIn();
-				ctx.is_local = true;
 				st.transition(V::Lying, ctx);
 			} else {
 				st.apply(V::Lying);
