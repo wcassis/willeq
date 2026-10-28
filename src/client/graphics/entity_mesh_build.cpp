@@ -221,8 +221,10 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
 
     // B1172: the official client's actor scale (actor_scale.h), not the
     // race_models.json scale column -- that column only gates invisibility.
+    // B1176: the local player included (the client has no local-player
+    // branch); `isPlayer` no longer enters the scale.
     float serverSize = visual.serverSize;
-    scale = entityNodeScale(isPlayer, raceId, gender, serverSize);
+    scale = entityNodeScale(raceId, gender, serverSize);
 
     LOG_DEBUG(MOD_GRAPHICS, "buildEntityMesh[{}]: race={} gender={} size {:.2f} -> actor scale {:.3f}",
               name, raceId, gender, serverSize, scale);
@@ -331,7 +333,11 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
         irr::core::aabbox3df bbox = animNode->getBoundingBox();
         float bboxHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
         visual.modelYOffset = 0;
-        visual.collisionZOffset = collisionZOffsetFromBounds(bbox, scale);
+        // B1176: the local player sits at the client's own placement
+        // (ground + ROffset x scale); every other entity keeps the measured
+        // bbox origin-to-feet distance (entityNodeCollisionZOffset).
+        visual.collisionZOffset =
+            entityNodeCollisionZOffset(isPlayer, bbox, scale, raceId, gender, serverSize);
 
         // Debug: log bounding box info for entity creation
         LOG_DEBUG(MOD_GRAPHICS, "createEntity[{}]: race={} bbox Y=[{:.2f},{:.2f}] height={:.2f} scale={:.3f} collisionZOffset={:.2f}",
@@ -465,10 +471,12 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
     visual.inSceneGraph = true;  // Node was created with ROOT parent — mark as in-graph so PVS can manage it
 
     // The node origin IS the server Z; collisionZOffset is the origin-to-feet
-    // distance. See the Z-convention note in entity_renderer.h.
+    // distance. See the Z-convention note in entity_renderer.h. B1176: the
+    // local player takes the client's ROffset placement (entityNodeCollisionZOffset).
     irr::core::aabbox3df bbox = mesh->getBoundingBox();
     visual.modelYOffset = 0;
-    visual.collisionZOffset = collisionZOffsetFromBounds(bbox, scale);
+    visual.collisionZOffset =
+        entityNodeCollisionZOffset(visual.isPlayer, bbox, scale, raceId, gender, serverSize);
 
     // Set position (convert EQ Z-up to Irrlicht Y-up)
     // The node origin goes at the server Z; modelYOffset is a rendering nudge (0)
