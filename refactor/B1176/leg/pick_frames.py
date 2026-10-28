@@ -71,13 +71,17 @@ def main():
     # were at least 3 segments; with exactly 2, segs[0] IS the FP hold.
     fp = segs[0] if len(segs) == 2 else segs[1]
     chase = segs[-1]
-    name = {i: r[1] for r in rows}
-    # frame 0's name (no diff row): recover by pattern from frame 1's
+    by_index = {r[0]: r[1] for r in rows}
+    # frame i's file name: the diff row for index i names frame i; frame 0
+    # has no row, so derive its name arithmetically (the dump is
+    # frame_%06d.png, application_frame.cpp).
     import re
     def fname(i):
-        if i in name:
-            return name[i]
-        m = re.match(r"frame_(\d+)\.png$", name[1])
+        if i in by_index:
+            return by_index[i]
+        if not rows:
+            raise SystemExit("cannot derive frame 0 name")
+        m = re.match(r"frame_(\d+)\.png$", rows[0][1])
         return "frame_%06d.png" % (int(m.group(1)) - 1)
     print("fp_frame\t%s\t(segment %d-%d)" % (fname(fp[1]), fp[0], fp[1]))
     print("chase_frame\t%s\t(segment %d-%d)" % (fname(chase[1]), chase[0], chase[1]))
