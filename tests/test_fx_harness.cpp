@@ -862,6 +862,7 @@ TEST(B1167CapturePose, TheTurnedTargetStandsOnTheCapturesBearing) {
             EXPECT_GT(std::fabs(std::remainder(before * 180.0f / 3.14159265f, 360.0f)), 50.0f)
                 << "the un-turned rig already matched the capture";
     }
+}
 
 // B1177 (#496): the solve's cycle detector and its diagnostic, offline.
 TEST(B1177TargetSolve, ThePreB1177CycleIsDetected) {
