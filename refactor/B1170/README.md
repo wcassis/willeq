@@ -270,8 +270,8 @@ Python from the geometry the harness printed and compares frame by frame
 (`/mnt/projects/fable/review/B1170/worker/harness_missile/model_vs_harness.txt`):
 
 ```
-payload_38:    model first frame 120, last 128; harness first 120, last 128; max position difference 0.0001 units  MATCH
-payload_38_d0: model first frame 120, last 128; harness first 120, last 128; max position difference 0.0001 units  MATCH
+payload_38:    model first frame 120, last drawn frame 126 (removed in step-frame 127); harness first 120, last 126; max position difference 0.0001 units  MATCH
+payload_38_d0: model first frame 120, last drawn frame 127 (removed in step-frame 128); harness first 120, last 127; max position difference 0.0001 units  MATCH
 ```
 
 The run log shows the Middle stage on the object: `B1170 missile stage 1:

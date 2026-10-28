@@ -235,8 +235,8 @@ record, name and drawn Middle slots. (The missile timing gate above covers
 only the six gem spells — row 0 of the sweep among them, not the eight.)
 Every Middle row spawns a missile in the harness and its Target-stage fire is
 **deferred from OP_Action to missile arrival** — a scheduled +0.116 s onset
-shift (`kMissileLandingDelay` 0.30 − `kMissileFlightEndOffset` 0.184,
-`spell_visual_fx.h:554,557`; the m38/m93 run logs carry `createLanding: …
+shift (the then-constants kMissileLandingDelay 0.30 − kMissileFlightEndOffset 0.184,
+retired together with the record-driven missile by B1170 (#489); the m38/m93 run logs carry `createLanding: …
 deferring to the in-flight missile`). That is exactly the observed signature:
 nonzero landing deltas on precisely the eight Middle rows and +0.000 on all 32
 non-Middle rows — and the deltas are a render change, not instrument variance:
