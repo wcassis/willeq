@@ -39,7 +39,12 @@ if ! eqemu_stack_ready; then
 fi
 eqemu_stack_ready || { echo "stack not ready after up.sh" >&2; exit 65; }
 trap '[[ $WE_UP == 1 ]] && bash "$WT/scripts/eqemu/down.sh" >>"$OUT_LOCAL/stack-down.log" 2>&1 || :' EXIT
-ZID=$(eqemu_sql "SELECT id FROM zone WHERE short_name='qeynos2' LIMIT 1;")
+# B1176 (#495): zone_id is the zone's STABLE zoneidnumber (the Zones:: enum
+# space: qeynos2=2), NOT the zone table's auto-increment PK `id` -- the
+# column trap documented in scripts/eqemu/zone_place_lib.sh (seed_char) and
+# scripts/eqemu/roster_zone_seed.sql. The PK 303 is causeway's zoneidnumber,
+# so a PK seed zoned every leg into causeway (no causeway.s3d -> A rc=4).
+ZID=$(eqemu_sql "SELECT zoneidnumber FROM zone WHERE short_name='qeynos2' LIMIT 1;")
 [ -n "$ZID" ] || { echo "no qeynos2 zone id" >&2; exit 65; }
 ZID=${ZID//[[:space:]]/}
 # B1176 (#495): the client loads <zone>.s3d from its eq_client_path; a zone
