@@ -186,7 +186,11 @@ Unit tests, `tests/test_options_particles.cpp` (`OptionsParticlesB1182`):
 
 Targeted ctest (gitlab-runner, Release GLES2): `OptionsParticlesB1182` 8/8 and the
 wider `Options|EqClient|UiPreferences|FrameComponent|SpellFx|SpellSlot|CameraZoneIn`
-selection 29/29. Hygiene: 49/49 (`rbuild hygiene`, the full `hygiene` label). CI: <CI>.
+selection 29/29. Hygiene: 49/49 (`rbuild hygiene`, the full `hygiene` label).
+CI: green — the MR pipeline passes every auto stage (hygiene, build-test:
+Release GLES2 build + full ctest, gate: visual gate across the 5 manifest
+zones; the arm jobs are manual/opt-in). First full run: pipeline #2445,
+success.
 
 ## 5. Hand-off
 
