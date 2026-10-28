@@ -423,6 +423,21 @@ are README, scripts and a file mode), `RBUILD_HOST=user@gitlab-runner-1 tbuild`:
   182 / 182 (`review/B1172/worker/fix/ctest_final.log`), hygiene 48 / 48
   (`review/B1172/worker/fix/hygiene_final.log`, DocCitations included).
 - the earlier legs' logs: `review/B1172/worker/ctest_final.log`, `review/B1172/worker/hygiene_final.log`.
+- FIX leg (the hygiene split, 2026-10-28), on the ThinkPad (rbuild): the fable merge left
+  `model_viewer_fx_harness.cpp` at 1507 lines and pipeline 2370 on ba62111a failed only the
+  hygiene FileSizeCeiling, so the B1166/B1177 target-fit block moved to
+  `tools/model_viewer/fx_target_fit.{h,cpp}`. `python3 -I scripts/refactor/verify_move_only.py
+  ba62111a..HEAD` lists exactly five substantive added lines (the new header's declarations and
+  its `irr::video::IImage` forward declaration) and zero substantive removals -- the 182 moved
+  lines are byte-for-byte in the line multiset. The harness is 1310 lines; the allowlist is
+  untouched (headroom for B1177's and B1167's additions to this file). Frame identity: the
+  b1130 preset rendered once with the pre-split binary (built at ba62111a) and once with the
+  post-split one, same command and plan (`100.0 93 other 0 250 60`, `--seconds 0.5`); frame 0 is
+  sha256 `177839e239f760d47d9623bd7c825dad2ebbc81cc9186677f46c0f5bcece54de` on both sides,
+  15/15 frames byte-identical, and the b1130 self-check line is identical (PASS, 285 px).
+  Targeted `-R 'FxHarness|B1166TargetAnchor|ActorScale|EntitySize'` 30/30 (one gtest self-skip:
+  the real-node fixture wants the client tree, absent on that host); hygiene 49/49
+  (FileSizeCeiling, DocCitations, DocCounts, DocClaims, ZeroCallers all green; one env skip).
 - cite checker: `python3 -I scripts/refactor/cite_check.py refactor/B1172/README.md --tree .
   --extra /mnt/projects/fable --dis .../eqgame.dis --dis .../EQGraphicsDX9.dis`; the result line
   is in the MR note. Its address warnings are data words: the vtable 0x101c9ba0 and the float
