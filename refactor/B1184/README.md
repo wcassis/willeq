@@ -57,7 +57,9 @@ value was touched — the harness is untouched (nothing in
 
 - `tour.tsv` — 7 rows; oracle (B1178 v3 `kTour`), mine, verdict per
   land_cov/end/roi_l/roi_s, the B1180-after values + per-row deltas, red list,
-  owner.
+  owner. (`d_src_cov` regenerated 2026-10-28 after `build_tables.py:num()` was
+  taught to parse numeric strings — the column had been blank: -0.020 on 38 and
+  93, 0.0 on the other five; every other table byte-identical.)
 - `b1130.tsv` — 40 rows; the nine metrics (source_cov, landing_cov,
   landing_end_s, p90_src, p90_land, source_onset_s, source_centroid,
   src_h_lo, src_h_hi) as oracle/mine/verdict, plus B1180-after + delta on all
@@ -110,11 +112,12 @@ the measure files, never retyped. The `d_*` columns (mine minus B1180's after
 column) show what THIS tip's tree (the B1180 merge's width-factor pin, the
 post-B1180 merges) moved, since B1180's own re-gate rendered its pre-merge
 branch 80202c81f: `source_onset_s` is d = 0.0 on all 40 b1130 rows (the
-collapse is pre-B1184 — FU2); the other b1130 columns are zero on 32-36 rows
+collapse is pre-B1184 — FU2); the other b1130 columns are zero on 32-37 rows
 and move on eight (r0/93, r1/200, r2/202, r6/722, r7/40, r18/378, r25/14,
 r26/310), at most landing_cov +0.237 (93) and landing_end +0.700 (spell 40);
-the b1118 d columns move on six rows of the same family (r0/93, r1/200,
-r7/40, r18/378, r25/14, r26/310), with |d| at most 0.415 (land_cov, r26/310)
+the b1118 d columns move on eight rows of the same family (r0/93, r1/200,
+r2/202 land_cov +0.004, r6/722 land_cov -0.010, r7/40, r18/378, r25/14, r26/310),
+with |d| at most 0.415 (land_cov, r26/310)
 and 0.367 (end, r7/40); the tour d columns move on 93/38 (land_cov +0.135,
 2.905 -> 3.040; end -0.133, 6.633 -> 6.500).
 
@@ -190,7 +193,7 @@ pre-B1184 drift, not this tip's.
 11 over. Owner: B1157 (the committed "blank `src_*_n` + the NVIDIA
 re-baseline" attribution — the B1184 card's named owner).** Both columns
 improved (14 -> 28 and 14 -> 27 PASS) as the sprite size landed; the residual
-is the source window's vertical extent (the 24 red cells sit +0.15 to +0.64
+is the source window's vertical extent (25 red cells: the 21 over cells sit +0.15 to +0.64
 above the oracle — the window is taller — e.g. 93 hi 1.70 vs 1.25, 18 hi
 1.72 vs 1.08 — or -0.18 to -0.21 below on the four short cells, r13/r29/r35/
 r42).
@@ -202,8 +205,8 @@ since B1151's run", which is the expected accumulated post-B1151 chain, not a
 per-card regression. Every red row's owner is that chain — B1157 (cast-anim),
 B1164 (`s`), B1166 (anchor), B1170 (missile), B1172 (target scale), B1177
 (solver), B1180 (width factor) — and the `d_*` columns (vs B1180's after
-column) show B1184's tip's own contribution is small and confined to six rows
-of the 93/200/40/378/14/310 family (|d| <= 0.415; the d_* paragraph above).
+column) show B1184's tip's own contribution is small and confined to eight rows
+of the 93/200/202/722/40/378/14/310 family (|d| <= 0.415; the d_* paragraph above).
 r35 (spell 253, self-cast): land_cov 5.297 (B1151 baseline) -> 4.23 (B1180's
 re-gate, kept on this tip, d = 0.0) — B1180's unattributed self-landing
 regression, owned there as the next unit to touch the self-landing window
