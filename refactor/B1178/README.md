@@ -89,18 +89,21 @@ Zero `OP_BeginCast`/`OP_Action` for 38/54/656/93 in either pcap. B1118's plan
 Troll and casts; there was nothing to land because nothing was cast.
 
 **C2 — the gate measurement video was the OBSERVER client's display (rig
-defect: X record attached to the wrong client).** `measure/wiz4458/meta.json`
+defect: the session video hardcodes the observer's Xvfb).** `measure/wiz4458/meta.json`
 and `measure/dru4253/meta.json` both point at `lane/<leg>/video.mp4`. That
 video is the obs client (acct `willeqwatch`, char `Oraclewatch`): probed at the
 458 `OP_Action` instant (container 423.9 s, `wiz4_458win/w_424.png`) it shows
 the **Oraclewatch status window, an open Tip of the Day, the obs client's own
-chat/MOTD, and no spell effect** — the caster is a distant speck. The caster's
-display exists in the leg only as per-step stills (`26_gem6_cast458.png`,
-`27_fx458.png`, …). The "near-zero" coverage (0.0257 / 0.0099 model²) is
-therefore an artifact of measuring a display that never drew the landing —
-**not a property of the caster's landing.** (The earlier "video black during
-the leg" reading was a time-scale error; direct probes at the landing instants
-settle it.)
+chat/MOTD, and no spell effect** — the caster is a distant speck. The code
+reason: `oracle_remote.sh` records `-i :99+0,30` (hardcoded), and in an
+observer session `OBS_DISPLAY=:99` while the caster moves to
+`CASTER_DISPLAY=:98` — so the moment a plan adds an observer, the session
+video silently becomes the observer's display. The caster's display exists in
+the leg only as per-step stills (`26_gem6_cast458.png`, `27_fx458.png`, …).
+The "near-zero" coverage (0.0257 / 0.0099 model²) is therefore an artifact of
+measuring a display that never drew the landing — **not a property of the
+caster's landing.** (The earlier "video black during the leg" reading was a
+time-scale error; direct probes at the landing instants settle it.)
 
 **C3 — at the measured Troll positions, the Troll's feet (and any ground
 landing at them) sit BELOW the crop bottom (geometry, measured from the
@@ -117,21 +120,27 @@ must put the Troll where B1118's was: target + stun IMMEDIATELY after spawn
 (so it stands still at spawn distance), verify the settle still with a ruler
 (feet row ≤ ~640), and only then cast.
 
-**C4 — UI state did not match the plan (ini-set not effective on the running
-caster client).** Measured in the stills: the **Tip of the Day was open**
-("Security Tip", cols ~900..1280, rows ~180..560 — inside the gate crop)
-despite `ini-set=Tips.ShowTotD=0`; the **chat window was visible bottom-left**
-(rows >700 — below the crop, harmless, but the `ui-ini-set` off-frame move did
-not take either). The inis are read at client start; the seed must be applied
-BEFORE the caster client launches, or the tip closed in-game (B1118's plan
-`click 1229,555 close_tip`).
+**C4 — UI state did not match the plan (the ToTD ini key is a guess; the
+close-tip click missed).** Measured in the stills: the **Tip of the Day was
+open** ("Security Tip", cols ~900..1280, rows ~180..560 — inside the gate
+crop) despite `ini-set=Tips.ShowTotD=0` — and **no such key exists**: the
+shipped client inis (B1118's and the leg's `eqclient-iniset-original.ini`)
+contain no Tips/TotD entry, so the seed wrote a section the client ignores.
+B1118's plan closed the tip with a click at **(1229,555)**; the re-run plan's
+`close_tip` clicked **(1229,100)** — the top of the dialog, a miss. (The chat
+`ui-ini-set` DID take effect: the chat sits at its seeded -427,700, mostly
+off-frame, rows >700 — below the crop.)
 
-**C5 — the caster was not in B1118's clean state (measured from the leg log +
-stills).** The leg's pre-SQL seeded class/gems/skills/multiclass/timers but
-**no pose** (`re-run5.log`), although the plan header declares
-`pose=-74,428,3.75,160`; the stills show the caster at **30 % HP** with a
-live combat log vs `Garaxx Darkpaw` and `Oraclewatch's corpse` beside it —
-B1118's leg zoned in fresh at the seeded pose with no combat.
+**C5 — the caster was in a different combat state than B1118's (measured from
+the two pcaps + the stills).** The pose WAS seeded (the plan's `# pose=` header,
+B1065: `oracle_session.sh` seeds it with the zone), so the standing point
+matches B1118's. What differs: B1178's caster leg shows a live combat log vs
+`Garaxx Darkpaw` and the caster at **30 % HP** by the 458 landing, while
+B1118's pcap contains **zero** combat text (no `Garaxx`, no hit/kill lines) —
+the field mob state differed between the two runs (a respawn the B1118 leg
+never met). Combat alone does not move the landing, but it is a measured
+difference in the re-capture's starting state and should be checked in the
+re-run's settle still (full HP, no combat log).
 
 **Cause table (Ask 1):** the rows that differ between the first leg and
 B1118's original (B1164 dev3's fable leg is the in-crop control: model
@@ -147,16 +156,22 @@ construction, gate 4.342 for 93):
 | Troll casts | cast + landed (OR_L 3.889/2.461/—/5.847) | **no cast at all** (C1: 120 s self-stun) | — |
 | self-cast landing | 1.242 (458) / 7.217 (253) model², in-crop | in-crop in the stills (C2 artifact only) | in-crop (4.342 @ 93) |
 
-**The fix (re-capture spec, per C1–C5):** (1) plan order
-`#spawn <Troll>` → `/target <Troll>` → `#stun 120000` → settle → **ruler
-verification still** (feet row ≤ ~640, no ToTD, no chat in crop) → cast;
-(2) the measurement video records the **caster's** display (the obs client
-stays a rig witness, not the measurement surface); (3) camera/ToTD/chat
-seeding applied **before** the caster client launches, with an in-game
-tip-close as B1118's, and a still that verifies both; (4) pose seeded in the
-leg's SQL (B1118's `-74,428,3.75,160`); (5) chars 67/103 restored, lease
-released. Then re-measure `OR_L` per row from the caster-display frames with
-the gate's instruments and replace old → new.
+**The fix (re-capture spec, per C1–C5) — written into the v3 plans**
+(`plans/b1118ref_wiz5.tsv`, `b1118ref_dru5.tsv`, `b1118ref_ench5.tsv`):
+(1) plan order `#spawn <Troll>` → `/target <Troll>` → `#stun 120000` → settle
+→ `troll*_geom` verification still (feet row ≤ ~640, no ToTD, no chat in
+crop) → cast (C1, C3); (2) `# caster-video=1` (the B1134 driver feature,
+proven by B1134's legs): the measurement surface is
+`video-caster.mp4` (the caster's own Xvfb, 30 fps, 1280x800 at +0,30 — the
+same grab geometry as the session video), the obs `video.mp4` stays a
+witness (C2); (3) the Tip of the Day is closed by B1118's proven click
+(1229,555) and the guessed `Tips.ShowTotD` ini key is dropped (C4);
+(4) the pose stays seeded from the plan's `# pose=` header (B1065), and the
+settle still is checked for full HP / no combat (C5); (5) chars 67/103
+restored, lease released. Then re-measure `OR_L` per row from the
+`video-caster.mp4` frames with the gate's instruments
+(`measure/b1118/fx_measure.py` + `fx_summary.py`, crop 170,0,1060,650 per
+meta.json) and replace old → new.
 
 **old -> new per row (the figure height, the part that DID measure):** the
 committed reference was a single clipped/unpinned figure set (target 284 px).
