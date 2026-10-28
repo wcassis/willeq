@@ -1,0 +1,23 @@
+# B1176 fable tour for A (the windowed client under test). A stands at
+# (-74,428) heading 416; B (the headless Testcaster) at (-56.3,445.7), seeded
+# by fable_leg.sh before either client launches. B sets the scene (GM); A does
+# no GM commands (A is not a GM). A's camera path mirrors the oracle legs:
+# first person (the fable login default, T471: kDefaultCameraMode = First
+# Person, "the official login camera") -> /fpcam dump (the RESOLVED FP pose:
+# eye EQ position, node origin z, look pitch, hfov/vfov -- the fable-side
+# measurement of the first-person row) -> chase (USER CAMERA 1, the default
+# 30-unit rig, kUser1DefaultRig camera_rig.h:102 -- the same default the
+# oracle uses, no zoom on either side) -> /camera get twice (the exact chase
+# camera position + look-at, logged; the fable-side chase calibration needs
+# no solving).
+wait 60
+wait 10
+/fpcam dump
+wait 8
+/camera chase
+wait 12
+/camera get
+wait 4
+/camera get
+wait 4
+/q
