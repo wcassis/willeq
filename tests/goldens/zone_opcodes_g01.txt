@@ -156,5 +156,5 @@
 0x389e HC_OP_InstillDoubt
 0x1496 HC_OP_ReadBook
 0x4e31 HC_OP_PetBuffWindow
-# B1170 (#489): added after G01 -- the 0x4033 missile object arm (BLESS PENDING, refactor/B1170/README.md RULING REQUEST).
+# B1170 (#489): added after G01 -- the 0x4033 missile object arm (blessed by Will 2026-10-28; refactor/B1170/README.md RULING REQUEST).
 0x4033 HC_OP_SomeItemPacketMaybe
