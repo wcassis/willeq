@@ -48,13 +48,24 @@ obs	press	F9	0	obs_cam3
 obs	wait	3000	0	obs_cam_settle
 command	#weather 0	0	clear2
 wait	36000	0	time_settle
+# B1143/B1159's working recipe: the client-side /target <name> resolves to
+# target=0 on this rig (bolt3's 24_tgt_obs_a step: OP_TargetCommand target=0),
+# so the cast self-cast (src_id==tgt_id). The caster instead targets by the
+# native left click on the observer at the B1134-measured 933,639 (same rig),
+# which sets the server target that #castspell's c->GetTarget() then reads.
+command	/disc Aggressive	0	aggro
+wait	1500	0	aggro_settle
 command	/target Oraclewatch	0	tgt_obs_a
 wait	1500	0	tgt_obs_a_settle
+click	933,639	0	click_tgt_a
+wait	1000	0	click_tgt_a_settle
 command	#castspell 68 0	0	bolt_a
 wait	12000	0	bolt_a_fx
 command	#mana	0	mana_b
 command	/target Oraclewatch	0	tgt_obs_b
 wait	1500	0	tgt_obs_b_settle
+click	933,639	0	click_tgt_b
+wait	1000	0	click_tgt_b_settle
 command	#castspell 68 0	0	bolt_b
 wait	12000	0	bolt_b_fx
 obs	command	/q	0	obs_quit
