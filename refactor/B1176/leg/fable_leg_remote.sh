@@ -18,6 +18,20 @@ OUT=$1 BUILD=$2 ACHAR=$3
 W=1280 H=800
 BIN=$BUILD/bin/willeq
 [ -x "$BIN" ] || { echo "no binary: $BIN" >&2; exit 65; }
+# B1176 (#495): the leg dir holds only cfgs + frames, so the client's
+# shipped-data resolution (ResolveDataPath) would FATAL on the first missing
+# file (it did: constrained_presets.json / item_models.json / willeq.db,
+# every leg of the first run died at init: A rc=1, B rc=1). Pin the data
+# root to the source tree this build came from -- each slug has its own tree
+# on the ThinkPad (kb-b1176-player-scale = this branch, kb-b1176-fable-base =
+# the origin/fable snapshot the BEFORE build came from), so BEFORE and AFTER
+# each run against their OWN tree's shipped data.
+SLUG=$(basename "$(dirname "$BUILD")")
+SRC=/home/user/src/willeq-wt/"$SLUG"
+for f in config/constrained_presets.json config/hotkeys.json data/item_models.json data/willeq.db; do
+  [ -f "$SRC/$f" ] || { echo "data root $SRC missing $f" >&2; exit 65; }
+done
+export WILLEQ_DATA_ROOT="$SRC"
 mkdir -p "$OUT"
 cp "$LEG_DIR/fable_tour.txt" "$OUT/tour.txt" 2>/dev/null || true
 cp "$LEG_DIR/fable_b_tour.txt" "$OUT/b_tour.txt" 2>/dev/null || true
