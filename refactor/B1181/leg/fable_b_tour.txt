@@ -10,11 +10,16 @@
 #  - ARCHERY: /target Oraclewatch resolves CLIENT-SIDE (fable's
 #    CommandProcessor::cmdTarget -> findEntityByName -> targetEntity(spawnId);
 #    the official client's /target name resolves server-side and returns 0 on
-#    this rig -- B1181's oracle-leg finding) and /attack toggles
-#    CombatManager auto-attack, which fires the Longbow (item 8003, main-hand
-#    DB slot 11) with Arrows (item 8005, ammo DB slot 22) that the pre-SQL
-#    puts on B. The server's SendItemAnimation then sends the 0x4033 with
-#    the arrow's IT model (IT10) to the observer.
+#    this rig -- B1181's oracle-leg finding) and /autofire toggles the
+#    RANGED auto-attack (CombatManager::EnableAutoFire sends HC_OP_AutoFire;
+#    the server then swings the Longbow (item 8003, main-hand DB slot 11)
+#    with Arrows (item 8005, ammo DB slot 22) that the pre-SQL puts on B,
+#    and SendItemAnimation sends the 0x4033 with the arrow's IT model
+#    (IT10) to the observer). RUN 3 MEASURED (2026-10-29): the tour's old
+#    /attack (the MELEE toggle) enabled auto-attack but produced no swing
+#    packet -- ProcessCombatRound's melee branch only times out
+#    (combat_rounds.cpp 437-441, "server should process melee attack", no
+#    packet) and the ranged weapon needs /autofire. Fixed below.
 #  - BOLT: /say '#castspell 68 0' -- GM bypass (no memorisation, no mana
 #    check), executed by the server AS B with B's current server target
 #    (Oraclewatch, set by the same /target). The GFX rule
@@ -35,9 +40,9 @@ wait 2
 wait 40
 /target Oraclewatch
 wait 3
-/attack
+/autofire
 wait 25
-/attack
+/autofire
 wait 5
 /say #mana
 wait 2
