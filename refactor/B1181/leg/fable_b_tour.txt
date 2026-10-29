@@ -7,26 +7,21 @@
 # what makes this work, and it is the ONLY reason B, not A, sets the scene).
 #
 # The SHOTS:
-#  - ARCHERY: /target Oraclewatch resolves CLIENT-SIDE (fable's
+#   - THROWN ITEM: /target Oraclewatch resolves CLIENT-SIDE (fable's
 #    CommandProcessor::cmdTarget -> findEntityByName -> targetEntity(spawnId);
 #    the official client's /target name resolves server-side and returns 0 on
 #    this rig -- B1181's oracle-leg finding), then /range fires ONE
 #    client-initiated ranged attack (B900's proven wire path:
 #    CombatManager::RangedAttack sends HC_OP_CombatAbility with m_atk=
-#    slotRange and m_skill=Archery; the server's Client::RangedAttack
-#    (zone/special_attacks.cpp:861) validates bow+arrow+range and
-#    DoArcheryAttackDmg launches the arrow whose SendItemAnimation is the
-#    0x4033 with the arrow's IT model (IT10) to both clients). RUN 4
-#    MEASURED (2026-10-29, fable-b1181-4): the run-3 version's /autofire
-#    produced ZERO swings in its 25 s window -- CombatManager::EnableAutoFire
-#    only sends the HC_OP_AutoFire flag and sets a local state
-#    (combat.cpp:578-601; nothing in the client swings on it, and the lane-5
-#    server never swung either: 0x4033 census = 0 in the window). Also
-#    measured: the server rejects a 9.05-unit shot with RANGED_TOO_CLOSE --
-#    Client::RangedAttack's band is MinRangedAttackDist^2 .. range^2
-#    (special_attacks.cpp:965-972, RULE_INT(Combat, MinRangedAttackDist, 25)
-#    ruletypes.h:576) -- so the leg's pre-SQL sets that rule to 0 for the
-#    leg and B reloads it here with '#reload rules global'.
+#    slotRange and the skill from the range slot's itemtype -- combat.cpp
+#    672-679: bow -> Archery(7), throwing -> Throwing(51)). RUN 9: the shot
+#    is a THROWN knife (B900's item 8001, itemtype 19, IDFile IT10650), not
+#    a bow, because the caster (char 67) is a Berserker and the dispatch's
+#    MaxSkill gate (special_attacks.cpp:364) reads the class cap, which is 0
+#    for archery and 280 for throwing (lane-5 skill_caps, measured). The
+#    server's ThrowingAttack (special_attacks.cpp:1530) launches the knife
+#    whose SendItemAnimation is the 0x4033 with the knife's IT model
+#    (IT10650) to both clients.
 #  - BOLT: /say '#castspell 68 0' -- GM bypass (no memorisation, no mana
 #    check), executed by the server AS B with B's current server target
 #    (Oraclewatch, set by the same /target). The GFX rule

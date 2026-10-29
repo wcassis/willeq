@@ -2,8 +2,10 @@
 # B1181 host-side fable leg driver (run on hermes-ext, lane 5). One leg = one
 # stack up/down: the OBSERVER is the willeq under test (A, windowed on the
 # ThinkPad's :99, the ledger video + the frame dump), the CASTER is a
-# headless willeq GM (B, Testcaster on willeq_test) running the archery
-# auto-attack and the two bolt #castspells from fable_b_tour.txt.
+# headless willeq GM (B, Testcaster on willeq_test) running the thrown-knife
+# shot (run 9: the caster is a Berserker -- the dispatch's MaxSkill gate
+# reads the class cap, so the card's "archery or thrown-item shot" takes the
+# thrown path) and the two bolt #castspells from fable_b_tour.txt.
 #
 # The caller holds NO lease: the leg takes and releases its own (the oracle
 # legs in the queue do the same per leg). The GFX rule
@@ -43,7 +45,6 @@ eqemu_sql "SELECT id, name, account_id, cur_hp, mana, endurance FROM character_d
 eqemu_sql "SELECT rule_name, rule_value FROM rule_values WHERE rule_name='Spells:UseLiveSpellProjectileGFX';" >"$OUT_LOCAL/gfx-before.tsv" 2>&1
 eqemu_sql "SELECT rule_name, rule_value FROM rule_values WHERE rule_name='Combat:MinRangedAttackDist';" >"$OUT_LOCAL/range-rule-before.tsv" 2>&1
 eqemu_sql "SELECT slot_id, item_id FROM inventory WHERE character_id=67 AND slot_id IN (11, 22);" >"$OUT_LOCAL/gear-before.tsv" 2>&1
-eqemu_sql "SELECT value FROM character_skills WHERE id=67 AND skill_id=7;" >"$OUT_LOCAL/archery-skill-before.tsv" 2>&1
 # --- pre-SQL (world up): GFX on, the caster's archery gear, observer vitals,
 # --- the poses. B zones in at its seeded pose (the world reads the DB row per
 # --- login, B1176) and A at the observer pose, heading 220 (facing B).
@@ -66,17 +67,32 @@ eqemu_sql "UPDATE rule_values SET rule_value='0' WHERE rule_name='Combat:MinRang
 RANGE_BAD=$(eqemu_sql "SELECT count(*) FROM rule_values WHERE rule_name='Combat:MinRangedAttackDist' AND rule_value<>'0';")
 RANGE_BAD=${RANGE_BAD//[[:space:]]/}
 [ "$RANGE_BAD" = "0" ] || { echo "MinRangedAttackDist not fully zeroed (rows still non-zero: $RANGE_BAD) -- name miss? the 9.05-unit shot would be refused" >&2; exit 65; }
-# The server's bow/arrow type checks (special_attacks.cpp:893-906) read the
-# DB itemtype: 5 = ItemTypeBow, 27 = ItemTypeArrow (B900's seed). A wrong
-# item row fails the shot server-side, so gate on it, not on the log.
-BOW_TYPE=$(eqemu_sql "SELECT itemtype FROM items WHERE id=8003;"); BOW_TYPE=${BOW_TYPE//[[:space:]]/}
-ARR_TYPE=$(eqemu_sql "SELECT itemtype FROM items WHERE id=8005;"); ARR_TYPE=${ARR_TYPE//[[:space:]]/}
-[ "$BOW_TYPE" = "5" ] || { echo "item 8003 itemtype='$BOW_TYPE' want 5 (ItemTypeBow)" >&2; exit 65; }
-[ "$ARR_TYPE" = "27" ] || { echo "item 8005 itemtype='$ARR_TYPE' want 27 (ItemTypeArrow)" >&2; exit 65; }
+# RUN 9 (2026-10-29): the shot is a THROWN item, not archery. The caster
+# (char 67) is a Berserker (class 12): the dispatch gate
+# `if (!MaxSkill(m_skill) && !bypass_skill_check) return;`
+# (special_attacks.cpp:364) reads the CLASS CAP, not the learned value
+# (Client::MaxSkill -> SkillCaps::GetSkillCap, client.cpp:3189-3196), and the
+# lane-5 skill_caps table has archery (skill_id 7) rows for classes
+# {1,3,4,9} only (measured) -- no row for 12, so a seeded archery skill row
+# (run 8) can never pass the gate. Throwing (skill 51) has a class-12 cap of
+# 280 (measured), and the card accepts "one archery or thrown-item shot", so
+# the leg seeds B900's throwing knife (item 8001, itemtype 19 = SmallThrowing,
+# IDFile IT10650, range 45 -- all measured live; IT10650 resolves in the
+# client's own archives: run 9 A.log "EntityPrepWorker: spawn=80 equip
+# IT10650 extract took 5ms") in slot 11: the client's /range auto-selects
+# skill 51 from the range slot's itemtype (combat.cpp:672-679), and the
+# server's ThrowingAttack (special_attacks.cpp:1530) validates itemtype
+# 7/19 and sends the 0x4033 SendItemAnimation carrying the item's IDFile
+# (special_attacks.cpp:1747-1762). The knife is pre-existing B900 data --
+# the leg only moves the inventory row.
+KNIFE_TYPE=$(eqemu_sql "SELECT itemtype FROM items WHERE id=8001;"); KNIFE_TYPE=${KNIFE_TYPE//[[:space:]]/}
+KNIFE_FILE=$(eqemu_sql "SELECT IDFile FROM items WHERE id=8001;"); KNIFE_FILE=${KNIFE_FILE//[[:space:]]/}
+KNIFE_RANGE=$(eqemu_sql "SELECT \`range\` FROM items WHERE id=8001;"); KNIFE_RANGE=${KNIFE_RANGE//[[:space:]]/}
+[ "$KNIFE_TYPE" = "19" ] || { echo "item 8001 itemtype='$KNIFE_TYPE' want 19 (ItemTypeSmallThrowing)" >&2; exit 65; }
+[ "$KNIFE_FILE" = "IT10650" ] || { echo "item 8001 IDFile='$KNIFE_FILE' want IT10650" >&2; exit 65; }
+[ "$KNIFE_RANGE" -ge 10 ] 2>/dev/null || { echo "item 8001 range='$KNIFE_RANGE' want >= 10 (the 9.05-unit shot)" >&2; exit 65; }
 eqemu_sql "DELETE FROM inventory WHERE character_id=67 AND slot_id=11;
-INSERT INTO inventory (character_id, slot_id, item_id, charges) VALUES (67, 11, 8003, 0);
-DELETE FROM inventory WHERE character_id=67 AND slot_id=22;
-INSERT INTO inventory (character_id, slot_id, item_id, charges) VALUES (67, 22, 8005, 10);" \
+INSERT INTO inventory (character_id, slot_id, item_id, charges) VALUES (67, 11, 8001, 10);" \
   || { echo "gear pre-SQL failed" >&2; exit 65; }
 eqemu_sql "UPDATE character_data SET cur_hp=999999, mana=999999, endurance=999999 WHERE id=103 AND name='Oraclewatch';" \
   || { echo "observer vitals pre-SQL failed" >&2; exit 65; }
@@ -95,21 +111,12 @@ seed_zone_got() {
 seed_zone_got 103
 seed_zone_got 67
 eqemu_sql "SELECT slot_id, item_id FROM inventory WHERE character_id=67 AND slot_id IN (11, 22);" >"$OUT_LOCAL/gear-after-pre.tsv" 2>&1
-grep -q 8003 "$OUT_LOCAL/gear-after-pre.tsv" && grep -q 8005 "$OUT_LOCAL/gear-after-pre.tsv" \
+grep -q 8001 "$OUT_LOCAL/gear-after-pre.tsv" \
   || { echo "gear not verified after pre-SQL" >&2; cat "$OUT_LOCAL/gear-after-pre.tsv" >&2; exit 65; }
-# RUN 8 (2026-10-29): the dispatch's skill gate drops the shot. OPCombatAbility
-# (special_attacks.cpp:325) does `if (!MaxSkill(m_skill) && !bypass_skill_check)
-# return;` BEFORE RangedAttack -- and char 67 has NO archery row (measured:
-# character_skills id=67 has throwing=1, no skill_id=7), so runs 5-7 produced
-# zero LogCombat and zero 0x4033 despite the client sending the correct
-# 0x5ee8 {target=263, m_atk=11, m_skill=7} (viz/combat_ability.py on run 7's
-# capture.pcap).
-# Seed archery=25; B reads it fresh on this leg's login.
-eqemu_sql "INSERT INTO character_skills (id, skill_id, value) VALUES (67, 7, 25) ON DUPLICATE KEY UPDATE value=25;" \
-  || { echo "archery seed: pre-SQL failed" >&2; exit 65; }
-ARCHERY_G=$(eqemu_sql "SELECT value FROM character_skills WHERE id=67 AND skill_id=7;")
-ARCHERY_G=${ARCHERY_G//[[:space:]]/}
-[ "$ARCHERY_G" = "25" ] || { echo "archery seed not verified: got '$ARCHERY_G'" >&2; exit 65; }
+# RUN 8's archery-skill seed is RETIRED (run 9): the gate reads the class
+# cap, not the learned value, and the caster's class (12) has no archery row
+# in skill_caps at all -- a skill row can never fix it. The thrown path needs
+# no skill row (throwing cap 280, measured).
 # --- run the leg on the ThinkPad ---------------------------------------------
 ssh thinkpad "mkdir -p '$OUT_REMOTE'" || { echo "remote mkdir failed" >&2; exit 65; }
 scp -q "$LEG_DIR/fable_leg_remote.sh" "$LEG_DIR/fable_a_tour.txt" "$LEG_DIR/fable_b_tour.txt" \
@@ -138,14 +145,10 @@ RR_BEFORE=${RR_BEFORE//[[:space:]]/}
 if [ -n "$RR_BEFORE" ]; then
   eqemu_sql "UPDATE rule_values SET rule_value='$RR_BEFORE' WHERE rule_name='Combat:MinRangedAttackDist';" || :
 fi
-eqemu_sql "DELETE FROM inventory WHERE character_id=67 AND item_id IN (8003, 8005);" || :
-# restore the archery skill from the as-found snapshot (no row as found -> delete)
-AR_BEFORE=$(grep -E '^[0-9]+$' "$OUT_LOCAL/archery-skill-before.tsv" 2>/dev/null | head -1)
-if [ -n "$AR_BEFORE" ]; then
-  eqemu_sql "UPDATE character_skills SET value=$AR_BEFORE WHERE id=67 AND skill_id=7;" || :
-else
-  eqemu_sql "DELETE FROM character_skills WHERE id=67 AND skill_id=7;" || :
-fi
+eqemu_sql "DELETE FROM inventory WHERE character_id=67 AND item_id IN (8001, 8003, 8005);" || :
+# (item rows 8001-8008 are pre-existing B900 data: the leg only moved the
+# inventory row; run 8's archery-skill restore is retired with the seed --
+# this leg moves no character_skills row.)
 # restore the as-found vitals (cur_hp/mana/endurance/pvp) from the snapshot
 python3 - "$OUT_LOCAL/chars-before.tsv" <<'PY' > "$OUT_LOCAL/restore.sql" 2>&1
 import sys
