@@ -210,8 +210,8 @@ fork+exec'd directly with all three fds redirected, so nothing holds the
 pipe and ssh returns in ~1 s (probe 4: rc=0 in 1 s, poller alive,
 `poll/` created).
 
-**The fix (`refactor/B1192/scripts/arm_poll.sh`, committed e4d8c2e7b + the
-self-kill fix):** two separate ssh calls — (1) a KILL call whose command
+**The fix (`refactor/B1192/scripts/arm_poll.sh`, e4d8c2e7b, final form in
+4d932621c):** two separate ssh calls — (1) a KILL call whose command
 line contains ONLY the bracketed pattern (no real path, so no self-match),
 then (2) an ARM call that is a SIMPLE backgrounded command
 (`nohup setsid bash -c '...' > poll.arm.log 2>&1 < /dev/null &`, all fds
