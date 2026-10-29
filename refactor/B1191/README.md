@@ -41,7 +41,7 @@ per-channel means over the `lit80` (max channel diff > 80) and `px>150`
 oracle tail **60** for rec 0 (its ~500-frame `tour_93` window) and **38** for rec
 35/43 (the ~201-frame b1130 window, `b1191_oracle_chan.py`'s 1.5 s tail). The
 committed oracle rows reproduce exactly only at those tails — re-running rec 35/43
-at 30/60 gives rec 35 oracle 237,986 px (R 9.0 / G 76.5 / B 197.9) and rec 43
+at 30/60 gives rec 35 oracle 237,979 px (R 9.0 / G 76.5 / B 197.9) and rec 43
 oracle 17,986 px (R 154.5 / G 131.1 / B 180.1), not the table below.
 
 **Records picked.** The card names record 80 (= spell 93, `fixed_npc` — B1188 §2
@@ -205,7 +205,7 @@ Scripts live under `refactor/B1191/scripts/`. The oracle tail differs per record
 (rec 0: 60 frames over its ~500-frame `tour_93` window; rec 35/43: 38 frames over
 the ~201-frame b1130 window); the willeq tail is 30 for all. Running 30/60 on
 rec 35/43 does **not** reproduce the committed oracle rows (it gives rec 35
-237,986 px / R 9.0 G 76.5 B 197.9 and rec 43 17,986 px / R 154.5 G 131.1 B 180.1
+237,979 px / R 9.0 G 76.5 B 197.9 and rec 43 17,986 px / R 154.5 G 131.1 B 180.1
 instead) — use the per-record tails below.
 
 ```bash
