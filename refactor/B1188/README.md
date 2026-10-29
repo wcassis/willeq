@@ -54,8 +54,10 @@ gate crop, matched to the oracle's t_act):
 **Like-for-like region** (the pillar above the target's head, FX-only,
 matched t_act): at t+2.27 the oracle carries 53,623 lit px and willeq 45,831
 (**0.86x**); above the brighter threshold (px > 150) the oracle carries
-40,243 and willeq 22,983 (**0.57x**). Channel means match (R~190, G~95,
-B~3; only 92 px carry B > 40, so no cream is bleeding in).
+40,243 and willeq 22,983 (**0.57x**). Channel means: the red and blue
+channels match (R 190/193, B 3/2); the green channel runs at roughly half
+the oracle's (93 vs ~56 pre-fix) -- a pre-existing residual, not introduced
+by this card (sec. 7).
 
 **The named short emitter: S3-3, the 6.0u pillar (spelcf).** Willeq is
 short by ~1.75x on the bright tail (px > 150) and ~14% on lit80 at peak,
@@ -156,20 +158,72 @@ both pins are in this commit (the cascade rule).
   **byte-identical** (test names only) to the pre-change
   kb-b1183-stand-state build's set; CI (a working readback host) judges.
 
-## 7. Re-gate vs the B1178 references (Ask 3, in progress)
+## 7. Re-gate vs the B1178 references (Ask 3) — results
 
-Renders: tour-7 + the 40-record b1130 sweep on the ThinkPad from this
-worktree (refactor/B1188/scripts/run_gate_b1188.sh, the B1184 gate with
-WT/BIN/EV pointed at this tree), measured with the B1139/B1155
-instruments, judged by refactor/B1188/scripts/build_tables_b1188.py
-against the B1178 reference set (gate_c.tsv oracle columns, kTour, the
-B1142 regression table). Per-row deltas vs the B1180 after columns carry
-owners as in B1184.
+Renders: tour-7 (7/7) + the 40-record b1130 sweep (40/40) on the ThinkPad
+from this worktree (refactor/B1188/scripts/run_gate_b1188.sh), measured with
+the B1139/B1155 instruments, judged by
+refactor/B1188/scripts/build_tables_b1188.py against the B1178 reference
+set (gate_c.tsv oracle columns, kTour, the B1142 regression table). Tables:
+refactor/B1188/tables/ (`b1130.tsv`, `tour.tsv`, `distance.tsv`,
+`counts.tsv`).
 
-_(tables in refactor/B1188/tables/, filled by the gate)_
+**The gate is flat, and that is the honest result.** The per-row B1188 delta
+(measured against the B1186 tip — the same tree *without* the atlas change,
+so this isolates B1188 alone) is **≤±1.5% on every one of the 9 measured
+columns**, and `source_onset_s` is exactly **0.000 on all 40 rows** (a
+texture-storage change cannot move an onset). The `landing_cov` headline:
+
+| row (record) | B1186 tip | B1188 gate2 | Δ | oracle | ratio |
+|---|---|---|---|---|---|
+| **0 (spell 93)** | 3.261 | 3.274 | +0.013 | 3.945 | **0.830×** |
+| 3 | 8.623 | 8.667 | +0.044 | 11.688 | 0.741× |
+| 32 | 5.098 | 5.136 | +0.038 | 6.547 | 0.784× |
+| 21 | 4.782 | 4.767 | −0.015 | 5.976 | 0.798× |
+
+`landing_cov` PASS count is **0 → 0** (38 short + 2 over on both sides; the
+over rows are r31 1.137× and r40 5.809×, unchanged). The 38-short-row median
+is **0.531× → 0.531×**. No column regressed. The judge's `d_` columns are
+vs the B1180 after columns (B1184 judge heritage, which includes the
+B1184/B1186 window unification); the B1188-specific delta is the one against
+the B1186 tip tabulated here.
+
+**The 93 like-for-like ratio** (the card's headline row): `0.827× → 0.830×`
+(b1130 209² window); the raw tour `land_cov` is `3.059 → 3.065` (flat). The
+bright tail of the pillar — the part the fix actually changes — is
+`0.571× → 0.683×` on px>150 at the matched t.
+
+**The fix is real in the render.** A/B with the *same* binary, plan and
+seed, differing only in the pack (and the pack diff is exactly one file,
+`spell_sprite_atlas.bmp` — verified by diffing the two trees'
+`data/textures`): the 64×64 pillar is **+54.9% lit80** (29,758 → 46,106)
+and **+86.9% px>150** (17,423 → 32,563), while the full-crop lit80 is
+−4.1% (83,939 → 80,499). The 1:1 storage restores the native pixels; the
+2:1 box had been diffusing them.
+
+**Why the gate does not move.** The `landing_cov` window (209² / 214²) is
+ground-centred on the target's anchor (row 615, i.e. window rows 511–719);
+the 64×64 pillar the fix brightens (rows 60–360) sits **above and outside
+that window**. Box averaging conserves each sprite's alpha integral, so the
+*total* light inside the window barely changes — the storage change
+redistributes it (sharper core, thinner halo), which is exactly what the
+px>150 band shows. Consequence: **the 0.53×/0.54× `landing_cov` gap is not
+sprite-storage driven.** The oracle renders native and fable now does too,
+and the gap persists at the same level in the gate window; it is owned by
+the landing area / attach-scale chain (B1164 #483), as the B1186 README
+already attributed.
+
+**Measured residual (tracked, not introduced by this card).** The bright
+(px>150) flame pixels' **green channel runs at roughly half the oracle's**
+(willeq G≈47 post-fix / ≈56 pre-fix vs oracle G≈93); red and blue match
+(R 193/189, B 2/3). Pre-existing ETC1/tint residual — the atlas BMP is
+byte-exact, so the unverified stage is pack encoding / shader sampling. A
+measurement-only RGBA8888 A/B pack is the next experiment (no shipped
+override, no tuned factor — Will's rule holds throughout).
 
 ## 8. The 93 ledger clip
 
 Regenerated from this gate's `tour_93` render vs the B1178 v3 pinned-camera
-oracle capture, via the B1158 pipeline (make_clip.py + make_index.py) --
-the B1184 make_ledger recipe with this tree's tour table.
+oracle capture, via the B1158 pipeline (make_clip.py + make_index.py) — the
+B1184 make_ledger recipe with this tree's tour table, into
+`/home/user/kb-evidence/VISUAL-FX/b1188-gate/`.
