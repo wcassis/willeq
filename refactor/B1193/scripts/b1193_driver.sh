@@ -9,7 +9,7 @@ WT=/home/user/src/willeq-wt/kb-b1193-harness-frame-cost
 BIN=/home/user/willeq-builds/kb-b1193-harness-frame-cost/build/bin/model_viewer
 CLIENT=/mnt/projects/EverQuestP1999
 PACK=/mnt/projects/EverQuest_ETC1/willeq.eqe1
-EV=/home/user/kb-frames/kb-b1193-harness-frame-cost/b2
+EV=/home/user/kb-frames/kb-b1193-harness-frame-cost/b3
 SUM=$EV/fps_ab.tsv
 AB=$WT/refactor/B1193/scripts/run_fps_ab.sh
 mkdir -p "$EV"
@@ -18,7 +18,7 @@ printf 'tag\tmode\tconc\tframes\twall_s\tfps\tload_at_start\tload_at_end\n' > "$
 quiet() {
     local load n
     load=$(cut -d' ' -f1 /proc/loadavg)
-    n=$(pgrep -fc "model_viewer --spell-test" 2>/dev/null || true)
+    n=$(pgrep -fc "[m]odel_viewer --spell-test" 2>/dev/null || true)
     n=${n:-0}
     python3 -c "import sys; sys.exit(0 if ($load < 6.0 and $n == 0) else 1)"
 }
@@ -55,20 +55,24 @@ run_quiet() {  # same args as run
 }
 
 # The 60-frame split runs (2.0 s at 30 fps), both rows, both modes.
-run_quiet tour_93   tour_93.plan   b1118 2.0  sync   2.0 1 || exit 1
-run_quiet tour_93   tour_93.plan   b1118 2.0  writer 2.0 1 || exit 1
-run_quiet b1130_r2  b1130_r2.plan  b1130 2.0  sync   2.0 1 || exit 1
-run_quiet b1130_r2  b1130_r2.plan  b1130 2.0  writer 2.0 1 || exit 1
+# A single failed run is recorded and the driver moves on (a quiet window is
+# scarce); the exit code at the end names how many failed.
+failed=0
+run_quiet tour_93   tour_93.plan   b1118 2.0  sync   2.0 1 || failed=$((failed + 1))
+run_quiet tour_93   tour_93.plan   b1118 2.0  writer 2.0 1 || failed=$((failed + 1))
+run_quiet b1130_r2  b1130_r2.plan  b1130 2.0  sync   2.0 1 || failed=$((failed + 1))
+run_quiet b1130_r2  b1130_r2.plan  b1130 2.0  writer 2.0 1 || failed=$((failed + 1))
 
 # The full rows: before/after at CONC=1 and CONC=2.
-run_quiet tour_93   tour_93.plan   b1118 14.5 sync   14.5 1 || exit 1
-run_quiet tour_93   tour_93.plan   b1118 14.5 writer 14.5 1 || exit 1
-run_quiet tour_93   tour_93.plan   b1118 14.5 sync   14.5 2 || exit 1
-run_quiet tour_93   tour_93.plan   b1118 14.5 writer 14.5 2 || exit 1
-run_quiet b1130_r2  b1130_r2.plan  b1130 17.0 sync   17.0 1 || exit 1
-run_quiet b1130_r2  b1130_r2.plan  b1130 17.0 writer 17.0 1 || exit 1
-run_quiet b1130_r2  b1130_r2.plan  b1130 17.0 sync   17.0 2 || exit 1
-run_quiet b1130_r2  b1130_r2.plan  b1130 17.0 writer 17.0 2 || exit 1
+run_quiet tour_93   tour_93.plan   b1118 14.5 sync   14.5 1 || failed=$((failed + 1))
+run_quiet tour_93   tour_93.plan   b1118 14.5 writer 14.5 1 || failed=$((failed + 1))
+run_quiet tour_93   tour_93.plan   b1118 14.5 sync   14.5 2 || failed=$((failed + 1))
+run_quiet tour_93   tour_93.plan   b1118 14.5 writer 14.5 2 || failed=$((failed + 1))
+run_quiet b1130_r2  b1130_r2.plan  b1130 17.0 sync   17.0 1 || failed=$((failed + 1))
+run_quiet b1130_r2  b1130_r2.plan  b1130 17.0 writer 17.0 1 || failed=$((failed + 1))
+run_quiet b1130_r2  b1130_r2.plan  b1130 17.0 sync   17.0 2 || failed=$((failed + 1))
+run_quiet b1130_r2  b1130_r2.plan  b1130 17.0 writer 17.0 2 || failed=$((failed + 1))
 
 status "done"
-echo "driver: all 12 runs finished; summary at $SUM" >&2
+echo "driver: finished with $failed failed run(s); summary at $SUM" >&2
+[ "$failed" -eq 0 ]

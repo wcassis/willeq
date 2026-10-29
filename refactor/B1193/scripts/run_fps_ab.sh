@@ -30,6 +30,11 @@ TAG=${TAG:?}            # the row tag (tour_93, b1130_r2, ...)
 MODE=${MODE:-writer}    # sync | writer
 CONC=${CONC:-1}         # 1 | 2
 OUT=${OUT:?}            # the frames directory (created here)
+WORKDIR=${WORKDIR:-/home/user/src/willeq-wt/kb-b1193-harness-frame-cost}
+# The CWD must be the worktree: the harness resolves
+# data/eqe1_texture_index.json relative to it (ResolveDataPath), and without
+# it the EQE1 pack misses its texture names and the run dies FATAL.
+cd "$WORKDIR"
 
 case "$MODE" in
     sync) EXTRA="--frames-sync" ;;
@@ -46,7 +51,7 @@ pids=()
 for i in $(seq 1 "$CONC"); do
     d="$OUT/c$i"
     mkdir -p "$d"
-    "$BIN" --spell-test --client "$CLIENT" --eqe1 "$PACK" --plan "$PLAN" \
+    timeout -k 20 300 "$BIN" --spell-test --client "$CLIENT" --eqe1 "$PACK" --plan "$PLAN" \
         --frames-dir "$d" --fps 30 --seconds "$ROW_SECONDS" --headless \
         --camera "$CAMERA" --seed 1 $EXTRA > "$d/run.log" 2>&1 &
     pids+=($!)
