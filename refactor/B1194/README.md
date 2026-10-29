@@ -41,9 +41,11 @@ lab200 host mounts. The no-op path is visible in the pipeline:
 ## (A) The inventory
 
 `refactor/B1194/scripts/runner_inventory.sh` (read-only, no sudo) runs from
-`b1194-inv-*`; ThinkPad-side rows were taken with the same commands over
-`ssh thinkpad`. Fresh outputs per host, quoted in full by these files:
+`b1194-inv-*` on the two runner VMs; the ThinkPad column comes from one run of
+the same script on the ThinkPad over `ssh thinkpad` (fix leg, 2026-10-29),
+teed like the VM files. Fresh outputs per host, quoted in full by these files:
 
+- `/mnt/projects/fable/review/B1194/thinkpad/inventory-20261029T224009Z.txt`
 - `/mnt/projects/fable/review/B1194/gitlab-runner-1/inventory-20261029T161829Z.txt`
 - `/mnt/projects/fable/review/B1194/gitlab-runner-2/inventory-20261029T161829Z.txt`
 
@@ -57,19 +59,20 @@ lab200 host mounts. The no-op path is visible in the pipeline:
 | cmake / ninja | 3.28.3 / 1.11.1 | identical | identical |
 | ccache | 4.9.1 (worker-scope dir under `/home/user/willeq-builds/_ccache`) | 4.9.1, 2.9 G of 20 G, 95.42 % lifetime hit rate | 4.9.1, 2.6 G, 95.61 % |
 | python3 | 3.12.3 | 3.12.3 | 3.12.3 |
-| gitlab-runner | 19.4.1 (runs CI's `hygiene`/`build-test`/`gate`) | 19.4.1, `CI_JOBS=6` | 19.4.1, `CI_JOBS=6` |
-| EGL (surfaceless) | llvmpipe (`docs/ci.md`) | llvmpipe (LLVM 20.1.2, 256 bits) | llvmpipe (LLVM 20.1.2, 256 bits) |
-| GLES2/Irrlicht deps | host build deps per `docs/thinkpad.md` | every package the script lists is installed (19/19 dpkg rows, quoted in the file) | every package the script lists is installed |
-| pkg-config | — | egl 1.5, glesv2 3.2, gbm 25.2.8; `drm` has no `.pc` (CI configures `-DEQT_DRM=OFF`, `docs/ci.md`) | same |
+| gitlab-runner | 19.4.1 (quoted in the file; the primary CI runner — `docs/ci.md`) | 19.4.1, `CI_JOBS=6` | 19.4.1, `CI_JOBS=6` |
+| EGL (surfaceless) | Quadro RTX 3000 (the file's raw `eglinfo -B` line, NVIDIA vendor); the CI runner pins Mesa's llvmpipe (`docs/ci.md`) | llvmpipe (LLVM 20.1.2, 256 bits) | llvmpipe (LLVM 20.1.2, 256 bits) |
+| GLES2/Irrlicht deps | every package the script lists is installed (20/20 dpkg rows, quoted in the file) | every package the script lists is installed (20/20 dpkg rows, quoted in the file) | every package the script lists is installed (20/20 dpkg rows, quoted in the file) |
+| pkg-config | egl 1.5, glesv2 3.2, gbm 25.2.8; `drm` has no `.pc` (the same four rows as the runners, in the file) | egl 1.5, glesv2 3.2, gbm 25.2.8; `drm` has no `.pc` (CI configures `-DEQT_DRM=OFF`, `docs/ci.md`) | same |
 | NFS mounts | NAS `10.0.30.10:/volume2/projects` → `/mnt/projects` (vers=3) + the hermes-ext worktree (nfs4.2, the fstab line below) | NAS → `/mnt/projects` (vers=3, 11 T, 85 % used); the worktree export is NOT mounted yet | same |
 | `/home/user/src/willeq-wt` | mounted (same path, B1087) | **absent** — one root action per VM, below | **absent** |
 | `/home/user/willeq-builds` | present | present (B1008's provision created it) | present |
-| `sudo -n` as the CI user | n/a (workers ssh in as `user`) | NOT allowed for `gitlab-runner` (`sudo: a password is required`) | NOT allowed |
+| `sudo -n` as the CI user | n/a (the mount is live; `sudo -n` as `user` is OK, in the file) | NOT allowed for `gitlab-runner` (`sudo: a password is required`) | NOT allowed |
 
-The toolchain match is byte-identical on the compiler side (same gcc build
-string, same cmake/ninja/ccache versions), so a `-j6` non-GL build is
-like-for-like. `CI_JOBS=6` is the runners' own parallelism, which the proof
-script mirrors with `JOBS=6` (rbuild's `RBUILD_JOBS` default).
+The toolchain is version-identical on the compiler side — same gcc/g++ version
+string, same cmake/ninja/ccache versions, each quoted in the three inventory
+files — so a `-j6` non-GL build is like-for-like. `CI_JOBS=6` is the runners'
+own parallelism, which the proof script mirrors with `JOBS=6` (rbuild's
+`RBUILD_JOBS` default).
 
 ## (B) rbuild host selection + the mounts
 
@@ -92,12 +95,15 @@ script mirrors with `JOBS=6` (rbuild's `RBUILD_JOBS` default).
   naming the pin. The oracle is untouched (it is not an rbuild target).
 - `hygiene` is now timed like `build` (both print `… exit N in S s on <host>`).
 
-Measured on 2026-10-29: `rbuild --host auto --status` probed all three
-hosts, skipped the two filtered runners and selected the ThinkPad in 8.4 s
-(the reachable-host path of `auto`); `rbuild <wt> --host runner-1 --target
-model_viewer` dies with the GL-pin message before doing any work; a raw
-`RBUILD_HOSTS=` fallback to a bare ssh target (the pre-B1194 shape) still
-works.
+Measured on 2026-10-29, output teed by
+`refactor/B1194/scripts/auto_probe_tee.sh` to
+`/mnt/projects/fable/review/B1194/hermes-ext/auto_probe_20261029T224321Z.txt`
+(probe lines, selection, exit and wall time all in the file): `rbuild
+--host auto --status` probed all three hosts, skipped the two filtered
+runners and selected the ThinkPad in 8.4 s (the reachable-host path of
+`auto`); `rbuild <wt> --host runner-1 --target model_viewer` dies with the
+GL-pin message before doing any work; a raw `RBUILD_HOSTS=` fallback to a
+bare ssh target (the pre-B1194 shape) still works.
 
 ### The verbatim config lines
 
@@ -161,7 +167,7 @@ test_packet`, `ctest -R PacketTest -j 6`), both teed to the share:
 
 | step (-j6, ccache, `daceefe2b`) | ThinkPad (fresh tree) | runner-1 (CI job) | runner-2 (CI job) |
 |---|---|---|---|
-| Irrlicht bootstrap | 48 s (user-scope ccache mostly cold) | 9 s (stamp warm) | 9 s (cold tree, CI ccache 95.61 % hits) |
+| Irrlicht bootstrap | 48 s (user-scope ccache mostly cold) | stamp warm (un-timed; the warm path prints `== Irrlicht bootstrap: warm (stamp verified)`) | 9 s (cold tree, CI ccache 95.61 % hits) |
 | configure (Release GLES2) | 6 s | 9 s | 10 s |
 | `--target test_packet` | 14 s | 16 s | 15 s |
 | `ctest -R PacketTest` | **24/24 pass**, 1 s | **24/24 pass**, 0 s | **24/24 pass**, 0 s |
@@ -211,9 +217,10 @@ whole job, including the no-op host checks and the tee.
    10.0.30.81/.82 (optionally 2049 for direct NFS pulls) so that
    `rbuild --host runner-N` and `--host auto` reach the VMs directly and
    `--host auto` can actually balance work onto them. Until then `auto`
-   skips them (measured: the ThinkPad is picked in 8.4 s) and the CI-job
-   path above covers the proof. Nothing in this MR depends on the firewall
-   change; it only makes the selector's runner entries reachable.
+   skips them (measured: the ThinkPad is picked in 8.4 s — the teed file in
+   (B)) and the CI-job path above covers the proof. Nothing in this MR
+   depends on the firewall change; it only makes the selector's runner
+   entries reachable.
 
 ## CLAUDE.md EDITS
 

@@ -119,9 +119,12 @@ back.
 - **Source over NFS, build tree local.** hermes-ext exports
   `/home/user/src/willeq-wt` to this box and (since B1194, 2026-10-29) the two
   gitlab-runner VMs (`/etc/exports.d/willeq-wt.exports`,
-  `all_squash` to uid/gid 1000, which is `user` on each host); the fstab mount
-  on each host uses the SAME path (NFSv4.2, `soft`, `actimeo=1`, systemd
-  automount). The
+  `all_squash` to uid/gid 1000, which is `user` on each host); the fstab
+  mount on this box uses the SAME path (NFSv4.2, `soft`, `actimeo=1`,
+  systemd automount). The identical line for each runner VM is staged in
+  `refactor/B1194/scripts/setup_rbuild_host.sh`, pending the one-time root
+  run (the VMs answer no inbound ssh from either lab200 host and the CI
+  user cannot `sudo -n`; B1194's README, RULING REQUEST). The
   attribute cache was `actimeo=0` until 2026-10-19 (Will): every stat was a
   GETATTR round trip to hermes-ext, and a worker build drove it to tens of
   thousands a second (the Build Workflow & Contention dashboard, NFS panels).
