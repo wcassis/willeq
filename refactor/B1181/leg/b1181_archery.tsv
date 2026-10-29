@@ -1,0 +1,69 @@
+# action	target	hold_ms	still_name
+# B1181 (#500) leg A: ARCHERY. The observer rig (B1134): the OBSERVER
+# (Oraclewatch, char 103, second official client on :99 = the grabbed
+# display) stands where B1130's caster stood (-67.6,434.4, h160); the CASTER
+# (Testcaster, char 67, session Xvfb 1280x1024) stands where B1130's target
+# stood (-74,428, h160), 9.05 units apart. Both #set pvp on.
+# The pre-SQL puts a Longbow (item 8003, IT10614) in the caster's main hand
+# (DB slot 11) and Arrows (item 8005, IT10) in the ammo slot (22) — T494
+# server slot numbering — and raises the observer's cur_hp/mana/endurance so
+# it survives both shots; the driver restores cur_hp/mana/endurance/pvp from
+# vitals-before.tsv with the world down (oracle_session.sh, B1134).
+# The server-SQL (B1174 hook, undo on every exit path) moves char 104
+# 'Darkshadow' to the caster's account for the leg only: the willeqwatch
+# account gained a second character after B1134, the character select lists
+# it alphabetically (D before O), and the zone step's jclick 123 315 selects
+# the FIRST entry, so Oraclewatch must be the only entry.
+# 0x4033 (server -> observer): eqemu's archery path sends
+# OP_SomeItemPacketMaybe with no gate — Mob::SendItemAnimation
+# (lane-5 zone/special_attacks.cpp:1747ff, called at :1064 after a ranged
+# attack): model name = the ammo's IDFile (IT10 for item 8005),
+# item_type = the arrow type (27), QueueCloseClients. The caster's own
+# client additionally spawns the object locally and sends its own 0x4033
+# (the client's LOCAL branch, B1168 A6), so the pcap carries a C->S 0x4033
+# too. The observer draws the arrow from the S->C packet — the item-missile
+# path this card implements.
+# The caster attacks with a left click on the target at the B1134-measured
+# point 933,639 (the observer's feet on the caster's 1280x1024 screen, same
+# rig/pose) — a left click on a PvP-on hostile selects and initiates the
+# attack. (press space was tried once: the official client's space is
+# OP_Jump, not an attack — archery3's capture proves it.)
+# fps=30
+# pose=-74,428,3.75,160
+# observer=Oraclewatch
+# observer-pose=-67.6,434.4,3.75,160
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#reload rules global	0	rules
+command	#level 60	0	lvl
+command	#mana	0	mana
+command	/target Oraclewatch	0	tgt_obs
+command	#set pvp on	0	pvp_obs
+command	/target Testcaster	0	tgt_self
+command	#set pvp on	0	pvp_self
+obs	press	F9	0	obs_cam1
+obs	press	F9	0	obs_cam2
+obs	press	F9	0	obs_cam3
+obs	wait	3000	0	obs_cam_settle
+command	#weather 0	0	clear2
+wait	36000	0	time_settle
+command	/disc Aggressive	0	aggro
+wait	1500	0	aggro_settle
+command	/target Oraclewatch	0	tgt_obs_a
+wait	1500	0	tgt_obs_a_settle
+click	933,639	0	arch_a
+wait	7000	0	arch_a_flight
+command	/target Oraclewatch	0	tgt_obs_b
+wait	1500	0	tgt_obs_b_settle
+click	933,639	0	arch_b
+wait	7000	0	arch_b_flight
+obs	command	/q	0	obs_quit
+command	/q	0	quit

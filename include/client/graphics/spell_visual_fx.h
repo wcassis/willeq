@@ -34,6 +34,11 @@ namespace EQT { namespace Graphics { class ConstrainedTextureCache; }}
 namespace EQT { namespace Graphics { namespace Environment { class ParticleManager; struct SpellEffectDef; }}}
 #endif
 
+// B1181 (#500): the equipment model loader a type != 9 missile object draws
+// its +0x65 IT model through (the renderer's loader; indexes gequip.s3d /
+// gequip2.s3d, the same meshes the characters' equipment uses).
+namespace EQT { namespace Graphics { class EquipmentModelLoader; }}
+
 // Forward declarations for worker-driven spell VFX
 namespace EQT { namespace Graphics {
     struct SpellVFXCommandData;
@@ -291,6 +296,11 @@ public:
                             const SpellFxActor& casterFx = SpellFxActor{},
                             const SpellFxActor& targetFx = SpellFxActor{});
     size_t missileObjectCount() const { return m_missile_objects.size(); }
+    // B1181 (#500): whether the i-th object is drawing its +0x65 IT model
+    // (type != 9 with a found IT mesh; never a type-9 object).
+    bool missileModelDrawn(size_t i) const {
+        return i < m_missile_objects.size() && m_missile_objects[i].modelNode != nullptr;
+    }
     // The i-th object's position (EQ y, x, z); false when there is none.
     bool missileObjectPosition(size_t i, float eqPos[3]) const {
         if (i >= m_missile_objects.size()) return false;
@@ -314,6 +324,14 @@ public:
     // spell_b1163_missile_rules.h). Set by the renderer.
     using LocalPlayerIdCallback = std::function<uint16_t()>;
     void setLocalPlayerIdCallback(LocalPlayerIdCallback cb) { m_local_player_cb = std::move(cb); }
+
+    // B1181 (#500): the +0x65 IT model a type != 9 missile object draws
+    // (eqgame's spawn creates the actor from the name, 00476d8c .. 00476dd5;
+    // the loader is the equipment model's, no new loader). nullptr: the
+    // objects fly, their model is not drawn.
+    void setEquipmentModelLoader(EQT::Graphics::EquipmentModelLoader* loader) {
+        m_equipment_model_loader = loader;
+    }
 
     // ========================================================================
     // Effect Removal
@@ -496,6 +514,12 @@ private:
         float targetHeight = 0.0f;
         SpellFxActor casterFx;  // B1165: the On-For inputs for the object's fires
         SpellFxActor targetFx;
+        // B1181 (#500): the +0x65 IT model on a type != 9 object (the client's
+        // actor the spawn creates, eqgame 00476d8c .. 00476dd5). nullptr until
+        // created (never for a type-9 object); modelId is the parsed IT number
+        // for the loader's mesh reference count.
+        irr::scene::ISceneNode* modelNode = nullptr;
+        int modelId = -1;
     };
     std::vector<MissileFx> m_missile_objects;
     double m_missile_clock_ms = 0.0;  // the object clock (time() read as ms)
@@ -508,9 +532,16 @@ private:
     // time they are released at.
     std::vector<std::pair<uint16_t, double>> m_missile_anchor_expiry;
     uint16_t m_next_missile_anchor = 0;
+    // B1181 (#500): the equipment model loader (set by the renderer / the
+    // model_viewer harness) the type != 9 missile models draw through.
+    EQT::Graphics::EquipmentModelLoader* m_equipment_model_loader = nullptr;
     void updateMissileObjects(float delta_time);
     bool missileEntity(uint32_t id, SpellMissile::Entity& out) const;
     const SpellMissile::SpellFields* missileSpellFields(uint32_t spell_id);
+    // B1181 (#500): the +0x65 IT model of a type != 9 object.
+    void createMissileModel(MissileFx& m);
+    void placeMissileModel(MissileFx& m);
+    void destroyMissileModel(MissileFx& m);
 #ifdef EQT_HAS_GLES2
     uint16_t allocMissileAnchor();
     void placeMissileAnchor(uint16_t anchor, const float eqPos[3]);

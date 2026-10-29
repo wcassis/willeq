@@ -233,6 +233,10 @@ SpellVisualResolution SpellVisualFX::resolveVisual(uint32_t spell_id) const
 SpellVisualFX::~SpellVisualFX()
 {
     clearAllEffects();
+    // B1181 (#500): the live missile objects' IT models are scene nodes of
+    // m_smgr; drop them (and the loader's mesh references) before the
+    // scene manager / loader go away.
+    for (auto& m : m_missile_objects) destroyMissileModel(m);
     // Note: texture is managed by the driver, don't delete it
 }
 
