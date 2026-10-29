@@ -112,15 +112,21 @@ def main():
         rc, out = run(HEAD + KILL + 'click\t405,700\t0\tc\ncommand\t/loot\t0\tloot\n',
                       tmp, Path(tmp) / 'missing.txt', '--class', 1, '--lane', 5)
         assert rc == 0 and 'REFUSED' not in out, out
-        # ... a target set before the kill does NOT count (that IS the run-6
-        #    shape), and a looting plan with no kill still needs the targeting...
-        rc, out = run(HEAD + 'command\t/target TrollF\t0\ttgt\ncommand\t/loot\t0\tloot\n',
+        # ... and /target <name> AFTER the kill does too (the corpse keeps its
+        #    name prefix, TrollF -> TrollF`s_corpseNNN; B1192 plan v4).
+        rc, out = run(HEAD + KILL + 'command\t/target TrollF\t0\tretgt\ncommand\t/loot\t0\tloot\n',
                       tmp, Path(tmp) / 'missing.txt', '--class', 1, '--lane', 5)
-        assert rc == 1 and 'REFUSED' in out, out
+        assert rc == 0 and 'REFUSED' not in out, out
+        # ... a looting plan with no kill still needs the targeting...
         rc, out = run(HEAD + 'command\t/loot\t0\tloot\n',
                       tmp, Path(tmp) / 'missing.txt', '--class', 1, '--lane', 5)
         assert rc == 1 and 'REFUSED' in out, out
         rc, out = run(HEAD + 'press\tF8\t0\tf8\ncommand\t/loot\t0\tloot\n',
+                      tmp, Path(tmp) / 'missing.txt', '--class', 1, '--lane', 5)
+        assert rc == 0 and 'REFUSED' not in out, out
+        # ... but with no kill, /target alone IS a valid corpse target (looting
+        #    a pre-existing corpse).
+        rc, out = run(HEAD + 'command\t/target TrollF\t0\ttgt\ncommand\t/loot\t0\tloot\n',
                       tmp, Path(tmp) / 'missing.txt', '--class', 1, '--lane', 5)
         assert rc == 0 and 'REFUSED' not in out, out
 
@@ -134,7 +140,7 @@ def main():
         print('cross-checked the fixture against', real)
     print('PASS: druid-only gem cast on a wizard refused with spell + class; castable casts pass; '
           'level, /cast and unmeasured-lane cases; lane 5 pitch 30 at (25, 213+30i); '
-          'B1192: /loot refused without corpse targeting (run-6 shape), cleared by press F8 or a click')
+          'B1192: /loot refused without corpse targeting (run-6 shape), cleared by press F8, a click, or /target after the kill')
 
 
 if __name__ == '__main__':

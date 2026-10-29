@@ -126,15 +126,15 @@ def loot_guards(plan_lines, out=None):
     """B1192 (#511): a `/loot` step must be preceded -- after the last `#damage` --
     by corpse targeting: a `press` of F7 (TARGETPC) or F8 (TARGETNPC, the
     official client's own binding, lane-5 live keymap SLOT 32 raw 0x42000000)
-    or a `click`/`rclick` on the corpse.
+    or a `click`/`rclick` on the corpse, or a `/target <name>` (the corpse
+    keeps its name prefix -- `TrollF` -> `TrollF`s_corpseNNN` -- so the same
+    name that targeted the live mob resolves to the corpse after death; run 6
+    showed OP_Death clears HoTT, so the target must be re-set AFTER the kill).
 
-    The official client has NO name-based corpse targeting: `/target <name>`
-    sets the live mob, and OP_Death clears HoTT (B1192 run 6, 2026-10-29:
-    the troll's corpse held 120 through /loot, no loot-window packet, no
-    105 write -- refactor/B1192/README.md). Such a plan can never open the
-    loot window, so it is refused BEFORE the client starts (exit 64 in
-    oracle_class_leg.sh) instead of burning a lane-5 run. Returns the
-    number of refused `/loot` lines."""
+    A plan with no post-kill targeting can never open the loot window, so it
+    is refused BEFORE the client starts (exit 64 in oracle_class_leg.sh)
+    instead of burning a lane-5 run. Returns the number of refused `/loot`
+    lines."""
     bad = 0
     for n, line in enumerate(plan_lines, 1):
         if not line.strip() or line.startswith('#'):
@@ -154,13 +154,13 @@ def loot_guards(plan_lines, out=None):
                 window.append((m, act, tgt))
         targeted = [w for w in window
                     if (w[1] == 'press' and w[2].upper() in ('F7', 'F8'))
-                    or w[1] in ('click', 'rclick')]
+                    or w[1] in ('click', 'rclick')
+                    or (w[1] == 'command' and w[2].split()[:1] == ['/target'])]
         if not targeted:
-            print(f'REFUSED line {n}: /loot without corpse targeting -- the official client '
-                  'has no name-based corpse targeting, and /target <name> sets the live mob, '
-                  'which OP_Death clears (B1192 run 6: the corpse held 120 through /loot, no '
-                  '105). Target the corpse AFTER the last #damage: press F8 (TARGETNPC) or '
-                  'click the corpse.', file=out)
+            print(f'REFUSED line {n}: /loot without corpse targeting -- the target must be set AFTER the last '
+                  '#damage (OP_Death clears HoTT, B1192 run 6: the corpse held 120 through /loot, no 105). '
+                  'Target the corpse: press F8 (TARGETNPC), click the corpse, or /target <name> (the corpse '
+                  'keeps its name prefix).', file=out)
             bad += 1
         else:
             print(f'OK line {n}: /loot corpse targeting: '
