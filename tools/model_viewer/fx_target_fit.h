@@ -8,7 +8,44 @@
 // share (the harness's fitFaceOnCamera uses them too).
 #pragma once
 
+#include <cmath>
+
+#include <irrlicht.h>  // as model_viewer_state.h includes it
+
 namespace irr { namespace video { class IImage; } }
+
+// B1198 (#517): the pinhole Irrlicht's buildProjectionMatrixPerspectiveFovLH
+// draws: the pixel a world point lands on for a camera at `eye` looking at
+// `look`. Lives here (not in the harness's anonymous namespace) so the
+// dirty-gate's probe rectangle (readback_probe.cpp) shares the exact same
+// projection the harness's framing code uses. `irr::` is spelled out: the
+// harness TUs that use the bare `core::` names carry model_viewer_state.h's
+// `using namespace irr;`, a fresh TU does not.
+struct Pinhole {
+    irr::core::vector3df eye, right, up, fwd;
+    float fovY, aspect, w, h;
+    irr::core::vector2df project(const irr::core::vector3df& p) const {
+        const irr::core::vector3df d = p - eye;
+        const float zc = d.dotProduct(fwd);
+        const float t = std::tan(fovY * 0.5f);
+        return {w * 0.5f + d.dotProduct(right) / zc * (w * 0.5f) / (t * aspect),
+                h * 0.5f - d.dotProduct(up) / zc * (h * 0.5f) / t};
+    }
+};
+
+inline Pinhole makePinhole(const irr::core::vector3df& eye, const irr::core::vector3df& look,
+                           float fovY, float aspect, float w, float h) {
+    Pinhole ph;
+    ph.eye = eye;
+    ph.fwd = (look - eye).normalize();
+    ph.right = irr::core::vector3df(0, 1, 0).crossProduct(ph.fwd).normalize();  // left-handed
+    ph.up = ph.fwd.crossProduct(ph.right).normalize();
+    ph.fovY = fovY;
+    ph.aspect = aspect;
+    ph.w = w;
+    ph.h = h;
+    return ph;
+}
 
 // B1118 tour framing (review/B1118/README.md, review/B1132/gate): chase
 // camera `az 180 pitch 12`, i.e. in front of the caster looking back at her,

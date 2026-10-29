@@ -38,6 +38,11 @@ void parseCommandLine(int argc, char* argv[], ViewerArgs& args) {
             // B1193: the P6 PPM dump (frame_%05d.ppm, RGB24) -- no encode
             // step; the measures read it (cv2's imread takes P6).
             harnessOpts.framesRaw = true;
+        } else if (arg == "--readback-mode" && i + 1 < argc) {
+            // B1198: the frame-capture readback candidate (driver = the
+            // current createScreenShot path; glread / pbo / fbo / dirty =
+            // the measured alternatives, readback_candidates.h).
+            harnessOpts.readbackMode = argv[++i];
         } else if (arg == "--fps" && i + 1 < argc) {
             harnessOpts.fps = std::atoi(argv[++i]);
         } else if (arg == "--seconds" && i + 1 < argc) {
@@ -160,7 +165,8 @@ void printUsageBanner(const ViewerArgs& args) {
     std::cout << "                    --fps 30 --seconds N --headless [--camera b1118] [--backdrop <png>]" << std::endl;
     std::cout << "                    [--ui-occluder x0,y0,x1,y1]... [--no-ui-occluder] [--target-death <s>]" << std::endl;
     std::cout << "                    [--target-despawn <s>] [--caster-despawn <s>] [--worker-latency 0|1]" << std::endl;
-    std::cout << "                    [--frames-sync] [--frames-raw]  (B1193 frame output)" << std::endl;
+    std::cout << "                    [--frames-sync] [--frames-raw] [--readback-mode driver|glread|pbo|fbo|dirty]"
+              << "  (B1193 frame output; B1198 readback candidates)" << std::endl;
     std::cout << "                    [--missile-payload <0x4033 payload file> --missile-at <s>]" << std::endl;
     std::cout << "                    [--caster-appearance face,texture:e0,...,e8] [--sim-hz <hz>]" << std::endl;
     std::cout << "                    [--caster race:gender[:size]] [--target race:gender[:size]]" << std::endl;
