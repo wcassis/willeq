@@ -1,0 +1,12 @@
+CODEX NO -- verdict STOP (used 0.0% line 0.3%)
+CENSUS thinkpad load1=5.96 runq/core=0.17 model_viewer=0 eqgame=0 measure=3 leases=1:FREE,2:FREE,3:FREE,4:FREE,5:EXPIRED
+RUNNING 4: t_3d392c18@hermes-a t_1e04932f@hermes-a t_36bce0df@hermes-a t_86c81d8e@hermes-a
+hold   t_a74670e3 p4  ready     heavy  strong   -       NO_MANIFEST            seat: codex verdict STOP (used 0.0% line 0.3%); seat hermes-a 4/4
+         action: schedule t_a74670e3 'awaiting seat'
+hold   t_a35f1f1e p3  ready     heavy  strong   -       NO_MANIFEST            seat: codex verdict STOP (used 0.0% line 0.3%); seat hermes-a 4/4
+         action: schedule t_a35f1f1e 'awaiting seat'
+hold   t_a24d468e p3  ready     heavy  strong   -       NO_MANIFEST            seat: codex verdict STOP (used 0.0% line 0.3%); seat hermes-a 4/4
+         action: schedule t_a24d468e 'awaiting seat'
+hold   t_d404af6b p3  ready     heavy  strong   -       NO_MANIFEST            seat: codex verdict STOP (used 0.0% line 0.3%); seat hermes-a 4/4
+         action: schedule t_d404af6b 'awaiting seat'
+ALLOC mode=dry-run candidates=4 admit=0 queue=0 hold=4 -> /tmp/alloc_variant.tsv

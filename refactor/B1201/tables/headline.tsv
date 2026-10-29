@@ -1,0 +1,17 @@
+metric	value
+runs_in_window	212
+worker_runs_ended	192
+runs_still_running	4
+runs_without_session	16
+session_join_admitted	192
+session_join_matched	4
+session_join_rollout	0
+cards	158
+first_run_start_utc	2026-10-24T21:55:02Z
+last_run_start_utc	2026-10-29T22:47:40Z
+longest_single_command_s	421
+commands_over_60s	1287
+runs_with_phase_comments	0
+seat_hours_worker_runs	305
+seat_hours_inside_commands_over_60s	80
+seat_hours_model_time	211
