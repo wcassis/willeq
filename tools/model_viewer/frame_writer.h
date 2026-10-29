@@ -105,7 +105,7 @@ private:
     std::thread thread_;
     std::mutex mux_;
     std::deque<Job> queue_;
-    static constexpr size_t kQueueMax = 8;  // ~33 MB at 1280x800 RGBA
+    static constexpr size_t kQueueMax = 8;  // ~265 MB at 3840x2160 RGBA (the queue holds the pre-downscale readback; ~33 MB post-downscale at 1280x800)
     bool stop_ = false;
     std::condition_variable cvPush_, cvPop_;
     FrameWriterStats stats_;
