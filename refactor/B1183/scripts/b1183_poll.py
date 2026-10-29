@@ -11,12 +11,34 @@
 # What it does:
 #   1. Finds the CASTER eqgame.exe (the one whose environ has DISPLAY=:98;
 #      the observer is on :99) and the eqgame.exe module base from maps.
-#   2. Reads DAT_0098599c (the live keymap pointer) and dumps 0x964 bytes
-#      of the keymap object -- the client's OWN hotkey state.
+#   2. Reads the client's OWN hotkey state: the live keymap object
+#      (DAT_0098599c) plus the three static image tables it decodes with
+#      (the action-name table and the two keycode tables below).
 #   3. Reads DAT_00905CE4 (the local player's spawn) and polls
 #      spawn+0x251 every 25 ms to TMAX. Every value-changing read is
 #      logged (WR t=... old -> new spawn=...); the spawn pointer is
 #      re-resolved every tick (zone transition, respawn).
+#
+# Keymap object layout (measured against the decompile, not assumed --
+# the earlier stride-8 read was wrong, the getter/INI-write sites are the
+# evidence):
+#   FUN_004b385e allocates 0x963 bytes; FUN_004b381a zeroes 0x42 dwords
+#   at +0x858. The 267 slots (0x858/2) store; the INI loader fills actions 0..0xF6 (247)
+#     k0(action N) @ 4N          (the getter 0x004b244f: lea [ecx+eax*4])
+#     k1(action N) @ 0x42C + 4N  (the getter 0x004b2459: lea [ecx+eax*4+0x42c];
+#                                 the INI writes 0x004b3721/0x004b3754,
+#                                 the loader loop 0x004b378b/0x004b37b1)
+#   so the object is [267 k0 slots][267 k1 slots] = 0x858 bytes + tail.
+# Slot value encoding (FUN_0049156d, the INI key builder/decoder):
+#   the INI key is "KEYMAP_" + name[action] + ("_2" for k1); the value
+#   string parses "SHIFT+"->0x40000000, "CONTROL+"->0x20000000,
+#   "ALT+"->0x10000000, then the key name resolves to a keycode:
+#     single char  -> table of 0x2F x {u8 char, i32 code} at 0x78DC48
+#     named key    -> 0x36 interleaved {i32 value, name ptr} pairs at
+#                     0x78DDC0 (value at 8i, ptr at 8i+4)
+#   0 = unbound, 0xFFFFFFFF = *NONE* / unmatched.
+#   The action-name table is 0xF7 pointers at 0x78D868
+#   (PTR_s_AUTORUN_0078d868 in the decompile). All image VAs.
 #
 # Log format matches b1183_gdb.py's (merge_watch.py reads both):
 #   START / INIT byte +0x251 = N / KEYMAP ... / WR t=X old -> new / END.
@@ -149,7 +171,65 @@ def main():
     keymap_rt = KEYMAP_VA + SHIFT
     spawn_rt = SPAWN_VA + SHIFT
 
-    # 1. The live keymap dump (the client's OWN hotkey state).
+    # 1. The client's OWN hotkey state: the static decode tables first
+    #    (image VAs, mapped for the process's whole life), then the live
+    #    keymap object they decode.
+    charmap = {}
+    namemap = {}
+    try:
+        raw = read_bytes(FD, 0x78DC48 + SHIFT, 47 * 8)
+        for i in range(47):
+            c = raw[i * 8]
+            code = struct.unpack("<i", raw[i * 8 + 4:i * 8 + 8])[0]
+            charmap[code & 0xFFFFFFFF] = chr(c)
+            log("CHARKEY %r 0x%08x" % (chr(c), code & 0xFFFFFFFF))
+        raw = read_bytes(FD, 0x78DDC0 + SHIFT, 54 * 8)
+        for i in range(54):
+            v = struct.unpack("<i", raw[i * 8:i * 8 + 4])[0]
+            p = struct.unpack("<I", raw[i * 8 + 4:i * 8 + 8])[0]
+            nm = "?"
+            if 0x400000 < p < 0x80000000:
+                b = b""
+                for j in range(48):
+                    c = read_bytes(FD, p + SHIFT + j, 1)
+                    if not c or c == b"\x00":
+                        break
+                    b += c
+                nm = b.decode("latin-1")
+            namemap[v & 0xFFFFFFFF] = nm
+            log("NAMEKEY %s 0x%08x" % (nm, v & 0xFFFFFFFF))
+        raw = read_bytes(FD, 0x78D868 + SHIFT, 247 * 4)
+        for i in range(247):
+            p = struct.unpack("<I", raw[i * 4:i * 4 + 4])[0]
+            nm = "?"
+            if 0x400000 < p < 0x80000000:
+                b = b""
+                for j in range(48):
+                    c = read_bytes(FD, p + SHIFT + j, 1)
+                    if not c or c == b"\x00":
+                        break
+                    b += c
+                nm = b.decode("latin-1")
+            log("KEYNAME %d %s" % (i, nm))
+    except OSError as e:
+        log("TABLES read failed: %s" % e)
+
+    def dec_slot(v):
+        if v == 0:
+            return "UNBOUND"
+        if v == 0xFFFFFFFF:
+            return "*NONE*"
+        mods = []
+        if v & 0x40000000:
+            mods.append("SHIFT")
+        if v & 0x20000000:
+            mods.append("CTRL")
+        if v & 0x10000000:
+            mods.append("ALT")
+        k = v & 0x0FFFFFFF
+        key = charmap.get(k, namemap.get(k, "code=0x%x" % k))
+        return "+".join(mods + [key]) if mods else key
+
     try:
         obj = read_u32(FD, keymap_rt)
     except OSError as e:
@@ -157,24 +237,17 @@ def main():
         log("KEYMAP read failed: %s" % e)
     log("KEYMAP obj=0x%08x (global 0x%08x)" % (obj, keymap_rt))
     if 0x00010000 < obj < 0x80000000:
-        marks = {
-            0x60: "action12 DUCK k0", 0x64: "action12 DUCK k1",
-            0x80: "action16 USE k0", 0x84: "action16 USE k1",
-            0x448: "action137 CAMP k0", 0x44C: "action137 CAMP k1",
-            0x450: "action138 SIT_STAND k0", 0x454: "action138 SIT_STAND k1",
-        }
         try:
-            raw = read_bytes(FD, obj, 0x964)
-            dw = struct.unpack("<%dI" % (len(raw) // 4), raw[: (len(raw) // 4) * 4])
-            for row in range(0, len(dw), 16):
-                cells = []
-                for i in range(row, min(row + 16, len(dw))):
-                    m = marks.get(i * 4)
-                    cells.append("0x%03x:%d%s" % (i * 4, dw[i],
-                                                  ("#" + m) if m else ""))
-                log("KEYMAP " + "  ".join(cells))
-            log("KEYMAP tail 0x960:%d 0x961:%d 0x962:%d" % (
-                raw[0x960], raw[0x961], raw[0x962]))
+            raw = read_bytes(FD, obj, 0x960)
+            for row in range(0, len(raw) // 4, 16):
+                log("KEYMAP " + "  ".join(
+                    "0x%03x:%d" % (i * 4, struct.unpack("<I", raw[i * 4:i * 4 + 4])[0])
+                    for i in range(row, min(row + 16, len(raw) // 4))))
+            for i in range(267):  # 0x858/4/2 = 267 slots (the INI loader fills 0..246)
+                k0 = struct.unpack("<I", raw[i * 4:i * 4 + 4])[0]
+                k1 = struct.unpack("<I", raw[0x42C + i * 4:0x42C + i * 4 + 4])[0]
+                log("SLOT %d k0=%s k1=%s raw0=0x%08x raw1=0x%08x" % (
+                    i, dec_slot(k0), dec_slot(k1), k0, k1))
         except OSError as e:
             log("KEYMAP read failed: %s" % e)
     else:
