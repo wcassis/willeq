@@ -13,6 +13,16 @@ ADD_EXECUTABLE(test_event_bus
 TARGET_LINK_LIBRARIES(test_event_bus GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_event_bus DISCOVERY_TIMEOUT 120)
 
+# B1183 (#502): the client's per-spawn stand-state byte (+0x251) as one
+# StandState owner per spawn (include/client/state/stand_state.h). Header-only
+# machine -- device-free, links only gtest. Pins every transition (the direct
+# writes, the setter's gates, the B1174 rule) and the B1174 reader gate.
+ADD_EXECUTABLE(test_stand_state
+    test_stand_state.cpp
+)
+TARGET_LINK_LIBRARIES(test_stand_state GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_stand_state DISCOVERY_TIMEOUT 120)
+
 # T02: state module unit tests, part 1 (EntityManager, PlayerState,
 # SpellState, InventoryState -- the priority-1 modules). No graphics, no
 # Irrlicht.

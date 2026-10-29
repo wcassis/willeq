@@ -311,7 +311,81 @@ void eqt::movement::MovementComponent::SetMovementMode(MovementMode mode)
 // Everything below is the pre-split body verbatim minus the five send
 // lines; SetPositionState() re-adds four of them (AT_DIE is gone for good,
 // see the POS_DEAD arm there).
+// B1183 (#502): the player's own stand byte, stored through the per-spawn
+// StandState machine (stand_state.h). `userInitiated` selects the writer
+// kind, exactly as the client does:
+//   * false -- a pose the SERVER forced (our own OP_SpawnAppearance echo,
+//     our own OP_Death). The client's direct writes, no gate (103347/103463
+//     the appearance blob; 105881/111059 death -> 120 'x'). -> apply()
+//   * true  -- /sit, /stand, the camp sit-down, the feign key, the
+//     setPositionState action: the client's duck/sit/stand KEY HANDLERS,
+//     which call the setter FUN_00483556 (the gates: the no-op, the
+//     mid-cast sit, the crouch the camera would not follow). -> transition()
+// POS_DEAD is a direct 120 either way (the client never ducks into death).
+void eqt::movement::MovementComponent::storeStandByte(PositionState state, bool userInitiated)
+{
+	auto self = ctx_.entities.find(ctx_.self.MySpawnId());
+	if (self == ctx_.entities.end()) {
+		return;
+	}
+	auto& st = self->second.stand_state;
+	using V = eqt::state::StandValue;
+	switch (state) {
+		case POS_DEAD:
+			// 105881/111059: the death byte is the corpse value 120 ('x').
+			st.apply(V::Corpse);
+			break;
+		case POS_STANDING:
+			if (userInitiated) {
+				eqt::state::StandStateContext ctx;
+				ctx.in_world = ctx_.self.IsFullyZonedIn();
+				ctx.casting = ctx_.spell_manager != nullptr && ctx_.spell_manager->isCasting();
+				st.transition(V::Standing, ctx);
+			} else {
+				st.apply(V::Standing);
+			}
+			break;
+		case POS_SITTING:
+			if (userInitiated) {
+				eqt::state::StandStateContext ctx;
+				ctx.in_world = ctx_.self.IsFullyZonedIn();
+				ctx.casting = ctx_.spell_manager != nullptr && ctx_.spell_manager->isCasting();
+				st.transition(V::Sitting, ctx);
+			} else {
+				st.apply(V::Sitting);
+			}
+			break;
+		case POS_CROUCHING:
+			if (userInitiated) {
+				eqt::state::StandStateContext ctx;
+				ctx.in_world = ctx_.self.IsFullyZonedIn();
+				st.transition(V::Crouching, ctx);
+			} else {
+				st.apply(V::Crouching);
+			}
+			break;
+		case POS_FEIGN_DEATH:
+			// 115 ('s'): the setter's plain final write (no 's' branch).
+			if (userInitiated) {
+				eqt::state::StandStateContext ctx;
+				ctx.in_world = ctx_.self.IsFullyZonedIn();
+				st.transition(V::Lying, ctx);
+			} else {
+				st.apply(V::Lying);
+			}
+			break;
+	}
+}
+
 void eqt::movement::MovementComponent::ApplyPositionState(PositionState state)
+{
+	applyPositionStateCore(state, /*userInitiated=*/false);
+}
+
+// T344 (B001): the shared body of the pose change (everything except the
+// OP_SpawnAppearance SetPositionState re-adds). `userInitiated` selects how
+// the stand byte is stored (see storeStandByte above).
+void eqt::movement::MovementComponent::applyPositionStateCore(PositionState state, bool userInitiated)
 {
 	if (static_cast<PositionState>(ctx_.game_state.player().positionState()) == state) {
 		return;
@@ -321,23 +395,12 @@ void eqt::movement::MovementComponent::ApplyPositionState(PositionState state)
 	// T286: and it is now the only store.
 	ctx_.game_state.player().setPositionState(static_cast<eqt::state::PositionState>(state));
 
-	// B1174 (#493): the player's own stand byte, the value the pose sends
-	// (SetPositionState below; POS_DEAD takes the lying value the official
-	// client sends when it dies) -- the server does not echo our own
-	// appearance back, so this is where the OP_Action cast-anim gate
+	// B1174 (#493) / B1183 (#502): the player's own stand byte, now owned by
+	// the per-spawn StandState machine (storeStandByte) -- the value the pose
+	// sends, the stun byte, the death byte, ... -- the server does not echo
+	// our own appearance back, so this is where the OP_Action cast-anim gate
 	// (spell_action_anim.h) learns that we sat down.
-	{
-		auto self = ctx_.entities.find(ctx_.self.MySpawnId());
-		if (self != ctx_.entities.end()) {
-			switch (state) {
-				case POS_STANDING:    self->second.stand_state = ANIM_STANDING;  break;
-				case POS_SITTING:     self->second.stand_state = ANIM_SITTING;   break;
-				case POS_CROUCHING:   self->second.stand_state = ANIM_CROUCHING; break;
-				case POS_FEIGN_DEATH:
-				case POS_DEAD:        self->second.stand_state = ANIM_LYING;     break;
-			}
-		}
-	}
+	storeStandByte(state, userInitiated);
 
 	if (ctx_.bridge) {
 		eqt::state::PlayerPositionStateChangedData data;
@@ -397,7 +460,10 @@ void eqt::movement::MovementComponent::SetPositionState(PositionState state)
 		return;
 	}
 
-	ApplyPositionState(state);
+	// B1183 (#502): the USER-INITIATED half stores the stand byte through the
+	// setter (storeStandByte's userInitiated=true), the client's key-handler
+	// path; everything else is identical to ApplyPositionState.
+	applyPositionStateCore(state, /*userInitiated=*/true);
 
 	switch (state) {
 		case POS_STANDING:

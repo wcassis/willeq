@@ -32,7 +32,6 @@
 
 #include "client/eq.h"
 #include "client/graphics/actor_scale.h"  // B1172: the client's resolved size
-#include "client/spell/spell_action_anim.h"  // B1174: SpawnStandStateAfterAppearance
 #include "client/corpse_predicate.h"  // T486: IsCorpseNpcType
 #include "client/entities/entities_component.h"
 #include "client/movement/movement_component.h"  // T344: ApplyPositionState
@@ -342,6 +341,14 @@ void eqt::entities::EntitiesComponent::ZoneProcessZoneSpawns(const EQ::Net::Pack
 			}
 
 			// Add to entity list (sync to both local map and EntityManager)
+			// B1183 (#502): the local player's zone-in writes its own stand
+			// byte to 100 (standing) -- the client's GetZoneInfo/name-match
+			// writes (eqgame.exe.c:75121/75215/76903/119126/128478). The
+			// Titanium Spawn_Struct carries no stand state (eqemu sends
+			// animation 0), so this is the value the client stands up with.
+			if (entity.spawn_id == ctx_.self.MySpawnId()) {
+				entity.stand_state.apply(eqt::state::StandValue::Standing);
+			}
 			ctx_.entities[entity.spawn_id] = entity;
 			ctx_.Player().SyncEntityToGameState(entity);
 			spawn_count++;
@@ -625,10 +632,11 @@ void eqt::entities::EntitiesComponent::ZoneProcessSpawnAppearance(const EQ::Net:
 			auto it = ctx_.entities.find(spawn_id);
 			if (it != ctx_.entities.end()) {
 				it->second.animation = static_cast<uint8_t>(parameter);
-				// B1174 (#493): the stand byte the OP_Action cast-anim gate
-				// reads (spell_action_anim.h).
-				it->second.stand_state =
-					EQ::SpawnStandStateAfterAppearance(it->second.stand_state, parameter);
+				// B1174 (#493) / B1183 (#502): the stand byte the OP_Action
+				// cast-anim gate reads (spell_action_anim.h), now the per-spawn
+				// StandState machine fed by the server's AT_Anim value (the
+				// client's appearance-blob write, eqgame.exe.c:103463).
+				it->second.stand_state.onAppearanceAnim(parameter);
 			}
 
 			// T344 (B001): a pose the SERVER forces on US (root/mez

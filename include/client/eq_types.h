@@ -9,6 +9,7 @@
 #include <string>
 
 #include "client/state/game_state.h"
+#include "client/state/stand_state.h"  // B1183: Entity::stand_state
 
 struct WorldServer
 {
@@ -57,13 +58,15 @@ struct Entity
 	uint8_t gender = 0;
 	uint32_t guild_id = 0;
 	uint8_t animation = 0;
-	// B1174 (#493): the spawn's stand byte as fable knows it (the client's
-	// spawn +0x251; EQ::SpawnStandStateAfterAppearance, spell_action_anim.h):
-	// the server's last AT_Anim stand value, 100 = standing by default (the
-	// Titanium Spawn_Struct has no stand state: eqemu fills SoF+'s
-	// StandState, akk-stack zone/mob.cpp:1328, and sends Titanium
-	// animation 0, :1304).
-	uint8_t stand_state = 100;
+	// B1183 (#502): the spawn's stand byte as the client keeps it (spawn
+	// +0x251, eqgame.exe). ONE StandState owner per spawn (stand_state.h):
+	// fed by the same events the client uses (server AT_Anim appearances,
+	// the local player's duck/sit/stand keys through the setter, stun,
+	// looting, cast start, death) and convertible to the raw byte, so the
+	// readers (the B1174 cast-anim gate) read exactly the byte. The
+	// default is 100 = standing (B1174's documented default; the client
+	// constructs with 0 and the appearance/zone-in write follows).
+	eqt::state::StandState stand_state;
 	uint8_t hp_percent = 100;
 	uint16_t cur_mana = 0;
 	uint16_t max_mana = 0;
