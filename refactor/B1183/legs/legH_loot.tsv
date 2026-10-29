@@ -1,0 +1,48 @@
+# B1183 (#502) legH: the LOOT row, with the corpse held long enough and
+# placed IN FRONT of the caster's camera so the USE click lands on it.
+#
+# Why legG failed (measured, B1183 legG FINDINGS): #spawn puts the TrollF at
+# the caster's own position -- directly under the third-person camera -- so
+# its corpse is at/below the screen bottom and the (640,430) click hit
+# nothing (22_kill frame: empty foreground, target frame stuck on the caster).
+# This leg (1) holds the corpse via the server-SQL hook (EmptyNPCCorpseDecayTime
+# 0 -> 300000, so it does not despawn ~1.03 s after OP_Death) and (2) moves the
+# caster 3 units to -Y with heading 0 (EQ heading 0 = +Y/North, docs/CLAUDE.md
+# "Heading/Rotation Conventions"), so the corpse (at +Y) is in front and large.
+#
+# The oracle writes 105 to the CORPSE's +0x251 (loot gate 28061/28062), not the
+# looter's -- the poller's XNEW/XWR lines (non-local spawns) carry the corpse,
+# the WR lines carry the looter (should hold 100).
+#
+#   action   target                 hold_ms  still_name
+login        Testcaster             0        char_select
+obs          login                  Oraclewatch  0  obs_char_select
+zone         qeynos2                0        in_world
+obs          zone                   qeynos2  0    obs_in_world
+wait         9000                   0        settle
+obs          click                  1229,555  0   obs_close_tip
+click        1229,555               0        close_tip
+command      #goto -74 428 10       0        goto_up
+wait         6000                   0        goto_settle
+command      #set time 11 0         0        noon
+wait         1500                   0        noon_settle
+command      #weather 0             0        clear
+command      #level 60              0        level
+command      #mana                  0        mana
+wait         2000                   0        mana_settle
+wait         3000                   0        gdb_arm
+wait         10000                  0        gdb_dump
+still        0                      0        stand0
+command      #spawn TrollF 1 1 0 50    0      spawn
+wait         4000                   0        spawn_settle
+command      /target TrollF         0        tgt_troll
+wait         1500                   0        tgt_settle
+command      #damage 999999         0        kill
+command      #goto -74 425 10 0     0        face_corpse
+wait         3000                   0        settle_face
+still        0                      0        face_check
+click        640,470                0        use_click
+wait         4000                   0        use_hold
+still        0                      0        use_check
+command      /q                     0        quit
+obs          command                /q     0       obs_quit

@@ -62,6 +62,13 @@ BASE = int(os.environ.get("S_BASE", "0"), 16)
 IMAGE_BASE = 0x400000
 KEYMAP_VA = 0x0098599C
 SPAWN_VA = 0x00905CE4
+# The spawn linked list (new-spawn writer 106109/FUN_004849b2): head at
+# DAT_00905cc4, each node +0x214=prev, +0x220=next. The loot gate (28061/
+# 28062) writes 105 to the USE TARGET's +0x251, not the looter's -- so the
+# corpse's byte is what moves on a loot, and the looter (local) holds 100.
+# Track every non-local spawn to catch the corpse. The corpse flag is +0x244
+# (death handler 105881 sets it to 2 and the byte to 120).
+SPAWNLIST_VA = 0x00905CC4
 
 PID = None
 FD = None
@@ -170,6 +177,7 @@ def main():
     SHIFT = BASE - IMAGE_BASE
     keymap_rt = KEYMAP_VA + SHIFT
     spawn_rt = SPAWN_VA + SHIFT
+    spawnlist_rt = SPAWNLIST_VA + SHIFT
 
     # 1. The client's OWN hotkey state: the static decode tables first
     #    (image VAs, mapped for the process's whole life), then the live
@@ -260,6 +268,46 @@ def main():
     noch = 0
     fails = 0
     log("INIT spawn=0x%08x" % 0)
+
+    # 3. Non-local spawn tracking (the corpse). Walk the spawn list from
+    #    spawnlist_rt; for every node that is not the local player, log its
+    #    +0x251 byte on change (XWR), tagged with its +0x244 corpse flag. This
+    #    is what proves the oracle's loot fired (the corpse -> 105) while the
+    #    looter (local, "WR" lines) holds 100.
+    others = {}
+
+    def track_others(t):
+        try:
+            head = read_u32(FD, spawnlist_rt)
+        except OSError:
+            return
+        seen = set()
+        node = head
+        n = 0
+        while 0x00010000 < node < 0x80000000 and n < 96 and node not in seen:
+            seen.add(node)
+            try:
+                nxt = read_u32(FD, node + 0x220)
+            except OSError:
+                break
+            if node != spawn:  # skip the local player (already "WR"-tracked)
+                try:
+                    flag = read_u32(FD, node + 0x244) & 0xFF
+                    b = read_u32(FD, node + 0x251) & 0xFF
+                except OSError:
+                    b = flag = None
+                if b is not None:
+                    prev = others.get(node)
+                    if prev is None:
+                        others[node] = b
+                        log("XNEW t=%7.3f spawn=0x%08x flag=%d byte=%d (poll)" % (
+                            t, node, flag, b))
+                    elif b != prev:
+                        others[node] = b
+                        log("XWR t=%7.3f %d -> %d  spawn=0x%08x flag=%d (poll)" % (
+                            t, prev, b, node, flag))
+            node = nxt
+            n += 1
     while time.time() - t0 < TMAX:
         try:
             sp = read_u32(FD, spawn_rt)
@@ -320,6 +368,8 @@ def main():
         if noch % 200 == 0:
             log("SNAP t=%7.3f spawn=0x%08x byte=%d fails=%d" % (
                 t, spawn, last, fails))
+        if noch % 4 == 0:  # walk the spawn list every ~100 ms
+            track_others(t)
         time.sleep(POLL)
     log("END hits=%d ticks=%d fails=%d t=%.3f" % (
         hits, noch, fails, time.time() - t0))

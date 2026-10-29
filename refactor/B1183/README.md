@@ -317,23 +317,39 @@ both clients), and the oracle's USE trigger is a click on the *live* corpse
 client_focus overhead), so the mousedown lands after the despawn. `legF`
 (click ~12 s late) and `legG` (immediate click, still outside the ~1 s window)
 both show the corpse gone and the target empty at click time, so the 100
-reading is CONFOUNDED, not a loot measurement. To unblock: extend corpse
-persistence (a server setting / GM command that keeps the corpse alive) or
-place the corpse at a FIXED position and click within 1 s, then re-run:
+reading is CONFOUNDED, not a loot measurement.
+
+CORPSE-PERSISTENCE FIX IS IN PLACE (this run): the lane-5 DB rule
+`NPC:EmptyNPCCorpseDecayTime` is 300000 (5 min) and the zone fleet was
+restarted to read it (`docker restart` is blocked; `eq_container_pkill 9
+'[s]erver/bin/zone'` makes the spire-launcher respawn the killed zone/world
+with the new rule), so a `#spawn`ed corpse now HOLDS ~5 min instead of
+despawning in ~1 s. `b1183_poll.py` was also extended to track the corpse's
+own `+0x251` (it walks the spawn list from `DAT_00905cc4`, tags a non-local
+spawn with `+0x244==2` as the corpse, and logs its `XNEW`/`XWR` — the looter
+stays 100, the corpse goes 105 on the click). The re-run (`legs/legH3`)
+still did not measure it: the oracle leg infrastructure failed with exit 66 —
+the `oracle_class_leg.sh` after-census (line 120) found char 61 not restored to
+its home class and the client step produced no `timeline.tsv`. So the remaining
+blocker is the leg infrastructure, not the corpse.
 
 ```bash
 cd /home/user/src/willeq-wt/kb-b1183-stand-state
 export EQEMU_LANE=5; source scripts/eqemu/env.sh; eqemu_lock_take kb-b1183-stand-state
 bash refactor/B1183/scripts/b1183_poll.sh \
-     $HOME/kb-evidence/kb-b1183-stand-state/legs/legH 120 &   # arm BEFORE the leg
+     $HOME/kb-evidence/kb-b1183-stand-state/legs/legH 180 &   # arm BEFORE the leg (TMAX=180 for the slow click)
 ORACLE_OWNER=kb-b1183-stand-state-a \
   bash scripts/eqemu/oracle/oracle_class_leg.sh 5 12 \
-     refactor/B1183/plans/legG_loot.tsv \
+     refactor/B1183/legs/legH_loot.tsv \
      $HOME/kb-evidence/kb-b1183-stand-state/legs/legH --no-wait
-# (with the corpse held past 1 s, or a sub-1 s click on a fixed-position corpse)
+# First root-cause the legH3 exit 66: read $OUT/char-state-after.tsv and the
+# after-census at oracle_class_leg.sh:120 (char 61's class after the restore
+# must equal its home class). The corpse-persistence fix and the corpse
+# poller are already in place; the click now lands on a still-present corpse.
 ```
 
-Then fill the LOOT row of `tables/step_table.tsv` from the poller log.
+Then fill the LOOT row of `tables/step_table.tsv` from the poller log (expect
+the corpse's `+0x251` to write `100->105` at the click; the looter stays 100).
 
 ## 8. What is verified
 
