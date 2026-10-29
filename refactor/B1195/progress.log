@@ -1,0 +1,31 @@
+2026-10-29T15:49:36Z leg b1195_rig93_253 class 6 lane 5 start (owner kb-b1195-oracle-lanes)
+2026-10-29T15:51:29Z leg b1195_provision class 12 lane 2 start
+2026-10-29T16:04:27Z leg b1195_rig93_253 class 6 lane 5 rc=0 (free)
+2026-10-29T16:04:28Z lease after: state=FREE
+free
+2026-10-29T16:08:48Z leg b1195_provision class 12 lane 2 start (retry 1 after clean wineserver/Xvfb)
+2026-10-29T16:20:39Z leg b1195_rig93_253 class 6 lane 5 start (owner kb-b1195-oracle-lanes, plan b1195_lane5_rig93_253.tsv)
+2026-10-29T16:35:33Z leg b1195_rig93_253 class 6 lane 5 rc=0 (free)
+2026-10-29T16:35:35Z lease after: state=FREE
+free
+2026-10-29T16:42:40Z leg b1195_rig93_253 class 6 lane 5 start (owner kb-b1195-oracle-lanes, plan b1195_lane5_rig93_253.tsv)
+2026-10-29T17:04:02Z leg b1195_rig93_253 class 6 lane 5 rc=0 (free)
+2026-10-29T17:04:03Z lease after: state=FREE
+free
+2026-10-29T17:49:38Z leg b1195_rig93_253 class 6 lane 5 start (owner kb-b1195-oracle-lanes, plan b1195_lane5_rig93_253.tsv)
+2026-10-29T17:49:45Z leg b1195_rig93_253 class 6 lane 2 start (owner kb-b1195-oracle-lanes, plan b1195_lane2_rig93_253.tsv)
+2026-10-29T18:08:37Z leg b1195_rig93_253 class 6 lane 2 rc=66 (free)
+2026-10-29T18:08:39Z lease after: state=FREE
+free
+2026-10-29T18:15:19Z leg b1195_rig93_253 class 6 lane 5 start (owner kb-b1195-oracle-lanes, plan b1195_lane5_rig93_253.tsv)
+2026-10-29T18:15:26Z leg b1195_rig93_253 class 6 lane 2 start (owner kb-b1195-oracle-lanes, plan b1195_lane2_rig93_253.tsv)
+2026-10-29T18:19:44Z leg b1195_rig93_253 class 6 lane 2 rc=64 (free)
+2026-10-29T18:19:46Z lease after: state=FREE
+free
+2026-10-29T18:25:04Z leg b1195_rig93_253 class 6 lane 2 start (owner kb-b1195-oracle-lanes, plan b1195_lane2_rig93_253.tsv)
+2026-10-29T18:30:03Z leg b1195_rig93_253 class 6 lane 5 rc=0 (free)
+2026-10-29T18:30:04Z lease after: state=FREE
+free
+2026-10-29T18:42:11Z leg b1195_rig93_253 class 6 lane 2 rc=0 (free)
+2026-10-29T18:42:13Z lease after: state=FREE
+free

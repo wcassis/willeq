@@ -47,6 +47,20 @@ def parse_txt(path, mpx_hint):
             r[key] = fnum(mm.group(1))
     if m2:
         r['landing_onset_s'], r['landing_end_s'], r['landing_dur_s'], r['landing_peak_s'], r['landing_cov'] = map(fnum, m2.groups())
+        r['landing_line'] = 'main'
+    else:
+        # fx_timing.py's main LANDING line requires lit > max(thr2, 1.5*source_tail) (B1122 line 46):
+        # the gate is relative to the SOURCE stage's own tail, which differs per lane, so the main
+        # line is lane-asymmetric for the 253 post-cast volume. Fall back to the anchor.py
+        # 'LANDING active run' summary, which is the same window on both lanes.
+        mr = re.search(r'LANDING active run f\d+ Act([+-]?\d+\.\d+) \.\. f\d+ Act([+-]?\d+\.\d+); peak f\d+ Act([+-]?\d+\.\d+) cov (\d+\.\d+)', txt)
+        if mr:
+            r['landing_onset_s'] = fnum(mr.group(1))
+            r['landing_end_s'] = fnum(mr.group(2))
+            r['landing_peak_s'] = fnum(mr.group(3))
+            r['landing_cov'] = fnum(mr.group(4))
+            r['landing_dur_s'] = fnum(mr.group(2)) - fnum(mr.group(1))
+            r['landing_line'] = 'run'
     return r
 
 def p90s(frame_dir, mpx):
