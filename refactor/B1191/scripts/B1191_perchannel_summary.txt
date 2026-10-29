@@ -1,0 +1,22 @@
+B1191 per-channel measurement (current tree 8c2bfe7c2, pre-B1188, pack 1cdd31e7, fresh ThinkPad renders, 1280x800, whole-frame, peak landing frame, per-channel means over lit80 and px>150 vs the tail-median baseline).
+Method (identical on both sides, b1191_check_pair.py): per-frame diff vs the tail-median baseline; the landing's PEAK frame (max lit80 pixel count); per-channel means over lit80 (max-channel diff > 80) and px>150 (max-channel diff > 150). Baseline tail = last 30 willeq frames for every record; oracle tail = 60 frames for rec 0 (the 500-frame tour_93 window) and 38 frames for rec 35/43 (the ~201-frame b1130 window -- b1191_oracle_chan.py's 1.5 s tail). The committed oracle rows reproduce EXACTLY only at those oracle tails (30/60 gives rec 35 oracle 237,986 R=9.0/G=76.5/B=197.9 and rec 43 oracle 17,986 R=154.5/G=131.1/B=180.1 instead).
+
+REC 0 (spell 93 = record 80 / tour_93), oracle tail 60:
+  WILLEQ px150: px=213517 R=199.6 G=149.3 B=11.5 G/R=0.748
+  ORACLE px150: px=144694 R=189.4 G=131.6 B=3.9  G/R=0.695
+  ratio(willeq/oracle): R=1.054 G=1.134 B=2.949  lit80: R=1.059 G=1.110 B=2.089
+REC 35 (spell 253, blue), oracle tail 38:
+  WILLEQ px150: px=162559 R=22.8 G=69.5 B=174.4 G/R=3.052
+  ORACLE px150: px=248766 R=9.0  G=76.2 B=201.0 G/R=8.482
+  ratio: R=2.533 G=0.912 B=0.868  lit80: R=2.247 G=0.828 B=0.884
+REC 43 (spell 720), oracle tail 38:
+  WILLEQ px150: px=10922 R=187.0 G=157.4 B=163.5 G/R=0.842
+  ORACLE px150: px=22839 R=160.3 G=134.3 B=184.2 G/R=0.838
+  ratio: R=1.166 G=1.172 B=0.888  lit80: R=1.222 G=1.202 B=0.898
+
+LIKE-FOR-LIKE CORE BOX (rec 0), B1188 scene-matched boxes, each side's own box-PEAK frame (b1191_scan_box.py, not a shared frame index):
+  ORACLE  [0:300,620:880]   box-peak f186  px150: px=12603  R=184.8 G=82.1  B=3.6  G/R=0.444
+  WILLEQ  [60:360,770:1030] box-peak f266  px150: px=63934  R=201.2 G=144.9 B=5.4  G/R=0.720
+  (The WILLEQ row's peak is f266, NOT f158: the earlier "f158" label with px=63934/G=144.9 was the box-PEAK frame. The matched frame f158 itself is 61,356 px, R=202.0 / G=139.4 / B=5.7; B1188 finding 6's matched-frame table independently gives f158 = 61,360 px / G=139.4 -- f6_matched_box.out.txt in ~/kb-evidence/kb-b1188-landing-pixels/.)
+
+CONCLUSION: no record shows G halved (approx 0.5x). Warm spells (0,43): willeq G >= oracle G (1.134x / 1.172x). Blue spell (35): willeq G is 0.828-0.912x of the oracle's -- a measured shortfall with NO named cause (all four pipeline stages in Ask 2 are CLEARED), so under Will's rule it is FOLLOW-UP DEFECT B1197, not an acceptable / within-noise gap.
