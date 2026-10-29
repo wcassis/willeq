@@ -32,9 +32,13 @@ TMAX = float(os.environ.get("S_TMAX", "300"))
 POLL = float(os.environ.get("S_POLL_MS", "25")) / 1000.0
 BASE = int(os.environ.get("S_BASE", "0"), 16)
 
-# Globals, eqgame.exe IMAGE VA (runtime = base + va):
-KEYMAP_G = 0x0098599C
-SPAWN_G = 0x00905CE4
+# Globals, eqgame.exe IMAGE VAs (Ghidra's DAT_ addresses; the PE image
+# base is 0x400000). Runtime = VA + (BASE - 0x400000) -- NOT BASE + VA
+# (the b1183_gdb.py OFF0 convention; a bare BASE+VA read lands 0x400000
+# past the real global and returns unrelated dwords).
+IMAGE_BASE = 0x400000
+KEYMAP_VA = 0x0098599C
+SPAWN_VA = 0x00905CE4
 
 PID = None
 FD = None
@@ -130,15 +134,19 @@ def main():
     if not BASE:
         log("FAIL no eqgame.exe base in maps")
         return 2
-    log("BASE 0x%08x" % BASE)
+    log("BASE 0x%08x (image VAs shifted by 0x%x)" % (
+        BASE, BASE - IMAGE_BASE))
+    SHIFT = BASE - IMAGE_BASE
+    keymap_rt = KEYMAP_VA + SHIFT
+    spawn_rt = SPAWN_VA + SHIFT
 
     # 1. The live keymap dump (the client's OWN hotkey state).
     try:
-        obj = read_u32(FD, BASE + KEYMAP_G)
+        obj = read_u32(FD, keymap_rt)
     except OSError as e:
         obj = 0
         log("KEYMAP read failed: %s" % e)
-    log("KEYMAP obj=0x%08x" % obj)
+    log("KEYMAP obj=0x%08x (global 0x%08x)" % (obj, keymap_rt))
     if 0x00010000 < obj < 0x80000000:
         marks = {
             0x60: "action12 DUCK k0", 0x64: "action12 DUCK k1",
@@ -172,7 +180,7 @@ def main():
     log("INIT spawn=0x%08x" % 0)
     while time.time() - t0 < TMAX:
         try:
-            sp = read_u32(FD, BASE + SPAWN_G)
+            sp = read_u32(FD, spawn_rt)
         except OSError:
             sp = spawn
             fails += 1
@@ -184,7 +192,7 @@ def main():
             # Fingerprints: the raw 8 bytes at the global (pointer width
             # check), the position floats, and the 16 bytes around +0x250.
             try:
-                raw8 = read_bytes(FD, BASE + SPAWN_G, 8)
+                raw8 = read_bytes(FD, spawn_rt, 8)
                 log("SPAWN t=%.3f 0x%08x raw8=%s" % (
                     time.time() - t0, sp, raw8.hex()))
             except OSError as e:
