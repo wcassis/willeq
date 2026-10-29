@@ -271,6 +271,24 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_source_anchors DISCOVERY_TIMEOUT 120)
 
+# B1185 (#504): the Source stage's particle onset (the client's createCastGlow
+# Source branch: sourceLatency + the slot's +0x8C start). The b1130 sweep's
+# source_onset_s is this value (the first visible particle frame), not the
+# pixel measure's first-lit frame (B1157's CastingAnim shadowed it).
+ADD_EXECUTABLE(test_b1185_source_onset
+    test_b1185_source_onset.cpp
+)
+TARGET_LINK_LIBRARIES(test_b1185_source_onset GTest::gtest_main willeq_core)
+IF(NOT EQT_GRAPHICS)
+    TARGET_SOURCES(test_b1185_source_onset PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_effects_config.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_edd_reader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_b1185_source_onset ${FMT_LIB} ${JSONCPP_LIBRARIES} dl)
+ENDIF()
+GTEST_DISCOVER_TESTS(test_b1185_source_onset DISCOVERY_TIMEOUT 120)
+
 # B1132 (#452): the Target (landing) stage per spells.eff record -- anchor
 # class and shape from the B1130 survey, and no landing on the caster of an
 # other-target cast. Same layout as test_spell_source_anchors.
