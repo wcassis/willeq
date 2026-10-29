@@ -6,10 +6,11 @@
 R=/home/user/src/willeq-wt/kb-b1195-oracle-lanes
 LANE=$1 OUT=$2
 [[ $LANE =~ ^[1-5]$ && -n $OUT ]] || { echo "usage: run_leg.sh <lane> <out_dir>" >&2; exit 64; }
+if [[ $LANE == 5 ]]; then PLAN=$R/refactor/B1195/plans/b1195_lane5_rig93_253.tsv; else PLAN=$R/refactor/B1195/plans/b1195_lane2_rig93_253.tsv; fi
 export ORACLE_OWNER=kb-b1195-oracle-lanes EQEMU_LANE=$LANE
 mkdir -p "$OUT"
-echo "$(date -u +%FT%TZ) leg b1195_rig93_253 class 6 lane $LANE start (owner $ORACLE_OWNER)" >> "$R/refactor/B1195/progress.log"
-bash "$R/scripts/eqemu/oracle/oracle_class_leg.sh" "$LANE" 6 "$R/refactor/B1195/plans/b1195_rig93_253.tsv" "$OUT" \
+echo "$(date -u +%FT%TZ) leg b1195_rig93_253 class 6 lane $LANE start (owner $ORACLE_OWNER, plan $(basename $PLAN))" >> "$R/refactor/B1195/progress.log"
+bash "$R/scripts/eqemu/oracle/oracle_class_leg.sh" "$LANE" 6 "$PLAN" "$OUT" \
     --pre-sql-file "$R/refactor/B1195/plans/guard_assist_off.sql" \
     --post-sql-file "$R/refactor/B1195/plans/guard_assist_on.sql" \
     > "$OUT/run.out" 2>&1
