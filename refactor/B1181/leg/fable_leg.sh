@@ -41,6 +41,7 @@ eqemu_stack_ready || { echo "stack not ready after up.sh" >&2; exit 65; }
 # --- server state as-found (the rows this leg moves, BEFORE any change) ------
 eqemu_sql "SELECT id, name, account_id, cur_hp, mana, endurance, pvp FROM character_data WHERE id IN (67, 103) ORDER BY id;" >"$OUT_LOCAL/chars-before.tsv" 2>&1
 eqemu_sql "SELECT rule_name, rule_value FROM rule_values WHERE rule_name='Spells:UseLiveSpellProjectileGFX';" >"$OUT_LOCAL/gfx-before.tsv" 2>&1
+eqemu_sql "SELECT rule_name, rule_value FROM rule_values WHERE rule_name='Combat:MinRangedAttackDist';" >"$OUT_LOCAL/range-rule-before.tsv" 2>&1
 eqemu_sql "SELECT slot_id, item_id FROM inventory WHERE character_id=67 AND slot_id IN (11, 22);" >"$OUT_LOCAL/gear-before.tsv" 2>&1
 # --- pre-SQL (world up): GFX on, the caster's archery gear, observer vitals,
 # --- the poses. B zones in at its seeded pose (the world reads the DB row per
@@ -52,10 +53,27 @@ eq_remote test -f /mnt/projects/EverQuestP1999/qeynos2.s3d \
   || { echo "qeynos2.s3d missing on the eqemu host" >&2; exit 65; }
 eqemu_sql "UPDATE rule_values SET rule_value='true' WHERE rule_name='Spells:UseLiveSpellProjectileGFX';" \
   || { echo "GFX rule failed" >&2; exit 65; }
+# RUN 5 (2026-10-29): the archery shot is 9.05 units and the server's
+# Client::RangedAttack band is MinRangedAttackDist^2 .. range^2
+# (special_attacks.cpp:965-972; the rule default is 25, ruletypes.h:576),
+# so the leg zeros the rule and B reloads it ('#reload rules global').
+# The world is ALREADY UP when this runs, hence the reload, not a restart.
+eqemu_sql "UPDATE rule_values SET rule_value='0' WHERE rule_name='Combat:MinRangedAttackDist';" \
+  || { echo "range rule pre-SQL failed" >&2; exit 65; }
+RANGE_RULE=$(eqemu_sql "SELECT rule_value FROM rule_values WHERE rule_name='Combat:MinRangedAttackDist';")
+RANGE_RULE=${RANGE_RULE//[[:space:]]/}
+[ "$RANGE_RULE" = "0" ] || { echo "MinRangedAttackDist not applied (got '$RANGE_RULE') -- name miss; the 9.05-unit shot would be refused" >&2; exit 65; }
+# The server's bow/arrow type checks (special_attacks.cpp:893-906) read the
+# DB itemtype: 5 = ItemTypeBow, 27 = ItemTypeArrow (B900's seed). A wrong
+# item row fails the shot server-side, so gate on it, not on the log.
+BOW_TYPE=$(eqemu_sql "SELECT itemtype FROM item WHERE id=8003;"); BOW_TYPE=${BOW_TYPE//[[:space:]]/}
+ARR_TYPE=$(eqemu_sql "SELECT itemtype FROM item WHERE id=8005;"); ARR_TYPE=${ARR_TYPE//[[:space:]]/}
+[ "$BOW_TYPE" = "5" ] || { echo "item 8003 itemtype='$BOW_TYPE' want 5 (ItemTypeBow)" >&2; exit 65; }
+[ "$ARR_TYPE" = "27" ] || { echo "item 8005 itemtype='$ARR_TYPE' want 27 (ItemTypeArrow)" >&2; exit 65; }
 eqemu_sql "DELETE FROM inventory WHERE character_id=67 AND slot_id=11;
 INSERT INTO inventory (character_id, slot_id, item_id, charges) VALUES (67, 11, 8003, 0);
 DELETE FROM inventory WHERE character_id=67 AND slot_id=22;
-INSERT INTO inventory (character_id, slot_id, item_id, charges) VALUES (67, 22, 8005, 0);" \
+INSERT INTO inventory (character_id, slot_id, item_id, charges) VALUES (67, 22, 8005, 10);" \
   || { echo "gear pre-SQL failed" >&2; exit 65; }
 eqemu_sql "UPDATE character_data SET cur_hp=999999, mana=999999, endurance=999999 WHERE id=103 AND name='Oraclewatch';" \
   || { echo "observer vitals pre-SQL failed" >&2; exit 65; }
@@ -98,6 +116,12 @@ fi
 # post-SQL (world down once the down.sh ran; with the stack still up the
 # restore is still safe: the clients are both /q'd, no live connection).
 eqemu_sql "UPDATE rule_values SET rule_value='false' WHERE rule_name='Spells:UseLiveSpellProjectileGFX';" || :
+# restore the ranged-distance rule (default 25) from the as-found snapshot
+RR_BEFORE=$(awk 'NR==2{print $2}' "$OUT_LOCAL/range-rule-before.tsv" 2>/dev/null)
+RR_BEFORE=${RR_BEFORE//[[:space:]]/}
+if [ -n "$RR_BEFORE" ]; then
+  eqemu_sql "UPDATE rule_values SET rule_value='$RR_BEFORE' WHERE rule_name='Combat:MinRangedAttackDist';" || :
+fi
 eqemu_sql "DELETE FROM inventory WHERE character_id=67 AND item_id IN (8003, 8005);" || :
 # restore the as-found vitals (cur_hp/mana/endurance/pvp) from the snapshot
 python3 - "$OUT_LOCAL/chars-before.tsv" <<'PY' > "$OUT_LOCAL/restore.sql" 2>&1
