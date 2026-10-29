@@ -72,6 +72,8 @@ def leg(root, mpx_hint):
         ps, pl = p90s(d, r['mpx'])
         r['p90_src'], r['p90_land'] = ps, pl
         mm = re.match(r'(.+?)_(\d+)_(\d+)\.txt$', fn)
+        if not mm:
+            continue
         out[(mm.group(2), int(mm.group(3)))] = r
     return out
 
