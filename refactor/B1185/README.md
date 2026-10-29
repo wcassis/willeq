@@ -22,13 +22,14 @@ unchanged):
 
 | tree | sha | r0 (93) | r1 (200) | r7 (40) |
 |---|---|---|---|---|
-| pre-B1157 (the committed "before", B1155's sweep) | B1155 merge `68caf7b4d` | 0.433 | (36/40 in band) | -- |
+| pre-B1157 (the committed "before", B1155's sweep) | B1155 merge `68caf7b4d` | 0.433 | (34/40 in band in B1155's own table; 36/40 in `gate_c_before.tsv`) | -- |
 | **B1157 (the cause)** | `c39f49891` | **0.100** | **0.100** | **0.100** |
 | fable tip | `80202c81f` | 0.100 | 0.100 | 0.100 |
 
 The drop is at **B1157** (`c39f49891`, "Merge branch `task/kb-b1157-cast-anim`").
 The committed "before" is B1155's 40-record sweep (`refactor/B1155/banded_table.tsv`,
-harness column: 0.433 x33 / 0.500-0.733 x7), rendered on B1155's tree -- pre-B1157:
+harness column: 0.433 x31 / 0.467-1.367 x9, 34/40 in band; the 0.433 x33 / 0.500-0.733 x7,
+36/40 census belongs to `refactor/B1178/tables/gate_c_before.tsv`), rendered on B1155's tree -- pre-B1157:
 the B1155 merge `68caf7b4d` (Oct 26 03:31) precedes the B1157 merge `c39f49891`
 (Oct 26 20:28) in fable's first-parent history (the intervening merges B1143/
 B1151/B1152/B1156/B1158 do not animate the caster's model). Every merge the card
@@ -69,11 +70,11 @@ The per-frame `lit80` for record 0 (spell 93) on B1157, from the measured run:
 
 ```
 f45 (BC)      29   idle c
-f446 f47      34-65  quiet
-f448          1689   <- the cast-anim's STEP (the raised arm): 65 -> 1689
-f448-f457     1689-1954  the cast-anim's PLATEAU (the raised hand is held)
-f448          2755   <- the Source stage's GROWTH begins: 1954 -> 2755
-f459-f465     2849, 2987, 3121, 3180, 3380, 3510, 3628  (building to the peak)
+f46 f47       34-65  quiet
+f48           1689   <- the cast-anim's STEP (the raised arm): 65 -> 1689
+f48-f57       1689-1954  the cast-anim's PLATEAU (the raised hand is held)
+f58           2755   <- the Source stage's GROWTH begins: 1954 -> 2755
+f59-f65       2849, 2987, 3121, 3180, 3380, 3510, 3628  (building to the peak)
 ```
 
 The cast-anim (f48) is a **step to a held plateau** -- the raised arm is a
@@ -211,12 +212,12 @@ the committed B1155 rule (the B1130 value +- 0.10 s).
 | 8 | fixed_self | 346 | 0.100 | 0.410 | 0.430 | PASS | 0.567 | over |
 | 9 | fixed_self | 375 | 0.100 | 0.410 | 0.390 | PASS | 0.433 | PASS |
 | 10 | fixed_self | 590 | 0.100 | 0.410 | 0.380 | PASS | 0.433 | PASS |
-| 11 | fixed_self | 285 | 0.100 | 0.410 | 0.500 | PASS | 0.433 | PASS |
+| 11 | fixed_self | 285 | 0.100 | 0.410 | 0.500 | PASS | 0.500 | PASS |
 | 12 | fixed_npc | 208 | 0.100 | 0.410 | 0.400 | PASS | 0.433 | PASS |
 | 13 | fixed_npc | 209 | 0.100 | 0.410 | 0.420 | PASS | 0.433 | PASS |
 | 14 | fixed_self | 373 | 0.100 | 0.410 | 0.490 | PASS | 0.433 | PASS |
 | 15 | fixed_npc | 289 | 0.100 | 0.410 | 0.390 | PASS | 0.433 | PASS |
-| 16 | fixed_npc | 242 | 0.100 | 0.410 | 0.490 | PASS | 0.433 | PASS |
+| 16 | fixed_npc | 242 | 0.100 | 0.410 | 0.490 | PASS | 0.533 | PASS |
 | 17 | fixed_self | 237 | 0.100 | 0.410 | 0.400 | PASS | 0.433 | PASS |
 | 18 | fixed_npc | 378 | 0.100 | 0.410 | 0.400 | PASS | 0.433 | PASS |
 | 19 | fixed_self | 359 | 0.100 | 0.410 | 0.480 | PASS | 0.667 | over |
@@ -226,7 +227,7 @@ the committed B1155 rule (the B1130 value +- 0.10 s).
 | 23 | fixed_npc | 372 | 0.100 | 0.410 | 0.420 | PASS | 0.433 | PASS |
 | 24 | fixed_npc | 348 | 0.100 | 0.410 | 0.420 | PASS | 0.433 | PASS |
 | 25 | fixed_npc | 14 | 0.100 | 0.410 | 0.480 | PASS | 0.433 | PASS |
-| 26 | fixed_npc | 310 | 0.100 | 0.410 | 0.470 | PASS | 0.433 | PASS |
+| 26 | fixed_npc | 310 | 0.100 | 0.410 | 0.470 | PASS | 0.500 | PASS |
 | 27 | fixed_npc | 290 | 0.100 | 0.410 | 0.380 | PASS | 0.433 | PASS |
 | 28 | fixed_npc | 73 | 0.100 | 0.410 | 0.390 | PASS | 0.433 | PASS |
 | 29 | fixed_npc | 286 | 0.100 | 0.410 | 0.400 | PASS | 0.533 | over |
