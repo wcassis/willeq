@@ -64,9 +64,13 @@ def main():
     after = {int(r['record']): r for r in readtsv(AFTER)}
     recs = sorted(set(base) & set(after))
     print(f'rows compared: {len(recs)} (base {len(base)}, after {len(after)})')
-    print(f'{"column":18s}{"max|delta|":>12s}{"maxrel%":>10s}{"row":>6s}')
+    print(f'{"column":18s}{"max|delta|":>12s}  (row)   maxrel% (row)')
     for m in METRICS:
-        worst, worst_rel, worst_row = None, -1.0, None
+        # worst ABSOLUTE delta (what the README quotes as max|delta|) and the
+        # worst RELATIVE delta are tracked separately (review note 8559 f1:
+        # the old loop picked the row by relative delta and printed its
+        # absolute delta as the max).
+        worst, worst_row, worst_rel, worst_rel_row = None, None, -1.0, None
         for r in recs:
             b = f(base[r].get('mine_' + m))
             a = f(after[r].get('mine_' + m))
@@ -74,9 +78,11 @@ def main():
                 continue
             d = abs(a - b)
             rel = d / abs(b) * 100.0
-            if worst is None or rel > worst_rel:
-                worst, worst_rel, worst_row = d, rel, r
-        print(f'{m:18s}{worst:12.3f}{worst_rel:9.2f}%{worst_row:6d}')
+            if worst is None or d > worst:
+                worst, worst_row = d, r
+            if rel > worst_rel:
+                worst_rel, worst_rel_row = rel, r
+        print(f'{m:18s}{worst:12.3f} (r{worst_row})  maxrel {worst_rel:6.2f}% (r{worst_rel_row})')
     b0, a0 = base[0], after[0]
     o, lb, la = (f(base[0].get('oracle_landing_cov')),
                  f(base[0].get('mine_landing_cov')), f(after[0].get('mine_landing_cov')))

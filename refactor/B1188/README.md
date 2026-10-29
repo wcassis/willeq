@@ -38,8 +38,9 @@ proven not assumed.** All four landing textures are the same flame hue
 (spelcc/spelcf/spelcb/spelce have B = 0 with G 43..165; only the cream
 spelcm carries B = 99); nearest-neighbour premultiplied-colour
 classification misassigns ~97% of the pillar to the cream set
-(`/mnt/scratch/kb-evidence/kb-b1188-landing-pixels/` pillar_hue.py +
-emitter_centroids.py, frames/oracle_r51).
+(`/home/user/kb-evidence/kb-b1188-landing-pixels/scripts/` pillar_hue.py +
+emitter_centroids.py on hermes-ext; the frames are
+`/mnt/scratch/kb-evidence/kb-b1188-landing-pixels/frames/oracle_r51`).
 
 **Willeq side: per-emitter isolated runs** (each emitter alone, the full
 run minus the source/impact run e0 -- exact subtraction, FX-only, the B1130
@@ -107,11 +108,13 @@ reviewer's cv2 INTER_LINEAR upscale vs 1.05x here (stdlib bilinear) — both
 states: **box averaging conserves each sprite's alpha integral and
 redistributes it** (the native pixels are the sharper core / thinner halo) —
 and the
-drawn effect is per-particle at sprite size: the diffused core falls below
-the lit threshold on a *single particle's* contribution where the native
-core clears it, which the rendered 84-particle A/B in sec. 7 measures as
-+54.9 % lit80 (29,758 -> 46,106). A single-sprite census (above) and that
-accumulated-field A/B are different measurements and both are right. The
+drawn effect is per-particle at sprite size. The corrected pack A/B in
+sec. 7 (the pre-B1188 tree's own render vs this tree, pillar box at f158)
+measures the redistribution in its real direction: the diffused 32-px halo
+lit *more* of the box (lit80 69,100 -> 42,645; px>150 61,360 -> 27,497),
+and the 1:1 native render moves the bright-pixel population *toward* the
+oracle's count (5.0x -> 2.2x of it, sec. 7); the single-sprite bands above
+agree (stored px>150 6,004 vs source 5,847; lit80 10,357 vs 10,024). The
 builder's box average (tools/spell_sprite_atlas_builder.cpp:121) was correct
 *as a downscaler*; it was the wrong rule for a texture the client draws
 native.
@@ -209,9 +212,11 @@ judged by the same judge into `refactor/B1188/tables/base/` (the
 tables (output: `/home/user/kb-evidence/kb-b1188-landing-pixels/delta_b1188.out.txt`):
 `source_onset_s` is exactly **0.000 on all 40 rows** (a texture-storage
 change cannot move an onset); the coverage and time columns move at most
-**0.006** (source_cov, r16), **0.033** (landing_cov, r41) and **0.100 s**
-(landing_end_s, r16) in absolute terms, ≤2.9 % relative on every one of
-them. The two small-magnitude sprite-height columns are noisier only in
+**0.018** (source_cov, r40: 1.258 -> 1.276), **0.044** (landing_cov, r3:
+8.623 -> 8.667) and **0.100 s** (landing_end_s, r16: 5.200 -> 5.300) in
+absolute terms (the script now reports the per-column maximum by ABSOLUTE
+delta and the maximum relative delta separately), ≤2.9 % relative on every
+one of them. The two small-magnitude sprite-height columns are noisier only in
 relative terms — p90_land 0.022 at r32 (40.7 %) and src_h_lo 0.010 at r35
 (7.7 %), both ≤0.022 px in absolute on the 209 px axis, frame-to-frame
 measurement noise, not a gate movement. Tour-7: `landing_cov` max |Δ|
@@ -226,8 +231,11 @@ The `landing_cov` headline (base column = committed `tables/base/b1130.tsv`):
 | 21 | 4.782 | 4.767 | −0.015 | 5.976 | 0.798× |
 
 `landing_cov` PASS count is **0 → 0** (38 short + 2 over on both sides; the
-over rows are r31 1.137× and r40 5.809×, unchanged). The 38-short-row median
-is **0.531× → 0.531×**. No column regressed. The judge's `d_` columns are
+over rows are r31 1.133× → 1.137× and r40 5.777× → 5.809×, +0.004 / +0.032,
+both still over). The 38-short-row median is **0.531× → 0.531×**. Two PASS
+counts move at band edges (`tables/base/counts.tsv` vs `tables/counts.tsv`):
+b1130 `p90_src` 24 → 23 and tour `roi_s` 5 → 3, on deltas ≤ 0.039; every
+other column's PASS count is unchanged. The judge's `d_` columns are
 vs the B1180 after columns (B1184 judge heritage, which includes the
 B1184/B1186 window unification); the B1188-specific delta is the one against
 the B1186 tip tabulated here.
