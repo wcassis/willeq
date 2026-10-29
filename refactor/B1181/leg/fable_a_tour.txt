@@ -1,0 +1,22 @@
+# B1181 fable leg tour for A (the WINDOWED willeq under test = Oraclewatch,
+# the OBSERVER). A zones in at the seeded observer pose
+# (-67.6, 434.4, 3.75, heading 220 = facing B, the caster at (-74, 428) --
+# 9.05 units, the B1134 rig geometry, roles: B shoots AT A, so the model
+# flies at the camera, exactly as in the oracle observer view).
+#
+# Camera: /camera user1 = fable's user camera 1, the third-person view
+# B1176 used for its measured rows; the observer's F9 x3 chase view in the
+# oracle rig is a different camera rig (B1176 sec. 5 note), so the px rows
+# here are measured in THIS framing and are reported per side, never
+# cross-divided.
+#
+# A does NO GM commands (A is not a GM) and never attacks (the observer is
+# passive; B has #set pvp on, A does not). A's whole job: zone in, take the
+# camera, hold still, stay in the zone until after B's shots, quit.
+# B's shot window: the archery attack starts ~t=114 s, the bolts at
+# ~t=151 s / ~t=175 s (b_tour timing). A takes the user1 camera at t=90 s
+# (B is still in its 40 s time-settle) and must outlast the last bolt.
+wait 90
+/camera user1
+wait 260
+/q

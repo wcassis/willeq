@@ -1,0 +1,50 @@
+# B1181 fable leg tour for B (the HEADLESS willeq = Testcaster, willeq_test,
+# gm=1). B zones in at the seeded caster pose (-74, 428, 3.75, heading 45 =
+# facing A, the observer 9.05 units away).
+#
+# Scene commands go through /say '#' -- the B1142 tour pattern (the lane-5
+# server executes a '#' command arriving in chat from a GM; the GM flag is
+# what makes this work, and it is the ONLY reason B, not A, sets the scene).
+#
+# The SHOTS:
+#  - ARCHERY: /target Oraclewatch resolves CLIENT-SIDE (fable's
+#    CommandProcessor::cmdTarget -> findEntityByName -> targetEntity(spawnId);
+#    the official client's /target name resolves server-side and returns 0 on
+#    this rig -- B1181's oracle-leg finding) and /attack toggles
+#    CombatManager auto-attack, which fires the Longbow (item 8003, main-hand
+#    DB slot 11) with Arrows (item 8005, ammo DB slot 22) that the pre-SQL
+#    puts on B. The server's SendItemAnimation then sends the 0x4033 with
+#    the arrow's IT model (IT10) to the observer.
+#  - BOLT: /say '#castspell 68 0' -- GM bypass (no memorisation, no mana
+#    check), executed by the server AS B with B's current server target
+#    (Oraclewatch, set by the same /target). The GFX rule
+#    Spells:UseLiveSpellProjectileGFX=true (leg-limited, set before this
+#    leg's stack-up, undone after the down) makes TrySpellProjectile's
+#    ProjectileAnimation take the player_1 branch -> model IT11504.
+#
+# Timing anchor: the /say lines below are what the measurement script lines
+# up against the 0x4033 pcaps (server-side cast -> 0x4033 within ~0.5 s).
+wait 60
+/say #set time 11 0
+wait 2
+/say #weather 0
+wait 2
+/say #level 60
+wait 2
+/say #set pvp on
+wait 40
+/target Oraclewatch
+wait 3
+/attack
+wait 25
+/attack
+wait 5
+/say #mana
+wait 2
+/say #castspell 68 0
+wait 12
+/say #mana
+wait 2
+/say #castspell 68 0
+wait 12
+/q
