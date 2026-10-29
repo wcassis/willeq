@@ -228,9 +228,11 @@ at the pre-B1181 base `ac8c26bc6` (the merge-base with `fable`, worktree
 touches only this README — no binary change), 30 fps, `--sim-hz 60 --seed 1`,
 oracle caster level 60 (`scripts/fx/capture_level.py`). Every frame is md5'd
 base vs tip: **24,036/24,036 frames byte-identical, 0 differing** across
-47 tags per tree (census `~/kb-evidence/kb-b1181-item-missile/b1181_gate_md5.tsv`,
-attached to the task; the per-frame manifest `gate_frames_manifest.tsv` is
-beside it). The type-9 path is not just frame-0-identical; the whole gate set
+47 tags per tree (census `~/kb-evidence/kb-b1181-item-missile/b1181_gate_md5.tsv` —
+24,036 rows; its summary with per-tag counts, the TSV's sha256 and 20 spot-check
+rows is attached to the task `t_613a8781`; the per-frame manifest
+`gate_frames_manifest.tsv` is beside it, sha256s in the task comment). The
+type-9 path is not just frame-0-identical; the whole gate set
 is.
 
 Reproduction (the scripts are in the tree, `refactor/B1181/scripts/`):
