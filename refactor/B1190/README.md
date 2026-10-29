@@ -139,41 +139,93 @@ sees") it is **out of scope**.
   "fallback must stay good" rule is preserved. The landing already applies the
   legacy Target/Source art (section 3), so it is unchanged.
 
-## 6. Two-spell measurement
+## 6. Two-spell measurement (oracle vs willeq)
 
 Testcaster (char 67) is a level-60 Warlock, so every slot passes the 10/24/39
-level gate. The two measured legacy spells (both in the 31-draw set) and the
-willeq-side `--spell-test` render (435 frames each, measured with
-`review/B1139/scripts/harness_measure.py`; frames in
-`/home/user/kb-evidence/kb-b1190-legacy-eff/frames/`):
+level gate. Both measured spells are in the 31-draw set. **Before** (the T72
+generic preset, section 3) drew the record's sprite name on a generic anchor;
+**after** (this tip) draws the record's per-slot effect types (section 5). The
+**oracle side** is the official client observed through the B1134 observer rig on
+lane 5 (the second official client `Oraclewatch` frames the caster; measured with
+the B1132 instrument, `review/B1122/scripts/` + `review/B1130/scripts/anchor.py`
+on the observer's 1280x800 crop). The **willeq side** is the `--spell-test`
+render on this tip (435 frames, `review/B1139/scripts/harness_measure.py`; frames
+in `/home/user/kb-evidence/kb-b1190-legacy-eff/frames/`).
 
-| spell | record | Source slots | Target slots | willeq src_cov | willeq src_onset | willeq land_cov |
+Record numbers are `spells.spell_affect_index` in `data/willeq.db`; the slot
+types are the record's block-0 `0x8C` ints (the `SpellsEffReader` decode).
+
+| spell (record) | stage | oracle onset | oracle peak / run | oracle cov | willeq after onset | willeq after cov |
 |---|---|---|---|---|---|---|
-| 8240 Appraisal | 5 | `[2,2,-1]` | `[1,1,2]` | 0.067 | +0.500 | 0.834 |
-| 8255 Enraged Shout | 31 | `[4,2,4]` | `[5,5,2]` | 0.529 | +0.500 | 2.409 |
+| 8240 Appraisal (5) | Source `[2,2,-1]` | +0.51 s | +1.11 s, run 1.8 s | 0.370 | +0.50 s | 0.067 |
+| 8240 Appraisal (5) | Landing `[1,1,2]` | +0.47 s | +1.11 s, run 1.8 s | 0.370 | +1.30 s (end +4.63 s) | 0.834 |
+| 8255 Enraged Shout (31) | Source `[4,2,4]` | +0.51 s (channel) | 2.25 s channel, no landing | (ground column) | +0.50 s | 0.529 |
+| 8255 Enraged Shout (31) | Landing `[5,5,2]` | none (no `OP_Action`) | -- | -- | +1.90 s (end +4.87 s) | 2.409 |
 
-(Record numbers are `spells.spell_affect_index` in `data/willeq.db`; the slot
-types are the record's block-0 `0x8C` ints, the `SpellsEffect` decode. Both now
-draw a Source glow -- `src_cov` > 0 -- where the pre-change client drew the T72
-generic preset: Appraisal's two `type 2` (world) Source sprites give the smaller
-coverage, Enraged Shout's three (`type 4,2,4`, two ground) the larger. The
-**oracle side** -- the official client's own onset/duration/lit-pixel ROI via the
-B1134 observer rig on lane 5 -- and the two ledger clips (`review/VISUAL-FX/
-B1190/`) are the remaining leg.)
+**The divergence, per row.**
+
+- **8240 Source.** Onset matches (+0.51 s oracle, +0.50 s willeq). The oracle
+  draws a bright, cohesive full-body burst (peak cov 0.370, spanning legs through
+  shoulders); willeq's two `type 2` (world) Source sprites are a dim scatter
+  (cov 0.067, ~5.5x weaker). *Mechanism:* the oracle's legacy `type 2` world
+  sprites render larger/brighter than willeq's; willeq applies the record's
+  sprite name to a smaller generic emitter, so the legacy Source is present but
+  understated.
+- **8240 Landing.** The oracle's landing (self-targeted, on the caster) runs
+  1.8 s at peak cov 0.370; willeq's is stronger (cov 0.834) and longer (end
+  +4.63 s vs the oracle's +2.27 s run end). *Mechanism:* willeq's landing
+  window/coverage is wider than the oracle's for a `type 1/2` Target slot.
+- **8255.** Enraged Shout is a **channeled** legacy spell (2.25 s cast, record
+  31). In the observer rig the GM-cast path (`#castspell 8255 0`) sent an
+  `OP_BeginCast` (the channel glow -- the oracle's `type 4` ground Source
+  sprites, a bright column) but **no `OP_Action`**: the channel's landing never
+  fired in the rig, so the oracle landing is unmeasurable there. Willeq's
+  `--spell-test` harness completes the cast and draws it (Source cov 0.529, a
+  spherical cloud; Landing cov 2.409). *Mechanism:* the oracle's Source is the
+  record's `type 4` ground column; willeq draws a spherical cloud (the generic
+  shape), so the Source shape diverges, and the rig's GM path did not complete
+  the channel's landing (a rig artifact -- the channel is live in-game, it just
+  is not triggered to completion by the GM cast command here).
+
+The two ledger clips (`review/VISUAL-FX/B1190/`:
+`b1190_8240_appreciation.mp4`, `b1190_8255_enraged_shout.mp4`, oracle LEFT /
+willeq RIGHT, built by `refactor/B1158/scripts/make_clip.py`) show both: 8240
+oracle's bright burst vs willeq's dim scatter, 8255 oracle's ground column
+(Source) vs willeq's cloud (Source) plus willeq's landing.
+
+*Instrument note:* the oracle side is measured on the observer's full-zone video
+(B1132 `anchor.py`) and the willeq side on the `--spell-test` fixed-scene render
+(B1139 `harness_measure.py`); the onset and duration columns are timeline-based
+and comparable across the two, while the absolute `cov` values are each
+instrument's own ROI, so they are stated per-side rather than as one ratio. The
+onset match (both ~+0.5 s) is the robust cross-instrument fact; the `cov`
+ratio for 8240 Source (0.370 vs 0.067) reflects a real size/brightness gap the
+clip shows directly.
 
 ## 7. The 47-row gate
 
-The B1184 gate is the b1130 tour of the 47 **spellsnew** records. Every one of
-those spells has a field-145 record, so `slots.fromFile` is true for all of them.
-`createCastGlow` opens that path with `if (slots.fromFile) {` and ends it with
-`return 1;` (`src/client/graphics/spell_visual_fx.cpp:635` and
+The gate is 47 rows: the 40 `spellsnew` records of the b1130 tour
+(`review/B1130/record_table.tsv` on the evidence hosts, record 51 excluded)
+plus the 7 tour spells (93/38/54/656/41/253/458). All 47 spells have a
+field-145 record: the 40 b1130 rows are record-based by construction, and none
+of the 7 tour spell ids is in the 157-spell legacy list
+(`review/B1190/legacy_types.tsv`). So `slots.fromFile` is true for all of
+them. `createCastGlow` opens that path with `if (slots.fromFile) {` and ends it
+with `return 1;` (`src/client/graphics/spell_visual_fx.cpp:635` and
 `src/client/graphics/spell_visual_fx.cpp:690`); the legacy block is inserted
 AFTER that return, and the entire `spell_visual_fx.cpp` diff is that one
-pure-insertion hunk. So the legacy path is structurally unreachable for any
-spellsnew spell, and the gate's columns are byte-identical by construction.
+pure-insertion hunk. The legacy path is structurally unreachable for any of the
+47 rows.
 
-Measured to confirm: spells 93 and 656 (both in the tour, both spellsnew) render
-and measure on this tip -- 93 `land_cov 5.519` / `src_cov 0.148`, 656
-`land_cov 1.479` / `src_cov 0.335`. Those values reflect the units that landed on
-`fable` after the B1184 tip (B1185's Source onset, B1186's landing window), not
-this change, which is inert for them.
+Confirmed empirically: the same 47 rows were rendered and measured on the
+branch base `2c81570dd` (the `fable` tip at cut time, including B1185/B1186)
+and on this tip `dd04bf2ae`, both with
+`/mnt/projects/fable/review/GATE-BASELINE/render_gate.sh` (b1130 rows
+surfaceless on the Quadro at 1280x800 per the 2026-10-29 ruling), and the
+measured columns were diffed row for row
+(`review/B1190/scripts/gate_diff.py`): **47/47 rows byte-identical** (evidence
+dirs `kb-b1190-gate-base/gate` and `kb-b1190-legacy-eff/gate` under
+`/home/user/kb-evidence/`, copied to NFS at hand-back). The absolute column
+values reflect the units that landed on `fable` after the B1184 tip (B1185's
+Source onset, B1186's landing window) -- both trees carry them -- not this
+change.
