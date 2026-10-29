@@ -1,0 +1,36 @@
+# B1183 (#502) -- the nine-step stand-byte table: the FABLE column (the ported
+# StandState machine driven by its real feed points, measured by
+# tests/test_stand_state.cpp TheLane5FullSequenceTable) beside the ORACLE
+# column (the official client's +0x251 of the caster spawn, char 67, READ
+# live on lane 5 by the /proc/pid/mem poller b1183_poll.py -- never inferred).
+#
+# Oracle evidence:
+#   legA-fix5 (legs/legA-fix5/poll/poll.log): INIT byte +0x251 = 100;
+#     WR t+28.573 100->111 (the Down press = duck); WR t+61.497 111->100
+#     (the Down release = stand). The measured crouch key is Down (VK_DOWN),
+#     the client's live keymap -- fable's own duck key is C; the keys differ
+#     between the two clients, the BYTES are what must match.
+#   legA3_discovery (legs/legA3_discovery/poll/poll.log): INIT byte = 100,
+#     and the byte NEVER left 100 through all of the SIT/USE probes -- the
+#     one value-changing write was WR t=116.923 100->111 (step 35_use_space):
+#     SPACE is crouch in the live keymap, not sit, not loot. So none of the
+#     probed keys produces 110 (sit) or 105 (loot).
+#
+# PENDING rows: the SIT and LOOT keys are unidentified. The live keymap dump
+# (legA3 poll.log KEYMAP) shows SIT_STAND (action 138) k0=k1=0 -- UNBOUND --
+# and USE (action 16) k0 bound to a key not in {e,f,space,g} (space is
+# crouch). The real SIT/USE keys need a full keymap decode or a UI probe
+# (click the Actions-panel "Sit" button / loot the targeted corpse); the
+# CAST / STUNNED / STUN-END rows are key-free (GM-command driven) and are
+# runnable as soon as lane 5 is free (legC_partial.tsv is ready).
+
+step	fable_feed	eqgame.exe.c	fable_byte	oracle_byte	oracle_evidence
+stand	zone-in / local default	128478	100	100	legA3 INIT byte +0x251 = 100
+duck	pose key (fable: C) / live crouch key Down	setter 104878	111	111	legA-fix5 WR t+28.573 100->111 (Down press)
+stand	pose key (release)	setter 104878	100	100	legA-fix5 WR t+61.497 111->100 (Down release)
+sit	pose key	setter 104878	110	PENDING	SIT_STAND (action 138) unbound in the live keymap; z/x/c all no-op (byte held 100)
+stand	pose key (rise)	setter 104878	100	PENDING	blocked on the sit row
+cast	cast start	71254	100	PENDING	legC_partial not run -- lane 5 held by sibling t_ec4d6cd1 (B1181) at hand-back
+stunned	stun message 0x3050 / 0x25aa / 0x3013	80377 / 80459	102	PENDING	legC_partial not run (as above)
+stun end	stun-end message 0x25aa	80336	100	PENDING	legC_partial not run (as above)
+loot	loot open (28061 gate) / direct 105797	28061 / 105797	105	PENDING	USE key unidentified; e/f/g no-op, space=crouch(111), SIT_STAND unbound

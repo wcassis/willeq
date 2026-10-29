@@ -22,7 +22,9 @@ SCRIPT="$(cd "$(dirname "$0")" && pwd)/b1183_poll.py"
 touch "$OUT/poll.started"
 LATEST=""
 for _ in $(seq 1 240); do
-    d="$(ls -td /home/user/eq-oracle/sessions/* 2>/dev/null | head -1 || true)"
+    # Only our own sessions (ORACLE_OWNER prefix kb-b1183-stand-state-a_):
+    # a sibling task's oracle session must not consume this poller.
+    d="$(ls -td /home/user/eq-oracle/sessions/kb-b1183-stand-state-a_* 2>/dev/null | head -1 || true)"
     if [[ -n $d && -f $d/timeline.tsv ]] \
             && [[ "$d" -nt "$OUT/poll.started" ]] \
             && grep -qP '\tEND\t[0-9]+_gdb_arm$' "$d/timeline.tsv"; then

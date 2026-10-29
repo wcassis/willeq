@@ -233,14 +233,62 @@ sequence and prints the byte at each step; the output is
 | stun end | stun end (80336) | 100 |
 | loot | loot open (28061) | 105 |
 
-**The oracle column is the pending lane-5 leg.** The rig is up
-(`eqemu_lane=5` READY: login/world listening inside, container, 5) but
-`eqgame.exe` is not logged in. The lane is a live leg that must be driven
-FROM this host: the official client (char 67) through the sequence with a
-per-step B1164 gdb pin reading `+0x251` of the caster's spawn, then this table
-filled in column by column and the two compared. The stun and loot steps need
-a live trigger (a stun on the caster, a corpse to loot); the pose steps are
-key-driven. Exact next command: see the task block note.
+**The oracle column is measured on lane 5, per step, by the `/proc/pid/mem`
+poller (`refactor/B1183/scripts/b1183_poll.py`), which attaches at the leg's
+`gdb_arm` still and logs every value-changing write of the caster spawn's
+`+0x251` (the B1164 gdb watchpoint was replaced: the lane-5 ThinkPad's
+gdb 15.1 has no Python Watchpoint API, and a hardware watchpoint stops the
+inferior on every hit). `refactor/B1183/scripts/merge_poll.py` turns
+`poll.log` + the leg's `steps.tsv` into the per-step table. The full table
+(both columns) is `refactor/B1183/tables/step_table.tsv`; evidence under
+`/home/user/kb-evidence/kb-b1183-stand-state/legs/{legA-fix5,legA3_discovery}/poll/`.
+
+The three POSE rows before sit are measured and identical to fable:
+
+| step | fable byte | oracle byte (+0x251) | oracle evidence |
+|---|---|---|---|
+| stand | 100 | 100 | legA3 `INIT byte +0x251 = 100` |
+| duck | 111 | 111 | legA-fix5 `WR t+28.573 100->111` (the **Down** press — the client's live crouch key; fable's is C, the bytes match) |
+| stand | 100 | 100 | legA-fix5 `WR t+61.497 111->100` (the Down release) |
+
+**The remaining six rows are PENDING, and the cause is measured, not guessed.**
+The discovery leg (`legA2_discovery.tsv`, run `legA3_discovery`) probed the
+client's own behaviour: from STAND it pressed the SIT candidates z, x, c and,
+on a targeted one-shot TrollF corpse, the USE candidates e, f, space, g. The
+poller shows the byte **never left 100** through all of them — the only
+value-changing write was `WR t=116.923 100->111` inside step `35_use_space`,
+i.e. **space is crouch (111) in the live keymap, not sit and not loot**. The
+leg's keymap dump (the same poller reads `DAT_0098599c`) confirms the cause:
+**SIT_STAND (action 138) is UNBOUND — k0=k1=0** — and USE (action 16) is bound
+to a key outside the probed set. So the client, in its default (live) keymap,
+does not reach 110 (sit) or 105 (loot) with any of those keys; the real SIT/USE
+binding needs a full keymap decode (the `.rdata` action-name table the decompile
+does not carry) or a UI probe (click the Actions-panel **Sit** button; loot the
+targeted corpse). This is a client keymap fact, not a fable defect: fable's
+`sit`/`loot` rows are fed by its own key/loot-open events and measure 110/105,
+matching the client's `Animation` vocabulary the moment the client is driven
+there by whatever its live key is.
+
+**Exact next command** (lane 5 must be free — at hand-back it was held by
+sibling `t_ec4d6cd1` B1181): the CAST / STUNNED / STUN-END rows are key-free
+(GM-command driven) and runnable immediately; SIT / LOOT need the key discovery
+above first.
+
+```bash
+cd /home/user/src/willeq-wt/kb-b1183-stand-state
+export EQEMU_LANE=5; source scripts/eqemu/env.sh
+# (a) the key-free half now -- stand/duck/stand/cast/stunned/stun-end:
+bash refactor/B1183/scripts/b1183_poll.sh \
+     $HOME/kb-evidence/kb-b1183-stand-state/legs/legC3 120 &   # arm BEFORE the leg
+ORACLE_OWNER=kb-b1183-stand-state-a \
+  bash scripts/eqemu/oracle/oracle_class_leg.sh 5 12 \
+     refactor/B1183/plans/legC_partial.tsv \
+     $HOME/kb-evidence/kb-b1183-stand-state/legs/legC3 --no-wait
+# (b) SIT/USE keys: extend legA2_discovery.tsv's candidate sets (or click the
+#     Actions-panel Sit button / loot the targeted corpse via obs clicks), or
+#     decode the .rdata action-name table to read the live SIT_STAND/USE slots.
+# Then fill the six PENDING rows of tables/step_table.tsv from the poller log.
+```
 
 ## 8. What is verified
 
