@@ -42,12 +42,14 @@ earlier, said nothing, and then reported the failure of its own cleanup.
 
 The issue's candidate causes (corpse not present at step time, the `/loot`
 click path, the poller's wait, the observer's camera) were all checked
-against the evidence and ruled out: the poller never armed because there was
-no `gdb_arm` timeline line to arm on
-(`/home/user/kb-evidence/kb-b1183-stand-state/legs/legH3/poll/poll.log`), the
-ThinkPad session directory for legH3 was never created (the remote step is
-the first thing that creates one), and the corpse-hold fix (rule 300000,
-B1183) was already in the DB. None of them ran.
+against the evidence and ruled out: the poller never produced any output —
+legH3's evidence directory
+(`/home/user/kb-evidence/kb-b1183-stand-state/legs/legH3/`) holds only the
+session's state files and `driver.log`, with no `poll/` subdirectory —
+because there was no `gdb_arm` timeline line to arm it on, the ThinkPad
+session directory for legH3 was never created (the remote step is the first
+thing that creates one), and the corpse-hold fix (rule 300000, B1183) was
+already in the DB. None of them ran.
 
 A fourth, latent defect sat in the same path: the post-SQL restore ran the
 `DELETE` on the live table **before** proving the save-table copy existed —
