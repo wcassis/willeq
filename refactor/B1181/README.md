@@ -300,9 +300,16 @@ and the fable leg's archery window. The measured conditions:
   swing/attack/damage line after 01:23:12.433 through the bolt, and the
   pcap's archery window (01:22:40..01:23:50) contains no `0x4033` and no
   recognisable swing op from B (cport 49717) — the server never received
-  a ranged attack to animate. Willeq-side cause not yet isolated
-  (candidates to check next: the headless auto-attack's swing tick, the
-  main-hand equip read, the range/LOS gate) — that is the top NEXT item.
+  a ranged attack to animate. **Root cause isolated (run 3): the tour used
+  `/attack` — the MELEE toggle. Its swing path sends nothing:
+  `ProcessCombatRound`'s in-range branch only sets the timer
+  (`combat_rounds.cpp` 437-441, "Attack timer ready - server should process
+  melee attack", no packet) and a ranged weapon needs the RANGED toggle
+  `/autofire` (`command_processor_registration.cpp` 266, "Toggle ranged
+  auto-attack (archery/throwing)"), whose `EnableAutoFire`
+  (`combat.cpp` 580-605) sends `HC_OP_AutoFire` — the server then swings
+  the bow. Fix committed: `fable_b_tour.txt` now uses `/autofire`
+  (twice, the on/off toggle); the next run re-runs the fable leg as-is.**
 
 The fable leg's bolt (5.1) is the captured missile shot for acceptance C's
 minimum; the archery row of the final table will carry this measured
