@@ -1,0 +1,6 @@
+bucket	measured	file_ref	file_all	in_measured
+1 (whole)	70	708	855	Y
+2-4 (2x2)	54	171	199	Y
+5-8 (4x2)	0	0	0	N
+9-16 (4x4)	160	776	1064	Y
+>16 (whole)	0	0	0	N
