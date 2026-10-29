@@ -1,0 +1,48 @@
+# action	target	hold_ms	still_name
+# B1183 (#502) leg C4 -- the key-free half, re-run with a GM-PATH verification
+# built in. legC3b sent #stun 8000 (opcode-confirmed C->S at 07:19:49) and
+# got NOTHING: no "You stunned ..." chat confirmation (server code
+# zone/gm_commands/stun.cpp always sends one), no Effects entry, no 102 byte,
+# and no visible result from #castspell 93 either. The character also
+# zone-in'd "beneath the world ... moving to safe point" (plan pose).
+#
+# So this leg makes the GM path itself observable BEFORE the measurement
+# steps: `#set time 23 0` (NIGHT) -- a GM command that works makes the world
+# visibly dark in the caster's video, so a dead GM path can no longer
+# masquerade as "stun not applied". Everything else mirrors legC_partial.
+#
+# The /proc/pid/mem poller (b1183_poll.py) attaches at `gdb_arm` and logs
+# every value-changing write of the caster spawn +0x251 (and, since the
+# keymap-tables extension, the client's complete live keymap -- the
+# SIT/USE discovery for the remaining three rows rides on this same poller).
+# pose=-74,428,3.75,160
+# observer=Oraclewatch
+# observer-pose=-67.6,434.4,3.75,160
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 23 0	0	noon
+wait	3000	0	noon_settle
+command	#weather 0	0	clear
+command	#level 60	0	level
+command	#mana	0	mana
+wait	3000	0	mana_settle
+wait	3000	0	gdb_arm
+wait	12000	0	gdb_dump
+still	0	0	stand
+press	Down	0	duck
+wait	2000	0	duck_settle
+press	Down	0	stand1
+wait	2000	0	stand1_settle
+command	#castspell 93 0	0	cast
+wait	4000	0	cast_settle
+command	#stun 8000	0	stun_start
+wait	3000	0	stunned
+command	#stun 0	0	stun_end
+wait	2000	0	stunend_settle
+command	/q	0	quit
+obs	command	/q	0	obs_quit
