@@ -335,10 +335,13 @@ TEST(SpellSpriteAtlasFile, TheSingleImageSheetsArePackedWholeInTheirFirstFrame) 
 }
 
 TEST(SpellSpriteAtlasFile, TheCentreOfASingleImageIsTheCentreOfItsStoredFrame) {
-    // The positive form of "packed whole": spelc3's star is centred on its
-    // sheet, so its alpha-weighted centroid must sit at the STORED-FRAME
-    // centre (32,32 of the 64x64 sub-block), not in a corner as every 16x16
-    // fragment's did.
+    // The positive form of "packed whole": the picture sits at the STORED-
+    // FRAME centre, not in a corner as every 16x16 fragment's did. The
+    // artwork is not geometrically centred -- spelc3's star measures its
+    // alpha centroid at (30.2, 29.6) of its 64 px sheet, a property of the
+    // art (measured from the source, not assumed) -- so the tolerance is 6,
+    // which still fails a corner fragment by a factor of four (a 16x16
+    // fragment's centroid sits ~24 px from the sub-block centre).
     const Bitmap bmp = loadBmp(atlasPath());
     ASSERT_TRUE(bmp.ok);
     for (const char* file : {"spelc3.tga", "spelc4.tga"}) {
@@ -357,8 +360,8 @@ TEST(SpellSpriteAtlasFile, TheCentreOfASingleImageIsTheCentreOfItsStoredFrame) {
             }
         }
         ASSERT_GT(m, 0.0) << file << ": stored frame is empty";
-        EXPECT_NEAR(mx / m, px / 2.0, 2.0) << file;
-        EXPECT_NEAR(my / m, px / 2.0, 2.0) << file;
+        EXPECT_NEAR(mx / m, px / 2.0, 6.0) << file;
+        EXPECT_NEAR(my / m, px / 2.0, 6.0) << file;
     }
 }
 
@@ -408,13 +411,52 @@ TEST(SpellSpriteAtlasFile, TheUnusedBlocksAreFullyTransparent) {
 
     for (int slot = SpellSpriteAtlas::kFileCount; slot < 64; ++slot) {
         int bx = 0, by = 0;
-        SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::blockBase(slot), bx, by);
+        SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::blockSlotCell(slot), bx, by);
         for (int y = 0; y < 4 * SpellSpriteAtlas::kCellSize; ++y) {
             for (int x = 0; x < 4 * SpellSpriteAtlas::kCellSize; ++x) {
                 ASSERT_EQ(bmp.at(bx + x, by + y)[3], 0)
                     << "unused block " << slot << " has a texel at (" << x << ","
                     << y << ")";
             }
+        }
+    }
+}
+
+TEST(SpellSpriteAtlasFile, TheSpriteBlocksDoNotOverlapAndFitTheSheet) {
+    // B1188's first blockBase tiled the block ROWS one CELL-ROW apart (a
+    // vertical pitch of kColumns cell INDICES) instead of one BLOCK-ROW
+    // apart (kColumns * kSheetGrid): every block row slid up over the one
+    // above it, and the lower sprites' frames overwrote the upper sprites'
+    // stored frames. No per-sprite check could see it -- each sprite's own
+    // blits were internally consistent, and the overwrite landed in pixels
+    // that "belonged" to the other sprite by the same wrong formula. The
+    // tiling is the layout's contract, so pin it directly: every block fits
+    // the sheet on a block boundary, and no two sprites' 128x128 px blocks
+    // share a pixel.
+    constexpr int kBlockPx = SpellSpriteAtlas::kSheetGrid * SpellSpriteAtlas::kCellSize;
+    for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
+        int bx = 0, by = 0;
+        SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::blockBase(sprite), bx, by);
+        EXPECT_EQ(bx % kBlockPx, 0)
+            << "block " << sprite << " starts at x=" << bx << ", not on a block boundary";
+        EXPECT_EQ(by % kBlockPx, 0)
+            << "block " << sprite << " starts at y=" << by << ", not on a block boundary";
+        EXPECT_LE(bx + kBlockPx, SpellSpriteAtlas::kWidth)
+            << "block " << sprite << " overruns the sheet";
+        EXPECT_LE(by + kBlockPx, SpellSpriteAtlas::kHeight)
+            << "block " << sprite << " overruns the sheet";
+    }
+    for (int a = 0; a < SpellSpriteAtlas::kFileCount; ++a) {
+        int ax = 0, ay = 0;
+        SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::blockBase(a), ax, ay);
+        for (int b = a + 1; b < SpellSpriteAtlas::kFileCount; ++b) {
+            int bx = 0, by = 0;
+            SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::blockBase(b), bx, by);
+            const bool overlap = ax < bx + kBlockPx && bx < ax + kBlockPx &&
+                                 ay < by + kBlockPx && by < ay + kBlockPx;
+            EXPECT_FALSE(overlap)
+                << "blocks " << SpellSpriteAtlas::kFiles[a] << " and "
+                << SpellSpriteAtlas::kFiles[b] << " share pixels";
         }
     }
 }
@@ -591,9 +633,11 @@ TEST(SpellSpriteAtlasFile, NativePicturesAreStoredOneToOneNotBoxed) {
             }
         }
     }
-    // 16 single 64x64 pictures + the two 2x2 sheets (their four 64 px
-    // frames). spellw02 (64x32x16, 32 px cells) is grid-stored, not native.
-    EXPECT_EQ(checked, 18);
+    // 17 single 64x64 pictures (every single image but glowflare02, which is
+    // 256x256 -> 128 and REDUCES) + the two 2x2 sheets (their four 64 px
+    // frames) + the three 128x128 16-frame grids (spelr1, spelr2, spelra:
+    // their 32 px frames copy 1:1). The 256x256 grids reduce 64 -> 32.
+    EXPECT_EQ(checked, 22);
 }
 
 TEST(SpellSpriteAtlasFile, TheTwoOracleMeasuredSpritesAreTheirOwnFiles) {

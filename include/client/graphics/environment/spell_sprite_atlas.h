@@ -260,12 +260,32 @@ inline int slotForFile(const char* file) {
     return -1;
 }
 
+// The top-left cell of block SLOT (0..63) in the 8x8 block grid, with NO
+// sprite-range clamping: `blockBase()` folds an out-of-range sprite ordinal to
+// 0 for the runtime lookup, but the sheet's geometry (the unused-blocks test,
+// the non-overlap test) needs the raw tiling of all 64 block slots, including
+// the four no sprite occupies.
+inline int blockSlotCell(int slot) {
+    const int col = slot < 0 ? 0 : slot % kBlockCols;
+    const int row = slot < 0 ? 0 : slot / kBlockCols;
+    return col * kSheetGrid + kColumns * kSheetGrid * row;
+}
+
 // The top-left CELL of sprite `sprite`'s 4x4 block (B1188). The 60 sprites
 // tile an 8x8 grid of blocks: block column sprite%kBlockCols, row
-// sprite/kBlockCols, four cells on a side.
+// sprite/kBlockCols, four cells on a side. The pitch between blocks in BOTH
+// directions is the block's own size in cells: horizontally kSheetGrid cells
+// (4 cells = 128 px), vertically kSheetGrid CELL-ROWS (kColumns * kSheetGrid
+// cell INDICES -- a block is kSheetGrid cell-rows tall). B1188's first cut
+// used a vertical pitch of one cell-row (kColumns indices), so every block
+// row slid up over the one above and its box-reduced frames overwrote the
+// lower halves of the sprites' native 64 px frames -- a silent atlas
+// corruption no per-sprite check caught, because each sprite's own blits
+// were internally consistent. The non-overlap test in
+// test_spell_sprite_atlas.cpp pins this.
 inline int blockBase(int sprite) {
     if (sprite < 0 || sprite >= kFileCount) return 0;
-    return (sprite % kBlockCols) * kSheetGrid + kColumns * (sprite / kBlockCols);
+    return blockSlotCell(sprite);
 }
 
 // The stored frame edge in pixels (kStoredFramePx; kCellSize out of range).

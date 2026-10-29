@@ -327,10 +327,11 @@ TEST(SpellSpriteAnimation, EveryFrameOfEverySpriteTilesItsBlockRowMajor) {
             const int wantY = by + (f / cols) * span * SpellSpriteAtlas::kCellSize;
             EXPECT_EQ(cx, wantX) << SpellSpriteAtlas::kFiles[sprite] << " frame " << f;
             EXPECT_EQ(cy, wantY) << SpellSpriteAtlas::kFiles[sprite] << " frame " << f;
-            // The whole stored frame stays inside the 128x128 block.
-            EXPECT_LT(cx + span * SpellSpriteAtlas::kCellSize, bx + 4 * SpellSpriteAtlas::kCellSize)
+            // The whole stored frame stays inside the 128x128 block (a frame
+            // flush with the block's far edge ends exactly at bx + 128).
+            EXPECT_LE(cx + span * SpellSpriteAtlas::kCellSize, bx + 4 * SpellSpriteAtlas::kCellSize)
                 << SpellSpriteAtlas::kFiles[sprite] << " frame " << f;
-            EXPECT_LT(cy + span * SpellSpriteAtlas::kCellSize, by + 4 * SpellSpriteAtlas::kCellSize)
+            EXPECT_LE(cy + span * SpellSpriteAtlas::kCellSize, by + 4 * SpellSpriteAtlas::kCellSize)
                 << SpellSpriteAtlas::kFiles[sprite] << " frame " << f;
         }
     }
