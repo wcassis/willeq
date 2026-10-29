@@ -17,6 +17,11 @@
 # See docs/ci.md for how to read a pipeline, the warm-tree trade-off and how to
 # retry the gate.
 
+# B1194 (#513): inventory + rbuild-equivalent proof jobs for the idle x86 runner
+# VMs (self-selecting, allow_failure, inert on every branch but the B1194 one).
+include:
+  - local: 'refactor/B1194/ci/b1194.yml'
+
 stages:
   - hygiene
   # B1042 (#362): ONE job, `build-test`, builds and runs the suite; there is no
