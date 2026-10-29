@@ -29,10 +29,9 @@
 #                 rewrite (the run exits 3, the pre-zone connect-failure code).
 #
 # The shutdown is a plain `kill -TERM <pid>` (the clean-quit path the client
-# handles in ordinary code, quit_signal.h), NOT `timeout --signal=TERM`:
-# under timeout the client died on the group signal without running
-# Application::shutdown(), so the load path never ran. A SIGKILL fallback
-# bounds the wait if a clean shutdown ever stalls.
+# handles in ordinary code, quit_signal.h); the measured run (run3.log) took
+# that path and ran Application::shutdown() + the load path. A SIGKILL
+# fallback bounds the wait if a clean shutdown ever stalls.
 #
 # Credentials stay on the ThinkPad: the observer creds file (env B1182_CREDS,
 # default ~/eq-oracle/observer-Oraclewatch.cred) defines OBS_USER/OBS_PASS;

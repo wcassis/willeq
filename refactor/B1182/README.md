@@ -181,15 +181,15 @@ same file.
     the client "sat in `LOGIN_AUTHENTICATING` for 30000 ms with no answer;
     giving up (no reconnect)"), so it exited 3 on the pre-zone connect failure
     and the rewrite ran on the SIGTERM clean shutdown — the log's one
-    `eqclient.ini loaded from` line is the shutdown's, 2 ms after "Shutting down
+    `eqclient.ini loaded from` line is the shutdown's, 1 ms after "Shutting down
     application...". The after-ini is the oracle's own diff,
     `115a116 > ShowSpellEffects=1`, the junk density byte-identical.
     **Mechanism, measured:** the script's shutdown is a plain `kill -TERM
-    <pid>` (the clean-quit path, `include/client/quit_signal.h`), NOT
-    `timeout --signal=TERM`: under `timeout` the client died on the group
-    signal without `Application::shutdown()` (no load path, the log ends
-    mid-frame and the after-ini is untouched), while a plain `kill -TERM` at
-    the same run time took the clean-quit path and the load path ran.
+    <pid>` (the clean-quit path, `include/client/quit_signal.h`) sent at
+    +201.7 s (run3.log); the client took the clean-quit path, ran
+    `Application::shutdown()` and its load path, and the after-ini carries the
+    rewrite. (An earlier `timeout --signal=TERM 90` wrapper is NOT compared
+    here: no recorded run supports a claim about it, so none is made.)
     Artifacts: `kb-evidence/kb-b1182-ini-junk/live-leg/`
     (`eqclient-fable-before.ini`, `eqclient-fable-after.ini`, the run log).
 
@@ -229,7 +229,7 @@ success.
 
 ## 5. Hand-off
 
-* Cite checker on this README: `checked 12 cites, 0 problems, 0 address warnings`
+* Cite checker on this README: `checked 15 cites, 0 problems, 0 address warnings`
   (the full command with `--tree . --extra /mnt/projects/fable --dis .../eqgame.dis
   --dis .../EQGraphicsDX9.dis`; the `eqgame.exe.c` line cites are re-read by hand,
   as noted in sec. 1).
