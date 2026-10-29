@@ -48,31 +48,47 @@ def log(msg):
 
 
 def find_caster():
+    # Pass 1: DISPLAY=:98 in the environ (the caster's Xvfb; the observer
+    # is on :99). Pass 2 fallback: lowest pid (the caster launches first).
+    any_pids = []
     for pid in os.listdir("/proc"):
         if not pid.isdigit():
             continue
         try:
             with open(f"/proc/{pid}/cmdline", "rb") as f:
-                cmd = f.read().split(b"\0")
-            if b"eqgame.exe" not in b" ".join(cmd):
+                cmd = f.read()
+            if b"eqgame.exe" not in cmd:
                 continue
+            any_pids.append(int(pid))
             with open(f"/proc/{pid}/environ", "rb") as f:
                 env = f.read()
             if b"DISPLAY=:98" in env:
-                return int(pid)
+                return int(pid), "environ DISPLAY=:98"
         except OSError:
             continue
-    # fallback: any eqgame.exe
-    for pid in os.listdir("/proc"):
-        if not pid.isdigit():
-            continue
-        try:
-            with open(f"/proc/{pid}/cmdline", "rb") as f:
-                if b"eqgame.exe" in f.read():
-                    return int(pid)
-        except OSError:
-            continue
+    if any_pids:
+        return min(any_pids), "fallback lowest pid (no DISPLAY=:98 environ matched)"
+    return None, None
+
+
+def elf_class(fd_path):
+    # 1 = 32-bit, 2 = 64-bit: the whole design (image VAs, pointer widths)
+    # assumes a 32-bit process; a 64-bit wine would make every 32-bit read
+    # wrong.
+    try:
+        with open(fd_path, "rb") as f:
+            h = f.read(20)
+        if len(h) >= 20 and h[:4] == b"\x7fELF":
+            return h[4]
+    except OSError:
+        pass
     return None
+
+
+def fl(fd, addr):
+    os.lseek(fd, addr, os.SEEK_SET)
+    b = os.read(fd, 4)
+    return struct.unpack("<f", b)[0] if len(b) == 4 else None
 
 
 def open_mem(pid):
@@ -95,11 +111,12 @@ def read_bytes(fd, addr, n):
 def main():
     global PID, FD, BASE
     t0 = time.time()
-    PID = find_caster()
+    PID, how = find_caster()
     if not PID:
         log("FAIL no eqgame.exe found")
         return 2
-    log("START pid=%d tmax=%.0fs poll=%.0fms" % (PID, TMAX, POLL * 1000))
+    log("START pid=%d via=%s class=%s tmax=%.0fs poll=%.0fms" % (
+        PID, how, elf_class(f"/proc/{PID}/exe"), TMAX, POLL * 1000))
     FD = open_mem(PID)
 
     if not BASE:
@@ -151,27 +168,50 @@ def main():
     last = None
     hits = 0
     noch = 0
+    fails = 0
     log("INIT spawn=0x%08x" % 0)
     while time.time() - t0 < TMAX:
         try:
             sp = read_u32(FD, BASE + SPAWN_G)
         except OSError:
             sp = spawn
+            fails += 1
         if not (0x00010000 < sp < 0x80000000):
             time.sleep(POLL)
             continue
         if sp != spawn:
             spawn = sp
+            # Fingerprints: the raw 8 bytes at the global (pointer width
+            # check), the position floats, and the 16 bytes around +0x250.
+            try:
+                raw8 = read_bytes(FD, BASE + SPAWN_G, 8)
+                log("SPAWN t=%.3f 0x%08x raw8=%s" % (
+                    time.time() - t0, sp, raw8.hex()))
+            except OSError as e:
+                log("SPAWN t=%.3f 0x%08x raw8-fail %s" % (
+                    time.time() - t0, sp, e))
+            for off, nm in ((0x10, "x"), (0x14, "y"), (0x18, "z"),
+                            (0x24, "h")):
+                    try:
+                        log("POS %s=%r" % (nm, fl(FD, sp + off)))
+                    except OSError as e:
+                        log("POS %s-fail %s" % (nm, e))
+            try:
+                win = read_bytes(FD, sp + 0x250, 16)
+                log("WIN t=%.3f +0x250..0x25f=%s" % (
+                    time.time() - t0, win.hex()))
+            except OSError as e:
+                log("WIN fail %s" % e)
             try:
                 last = read_u32(FD, sp + 0x251) & 0xFF
             except OSError:
                 time.sleep(POLL)
                 continue
             log("INIT byte +0x251 = %d" % last)
-            log("SPAWN t=%.3f 0x%08x" % (time.time() - t0, sp))
         try:
             val = read_u32(FD, sp + 0x251) & 0xFF
         except OSError:
+            fails += 1
             time.sleep(POLL)
             continue
         t = time.time() - t0
@@ -181,8 +221,12 @@ def main():
                 t, last if last is not None else "?", val, sp))
             last = val
         noch += 1
+        if noch % 200 == 0:
+            log("SNAP t=%7.3f spawn=0x%08x byte=%d fails=%d" % (
+                t, spawn, last, fails))
         time.sleep(POLL)
-    log("END hits=%d ticks=%d t=%.3f" % (hits, noch, time.time() - t0))
+    log("END hits=%d ticks=%d fails=%d t=%.3f" % (
+        hits, noch, fails, time.time() - t0))
     return 0
 
 
