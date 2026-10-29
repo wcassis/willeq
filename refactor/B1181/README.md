@@ -283,6 +283,32 @@ hours were rendered on the PRE-MERGE binary; they must be re-rendered on
 the current tree before the final table ships (same command,
 it10_payload.bin).
 
+**Oracle flight numbers, bolt4, measured** (`track_bolt4_1x.py` over
+`video.mp4`, 30 fps, 1280x800 native; `t` = video time, video frame
+`n` = `t`*30, `t0` = 1793236040.885 from `video.mp4.t0`; corridor
+x 650..885, y 430..540, the orange-flame leading-edge component
+`area>=8`; full per-frame track in `flight_track.tsv` beside the video):
+
+| event | wall | t (s) | frame | 1x px |
+|---|---|---|---|---|
+| `0x4033` IT11504 to both clients | 01:16:36.935/.951 | 556.050 | 16681.5 | — |
+| first flight frame (new in-corridor flame) | | 556.100 | 16683 | head (776,525) |
+| mid-flight head, clearest | | 556.40-556.63 | 16692-16699 | (732,488), **20x20 px** (shrinking to 17x15 by 16699) |
+| later head | | 556.90-557.23 | 16707-16717 | (686,453), 10-12 px |
+| arrival at the observer's position | | 557.300 | 16719 | (688,444), 18-19 px |
+| hit op (damage 198, `OP_Death`-preceding chat) | 01:16:37.451 | 557.451 | 16723.5 | — |
+| last visible frame (model removed) | | 557.600 | 16728 | (688,445) |
+
+The measured head path (776,525) -> (732,488) -> (686,453) -> (688,444) is
+right-to-left (caster 1x (925,475) -> observer 1x (640,450), the plan's
+pos `-74,428` / `-67.6,434.4`) and DECELERATES — consistent with the
+payload's zero velocity + the `+0x62=7` flag the B1168 trace reads as the
+damping bit; the server schedules the damage at the predicted hit
+(557.451) while the model lingers ~0.15 s more and is removed by 16728.
+Flight first->last frame = 16683..16728 (45 frames, 1.50 s);
+`0x4033`->hit op = 1.401 s. The willeq-side bolt row uses the r4 live leg
+(5.1, no in-flight px — the user1 close-up) plus the replay's 22x18 px.
+
 ### 5.2 The archery shot — NOT captured (measured condition)
 
 Every archery attempt so far produced **zero `0x4033` packets**: oracle
