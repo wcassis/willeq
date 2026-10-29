@@ -84,9 +84,28 @@ export ORACLE_STATE_CHAR=$CHAR_ID ORACLE_EXPECT_CLASS=$CLS
 SAVE_TABLES="character_skills:id character_disciplines:id timers:char_id"
 SAVE_PRE= SAVE_POST=
 for tc in $SAVE_TABLES; do
-    t=${tc%%:*} c=${tc##*:} s=oracle_save_${t}_$CHAR_ID
+    # One assignment per line. The one-line 3-word form is fine in the
+    # driver (legH3's own post-SQL log shows the correct `WHERE id=67`),
+    # but on this host's bash 5.2.21 the 2-word shape `t=${tc%%:*}
+    # c=${tc##:*}` mis-expands c to the whole token in a standalone
+    # script; the split form is immune, so the WHERE clauses stay
+    # provably correct in any context.
+    t=${tc%%:*}
+    c=${tc##*:}
+    s=oracle_save_${t}_$CHAR_ID
     SAVE_PRE+="DROP TABLE IF EXISTS $s; CREATE TABLE $s AS SELECT * FROM $t WHERE $c=$CHAR_ID; SELECT 'SAVED','$t',COUNT(*) FROM $s; "
-    SAVE_POST+=" SELECT 'LEG','$t',COUNT(*) FROM $t WHERE $c=$CHAR_ID; DELETE FROM $t WHERE $c=$CHAR_ID; INSERT INTO $t SELECT * FROM $s; DROP TABLE $s; SELECT 'BACK','$t',COUNT(*) FROM $t WHERE $c=$CHAR_ID;"
+    # B1192 (legH3): the restore half PROBES the copy before it deletes the
+    # live rows (mysql -B -N -e stops at the first error). In legH3 the
+    # session died before the save tables existed -- ORACLE_PRE_SQL empty
+    # or the leg never reaching the pre-SQL stage (the log shows neither a
+    # pre-SQL line nor the tables) -- so the post-SQL's
+    # DELETE-then-INSERT deleted the live rows first (char 67's
+    # character_skills happened to hold 0 rows -- the LEG census in the
+    # log -- so nothing was lost that run) and only then failed on the
+    # INSERT (ERROR 1146, driver.log). With non-empty rows the delete
+    # would have destroyed them with no restore source. The probe fails
+    # BEFORE the delete in exactly that situation.
+    SAVE_POST+=" SELECT 'LEG','$t',COUNT(*) FROM $t WHERE $c=$CHAR_ID; SELECT COUNT(*) FROM $s; DELETE FROM $t WHERE $c=$CHAR_ID; INSERT INTO $t SELECT * FROM $s; DROP TABLE $s; SELECT 'BACK','$t',COUNT(*) FROM $t WHERE $c=$CHAR_ID;"
 done
 ORACLE_PRE_SQL="${SAVE_PRE}UPDATE character_data SET class=$CLS WHERE id=$CHAR_ID AND class=$HOME_CLASS;"
 # B1134: --pre-sql-file runs after the save and the switch (e.g. a server rule
