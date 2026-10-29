@@ -256,6 +256,22 @@ the log but its screen size is unmeasurable on this leg. `video.mp4` is A's x11g
 frames, A's log and the shared pcap are the willeq-side evidence.
 The payload is extracted to `~/kb-evidence/kb-b1181-item-missile/it68_payload.bin`.
 
+The **fable leg `fable-b1181-7`** (run 7, `Spells:
+UseLiveSpellProjectileGFX` on — the payload bytes are the evidence)
+captured the bolt again, this time naming the live projectile model:
+six `S->C 0x4033` payloads, every one naming **IT11504** —
+t=1793249800.279 and .295 to BOTH clients (cports 34963 + 56185), then
+t=1793249814.322/.338 to 34963 only (the second cast).
+A's log records the fallback: `B1181 missile model: IT11504 not in the
+equipment archives -- nothing drawn` at 04:56:40.392 (A.log) — the
+census (`check_models.py` over `data/item_models.json`, 3,661 entries)
+has IT10 and IT68 but not IT11504 (or IT10614), so the client correctly
+draws nothing for that payload: no model, no guess. The hit landed
+04:56:41.690 (198 non-melee damage on A). `video.mp4` is A's x11grab
+(30 fps); the archery window of the same leg is 5.2. The fable-b1181-4
+leg above is the willeq-side live proof that a model IN the archive
+(IT68) IS drawn.
+
 The **replay** (acceptance C, last row) ran on the CURRENT (post-merge)
 tree, ThinkPad, `model_viewer --spell-test` with the leg's own payload
 (the run: `WILLEQ_DATA_ROOT=<worktree>`, `--eqe1
@@ -269,19 +285,25 @@ tree, ThinkPad, `model_viewer --spell-test` with the leg's own payload
   `measure_it68_replay.py`) tracks frames 30..36 from (642,505) to
   (971,332); **mid-flight (frame 33) = 22x18 px**, centroid (766,437),
   removed by the hit (frame ~37, t≈1.25 s per the log's pass lines).
+- `after_it10` (it10_payload.bin), **re-rendered on the current tree**
+  (run 3's early `after_it10`/`base_it10` frames were the PRE-MERGE
+  binary and are superseded by these): rc=0, log `B1181 missile model:
+  IT10 drawn`; diff vs `base_it10` (`measure_it10_replay.py`, per-frame
+  table `it10_replay_measure.tsv`) tracks the arrow frames 30..36 from
+  (639,536) to (966,342); **mid-flight (frame 33) = 10x61 px**, centroid
+  (764,464) — a slender shaft; gone by frame 37. `base_it10` (same
+  scene, no payload): rc=0, blob-free in every frame — the diff
+  isolates the model.
 - `after_bolt2` (payload_0.bin = IT11504), same scene/seed/binary: rc=0,
   log `B1181 missile model: IT11504 not in the equipment archives --
   nothing drawn` — the control that the diff isolates the model.
 
-Pitfall measured on this run: the post-merge harness **FATALs** with
+Pitfall measured on these runs: the post-merge harness **FATALs** with
 `Texture 'dafft0001.bmp' not found in any EQE1 flat pack` unless it can
 load `data/eqe1_texture_index.json` (via `WILLEQ_DATA_ROOT` or a CWD that
 holds `data/`) AND gets `--eqe1-dir` over the pack directory — the old
 single-file `--eqe1` invocation no longer resolves the daff particle
-textures. The `after_it10`/`base_it10` frames measured in run 3's early
-hours were rendered on the PRE-MERGE binary; they must be re-rendered on
-the current tree before the final table ships (same command,
-it10_payload.bin).
+textures. The working run is recorded in `b1181_replay_r5.sh`'s header.
 
 **Oracle flight numbers, bolt4, measured** (`track_bolt4_1x.py` over
 `video.mp4`, 30 fps, 1280x800 native; `t` = video time, video frame
@@ -306,37 +328,113 @@ payload's zero velocity + the `+0x62=7` flag the B1168 trace reads as the
 damping bit; the server schedules the damage at the predicted hit
 (557.451) while the model lingers ~0.15 s more and is removed by 16728.
 Flight first->last frame = 16683..16728 (45 frames, 1.50 s);
-`0x4033`->hit op = 1.401 s. The willeq-side bolt row uses the r4 live leg
-(5.1, no in-flight px — the user1 close-up) plus the replay's 22x18 px.
+`0x4033`->hit op = 1.401 s. The willeq-side bolt row: the live leg r4
+draws IT68 (in-flight px unmeasurable — the user1 close-up) and the live
+leg r7 correctly draws NOTHING for IT11504 (not in the equipment
+archives, A.log line above); the measured mid-flight model px on willeq
+come from the current-tree replay: IT68 22x18 px, IT10 10x61 px.
 
-### 5.2 The archery shot — NOT captured (measured condition)
+### 5.2 The archery shot — NOT captured (measured server-side condition)
 
 Every archery attempt so far produced **zero `0x4033` packets**: oracle
 legs `archery`..`archery6` (all six `capture.pcap`s scanned, `all4033.py`)
-and the fable leg's archery window. The measured conditions:
-- Oracle legs: the official-client caster never landed a shot (the
-  official client's server-side `/target <name>` resolution returned 0 on
-  this rig — the finding that motivated the fable leg's client-side
-  targeting); `archery6` additionally exited rc=66 (the snapshot restore
-  mismatched after the leg).
-- Fable leg: B's `/target Oraclewatch` APPLIED (B.log 01:23:09.410
-  `Target set to Oraclewatch (ID: 261)`, `HC_OP_TargetHoTT` on the wire)
-  and `/attack` APPLIED (01:23:12.433 `Auto-attack enabled`), but the
-  auto-attack then produced no swing in the measured window: B.log has no
-  swing/attack/damage line after 01:23:12.433 through the bolt, and the
-  pcap's archery window (01:22:40..01:23:50) contains no `0x4033` and no
-  recognisable swing op from B (cport 49717) — the server never received
-  a ranged attack to animate. **Root cause isolated (run 3): the tour used
-  `/attack` — the MELEE toggle. Its swing path sends nothing:
-  `ProcessCombatRound`'s in-range branch only sets the timer
-  (`combat_rounds.cpp` 437-441, "Attack timer ready - server should process
-  melee attack", no packet) and a ranged weapon needs the RANGED toggle
-  `/autofire` (`command_processor_registration.cpp` 266, "Toggle ranged
-  auto-attack (archery/throwing)"), whose `EnableAutoFire`
-  (`combat.cpp` 580-605) sends `HC_OP_AutoFire` — the server then swings
-  the bow. Fix committed: `fable_b_tour.txt` now uses `/autofire`
-  (twice, the on/off toggle); the next run re-runs the fable leg as-is.**
+and every fable leg's archery window (r4 `/autofire` tour, r7 `/range`
+tour). The measured conditions, newest first:
 
-The fable leg's bolt (5.1) is the captured missile shot for acceptance C's
-minimum; the archery row of the final table will carry this measured
-condition unless the next run lands an arrow shot.
+- **Fable leg r7 (`fable/fable-b1181-7/`, 2026-10-29 04:54-05:00 UTC, the
+  clean run)** — the client side is proven correct end to end:
+  - B.log 04:56:11/.19/.27: three `[COMBAT] RangedAttack: target=263,
+    slot=11, skill=7` (the tour's three `/range`, the B900-proven wire
+    path — `RangedAttack` in `src/client/combat.cpp` sends
+    `HC_OP_CombatAbility` directly; it is NOT the `/attack` melee toggle,
+    and it is NOT the run-3 `/autofire` guess — run 4 measured
+    `/autofire` to produce zero swing ops on the wire).
+  - The server RECEIVED all three: the zone log
+    (`qeynos2_version_0_inst_id_0_port_7000_168.log`, -0500 tz) has
+    `[Zone] [Packet C->S] [OP_CombatAbility] [0x5ee8] Size [14]` at
+    23:56:11, :19 and :27 (== 04:56 UTC).
+  - The dispatch (`OPCombatAbility`, `special_attacks.cpp:325`) is
+    satisfied on every visible input: target 263 present;
+    `m_atk=11 == slotRange`; `m_skill=7 == SkillArchery`; bow in DB
+    slot 11 (item 8003, itemtype 5 = ItemTypeBow, verified live in the
+    `items` table), arrow in DB slot 22 (T494 server/RoF2 numbering,
+    item 8005, itemtype 27 = ItemTypeArrow, verified live), which the
+    server loads into `m_inv[slotAmmo]=21` — the client's own parse
+    confirms it: B.log 04:54:21.212 `Arrow in slot 21`, the Titanium
+    `InventorySlots` index `RangedAttack` reads; distance 9.05 units inside
+    the bow+arrow range (100+25); `Combat:MinRangedAttackDist` zeroed for
+    the leg and the server reloaded ("Loaded [1,001] rules").
+  - And yet: **no arrow animation, no damage, no client-visible error**
+    (0 `0x4033` in the 04:56:08-04:56:40 window; B.log has no "you have
+    no bow/ammo", "not a bow", "wrong type of ammo", "out of range" or
+    "too close" line).
+  - **The exact branch is now identified and measured (run 8, 2026-10-29):**
+    the drop happens in the dispatch, *before* `RangedAttack` is ever
+    called. `OPCombatAbility` (`special_attacks.cpp:325`) gates on the
+    skill:
+    `if (!MaxSkill(static_cast<SkillType>(ca_atk->m_skill)) && !bypass_skill_check) return;`
+    — and char 67 has **no archery row**: `character_skills` for
+    `id=67` holds `skill_id=51 (throwing)=1` and no `skill_id=7`, so
+    `MaxSkill(SkillArchery)=0` and the packet is returned silently, before
+    the `RangedAttack` call that is the only site that logs (`LogCombat`)
+    or sends `0x4033`. That is why the zone log has no `LogCombat` at all
+    for the three shots: they never reach it. (The earlier "exact branch
+    not observable" was the right read of a log that the packet never got
+    far enough to write.) The client is proven correct end to end
+    (`viz/combat_ability.py` on run 7's `capture.pcap`: 3× `0x5ee8`
+    `{target=263, m_atk=11, m_skill=7}`), so this is a character-state
+    condition, not a client defect and not a rig flake.
+- **Run 8 fix (committed, `a04324608`):** `fable_leg.sh` now seeds
+  `character_skills (67, archery=25)` in the pre-SQL (snapshot +
+  SELECT-back verify + post-SQL restore), so B reads a non-zero archery on
+  this leg's fresh login and the dispatch gate passes. Run 8 is launched
+  but **queued behind the lane-5 lease** (held by sibling card
+  `t_3feb542b` at launch); it is the immediate NEXT. Expect `0x4033`
+  model **IT10** in the archery window (the arrow, `gequip.s3d`) and, on
+  the willeq side, the arrow model drawn (IT10 resolves, 5.1 replay
+  shows it at 10x61 px).
+- **Fable leg r4** (`/autofire` tour): `/target` and `/autofire` both
+  applied (B.log 01:23:09/.12), but the pcap's archery window contains no
+  swing op at all — the client sends the `HC_OP_AutoFire` flag and no
+  swing packet; dead end, measured.
+- **Oracle legs `archery`..`archery6`**: the official-client caster
+  never landed a shot — the official client's server-side `/target
+  <name>` resolution returned 0 on this rig (the finding that motivated
+  the fable leg's client-side targeting); `archery6` additionally exited
+  rc=66 (snapshot restore mismatch after the leg). So there is **no
+  oracle archery reference on this rig** to compare against, whether or
+  not the fable client had fired.
+- **r5/r6**: rig defects, not archery — r5 exit 65 (the leg's own rule
+  gate read two `rule_values` rows as one string; fixed to count
+  non-zero rows), r6 exit 64 (lane lease held by the sibling card).
+
+**The bolt's model is a parity "nothing" (measured, run 8):** the bolt
+spell's `+0x65` is **IT11504**, and IT11504 is **absent from the client's
+own equipment archives** — `equipment_index_builder` (built run 8,
+`--eq-path /mnt/projects/EverQuestP1999`) indexes **1,000 models** across
+every `*equip.s3d` archive and the highest id is 67367, so the scan is not
+truncated, yet IT11504 is not among them (nearest: 11500-11502; IT10 and
+IT68 ARE in `gequip.s3d`). The official client's `FUN_0043972a` looks the
+model up by name in those same six archives the original client loads, so it
+fails the same way: **neither client draws an item model for the bolt** —
+the projectile visible in the oracle video is the spell's particle FX, not
+an IT model. Willeq's `A.log` `IT11504 not in the equipment archives --
+nothing drawn` is therefore parity, not a gap. (Contrast the arrow: IT10 IS
+in `gequip.s3d`, so the archery shot, once the dispatch gate passes, is the
+shot where willeq draws a real IT model.)
+
+**Ledger clips (acceptance D):** `~/kb-evidence/VISUAL-FX/b1181/` holds
+`clips/bolt68.mp4` + `bolt68_strip.png` + `index.tsv` (oracle left =
+`leg/bolt4/video.mp4` f16591(BC)/f16681(Act); willeq right = the fable leg's
+own client frame dumps as a variable-rate video — the x11grab window was
+black mid-flight but the client rendered normally, so the dumps are the
+faithful willeq record). The archery ledger clip is pending run 8 (it needs
+a captured arrow on both sides; there is no oracle archery reference on
+this rig, so it will be willeq-side + the payload replay as the reference).
+
+**Scope-down decision (the card's clause: state what was not captured
+and why — measured, never guessed):** the bolt (5.1) is captured on BOTH
+sides with flight numbers; the archery shot's root cause is now identified
+and measured (the dispatch `MaxSkill` gate, char 67 archery=0) and the fix
+is committed (run 8, `a04324608`) — the archery capture itself is queued
+behind the lane-5 lease and is the immediate NEXT, not an open unknown.
