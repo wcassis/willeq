@@ -222,3 +222,88 @@ not just frame-0-identical; the whole capture is.
 (Two legs on lane 5 with the B1134 observer rig, observer char 103 Oraclewatch
 on the grabbed display, caster char 67 Testcaster on the Xvfb; plans and
 pre/post SQL in `refactor/B1181/leg/`. Filled in as the legs land.)
+
+### 5.1 The bolt leg — CAPTURED on both sides (queue r3, 2026-10-29)
+
+The **oracle leg `bolt4`** (rc=0) captured the bolt with the official
+observer and the official caster: five `S->C 0x4033` payloads, every one
+naming **IT11504** (model at payload bytes 101..117), t=1793236596.935 and
+.952 (two casts) delivered to BOTH clients (cports 54534 + 58919) and
+t=1793236636.719 to 54534 only. `capture.pcap` (the leg's, 20-byte SLL2
+headers), `video.mp4` (the observer's :99 grab) and `caster.mp4` (the
+caster's Xvfb grab) are in `~/kb-evidence/kb-b1181-item-missile/leg/bolt4/`;
+the first-packet payload is extracted to
+`~/kb-evidence/kb-b1181-item-missile/it11504_payload.bin` (136 bytes).
+
+The **fable leg** (`fable/fable-b1181/`, rc=0; willeq observer A, cport
+42217, + headless willeq GM caster B, cport 49717, one world session)
+captured the same shot on the fable client: six `S->C 0x4033` payloads,
+every one naming **IT68** (not IT11504 — the fable leg ran after the
+oracle legs' `Spells:UseLiveSpellProjectileGFX` leg-limited rule had been
+undone by their teardown, and `fable_leg.sh` does not set it; the payload
+bytes are the evidence, not the rule), t=1793237027.584/.600 to BOTH A and
+B and t=1793237041.636/.656 to B. A's log records the draw:
+`B1181 missile model: IT68 drawn` at 01:23:47.792 (A.log); the hit
+(HC_OP_Death on A) landed 01:23:48.952, so the model is drawn for the
+~1.16 s flight (dump frames 268..272 at the measured 0.3353 s/frame).
+Measured on A's dump frames 255..278 (the changed-pixel census
+`track_fable_it68.py` + vision on frames 270/285): **no independent
+in-flight object resolves on A's screen** — A's own `/camera user1` (the
+tour's, applied 01:23:44.451) is a close-up of A at bolt time (frame 270),
+and B, the launch point, sits outside that view; the model is drawn per
+the log but its screen size is unmeasurable on this leg. `video.mp4` is A's x11grab
+(30 fps, :99); B is headless (`--no-graphics`) and has no video — A's
+frames, A's log and the shared pcap are the willeq-side evidence.
+The payload is extracted to `~/kb-evidence/kb-b1181-item-missile/it68_payload.bin`.
+
+The **replay** (acceptance C, last row) ran on the CURRENT (post-merge)
+tree, ThinkPad, `model_viewer --spell-test` with the leg's own payload
+(the run: `WILLEQ_DATA_ROOT=<worktree>`, `--eqe1
+/mnt/projects/EverQuest_ETC1/willeq.eqe1 --eqe1-dir
+/mnt/projects/EverQuest_ETC1`, the plan
+`/home/user/kb-b1181-replay/base_bolt/plan.tsv`, `--camera b1130 --seed 1
+--particle-options --missile-payload <payload> --missile-at 1.0`, 30 fps,
+6 s):
+- `after_it68` (it68_payload.bin): rc=0, log `B1181 missile model: IT68
+  drawn`; the measured blob (diff of this run vs the control below,
+  `measure_it68_replay.py`) tracks frames 30..36 from (642,505) to
+  (971,332); **mid-flight (frame 33) = 22x18 px**, centroid (766,437),
+  removed by the hit (frame ~37, t≈1.25 s per the log's pass lines).
+- `after_bolt2` (payload_0.bin = IT11504), same scene/seed/binary: rc=0,
+  log `B1181 missile model: IT11504 not in the equipment archives --
+  nothing drawn` — the control that the diff isolates the model.
+
+Pitfall measured on this run: the post-merge harness **FATALs** with
+`Texture 'dafft0001.bmp' not found in any EQE1 flat pack` unless it can
+load `data/eqe1_texture_index.json` (via `WILLEQ_DATA_ROOT` or a CWD that
+holds `data/`) AND gets `--eqe1-dir` over the pack directory — the old
+single-file `--eqe1` invocation no longer resolves the daff particle
+textures. The `after_it10`/`base_it10` frames measured in run 3's early
+hours were rendered on the PRE-MERGE binary; they must be re-rendered on
+the current tree before the final table ships (same command,
+it10_payload.bin).
+
+### 5.2 The archery shot — NOT captured (measured condition)
+
+Every archery attempt so far produced **zero `0x4033` packets**: oracle
+legs `archery`..`archery6` (all six `capture.pcap`s scanned, `all4033.py`)
+and the fable leg's archery window. The measured conditions:
+- Oracle legs: the official-client caster never landed a shot (the
+  official client's server-side `/target <name>` resolution returned 0 on
+  this rig — the finding that motivated the fable leg's client-side
+  targeting); `archery6` additionally exited rc=66 (the snapshot restore
+  mismatched after the leg).
+- Fable leg: B's `/target Oraclewatch` APPLIED (B.log 01:23:09.410
+  `Target set to Oraclewatch (ID: 261)`, `HC_OP_TargetHoTT` on the wire)
+  and `/attack` APPLIED (01:23:12.433 `Auto-attack enabled`), but the
+  auto-attack then produced no swing in the measured window: B.log has no
+  swing/attack/damage line after 01:23:12.433 through the bolt, and the
+  pcap's archery window (01:22:40..01:23:50) contains no `0x4033` and no
+  recognisable swing op from B (cport 49717) — the server never received
+  a ranged attack to animate. Willeq-side cause not yet isolated
+  (candidates to check next: the headless auto-attack's swing tick, the
+  main-hand equip read, the range/LOS gate) — that is the top NEXT item.
+
+The fable leg's bolt (5.1) is the captured missile shot for acceptance C's
+minimum; the archery row of the final table will carry this measured
+condition unless the next run lands an arrow shot.
