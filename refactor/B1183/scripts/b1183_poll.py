@@ -23,6 +23,7 @@
 # Env: S_OUT (log base), S_TMAX, S_BASE (optional; resolved from maps if
 # absent), S_POLL_MS. Run as root (ptrace_scope, B1164): sudo -n.
 import os
+import signal
 import struct
 import sys
 import time
@@ -49,6 +50,14 @@ def log(msg):
     with open(OUT + ".log", "a") as f:
         f.write(msg + "\n")
     print(msg, flush=True)
+
+
+def _stop(signum, frame):
+    raise SystemExit("signal %d" % signum)
+
+
+signal.signal(signal.SIGINT, _stop)
+signal.signal(signal.SIGTERM, _stop)
 
 
 def find_caster():
@@ -220,8 +229,14 @@ def main():
             val = read_u32(FD, sp + 0x251) & 0xFF
         except OSError:
             fails += 1
+            # A dead target makes every read throw; bail out after ~25 s of
+            # consecutive failures instead of running to TMAX.
+            if fails > 1000:
+                log("ABORT %d consecutive read failures (target gone?)" % fails)
+                return 3
             time.sleep(POLL)
             continue
+        fails = 0
         t = time.time() - t0
         if val != last:
             hits += 1
