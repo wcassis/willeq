@@ -1,0 +1,69 @@
+# B1204 (#523): static capacities, live guards and model routes for scripts/hermes/alloc/alloc.py.
+# A YAML SUBSET (parsed by alloc.py's own reader, python3 stdlib only): nested `key: value`
+# maps by 2-space indentation, scalars (int, float, true/false, strings), inline lists [a, b],
+# `#` comments. No anchors, no multi-line strings.
+
+board:
+  name: willeq
+  max_in_progress: 4          # kanban.max_in_progress today (the gateway enforces it); plan: 8 once the allocator is live
+  hold_prefix: "awaiting "    # the allocator only ever releases scheduled cards whose reason starts with this
+
+resources:                    # need name (docs/hermes/card_manifest.md) -> slots
+  thinkpad-render: 3          # concurrent model_viewer renders on the ThinkPad
+  thinkpad-quiet: 1           # exclusive: holds the ThinkPad with NO other render (and needs render slots free)
+  lane-1: 1
+  lane-2: 1
+  lane-3: 1
+  lane-4: 1
+  lane-5: 1                   # the ThinkPad oracle + eqemu
+  cpu-build: 2                # runner-VM rbuild slots
+  arm-build: 1
+  oracle-vm: 2                # r430 / r540 Wine oracle VMs
+  hermes-measure: 4           # cv2 measure processes on hermes-ext
+
+lane_any: [1, 2, 3, 4]        # lanes a `lane:any` need may take, in order (lane 5 only by name)
+
+unmanifested:                 # a card with no valid `## Manifest` block (flagged in every decision)
+  tier: heavy
+  model: strong
+  needs: none
+
+guards:
+  thinkpad_host: thinkpad     # ssh alias from hermes-ext
+  render_load1_max: 12        # load1 above this closes every render slot (render_gate.sh's LOADMAX)
+  render_runq_per_core_max: 2 # running processes per core above this closes every render slot
+  quiet_load1_max: 2          # thinkpad-quiet needs load1 at or below this and no model_viewer
+  eqgame_closes: [thinkpad-quiet, lane-5]   # a running eqgame (the lane-5 oracle client) closes these
+  lease_states_closed: [HELD] # scripts/eqemu/leases states that close a lane (EXPIRED/FREE = open)
+
+seats:                        # inference seats per model endpoint
+  hermes-a: 4                 # q38-d on the Inspur llama-swap endpoint (dev/review profiles)
+  hermes-b: 0                 # q38-b: reserved for the crons, never routed to
+  codex: 1                    # the `codex` profile (gpt-6-astra), one concurrent session
+
+profiles:                     # profile -> the endpoint its default model uses
+  dev: hermes-a
+  review: hermes-a
+  qa: hermes-a
+  codex: codex
+  codex-sol: codex
+  codex-luna: codex
+
+routes:                       # route class -> endpoints in preference order
+  light: [hermes-a]
+  medium: [hermes-a]
+  strong: [codex, hermes-a]
+
+codex:
+  enabled: true               # the orchestrator sets false while the CODEX RESUME rule (#297) holds codex back
+  profile: codex              # a codex route = `kanban assign <id> codex`
+  usage_cmd: "bash ~/kb-bodies/codex_usage.sh"
+  record_max_age_h: 6         # an older rate-limit record = CODEX_USAGE_STALE -> no codex routing
+  window_end_h: 72            # Will 2026-10-29: when resets_in < this ...
+  window_end_used_max: 60     # ... and used < this %, medium legs route to codex too (pace line still the ceiling)
+  run_budget_calls: 400       # per-run budget (solo prompt 20261018a rule 14), carried in the decision row
+  run_budget_points: 10
+
+paths:
+  decisions: /mnt/scratch/ledger/alloc_decisions.tsv
+  jobs_root: /mnt/scratch/jobs  # B1203 done-files: <slug>/<job>.done
