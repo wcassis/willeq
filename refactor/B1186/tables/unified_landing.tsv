@@ -1,0 +1,48 @@
+sweep	row	kind	spell	win_b	win_a	litpx	t	cov_b	cov_a	delta	oracle	ratio_b	ratio_a	v_b	v_a	win_source_t	note
+tour	38	wiz5	38	235.0	214.0	168923	1.933	3.059	3.689	0.63	5.138	0.595	0.718	short	short	review/B1178/worker/measure-v3-r3/b1118ref_wiz5/spell38.timing.txt	unified: /oracle-capture height^2
+tour	41	ench5	41	235.0	214.0	189607	1.5	3.433	4.14	0.707	4.088	0.84	1.013	short	PASS	review/B1178/worker/measure-v3-r3/b1118ref_ench5/spell41.timing.txt	unified: /oracle-capture height^2
+tour	54	wiz5	54	235.0	214.0	87972	2.2	1.593	1.921	0.328	2.002	0.796	0.96	short	short	review/B1178/worker/measure-v3-r3/b1118ref_wiz5/spell54.timing.txt	unified: /oracle-capture height^2
+tour	93	dru5	93	235.0	214.0	168923	1.933	3.059	3.689	0.63	4.479	0.683	0.824	short	short	review/B1178/worker/measure-v3-r3/b1118ref_dru5/spell93.timing.txt	unified: /oracle-capture height^2
+tour	253	dru5	253	235.0	214.0	277130	1.017	5.018	6.051	1.033	4.7909	1.047	1.263	over	over	review/B1178/worker/measure-v3-r3/b1118ref_dru5/spell253.timing.txt	unified: /oracle-capture height^2
+tour	458	wiz5	458	235.0	214.0	44044	1.95	0.798	0.962	0.164	1.261	0.632	0.763	short	short	review/B1178/worker/measure-v3-r3/b1118ref_wiz5/spell458.timing.txt	unified: /oracle-capture height^2
+tour	656	wiz5	656	235.0	214.0	87972	2.2	1.593	1.921	0.328	2.004	0.795	0.959	short	short	review/B1178/worker/measure-v3-r3/b1118ref_wiz5/spell656.timing.txt	unified: /oracle-capture height^2
+b1130	0	fixed_npc	93	209.0	209.0			3.261	3.261	0.0	3.945	0.827	0.827	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +6.567
+b1130	1	fixed_npc	200	209.0	209.0			1.592	1.592	0.0	3.05	0.522	0.522	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +6.400
+b1130	2	fixed_npc	202	209.0	209.0			0.715	0.715	0.0	2.25	0.318	0.318	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +4.800
+b1130	3	fixed_npc	377	209.0	209.0			8.623	8.623	0.0	11.688	0.738	0.738	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +4.100
+b1130	4	fixed_self	50	209.0	209.0			1.525	1.525	0.0	3.25	0.469	0.469	short	short	review/B1130/geom/r131.json (mpx 209.0)	already unified (no-op); landing_end_s +5.700
+b1130	5	fixed_npc	80	209.0	209.0			0.346	0.346	0.0	0.559	0.619	0.619	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +4.400
+b1130	6	fixed_self	722	209.0	209.0			0.416	0.416	0.0	0.762	0.546	0.546	short	short	review/B1130/geom/r131.json (mpx 209.0)	already unified (no-op); landing_end_s +5.933
+b1130	7	fixed_npc	40	209.0	209.0			1.477	1.477	0.0	3.077	0.48	0.48	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +6.367
+b1130	8	fixed_self	346	209.0	209.0			0.826	0.826	0.0	6.271	0.132	0.132	short	short	review/B1130/geom/r131.json (mpx 209.0)	already unified (no-op); landing_end_s +2.333
+b1130	9	fixed_self	375	209.0	209.0			1.507	1.507	0.0	1.999	0.754	0.754	short	short	review/B1130/geom/r131.json (mpx 209.0)	already unified (no-op); landing_end_s +7.433
+b1130	10	fixed_self	590	209.0	209.0			2.184	2.184	0.0	5.476	0.399	0.399	short	short	review/B1130/geom/r131.json (mpx 209.0)	already unified (no-op); landing_end_s +6.000
+b1130	11	fixed_self	285	209.0	209.0			0.265	0.265	0.0	0.997	0.266	0.266	short	short	review/B1130/geom/r131.json (mpx 209.0)	already unified (no-op); landing_end_s +4.300
+b1130	12	fixed_npc	208	209.0	209.0			5.22	5.22	0.0	5.788	0.902	0.902	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +6.833
+b1130	13	fixed_npc	209	209.0	209.0			0.872	0.872	0.0	3.264	0.267	0.267	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +5.667
+b1130	14	fixed_self	373	209.0	209.0			1.98	1.98	0.0	3.995	0.496	0.496	short	short	review/B1130/geom/r131.json (mpx 209.0)	already unified (no-op); landing_end_s +8.467
+b1130	15	fixed_npc	289	209.0	209.0			0.95	0.95	0.0	2.904	0.327	0.327	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +5.833
+b1130	16	fixed_npc	242	209.0	209.0			0.839	0.839	0.0	1.343	0.625	0.625	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +5.200
+b1130	17	fixed_self	237	209.0	209.0			1.206	1.206	0.0	3.655	0.33	0.33	short	short	review/B1130/geom/r131.json (mpx 209.0)	already unified (no-op); landing_end_s +4.800
+b1130	18	fixed_npc	378	209.0	209.0			1.243	1.243	0.0	4.042	0.308	0.308	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +5.000
+b1130	19	fixed_self	359	209.0	209.0			1.506	1.506	0.0	2.332	0.646	0.646	short	short	review/B1130/geom/r131.json (mpx 209.0)	already unified (no-op); landing_end_s +5.533
+b1130	20	fixed_npc	341	209.0	209.0			2.861	2.861	0.0	4.679	0.611	0.611	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +6.067
+b1130	21	fixed_npc	218	209.0	209.0			4.782	4.782	0.0	5.976	0.8	0.8	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +5.633
+b1130	22	fixed_npc	201	209.0	209.0			4.056	4.056	0.0	4.636	0.875	0.875	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +4.733
+b1130	23	fixed_npc	372	209.0	209.0			1.139	1.139	0.0	2.32	0.491	0.491	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +6.367
+b1130	24	fixed_npc	348	209.0	209.0			2.423	2.423	0.0	3.839	0.631	0.631	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +6.050
+b1130	25	fixed_npc	14	209.0	209.0			2.608	2.608	0.0	4.847	0.538	0.538	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +6.533
+b1130	26	fixed_npc	310	209.0	209.0			1.888	1.888	0.0	8.003	0.236	0.236	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +4.633
+b1130	27	fixed_npc	290	209.0	209.0			0.301	0.301	0.0	0.747	0.403	0.403	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +5.467
+b1130	28	fixed_npc	73	209.0	209.0			2.059	2.059	0.0	2.332	0.883	0.883	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +6.200
+b1130	29	fixed_npc	286	209.0	209.0			1.321	1.321	0.0	2.033	0.65	0.65	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +7.400
+b1130	30	fixed_npc	231	209.0	209.0			3.111	3.111	0.0	5.939	0.524	0.524	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +6.300
+b1130	31	fixed_npc	313	209.0	209.0			4.155	4.155	0.0	3.668	1.133	1.133	over	over	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +6.217
+b1130	32	fixed_npc	374	209.0	209.0			5.098	5.098	0.0	6.547	0.779	0.779	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +6.950
+b1130	33	fixed_npc	382	209.0	209.0			0.532	0.532	0.0	2.522	0.211	0.211	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +5.050
+b1130	34	fixed_npc	340	209.0	209.0			1.95	1.95	0.0	3.285	0.594	0.594	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +6.100
+b1130	35	fixed_npc	253	209.0	209.0			5.019	5.019	0.0	7.283	0.689	0.689	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +5.417
+b1130	40	fixed_self	602	209.0	209.0			0.907	0.907	0.0	0.157	5.777	5.777	over	over	review/B1130/geom/r131.json (mpx 209.0)	already unified (no-op); landing_end_s +4.167
+b1130	41	fixed_npc	703	209.0	209.0			1.157	1.157	0.0	1.892	0.612	0.612	short	short	review/B1130/geom/r51.json (mpx 209.0)	already unified (no-op); landing_end_s +5.500
+b1130	42	fixed_self	700	209.0	209.0			0.207	0.207	0.0	0.686	0.302	0.302	short	short	review/B1130/geom/r131.json (mpx 209.0)	already unified (no-op); landing_end_s +5.000
+b1130	43	fixed_self	720	209.0	209.0			0.514	0.514	0.0	1.176	0.437	0.437	short	short	review/B1130/geom/r131.json (mpx 209.0)	already unified (no-op); landing_end_s +4.433

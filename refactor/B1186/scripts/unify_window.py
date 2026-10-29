@@ -107,9 +107,19 @@ def tour_rows(measure, b1178):
         mpx = float(m.group(1))          # the oracle capture's own height, per row
         cov_b = litpx / WIN_BEFORE_TOUR ** 2
         cov_a = litpx / mpx ** 2
-        # the v3 LANDING line: "... — coverage 4.479 (peak f189 Act+2.294)"
-        mo = re.search(r'coverage ([\d.]+) \(peak f(\d+) Act([+-][\d.]+)s\)', txt)
-        oracle = float(mo.group(1)) if mo else None
+        # the v3 LANDING line, both shapes:
+        #   "LANDING onset f132 Act+0.394s ... peak f189 Act+2.294s coverage 4.479 model^2"
+        #   "LANDING none above thr (max 219405px = 4.7909 model^2)"   (spell 253, the
+        #     raw-max fallback reading: the landing never exceeded the active threshold)
+        mo = re.search(r'LANDING .*peak f(\d+) Act([+-][\d.]+)s coverage ([\d.]+) model\^2', txt)
+        note = 'unified: /oracle-capture height^2'
+        if mo:
+            oracle = float(mo.group(3))
+        else:
+            mo = re.search(r'LANDING none above thr \(max (\d+)px = ([\d.]+) model\^2\)', txt)
+            oracle = float(mo.group(2)) if mo else None
+            if mo:
+                note += '; oracle reading is the raw-max fallback (none above thr)'
         row.update(win_b=WIN_BEFORE_TOUR, win_a=mpx, litpx=litpx, t=round(t, 3),
                    cov_b=round(cov_b, 3), cov_a=round(cov_a, 3),
                    delta=round(cov_a - cov_b, 3), oracle=oracle,
@@ -137,6 +147,7 @@ def b1130_rows(measure, b1130, wt):
             cap = r[11]                      # the captures column ($12, as run_b1186.sh reads it)
             rec_info[int(r[0])] = (r[5], 'fixed_npc' if 'fixed_npc' in cap else 'fixed_self')
     kind_geom = {'fixed_npc': f'{b1130}/geom/r51.json', 'fixed_self': f'{b1130}/geom/r131.json'}
+    kind_key = {'fixed_npc': 'cast_fixed_npc', 'fixed_self': 'cast_fixed_self'}
     out = []
     for r in tab[1:]:
         rec = int(r[gi])
@@ -145,15 +156,17 @@ def b1130_rows(measure, b1130, wt):
         p = f'{measure}/b1130_r{rec}/b1130_rows.tsv'
         mpx = None
         try:
-            mpx = float(json.load(open(kind_geom[kind]))['mpx'])
-        except (FileNotFoundError, KeyError, ValueError):
+            mpx = float(json.load(open(kind_geom[kind]))[kind_key[kind]]['mpx'])
+        except (FileNotFoundError, KeyError, ValueError, TypeError):
             pass
         row = {'sweep': 'b1130', 'row': rec, 'kind': kind, 'spell': spell or '',
                'win_source_t': f'review/B1130/geom/{os.path.basename(kind_geom[kind])} (mpx {mpx})'}
         try:
-            rows = [l.rstrip('\n').split('\t') for l in open(p)][1:]
-            cov = float(rows[0][rows[0].index('landing_cov')])
-            lend = rows[0][rows[0].index('landing_end_s')]
+            lines = [l.rstrip('\n').split('\t') for l in open(p) if l.strip()]
+            hdr = lines[0]
+            rows = lines[1:]
+            cov = float(rows[0][hdr.index('landing_cov')])
+            lend = rows[0][hdr.index('landing_end_s')]
         except FileNotFoundError:
             row.update(win_b='', win_a='', litpx='', t='', cov_b='', cov_a='', delta='',
                        oracle=r[oi] if len(r) > oi else '', ratio_b='', ratio_a='',
@@ -180,7 +193,7 @@ def main():
     ap.add_argument('out')
     ap.add_argument('--b1178', default='/mnt/projects/fable/review/B1178/worker/measure-v3-r3')
     ap.add_argument('--b1130', default='/mnt/projects/fable/review/B1130')
-    ap.add_argument('--wt', default=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    ap.add_argument('--wt', default=os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
     a = ap.parse_args()
     rows = tour_rows(a.measure, a.b1178) + b1130_rows(a.measure, a.b1130, a.wt)
     os.makedirs(a.out, exist_ok=True)
