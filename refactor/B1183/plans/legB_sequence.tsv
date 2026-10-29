@@ -7,11 +7,24 @@
 #   DUCK = <K_DUCK>      SIT/STAND = <K_SIT>      USE = <K_USE>
 # (filled in from leg A's KEYMAP dump + probe evidence before this runs).
 #
-# Loot step: #spawn TrollF at the caster's own position, /target, #kill,
-# then press USE on the targeted corpse. No pixel geometry, no camera
-# switch: the client USEs on the target, and the corpse is 0 units from
-# the caster. The stand byte's 28061-gate writer (loot open) is the step
-# under test; the loot window opening is visible in the loot still.
+# Stun steps: #stun with NO target stuns the CASTER (stun.cpp: the target
+# falls back to c->Stun when GetTarget() is null); the 1300 ms wait lands
+# inside the 8 s stun, and #stun 0 (still untargeted) un-stuns self -- the
+# stun-END message the client's stun handler turns into 100 (80336).
+#
+# Loot: #spawn puts TrollF at the CASTER's position (spawn.cpp:
+# NPC::SpawnNPC(name, c->GetPosition())), so the corpse lands 0 units away;
+# the cast step targets TrollF (93 is single-target); #damage 999999 kills
+# the HP-50 TrollF one-shot if the spell did not (no #kill command exists
+# in this eqemu); /target TrollF then the USE key opens the loot on the
+# targeted corpse (the 28061 gate / the 105797 write) -- no pixel geometry,
+# no camera switch. The loot window opening is visible in the loot still.
+#
+# The leg runs as CLASS 6 (druid): spell 93 (Burst of Flame, the cast
+# step) is not a class-12 spell (the char's home class); oracle_class_leg.sh
+# switches the class for the leg and restores home class + gems in cleanup
+# (the B1129 mechanism). #level 60 + #mana so the 93 cast validates
+# (B1130 r51's recipe).
 #
 # Everything runs in the default chase camera -- the gate context the
 # fable column was measured in (the camera follows from above the spawn's
@@ -29,6 +42,9 @@ click	1229,555	0	close_tip
 command	#set time 11 0	0	noon
 wait	1500	0	noon_settle
 command	#weather 0	0	clear
+command	#level 60	0	level
+command	#mana	0	mana
+wait	2000	0	mana_settle
 wait	3000	0	gdb_arm
 wait	12000	0	gdb_attached
 still	0	0	stand
@@ -40,16 +56,18 @@ press	<K_SIT>	0	sit
 wait	2000	0	sit_settle
 press	<K_SIT>	0	stand2
 wait	2000	0	stand2_settle
-command	#castspell 93 0	0	cast
-wait	4000	0	cast_settle
-command	#stun 8000	0	stun
-wait	1500	0	stunned
-command	#stun 0	0	stunend
-wait	1500	0	stunend_settle
-command	#spawn TrollF 1 1 0 600000	0	spawn
+command	#spawn TrollF 1 1 0 50	0	spawn
 wait	4000	0	spawn_settle
 command	/target TrollF	0	tgt_troll
-command	#kill	0	kill
+command	#castspell 93 0	0	cast
+wait	4000	0	cast_settle
+command	/target none	0	untarget
+command	#stun 8000	0	stun
+wait	1300	0	stunned
+command	#stun 0	0	stunend
+wait	1300	0	stunend_settle
+command	/target TrollF	0	tgt_loot
+command	#damage 999999	0	kill
 wait	4000	0	corpse
 press	<K_USE>	0	loot
 wait	2000	0	loot_settle

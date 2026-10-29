@@ -46,9 +46,11 @@ done
 echo "b1183_watch: caster pid $pid"
 
 # 3. The eqgame.exe module base (first zero-offset mapping of the exe).
-# /proc/pid/maps: ADDRESS PERMS OFFSET DEV INODE PATH
-base="$(awk '$3=="00000000" && $6 ~ /eqgame\.exe$/ {print "0x"$1; exit}' /proc/$pid/maps)"
-[[ -n $base ]] || base=0x400000
+# /proc/pid/maps: ADDRESS PERMS OFFSET DEV INODE PATH -- field 1 is the
+# "START-END" range, so cut the START half (B1164's cut -d- -f1; a bare
+# 0x$1 feeds the range and int(..., 16) in b1183_gdb.py raises).
+base="0x$(awk '$3=="00000000" && $6 ~ /eqgame\.exe$/ {print $1; exit}' /proc/$pid/maps | cut -d- -f1)"
+[[ $base =~ ^0x[0-9a-f]+$ ]] || base=0x400000
 echo "b1183_watch: eqgame.exe base $base"
 
 # 4. Attach. sudo -n: ptrace_scope (B1164). The OUT dir must be writable by
