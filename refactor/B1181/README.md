@@ -384,15 +384,23 @@ tour). The measured conditions, newest first:
     (`viz/combat_ability.py` on run 7's `capture.pcap`: 3× `0x5ee8`
     `{target=263, m_atk=11, m_skill=7}`), so this is a character-state
     condition, not a client defect and not a rig flake.
-- **Run 8 fix (committed, `a04324608`):** `fable_leg.sh` now seeds
-  `character_skills (67, archery=25)` in the pre-SQL (snapshot +
-  SELECT-back verify + post-SQL restore), so B reads a non-zero archery on
-  this leg's fresh login and the dispatch gate passes. Run 8 is launched
-  but **queued behind the lane-5 lease** (held by sibling card
-  `t_3feb542b` at launch); it is the immediate NEXT. Expect `0x4033`
-  model **IT10** in the archery window (the arrow, `gequip.s3d`) and, on
-  the willeq side, the arrow model drawn (IT10 resolves, 5.1 replay
-  shows it at 10x61 px).
+- **Run 8 (committed `a04324608`, launched 2026-10-29 07:00 UTC):** the
+  archery-skill fix is in the leg (`character_skills (67, archery=25)` pre-SQL
+  with snapshot + SELECT-back verify + restore). It took the lane-5 lease and
+  the pre-SQL gates passed (archery verified 25), but the run itself failed on
+  a **lane-5 stack/connection condition, not the archery**: the leg *adopted*
+  the sibling task's already-running stack (`up.sh`: "zone fleet already
+  running (25 processes) -- adopting, not starting qeynos2"), and on that
+  adopted stack B exited `3: Could not connect to login server
+  (172.16.200.205:5998)` after 30 s while A never reached
+  `zoned_in=true` (`zone_conn=false` throughout) — so no shot, and the
+  post-SQL restore then raced the sibling's stack teardown
+  (`No such container: akk-stack-mariadb-1`; `chars as-found: DIFF`).
+  Measured conclusion: the archery skill gate is fixed in-tree and idempotent;
+  what's left is a **clean-stack lane-5 re-run** (start the stack fresh rather
+  than adopt a churning one), which is the immediate NEXT. Expect `0x4033`
+  model **IT10** in the archery window and the arrow model drawn (IT10
+  resolves in `gequip.s3d`, 5.1 replay shows it at 10x61 px).
 - **Fable leg r4** (`/autofire` tour): `/target` and `/autofire` both
   applied (B.log 01:23:09/.12), but the pcap's archery window contains no
   swing op at all — the client sends the `HC_OP_AutoFire` flag and no
@@ -434,7 +442,8 @@ this rig, so it will be willeq-side + the payload replay as the reference).
 
 **Scope-down decision (the card's clause: state what was not captured
 and why — measured, never guessed):** the bolt (5.1) is captured on BOTH
-sides with flight numbers; the archery shot's root cause is now identified
-and measured (the dispatch `MaxSkill` gate, char 67 archery=0) and the fix
-is committed (run 8, `a04324608`) — the archery capture itself is queued
-behind the lane-5 lease and is the immediate NEXT, not an open unknown.
+sides with flight numbers; the archery shot's root cause is identified and
+measured (the dispatch `MaxSkill` gate, char 67 archery=0) and fixed in-tree
+(run 8, `a04324608`) — the archery capture itself is one **clean-stack
+lane-5 re-run** away (run 8 failed on an adopted/churning stack, not the
+archery), and that re-run is the immediate NEXT, not an open unknown.
