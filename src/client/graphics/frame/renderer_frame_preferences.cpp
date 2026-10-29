@@ -73,7 +73,17 @@ void FrameComponent::syncEqClientIni() {
     // same compare-against-the-last-write device as the per-character file.
     if (!eqclientLoaded_) {
         EqClientIni p = CollectEqClientIni(optionsState_);
-        if (LoadEqClientIni(p)) ApplyEqClientIni(p, optionsState_);
+        if (LoadEqClientIni(p)) {
+            ApplyEqClientIni(p, optionsState_);
+            // B1182 (#501): the client rewrites an absent or out-of-[0,1]
+            // ShowSpellEffects as 1 IN THE FILE at load (eqgame.exe.c
+            // 126006-126011) -- but ONLY that key (a single-key
+            // WritePrivateProfileString): a junk density stays junk in the
+            // file until the shutdown save. So rewrite that one key now, not
+            // the whole file (SaveEqClientIni would normalise the junk).
+            if (p.showSpellEffectsRewrite)
+                RewriteShowSpellEffectsInFile(CollectEqClientIni(optionsState_));
+        }
         eqclientLastSaved_ = CollectEqClientIni(optionsState_);
         eqclientLoaded_ = true;
         return;
