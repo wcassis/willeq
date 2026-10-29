@@ -5,7 +5,9 @@
 -- spells_new.player_1 = IT11504 (the issue's "IT11504" — it lives in the
 -- live-GFX field, NOT in FRProjectileItem_Titanium, which stays item 1113
 -- for the GFX-off path);
--- (2) 'Darkshadow' (104) moved to the caster's account so the willeqwatch
--- character select lists only Oraclewatch (see leg A's server SQL).
+-- (2) 'Darkshadow' (104) moved to the NEUTRAL account 77 ('Wizzy') so the
+-- caster's account lists Testcaster first and the willeqwatch account lists
+-- only Oraclewatch (the caster-account move re-broke the caster: D < T,
+-- archery4; see leg A's server SQL for the full history).
 UPDATE rule_values SET rule_value='true' WHERE rule_name='Spells:UseLiveSpellProjectileGFX';
-UPDATE character_data SET account_id=(SELECT account_id FROM character_data WHERE id=67) WHERE id=104 AND name='Darkshadow';
+UPDATE character_data SET account_id=77 WHERE id=104 AND name='Darkshadow';
