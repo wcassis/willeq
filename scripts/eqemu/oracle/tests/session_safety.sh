@@ -72,6 +72,18 @@ eqemu_sql() {
             "SELECT COUNT(*) FROM oracle_save_character_skills_67")
                 if [[ $PROBE_CASE == early66 ]]; then return 1; fi
                 echo 1 ;;
+            # B1192 (#511) srvernoop/srveff: the corpse-hold rule as a
+            # one-cell database; absent $OUT/ruleval means "table not
+            # created" and the statement fails like real mysql would.
+            "SELECT id,name,value FROM rule_values WHERE name='NPC:EmptyNPCCorpseDecayTime'")
+                [[ -f $OUT/ruleval ]] || return 1
+                printf '1\tNPC:EmptyNPCCorpseDecayTime\t%s\n' "$(cat "$OUT/ruleval")" ;;
+            "UPDATE rule_values SET value=300000 WHERE name='NPC:EmptyNPCCorpseDecayTime'")
+                [[ -f $OUT/ruleval ]] || return 1
+                printf '300000' >"$OUT/ruleval" ;;
+            "UPDATE rule_values SET value=0 WHERE name='NPC:EmptyNPCCorpseDecayTime'")
+                [[ -f $OUT/ruleval ]] || return 1
+                printf '0' >"$OUT/ruleval" ;;
         esac
     done
 }
@@ -288,3 +300,48 @@ set -e
 grep -q "obs rows but no '# observer=" "$OUT/driver.log" || { echo 'missing observer directive not named'; cat "$OUT/driver.log"; exit 1; }
 [[ ! -e $OUT/timeline.tsv ]] || { echo 'client step ran on an obs plan with no observer directive'; exit 1; }
 echo 'PASS: B1192 obsnoobs -- obs rows without # observer= are refused 64 and named before the client step'
+
+# 6. srvernoop / srveff: B1192 (#511), legH-run5 -- the lane-5 corpse-hold
+# rule was FOUND in leg state (300000, B1183's hold), so the leg's
+# server-SQL was a no-op, but the cleanup still ran the hard-coded undo
+# (restore-to-0) and the before/after dump comparison failed with a false
+# 66. The no-op apply must suppress the undo and leave the lane as found.
+#   srvernoop -- found 300000: apply is a no-op, undo NOT run, rc 0.
+#   srveff    -- found 0 (stock): apply effective, undo runs, rc 0.
+# The stubs: a rule-value file ($OUT/ruleval) that the SQL statements move.
+cat >>"$FIXTURE/scripts/eqemu/env.sh" <<'EOF'
+compose() { :; }
+EOF
+# the server-data block down.sh's and up.sh's the stack around the SQL; the
+# up stub must bring the stack back up (clear the down marker).
+cat >"$FIXTURE/scripts/eqemu/up.sh" <<'EOF'
+rm -f "$OUT/down"; exit 0
+EOF
+export EQT_RULE_SQL=1
+export ORACLE_SERVER_SQL="UPDATE rule_values SET value=300000 WHERE name='NPC:EmptyNPCCorpseDecayTime';"
+export ORACLE_SERVER_UNDO_SQL="UPDATE rule_values SET value=0 WHERE name='NPC:EmptyNPCCorpseDecayTime';"
+export ORACLE_SERVER_DUMP_SQL="SELECT id,name,value FROM rule_values WHERE name='NPC:EmptyNPCCorpseDecayTime';"
+for PROBE_RULEVAL in 300000 0; do
+    tag=srveff; [[ $PROBE_RULEVAL == 300000 ]] && tag=srvernoop
+    export PROBE_CASE=$tag ORACLE_OWNER=b1192_$tag PROBE_CLASS=12 PROBE_NO_TIMELINE=0
+    OUT="$FIXTURE/$tag"; export OUT
+    mkdir -p "$OUT"
+    printf '%s' "$PROBE_RULEVAL" >"$OUT/ruleval"
+    set +e
+    PATH="$FIXTURE/bin:$PATH" bash "$FIXTURE/scripts/eqemu/oracle/oracle_session.sh" 5 "$FIXTURE/logplan.tsv" "$OUT" >"$FIXTURE/$tag.log" 2>&1
+    rc=$?
+    set -e
+    [[ $rc == 0 ]] || { echo "$tag returned $rc, expected 0"; cat "$OUT/driver.log" 2>/dev/null; exit 1; }
+    cmp -s "$OUT/server-data-before.tsv" "$OUT/server-data-after.tsv" || { echo "$tag: server data not left as found"; exit 1; }
+    if [[ $PROBE_RULEVAL == 300000 ]]; then
+        grep -q 'undo suppressed' "$OUT/driver.log" || { echo 'no-op apply did not suppress the undo'; cat "$OUT/driver.log"; exit 1; }
+        ! grep -q 'UPDATE rule_values SET value=0' "$OUT/sql.log" || { echo 'hard-coded undo ran on a no-op apply (legH-run5 defect)'; exit 1; }
+    else
+        grep -q 'UPDATE rule_values SET value=0' "$OUT/sql.log" || { echo 'effective apply did not run the undo'; cat "$OUT/sql.log"; exit 1; }
+        v=$(cat "$OUT/ruleval")
+        [[ $v == 0 ]] || { echo "stock lane not restored to 0 (holds $v)"; exit 1; }
+    fi
+    [[ -e $OUT/released ]] || { echo "$tag: lease not released"; exit 1; }
+    echo "PASS: B1192 $tag -- found $(cat "$OUT/server-data-before.tsv" | cut -f3): undo $(grep -q 'UPDATE rule_values SET value=0' "$OUT/sql.log" && echo ran || echo suppressed), lane left as found"
+done
+unset ORACLE_SERVER_SQL ORACLE_SERVER_UNDO_SQL ORACLE_SERVER_DUMP_SQL EQT_RULE_SQL

@@ -50,6 +50,24 @@ command	#weather 0	0	clear
 command	#level 60	0	level
 command	#mana	0	mana
 wait	2000	0	mana_settle
+# B1192 v2 (run 4, 2026-10-29): a STALE player corpse -- Oraclewatch's own,
+# left in the zone by an earlier run (visible in run 4's 04_obs_in_world
+# still before any kill step) -- sits at the characters' usual pose and
+# dominated the bottom of the camera. The original plan's USE click
+# (640,470) is a screen coordinate aimed at whatever corpse is under the
+# cursor, so run 4's click never opened the troll's loot (poll.log: the
+# troll's byte went 100 -> 120 on death and never left 120; no 105). The
+# stale corpse is OUTSIDE the spawn list the poller walks (it never
+# appeared in run 4's XNEW/XWR lines), so even a lucky click on it would
+# not have been visible in the poll. v2 therefore:
+#   - loots by TARGET, not by pixel: /loot on the still-targeted TrollF
+#     corpse (the official client's loot command; issue #511 names "the
+#     /loot target or click path" as the suspect);
+#   - leaves the stale player corpse in place (lane-as-found; it is named
+#     in the stills and absent from the poll, so the measurement is
+#     attributable by name);
+#   - deletes the troll's own NPC corpse at the end (this run created it;
+#     the 300000 hold would otherwise leave it in the zone).
 wait	3000	0	gdb_arm
 wait	10000	0	gdb_dump
 still	0	0	stand0
@@ -61,8 +79,10 @@ command	#damage 999999	0	kill
 command	#goto -74 425 10 0	0	face_corpse
 wait	3000	0	settle_face
 still	0	0	face_check
-click	640,470	0	use_click
+command	/loot	0	loot_open
 wait	4000	0	use_hold
 still	0	0	use_check
+command	#corpse deletenpccorpses	0	npc_corpse_cleared
+wait	1500	0	clean_settle
 command	/q	0	quit
 obs	command	/q	0	obs_quit

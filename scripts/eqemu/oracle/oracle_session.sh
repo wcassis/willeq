@@ -162,9 +162,17 @@ cleanup() {
         # change was armed (a failed login or capture included), with the
         # world down, then the dump must equal the one taken before the change.
         if (( SERVER_DATA )); then
-            eqemu_world_stop >>"$OUT/driver.log" 2>&1 || STATUS=66
-            say "server-data undo (world down): $ORACLE_SERVER_UNDO_SQL"
-            eqemu_sql "$ORACLE_SERVER_UNDO_SQL" >>"$OUT/driver.log" 2>&1 || STATUS=66
+            if (( ${SERVER_SQL_EFFECTIVE:-1} )); then
+                eqemu_world_stop >>"$OUT/driver.log" 2>&1 || STATUS=66
+                say "server-data undo (world down): $ORACLE_SERVER_UNDO_SQL"
+                eqemu_sql "$ORACLE_SERVER_UNDO_SQL" >>"$OUT/driver.log" 2>&1 || STATUS=66
+            else
+                # B1192 (#511): no-op apply -- the lane was found in leg
+                # state, so the undo (which restores the STOCK value) is
+                # suppressed: "leave as found" wins, and the dump below
+                # proves the leg left the state it found.
+                say "server-data undo suppressed (no-op apply; lane left as found)"
+            fi
             eqemu_sql "$ORACLE_SERVER_DUMP_SQL" >"$OUT/server-data-after.tsv" 2>>"$OUT/driver.log" || STATUS=66
             if cmp -s "$OUT/server-data-before.tsv" "$OUT/server-data-after.tsv"; then
                 say "server data restored BYTE-IDENTICALLY ($(wc -l <"$OUT/server-data-after.tsv") dump lines)"
@@ -222,6 +230,20 @@ if [[ -n ${ORACLE_SERVER_SQL:-}${ORACLE_SERVER_UNDO_SQL:-}${ORACLE_SERVER_DUMP_S
     say "server-data SQL (stack down): $ORACLE_SERVER_SQL"
     eqemu_sql "$ORACLE_SERVER_SQL" >>"$OUT/driver.log" 2>&1 || { STATUS=65; exit "$STATUS"; }
     eqemu_sql "$ORACLE_SERVER_DUMP_SQL" >"$OUT/server-data-leg.tsv" 2>>"$OUT/driver.log" || { STATUS=65; exit "$STATUS"; }
+    # B1192 (#511): if the lane ALREADY holds the leg state, the apply was a
+    # no-op (before-dump == leg-dump) and the hard-coded undo must NOT run:
+    # the undo restores the STOCK value, not the value the lane was found
+    # in, so on a lane found in leg state it would flip the state the leg
+    # exists to preserve and the before/after comparison would fail with a
+    # false 66 -- legH-run5 (lane 5, 2026-10-29): the corpse-hold rule was
+    # found at 300000 (B1183's hold), the apply was a no-op, and the undo's
+    # hard-coded 0 produced the "SERVER DATA MISMATCH" exit 66.
+    if cmp -s "$OUT/server-data-before.tsv" "$OUT/server-data-leg.tsv"; then
+        SERVER_SQL_EFFECTIVE=0
+        say "server-data SQL was a no-op (lane already in leg state); undo suppressed"
+    else
+        SERVER_SQL_EFFECTIVE=1
+    fi
 fi
 if ! bash "$REPO/scripts/eqemu/up.sh" >>"$OUT/driver.log" 2>&1 || ! eqemu_stack_ready; then STATUS=65; exit "$STATUS"; fi
 # B1047 (#367): keep the roster out of timorous, BEFORE the snapshot so the

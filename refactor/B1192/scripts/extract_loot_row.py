@@ -21,6 +21,8 @@ xwr = []
 xnew = []
 wr_local = []
 init = []
+xcorpse = []
+lst = []
 for ln in open(poll):
     m = re.match(r'XWR t=(\S+) (\d+) -> (\d+)  spawn=0x([0-9a-f]+) flag=(\d+)', ln)
     if m:
@@ -33,7 +35,13 @@ for ln in open(poll):
         wr_local.append(m.groups()); continue
     m = re.match(r'INIT byte \+0x251 = (\d+)', ln)
     if m:
-        init.append(m.group(1))
+        init.append(m.group(1)); continue
+    m = re.match(r'XCORPSE t=(\S+) ptr=0x([0-9a-f]+) name=(\S+) flag=(\d+|-) byte=(\d+|-)', ln)
+    if m:
+        xcorpse.append(m.groups()); continue
+    m = re.match(r'LIST t=(\S+) head=0x([0-9a-f]+)', ln)
+    if m:
+        lst.append(m.groups())
 
 # The corpse: an XNEW or XWR spawn with flag 2 (the death handler sets
 # +0x244 = 2). Its transition INTO 105 is the loot gate.
@@ -65,15 +73,20 @@ use_t = ''
 if timeline:
     for ln in open(timeline):
         p = ln.rstrip('\n').split('\t')
-        if len(p) >= 3 and p[2] == 'use_click':
+        if len(p) >= 3 and p[2] in ('loot_open', 'use_click'):
             use_t = p[1]
 
+# The direct corpse-pointer read (DAT_00905d04): the loot-target corpse
+# reference the client itself holds -- its byte is the loot column too.
+corpse105 = [c for c in xcorpse if c[5] == '105']
+
 print('step\tfeed\tfable\toracle\tevidence')
-print('loot\tloot open (28061)\t%s\t%s\tXWR t=%s %s -> %s spawn=0x%s flag=%s; looter INIT %s, no local WR off 100%s' % (
+print('loot\tloot open (28061)\t%s\t%s\tXWR t=%s %s -> %s spawn=0x%s flag=%s; looter INIT %s, no local WR off 100%s%s' % (
     fable_loot, oracle_byte, t[0], t[1], t[2], t[3], t[4], '/'.join(init),
-    ' (use_click t=%s)' % use_t if use_t else ''))
+    ' (loot_open t=%s)' % use_t if use_t else '',
+    '; XCORPSE t=%s ptr=0x%s name=%s flag=%s byte=%s' % corpse105[-1] if corpse105 else ''))
 print()
 print('cited poll.log lines:')
 for ln in open(poll):
-    if ln.startswith(('XNEW', 'XWR', 'INIT byte', 'END ')) or re.match(r'WR t=', ln):
+    if ln.startswith(('XNEW', 'XWR', 'XCORPSE', 'LIST', 'INIT byte', 'END ')) or re.match(r'WR t=', ln):
         print(ln.rstrip('\n'))

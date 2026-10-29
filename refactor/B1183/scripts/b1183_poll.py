@@ -62,13 +62,30 @@ BASE = int(os.environ.get("S_BASE", "0"), 16)
 IMAGE_BASE = 0x400000
 KEYMAP_VA = 0x0098599C
 SPAWN_VA = 0x00905CE4
-# The spawn linked list (new-spawn writer 106109/FUN_004849b2): head at
-# DAT_00905cc4, each node +0x214=prev, +0x220=next. The loot gate (28061/
-# 28062) writes 105 to the USE TARGET's +0x251, not the looter's -- so the
-# corpse's byte is what moves on a loot, and the looter (local) holds 100.
-# Track every non-local spawn to catch the corpse. The corpse flag is +0x244
-# (death handler 105881 sets it to 2 and the byte to 120).
+# The spawn linked list: head at DAT_00905cc4, nodes linked at +0x214 /
+# +0x220 (a doubly linked list). B1192 (2026-10-29, measured on legH-run4):
+# the original +0x220 walk DID work -- it logged the troll's XNEW (t=18.6,
+# flag 1, byte 100) and its death XWR 100 -> 120 with the flag going 2
+# (poll.log). The LOOT row was missing for a different reason: the plan's
+# screen-coordinate click never opened the loot window, so the corpse's
+# byte never left 120. B1192 keeps the walk but (1) walks +0x214, the
+# stride EVERY client consumer loop uses (eqgame.exe.c 14204, 51757,
+# 52798, 60422, 60587, 60733; teardown FUN_0043c20c at 54472), (2) tags
+# each row with the node's +0x120 name (the corpse search at 14204 fixes
+# the name offset and the corpse flag values 2/3), and (3) logs every
+# head-pointer change (LIST lines) so an empty walk is visible in-run.
+# The loot gate (28061/28062) writes 105 to the USE TARGET's +0x251, not
+# the looter's -- so the corpse's byte is what moves on a loot, and the
+# looter (local) holds 100. Track every non-local spawn to catch the
+# corpse.
 SPAWNLIST_VA = 0x00905CC4
+# DAT_00905d04: the client's own LOOT-TARGET corpse reference. Set from
+# the corpse getter at 18431 (DAT_00905d04 = FUN_0040d918()), used for the
+# loot range check (distance to DAT_00905d04 at 18541) and the corpse-flag
+# checks at 18490/18566, cleared when the corpse is gone (17583). Reading
+# the byte this pointer names is the direct measurement of "the corpse the
+# client is looting", independent of the list walk.
+CORPSE_VA = 0x00905D04
 
 PID = None
 FD = None
@@ -148,6 +165,52 @@ def read_u32(fd, addr):
 def read_bytes(fd, addr, n):
     os.lseek(fd, addr, os.SEEK_SET)
     return os.read(fd, n)
+
+
+def walk_list(read_u32, read_name, head, spawn, others, stride=0x214):
+    """Pure walk of the spawn list (B1192: testable without a process).
+
+    read_u32(addr) -> int (raise OSError on failure); read_name(addr) -> str.
+    head: the list head pointer; spawn: the local player pointer to skip;
+    others: in/out dict node -> (flag, byte) of previously seen nodes.
+    stride: the link offset to follow. 0x214 (the default) is the stride
+    every client consumer loop in the decompile uses (see the SPAWNLIST_VA
+    comment); 0x220 is the other link of the same doubly linked list, which
+    run 4 proved also traverses the live list. The stride parameter exists
+    so the regression test (refactor/B1192/scripts/test_poll_walk.py) can
+    exercise both directions against one synthetic list.
+
+    Returns rows: (tag, flag, old_byte, new_byte, name, node); tag XNEW
+    (old_byte None) or XWR.
+    """
+    rows = []
+    seen = set()
+    node = head
+    n = 0
+    while 0x00010000 < node < 0x80000000 and n < 96 and node not in seen:
+        seen.add(node)
+        try:
+            nxt = read_u32(node + stride)
+        except OSError:
+            break
+        if node != spawn:
+            try:
+                flag = read_u32(node + 0x244) & 0xFF
+                b = read_u32(node + 0x251) & 0xFF
+            except OSError:
+                b = flag = None
+            if b is not None:
+                nm = read_name(node + 0x120)
+                prev = others.get(node)
+                if prev is None:
+                    others[node] = (flag, b)
+                    rows.append(("XNEW", flag, None, b, nm, node))
+                elif b != prev[1]:
+                    others[node] = (flag, b)
+                    rows.append(("XWR", flag, prev[1], b, nm, node))
+        node = nxt
+        n += 1
+    return rows
 
 
 def main():
@@ -270,44 +333,75 @@ def main():
     log("INIT spawn=0x%08x" % 0)
 
     # 3. Non-local spawn tracking (the corpse). Walk the spawn list from
-    #    spawnlist_rt; for every node that is not the local player, log its
-    #    +0x251 byte on change (XWR), tagged with its +0x244 corpse flag. This
-    #    is what proves the oracle's loot fired (the corpse -> 105) while the
-    #    looter (local, "WR" lines) holds 100.
+    #    spawnlist_rt with the client's own stride +0x214 (B1192: the
+    #    original +0x220 followed the head's NULL back-link and visited
+    #    nothing). For every node that is not the local player, log its
+    #    +0x251 byte on change (XWR), tagged with its +0x244 corpse flag
+    #    and its +0x120 name. This is what proves the oracle's loot fired
+    #    (the corpse -> 105) while the looter (local, "WR" lines) holds 100.
+    #    Separately, track_corpse follows DAT_00905d04, the client's own
+    #    loot-target corpse reference (see CORPSE_VA) -- the direct pointer
+    #    to the corpse being looted, no list involved.
     others = {}
+    last_head = None
+    last_corpse = None
+
+    def read_name(rt, maxn=28):
+        try:
+            raw = read_bytes(FD, rt, maxn)
+        except OSError:
+            return "?"
+        return raw.split(b"\x00")[0].decode("latin-1", "replace")
+
+    def track_corpse(t):
+        # The loot-target corpse pointer (DAT_00905d04). Log on any change
+        # of pointer/name/flag/byte -- the 120 -> 105 transition of this
+        # pointer's byte IS the loot row.
+        nonlocal last_corpse
+        try:
+            p = read_u32(FD, CORPSE_VA + SHIFT)
+        except OSError:
+            return
+        if p == 0 or p == spawn or not (0x00010000 < p < 0x80000000):
+            if last_corpse is not None:
+                log("XCORPSE t=%7.3f ptr=0x00000000 name='-'"
+                    " flag=- byte=- (poll)" % t)
+                last_corpse = None
+            return
+        try:
+            flag = read_u32(FD, p + 0x244) & 0xFF
+            b = read_u32(FD, p + 0x251) & 0xFF
+        except OSError:
+            return
+        nm = read_name(p + 0x120)
+        key = (p, nm, flag, b)
+        if key != last_corpse:
+            last_corpse = key
+            log("XCORPSE t=%7.3f ptr=0x%08x name=%r flag=%d byte=%d (poll)"
+                % (t, p, nm, flag, b))
 
     def track_others(t):
+        nonlocal last_head
         try:
             head = read_u32(FD, spawnlist_rt)
         except OSError:
             return
-        seen = set()
-        node = head
-        n = 0
-        while 0x00010000 < node < 0x80000000 and n < 96 and node not in seen:
-            seen.add(node)
-            try:
-                nxt = read_u32(FD, node + 0x220)
-            except OSError:
-                break
-            if node != spawn:  # skip the local player (already "WR"-tracked)
-                try:
-                    flag = read_u32(FD, node + 0x244) & 0xFF
-                    b = read_u32(FD, node + 0x251) & 0xFF
-                except OSError:
-                    b = flag = None
-                if b is not None:
-                    prev = others.get(node)
-                    if prev is None:
-                        others[node] = b
-                        log("XNEW t=%7.3f spawn=0x%08x flag=%d byte=%d (poll)" % (
-                            t, node, flag, b))
-                    elif b != prev:
-                        others[node] = b
-                        log("XWR t=%7.3f %d -> %d  spawn=0x%08x flag=%d (poll)" % (
-                            t, prev, b, node, flag))
-            node = nxt
-            n += 1
+        # B1192 diagnostic: the head pointer changes only when the list is
+        # (re)built or a head node is freed; log each new head so an empty
+        # walk can be seen against the run, not discovered afterwards.
+        if head != last_head:
+            last_head = head
+            log("LIST t=%7.3f head=0x%08x (poll)" % (t, head))
+        for tag, flag, ob, nb, nm, node in walk_list(
+                lambda addr: read_u32(FD, addr),
+                lambda addr: read_name(addr),
+                head, spawn, others):
+            if tag == "XNEW":
+                log("XNEW t=%7.3f spawn=0x%08x flag=%d byte=%d name=%r (poll)" % (
+                    t, node, flag, nb, nm))
+            else:
+                log("XWR t=%7.3f %d -> %d  spawn=0x%08x flag=%d name=%r (poll)" % (
+                    t, ob, nb, node, flag, nm))
     while time.time() - t0 < TMAX:
         try:
             sp = read_u32(FD, spawn_rt)
@@ -370,10 +464,12 @@ def main():
                 t, spawn, last, fails))
         if noch % 4 == 0:  # walk the spawn list every ~100 ms
             track_others(t)
+            track_corpse(t)
         time.sleep(POLL)
     log("END hits=%d ticks=%d fails=%d t=%.3f" % (
         hits, noch, fails, time.time() - t0))
     return 0
 
 
-sys.exit(main())
+if __name__ == "__main__":
+    sys.exit(main())
