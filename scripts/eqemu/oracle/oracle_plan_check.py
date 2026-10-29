@@ -15,10 +15,16 @@ minimum level for classes 1..16 (WAR CLR PAL RNG SHD DRU MNK BRD ROG SHM NEC WIZ
 MAG ENC BST BER), 255 = cannot cast; the same indices as the willeq_db builder
 (tools/willeq_db/db_loaders_text.cpp, EQ::SpellField::ClassLevel1 = 104).
 
+It also guards the LOOT step (B1192 #511): a `command /loot` whose window after
+the last `#damage` carries no corpse targeting (a `press` of F7/F8 or a
+`click`/`rclick`) is refused -- the official client has no name-based corpse
+targeting, so such a plan can never open the loot window.
+
 usage:
   oracle_plan_check.py check <plan.tsv> --class N [--level N] [--lane N]
                        [--memmed SLOT:ID,...] [--memmed-file slot<TAB>id.tsv] [--spells PATH]
-      exit 0 every gem cast can go, 1 refused (one line per offending cast), 2 error
+      exit 0 every gem cast can go and every /loot is corpse-targeted,
+             1 refused (one line per offending cast or loot step), 2 error
   oracle_plan_check.py gem-xy --lane N --gem I      (gem I 1-based -> "x,y" root coords)
 """
 import argparse
@@ -116,15 +122,62 @@ def gem_casts(plan_lines, lane_bar, memmed, level):
     return casts, notes
 
 
+def loot_guards(plan_lines, out=None):
+    """B1192 (#511): a `/loot` step must be preceded -- after the last `#damage` --
+    by corpse targeting: a `press` of F7 (TARGETPC) or F8 (TARGETNPC, the
+    official client's own binding, lane-5 live keymap SLOT 32 raw 0x42000000)
+    or a `click`/`rclick` on the corpse.
+
+    The official client has NO name-based corpse targeting: `/target <name>`
+    sets the live mob, and OP_Death clears HoTT (B1192 run 6, 2026-10-29:
+    the troll's corpse held 120 through /loot, no loot-window packet, no
+    105 write -- refactor/B1192/README.md). Such a plan can never open the
+    loot window, so it is refused BEFORE the client starts (exit 64 in
+    oracle_class_leg.sh) instead of burning a lane-5 run. Returns the
+    number of refused `/loot` lines."""
+    bad = 0
+    for n, line in enumerate(plan_lines, 1):
+        if not line.strip() or line.startswith('#'):
+            continue
+        f = line.split('\t')
+        if not (f[0] == 'command' and len(f) > 1 and f[1].split()[:1] == ['/loot']):
+            continue
+        window, last_dmg = [], 0
+        for m, l2 in enumerate(plan_lines[:n - 1], 1):
+            if not l2.strip() or l2.startswith('#'):
+                continue
+            g = l2.split('\t')
+            act, tgt = g[0], (g[1] if len(g) > 1 else '')
+            if act == 'command' and tgt.split()[:1] == ['#damage']:
+                window, last_dmg = [], m
+            elif m > last_dmg:
+                window.append((m, act, tgt))
+        targeted = [w for w in window
+                    if (w[1] == 'press' and w[2].upper() in ('F7', 'F8'))
+                    or w[1] in ('click', 'rclick')]
+        if not targeted:
+            print(f'REFUSED line {n}: /loot without corpse targeting -- the official client '
+                  'has no name-based corpse targeting, and /target <name> sets the live mob, '
+                  'which OP_Death clears (B1192 run 6: the corpse held 120 through /loot, no '
+                  '105). Target the corpse AFTER the last #damage: press F8 (TARGETNPC) or '
+                  'click the corpse.', file=out)
+            bad += 1
+        else:
+            print(f'OK line {n}: /loot corpse targeting: '
+                  + ', '.join(f'line {m} {act} {tgt}' for m, act, tgt in targeted), file=out)
+    return bad
+
+
 def check(plan, cls, level, lane, memmed, spells_path, out=None):
     out = out or sys.stdout
     lines = Path(plan).read_text().splitlines()
+    loot_bad = loot_guards(lines, out)
     bar = load_pitch(lane) if lane else None
     casts, notes = gem_casts(lines, bar, memmed, level)
     for note in notes:
         print(f'NOTE {note}', file=out)
     if not casts:
-        return 0
+        return 1 if loot_bad else 0
     ids = {sid for _, _, sid, _, _ in casts if sid is not None}
     if ids and not os.path.isfile(spells_path):
         print(f'REFUSED: the plan casts gems but spells_us.txt is missing: {spells_path}', file=out)
@@ -155,7 +208,7 @@ def check(plan, cls, level, lane, memmed, spells_path, out=None):
         else:
             print(f'OK line {n}: {how}: spell {sid} "{name}" {class_name(cls)} level {need}'
                   + ('' if lvl is not None else ' (character level unknown: level not checked)'), file=out)
-    return 1 if bad else 0
+    return 1 if (bad or loot_bad) else 0
 
 
 def parse_memmed(spec, path):

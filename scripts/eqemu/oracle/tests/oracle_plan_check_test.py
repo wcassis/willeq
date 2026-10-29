@@ -94,6 +94,36 @@ def main():
         rc, out = run(HEAD + 'click\t1229,555\t0\tclose_tip\n', tmp, Path(tmp) / 'missing.txt', '--class', 12, '--lane', 5)
         assert rc == 0, out
 
+        # 7. B1192 (#511): /loot must be corpse-targeted AFTER the last #damage.
+        #    The run-6 shape (/target <name> on the live mob, death clears HoTT)
+        #    is refused with the reason named...
+        KILL = ('command\t#spawn TrollF 1 1 0 50\t0\tspawn\n'
+                'command\t/target TrollF\t0\ttgt\n'
+                'command\t#damage 999999\t0\tkill\n')
+        rc, out = run(HEAD + KILL + 'command\t/loot\t0\tloot\n',
+                      tmp, Path(tmp) / 'missing.txt', '--class', 1, '--lane', 5)
+        assert rc == 1 and 'REFUSED' in out and '/loot without corpse targeting' in out \
+            and 'F8' in out, out
+        # ... press F8 (TARGETNPC) after the kill clears it...
+        rc, out = run(HEAD + KILL + 'press\tF8\t0\tf8\ncommand\t/loot\t0\tloot\n',
+                      tmp, Path(tmp) / 'missing.txt', '--class', 1, '--lane', 5)
+        assert rc == 0 and 'OK line' in out and 'REFUSED' not in out, out
+        # ... and a click (the corpse-blob corrector) after the kill does too...
+        rc, out = run(HEAD + KILL + 'click\t405,700\t0\tc\ncommand\t/loot\t0\tloot\n',
+                      tmp, Path(tmp) / 'missing.txt', '--class', 1, '--lane', 5)
+        assert rc == 0 and 'REFUSED' not in out, out
+        # ... a target set before the kill does NOT count (that IS the run-6
+        #    shape), and a looting plan with no kill still needs the targeting...
+        rc, out = run(HEAD + 'command\t/target TrollF\t0\ttgt\ncommand\t/loot\t0\tloot\n',
+                      tmp, Path(tmp) / 'missing.txt', '--class', 1, '--lane', 5)
+        assert rc == 1 and 'REFUSED' in out, out
+        rc, out = run(HEAD + 'command\t/loot\t0\tloot\n',
+                      tmp, Path(tmp) / 'missing.txt', '--class', 1, '--lane', 5)
+        assert rc == 1 and 'REFUSED' in out, out
+        rc, out = run(HEAD + 'press\tF8\t0\tf8\ncommand\t/loot\t0\tloot\n',
+                      tmp, Path(tmp) / 'missing.txt', '--class', 1, '--lane', 5)
+        assert rc == 0 and 'REFUSED' not in out, out
+
     # The fixture's class levels are the real file's, when the client files are here.
     real = os.path.join(os.environ.get('EQ_CLIENT_PATH', '/mnt/projects/EverQuestP1999'), 'spells_us.txt')
     if os.path.isfile(real):
@@ -103,7 +133,8 @@ def main():
             assert got[sid] == (name, want), (sid, got.get(sid), want)
         print('cross-checked the fixture against', real)
     print('PASS: druid-only gem cast on a wizard refused with spell + class; castable casts pass; '
-          'level, /cast and unmeasured-lane cases; lane 5 pitch 30 at (25, 213+30i)')
+          'level, /cast and unmeasured-lane cases; lane 5 pitch 30 at (25, 213+30i); '
+          'B1192: /loot refused without corpse targeting (run-6 shape), cleared by press F8 or a click')
 
 
 if __name__ == '__main__':

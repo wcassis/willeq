@@ -167,6 +167,32 @@ def read_bytes(fd, addr, n):
     return os.read(fd, n)
 
 
+def decode_slot(v, charmap, namemap):
+    """One live keymap slot (the poll's KEYMAP/SLOT lines).
+
+    B1192 (#511): the slot's KEYCODE is its HIGH byte; the low 24 bits carry
+    modifier state (never observed non-zero in a run). The pre-B1192 reader
+    took the low 28 bits as the keycode and three high bits as modifier
+    flags, so every real binding mis-decoded and the targeting keys looked
+    unbound (run 6, poll.log: SLOT 24 raw 0x3b000000 read as
+    'CTRL+ALT+code=0xb000000' when it is F1 = TARGETME; SLOT 32 raw
+    0x42000000 read as 'SHIFT+code=0x2000000' when it is F8 = TARGETNPC).
+    The high-byte encoding is proven against the client's own tables in the
+    same log: NAMEKEY F1 0x3b / F6 0x40 / F7 0x41 / F8 0x42 (poll.log:50-57,
+    IBM PC scancodes), CHARKEY 's' 0x1f (poll.log:24), and the official
+    client's documented bindings (help/targeting.html: F1 self, F7 nearest
+    PC, F8 nearest NPC) landing on the measured slots 24/30/32."""
+    if v == 0:
+        return "UNBOUND"
+    if v == 0xFFFFFFFF:
+        return "*NONE*"
+    k = (v >> 24) & 0xFF
+    key = charmap.get(k, namemap.get(k, "code=0x%02x" % k))
+    mods = v & 0x00FFFFFF
+    # Modifier state has never been observed non-zero: report it raw, never guess.
+    return "%s+raw0x%06x" % (key, mods) if mods else key
+
+
 def walk_list(read_u32, read_name, head, spawn, others, stride=0x214):
     """Pure walk of the spawn list (B1192: testable without a process).
 
@@ -286,20 +312,7 @@ def main():
         log("TABLES read failed: %s" % e)
 
     def dec_slot(v):
-        if v == 0:
-            return "UNBOUND"
-        if v == 0xFFFFFFFF:
-            return "*NONE*"
-        mods = []
-        if v & 0x40000000:
-            mods.append("SHIFT")
-        if v & 0x20000000:
-            mods.append("CTRL")
-        if v & 0x10000000:
-            mods.append("ALT")
-        k = v & 0x0FFFFFFF
-        key = charmap.get(k, namemap.get(k, "code=0x%x" % k))
-        return "+".join(mods + [key]) if mods else key
+        return decode_slot(v, charmap, namemap)
 
     try:
         obj = read_u32(FD, keymap_rt)

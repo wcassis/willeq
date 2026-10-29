@@ -24,22 +24,24 @@ init = []
 xcorpse = []
 lst = []
 for ln in open(poll):
-    m = re.match(r'XWR t=(\S+) (\d+) -> (\d+)  spawn=0x([0-9a-f]+) flag=(\d+)', ln)
+    # t= is %7.3f padded in BOTH poller generations (t=  0.102); the name=
+    # tag exists only in the B1192 poller, so the old lines must still parse.
+    m = re.match(r'XWR t=\s*([\d.]+) (\d+) -> (\d+) +spawn=0x([0-9a-f]+) flag=(\d+)', ln)
     if m:
         xwr.append(m.groups()); continue
-    m = re.match(r'XNEW t=(\S+) spawn=0x([0-9a-f]+) flag=(\d+) byte=(\d+)', ln)
+    m = re.match(r'XNEW t=\s*([\d.]+) spawn=0x([0-9a-f]+) flag=(\d+) byte=(\d+)', ln)
     if m:
         xnew.append(m.groups()); continue
-    m = re.match(r'WR t=(\S+) (\S+) -> (\d+)  spawn=0x([0-9a-f]+)', ln)
+    m = re.match(r'WR t=\s*([\d.]+) (\d+) -> (\d+) +spawn=0x([0-9a-f]+)', ln)
     if m:
         wr_local.append(m.groups()); continue
     m = re.match(r'INIT byte \+0x251 = (\d+)', ln)
     if m:
         init.append(m.group(1)); continue
-    m = re.match(r'XCORPSE t=(\S+) ptr=0x([0-9a-f]+) name=(\S+) flag=(\d+|-) byte=(\d+|-)', ln)
+    m = re.match(r"XCORPSE t=\s*([\d.]+) ptr=0x([0-9a-f]+) name='([^']*)' flag=(\d+|-) byte=(\d+|-)", ln)
     if m:
         xcorpse.append(m.groups()); continue
-    m = re.match(r'LIST t=(\S+) head=0x([0-9a-f]+)', ln)
+    m = re.match(r'LIST t=\s*([\d.]+) head=0x([0-9a-f]+)', ln)
     if m:
         lst.append(m.groups())
 

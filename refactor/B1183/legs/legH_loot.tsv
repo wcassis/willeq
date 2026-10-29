@@ -1,5 +1,5 @@
 # B1183 (#502) legH: the LOOT row, with the corpse held long enough and
-# placed IN FRONT of the caster's camera so the USE click lands on it.
+# placed IN FRONT of the caster's camera.
 #
 # Why legG failed (measured, B1183 legG FINDINGS): #spawn puts the TrollF at
 # the caster's own position -- directly under the third-person camera -- so
@@ -32,6 +32,33 @@
 # (oracle_session.sh, B1192 guard). Both directives are added below, in
 # B1176's canonical form (refactor/B1176/leg/o_human.tsv:32-38).
 #
+# B1192 v3 (run 7, 2026-10-29): run 6's /loot never opened the loot window
+# (no loot/target packet at loot_open, corpse byte held 120 -- poll.log,
+# 29_use_check.png: target frame still on Oraclewatch). Root cause: the
+# official client has NO name-based corpse targeting. /target TrollF set
+# the live troll; OP_Death cleared HoTT (XCORPSE at t=5.559, poll.log),
+# and the loot gate (decompile 18431: DAT_00905d04 = the corpse getter,
+# case '\x06': corpse must exist and +0x244 == 0) found no corpse target.
+# The poller's dec_slot had ALSO mis-decoded the keymap (it read the
+# keycode as low bits + modifier flags; the real encoding is the keycode
+# in the HIGH byte: run-6 SLOT 24 raw 0x3b000000 = F1 = TARGETME, 29 =
+# F6, 30 = F7 TARGETPC, 32 = F8 TARGETNPC -- the official bindings). v3:
+#   - #corpse deleteplayercorpses (eqemu zone/gm_commands/corpse.cpp:
+#     entity_list.DeletePlayerCorpses, "all player corpses") clears the
+#     stale Oraclewatch PC corpse (visible in every still, outside the
+#     spawn list the poller walks) so the scene holds exactly one corpse;
+#   - the troll is killed back-to-back with no settle waits (run 6 gave it
+#     5.5 s of AI: 19_spawn -> 23_kill), so its corpse lands at the spawn
+#     point, in front of the camera;
+#   - the corpse is TARGETED after the kill: press F8 (TARGETNPC = nearest
+#     NPC in field of view; dead included -- the live keymap binds action
+#     32 to F8, run-6 poll.log KEYMAP 0x080:1107296256 = 0x42000000) with
+#     a click on the corpse blob as corrector (if F8 already set the
+#     target the click re-targets the same corpse; a ground miss walks the
+#     caster the remaining 1-2 units toward it, shortening the loot range);
+#   - the caster poses at (-76,425): the corpse (-77,428) is 3.2 units
+#     ahead-left, inside the loot range and the field of view.
+#
 #   action   target                 hold_ms  still_name
 # observer=Oraclewatch
 # obs-ini-set=Defaults.LastCharSel=1
@@ -50,37 +77,29 @@ command	#weather 0	0	clear
 command	#level 60	0	level
 command	#mana	0	mana
 wait	2000	0	mana_settle
-# B1192 v2 (run 4, 2026-10-29): a STALE player corpse -- Oraclewatch's own,
-# left in the zone by an earlier run (visible in run 4's 04_obs_in_world
-# still before any kill step) -- sits at the characters' usual pose and
-# dominated the bottom of the camera. The original plan's USE click
-# (640,470) is a screen coordinate aimed at whatever corpse is under the
-# cursor, so run 4's click never opened the troll's loot (poll.log: the
-# troll's byte went 100 -> 120 on death and never left 120; no 105). The
-# stale corpse is OUTSIDE the spawn list the poller walks (it never
-# appeared in run 4's XNEW/XWR lines), so even a lucky click on it would
-# not have been visible in the poll. v2 therefore:
-#   - loots by TARGET, not by pixel: /loot on the still-targeted TrollF
-#     corpse (the official client's loot command; issue #511 names "the
-#     /loot target or click path" as the suspect);
-#   - leaves the stale player corpse in place (lane-as-found; it is named
-#     in the stills and absent from the poll, so the measurement is
-#     attributable by name);
-#   - deletes the troll's own NPC corpse at the end (this run created it;
-#     the 300000 hold would otherwise leave it in the zone).
 wait	3000	0	gdb_arm
 wait	10000	0	gdb_dump
 still	0	0	stand0
+command	#corpse deleteplayercorpses	0	pc_corpses_cleared
+wait	2000	0	pc_clear_settle
+still	0	0	pc_clear_check
+command	#goto -77 428 10 0	0	goto_corpse_spot
+wait	3000	0	corpse_spot_settle
 command	#spawn TrollF 1 1 0 50	0	spawn
-wait	4000	0	spawn_settle
 command	/target TrollF	0	tgt_troll
-wait	1500	0	tgt_settle
 command	#damage 999999	0	kill
-command	#goto -74 425 10 0	0	face_corpse
-wait	3000	0	settle_face
+wait	3000	0	kill_settle
+command	#goto -76 425 10 0	0	face_corpse
+wait	4000	0	settle_face
 still	0	0	face_check
+press	F8	0	f8_target
+wait	2500	0	f8_settle
+still	0	0	f8_check
+click	405,700	0	corpse_click
+wait	2500	0	click_settle
+still	0	0	click_check
 command	/loot	0	loot_open
-wait	4000	0	use_hold
+wait	5000	0	use_hold
 still	0	0	use_check
 command	#corpse deletenpccorpses	0	npc_corpse_cleared
 wait	1500	0	clean_settle
