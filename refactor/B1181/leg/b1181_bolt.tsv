@@ -1,0 +1,72 @@
+# action	target	hold_ms	still_name
+# B1181 (#500) leg B: BOLT OF FLAME (spell 68). Same observer rig as leg A:
+# the OBSERVER (Oraclewatch, char 103, :99 = the grabbed display) stands at
+# B1130's caster position; the CASTER (Testcaster, char 67, Xvfb 1280x1024)
+# stands at B1130's target position, 9.05 units apart. Both #set pvp on.
+# The caster casts with #castspell 68 0 (GM bypass: no memorisation, no mana
+# check — gm-battle/castspell.cpp, instant=0 so the cast bar plays and the
+# server's CastSpell path runs). The pre-SQL raises the observer's
+# cur_hp/mana/endurance (the driver restores them from vitals-before with
+# the world down); the server-SQL (B1174 hook, undo on every exit path)
+# turns Spells:UseLiveSpellProjectileGFX ON (as found: 'false') and moves
+# char 104 'Darkshadow' off the willeqwatch account for the leg only (see
+# leg A's header for why).
+# 0x4033 (server -> observer): CastSpell's TrySpellProjectile (lane-5
+# zone/spells.cpp:2555ff, fires for targettype=1 spells like 68/322) then
+# ProjectileAnimation (spells.cpp:3382ff) with UseLiveSpellProjectileGFX=true:
+# model name = spells_new.player_1 = IT11504 (item 8005's IDFile overridden),
+# item_type = 27 (skillInUse defaults to Archery), QueueCloseClients, damage
+# at the predicted hit (1200 + 10*distance/speed ms). Type byte +0x63 is
+# never 9 for any 0x4033 lane-5 sends (B1170 C), so the observer draws the
+# bolt by the item-missile path this card implements — fable before: nothing
+# drawn. FRProjectileItem_Titanium (item 1113, IT68) stays in effect for the
+# GFX-off path and is left untouched.
+# fps=30
+# pose=-74,428,3.75,160
+# observer=Oraclewatch
+# observer-pose=-67.6,434.4,3.75,160
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#reload rules global	0	rules
+command	#level 60	0	lvl
+command	#mana	0	mana
+command	/target Oraclewatch	0	tgt_obs
+command	#set pvp on	0	pvp_obs
+command	/target Testcaster	0	tgt_self
+command	#set pvp on	0	pvp_self
+obs	press	F9	0	obs_cam1
+obs	press	F9	0	obs_cam2
+obs	press	F9	0	obs_cam3
+obs	wait	3000	0	obs_cam_settle
+command	#weather 0	0	clear2
+wait	36000	0	time_settle
+# B1143/B1159's working recipe: the client-side /target <name> resolves to
+# target=0 on this rig (bolt3's 24_tgt_obs_a step: OP_TargetCommand target=0),
+# so the cast self-cast (src_id==tgt_id). The caster instead targets by the
+# native left click on the observer at the B1134-measured 933,639 (same rig),
+# which sets the server target that #castspell's c->GetTarget() then reads.
+command	/disc Aggressive	0	aggro
+wait	1500	0	aggro_settle
+command	/target Oraclewatch	0	tgt_obs_a
+wait	1500	0	tgt_obs_a_settle
+click	933,639	0	click_tgt_a
+wait	1000	0	click_tgt_a_settle
+command	#castspell 68 0	0	bolt_a
+wait	12000	0	bolt_a_fx
+command	#mana	0	mana_b
+command	/target Oraclewatch	0	tgt_obs_b
+wait	1500	0	tgt_obs_b_settle
+click	933,639	0	click_tgt_b
+wait	1000	0	click_tgt_b_settle
+command	#castspell 68 0	0	bolt_b
+wait	12000	0	bolt_b_fx
+obs	command	/q	0	obs_quit
+command	/q	0	quit

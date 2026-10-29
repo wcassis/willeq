@@ -1,0 +1,31 @@
+B1191 EDD colour dump  path=/mnt/projects/EverQuestP1999/spellsnew.edd  entries=2118  file bytes=881096
+
+--- record 80 (spell 93),  tour_93 ---
+emitter  280  SFofSeukor S2-1              tex=spelcb.png       additive=1 fadeIn=0.00 fadeOut=0.20 peak=1.000
+            start RGB = [255, 255, 255]   end RGB = [255, 255, 255]   WHITE start+end (tint 1,1,1)
+emitter  281  SFofSeukor S3-1              tex=spelcc.png       additive=1 fadeIn=0.00 fadeOut=0.50 peak=1.000
+            start RGB = [255, 255, 255]   end RGB = [255, 255, 255]   WHITE start+end (tint 1,1,1)
+emitter  282  SFofSeukor S3-2              tex=spelcm.png       additive=1 fadeIn=0.00 fadeOut=0.75 peak=0.750
+            start RGB = [255, 255, 255]   end RGB = [255, 255, 255]   WHITE start+end (tint 1,1,1)
+emitter    9  Healingglobe08               tex=spelab.tga       additive=1 fadeIn=0.00 fadeOut=1.33 peak=1.000
+            start RGB = [255, 255, 255]   end RGB = [255, 255, 255]   WHITE start+end (tint 1,1,1)
+
+--- record 35 (spell 253), b1130 ---
+emitter  432  GlowGlyphs1-4                tex=spelab.tga       additive=1 fadeIn=0.00 fadeOut=1.20 peak=1.000
+            start RGB = [255, 255, 255]   end RGB = [255, 255, 255]   WHITE start+end (tint 1,1,1)
+emitter  433  GlowGlyphs3-1                tex=spelab.tga       additive=1 fadeIn=0.10 fadeOut=3.25 peak=1.250
+            start RGB = [255, 255, 255]   end RGB = [255, 255, 255]   WHITE start+end (tint 1,1,1)
+emitter  434  GlowGlyphs3-2                tex=spelab.tga       additive=1 fadeIn=0.10 fadeOut=4.00 peak=1.250
+            start RGB = [255, 255, 255]   end RGB = [255, 255, 255]   WHITE start+end (tint 1,1,1)
+
+--- record 43 (spell 720), b1130-self ---
+emitter  395  SeloChain1-3                 tex=flare_blsp50a.png additive=1 fadeIn=0.00 fadeOut=0.50 peak=1.000
+            start RGB = [255, 255, 255]   end RGB = [255, 255, 255]   WHITE start+end (tint 1,1,1)
+emitter  396  SeloChain3-1                 tex=flare_blsp50a.png additive=1 fadeIn=0.20 fadeOut=0.20 peak=0.875
+            start RGB = [255, 255, 255]   end RGB = [255, 255, 255]   WHITE start+end (tint 1,1,1)
+emitter  397  SeloChain3-2                 tex=flare_whsp50a.png additive=1 fadeIn=0.00 fadeOut=0.30 peak=1.250
+            start RGB = [255, 255, 255]   end RGB = [255, 255, 255]   WHITE start+end (tint 1,1,1)
+emitter  275  ChokingV2 S1-4               tex=spelcb.png       additive=0 fadeIn=0.00 fadeOut=0.00 peak=0.875
+            start RGB = [255, 255, 255]   end RGB = [255, 255, 255]   WHITE start+end (tint 1,1,1)
+
+All eleven landing emitters white start AND end: tint is (1,1,1) on every record.

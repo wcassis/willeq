@@ -269,6 +269,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_spell_visual_vocabulary DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1181 (#500): the +0x65 IT model on a type != 9 missile object -- the name
+# from the payload bytes, the per-frame orientation rule, removal at
+# lifetime / hit, and the untouched type-9 path. The device-free half is
+# pure logic; the FX half drives SpellVisualFX on an EDT_NULL device with
+# the real equipment model loader (GTEST_SKIP'd without the client tree).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_b1181_item_missile
+        test_b1181_item_missile.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_b1181_item_missile PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_b1181_item_missile GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_b1181_item_missile DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T126: the dominant UAF holder named by this unit's write-time
 # return-address probe -- EntityVisual::primaryEquipNode/secondaryEquipNode
 # (weapon/shield meshes) were never scanned by EntityMeshTextureGuard despite

@@ -325,6 +325,12 @@ void IrrlichtRenderer::initDeferredGraphics() {
         SimBridge().spellVisualFX()->setLocalPlayerIdCallback(
             [this]() -> uint16_t { return entityRenderer_ ? entityRenderer_->getPlayerSpawnId() : 0; });
 
+        // B1181 (#500): a type != 9 missile object draws its +0x65 IT model
+        // through the equipment model loader (the one that indexes the
+        // gequip archives for the characters' equipment).
+        if (entityRenderer_)
+            SimBridge().spellVisualFX()->setEquipmentModelLoader(entityRenderer_->getEquipmentModelLoader());
+
         // B1148 (#468): the caster model's track for a CastingAnim code
         // (eqgame 0x47ddd4 reads the actor's own animation table).
         SimBridge().spellVisualFX()->setCastAnimationLengthCallback(
