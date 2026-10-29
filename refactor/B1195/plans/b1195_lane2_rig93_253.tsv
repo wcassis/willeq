@@ -34,7 +34,7 @@ command	#set time 11 0 0	0	noon
 wait	1500	0	noon_settle
 command	#weather 0	0	clear
 command	#reload rules global	0	rules
-command	#level 60	0	lvl
+command	#set level 60	0	lvl
 command	#mana	0	mana
 command	/target Oraclewatch	0	tgt_obs
 command	#set pvp on	0	pvp_obs

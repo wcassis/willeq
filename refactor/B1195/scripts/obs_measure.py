@@ -2,7 +2,7 @@
 """B1134: measure casts seen by the OBSERVER (the second official client, :99 = video.mp4) on the B1130
 instruments, per cast.
 usage: obs_measure.py <capture_dir> <out_root> <geom.json> <spell_id>... [--observer Oraclewatch]
-         [--target caster|observer] [--keep-png]
+         [--target caster|observer] [--target 93:observer,253:caster] [--keep-png]
 geom.json (full-frame px of the observer's video, read off the leg's own settle still):
   {"crop": "x,y,w,h", "caster_feet": "x,y", "caster_px": N, "observer_feet": "x,y", "observer_px": N,
    "exclude": ["x,y,w,h", ...], "halfw": 0.7}
@@ -17,7 +17,11 @@ import sys, os, json, glob, struct, subprocess, importlib.util
 cap, root, gj = sys.argv[1:4]
 args = sys.argv[4:]
 obs = args[args.index('--observer') + 1] if '--observer' in args else 'Oraclewatch'
-tgt = args[args.index('--target') + 1] if '--target' in args else 'caster'
+_tg = args[args.index('--target') + 1] if '--target' in args else 'caster'
+if ':' in _tg:          # per-spell: "93:observer,253:caster"
+    TGT = {int(k): v for k, v in (x.split(':') for x in _tg.split(','))}
+else:
+    TGT = None
 keep = '--keep-png' in args
 spells = [int(a) for a in args if a.isdigit()]
 G = json.load(open(gj))
@@ -66,14 +70,15 @@ for i, (t, k, c, s, x) in enumerate(ev):
 os.makedirs(root, exist_ok=True)
 EXC = sum([['--exclude', e] for e in G.get('exclude', [])], [])
 hw = str(G.get('halfw', 0.7))
-tfeet, tpx = (G['caster_feet'], G['caster_px']) if tgt == 'caster' else (G['observer_feet'], G['observer_px'])
 n = {}
 for c in casts:
     n[c['spell']] = n.get(c['spell'], 0) + 1
+    tgt = TGT[c['spell']] if TGT is not None else (TGT or 'caster')
+    tfeet, tpx = (G['caster_feet'], G['caster_px']) if tgt == 'caster' else (G['observer_feet'], G['observer_px'])
     d = f"{root}/{os.path.basename(cap.rstrip('/'))}_{c['spell']}_{n[c['spell']]}"
     nxt = next((x['tbc'] for x in casts if x['tbc'] > c['tact'] + 0.05), None)
     tend = min(c['tact'] + 10.0, (nxt - 1.3) if nxt else c['tact'] + 10.0)
-    head = (f"## spell {c['spell']} rep {n[c['spell']]} source {c['source']} target {c['target']} "
+    head = (f"## spell {c['spell']} rep {n[c['spell']]} source {c['source']} target {c['target']} anchor {tgt} "
             f"BC {c['tbc']:.3f} (cast_ms {c['cast_ms']}{', INSTANT: no OP_BeginCast' if c['instant'] else ''}) "
             f"Act {c['tact']:.3f} cast {c['tact'] - c['tbc']:.3f}s; caster DeleteSpawn "
             + (f"Act{c['delete'] - c['tact']:+.3f}" if c['delete'] else 'none') + f"; window to Act{tend - c['tact']:+.2f}")
