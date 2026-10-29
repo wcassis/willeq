@@ -7,6 +7,13 @@
 
 namespace EQ {
 
+// B1190: the legacy record's drawn slots for a stage under the 0x49ab78 rule.
+std::vector<LegacySlotDraw> SpellVisualResolution::legacySlots(int stage, int caster_level) const {
+    const SpellVisualStage* st =
+        stage == 0 ? &source_stage : (stage == 1 ? &middle_stage : &target_stage);
+    return legacyStageDrawnSlots(stage, caster_level, st->effect_types);
+}
+
 SpellVisualStage SpellVisualSelector::resolveStage(const SpellsEffEmitter& emitter) {
     SpellVisualStage stage;
     stage.present = emitter.hasContent();
@@ -17,6 +24,8 @@ SpellVisualStage SpellVisualSelector::resolveStage(const SpellsEffEmitter& emitt
             stage.texture_files[i] = SpellsEffReader::effectNameToTexture(stage.sprite_names[i]);
         }
     }
+    // B1190: the per-slot effect types the legacy dispatcher dispatches on.
+    for (size_t i = 0; i < 3; ++i) stage.effect_types[i] = emitter.effectType(i);
     return stage;
 }
 

@@ -689,6 +689,45 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
                      slots.measured);
             return 1;
         }
+        // B1190 (#509): no spellsnew record -> 0x49b260's `param_2[0x8d]==0`
+        // arm -> the legacy dispatcher 0x49ab78. The record's Source slots
+        // that the caster's level passes each draw as one emitter on the
+        // slot's type anchor (0 hands, 1 attached, 2 world, 3/4/5 ground)
+        // with the record's own sprite + colour (build/applyStageEddColours).
+        const std::vector<LegacySlotDraw> legacy = visual.legacySlots(0, casterLevel);
+        if (!legacy.empty()) {
+            std::string made;
+            for (const auto& ls : legacy) {
+                if (ls.type == 0) {  // hand-glow: both hands (L_POINT_DAG + R_POINT_DAG)
+                    int h = 0;
+                    for (uint16_t id : {rightHandEntityId(caster_id), leftHandEntityId(caster_id)}) {
+                        glm::vec3 b;
+                        if (m_particle_manager->resolveEntityPosition(id, b)) {
+                            m_particle_manager->createSpellEffect(build(boneAboveFeet(b), 0.5f), id, 0, cap, false);
+                            ++h;
+                        }
+                    }
+                    if (h == 0) m_particle_manager->createSpellEffect(build(A, 1.0f), caster_id, 0, cap, false);
+                    made += fmt::format(" 0@hands", ls.type);
+                } else if (ls.type == 1) {  // attached: the caster's head
+                    const uint16_t id = headEntityId(caster_id);
+                    glm::vec3 b;
+                    const bool ok = m_particle_manager->resolveEntityPosition(id, b);
+                    m_particle_manager->createSpellEffect(build(ok ? boneAboveFeet(b) : A, 1.0f),
+                                                          ok ? id : caster_id, 0, cap, true);
+                    made += fmt::format(" 1@head", ls.type);
+                } else if (ls.type == 2) {  // world: the caster's entity at its anchor
+                    m_particle_manager->createSpellEffect(build(A, 1.0f), caster_id, 0, cap, false);
+                    made += fmt::format(" 2@world", ls.type);
+                } else {  // 3/4/5: ground, snapped at the caster's feet
+                    m_particle_manager->createSpellEffect(build(0.0f, 1.0f), caster_id, 0, cap, false);
+                    made += fmt::format(" {}@ground", ls.type);
+                }
+            }
+            LOG_INFO(MOD_SPELL, "createCastGlow: caster={} spell={} rec={} level={} legacy source{}",
+                     caster_id, spell_id, visual.spell_affect_index, casterLevel, made);
+            return 1;
+        }
         const Anchor anchor = Presets::SourceAnchorForSpell(spell_id, record, spray);
         if (anchor == Anchor::Hands) {
             const uint16_t ids[2] = {rightHandEntityId(caster_id), leftHandEntityId(caster_id)};

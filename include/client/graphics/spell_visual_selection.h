@@ -34,6 +34,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "client/spell/spells_eff_reader.h"
 #include "client/spell/spells_new_eff_reader.h"
@@ -70,8 +71,54 @@ struct SpellVisualStage {
     // B1127: true when the names above came from spellsnew.eff/.edd.
     bool from_spell_anim = false;
 
+    // B1190 (#509): the legacy record's per-slot effect types (0..7 or -1),
+    // copied from SpellsEffEmitter::effect_types. Empty (all -1) when the
+    // stage came from spellsnew.eff (resolveNewStage) or the reader predates
+    // the decode.
+    std::array<int32_t, 3> effect_types{ -1, -1, -1 };
+
     std::string attach_tag;  // "Source" / "Target" / "Sprite" / empty
 };
+
+// B1190 (#509): the legacy dispatcher's select rule (0x49ab78). Pure -- no
+// reader, no rendering -- so it is testable in isolation. Given one stage's
+// three effect types and the caster's level, which slots draw.
+//
+// The level gate (eqgame 0x49ab78, the `bVar1 < 0x27` arm) is per-slot, not
+// per-stage:
+//   slot 0 draws if level >= 10   (bVar1 < 10 -> skip)
+//   slot 1 draws if level >= 24   (bVar1 < 0x18 -> skip)
+//   slot 2 draws if level >= 39   (bVar1 < 0x27 -> skip; the gate is bypassed
+//                                   entirely at level >= 39)
+// A slot's type must be 0..5 to draw: -1 is "no slot" (the `!= -1` guard),
+// and 6/7 are parsed but skipped by the type dispatch (the `goto LAB_0049b23f`
+// arm). Types 0..5 are: 0 hand-glow, 1 attached, 2 world, 3/4/5 ground.
+struct LegacySlotDraw {
+    int slot;  // 0, 1 or 2 (within the stage)
+    int type;  // 0..5
+};
+
+// The per-slot minimum caster level above which the slot is gated in
+// (0x49ab78's three `bVar1 < N` compares).
+inline int legacySlotMinLevel(int slot) {
+    return slot == 0 ? 10 : (slot == 1 ? 24 : 39);
+}
+
+// Which slots of `stage` draw for a caster at `caster_level`, from that
+// stage's three effect types. `stage` names the emitter block the types came
+// from; the gate itself is per-slot.
+inline std::vector<LegacySlotDraw>
+legacyStageDrawnSlots(int stage, int caster_level, const std::array<int32_t, 3>& types) {
+    (void)stage;  // the gate is per-slot (0x49ab78); the stage only picked the block
+    std::vector<LegacySlotDraw> out;
+    for (int s = 0; s < 3; ++s) {
+        const int t = types[s];
+        if (t < 0 || t > 5) continue;                    // -1 absent; 6,7 skipped
+        if (caster_level < legacySlotMinLevel(s)) continue;
+        out.push_back(LegacySlotDraw{s, t});
+    }
+    return out;
+}
 
 // The fully-resolved visual definition for one spell, keyed by its
 // spell_affect_index.
@@ -92,6 +139,13 @@ struct SpellVisualResolution {
     bool hasSourceStage() const { return source == SpellVisualSource::Resolved && source_stage.present; }
     bool hasTravelStage() const { return source == SpellVisualSource::Resolved && middle_stage.present; }
     bool hasTargetStage() const { return source == SpellVisualSource::Resolved && target_stage.present; }
+
+    // B1190 (#509): the legacy record's drawn slots for `stage` (0=Source,
+    // 1=Middle, 2=Target) under the 0x49ab78 select rule. Empty when the
+    // stage carries no legacy effect types (a spellsnew.eff stage, or a
+    // legacy record whose slots are all -1/6/7) -- callers then keep the
+    // T72 generic behaviour.
+    std::vector<LegacySlotDraw> legacySlots(int stage, int caster_level) const;
 };
 
 // Resolves spell_affect_index -> SpellVisualResolution against a loaded

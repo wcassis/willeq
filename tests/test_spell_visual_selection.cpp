@@ -265,3 +265,104 @@ TEST_F(SpellVisualSelectorCensusTest, KnownEmptyPaddingIndexResolvesAsEmptyRecor
     SpellVisualResolution res84 = selector.resolve(84);
     EXPECT_EQ(res84.source, SpellVisualSource::EmptyRecord);
 }
+
+// ============================================================================
+// B1190 (#509): the legacy 0x49ab78 select rule -- pure logic, no file.
+// ============================================================================
+
+TEST(LegacySelectRuleTest, MinLevelPerSlot) {
+    EXPECT_EQ(legacySlotMinLevel(0), 10);
+    EXPECT_EQ(legacySlotMinLevel(1), 24);
+    EXPECT_EQ(legacySlotMinLevel(2), 39);
+}
+
+TEST(LegacySelectRuleTest, MinusOneAndTypes67NeverDraw) {
+    // -1 is "no slot" (the != -1 guard); 6/7 are parsed but skipped by the
+    // type dispatch. None of these draw at any level.
+    EXPECT_TRUE(legacyStageDrawnSlots(0, 99, {6, 7, -1}).empty());
+    EXPECT_TRUE(legacyStageDrawnSlots(0, 5, {-1, -1, -1}).empty());
+    // a drawable type in the middle still draws, the -1 neighbours do not
+    auto mid = legacyStageDrawnSlots(0, 99, {-1, 2, -1});
+    ASSERT_EQ(mid.size(), 1u);
+    EXPECT_EQ(mid[0].slot, 1);
+    EXPECT_EQ(mid[0].type, 2);
+}
+
+TEST(LegacySelectRuleTest, LevelGateIsPerSlot) {
+    const std::array<int32_t, 3> all2 = {2, 2, 2};  // all three slots drawable
+    EXPECT_TRUE(legacyStageDrawnSlots(0, 5, all2).empty());          // <10: none
+    auto l10 = legacyStageDrawnSlots(0, 10, all2);                   // slot 0 in
+    ASSERT_EQ(l10.size(), 1u);
+    EXPECT_EQ(l10[0].slot, 0);
+    auto l24 = legacyStageDrawnSlots(0, 24, all2);                   // slots 0,1 in
+    ASSERT_EQ(l24.size(), 2u);
+    EXPECT_EQ(l24[0].slot, 0);
+    EXPECT_EQ(l24[1].slot, 1);
+    EXPECT_EQ(legacyStageDrawnSlots(0, 39, all2).size(), 3u);        // all in
+    EXPECT_EQ(legacyStageDrawnSlots(0, 60, all2).size(), 3u);        // Testcaster
+}
+
+// record 31 (8255 Enraged Shout) Source slots [4,2,4] -- measured from the
+// real spells.eff (review/B1190). At level 60 all three draw.
+TEST(LegacySelectRuleTest, EnragedShoutSourceLevel60) {
+    auto s = legacyStageDrawnSlots(0, 60, {4, 2, 4});
+    ASSERT_EQ(s.size(), 3u);
+    EXPECT_EQ(s[0].slot, 0);
+    EXPECT_EQ(s[0].type, 4);
+    EXPECT_EQ(s[1].slot, 1);
+    EXPECT_EQ(s[1].type, 2);
+    EXPECT_EQ(s[2].slot, 2);
+    EXPECT_EQ(s[2].type, 4);
+}
+
+// record 5 (8240 Appraisal) Target slots [1,1,2] -- measured. At level 60 all draw.
+TEST(LegacySelectRuleTest, AppraisalTargetLevel60) {
+    auto t = legacyStageDrawnSlots(2, 60, {1, 1, 2});
+    ASSERT_EQ(t.size(), 3u);
+    EXPECT_EQ(t[0].type, 1);
+    EXPECT_EQ(t[1].type, 1);
+    EXPECT_EQ(t[2].type, 2);
+}
+
+// ============================================================================
+// B1190 (#509): the record decode -- the per-slot effect types at block
+// offset 0x8C, pinned against the real spells.eff (gated on its presence).
+// ============================================================================
+
+TEST_F(SpellVisualSelectorFileTest, LegacyRecordEffectTypesAt0x8C) {
+    // record 5 (Appraisal): Source [2,2,-1], Target [1,1,2]
+    const SpellsEffRecord* r5 = reader.getRecord(5);
+    ASSERT_NE(r5, nullptr);
+    const auto& s5 = r5->emitter(SpellsEffEmitterRole::Source);
+    EXPECT_EQ(s5.effectType(0), 2);
+    EXPECT_EQ(s5.effectType(1), 2);
+    EXPECT_EQ(s5.effectType(2), -1);
+    const auto& t5 = r5->emitter(SpellsEffEmitterRole::Target);
+    EXPECT_EQ(t5.effectType(0), 1);
+    EXPECT_EQ(t5.effectType(1), 1);
+    EXPECT_EQ(t5.effectType(2), 2);
+    EXPECT_TRUE(r5->hasDrawableContent());
+
+    // record 31 (Enraged Shout): Source [4,2,4], Target [5,5,2]
+    const SpellsEffRecord* r31 = reader.getRecord(31);
+    ASSERT_NE(r31, nullptr);
+    const auto& s31 = r31->emitter(SpellsEffEmitterRole::Source);
+    EXPECT_EQ(s31.effectType(0), 4);
+    EXPECT_EQ(s31.effectType(1), 2);
+    EXPECT_EQ(s31.effectType(2), 4);
+    const auto& t31 = r31->emitter(SpellsEffEmitterRole::Target);
+    EXPECT_EQ(t31.effectType(0), 5);
+    EXPECT_EQ(t31.effectType(1), 5);
+    EXPECT_EQ(t31.effectType(2), 2);
+    EXPECT_TRUE(r31->hasDrawableContent());
+}
+
+TEST_F(SpellVisualSelectorFileTest, PaddingRecordHasNoDrawableContent) {
+    // record 255 is T70's known padding record: no slots draw.
+    const SpellsEffRecord* r255 = reader.getRecord(255);
+    ASSERT_NE(r255, nullptr);
+    EXPECT_FALSE(r255->hasDrawableContent());
+    for (int em = 0; em < 3; ++em)
+        for (int s = 0; s < 3; ++s)
+            EXPECT_LT(r255->emitter(static_cast<SpellsEffEmitterRole>(em)).effectType(s), 0);
+}

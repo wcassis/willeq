@@ -20,6 +20,15 @@ bool SpellsEffRecord::hasContent() const {
     return false;
 }
 
+bool SpellsEffRecord::hasDrawableContent() const {
+    for (const auto& e : emitters) {
+        for (size_t s = 0; s < kSpellsEffEffectTypeSlots; ++s) {
+            if (e.effectType(s) >= 0 && e.effectType(s) <= 5) return true;
+        }
+    }
+    return false;
+}
+
 std::string SpellsEffReader::readFixedString32(const std::vector<uint8_t>& data, size_t offset) {
     // 32-byte field, NUL-terminated (or fully occupied). Bytes past the
     // first NUL are ignored, matching how the client's C string reads
@@ -49,6 +58,13 @@ bool SpellsEffReader::parseRecord(const std::vector<uint8_t>& data, size_t recor
             emitter.sprite_names[s] = readFixedString32(data, block_base + s * 32);
         }
         emitter.attach_tag = readFixedString32(data, block_base + 3 * 32);
+
+        // B1190: the three per-slot effect types (block offset 0x8C + s*4).
+        for (size_t s = 0; s < kSpellsEffEffectTypeSlots; ++s) {
+            std::memcpy(&emitter.effect_types[s],
+                        &data[block_base + kSpellsEffEmitterEffectTypeOffset + s * 4],
+                        sizeof(int32_t));
+        }
 
         std::memcpy(emitter.unknown_bytes.data(),
                     &data[block_base + kSpellsEffEmitterStringBytes],
