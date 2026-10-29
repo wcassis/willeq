@@ -1,10 +1,11 @@
 # action	target	hold_ms	still_name
 # B1195 (#514) LANE 5: the lane-comparability leg on the ThinkPad (observer = the NVIDIA Xorg
-# :99, the x11grab display). B1134's P2 rig + B1178's pinned camera + B1176's observer-slot
+# :99, the x11grab display = the measurement surface). B1134's P2 rig + B1176's observer-slot
 # seed: the CASTER (Testcaster, class 6 for the leg) at B1130's TrollF pose (-74,428,3.75,h160)
 # on the session Xvfb :98 (llvmpipe, also recorded, caster-video=1); the OBSERVER (Oraclewatch,
-# :99) at B1130's caster pose (-67.6,434.4,3.75,h160) with the camera PINNED via the standing
-# eqclient.ini Camera1 keys (B1130's fixed camera, B1178's standard: 30/192/0/0/5/90).
+# :99) at B1130's caster pose (-67.6,434.4,3.75,h160) with B1130's fixed camera SELECTED by
+# F9 x3 (the Camera1 ini keys 30/192/0/0/5/90 are pinned too -- the keys define the camera,
+# the F9 presses select it; B1134 P2's framing, caster ~933,639 ~212 px).
 # LANE-SPECIFIC LINE (the only difference vs the lane-2 plan): Oraclewatch is slot 1 on lane 5
 # (the willeqwatch account's slot 0 is Darkshadow, B1176); the zone step reads Defaults.LastCharSel.
 # 93 Burst of Flame cast ON THE OBSERVER twice (gem 1), 253 Whirling Wind cast ON SELF twice
@@ -29,7 +30,7 @@ obs	zone	qeynos2	0	obs_in_world
 wait	8000	0	settle
 obs	click	1229,555	0	obs_close_tip
 click	1229,555	0	close_tip
-command	#set time 11 0	0	noon
+command	#set time 11 0 0	0	noon
 wait	1500	0	noon_settle
 command	#weather 0	0	clear
 command	#reload rules global	0	rules
@@ -39,7 +40,10 @@ command	/target Oraclewatch	0	tgt_obs
 command	#set pvp on	0	pvp_obs
 command	/target Testcaster	0	tgt_self
 command	#set pvp on	0	pvp_self
-obs	wait	3000	0	obs_settle
+obs	press	F9	0	obs_cam1
+obs	press	F9	0	obs_cam2
+obs	press	F9	0	obs_cam3
+obs	wait	3000	0	obs_cam_settle
 command	#weather 0	0	clear2
 wait	36000	0	time_settle
 command	/target Oraclewatch	0	tgt93_a
