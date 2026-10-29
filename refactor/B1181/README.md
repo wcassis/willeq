@@ -100,12 +100,15 @@ The actor creation call — arguments (x86 cdecl, last push = first arg):
 
 ### 1.2 The loader `FUN_0043972a` (eqgame.exe.c line 52128)
 
-The name from +0x65 is taken as-is; a short name (<= 3 chars) gets
-`_ACTORDEF` appended and is looked up as an actor definition, with the two
-fallbacks `IT63_ACTORDEF` and `RED_BLOB_ACTORDEF` (the decompile at
-`eqgame.exe.c` 52128ff — see the B1168 note: the server only ever sends
-`IT<id>` names, so the suffix/fallback branch is dead for every payload fable
-receives). The model is the equipment IT model — the same
+The name from +0x65 is taken as-is; a name under 10 chars (`strlen < 10`)
+that is not "PLAYER_1" gets `_ACTORDEF` appended (the decompile at
+`eqgame.exe.c` 52128ff: `sVar1=_strlen(param_2); if (sVar1 < 10 &&
+__stricmp(param_2,"PLAYER_1") != 0)` — the same rule the `ParseMissileModelId`
+banner in `include/client/spell/spell_missile_object.h` cites), and the actor
+definition is looked up by that name, with the two fallbacks
+`IT63_ACTORDEF` and `RED_BLOB_ACTORDEF`. The missile names the server sends
+(IT10 / IT68 / IT11504 / IT10650, 4-7 chars) DO get the suffix. The model is
+the equipment IT model — the same
 `IT<modelId>` namespace fable's `EquipmentModelLoader` loads for entity
 equipment (`src/client/graphics/eq/equipment_model_loader.cpp`); **no new
 loader** (the card's rule).
@@ -211,11 +214,39 @@ unaffected.
 
 ## 4. Type-9 byte-identity (acceptance B)
 
-The six b1130 gate spells (38, 41, 54, 93, 458, 656 — the two of them with
-type-9 missiles included), rendered base (`32c67ab3c`) vs tip with the same
-b1130 rig: **all 2,584 frames byte-identical, 0 diff lines** (md5 census
-`/home/user/kb-evidence/b1181_gate_md5.tsv`, 5,304 rows). The type-9 path is
-not just frame-0-identical; the whole capture is.
+The first draft cited a census (`b1181_gate_md5.tsv`, 5,304 rows, 2,584
+byte-identical) that was lost together with its generating command, so the
+acceptance-B comparison is REGENERATED here, as a superset of that set: the
+tour-7 + b1130 harness renders (the B1186 recipe —
+`refactor/B1186/scripts/run_b1186.sh`'s plan generation: the seven tour
+spells 93/38/54/656/41/253/458 at the b1118 anchor plus the 40 b1130 records
+at their fixed b1130/b1130-self anchors; the six gate spells of the first
+draft (38, 41, 54, 93, 458, 656 — the two of them with type-9 missiles
+included) are a subset of it). Rendered with IDENTICAL plans on the ThinkPad
+at the pre-B1181 base `ac8c26bc6` (the merge-base with `fable`, worktree
+`kb-b1181-gate-base`) and at the MR head `b7a591aa4` (the later fix commit
+touches only this README — no binary change), 30 fps, `--sim-hz 60 --seed 1`,
+oracle caster level 60 (`scripts/fx/capture_level.py`). Every frame is md5'd
+base vs tip: **24,036/24,036 frames byte-identical, 0 differing** across
+47 tags per tree (census `~/kb-evidence/kb-b1181-item-missile/b1181_gate_md5.tsv`,
+attached to the task; the per-frame manifest `gate_frames_manifest.tsv` is
+beside it). The type-9 path is not just frame-0-identical; the whole gate set
+is.
+
+Reproduction (the scripts are in the tree, `refactor/B1181/scripts/`):
+
+```
+bash refactor/B1181/scripts/gen_plans.sh     # the 47 plans + rows.tsv
+bash refactor/B1181/scripts/render_census.sh # 47 tags x {base,tip} on the ThinkPad
+bash refactor/B1181/scripts/run_md5.sh       # stream frames back, md5, census + determinism
+```
+
+Rendered frames live at `/home/user/kb-frames/kb-b1181-item-missile/gate/
+{base,tip}/<tag>` on the ThinkPad (evidence copy
+`~/kb-evidence/kb-b1181-item-missile/gate_frames/`). Render determinism is
+measured, not assumed: re-rendering `tour_93` per tree with the same binary
+is 435/435 byte-identical frames in both trees, so base vs tip is a
+render-to-render identity, not a flake.
 
 ## 5. Lane-5 oracle leg (acceptance C)
 
@@ -242,7 +273,7 @@ every one naming **IT68** (not IT11504 — the fable leg ran after the
 oracle legs' `Spells:UseLiveSpellProjectileGFX` leg-limited rule had been
 undone by their teardown, and `fable_leg.sh` does not set it; the payload
 bytes are the evidence, not the rule), t=1793237027.584/.600 to BOTH A and
-B and t=1793237041.636/.656 to B. A's log records the draw:
+B and t=1793237041.636/.652 to B. A's log records the draw:
 `B1181 missile model: IT68 drawn` at 01:23:47.792 (A.log); the hit
 (HC_OP_Death on A) landed 01:23:48.952, so the model is drawn for the
 ~1.16 s flight (dump frames 268..272 at the measured 0.3353 s/frame).
@@ -265,7 +296,7 @@ t=1793249814.322/.338 to 34963 only (the second cast).
 A's log records the fallback: `B1181 missile model: IT11504 not in the
 equipment archives -- nothing drawn` at 04:56:40.392 (A.log) — the
 census (`check_models.py` over `data/item_models.json`, 3,661 entries)
-has IT10 and IT68 but not IT11504 (or IT10614), so the client correctly
+has IT10 and IT68 but not IT11504, so the client correctly
 draws nothing for that payload: no model, no guess. The hit landed
 04:56:41.690 (198 non-melee damage on A). `video.mp4` is A's x11grab
 (30 fps); the archery window of the same leg is 5.2. The fable-b1181-4
@@ -307,7 +338,9 @@ textures. The working run is recorded in `b1181_replay_r5.sh`'s header.
 
 **Oracle flight numbers, bolt4, measured** (`track_bolt4_1x.py` over
 `video.mp4`, 30 fps, 1280x800 native; `t` = video time, video frame
-`n` = `t`*30, `t0` = 1793236040.885 from `video.mp4.t0`; corridor
+`n` = `t`*30, `t0` = 1793236040.885, the calibrated t0 in
+`video.calibration.tsv` (marker frame 30; the raw `video.mp4.t0` holds
+1793236040.373); corridor
 x 650..885, y 430..540, the orange-flame leading-edge component
 `area>=8`; full per-frame track in `flight_track.tsv` beside the video):
 
@@ -318,7 +351,7 @@ x 650..885, y 430..540, the orange-flame leading-edge component
 | mid-flight head, clearest | | 556.40-556.63 | 16692-16699 | (732,488), **20x20 px** (shrinking to 17x15 by 16699) |
 | later head | | 556.90-557.23 | 16707-16717 | (686,453), 10-12 px |
 | arrival at the observer's position | | 557.300 | 16719 | (688,444), 18-19 px |
-| hit op (damage 198, `OP_Death`-preceding chat) | 01:16:37.451 | 557.451 | 16723.5 | — |
+| hit op (damage 198, `OP_Death`-preceding chat) | 01:16:38.336 | 557.451 | 16723.5 | — |
 | last visible frame (model removed) | | 557.600 | 16728 | (688,445) |
 
 The measured head path (776,525) -> (732,488) -> (686,453) -> (688,444) is
