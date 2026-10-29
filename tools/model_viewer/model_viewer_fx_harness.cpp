@@ -1101,7 +1101,14 @@ int runScriptedHarness() {
     // the cast pose, so it shows the origin tracking the hand bone through
     // the raised pose.
     std::ofstream emitterOut(harnessOpts.framesDir + "/emitter_origin.tsv");
-    emitterOut << "frame\tt\tfxid\tkind\twx\tyw\twz\tsx\tsy\n";
+    emitterOut << "frame\tt\tfxid\tkind\twx\twy\twz\tsx\tsy\n";
+    // B1185 (#504): the Source stage's particle onset (the client's own rule:
+    // createCastGlow's Source branch = sourceLatency + the slot's +0x8C start,
+    // spell_visual_fx.cpp:684), one row per cast. The b1130 sweep reads it as
+    // its source_onset_s, restoring the Source-stage onset the cast-anim's
+    // first-lit frame (B1157's CastingAnim) shadowed in the pixel measure.
+    std::ofstream sourceOnsetOut(harnessOpts.framesDir + "/source_onset.tsv");
+    sourceOnsetOut << "spellId\tstage\tsourceLatencyS\tslotStartS\tparticleOnsetS\n";
     // B1174 (#493): per written frame, the live spell effects and missiles
     // (SpellVisualFX's own lists) and the caster's track -- what a /disc
     // draws is the caster's CastingAnim and no effect, which a whole-frame
@@ -1191,6 +1198,34 @@ int runScriptedHarness() {
                     if (std::find(activeSourceEmitters.begin(), activeSourceEmitters.end(), fxId) ==
                         activeSourceEmitters.end())
                         activeSourceEmitters.push_back(fxId);
+                }
+                // B1185 (#504): the Source stage's particle onset = the client's
+                // createCastGlow Source branch (sourceLatency + the slot's +0x8C
+                // start, spell_visual_fx.cpp:684). The earliest onset over the
+                // drawn Source slots is the first visible particle frame.
+                {
+                    const float sourceLatency =
+                        EQT::Graphics::Environment::SpellEffectsConfig::instance().sourceStageLatency();
+                    // The Source stage's particle onset = sourceLatency + the
+                    // earliest slot's +0x8C start. No drawn slot -> the default
+                    // row's onset (sourceLatency alone).
+                    float minSlotStart = 0.0f;
+                    bool anySlot = false;
+                    const auto srcSlots = spellVisualFX->stageSlots(c.spellId, EQ::kSpellsNewEffSource, level);
+                    const int32_t sourceCallerMs = 10000;  // window only; start is independent
+                    for (const auto& d : srcSlots.drawn) {
+                        EQ::SpellFxSlotTiming timing;
+                        if (spellVisualFX->slotTiming(d.slot.emitter, sourceCallerMs, timing)) {
+                            if (!anySlot) { minSlotStart = timing.start; anySlot = true; }
+                            else minSlotStart = std::min(minSlotStart, timing.start);
+                        }
+                    }
+                    const float particleOnset = anySlot ? sourceLatency + minSlotStart : sourceLatency;
+                    sourceOnsetOut << c.spellId
+                                   << '\t' << "Source"
+                                   << '\t' << std::fixed << std::setprecision(4) << sourceLatency
+                                   << '\t' << (particleOnset - sourceLatency)
+                                   << '\t' << particleOnset << '\n';
                 }
             } else {
                 if (!c.beginCast) placeHarnessTarget(c.self, c.distance);
