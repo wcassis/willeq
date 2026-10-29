@@ -16,22 +16,6 @@
 extern void gles2AdjustRawBufferBytes(void* driver, ptrdiff_t delta);
 extern void gles2SyncBufferBindings(void* driver);
 
-// B1188 (temporary, env-gated): the per-particle census of the EDD-sprite draw
-// path, for diagnosing the b1130 same-window pixel gap. WILLEQ_FX_DRAW_LOG
-// names the file; unset, this is a no-op (drawLogFile() is nullptr and the
-// per-particle call is one pointer load).
-static FILE* drawLogFile() {
-    static FILE* f = [] -> FILE* {
-        const char* p = getenv("WILLEQ_FX_DRAW_LOG");
-        if (!p) return nullptr;
-        FILE* fh = fopen(p, "w");
-        if (fh)
-            fprintf(fh, "frame emitter tex size height r g b a x y z age life srcA depthOn\n");
-        return fh;
-    }();
-    return f;
-}
-
 // GLES2 spec constants — fallback defines for older headers
 #ifndef GL_BLEND_SRC_RGB
 #define GL_BLEND_SRC_RGB 0x80C9
@@ -589,12 +573,6 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
             const int b = onSpriteSheet ? (srcAlphaAdditive ? 5 : additive ? 2 : 3)
                                         : (srcAlphaAdditive ? 4 : additive ? 0 : 1);
             const float hw = 0.5f * p.size, hh = 0.5f * p.height;
-            if (FILE* dl = drawLogFile()) {  // B1188 temporary census
-                fprintf(dl, "%d %u %u %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %d %d\n",
-                        frameCount_, p.emitterID, p.textureIndex, p.size, p.height,
-                        color.r, color.g, color.b, color.a, pos.x, pos.y, pos.z,
-                        p.age, p.maxLifetime, (int)srcAlphaAdditive, (int)depthOn);
-            }
             // B1151 (#471): the record's spin (age*spin + start + align; draws
             // 0x100634c1/0x100638e8) replaces the config rotation for a
             // record particle; the +0x178 alignment is a SCREEN angle, so it

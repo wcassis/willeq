@@ -23,9 +23,15 @@ Every number is read from a file named below; nothing is retyped.
 import re, os, sys, json
 
 WT = '/home/user/src/willeq-wt/kb-b1188-landing-pixels'
-MEASURE = '/mnt/scratch/kb-evidence/kb-b1188-landing-pixels/gate2/measure'
+# B1188 FIX (note 8515, finding 2): the same judge over any measured gate --
+# the committed B1188 gate2 (the default) or the merge-base (ac8c26bc, the
+# B1186 tip) baseline rendered by render_gate_base.sh into gate_base/measure.
+#   B1188_MEASURE=/mnt/scratch/kb-evidence/kb-b1188-landing-pixels/gate_base/measure \
+#   B1188_OUT=refactor/B1188/tables/base python3 refactor/B1188/scripts/build_tables_b1188.py
+MEASURE = os.environ.get('B1188_MEASURE',
+                         '/mnt/scratch/kb-evidence/kb-b1188-landing-pixels/gate2/measure')
 B1180 = '/home/user/kb-evidence/kb-b1180-sprite-width/gate/tables'
-OUT = os.path.join(WT, 'refactor/B1188/tables')
+OUT = os.environ.get('B1188_OUT', os.path.join(WT, 'refactor/B1188/tables'))
 
 # ---------------- band rules: copied VERBATIM from refactor/B1178/scripts/gate_after.py
 # (itself the committed form of refactor/B1155/scripts/band_table.py)
