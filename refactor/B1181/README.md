@@ -334,7 +334,7 @@ leg r7 correctly draws NOTHING for IT11504 (not in the equipment
 archives, A.log line above); the measured mid-flight model px on willeq
 come from the current-tree replay: IT68 22x18 px, IT10 10x61 px.
 
-### 5.2 The archery shot — NOT captured (measured server-side condition)
+### 5.2 The item shot (archery, then thrown knife) — gates identified and fixed; the throw CAPTURED (run 11)
 
 Every archery attempt so far produced **zero `0x4033` packets**: oracle
 legs `archery`..`archery6` (all six `capture.pcap`s scanned, `all4033.py`)
@@ -375,14 +375,35 @@ tour). The measured conditions, newest first:
     gate also explains runs 4-7's archery failures independent of the
     skill row (the skill row was absent then — two stacked gates, only
     the outer one ever observable).
-  - **Fix (run 11, this commit):** the leg seeds A's `pvp_status=1` in
-    the pre-SQL (the zone reads `pvp_status` at login, `zonedb.cpp`)
-    and restores it in the post-SQL (as-found snapshot and post query
-    now carry the column); with both sides PVP the gate passes and the
-    throw should reach `ThrowingAttack` → `SendItemAnimation` → `0x4033`
-    model **IT10650** (the knife's `IDFile`; extracted live in A.log run
-    9, so the model IS in the client's archives — unlike the bolt's
-    IT11504).
+  - **Result (run 11, CAPTURED):** the throw landed. `capture.pcap` has
+    **12× `S->C 0x4033` model IT10650** — three throws (t=1793264114.974,
+    1793264123.014, 1793264131.009), each doubled by
+    `CheckDoubleRangedAttack` (~15 ms apart) and delivered to BOTH
+    clients (A cport 37929, B cport 59018); the two bolts of the same
+    tour follow as IT11504 (1793264144.084, 1793264158.134). A.log
+    records the draw on all three throws: `B1181 missile model: IT10650
+    drawn at (428.00,-74.00,3.75) heading=64.73 aim=50.00` (08:55:15.208,
+    08:55:23.161, 08:55:31.097) — the model spawns at the caster and
+    heads 64.73° (toward the observer at heading 220, 9.05 units) with
+    the payload's aim pitch 50°. A.log 08:55:44.381 keeps the bolt
+    parity: `IT11504 not in the equipment archives -- nothing drawn`.
+    The payload (first throw, 136 bytes, model at 101..117) is extracted
+    to `~/kb-evidence/kb-b1181-item-missile/it10650_payload.bin`
+    (`extract_it10650.py`).
+    **Replay on the current tree** (ThinkPad, `model_viewer
+    --spell-test` — the 5.1 invocation plus the measured-missing
+    `--client /mnt/projects/EverQuestP1999` and `--fps 30 --seconds 6`,
+    which the first run-11 attempt omitted and the binary rejects with
+    rc=2): `after_it10650` rc=0, log `B1181 missile model: IT10650
+    drawn`; the diff vs `base_it10650` (`measure_it10650_replay.py`,
+    per-frame table `it10650_replay_measure.tsv`) tracks the knife
+    **frames 30..34** from (676,496) to (985,275) — toward the target,
+    the opposite direction of the IT10/IT68 rows (b1130's target sits
+    upper-right here); **mid-flight (frame 32) = 50x13 px**, centroid
+    (860,403), area 177 — a slender blade with a small trailing
+    component (6-7 px) 35 px behind; gone by frame 35 (hit at t≈1.17 s).
+    `base_it10650` (same scene/seed/binary, no payload): rc=0, blob-free
+    in every frame — the diff isolates the model.
 
 - **Fable leg r7 (`fable/fable-b1181-7/`, 2026-10-29 04:54-05:00 UTC, the
   clean run)** — the client side is proven correct end to end:
@@ -479,18 +500,47 @@ shot where willeq draws a real IT model.)
 `leg/bolt4/video.mp4` f16591(BC)/f16681(Act); willeq right = the fable leg's
 own client frame dumps as a variable-rate video — the x11grab window was
 black mid-flight but the client rendered normally, so the dumps are the
-faithful willeq record). The archery ledger clip is pending run 8 (it needs
-a captured arrow on both sides; there is no oracle archery reference on
-this rig, so it will be willeq-side + the payload replay as the reference).
+faithful willeq record). The throw clip is
+`clips/throw_it10650.mp4` + `throw_it10650_strip.png` (run 11): left = the
+current-tree replay of the leg's own IT10650 payload (the knife is visible
+in the strip's middle rows, f30..34), right = fable-b1181-11's A x11grab
+(chase cam — the caster is visible in frame this time, fixing the run-4
+user1 close-up; the in-flight knife is occluded by A's model in the live
+view, 5.2, so the replay is the on-screen reference; there is no oracle
+throw reference on this rig, measured). Both rows are in `index.tsv` /
+`clip.log`.
 
 **Scope-down decision (the card's clause: state what was not captured
 and why — measured, never guessed):** the bolt (5.1) is captured on BOTH
-sides with flight numbers; the thrown-item shot's root cause is identified
-and measured — the dispatch `IsAttackAllowed` gate requires BOTH clients
-PVP (5.2, runs 9-10: three zone-log receipts, zero `LogCombat`, A
-`pvp_status=0`) — and fixed in-tree (the leg now seeds A's `pvp_status=1`
-pre-SQL, restores it post-SQL). The capture itself is run 11, in flight
-at the time of writing; if it lands, the `0x4033` IT10650 throw is the
-acceptance-C shot (the card allows "one archery or thrown-item shot";
-there is no oracle archery/throw reference on this rig, so the ledger
-clip is willeq-side + the payload replay as reference, as planned in 5.1).
+sides with flight numbers; the thrown-item shot (5.2, run 11) is
+CAPTURED — 12× `0x4033` IT10650 to both clients, drawn on willeq (A.log ×3
++ current-tree replay, 50x13 px mid-flight, gone at the hit) and the hit
+landed (A.log "Testcaster hits YOU for 4 points of damage", draw→hit
+1.2 s). The card's floor — "one archery or thrown-item shot" — is met by
+the throw; the ARCHERY shot itself remains uncaptured, and its measured
+server-side condition is the two stacked silent dispatch gates documented
+in 5.2 (no archery `skill_caps` row for class 12 — fixed by the run-8 skill
+seed — and `IsAttackAllowed` requiring BOTH clients PVP — fixed by the
+run-11 pvp seed). Both fixes are in the leg and both were verified
+passing in run 11 (the throw uses the same dispatch gates with
+`m_skill=51`), so an archery capture is a leg re-run away; it was not
+done this run because the leg's slot 11 can hold only one ranged item and
+the card's acceptance accepts the throw in place of the archery.
+**What is NOT captured on the throw, and why (measured):** the oracle
+side (the official client throwing) — the official client's server-side
+`/target <name>` never resolved on this rig (5.2, `archery`..`archery6`
+legs), so no oracle throw exists; the live in-flight model px on willeq —
+the knife's flight line runs behind A's model in the chase view (occluded
+until ~1 unit of A), the dump cadence is 0.28 s against a 1.2 s flight
+with only the arrival frame (dump frame 219→220) showing a significant
+center change, and the render ran 18 fps with 245 ms frames during the throw
+window (B's `HC_OP_ClientUpdate` burst, A.log PERF lines 08:55:14.07-.53)
+— so the on-screen px come from the current-tree replay (same binary,
+same payload: 50x13 px mid-flight, frame 32).
+
+**Lane-5 acceptance-C table (both shots):**
+
+| shot | `0x4033` model (pcap) | oracle flight (first/last video frame) | oracle mid-flight px | willeq drawn | willeq mid-flight model px | payload replay |
+|---|---|---|---|---|---|---|
+| bolt of Flame 68 | IT11504 (5× bolt4, both clients) | f16683..f16728 (1.50 s, 5.1) | 20x20 px (f16692-99) | nothing — parity (IT11504 absent from the client's own equipment archives; the visible projectile is the spell particle FX) | n-a (nothing drawn is the correct behaviour; the IT68 leg r4 drew IT68, live px unresolvable — user1 close-up) | IT11504 control: nothing drawn; IT68 variant: 22x18 px f33 |
+| thrown knife (run 11) | IT10650 (12× = 3 throws × double-attack × both clients) | no oracle reference on this rig (measured, 5.2) | n-a | **IT10650 drawn** (A.log ×3, spawn (428,-74,3.75), heading 64.73, aim 50; hit landed 1.2 s after the draw) | live: occluded (A model, measured above); replay: **50x13 px** f32 (f30..34, gone at the hit) | **draws IT10650** (current tree, leg payload; base control blob-free) |
