@@ -121,39 +121,148 @@ behavior that the ROI now catches first.
 ## 4. The fix
 
 The b1130 sweep's `source_onset_s` must report the **Source stage's particle
-onset** (BC + sourceLatency + timing.start = 0.433 for record 0), not the ROI's
-first lit frame (the cast-anim's 0.100). The Source stage's particle onset is a
-client property (the quantity above); the harness already knows it (it runs
-`createCastGlow`), so it now emits it to `source_onset.tsv`, and
-`harness_measure_b1130.py` reads it for the `source_onset_s` column. This is
-the same quantity the oracle's reference measures (the Source stage's onset in
-the observer's domain), so the gate compares like with like.
+onset** (BC + sourceLatency + timing.start = 0.410 for record 0; the B1153-era's
+**measured** first visible particle frame is 0.433, the 0.023 s build-up to full
+alpha), not the ROI's first lit frame (the cast-anim's 0.100). The Source
+stage's particle onset is a client property (the quantity above); the harness
+already knows it (it runs `createCastGlow`), so it now emits it to
+`source_onset.tsv`, and `harness_measure_b1130.py` reads it for the
+`source_onset_s` column. This is the same quantity the oracle's reference
+measures -- B1130's `source_onset_s` is the first VISIBLE PARTICLE frame of the
+Source stage in the official client's own capture (B1130 classifies "the onset
+frames and real-frame-rate sequences"; e.g. record 0: "from BC+0.46 orange
+sparks scatter around the body"), never the cast pose -- so the gate compares
+like with like.
 
 Will's rule holds: the fix restores the **client's** Source onset rule to the
-measurement. It adds no tuned delay -- the 0.433 is the client's own
+measurement. It adds no tuned delay -- the value is the client's own
 `sourceLatency + timing.start`, not a fittable constant, and the cast-anim is
 left exactly as B1157 set it (it is the oracle's own swing, measured in a
 different domain, per B1174).
 
-**No other column regressed:** `source_cov` (the peak), `source_centroid`,
-`src_h_lo`, `src_h_hi` (the CAST run) are computed from the anchor's peak /
-active-run statistics, which are independent of the onset frame -- they are
-byte-identical before/after. Only `source_onset_s` changes (0.100 -> 0.433).
+**No other column regressed:** on the SAME rendered frames, the pre-fix and
+post-fix measures differ in `source_onset_s` ONLY. Proven on record 0: the
+pre-fix script (`harness_measure_b1130.py` at `bbfed6ed9~1`) re-run over the
+post-fix frames yields `b1130_rows.tsv` rows that differ in exactly one cell --
+`source_onset_s` 0.100 (pre) vs 0.410 (post) -- with the other nine columns
+(`source_cov`, `source_centroid`, `src_h_lo`, `src_h_hi`, `landing_onset_s`,
+`landing_end_s`, `landing_cov`, `p90_src`, `p90_land`) byte-identical. The
+pre-fix measure is kept in the log (`measure_b1130.txt`, `SOURCE onset fN
+BC+X;` line) as `son_pixel`, diagnostic only.
 
 ## 5. Tests
 
-- `tests/test_b1185_source_onset.cpp` (new): pins the client's Source stage
-  particle onset -- `sourceStageLatency() + timing.start` -- for record 0
-  (spell 93, 0.41 s: the EDD's +0x8C delay is 0) and a fixed_self record
-  (0.41 s stays). The B1153-era's measured 0.433 s is 0.02 s more (the
-  build-up time), within the oracle's ±0.10 s band.
-- The b1130 sweep re-render (before/after): `source_onset_s` back in band on
-  >= 36/40 rows; every other column byte-identical.
+- `tests/test_b1185_source_onset.cpp` (new, 2 cases, both pass on the ThinkPad):
+  - `Record80Spell93` -- record 80 (spell 93, the b1130 sweep's record 0):
+    pins the committed B1153-era reference (`refactor/B1178/tables/
+    gate_c_before.tsv`, `harness_source_onset_s` = 0.433 s, read from the file)
+    and the client's rule that produces it -- `sourceStageLatency() +
+    timing.start` (the EDD's +0x8C delay is 0 for spell 93's emitter 276) =
+    0.41 s, inside the reference's +/-0.10 s band (oracle 0.460 s);
+  - `FixedSelfStays` -- the fixed_self records 6 (spell 722) and 42 (spell
+    700): the committed 0.433 s reference stays (read from the file), and a
+    spell with no EDD +0x8C delay stays at the sourceLatency (0.41 s),
+    inside the band (oracles 0.400/0.410 s).
+- The b1130 sweep re-render (before/after on the same frames): `source_onset_s`
+  back in band on >= 36/40 rows; every other column byte-identical (section 4,
+  and section 6's table).
 
 ## 6. Evidence
 
-`/home/user/kb-evidence/kb-b1185-onset-collapse/bisect-kb-b1185-b1157/` -- the
-B1157 render (r0/r1/r7, frames + `measure_b1130.txt` + `b1130_rows.tsv`,
-`emitter_origin.tsv`, `lit80.tsv`). The B1153-era "before" is the committed
-`refactor/B1178/tables/gate_c_before.tsv`. The fable tip is the committed
-`refactor/B1180/tables`.
+`/home/user/kb-evidence/kb-b1185-onset-collapse/`:
+- `bisect-kb-b1185-b1157/` -- the B1157 render (r0/r1/r7: frames +
+  `measure_b1130.txt` + `b1130_rows.tsv` + `emitter_origin.tsv`), showing the
+  drop (r0 `SOURCE onset f48 BC+0.100s`).
+- `bisect-kb-b1185-onset-collapse/` -- the same three rows on the fable tip
+  (post-fix: `source_onset_s` = 0.410 from `source_onset.tsv`).
+- `sweep/` -- the 40-record b1130 sweep on the branch (the fix's tree):
+  `plans/`, `runs/<kind>_r<rec>/` (frames + `source_onset.tsv` + `slots.tsv`),
+  `measure/<kind>_r<rec>/` (`b1130_rows.tsv` + `measure_b1130.txt`), driven by
+  `run_sweep_tip.sh` (the B1155 recipe, B1149-style: render on the ThinkPad,
+  measure here with the committed `harness_measure_b1130.py`).
+- `onset_before_after.py` -- the before/after table below (before = the
+  pre-fix measure's `SOURCE onset` log line, after = `b1130_rows.tsv`, oracle =
+  `review/B1130/record_table.tsv`, band = the committed B1155 rule, the B1130
+  value +- 0.10 s).
+
+The B1153-era "before" is the committed `refactor/B1178/tables/gate_c_before.tsv`;
+the pre-fix tip state is the committed `refactor/B1180/tables`.
+
+### The re-render: source_onset_s before/after (same frames, 40 records)
+
+Rendered on the branch (the fix's tree), the same 40 frames measured twice:
+**before** = the pre-fix `source_onset_s` (the ROI's first lit frame, the
+`SOURCE onset ... ; active` log line kept in `measure_b1130.txt`), **after** =
+the branch's `source_onset_s` (the client's rule from `source_onset.tsv`).
+Oracle = B1130's `source_onset_s`; the committed B1153-era reference =
+`refactor/B1178/tables/gate_c_before.tsv` `harness_source_onset_s`; band =
+the committed B1155 rule (the B1130 value +- 0.10 s).
+
+| rec | kind | spell | before (pixel, pre-fix) | after (client rule) | oracle | verdict | B1153-era (committed) | era verdict |
+|---|---|---|---|---|---|---|---|---|
+| 0 | fixed_npc | 93 | 0.100 | 0.410 | 0.460 | PASS | 0.433 | PASS |
+| 1 | fixed_npc | 200 | 0.100 | 0.410 | 0.370 | PASS | 0.433 | PASS |
+| 2 | fixed_npc | 202 | 0.100 | 0.410 | 0.400 | PASS | 0.433 | PASS |
+| 3 | fixed_npc | 377 | 0.100 | 0.410 | 0.580 | short | 0.433 | short |
+| 4 | fixed_self | 50 | 0.100 | 0.410 | 0.380 | PASS | 0.433 | PASS |
+| 5 | fixed_npc | 80 | 0.100 | 0.410 | 0.390 | PASS | 0.433 | PASS |
+| 6 | fixed_self | 722 | 0.433 | 0.410 | 0.400 | PASS | 0.433 | PASS |
+| 7 | fixed_npc | 40 | 0.100 | 0.410 | 0.400 | PASS | 0.433 | PASS |
+| 8 | fixed_self | 346 | 0.100 | 0.410 | 0.430 | PASS | 0.567 | over |
+| 9 | fixed_self | 375 | 0.100 | 0.410 | 0.390 | PASS | 0.433 | PASS |
+| 10 | fixed_self | 590 | 0.100 | 0.410 | 0.380 | PASS | 0.433 | PASS |
+| 11 | fixed_self | 285 | 0.100 | 0.410 | 0.500 | PASS | 0.433 | PASS |
+| 12 | fixed_npc | 208 | 0.100 | 0.410 | 0.400 | PASS | 0.433 | PASS |
+| 13 | fixed_npc | 209 | 0.100 | 0.410 | 0.420 | PASS | 0.433 | PASS |
+| 14 | fixed_self | 373 | 0.100 | 0.410 | 0.490 | PASS | 0.433 | PASS |
+| 15 | fixed_npc | 289 | 0.100 | 0.410 | 0.390 | PASS | 0.433 | PASS |
+| 16 | fixed_npc | 242 | 0.100 | 0.410 | 0.490 | PASS | 0.433 | PASS |
+| 17 | fixed_self | 237 | 0.100 | 0.410 | 0.400 | PASS | 0.433 | PASS |
+| 18 | fixed_npc | 378 | 0.100 | 0.410 | 0.400 | PASS | 0.433 | PASS |
+| 19 | fixed_self | 359 | 0.100 | 0.410 | 0.480 | PASS | 0.667 | over |
+| 20 | fixed_npc | 341 | 0.100 | 0.410 | 0.420 | PASS | 0.433 | PASS |
+| 21 | fixed_npc | 218 | 0.100 | 0.410 | 0.410 | PASS | 0.433 | PASS |
+| 22 | fixed_npc | 201 | 0.100 | 0.410 | 0.460 | PASS | 0.433 | PASS |
+| 23 | fixed_npc | 372 | 0.100 | 0.410 | 0.420 | PASS | 0.433 | PASS |
+| 24 | fixed_npc | 348 | 0.100 | 0.410 | 0.420 | PASS | 0.433 | PASS |
+| 25 | fixed_npc | 14 | 0.100 | 0.410 | 0.480 | PASS | 0.433 | PASS |
+| 26 | fixed_npc | 310 | 0.100 | 0.410 | 0.470 | PASS | 0.433 | PASS |
+| 27 | fixed_npc | 290 | 0.100 | 0.410 | 0.380 | PASS | 0.433 | PASS |
+| 28 | fixed_npc | 73 | 0.100 | 0.410 | 0.390 | PASS | 0.433 | PASS |
+| 29 | fixed_npc | 286 | 0.100 | 0.410 | 0.400 | PASS | 0.533 | over |
+| 30 | fixed_npc | 231 | 0.100 | 0.410 | 0.800 | short | 0.733 | PASS |
+| 31 | fixed_npc | 313 | 0.100 | 0.410 | 0.370 | PASS | 0.433 | PASS |
+| 32 | fixed_npc | 374 | 0.100 | 0.410 | 0.390 | PASS | 0.433 | PASS |
+| 33 | fixed_npc | 382 | 0.100 | 0.410 | 0.380 | PASS | 0.433 | PASS |
+| 34 | fixed_npc | 340 | 0.100 | 0.410 | 0.410 | PASS | 0.433 | PASS |
+| 35 | fixed_npc | 253 | 0.100 | 0.410 | 0.420 | PASS | 0.433 | PASS |
+| 40 | fixed_self | 602 | 0.100 | 0.410 | 0.400 | PASS | 0.433 | PASS |
+| 41 | fixed_npc | 703 | 0.100 | 0.410 | 0.410 | PASS | 0.433 | PASS |
+| 42 | fixed_self | 700 | 0.433 | 0.410 | 0.410 | PASS | 0.433 | PASS |
+| 43 | fixed_self | 720 | 0.100 | 0.410 | 0.410 | PASS | 0.433 | PASS |
+
+**source_onset_s in-band: before 2/40, after 38/40, B1153-era committed 36/40.**
+The column is back in band on >= 36/40 rows (38, better than the B1153-era's
+committed 36), with no tuned delay: every "after" value is the client's own
+`sourceLatency + the slot's +0x8C start`. The two short rows:
+
+- **rec 3 (spell 377, oracle 0.580)** -- short in BOTH the B1153-era committed
+  reference (0.433, `short`) and the client's rule (0.410): an oracle-side
+  residual that was never in band, unchanged by this card.
+- **rec 30 (spell 231, oracle 0.800)** -- the B1153-era's committed PIXEL
+  measure (0.733) sat in band by coincidence of that tree's rendering; the
+  client's RULE for spell 231 is 0.410 (its two Source emitters, 450/451,
+  carry +0x8C start 0 per the client's own EDD reader, as `runs/
+  fixed_npc_r30/slots.tsv` + `source_onset.tsv` show), so the rule reports
+  0.410. Closing the 0.800 gap is the B1145 timing workstream's question
+  (whether this spell's Source stage rides a delay the EDD does not carry in
+  the +0x8C word), not a delay this card may fit.
+
+**No other column regressed:** on the same rendered frames, the pre-fix script
+(at `bbfed6ed9~1`) and the branch's script differ in `source_onset_s` ONLY --
+verified on three rows spanning both kinds and a long-cast row (record 0,
+fixed_self 6, record 26: `colcheck.py` re-measures each with both scripts and
+diffs all nine other metric columns; the only differing cell is
+`source_onset_s`),
+and by construction of the script diff (section 4): the pre-fix measure is
+kept in the log (`SOURCE onset ... ; active` line) as the diagnostic only.
