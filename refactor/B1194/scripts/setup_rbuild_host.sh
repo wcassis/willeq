@@ -10,9 +10,12 @@
 #   3. linger for `user`, so rbuild's user-slice fallback (worker-build.slice,
 #      installed by `rbuild --setup-host`) has a user manager when rbuild ssh's in.
 #
-# Run as root, or it re-execs under `sudo -n` (the VMs carry passwordless sudo
-# for `user`, B1008's provision_runner.sh). NOTHING here touches the gitlab-
-# runner's CI config; it only adds an fstab line, two dirs and a linger flag.
+# Run as root (or as `user` with passwordless sudo, if the VM grants it) -- a
+# CI job on the VM runs as gitlab-runner, and `sudo -n` is NOT allowed for it
+# (measured: inventory-20261029T161829Z.txt on both VMs), so the setup is a
+# one-time root action per VM (see the RULING REQUEST in the README). NOTHING
+# here touches the gitlab-runner's CI config; it only adds an fstab line,
+# two dirs and a linger flag.
 set -euo pipefail
 
 if [ "$(id -u)" != 0 ]; then
