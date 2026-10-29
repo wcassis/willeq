@@ -43,6 +43,7 @@ eqemu_sql "SELECT id, name, account_id, cur_hp, mana, endurance FROM character_d
 eqemu_sql "SELECT rule_name, rule_value FROM rule_values WHERE rule_name='Spells:UseLiveSpellProjectileGFX';" >"$OUT_LOCAL/gfx-before.tsv" 2>&1
 eqemu_sql "SELECT rule_name, rule_value FROM rule_values WHERE rule_name='Combat:MinRangedAttackDist';" >"$OUT_LOCAL/range-rule-before.tsv" 2>&1
 eqemu_sql "SELECT slot_id, item_id FROM inventory WHERE character_id=67 AND slot_id IN (11, 22);" >"$OUT_LOCAL/gear-before.tsv" 2>&1
+eqemu_sql "SELECT value FROM character_skills WHERE id=67 AND skill_id=7;" >"$OUT_LOCAL/archery-skill-before.tsv" 2>&1
 # --- pre-SQL (world up): GFX on, the caster's archery gear, observer vitals,
 # --- the poses. B zones in at its seeded pose (the world reads the DB row per
 # --- login, B1176) and A at the observer pose, heading 220 (facing B).
@@ -96,6 +97,19 @@ seed_zone_got 67
 eqemu_sql "SELECT slot_id, item_id FROM inventory WHERE character_id=67 AND slot_id IN (11, 22);" >"$OUT_LOCAL/gear-after-pre.tsv" 2>&1
 grep -q 8003 "$OUT_LOCAL/gear-after-pre.tsv" && grep -q 8005 "$OUT_LOCAL/gear-after-pre.tsv" \
   || { echo "gear not verified after pre-SQL" >&2; cat "$OUT_LOCAL/gear-after-pre.tsv" >&2; exit 65; }
+# RUN 8 (2026-10-29): the dispatch's skill gate drops the shot. OPCombatAbility
+# (special_attacks.cpp:325) does `if (!MaxSkill(m_skill) && !bypass_skill_check)
+# return;` BEFORE RangedAttack -- and char 67 has NO archery row (measured:
+# character_skills id=67 has throwing=1, no skill_id=7), so runs 5-7 produced
+# zero LogCombat and zero 0x4033 despite the client sending the correct
+# 0x5ee8 {target=263, m_atk=11, m_skill=7} (viz/combat_ability.py on run 7's
+# capture.pcap).
+# Seed archery=25; B reads it fresh on this leg's login.
+eqemu_sql "INSERT INTO character_skills (id, skill_id, value) VALUES (67, 7, 25) ON DUPLICATE KEY UPDATE value=25;" \
+  || { echo "archery seed: pre-SQL failed" >&2; exit 65; }
+ARCHERY_G=$(eqemu_sql "SELECT value FROM character_skills WHERE id=67 AND skill_id=7;")
+ARCHERY_G=${ARCHERY_G//[[:space:]]/}
+[ "$ARCHERY_G" = "25" ] || { echo "archery seed not verified: got '$ARCHERY_G'" >&2; exit 65; }
 # --- run the leg on the ThinkPad ---------------------------------------------
 ssh thinkpad "mkdir -p '$OUT_REMOTE'" || { echo "remote mkdir failed" >&2; exit 65; }
 scp -q "$LEG_DIR/fable_leg_remote.sh" "$LEG_DIR/fable_a_tour.txt" "$LEG_DIR/fable_b_tour.txt" \
@@ -125,6 +139,13 @@ if [ -n "$RR_BEFORE" ]; then
   eqemu_sql "UPDATE rule_values SET rule_value='$RR_BEFORE' WHERE rule_name='Combat:MinRangedAttackDist';" || :
 fi
 eqemu_sql "DELETE FROM inventory WHERE character_id=67 AND item_id IN (8003, 8005);" || :
+# restore the archery skill from the as-found snapshot (no row as found -> delete)
+AR_BEFORE=$(grep -E '^[0-9]+$' "$OUT_LOCAL/archery-skill-before.tsv" 2>/dev/null | head -1)
+if [ -n "$AR_BEFORE" ]; then
+  eqemu_sql "UPDATE character_skills SET value=$AR_BEFORE WHERE id=67 AND skill_id=7;" || :
+else
+  eqemu_sql "DELETE FROM character_skills WHERE id=67 AND skill_id=7;" || :
+fi
 # restore the as-found vitals (cur_hp/mana/endurance/pvp) from the snapshot
 python3 - "$OUT_LOCAL/chars-before.tsv" <<'PY' > "$OUT_LOCAL/restore.sql" 2>&1
 import sys
