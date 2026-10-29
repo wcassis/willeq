@@ -41,7 +41,7 @@ if ! eqemu_stack_ready; then
 fi
 eqemu_stack_ready || { echo "stack not ready after up.sh" >&2; exit 65; }
 # --- server state as-found (the rows this leg moves, BEFORE any change) ------
-eqemu_sql "SELECT id, name, account_id, cur_hp, mana, endurance FROM character_data WHERE id IN (67, 103) ORDER BY id;" >"$OUT_LOCAL/chars-before.tsv" 2>&1
+eqemu_sql "SELECT id, name, account_id, cur_hp, mana, endurance, pvp_status FROM character_data WHERE id IN (67, 103) ORDER BY id;" >"$OUT_LOCAL/chars-before.tsv" 2>&1
 eqemu_sql "SELECT rule_name, rule_value FROM rule_values WHERE rule_name='Spells:UseLiveSpellProjectileGFX';" >"$OUT_LOCAL/gfx-before.tsv" 2>&1
 eqemu_sql "SELECT rule_name, rule_value FROM rule_values WHERE rule_name='Combat:MinRangedAttackDist';" >"$OUT_LOCAL/range-rule-before.tsv" 2>&1
 eqemu_sql "SELECT slot_id, item_id FROM inventory WHERE character_id=67 AND slot_id IN (11, 22);" >"$OUT_LOCAL/gear-before.tsv" 2>&1
@@ -96,6 +96,17 @@ INSERT INTO inventory (character_id, slot_id, item_id, charges) VALUES (67, 11, 
   || { echo "gear pre-SQL failed" >&2; exit 65; }
 eqemu_sql "UPDATE character_data SET cur_hp=999999, mana=999999, endurance=999999 WHERE id=103 AND name='Oraclewatch';" \
   || { echo "observer vitals pre-SQL failed" >&2; exit 65; }
+# RUN 10 (2026-10-29): the ranged shot died in the dispatch BEFORE the
+# attack function -- Mob::IsAttackAllowed (aggro.cpp:838-853) client-vs-
+# client returns true ONLY when BOTH sides are PVP (or dueling): B's
+# '#set pvp on' sets B, and A (Oraclewatch) had pvp_status=0 (measured),
+# so every 0x5ee8 -- archery AND the run-10 throw -- was dropped silently
+# (zone log has the three [OP_CombatAbility] receipts and zero LogCombat).
+# The bolt worked because the GM #castspell path bypasses this gate. A
+# reads pvp_status from the DB at zone-in (zonedb.cpp), so seed it before
+# A logs in and restore it in the post-SQL.
+eqemu_sql "UPDATE character_data SET pvp_status=1 WHERE id=103 AND name='Oraclewatch';" \
+  || { echo "observer pvp pre-SQL failed" >&2; exit 65; }
 eqemu_sql "UPDATE character_data SET zone_id=$ZID, x=-67.6, y=434.4, z=3.75, heading=220 WHERE id=103 AND name='Oraclewatch';" \
   || { echo "A seed failed" >&2; exit 65; }
 eqemu_sql "UPDATE character_data SET zone_id=$ZID, x=-74, y=428, z=3.75, heading=45 WHERE id=67 AND name='Testcaster';" \
@@ -157,12 +168,15 @@ with open(sys.argv[1]) as f:
     next(f)
     for line in f:
         p = line.split()
-        if len(p) >= 6 and p[0].isdigit():
+        # id, name, account_id, cur_hp, mana, endurance, pvp_status
+        if len(p) >= 7 and p[0].isdigit():
+            rows.append(f"UPDATE character_data SET cur_hp={p[3]}, mana={p[4]}, endurance={p[5]}, pvp_status={p[6]} WHERE id={p[0]} AND name='{p[1]}';")
+        elif len(p) >= 6 and p[0].isdigit():  # pre-run-10 snapshot: no pvp column
             rows.append(f"UPDATE character_data SET cur_hp={p[3]}, mana={p[4]}, endurance={p[5]} WHERE id={p[0]} AND name='{p[1]}';")
 print("\n".join(rows))
 PY
 eqemu_sql "$(cat "$OUT_LOCAL/restore.sql")" || :
-eqemu_sql "SELECT id, name, account_id, cur_hp, mana, endurance FROM character_data WHERE id IN (67, 103) ORDER BY id;" >"$OUT_LOCAL/chars-after.tsv" 2>&1
+eqemu_sql "SELECT id, name, account_id, cur_hp, mana, endurance, pvp_status FROM character_data WHERE id IN (67, 103) ORDER BY id;" >"$OUT_LOCAL/chars-after.tsv" 2>&1
 eqemu_sql "SELECT rule_name, rule_value FROM rule_values WHERE rule_name='Spells:UseLiveSpellProjectileGFX';" >"$OUT_LOCAL/gfx-after.tsv" 2>&1
 if [[ $WE_UP == 1 ]]; then
   bash "$WT/scripts/eqemu/down.sh" >>"$OUT_LOCAL/stack-down.log" 2>&1 || :
