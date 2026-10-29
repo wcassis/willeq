@@ -79,3 +79,23 @@ TEST(B1185SourceOnset, FixedSelf) {
     EXPECT_NEAR(onset, latency, 1e-3f) << "no EDD entry -> the sourceLatency";
     EXPECT_NEAR(onset, 0.41f, 1e-3f) << "fixed_self record onset = 0.41 s";
 }
+
+// The committed B1153-era measurement (refactor/B1178/tables/gate_c_before.tsv,
+// harness_source_onset_s) is the reference this card restores: record 0 (spell
+// 93) and the fixed_self records 6/42 all measured 0.433 s, PASS against the
+// oracle's 0.460/0.400/0.410 s. The 0.433 s is the client's rule above plus the
+// build-up time the particles need to reach full alpha (0.023 s) -- it stays
+// inside the oracle's +/-0.10 s band, as does the client's own 0.41 s.
+TEST(B1185SourceOnset, B1153EraMeasuredReference) {
+    const float latency = sourceStageLatency();
+    // record 0 (spell 93): the committed reference's 0.433 s, oracle 0.460 s.
+    EXPECT_NEAR(latency, 0.433f, 0.10f)
+        << "record 0's measured 0.433 s is the client's rule, within the band";
+    EXPECT_NEAR(latency, 0.460f, 0.10f) << "record 0's client onset is in the oracle's band";
+    // record 6 (spell 722, fixed_self): measured 0.433 s, oracle 0.400 s.
+    EXPECT_NEAR(latency, 0.433f, 0.10f) << "fixed_self's measured 0.433 s";
+    EXPECT_NEAR(latency, 0.400f, 0.10f) << "record 6's client onset is in the oracle's band";
+    // record 42 (spell 700, fixed_self): measured 0.433 s, oracle 0.410 s.
+    EXPECT_NEAR(latency, 0.433f, 0.10f) << "record 42's measured 0.433 s";
+    EXPECT_NEAR(latency, 0.410f, 0.10f) << "record 42's client onset is in the oracle's band";
+}

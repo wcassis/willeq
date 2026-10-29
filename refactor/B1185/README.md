@@ -22,14 +22,20 @@ unchanged):
 
 | tree | sha | r0 (93) | r1 (200) | r7 (40) |
 |---|---|---|---|---|
-| B1153-era (pre-B1157, the committed "before") | B1153 branch | 0.433 | (36/40 in band) | -- |
+| pre-B1157 (the committed "before", B1155's sweep) | B1155 merge `68caf7b4d` | 0.433 | (36/40 in band) | -- |
 | **B1157 (the cause)** | `c39f49891` | **0.100** | **0.100** | **0.100** |
 | fable tip | `80202c81f` | 0.100 | 0.100 | 0.100 |
 
-The drop is at **B1157** (`c39f49891`, "Merge branch `task11154-cast-anim`").
-The card's stated window (`11157..80202c81f`, B1161/B1164/B1172/B1169/B1171)
-starts at `11150a34a5`, the B1153-**retire** merge, which already contains
-B1157 -- so every merge in that window is post-cause and already 0.100.
+The drop is at **B1157** (`c39f49891`, "Merge branch `task/kb-b1157-cast-anim`").
+The committed "before" is B1155's 40-record sweep (`refactor/B1155/banded_table.tsv`,
+harness column: 0.433 x33 / 0.500-0.733 x7), rendered on B1155's tree -- pre-B1157:
+the B1155 merge `68caf7b4d` (Oct 26 03:31) precedes the B1157 merge `c39f49891`
+(Oct 26 20:28) in fable's first-parent history (the intervening merges B1143/
+B1151/B1152/B1156/B1158 do not animate the caster's model). Every merge the card
+lists -- from the B1153-retire merge `1150a34a5` (Oct 26 22:02) through
+`80202c81f` -- is post-B1157 and therefore already at 0.100; the drop is at the
+first merge that contains the player's cast animation, B1157, and the rendered
+B1157 tree confirms it (0.100 on r0/r1/r7).
 
 ### The causing hunk
 
@@ -91,11 +97,12 @@ measurement.
 
 B1131's rule: "the emitters start at the oracle's onset exactly." The client
 implements it: `SpellVisualFX::createCastGlow` (`src/client/graphics/
-spell_visual_fx.cpp:627`) reads `sourceLatency = cfg.sourceStageLatency()` (the
-default row's onset, `spell_effects_config.h:196`, the median of the 40 B1130
-onsets) and each Source slot's particles start at
-`sourceLatency + timing.start` after OP_BeginCast (`spell_visual_fx.cpp:684`,
-the per-slot `sourceLatency + timing.start .. sourceLatency + timing.end` run).
+spell_visual_fx.cpp:526`) reads `sourceLatency = cfg.sourceStageLatency()`
+(`spell_visual_fx.cpp:627`; the default row's onset,
+`spell_effects_config.h:196`, the median of the 40 B1130 onsets) and each Source
+slot's particles start at `sourceLatency + timing.start` after OP_BeginCast
+(`spell_visual_fx.cpp:684`, the per-slot `sourceLatency + timing.start ..
+sourceLatency + timing.end` run).
 
 For record 0 (spell 93): `sourceLatency = 0.41 s` (the default row,
 `spell_effects_config.h:196`, the median of the 40 B1130 onsets),
