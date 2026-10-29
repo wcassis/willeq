@@ -43,13 +43,28 @@
 #   rbuild --kill <slug>     stop every running rbuild scope of that worktree
 #   rbuild --setup-host      (idempotent) install the worker-build.slice user unit
 #
+#   --host <name|auto>       select the build host (before <worktree>): a name
+#       from RBUILD_HOSTS, or `auto` = the LEAST-LOADED reachable host, probed
+#       via `cat /proc/loadavg` over ssh (15 s budget; unreachable hosts are
+#       skipped, the 1-min load of the reachable ones decides). B1194 (#513):
+#       the ThinkPad is the one saturated host; the idle gitlab-runner VMs
+#       take hygiene and non-GL targets.
+#   GL/visual targets (model_viewer, gles2_zone_benchmark, visual_gate) ALWAYS
+#       build on the ThinkPad (it keeps hardware GL and the oracle): rbuild
+#       refuses them on any other --host.
+#
 # <worktree> must be /home/user/src/willeq-wt/<slug> (or a path inside it);
 # anything else is refused. One rbuild per slug runs at a time (a second one
 # waits on a lock); different slugs run in parallel inside worker-build.slice.
 #
-# ENV (caller side): RBUILD_HOST (default user@172.16.200.205), RBUILD_JOBS
-# (default 6), RBUILD_MEM (per-scope MemoryMax, default 16G),
-# RBUILD_BUILDS_ROOT (default /home/user/willeq-builds on the build host).
+# ENV (caller side): RBUILD_HOSTS (B1194, #513): comma list of
+# `name=ssh-target[:builds-root]`; the default knows the ThinkPad and the two
+# idle gitlab-runner VMs. RBUILD_BUILDS_ROOT is the builds root used when an
+# entry names no root of its own (default /home/user/willeq-builds on the
+# build host). RBUILD_HOST: one RBUILD_HOSTS name, any entry's ssh-target, or
+# `auto` (least-loaded reachable host); default thinkpad, so existing callers
+# are unchanged. `--host <name|auto>` on the command line wins over the env.
+# RBUILD_JOBS (default 6), RBUILD_MEM (per-scope MemoryMax, default 16G).
 # RBUILD_MEM must be 1G..16G for the system slice (the sudoers form); any other
 # value uses the user-slice fallback.
 #
@@ -57,11 +72,19 @@
 
 set -uo pipefail
 
-RBUILD_HOST="${RBUILD_HOST:-user@172.16.200.205}"
+# B1194 (#513): the allowed build hosts. name=ssh-target[:builds-root]. The
+# runner VMs need the B1194 set-up first (refactor/B1194/scripts/
+# setup_rbuild_host.sh on each VM + the export on hermes-ext); until ssh
+# reaches them, `auto` skips them as unreachable and the ThinkPad wins.
+RBUILD_HOSTS="${RBUILD_HOSTS:-thinkpad=user@172.16.200.205:/home/user/willeq-builds,runner-1=user@10.0.30.81:/home/user/willeq-builds,runner-2=user@10.0.30.82:/home/user/willeq-builds}"
+RBUILD_HOST="${RBUILD_HOST:-thinkpad}"
 RBUILD_JOBS="${RBUILD_JOBS:-6}"
 RBUILD_MEM="${RBUILD_MEM:-16G}"
 RBUILD_BUILDS_ROOT="${RBUILD_BUILDS_ROOT:-/home/user/willeq-builds}"
 WT_ROOT=/home/user/src/willeq-wt
+# The ThinkPad keeps hardware GL and the oracle (docs/thinkpad.md): these
+# targets refuse any other --host.
+RBUILD_GL_TARGETS="model_viewer gles2_zone_benchmark visual_gate"
 
 die() { echo "rbuild: $*" >&2; exit 2; }
 
@@ -287,9 +310,78 @@ EOF
         for a in "$@"; do case "$a" in -j*|--parallel*) jarg=() ;; esac; done
         rb_run ctest --test-dir "$B" --output-on-failure "${jarg[@]}" "$@" ;;
     hygiene)
-        rb_run bash -c "cmake -S \"$S\" -B \"$H\" -DCMAKE_BUILD_TYPE=Release -DEQT_GRAPHICS=OFF -DEQT_BUILD_TESTS=ON >/dev/null && ctest --test-dir \"$H\" -L hygiene -j $jobs --output-on-failure" ;;
+        # B1194 (#513): timed like the build action, so the README's host
+        # comparison reads the same word on both sides.
+        local t0=$SECONDS rc
+        rb_run bash -c "cmake -S \"$S\" -B \"$H\" -DCMAKE_BUILD_TYPE=Release -DEQT_GRAPHICS=OFF -DEQT_BUILD_TESTS=ON >/dev/null && ctest --test-dir \"$H\" -L hygiene -j $jobs --output-on-failure"
+        rc=$?
+        echo "rbuild: hygiene exit $rc in $((SECONDS - t0)) s on $(hostname)" >&2
+        return $rc ;;
     *) echo "rbuild: unknown action $action" >&2; return 2 ;;
     esac
+}
+
+# ---------------------------------------------------------------------------
+# Host selection (B1194, #513): RBUILD_HOSTS parsing + least-loaded auto.
+# ---------------------------------------------------------------------------
+HOST_NAMES=(); HOST_SSH=(); HOST_ROOTS=()
+if [ -n "$RBUILD_HOSTS" ]; then
+    IFS=',' read -r -a _entries <<< "$RBUILD_HOSTS"
+    for _e in "${_entries[@]}"; do
+        _name=${_e%%=*}; _rest=${_e#*=}
+        _ssh=${_rest%%:*}; _root=${_rest#*:}
+        [ "$_root" = "$_ssh" ] && _root="$RBUILD_BUILDS_ROOT"
+        HOST_NAMES+=("$_name"); HOST_SSH+=("$_ssh"); HOST_ROOTS+=("$_root")
+    done
+else
+    # Legacy form (pre-B1194): RBUILD_HOST is the raw ssh target.
+    HOST_NAMES=(legacy); HOST_SSH=("$RBUILD_HOST"); HOST_ROOTS=("$RBUILD_BUILDS_ROOT")
+fi
+
+# resolve_host <name|ssh-target|auto>: sets RBUILD_HOST_NAME, RBUILD_SSH and
+# the per-host RBUILD_BUILDS_ROOT. `auto` probes every host in parallel with
+# `cat /proc/loadavg` (15 s budget), skips the unreachable ones, and picks the
+# smallest 1-minute load. Ties go to the earlier entry in RBUILD_HOSTS.
+resolve_host() {
+    local want=$1 i
+    if [ "$want" = "auto" ]; then
+        [ ${#HOST_NAMES[@]} -ge 1 ] || die "RBUILD_HOSTS is empty; nothing to auto-select"
+        local tmp pids=() load best=-1 bestload=""
+        tmp=$(mktemp -d)
+        for i in "${!HOST_NAMES[@]}"; do
+            ( timeout 15 ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+                  -o ConnectTimeout=8 "${HOST_SSH[$i]}" 'cut -d" " -f1 /proc/loadavg' \
+                  > "$tmp/$i" 2>/dev/null ) &
+            pids+=("$!")
+        done
+        wait "${pids[@]}"
+        for i in "${!HOST_NAMES[@]}"; do
+            load=$(tr -dc '0-9.' < "$tmp/$i" 2>/dev/null)
+            if [ -n "$load" ]; then
+                echo "rbuild: auto probe ${HOST_NAMES[$i]} (${HOST_SSH[$i]}): loadavg(1m) $load" >&2
+                if [ -z "$bestload" ] || awk "BEGIN { exit !($load < $bestload) }"; then
+                    best=$i; bestload=$load
+                fi
+            else
+                echo "rbuild: auto probe ${HOST_NAMES[$i]} (${HOST_SSH[$i]}): UNREACHABLE (skipped)" >&2
+            fi
+        done
+        rm -rf "$tmp"
+        [ $best -ge 0 ] || die "--host auto: no host in RBUILD_HOSTS is reachable"
+        echo "rbuild: auto -> ${HOST_NAMES[$best]} (least loaded, 1m $bestload)" >&2
+        RBUILD_HOST_NAME=${HOST_NAMES[$best]}; RBUILD_SSH=${HOST_SSH[$best]}
+        RBUILD_BUILDS_ROOT=${HOST_ROOTS[$best]}
+    else
+        for i in "${!HOST_NAMES[@]}"; do
+            if [ "${HOST_NAMES[$i]}" = "$want" ] || [ "${HOST_SSH[$i]}" = "$want" ]; then
+                RBUILD_HOST_NAME=${HOST_NAMES[$i]}; RBUILD_SSH=${HOST_SSH[$i]}
+                RBUILD_BUILDS_ROOT=${HOST_ROOTS[$i]}
+                return 0
+            fi
+        done
+        RBUILD_HOST_NAME=$want; RBUILD_SSH=$want
+        echo "rbuild: '$want' is not in RBUILD_HOSTS; using it as a raw ssh target" >&2
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -300,13 +392,28 @@ remote() {
     # dies the pipe closes, the remote watcher sees EOF and stops the scope.
     local q
     q=$(printf '%q ' "$@")
-    ssh -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=4 "$RBUILD_HOST" \
+    ssh -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=4 "$RBUILD_SSH" \
         "bash -c $(printf '%q' "$(declare -f rb_remote); rb_remote \"\$@\"") rbuild $q" \
         < <(while kill -0 $$ 2>/dev/null; do sleep 5; done)
 }
 
 [ $# -ge 1 ] || usage
-case "$1" in
+# --host <v> anywhere in the argument list (removed before dispatch; usually
+# first). Everything else passes through in order.
+_new=()
+while [ $# -gt 0 ]; do
+    if [ "$1" = "--host" ]; then
+        [ $# -ge 2 ] || die "--host needs a value: a RBUILD_HOSTS name, an ssh-target, or auto"
+        RBUILD_HOST=$2; shift 2
+    else
+        _new+=("$1"); shift
+    fi
+done
+set -- ${_new[@]+"${_new[@]}"}
+[ $# -ge 1 ] || usage
+resolve_host "$RBUILD_HOST"
+
+case "${1:-}" in
     -h|--help) usage ;;
     --status) remote status "$RBUILD_BUILDS_ROOT" "$RBUILD_JOBS" "$RBUILD_MEM"; exit $? ;;
     --kill) [ $# -eq 2 ] || usage; remote kill "$RBUILD_BUILDS_ROOT" "$RBUILD_JOBS" "$RBUILD_MEM" "$2"; exit $? ;;
@@ -326,4 +433,25 @@ action=build
 case "${1:-}" in
     configure|test|hygiene) action=$1; shift ;;
 esac
+
+# B1194 (#513): the ThinkPad keeps hardware GL and the oracle. A GL/visual
+# target refused on any other host (the ssh target, not just the name, counts
+# so the legacy RBUILD_HOST form keeps working).
+if [ "$action" = build ]; then
+    _gl=""
+    _a=("$@")
+    for ((i = 0; i < ${#_a[@]}; i++)); do
+        case "${_a[$i]}" in
+            --target|-t) [ $((i + 1)) -lt ${#_a[@]} ] && _gl=${_a[$((i + 1))]} ;;
+        esac
+    done
+    _thinkpad=0
+    [ "$RBUILD_HOST_NAME" = thinkpad ] || [ "$RBUILD_SSH" = "user@172.16.200.205" ] && _thinkpad=1
+    for _t in $RBUILD_GL_TARGETS; do
+        if [ "$_gl" = "$_t" ] && [ $_thinkpad = 0 ]; then
+            die "--target $_t is a GL/visual target: it builds on the ThinkPad (hardware GL + the oracle stay there). Re-run with --host thinkpad (B1194, #513)."
+        fi
+    done
+fi
+
 remote "$action" "$RBUILD_BUILDS_ROOT" "$RBUILD_JOBS" "$RBUILD_MEM" "$wt" "$slug" "$@"
