@@ -11,9 +11,10 @@ were broken:
 
 1. **exit 66** — the leg refused itself before the client step, silently, and
    reported the failure of its own cleanup (§1-§2);
-2. **the plan** — even a running leg never measured the row, because its
-   `/loot` step had no corpse target: the oracle client has no name-based
-   `/target`, and the row's mob was untargeted the moment it died (§3);
+2. **the plan** — even a running leg never measured the row: the death
+   cleared the target (`OP_TargetMouse target=0`), the F8 corrector always
+   picked a closer live NPC, and the click that was supposed to set the
+   corpse target was a coin flip (§3);
 3. **the poller arm** — the measurement channel (the `+0x251` poller) never
    survived its own start: the arm command's stale-poller kill loop matched
    the arm shell's *own* command line and killed it before the poller was
@@ -120,11 +121,11 @@ With exit 66 fixed, runs 2-8 reached the client step and completed it
 run the corpse's `+0x251` went 100→120 at death and never to 105, because
 the client's `/loot` found no corpse target.
 
-**Root cause (run 6-7 evidence, §7):** the plan's `/target TrollF`
-(step 25) targets the LIVE mob (the official client has no name-based
-corpse targeting), and the troll's death (step 26) **auto-untargets** it —
-run 7's opcodes show `OP_Death` immediately followed by `OP_TargetMouse
-target=0`. F8 (TARGETNPC) is the wrong corrector: it targets the nearest
+**Root cause (run 6-8 evidence, §7):** the plan's `/target TrollF`
+(step 25) targeted the live mob BEFORE the kill, and the troll's death
+(step 26) **auto-untargets** — run 7's opcodes show `OP_Death` immediately
+followed by `OP_TargetMouse target=0` — and the plan never re-targeted
+afterwards. F8 (TARGETNPC) is the wrong corrector: it targets the nearest
 **live** NPC in view, which in this spot is consistently zone NPC 31, not
 the corpse (runs 7 and 8 both: `OP_TargetMouse target=31`). So the corpse
 had to be targeted by a click on its screen blob — and that click is a
@@ -239,7 +240,40 @@ after the last successful SNAP, i.e. after the quit).
 
 ## 5. The measured row
 
-LOOT ROW_PLACEHOLDER
+| step | fable byte | oracle byte (+0x251) | oracle evidence (legH-run9, poll.log) |
+|---|---|---|---|
+| loot | 105 | 105 | `WR t=124.203 100 -> 105 spawn=0x0f06f100` (the looter; 0.8 s after `40_loot_open`, t=123.4) and `WR t=140.765 105 -> 100` (1.7 s after `43_npc_corpse_cleared`, t=139.0 — the corpse goes, the window closes, the byte reverts) |
+
+**The 105 is written to the LOOTER, not the corpse.** Run 9's poller tracked
+both at once: the corpse (spawn `0x22d024a0`, `TrollF\`s_corpse260`) went
+100→120 at death (`XWR t=53.347 100 -> 120`, 0.9 s after `26_kill`) and
+**held 120 through the whole loot window** (no XWR on it between t=53 and
+t=140); the local player (`0x0f06f100`, the caster) is the one that went
+100→105→100. This corrects B1183's plan-header assumption ("the oracle
+writes 105 to the CORPSE's +0x251, not the looter's" —
+`refactor/B1183/legs/legH_loot.tsv` header): the measured value is the
+value, and the decompile agrees — the 105 write site (105797) sits in
+FUN_004849b2, the same per-spawn writer that does death (105881, the 120
+run 9 measured on the corpse) and new-spawn (106109): it writes whatever
+spawn it is handed, and the loot-window event hands it the looter.
+
+Both v4 mechanisms worked (run 9 opcodes):
+
+- `31_click_a`: `OP_TargetMouse target=260` — the first sweep click hit the
+  corpse (the sweep proved redundant this run);
+- `37_retarget`: `OP_TargetCommand target=260` — **`/target TrollF` AFTER
+  the kill resolves the corpse** (the name lookup includes corpses; this is
+  the deterministic, geometry-free mechanism);
+- `40_loot_open`: `OP_LootRequest corpse_id=260` + `OP_MoneyOnCorpse` — the
+  loot window opened; `42_use_check.png` shows it ("Loot — TrollF's
+  corpse", with the Done button).
+
+Fable side (this tip, `fable_stand_state_run.txt`):
+`test_stand_state --gtest_filter=StandState.*` — 14/14 PASS,
+`StandState.Loot` = 105.
+
+**The row: 105 (oracle, lane 5) == 105 (fable) — MATCH.** It completes
+B1183's nine-step table (9/9).
 
 ## 6. Where this leaves B1183
 
@@ -263,7 +297,12 @@ BLOCKED reading for that MR's own tip.
   alive through the loot step (poll.log: XNEW/XWR/XCORPSE + SNAP to t=116,
   `fails=0`), corpse byte 100→120 at t=44.096 and NO 105 — the click missed
   (`34_corpse_click.opcodes.tsv`: no `OP_TargetMouse`), `37_loot_open` empty;
-- LOOT_ROW_EVIDENCE_PLACEHOLDER
+- `legH-run9/` — the measurement leg (plan v4 + fixed arm): `poll/poll.log`
+  (838 lines: XNEW/XWR/XCORPSE + the WR 100→105→100 lines), per-step
+  opcodes (`31_click_a`: `OP_TargetMouse target=260`; `37_retarget`:
+  `OP_TargetCommand target=260`; `40_loot_open`: `OP_LootRequest
+  corpse_id=260` + `OP_MoneyOnCorpse`), timeline (46 steps), and the stills
+  (`42_use_check.png`: the open "Loot — TrollF's corpse" window);
 - probe records (scratch): `selfmatch2.sh` X1/X2 (the Defect-1 proof),
   arm probes 2-4 (the Defect-2 proof + the fixed pattern on the ThinkPad).
 
