@@ -39,7 +39,7 @@ if ! eqemu_stack_ready; then
 fi
 eqemu_stack_ready || { echo "stack not ready after up.sh" >&2; exit 65; }
 # --- server state as-found (the rows this leg moves, BEFORE any change) ------
-eqemu_sql "SELECT id, name, account_id, cur_hp, mana, endurance, pvp FROM character_data WHERE id IN (67, 103) ORDER BY id;" >"$OUT_LOCAL/chars-before.tsv" 2>&1
+eqemu_sql "SELECT id, name, account_id, cur_hp, mana, endurance FROM character_data WHERE id IN (67, 103) ORDER BY id;" >"$OUT_LOCAL/chars-before.tsv" 2>&1
 eqemu_sql "SELECT rule_name, rule_value FROM rule_values WHERE rule_name='Spells:UseLiveSpellProjectileGFX';" >"$OUT_LOCAL/gfx-before.tsv" 2>&1
 eqemu_sql "SELECT rule_name, rule_value FROM rule_values WHERE rule_name='Combat:MinRangedAttackDist';" >"$OUT_LOCAL/range-rule-before.tsv" 2>&1
 eqemu_sql "SELECT slot_id, item_id FROM inventory WHERE character_id=67 AND slot_id IN (11, 22);" >"$OUT_LOCAL/gear-before.tsv" 2>&1
@@ -60,14 +60,16 @@ eqemu_sql "UPDATE rule_values SET rule_value='true' WHERE rule_name='Spells:UseL
 # The world is ALREADY UP when this runs, hence the reload, not a restart.
 eqemu_sql "UPDATE rule_values SET rule_value='0' WHERE rule_name='Combat:MinRangedAttackDist';" \
   || { echo "range rule pre-SQL failed" >&2; exit 65; }
-RANGE_RULE=$(eqemu_sql "SELECT rule_value FROM rule_values WHERE rule_name='Combat:MinRangedAttackDist';")
-RANGE_RULE=${RANGE_RULE//[[:space:]]/}
-[ "$RANGE_RULE" = "0" ] || { echo "MinRangedAttackDist not applied (got '$RANGE_RULE') -- name miss; the 9.05-unit shot would be refused" >&2; exit 65; }
+# The table holds the rule in TWO rows (as-found shows 2x25), so the check
+# counts non-zero rows rather than string-comparing a multi-line SELECT.
+RANGE_BAD=$(eqemu_sql "SELECT count(*) FROM rule_values WHERE rule_name='Combat:MinRangedAttackDist' AND rule_value<>'0';")
+RANGE_BAD=${RANGE_BAD//[[:space:]]/}
+[ "$RANGE_BAD" = "0" ] || { echo "MinRangedAttackDist not fully zeroed (rows still non-zero: $RANGE_BAD) -- name miss? the 9.05-unit shot would be refused" >&2; exit 65; }
 # The server's bow/arrow type checks (special_attacks.cpp:893-906) read the
 # DB itemtype: 5 = ItemTypeBow, 27 = ItemTypeArrow (B900's seed). A wrong
 # item row fails the shot server-side, so gate on it, not on the log.
-BOW_TYPE=$(eqemu_sql "SELECT itemtype FROM item WHERE id=8003;"); BOW_TYPE=${BOW_TYPE//[[:space:]]/}
-ARR_TYPE=$(eqemu_sql "SELECT itemtype FROM item WHERE id=8005;"); ARR_TYPE=${ARR_TYPE//[[:space:]]/}
+BOW_TYPE=$(eqemu_sql "SELECT itemtype FROM items WHERE id=8003;"); BOW_TYPE=${BOW_TYPE//[[:space:]]/}
+ARR_TYPE=$(eqemu_sql "SELECT itemtype FROM items WHERE id=8005;"); ARR_TYPE=${ARR_TYPE//[[:space:]]/}
 [ "$BOW_TYPE" = "5" ] || { echo "item 8003 itemtype='$BOW_TYPE' want 5 (ItemTypeBow)" >&2; exit 65; }
 [ "$ARR_TYPE" = "27" ] || { echo "item 8005 itemtype='$ARR_TYPE' want 27 (ItemTypeArrow)" >&2; exit 65; }
 eqemu_sql "DELETE FROM inventory WHERE character_id=67 AND slot_id=11;
@@ -131,12 +133,12 @@ with open(sys.argv[1]) as f:
     next(f)
     for line in f:
         p = line.split()
-        if len(p) >= 7 and p[0].isdigit():
-            rows.append(f"UPDATE character_data SET cur_hp={p[3]}, mana={p[4]}, endurance={p[5]}, pvp={p[6]} WHERE id={p[0]} AND name='{p[1]}';")
+        if len(p) >= 6 and p[0].isdigit():
+            rows.append(f"UPDATE character_data SET cur_hp={p[3]}, mana={p[4]}, endurance={p[5]} WHERE id={p[0]} AND name='{p[1]}';")
 print("\n".join(rows))
 PY
 eqemu_sql "$(cat "$OUT_LOCAL/restore.sql")" || :
-eqemu_sql "SELECT id, name, account_id, cur_hp, mana, endurance, pvp FROM character_data WHERE id IN (67, 103) ORDER BY id;" >"$OUT_LOCAL/chars-after.tsv" 2>&1
+eqemu_sql "SELECT id, name, account_id, cur_hp, mana, endurance FROM character_data WHERE id IN (67, 103) ORDER BY id;" >"$OUT_LOCAL/chars-after.tsv" 2>&1
 eqemu_sql "SELECT rule_name, rule_value FROM rule_values WHERE rule_name='Spells:UseLiveSpellProjectileGFX';" >"$OUT_LOCAL/gfx-after.tsv" 2>&1
 if [[ $WE_UP == 1 ]]; then
   bash "$WT/scripts/eqemu/down.sh" >>"$OUT_LOCAL/stack-down.log" 2>&1 || :
