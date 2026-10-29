@@ -23,7 +23,7 @@ TS=$(date -u +%Y%m%dT%H%M%SZ)
     run() {
         echo
         echo "\$ $*"
-        "$@" 2>&1
+        eval "$@" 2>&1
         echo "[exit $?]"
     }
 
