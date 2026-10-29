@@ -139,23 +139,41 @@ sees") it is **out of scope**.
   "fallback must stay good" rule is preserved. The landing already applies the
   legacy Target/Source art (section 3), so it is unchanged.
 
-## 6. Two-spell measurement on lane 5
+## 6. Two-spell measurement
 
-Testcaster (char 67) is a level-60 Warlock (`character_data`), so every slot
-passes the level gate. The two measured legacy spells, both in the 31-draw set:
+Testcaster (char 67) is a level-60 Warlock, so every slot passes the 10/24/39
+level gate. The two measured legacy spells (both in the 31-draw set) and the
+willeq-side `--spell-test` render (435 frames each, measured with
+`review/B1139/scripts/harness_measure.py`; frames in
+`/home/user/kb-evidence/kb-b1190-legacy-eff/frames/`):
 
-| spell | record | Source slots | Target slots |
-|---|---|---|---|
-| 8240 Appraisal | 5 | `[2,2,-1]` | `[1,1,2]` |
-| 8255 Enraged Shout | 31 | `[4,2,4]` | `[5,5,2]` |
+| spell | record | Source slots | Target slots | willeq src_cov | willeq src_onset | willeq land_cov |
+|---|---|---|---|---|---|---|
+| 8240 Appraisal | 5 | `[2,2,-1]` | `[1,1,2]` | 0.067 | +0.500 | 0.834 |
+| 8255 Enraged Shout | 31 | `[4,2,4]` | `[5,5,2]` | 0.529 | +0.500 | 2.409 |
 
-(the before/after onset/duration/lit-pixel ROI table and the two ledger clips
-land in `review/VISUAL-FX/B1190/` once the lane-5 observer leg is run; the
-select rule + record decode above are what the clips exercise.)
+(Record numbers are `spells.spell_affect_index` in `data/willeq.db`; the slot
+types are the record's block-0 `0x8C` ints, the `SpellsEffect` decode. Both now
+draw a Source glow -- `src_cov` > 0 -- where the pre-change client drew the T72
+generic preset: Appraisal's two `type 2` (world) Source sprites give the smaller
+coverage, Enraged Shout's three (`type 4,2,4`, two ground) the larger. The
+**oracle side** -- the official client's own onset/duration/lit-pixel ROI via the
+B1134 observer rig on lane 5 -- and the two ledger clips (`review/VISUAL-FX/
+B1190/`) are the remaining leg.)
 
 ## 7. The 47-row gate
 
 The B1184 gate is the b1130 tour of the 47 **spellsnew** records. Every one of
-those spells has a field-145 record, so `slots.fromFile` is true for all of them
-and the new legacy branch (`!slots.fromFile`) is never reached -- the gate's
-columns are byte-identical by construction (re-run to confirm).
+those spells has a field-145 record, so `slots.fromFile` is true for all of them.
+`createCastGlow` opens that path with `if (slots.fromFile) {` and ends it with
+`return 1;` (`src/client/graphics/spell_visual_fx.cpp:635` and
+`src/client/graphics/spell_visual_fx.cpp:690`); the legacy block is inserted
+AFTER that return, and the entire `spell_visual_fx.cpp` diff is that one
+pure-insertion hunk. So the legacy path is structurally unreachable for any
+spellsnew spell, and the gate's columns are byte-identical by construction.
+
+Measured to confirm: spells 93 and 656 (both in the tour, both spellsnew) render
+and measure on this tip -- 93 `land_cov 5.519` / `src_cov 0.148`, 656
+`land_cov 1.479` / `src_cov 0.335`. Those values reflect the units that landed on
+`fable` after the B1184 tip (B1185's Source onset, B1186's landing window), not
+this change, which is inert for them.

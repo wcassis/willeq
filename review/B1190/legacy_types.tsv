@@ -1,0 +1,158 @@
+spell_id	name	effect_id_1	effect_id_2	effect_id_3
+523	Tail Lashings	0	254	254
+637	Scale Storm	0	254	254
+638	Stone Explosion	0	254	254
+639	Tail Whip	0	74	254
+852	Soul Consumption	0	15	254
+888	Wrath of the Ikaav	0	21	74
+889	Delusional Visions	0	160	254
+1023	Vengeance of the Ixt	0	254	254
+1352	Hide in a can	12	254	254
+1777	Conceal Rapier	32	254	254
+1778	Unconceal Rapier	32	32	254
+1779	Conceal Rapier	32	254	254
+1780	Unconceal Rapier	32	32	254
+1781	Conceal Rapier	32	254	254
+1782	Unconceal Rapier	32	32	254
+1787	Tap Keg	32	254	254
+1956	Putrefy Flesh	35	0	79
+2322	Unfold Metal Bowl	32	254	254
+2323	Unfold Tackle Box	32	254	254
+2324	Unfold Spit	32	254	254
+2325	Unfold Sewing Kit	32	254	254
+2731	Stone Wrath	10	0	21
+3067	Unfold Toolbox	32	254	254
+3068	Unfold Jewel Bag	32	254	254
+3093	Wayfarer's Crucible	254	254	254
+3610	Unfold Fletching Kit	32	254	254
+3611	Unfold Mortar and Pestle	32	254	254
+3667	Malevolence of Mel	36	0	254
+3669	Puppet Master's Malady	36	0	254
+3787	Unfold Medicine Bag	32	254	254
+3788	Unfold Reinforced Medicine Bag	32	254	254
+3848	Tortured Memory II	0	254	254
+3960	Obliteration	0	42	254
+3963	Forceful Blow	0	21	74
+4727	Spear of Discord	0	21	254
+4728	Wave of Rage	132	79	0
+4731	Bloodhound's Revenge	59	254	254
+4740	Haste of the Tunat`Muram	11	59	254
+4749	Cloud of Attrition	127	2	35
+5051	Aura of Destruction	124	311	10
+5227	Project Illusion	202	254	254
+5228	Mass Group Buff	203	254	254
+5229	War Cry	0	254	254
+5230	War Cry	204	254	254
+5231	War Cry	204	254	254
+5232	Purge Poison	36	36	36
+5233	Rampage	205	254	254
+5234	Area Taunt	206	254	254
+5235	Shared Health	210	254	254
+5236	Shared Health	210	254	254
+5237	Shared Health	210	254	254
+5238	Shared Health	210	254	254
+5239	Shared Health	210	254	254
+5240	Destructive Force	211	254	254
+5241	Destructive Force	211	254	254
+5242	Destructive Force	211	254	254
+5243	Fading Memories	194	254	254
+5244	Escape	194	254	254
+5245	Frenzied Devastation	212	254	254
+5246	Frenzied Devastation	212	254	254
+5247	Frenzied Devastation	212	254	254
+5248	Purification	291	254	254
+5918	Imitate Death	194	74	254
+5946	Prolonged Destruction	212	254	254
+5947	Prolonged Destruction	212	254	254
+5948	Prolonged Destruction	212	254	254
+6096	Rage of the Zun`Muram	132	79	0
+6127	Pyrilen Aura	10	254	254
+6128	Gelidran Aura	10	254	254
+6248	Vengeful Scorn	114	254	254
+6249	Spiritual Blessing	130	134	137
+6252	Embalming Embrace	124	134	141
+6254	Vortix's Gift of Meditation	310	139	254
+6255	No Spell	254	254	254
+6256	Seething Frenzy	310	139	254
+6263	Coalescence of Anger	310	139	254
+6276	Primal Fusion	85	323	10
+6280	Rage of the Dragorn	114	254	254
+6281	Divine Blessing	130	134	137
+6284	Dark Blessing of Pain	124	134	141
+6286	Balance of the Tranquil	310	139	254
+6287	No Spell	254	254	254
+6288	Tempest Fury	310	139	254
+6295	Coalescence of Rage	310	139	254
+6494	Reflective Skin	158	254	254
+6592	GM Bind Sight	73	254	254
+6719	Ward of Retribution Parry	0	254	254
+6748	Ward of Vengeance Parry	0	254	254
+6904	Ward of the Divine Parry	0	254	254
+6905	Ward of Rebuke Parry	0	254	254
+7023	Aura of Crimson Mists I	10	48	159
+7024	Aura of Crimson Mists II	10	48	159
+7025	Aura of Crimson Mists III	10	48	159
+7026	Aura of Crimson Mists IV	10	48	159
+7226	Dervish Vengeance	99	79	0
+7227	Drowning Fears Doom Trigger	99	79	0
+7228	Sunlit Blaze	99	79	0
+7229	Identity Crisis	99	79	0
+7230	Place Trap	99	79	0
+7323	Antraygus' Bellow	0	27	27
+7333	Crushing Current	79	254	254
+7456	Enraging Bellow	206	254	254
+7457	Enraging Bellow	206	254	254
+7458	Enraging Bellow	206	254	254
+7459	Enraging Bellow	206	254	254
+7460	Enraging Bellow	206	254	254
+7463	Draygun's Touch	0	254	254
+7464	General's Charge	0	254	254
+7825	Mind Race	10	15	254
+7856	Empowerment of Shadows	130	134	137
+7863	Anger IV	254	254	254
+7864	Guardian Kick	254	254	254
+7865	Enchant Palladium Trio	254	254	254
+7866	Corrosive Steam Blast	254	254	254
+7867	Fiddletinks' Fortuitous Fury	254	254	254
+7868	Empowered Strengthening	254	254	254
+7869	Empowered Enfeeblement	254	254	254
+7870	Mystic Health	254	254	254
+7871	Arcane Thunder	254	254	254
+7872	Arcane Fire	254	254	254
+7873	Arcane Frost	254	254	254
+7874	Mystic Venom	254	254	254
+7875	Mystic Malady	254	254	254
+7876	Gore	254	254	254
+7877	War Stomp	254	254	254
+7878	Slaver's Lash	254	254	254
+7879	Discipline of Slaves	254	254	254
+7880	Detainment Apparatus	254	254	254
+7881	Rusty Bite	254	254	254
+7882	Clonk	254	254	254
+7883	Blinding Oil	254	254	254
+7884	Suffocating Goo	254	254	254
+7885	Steam Burst	254	254	254
+7886	Explosive Failure	254	254	254
+7887	Buzz Saw	254	254	254
+7888	Slag Bolt	254	254	254
+7889	Foundry Blast	254	254	254
+7996	Call for Blood Recourse	340	340	254
+8012	Blessing of the Dawn	340	340	254
+8020	Hail of Arrows	193	193	193
+8023	Fickle Shadows Recourse	340	340	254
+8045	Mana Weave Recourse	340	340	254
+8054	Silent Casting	130	311	254
+8055	Silent Casting	130	311	254
+8056	Silent Casting	130	311	254
+8057	Silent Casting	130	311	254
+8058	Silent Casting	130	311	254
+8075	Fickle Fire Recourse	340	340	254
+8080	Necrotic Cry	193	206	254
+8081	Darkstrike	0	254	254
+8082	Spinebreak	21	254	254
+8087	Torn Spirit	0	254	254
+8124	Cry of Battle	203	254	254
+8149	Stealthy Getaway	10	88	254
+8240	Appraisal	307	254	254
+8255	Enraged Shout	192	254	254
+8455	Anti Infantry Bomb	10	4	5
