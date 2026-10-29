@@ -48,9 +48,16 @@
 //
 // FRAME EXTRACTION. All sixteen frames of every GRID sheet are packed, in the
 // sheet's own display order (frame f at grid column f%4, row f/4 after
-// top-down conversion). A SINGLE-IMAGE sheet is packed WHOLE into its first
-// cell and its other fifteen reserved cells stay transparent, so every
-// sprite keeps the same sixteen-cell slot and no ordinal or cell moves. T409's "one repeated frame" is refuted; T420 re-took
+// top-down conversion). B1188 (#507) moved the cell layout to a GRID OF 4x4
+// CELL BLOCKS (one 16-cell block, 128x128 px, per sprite, tiling the sheet
+// as an 8x8 grid of blocks) so that a SINGLE-IMAGE sheet can be stored NATIVE
+// at its own resolution inside its own block -- a 64x64 picture in the
+// top-left 2x2 sub-block, the 256x256 one 2:1 (128x128) in the whole block --
+// instead of box-reduced into a single 32x32 cell. The 2:1 box into one cell
+// kept a QUARTER of the picture's additive mass (cell alpha = the mean of
+// four texels, drawn at the same size the client draws its native texture),
+// which is the b1130 landing pixel gap, measured 0.53x. Every sprite keeps
+// the same sixteen-cell reservation, so no ordinal moves. T409's "one repeated frame" is refuted; T420 re-took
 // the census by sha1 over all sixteen frames of all 33 files and found 8 to 16
 // DISTINCT frames each (true of the 26 grids; the seven single images'
 // "frames" differ only because they are different parts of one picture),
@@ -167,6 +174,42 @@ constexpr uint8_t kSheetFrames[] = {
 static_assert(sizeof(kSheetFrames) / sizeof(kSheetFrames[0]) == kFileCount,
               "kSheetFrames must name a frame count for every file in kFiles");
 
+// B1188 (#507): the STORED frame edge in pixels for each file -- how wide one
+// frame of the sprite is when it sits in the sheet:
+//   32  a grid frame (a 64 px frame box-reduces 2:1, a 32 px frame copies;
+//       grids stay 32 px because sixteen native 64 px frames would need 64
+//       cells a sprite and the 1024-cell sheet holds 16 for 60 sprites);
+//   64  a single 64x64 image, stored 1:1 in a 2x2 sub-block of cells, and the
+//       2x2 sheets' 64 px frames, stored 1:1 in 2x2 sub-blocks;
+//   128 the 256x256 single image (glowflare02), 2:1 in the whole 128x128
+//       block (the client draws it at 256; 1:1 needs 64 cells, four blocks).
+// Measured, not assumed: /home/user/kb-evidence/kb-b1188-landing-pixels/
+// scripts/file_sizes2.py and tga_sizes.py over the shipped client tree
+// (every single image is 64x64 except glowflare02.tga at 256x256; both 2x2
+// sheets are 128x128 of 64 px frames; spely2.tga and spelyb.png are 256x256
+// 16-FRAME GRIDS, stored 32 like every grid). The builder re-checks every
+// file's real size against this table and refuses (exit 1) a mismatch, as it
+// already does for kSheetFrames. Parallel to kFiles.
+constexpr int kStoredFramePx[] = {
+    64, 64, 64,  64,  // flare_blsp50a flare_whsp50a gena20 gena30
+    64, 64, 128, 32,  // genab1 genb20 glowflare02 gob
+    32, 32, 32,  32,  // spela1 spela2 spelaa spelab
+    32, 32, 32,  32,  // spelan spelb2 spelba spelbb
+    32, 64, 64,  32,  // spelc2 spelc3 spelc4 spelcb
+    64, 64, 64,  32,  // spelcc spelce spelcf spelcm
+    32, 64, 64,  64,  // speld2 speld4 speldc speldd
+    32, 32, 32,  32,  // spele1 spelg1 speli1 spelj1
+    32, 32, 32,  32,  // spelj2 spelja speljb spelk2
+    32, 32, 32,  32,  // spelkb spell1 spella spelma
+    32, 32, 32,  32,  // speln1 spelna speloa spelpa
+    32, 32, 32,  32,  // spelqa spelr1 spelr2 spelra
+    32, 32, 32,  32,  // spelu2 spelua spelub spelw1
+    32, 32, 64,  64,  // spelx1 spely2 spely3 spely4
+    32, 64, 64,  64,  // spelyb spelyc spelyd spelye
+};
+static_assert(sizeof(kStoredFramePx) / sizeof(kStoredFramePx[0]) == kFileCount,
+              "kStoredFramePx must name a stored frame size for every file");
+
 // Frames sprite `sprite` carries: 16 for a 4x4 grid, 4 for a 2x2 grid, 1 for
 // a single image. Out of range is 1, which draws the slot's first cell and nothing else.
 inline int framesFor(int sprite) {
@@ -174,17 +217,29 @@ inline int framesFor(int sprite) {
     return kSheetFrames[sprite];
 }
 
-// Cells RESERVED: sixteen per sprite, packed back to back from cell 0 (a
-// single image fills only the first of its sixteen). Cells from here to
-// kCapacity are unused and transparent.
-constexpr int kUsedCells = kFileCount * kFramesPerSprite;  // 960
+// B1188: THE CELL LAYOUT IS AN 8x8 GRID OF 4x4 CELL BLOCKS. Each sprite owns
+// one 16-cell block (128x128 px); the 60 sprites tile 60 of the 64 blocks
+// (block column sprite%8, row sprite/8), the last four blocks unused. A
+// frame's cells are its stored-frame sub-block inside the block (kStored-
+// FramePx / kCellSize cells on a side), so a sprite's animation reads left to
+// right, top to bottom, exactly like its source sheet does.
+constexpr int kBlockCols = 8;
+constexpr int kBlockCells = kSheetGrid * kSheetGrid;  // 16 cells = 128x128 px
+static_assert(kColumns % kSheetGrid == 0, "a sprite block must sit whole in a row");
+static_assert(kBlockCols * kSheetGrid == kColumns, "the blocks must tile the sheet exactly");
+static_assert(kRows % kSheetGrid == 0 &&
+                  (kRows / kSheetGrid) * kBlockCols >= kFileCount,
+              "the blocks must tile the sheet exactly (rows)");
+
+// Cells RESERVED: one 4x4 block per sprite (60 x 16 = 960 of the 1024; the
+// reserved cells of a native single image past its sub-block stay
+// transparent).
+constexpr int kUsedCells = kFileCount * kBlockCells;  // 960
 
 static_assert(kUsedCells <= kCapacity,
               "spell sprite atlas has more frames than cells");
 static_assert(kBase + kFileCount <= 256,
               "a sprite ordinal must fit in the uint8_t textureRegions[]");
-static_assert(kColumns % kFramesPerSprite == 0,
-              "a sprite's animation must not straddle a row boundary");
 
 // Sprite ordinal for a sprite file basename (any case), or -1 if this sheet
 // does not carry it. Linear over 60 entries, called once per name at
@@ -205,11 +260,37 @@ inline int slotForFile(const char* file) {
     return -1;
 }
 
-// The cell holding frame `frame` of sprite `sprite`. Each sprite's sixteen
-// frames are contiguous, so two sprites share a 32-cell row and a sprite's
-// animation reads left to right in a contact sheet.
+// The top-left CELL of sprite `sprite`'s 4x4 block (B1188). The 60 sprites
+// tile an 8x8 grid of blocks: block column sprite%kBlockCols, row
+// sprite/kBlockCols, four cells on a side.
+inline int blockBase(int sprite) {
+    if (sprite < 0 || sprite >= kFileCount) return 0;
+    return (sprite % kBlockCols) * kSheetGrid + kColumns * (sprite / kBlockCols);
+}
+
+// The stored frame edge in pixels (kStoredFramePx; kCellSize out of range).
+inline int storedFramePx(int sprite) {
+    if (sprite < 0 || sprite >= kFileCount) return kCellSize;
+    return kStoredFramePx[sprite];
+}
+
+// How many CELLS one side of the stored frame spans (1, 2 or 4): the draw's
+// UV region for the sprite, in cells.
+inline int storedSpan(int sprite) { return storedFramePx(sprite) / kCellSize; }
+
+// The cell holding frame `frame` of sprite `sprite`: the frame's stored-frame
+// sub-block inside the sprite's block. A 4x4 grid of 32 px frames fills the
+// block row-major (frame f at column f%4, row f/4 -- the source sheet's own
+// display order, as before B1188); a 2x2 sheet of 64 px frames fills it with
+// four 2x2 sub-blocks; a single image holds its sub-block (top-left of the
+// block) for its whole life.
 inline int cellFor(int sprite, int frame) {
-    return sprite * kFramesPerSprite + frame;
+    const int span = storedSpan(sprite);
+    const int frames = framesFor(sprite);
+    const int cols = frames == kFramesPerSprite ? kSheetGrid
+                   : frames == kTwoByTwo ? 2 : 1;
+    const int f = frame < 0 ? 0 : frame >= frames ? frames - 1 : frame;
+    return blockBase(sprite) + (f % cols) * span + kColumns * (f / cols) * span;
 }
 
 // Top-left pixel of a CELL (not of a sprite).

@@ -1,25 +1,26 @@
 /*
- * T417 (board B300) / T420 (board B355) -- the shipped spell sprite atlas is
- * the official client's own art, cell for cell, ALL SIXTEEN FRAMES of it.
+ * T417 (board B300) / T420 (board B355) / B1124 (#444) / B1127 /
+ * B1188 (#507) -- the shipped spell sprite atlas is the official client's
+ * own art, frame for frame.
  *
  * T417 shipped one still frame per sprite (the peak-alpha frame). T420 ships
- * the whole animation: 33 sprites x 16 reserved cells = 528 of the 1024, in
- * the source sheet's own display order, so a particle can walk them over its
- * lifetime. The assertion below is correspondingly stronger and simpler --
- * there is no frame-selection rule left to re-derive, every cell must equal
- * its frame.
- *
- * B1124 (#444, B1118 M8): seven of the 33 files are not grids but ONE 64x64
- * picture each (spelc3, spelc4, ...). Those are packed WHOLE into their
- * sprite's first cell and the other fifteen stay transparent; the census that
- * says which is re-derived here from the TGAs, independently of the builder.
+ * the whole animation. B1124 found seven files that are ONE 64x64 picture,
+ * not a grid. B1188 (#507) is the pixel-side fix: the client draws its
+ * 64x64 textures NATIVE, while fable's 2:1 box into one 32x32 cell
+ * quartered their alpha and lit area (peak alpha 255 -> 107 on record 80's
+ * pillar, measured 0.53x of the oracle on the b1130 landing gate). The sheet
+ * is now an 8x8 grid of 4x4 CELL BLOCKS, one block per sprite, and every
+ * picture the block can hold natively is stored 1:1 -- a 64x64 single image
+ * in a 2x2 sub-block, a 2x2 sheet's 64 px frames in 2x2 sub-blocks,
+ * glowflare02 2:1 in the whole block -- so the assertions below check
+ * every frame against its STORED frame region, byte for byte, and assert the
+ * 1:1 rule wherever the block allows it.
  *
  * Will ruled 2026-09-06: draw the REAL sprites, "as close to the original as
  * possible". This asserts the shipped BMP against its inputs directly --
- * `data/textures/spell_sprite_atlas.bmp` versus
- * `SpellEffects/spel*.tga` -- so a builder change that silently altered a
- * cell, or a hand-edited BMP, is a failure rather than a subtly wrong sprite
- * nobody notices.
+ * `data/textures/spell_sprite_atlas.bmp` versus `SpellEffects/spel*.tga` --
+ * so a builder change that silently altered a frame, or a hand-edited BMP,
+ * is a failure rather than a subtly wrong sprite nobody notices.
  *
  * Reads files only: the BMP and the TGAs. No device, no GPU, no renderer.
  * The TGA decode is the same header-only `tools/tga_reader.h` the builder
@@ -33,17 +34,18 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
-#include <algorithm>
 #include <fstream>
 #include <string>
 #include <vector>
 
-#include "client/graphics/environment/particle_types.h"
-#include "client/graphics/environment/spell_sprite_atlas.h"
 #include <dirent.h>
 #include <strings.h>
+
+#include "client/graphics/environment/particle_types.h"
+#include "client/graphics/environment/spell_sprite_atlas.h"
 
 #include "sprite_image_reader.h"
 #include "tga_reader.h"
@@ -118,39 +120,51 @@ Bitmap loadBmp(const std::string& path) {
     return bmp;
 }
 
+// B1127: the client is Windows -- spellsnew.edd's glowflare02.tga is
+// Glowflare02.tga on disk. Resolve the case-insensitively.
+std::string sourcePath(const char* file) {
+    DIR* d = opendir(kSourceDir);
+    if (!d) return std::string(kSourceDir) + "/" + file;
+    std::string hit = std::string(kSourceDir) + "/" + file;
+    while (dirent* e = readdir(d)) {
+        if (strcasecmp(e->d_name, file) == 0) hit = std::string(kSourceDir) + "/" + e->d_name;
+    }
+    closedir(d);
+    return hit;
+}
+
 bool sourcesAvailable() {
-    std::ifstream f(std::string(kSourceDir) + "/" + SpellSpriteAtlas::kFiles[0],
-                    std::ios::binary);
+    std::ifstream f(sourcePath(SpellSpriteAtlas::kFiles[0]), std::ios::binary);
     return f.good();
 }
 
 // The builder's resampling rule, re-derived here rather than shared, so the
 // test asserts against the SOURCE and not against the builder's own code.
-// `src` is the top-left texel of the frame inside `img`; the result is one
-// kCellSize x kCellSize RGBA cell.
+// `src` points at the frame's first texel inside `img` (row stride `stride`
+// texels); the result is one storedPx x storedPx RGBA stored frame.
 //
 // Magnify (or copy) by nearest neighbour; reduce by an ALPHA-WEIGHTED box
 // average, because a transparent texel's RGB in these files is arbitrary and
-// the additive blend samples RGB directly.
-std::vector<uint8_t> expectedCell(const uint8_t* src, int stride, int frameSize) {
-    const int cs = SpellSpriteAtlas::kCellSize;
-    std::vector<uint8_t> out(static_cast<size_t>(cs) * cs * 4, 0);
+// the additive blend samples RGB directly (B1188's comment, same rule).
+std::vector<uint8_t> expectedFrame(const uint8_t* src, int stride,
+                                   int frameSize, int storedPx) {
+    std::vector<uint8_t> out(static_cast<size_t>(storedPx) * storedPx * 4, 0);
 
-    if (frameSize <= cs) {
-        const int scale = cs / frameSize;
-        for (int y = 0; y < cs; ++y) {
-            for (int x = 0; x < cs; ++x) {
+    if (frameSize <= storedPx) {
+        const int scale = storedPx / frameSize;
+        for (int y = 0; y < storedPx; ++y) {
+            for (int x = 0; x < storedPx; ++x) {
                 const size_t s =
                     (static_cast<size_t>(y / scale) * stride + (x / scale)) * 4;
-                std::memcpy(&out[(static_cast<size_t>(y) * cs + x) * 4], &src[s], 4);
+                std::memcpy(&out[(static_cast<size_t>(y) * storedPx + x) * 4], &src[s], 4);
             }
         }
         return out;
     }
 
-    const int factor = frameSize / cs;
-    for (int y = 0; y < cs; ++y) {
-        for (int x = 0; x < cs; ++x) {
+    const int factor = frameSize / storedPx;
+    for (int y = 0; y < storedPx; ++y) {
+        for (int x = 0; x < storedPx; ++x) {
             uint32_t sumA = 0, sumR = 0, sumG = 0, sumB = 0;
             for (int by = 0; by < factor; ++by) {
                 for (int bx = 0; bx < factor; ++bx) {
@@ -164,57 +178,25 @@ std::vector<uint8_t> expectedCell(const uint8_t* src, int stride, int frameSize)
                     sumB += static_cast<uint32_t>(src[s + 2]) * a;
                 }
             }
-            uint8_t* d = &out[(static_cast<size_t>(y) * cs + x) * 4];
+            uint8_t* dst = &out[(static_cast<size_t>(y) * storedPx + x) * 4];
             if (sumA != 0) {
                 const uint32_t texels = static_cast<uint32_t>(factor) * factor;
-                d[0] = static_cast<uint8_t>(sumR / sumA);
-                d[1] = static_cast<uint8_t>(sumG / sumA);
-                d[2] = static_cast<uint8_t>(sumB / sumA);
-                d[3] = static_cast<uint8_t>(sumA / texels);
+                dst[0] = static_cast<uint8_t>(sumR / sumA);
+                dst[1] = static_cast<uint8_t>(sumG / sumA);
+                dst[2] = static_cast<uint8_t>(sumB / sumA);
+                dst[3] = static_cast<uint8_t>(sumA / texels);
             }
         }
     }
     return out;
 }
 
-// Total alpha of one cell of the shipped sheet.
-uint64_t cellAlpha(const Bitmap& bmp, int cell) {
-    int ox = 0, oy = 0;
-    SpellSpriteAtlas::cellOrigin(cell, ox, oy);
-    uint64_t total = 0;
-    for (int y = 0; y < SpellSpriteAtlas::kCellSize; ++y) {
-        for (int x = 0; x < SpellSpriteAtlas::kCellSize; ++x) {
-            total += bmp.at(ox + x, oy + y)[3];
-        }
-    }
-    return total;
-}
-
 // B1124's census, re-derived from the source rather than shared with the
 // builder: additive mass (max(R,G,B) * alpha) inside a band of cell/8 texels
-// either side of the 4x4 sheet's internal seams, as a share of the total,
-// over the band's share of the area. A grid pads each frame inside its own
-// cell (near 0); one centred picture lies across the seams (above 1).
-// B1127: the client is Windows -- spellsnew.edd's glowflare02.tga is
-// Glowflare02.tga on disk.
-std::string sourcePath(const char* file) {
-    std::string hit = std::string(kSourceDir) + "/" + file;
-    if (DIR* d = opendir(kSourceDir)) {
-        while (dirent* e = readdir(d)) {
-            if (strcasecmp(e->d_name, file) == 0) hit = std::string(kSourceDir) + "/" + e->d_name;
-        }
-        closedir(d);
-    }
-    return hit;
-}
-
-// B1127: 16 frames = 4x4 grid, 4 = 2x2 grid, 1 = one picture.
-int gridFor(int frames) {
-    return frames == SpellSpriteAtlas::kFramesPerSprite ? SpellSpriteAtlas::kSheetGrid
-         : frames == SpellSpriteAtlas::kTwoByTwo ? 2 : 1;
-}
-
-double seamRatio(const EQT::ToolTGA::Image& img, int grid = SpellSpriteAtlas::kSheetGrid) {
+// either side of the sheet's internal seams, as a share of the total, over
+// the band's share of the area. A grid pads each frame inside its own cell
+// (near 0); one centred picture lies across the seams (above 1).
+double seamRatio(const EQT::ToolTGA::Image& img, int grid) {
     const int cell = img.width / grid;
     const int band = std::max(1, cell / 8);
     auto inBand = [&](int v) {
@@ -239,6 +221,31 @@ double seamRatio(const EQT::ToolTGA::Image& img, int grid = SpellSpriteAtlas::kS
     return (seam / total) / (seamArea / (static_cast<double>(img.width) * img.height));
 }
 
+// B1188: a sprite's frame geometry inside its 4x4 CELL block. Frames tile the
+// block row-major in the source sheet's own display order; a frame occupies
+// storedSpan cells per side. `cols` is the frame columns per block row.
+int frameColsFor(int frames) {
+    if (frames == SpellSpriteAtlas::kFramesPerSprite) return SpellSpriteAtlas::kSheetGrid;
+    if (frames == SpellSpriteAtlas::kTwoByTwo) return 2;
+    return 1;
+}
+int frameGridFor(int frames) {
+    if (frames == SpellSpriteAtlas::kFramesPerSprite) return SpellSpriteAtlas::kSheetGrid;
+    if (frames == SpellSpriteAtlas::kTwoByTwo) return 2;
+    return 1;
+}
+
+// Total alpha of one stored frame of the shipped sheet.
+uint64_t frameAlpha(const Bitmap& bmp, int sprite, int frame) {
+    int ox = 0, oy = 0;
+    SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::cellFor(sprite, frame), ox, oy);
+    const int px = SpellSpriteAtlas::storedFramePx(sprite);
+    uint64_t total = 0;
+    for (int y = 0; y < px; ++y)
+        for (int x = 0; x < px; ++x) total += bmp.at(ox + x, oy + y)[3];
+    return total;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -258,54 +265,64 @@ TEST(SpellSpriteAtlasFile, EverySpriteHasVisibleFramesAndReachesAPeak) {
     // T417's failure mode was a sheet of STILLS where seven were blank,
     // because it took frame 0 and these are fade-ins. With the whole
     // animation shipped a blank frame 0 is CORRECT -- so the assertion moves
-    // up a level: every sprite must have visible frames, and its peak frame
-    // must be substantially brighter than its first, which is what says the
-    // sixteen cells hold a cycle rather than sixteen copies of nothing.
+    // up a level: every sprite must have visible frames, and if it is an
+    // animation more than one of its frames must carry alpha.
     const Bitmap bmp = loadBmp(atlasPath());
     ASSERT_TRUE(bmp.ok);
 
     for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
+        const int frames = SpellSpriteAtlas::framesFor(sprite);
         uint64_t peak = 0;
         int visibleFrames = 0;
-        const int frames = SpellSpriteAtlas::framesFor(sprite);
         for (int f = 0; f < frames; ++f) {
-            const uint64_t a = cellAlpha(bmp, SpellSpriteAtlas::cellFor(sprite, f));
+            const uint64_t a = frameAlpha(bmp, sprite, f);
             if (a > 0) ++visibleFrames;
             if (a > peak) peak = a;
         }
         EXPECT_GT(peak, 0u) << SpellSpriteAtlas::kFiles[sprite]
-                            << ": every one of its cells is transparent";
+                            << ": every one of its frames is transparent";
         if (frames > 1) {
             EXPECT_GT(visibleFrames, 1) << SpellSpriteAtlas::kFiles[sprite]
-                                        << ": only " << visibleFrames
-                                        << " of sixteen frames carry any alpha";
+                                        << ": only " << visibleFrames << " of " << frames
+                                        << " frames carry any alpha";
         }
     }
 }
 
-TEST(SpellSpriteAtlasFile, TheSingleImageSheetsArePackedWholeInTheirFirstCell) {
-    // B1124 (#444). T420 asserted these six files' frame 0 was BLANK -- it
-    // was: frame 0 was the empty top-left corner of ONE centred picture, and
-    // the sheet drew 16x16 fragments of the star as "frames". The picture now
-    // occupies the first cell whole, lit nearly as much as the brightest
-    // grid frames, and the fifteen cells after it are transparent. RED on the
-    // pre-B1124 sheet (frame 0 alpha 0, fragments in cells 1..15).
+TEST(SpellSpriteAtlasFile, TheSingleImageSheetsArePackedWholeInTheirFirstFrame) {
+    // B1124 (#444). T420 asserted these files' frame 0 was BLANK -- it was:
+    // frame 0 was the empty top-left corner of ONE centred picture, and the
+    // sheet drew 16x16 fragments of the star as "frames". B1188: the picture
+    // now occupies its stored-frame region whole (a 64x64 picture in its 2x2
+    // sub-block, byte-identical to the source -- pinned by
+    // NativePicturesAreStoredOneToOneNotBoxed), and the RESERVED cells of its
+    // block -- the block cells no frame owns -- are transparent.
     const Bitmap bmp = loadBmp(atlasPath());
     ASSERT_TRUE(bmp.ok);
 
-    // B1127: every single image the sheet now carries (spelb3/spelb4 left it:
-    // no spell without a field-145 record reaches them).
     int singles = 0;
     for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
         if (SpellSpriteAtlas::framesFor(sprite) != SpellSpriteAtlas::kSingleImage) continue;
         ++singles;
         const char* file = SpellSpriteAtlas::kFiles[sprite];
-        EXPECT_GT(cellAlpha(bmp, SpellSpriteAtlas::cellFor(sprite, 0)), 0u)
-            << file << ": the whole picture is not in the first cell";
-        for (int f = 1; f < SpellSpriteAtlas::kFramesPerSprite; ++f) {
-            EXPECT_EQ(cellAlpha(bmp, SpellSpriteAtlas::cellFor(sprite, f)), 0u)
-                << file << " reserved cell " << f
-                << " carries texels -- a fragment of the picture is still packed";
+        EXPECT_GT(frameAlpha(bmp, sprite, 0), 0u)
+            << file << ": the whole picture is not in its stored frame";
+        // Every block cell not owned by a frame is fully transparent.
+        int bx = 0, by = 0;
+        SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::blockBase(sprite), bx, by);
+        const int span = SpellSpriteAtlas::storedSpan(sprite);
+        for (int dy = 0; dy < SpellSpriteAtlas::kSheetGrid; ++dy) {
+            for (int dx = 0; dx < SpellSpriteAtlas::kSheetGrid; ++dx) {
+                if (dx < span && dy < span) continue;  // the one frame, top-left
+                uint64_t a = 0;
+                for (int y = 0; y < SpellSpriteAtlas::kCellSize; ++y)
+                    for (int x = 0; x < SpellSpriteAtlas::kCellSize; ++x)
+                        a += bmp.at(bx + dx * SpellSpriteAtlas::kCellSize + x,
+                                    by + dy * SpellSpriteAtlas::kCellSize + y)[3];
+                EXPECT_EQ(a, 0u) << file << " reserved block cell (" << dx << ","
+                                 << dy << ") carries texels -- a fragment of the "
+                                    "picture is still packed";
+            }
         }
     }
     EXPECT_EQ(singles, 18);
@@ -317,10 +334,11 @@ TEST(SpellSpriteAtlasFile, TheSingleImageSheetsArePackedWholeInTheirFirstCell) {
     }
 }
 
-TEST(SpellSpriteAtlasFile, TheCentreOfASingleImageIsTheCentreOfItsCell) {
+TEST(SpellSpriteAtlasFile, TheCentreOfASingleImageIsTheCentreOfItsStoredFrame) {
     // The positive form of "packed whole": spelc3's star is centred on its
-    // sheet, so its alpha-weighted centroid must sit at the CELL centre
-    // (16,16), not in a corner as every 16x16 fragment's did.
+    // sheet, so its alpha-weighted centroid must sit at the STORED-FRAME
+    // centre (32,32 of the 64x64 sub-block), not in a corner as every 16x16
+    // fragment's did.
     const Bitmap bmp = loadBmp(atlasPath());
     ASSERT_TRUE(bmp.ok);
     for (const char* file : {"spelc3.tga", "spelc4.tga"}) {
@@ -328,23 +346,24 @@ TEST(SpellSpriteAtlasFile, TheCentreOfASingleImageIsTheCentreOfItsCell) {
         ASSERT_GE(sprite, 0);
         int ox = 0, oy = 0;
         SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::cellFor(sprite, 0), ox, oy);
+        const int px = SpellSpriteAtlas::storedFramePx(sprite);
         double m = 0, mx = 0, my = 0;
-        for (int y = 0; y < SpellSpriteAtlas::kCellSize; ++y) {
-            for (int x = 0; x < SpellSpriteAtlas::kCellSize; ++x) {
+        for (int y = 0; y < px; ++y) {
+            for (int x = 0; x < px; ++x) {
                 const double a = bmp.at(ox + x, oy + y)[3];
                 m += a;
                 mx += a * (x + 0.5);
                 my += a * (y + 0.5);
             }
         }
-        ASSERT_GT(m, 0.0) << file << ": first cell is empty";
-        EXPECT_NEAR(mx / m, SpellSpriteAtlas::kCellSize / 2.0, 2.0) << file;
-        EXPECT_NEAR(my / m, SpellSpriteAtlas::kCellSize / 2.0, 2.0) << file;
+        ASSERT_GT(m, 0.0) << file << ": stored frame is empty";
+        EXPECT_NEAR(mx / m, px / 2.0, 2.0) << file;
+        EXPECT_NEAR(my / m, px / 2.0, 2.0) << file;
     }
 }
 
 TEST(SpellSpriteAtlasFile, TheGridOrSingleCensusMatchesTheHeader) {
-    // B1124's census over the 33 shipped files, re-measured from the TGAs.
+    // B1124's census over the shipped files, re-measured from the TGAs.
     // The measured gap is wide (grids <= 0.30, single images >= 1.33), so the
     // 1.0 split is not a tuned threshold. Also pins the dimension rule the
     // census found across all 67 spel*.tga: every 64x64 file is one picture.
@@ -359,7 +378,8 @@ TEST(SpellSpriteAtlasFile, TheGridOrSingleCensusMatchesTheHeader) {
         ASSERT_TRUE(EQT::ToolSprite::load(src, img, error)) << error;
         // B1127: a declared 2x2 sheet is measured on its own 2x2 seams.
         const int frames = SpellSpriteAtlas::framesFor(sprite);
-        const double r = seamRatio(img, frames == SpellSpriteAtlas::kTwoByTwo ? 2 : SpellSpriteAtlas::kSheetGrid);
+        const double r = seamRatio(img, frames == SpellSpriteAtlas::kTwoByTwo ? 2
+                                                                             : SpellSpriteAtlas::kSheetGrid);
         const bool single = r >= 1.0;
         if (single) ++singles;
         EXPECT_EQ(frames == SpellSpriteAtlas::kSingleImage, single)
@@ -380,18 +400,20 @@ TEST(SpellSpriteAtlasFile, TheGridOrSingleCensusMatchesTheHeader) {
     EXPECT_EQ(singles, 18);
 }
 
-TEST(SpellSpriteAtlasFile, UnusedCellsAreFullyTransparent) {
+TEST(SpellSpriteAtlasFile, TheUnusedBlocksAreFullyTransparent) {
+    // B1188: the 60 sprites fill 60 of the 64 blocks; blocks 60..63 (the
+    // sheet's last row of blocks) are unused and must be all-zero.
     const Bitmap bmp = loadBmp(atlasPath());
     ASSERT_TRUE(bmp.ok);
 
-    for (int slot = SpellSpriteAtlas::kUsedCells; slot < SpellSpriteAtlas::kCapacity;
-         ++slot) {
-        int ox = 0, oy = 0;
-        SpellSpriteAtlas::cellOrigin(slot, ox, oy);
-        for (int y = 0; y < SpellSpriteAtlas::kCellSize; ++y) {
-            for (int x = 0; x < SpellSpriteAtlas::kCellSize; ++x) {
-                ASSERT_EQ(bmp.at(ox + x, oy + y)[3], 0)
-                    << "unused cell " << slot << " has a texel at (" << x << "," << y << ")";
+    for (int slot = SpellSpriteAtlas::kFileCount; slot < 64; ++slot) {
+        int bx = 0, by = 0;
+        SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::blockBase(slot), bx, by);
+        for (int y = 0; y < 4 * SpellSpriteAtlas::kCellSize; ++y) {
+            for (int x = 0; x < 4 * SpellSpriteAtlas::kCellSize; ++x) {
+                ASSERT_EQ(bmp.at(bx + x, by + y)[3], 0)
+                    << "unused block " << slot << " has a texel at (" << x << ","
+                    << y << ")";
             }
         }
     }
@@ -415,10 +437,10 @@ TEST(SpellSpriteAtlasFile, TheSheetCarriesARealAlphaChannel) {
 }
 
 // ---------------------------------------------------------------------------
-// Every cell equals its source FRAME -- all 528 of them.
+// Every BLOCK equals its source frames -- the 128x128 region, byte for byte.
 // ---------------------------------------------------------------------------
 
-TEST(SpellSpriteAtlasFile, EveryCellEqualsItsSourceFrame) {
+TEST(SpellSpriteAtlasFile, EveryBlockEqualsItsSourceFrames) {
     if (!sourcesAvailable()) {
         GTEST_SKIP() << "EQ client tree not mounted at " << kSourceDir;
     }
@@ -435,32 +457,29 @@ TEST(SpellSpriteAtlasFile, EveryCellEqualsItsSourceFrame) {
         ASSERT_EQ(img.width, img.height) << src;
         ASSERT_EQ(img.width % SpellSpriteAtlas::kSheetGrid, 0) << src;
 
-        // B1124: a single image is ONE frame, the whole sheet; the other
-        // reserved cells must be all-zero. B1127: a 2x2 sheet is four.
         const int frames = SpellSpriteAtlas::framesFor(sprite);
-        const int grid = gridFor(frames);
+        const int grid = frameGridFor(frames);
+        const int cols = frameColsFor(frames);
         const int frameSize = img.width / grid;
+        const int storedPx = SpellSpriteAtlas::storedFramePx(sprite);
+        const int span = SpellSpriteAtlas::storedSpan(sprite);
 
-        for (int f = 0; f < SpellSpriteAtlas::kFramesPerSprite; ++f) {
-            const int fx = (f % grid) * frameSize;
-            const int fy = (f / grid) * frameSize;
-            const std::vector<uint8_t> want =
-                f < frames
-                    ? expectedCell(
-                          img.rgba.data() + (static_cast<size_t>(fy) * img.width + fx) * 4,
-                          img.width, frameSize)
-                    : std::vector<uint8_t>(static_cast<size_t>(SpellSpriteAtlas::kCellSize) *
-                                               SpellSpriteAtlas::kCellSize * 4,
-                                           0);
+        int bx = 0, by = 0;
+        SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::blockBase(sprite), bx, by);
 
+        for (int f = 0; f < frames; ++f) {
+            const int fx = (f % cols) * frameSize;
+            const int fy = (f / cols) * frameSize;
+            const std::vector<uint8_t> frame = expectedFrame(
+                img.rgba.data() + (static_cast<size_t>(fy) * img.width + fx) * 4,
+                img.width, frameSize, storedPx);
+            // The frame's stored region, through the header's own cellFor.
             int ox = 0, oy = 0;
             SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::cellFor(sprite, f), ox, oy);
-
-            for (int y = 0; y < SpellSpriteAtlas::kCellSize; ++y) {
-                for (int x = 0; x < SpellSpriteAtlas::kCellSize; ++x) {
-                    const uint8_t* w =
-                        want.data() +
-                        (static_cast<size_t>(y) * SpellSpriteAtlas::kCellSize + x) * 4;
+            for (int y = 0; y < storedPx; ++y) {
+                for (int x = 0; x < storedPx; ++x) {
+                    const uint8_t* w = frame.data() +
+                                       (static_cast<size_t>(y) * storedPx + x) * 4;
                     const uint8_t* got = bmp.at(ox + x, oy + y);
                     ASSERT_EQ(std::memcmp(w, got, 4), 0)
                         << SpellSpriteAtlas::kFiles[sprite] << " frame " << f
@@ -468,41 +487,119 @@ TEST(SpellSpriteAtlasFile, EveryCellEqualsItsSourceFrame) {
                 }
             }
         }
+        // The block cells no frame owns are transparent.
+        const int frameRows = (frames + cols - 1) / cols;
+        for (int dy = 0; dy < SpellSpriteAtlas::kSheetGrid; ++dy) {
+            for (int dx = 0; dx < SpellSpriteAtlas::kSheetGrid; ++dx) {
+                const int frameCol = dx / span;
+                const int frameRow = dy / span;
+                if (frameCol < cols && frameRow < frameRows) continue;
+                uint64_t a = 0;
+                for (int y = 0; y < SpellSpriteAtlas::kCellSize; ++y)
+                    for (int x = 0; x < SpellSpriteAtlas::kCellSize; ++x)
+                        a += bmp.at(bx + dx * SpellSpriteAtlas::kCellSize + x,
+                                    by + dy * SpellSpriteAtlas::kCellSize + y)[3];
+                EXPECT_EQ(a, 0u) << SpellSpriteAtlas::kFiles[sprite]
+                                 << " reserved block cell (" << dx << "," << dy << ")";
+            }
+        }
     }
 }
 
-TEST(SpellSpriteAtlasFile, TheSixteenFramesOfASpriteAreNotAllTheSame) {
+TEST(SpellSpriteAtlasFile, TheFramesOfASpriteAreNotAllTheSame) {
     // Grid sheets only (B1124). T409 recorded these sheets as one repeated frame; T417 measured 5 to 16
     // DISTINCT frames in every one. If this goes red the builder has stopped
-    // walking the source grid and is packing the same frame sixteen times --
-    // which would leave the sheet 16x larger and still a still.
+    // walking the source grid and is packing the same frame over and over --
+    // which would leave the sheet the same size and still a still.
     const Bitmap bmp = loadBmp(atlasPath());
     ASSERT_TRUE(bmp.ok);
 
     for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
-        if (SpellSpriteAtlas::framesFor(sprite) == 1) continue;  // B1124: one picture
+        const int frames = SpellSpriteAtlas::framesFor(sprite);
+        if (frames == 1) continue;  // B1124: one picture
         bool differs = false;
         int ax = 0, ay = 0;
         SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::cellFor(sprite, 0), ax, ay);
-        for (int f = 1; f < SpellSpriteAtlas::kFramesPerSprite && !differs; ++f) {
+        const int px = SpellSpriteAtlas::storedFramePx(sprite);
+        for (int f = 1; f < frames && !differs; ++f) {
             int bx = 0, by = 0;
             SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::cellFor(sprite, f), bx, by);
-            for (int y = 0; y < SpellSpriteAtlas::kCellSize && !differs; ++y) {
-                if (std::memcmp(bmp.at(ax, ay + y), bmp.at(bx, by + y),
-                                SpellSpriteAtlas::kCellSize * 4) != 0) {
+            for (int y = 0; y < px && !differs; ++y) {
+                if (std::memcmp(bmp.at(ax, ay + y), bmp.at(bx, by + y), px * 4) != 0) {
                     differs = true;
                 }
             }
         }
         EXPECT_TRUE(differs) << SpellSpriteAtlas::kFiles[sprite]
-                             << ": all sixteen cells are byte-identical";
+                             << ": all " << frames << " frames are byte-identical";
     }
+}
+
+// ---------------------------------------------------------------------------
+// B1188 (#507): the client's rule -- a picture the block can hold NATIVE is
+// stored 1:1, byte for byte. This is the fix: record 80's pillar (spelcf,
+// w = h = 6.0) drew a 2:1 box (peak alpha 255 -> 107, lit80 area /5) and the
+// b1130 landing gate measured 0.53x of the oracle's pixels on 38 of 40 rows.
+// ---------------------------------------------------------------------------
+
+TEST(SpellSpriteAtlasFile, NativePicturesAreStoredOneToOneNotBoxed) {
+    if (!sourcesAvailable()) {
+        GTEST_SKIP() << "EQ client tree not mounted at " << kSourceDir;
+    }
+    const Bitmap bmp = loadBmp(atlasPath());
+    ASSERT_TRUE(bmp.ok);
+
+    int checked = 0;
+    for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
+        const std::string src = sourcePath(SpellSpriteAtlas::kFiles[sprite]);
+        EQT::ToolTGA::Image img;
+        std::string error;
+        ASSERT_TRUE(EQT::ToolSprite::load(src, img, error)) << error;
+
+        const int frames = SpellSpriteAtlas::framesFor(sprite);
+        const int grid = frameGridFor(frames);
+        const int cols = frameColsFor(frames);
+        const int frameSize = img.width / grid;
+        const int storedPx = SpellSpriteAtlas::storedFramePx(sprite);
+
+        // The 1:1 rule holds exactly where frameSize == storedPx: a single
+        // 64x64 picture (2x2 sub-block), a 2x2 sheet's 64 px frames. The
+        // documented losses are the 4x4 grids (64 -> 32) and glowflare02
+        // (256 -> 128, the block 2:1).
+        if (frameSize != storedPx) continue;
+        ++checked;
+
+        int bx = 0, by = 0;
+        SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::blockBase(sprite), bx, by);
+        for (int f = 0; f < frames; ++f) {
+            const int fx = (f % cols) * frameSize;
+            const int fy = (f / cols) * frameSize;
+            for (int y = 0; y < frameSize; ++y) {
+                for (int x = 0; x < frameSize; ++x) {
+                    const uint8_t* w =
+                        img.rgba.data() + (static_cast<size_t>(fy + y) * img.width + fx + x) * 4;
+                    const uint8_t* got = bmp.at(bx + (f % cols) * frameSize + x,
+                                                by + (f / cols) * frameSize + y);
+                    ASSERT_EQ(std::memcmp(w, got, 4), 0)
+                        << SpellSpriteAtlas::kFiles[sprite] << " frame " << f << " ("
+                        << x << "," << y << "): the native " << frameSize
+                        << "px frame must be stored 1:1 (got " << (int)got[0] << ","
+                        << (int)got[1] << "," << (int)got[2] << "," << (int)got[3]
+                        << ", want " << (int)w[0] << "," << (int)w[1] << "," << (int)w[2]
+                        << "," << (int)w[3] << ")";
+                }
+            }
+        }
+    }
+    // 16 single 64x64 pictures + the two 2x2 sheets (their four 64 px
+    // frames). spellw02 (64x32x16, 32 px cells) is grid-stored, not native.
+    EXPECT_EQ(checked, 18);
 }
 
 TEST(SpellSpriteAtlasFile, TheTwoOracleMeasuredSpritesAreTheirOwnFiles) {
     // Frost Bolt (54) record 23's Target stage is GEND10 + GENU10 x2, i.e.
-    // speld2.tga and spelu2.tga -- the two names T389 measured against the
-    // official client. They must occupy their own distinct cells.
+    // speld2.tga and spelu2.tga -- the two names T389 measured against
+    // the official client. They must occupy their own distinct frames.
     const int d2 = SpellSpriteAtlas::slotForFile("speld2.tga");
     const int u2 = SpellSpriteAtlas::slotForFile("spelu2.tga");
     ASSERT_GE(d2, 0);
@@ -513,18 +610,19 @@ TEST(SpellSpriteAtlasFile, TheTwoOracleMeasuredSpritesAreTheirOwnFiles) {
         GTEST_SKIP() << "EQ client tree not mounted at " << kSourceDir;
     }
 
-    // ...and neither cell may be blank, which is what the frame-0 rule gave
-    // spelu2 (12% of its peak alpha).
+    // ...and neither frame may be blank, which is what the frame 10 frame
+    // rule gave spelu2 (12% of its peak alpha).
     const Bitmap bmp = loadBmp(atlasPath());
     ASSERT_TRUE(bmp.ok);
     for (int sprite : {d2, u2}) {
         uint64_t peak = 0;
-        for (int f = 0; f < SpellSpriteAtlas::kFramesPerSprite; ++f) {
-            peak = std::max(peak, cellAlpha(bmp, SpellSpriteAtlas::cellFor(sprite, f)));
+        const int frames = SpellSpriteAtlas::framesFor(sprite);
+        for (int f = 0; f < frames; ++f) {
+            peak = std::max(peak, frameAlpha(bmp, sprite, f));
         }
-        // A quarter of T417's threshold: the cell is a quarter of the area it
-        // was (32x32, not 64x64), so the same picture carries a quarter of
-        // the alpha.
+        // A quarter of T417's threshold: the frame is a quarter of the area
+        // it was (32x32, not 64x64), so the same picture carries a quarter
+        // of the alpha.
         EXPECT_GT(peak, 25000u) << SpellSpriteAtlas::kFiles[sprite]
                                 << " never becomes visible in any frame";
     }

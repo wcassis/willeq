@@ -6,6 +6,8 @@
 #include "client/core/gem_owner_census.h"  // B972: GemTag for the VBO's census row
 #include "common/logging.h"
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <chrono>
 #include <cstddef>
@@ -13,6 +15,22 @@
 // The driver's raw-GL accounting seams (docker/irrlicht-drm/COpenGLES2Driver.cpp).
 extern void gles2AdjustRawBufferBytes(void* driver, ptrdiff_t delta);
 extern void gles2SyncBufferBindings(void* driver);
+
+// B1188 (temporary, env-gated): the per-particle census of the EDD-sprite draw
+// path, for diagnosing the b1130 same-window pixel gap. WILLEQ_FX_DRAW_LOG
+// names the file; unset, this is a no-op (drawLogFile() is nullptr and the
+// per-particle call is one pointer load).
+static FILE* drawLogFile() {
+    static FILE* f = [] -> FILE* {
+        const char* p = getenv("WILLEQ_FX_DRAW_LOG");
+        if (!p) return nullptr;
+        FILE* fh = fopen(p, "w");
+        if (fh)
+            fprintf(fh, "frame emitter tex size height r g b a x y z age life srcA depthOn\n");
+        return fh;
+    }();
+    return f;
+}
 
 // GLES2 spec constants — fallback defines for older headers
 #ifndef GL_BLEND_SRC_RGB
@@ -40,6 +58,7 @@ attribute vec3 aPosition;
 attribute vec4 aColor;
 attribute vec2 aTexCoord0;
 attribute vec2 aTexCoord1;
+attribute float aSpan;   // B1188: the sprite's stored frame, in CELLS (1/2/4)
 
 uniform mat4 uProj;
 uniform mat4 uView;
@@ -51,6 +70,7 @@ varying vec4 vColor;
 varying float vFogFactor;
 varying vec2 vAtlasOffset;
 varying float vRotation;
+varying float vSpan;
 
 void main() {
     vec4 eyePos = uView * vec4(aPosition, 1.0);
@@ -77,6 +97,7 @@ void main() {
     vColor = aColor;
     vAtlasOffset = aTexCoord1;
     vRotation = aTexCoord0.y;
+    vSpan = aSpan;
 }
 )";
 
@@ -97,6 +118,7 @@ varying vec4 vColor;
 varying float vFogFactor;
 varying vec2 vAtlasOffset;
 varying float vRotation;
+varying float vSpan;
 
 void main() {
     // Rotate gl_PointCoord (identity when vRotation=0: sin(0)=0, cos(0)=1)
@@ -106,8 +128,11 @@ void main() {
     float c = cos(vRotation);
     pc = vec2(pc.x * c - pc.y * s, pc.x * s + pc.y * c) + 0.5;
 
-    // Map rotated point coord [0,1] to atlas sub-region UV
-    vec2 uv = vAtlasOffset + pc * uAtlasRegionSize;
+    // Map rotated point coord [0,1] to atlas sub-region UV. B1188: the
+    // region is the sprite's STORED frame -- span cells (1/2/4) of the
+    // per-draw cell size -- so a 64x64 picture drawn at the client's own
+    // size samples its native pixels, not a 2:1 box.
+    vec2 uv = vAtlasOffset + pc * (vSpan * uAtlasRegionSize);
 
     // Sample atlas texture
     vec4 texColor = texture2D(uTexture, uv);
@@ -144,6 +169,7 @@ attribute vec3 aPosition;
 attribute vec4 aColor;
 attribute vec2 aTexCoord0;
 attribute vec2 aTexCoord1;
+attribute float aSpan;   // B1188: the sprite's stored frame, in CELLS (1/2/4)
 
 uniform mat4 uProj;
 uniform mat4 uView;
@@ -154,6 +180,7 @@ varying vec4 vColor;
 varying float vFogFactor;
 varying vec2 vAtlasOffset;
 varying vec2 vCorner;
+varying float vSpan;
 
 void main() {
     vec4 eyePos = uView * vec4(aPosition, 1.0);
@@ -163,6 +190,7 @@ void main() {
     vColor = aColor;
     vAtlasOffset = aTexCoord1;
     vCorner = aTexCoord0;
+    vSpan = aSpan;
 }
 )";
 
@@ -178,9 +206,13 @@ varying vec4 vColor;
 varying float vFogFactor;
 varying vec2 vAtlasOffset;
 varying vec2 vCorner;
+varying float vSpan;
 
 void main() {
-    vec2 uv = vAtlasOffset + clamp(vCorner, 0.0, 1.0) * uAtlasRegionSize;
+    // B1188: the corner spans the sprite's stored frame (span cells), not
+    // one cell -- a 64x64 picture drawn at the client's size samples its
+    // native pixels.
+    vec2 uv = vAtlasOffset + clamp(vCorner, 0.0, 1.0) * (vSpan * uAtlasRegionSize);
     vec4 texColor = texture2D(uTexture, uv);
     texColor.a *= texture2D(uAlphaTexture, uv).r;
     vec4 color = texColor * vColor;
@@ -259,6 +291,7 @@ GLuint UnifiedParticleRenderer::linkProgram(GLuint vs, GLuint fs) {
     glBindAttribLocation(prog, 2, "aColor");
     glBindAttribLocation(prog, 3, "aTexCoord0");
     glBindAttribLocation(prog, 4, "aTexCoord1");
+    glBindAttribLocation(prog, 5, "aSpan");  // B1188: stored frame in cells
 
     glLinkProgram(prog);
 
@@ -541,6 +574,14 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         v.rotation = p.rotation;
         v.atlasU = atlasU;
         v.atlasV = atlasV;
+        // B1188: the draw's UV region is the sprite's stored frame -- span
+        // cells wide/tall (1 grid cell, 2x2 for a native 64x64 picture, the
+        // whole block for glowflare02). Procedural-atlas tiles are one
+        // 0.25 region, so span 1 in that per-draw unit too.
+        v.span = onSpriteSheet
+                     ? static_cast<float>(SpellSpriteAtlas::storedSpan(
+                           p.textureIndex - SpellSpriteAtlas::kBase))
+                     : 1.0f;
 
         if (p.hasEddSprite()) {
             // B1149: six vertices of the world-unit quad, corners rotated by
@@ -548,6 +589,12 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
             const int b = onSpriteSheet ? (srcAlphaAdditive ? 5 : additive ? 2 : 3)
                                         : (srcAlphaAdditive ? 4 : additive ? 0 : 1);
             const float hw = 0.5f * p.size, hh = 0.5f * p.height;
+            if (FILE* dl = drawLogFile()) {  // B1188 temporary census
+                fprintf(dl, "%d %u %u %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %d %d\n",
+                        frameCount_, p.emitterID, p.textureIndex, p.size, p.height,
+                        color.r, color.g, color.b, color.a, pos.x, pos.y, pos.z,
+                        p.age, p.maxLifetime, (int)srcAlphaAdditive, (int)depthOn);
+            }
             // B1151 (#471): the record's spin (age*spin + start + align; draws
             // 0x100634c1/0x100638e8) replaces the config rotation for a
             // record particle; the +0x178 alignment is a SCREEN angle, so it
@@ -1012,6 +1059,8 @@ void UnifiedParticleRenderer::renderBatch(const PointSpriteVertex* verts, size_t
             glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const GLvoid*>(28));
             glEnableVertexAttribArray(4);
             glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const GLvoid*>(36));
+            glEnableVertexAttribArray(5);
+            glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const GLvoid*>(44));
         }
         glDrawArrays(primitive, static_cast<GLsizei>(start),
                      static_cast<GLsizei>(count));
@@ -1035,6 +1084,9 @@ void UnifiedParticleRenderer::renderBatch(const PointSpriteVertex* verts, size_t
 
         glEnableVertexAttribArray(4);
         glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, base + 36);
+
+        glEnableVertexAttribArray(5);
+        glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, stride, base + 44);
 
         glDrawArrays(primitive, static_cast<GLsizei>(start),
                      static_cast<GLsizei>(count));
