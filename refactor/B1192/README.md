@@ -89,17 +89,32 @@ missing table fails the probe and the DELETE never runs); the
 bash 5.2.21 outside the driver's three-word shape).
 
 `refactor/B1183/legs/legH_loot.tsv` — the same plan with real tabs
-(identical content; its header records what happened).
+(identical content; its header records what happened). Run 2 then reached
+the client step and exposed a second, independent plan defect: B1183's plan
+also carried **neither of the two directives its `obs` rows require** —
+`# observer=<Character>` (parsed at `oracle_session.sh:244` and
+`oracle_remote.sh:876`) and `# obs-ini-set=Defaults.LastCharSel=1` (the
+observer account holds two characters; without it `obs zone` would click
+slot 0 and the wrong character would enter). With no `# observer=`, the
+remote step died at its first `obs` row on
+`oracle_remote.sh`'s `[[ -n $OBSERVER ]] || exit 65` — again silently:
+empty `remote.log`, timeline stuck at `01_char_select`
+(`/home/user/kb-evidence/kb-b1192-loot-row/legH-run3/`). The plan now
+carries both directives (B1176's canonical form,
+`refactor/B1176/leg/o_human.tsv:32-38`), and the session refuses the
+obs-rows-without-directive shape with a named 64 before the client starts.
 
 The tests — `scripts/eqemu/oracle/tests/session_safety.sh` gains a faithful
 `eqemu_sql` stub (splits on `;`, stops at the first error, like
 `mysql -B -N -e`) and four cases: **early66** (a named early exit stays 65;
 the orphaned post-SQL neither masks it nor deletes live rows), **timeline0**
 (a completed step leaves its timeline), **notimeline** (a remote rc 0
-without a timeline is refused 65), and **spaceplan** (a space-delimited plan
-is refused 64, named, no client step). `tests/class_leg_safety.sh` asserts
-the probe-before-DELETE order per save table. All 12 oracle safety tests
-pass: `bash scripts/eqemu/oracle/tests/{session,class_leg}_safety.sh`.
+without a timeline is refused 65), **spaceplan** (a space-delimited plan
+is refused 64, named, no client step), and **obsnoobs** (obs rows without
+a `# observer=` directive are refused 64, named, before the client step).
+`tests/class_leg_safety.sh` asserts the probe-before-DELETE order per save
+table. All 13 oracle safety tests pass:
+`bash scripts/eqemu/oracle/tests/{session,class_leg}_safety.sh`.
 
 ## 3. The measured row
 

@@ -269,6 +269,14 @@ CHARACTER=$(awk -F'\t' '$1=="login" {print $2; exit}' "$PLAN")
 # silently, pre-fix -- so the reported failure was the orphaned post-SQL's 66.
 # Name the empty/illegal name here, at the only place it is detectable.
 [[ $CHARACTER =~ ^[A-Za-z]+$ ]] || { say "plan has no parseable TAB-delimited login row (got '$CHARACTER'); the plan columns are action/target/hold_ms/still_name, tab-separated (legH3's plan was space-delimited)"; STATUS=64; exit "$STATUS"; }
+# B1192 (run 2): a plan with `obs` rows but no `# observer=<Character>`
+# directive passes every session-side check and then dies at the FIRST obs
+# row in oracle_remote.sh's `[[ -n $OBSERVER ]] || exit 65` -- silently,
+# with an empty remote.log and a timeline stuck on the last caster step
+# (B1183's legH plan had exactly this shape). Name it here, where both
+# facts (the obs rows and the missing directive) are visible.
+if grep -qE $'^obs\t' "$PLAN" && [[ -z ${OBSERVER:-} ]]; then
+    say "the plan has obs rows but no '# observer=<Character>' directive (obs rows also need '# obs-ini-set=Defaults.LastCharSel=N' on a two-character account); the remote step would die at the first obs row with no log; see refactor/B1176/leg/o_human.tsv:32-38 for the canonical form"; STATUS=64; exit "$STATUS"; fi
 awk -F'\t' '$1=="create" {print $2}' "$PLAN" >"$OUT/plan-names.tsv"
 : >"$OUT/absent-names.tsv"
 : >"$OUT/validated-names.tsv"

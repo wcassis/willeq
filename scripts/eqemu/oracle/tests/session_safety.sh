@@ -273,3 +273,18 @@ set -e
 grep -q 'no parseable TAB-delimited login row' "$OUT/driver.log" || { echo 'unparseable plan not named'; cat "$OUT/driver.log"; exit 1; }
 [[ ! -e $OUT/timeline.tsv ]] || { echo 'client step ran on an unparseable plan'; exit 1; }
 echo 'PASS: B1192 spaceplan -- a space-delimited plan (legH3) is refused 64 and named, no client step'
+
+# 5. obsnoobs: B1192 run 2 -- obs rows without a `# observer=` directive
+# die silently at the first obs row in oracle_remote.sh; the session must
+# refuse the shape BEFORE the client step.
+export PROBE_CASE=obsnoobs ORACLE_OWNER=b1192_obsnoobs PROBE_NO_TIMELINE=0
+printf 'login\tTestcaster\t0\tselect\nobs\tlogin\tOraclewatch\t0\tobs_select\n' >"$FIXTURE/obsnoobs.tsv"
+OUT="$FIXTURE/obsnoobs"; export OUT
+set +e
+PATH="$FIXTURE/bin:$PATH" bash "$FIXTURE/scripts/eqemu/oracle/oracle_session.sh" 5 "$FIXTURE/obsnoobs.tsv" "$OUT" >"$FIXTURE/obsnoobs.log" 2>&1
+rc=$?
+set -e
+[[ $rc == 64 ]] || { echo "obs-without-directive plan returned $rc, expected 64"; cat "$OUT/driver.log" 2>/dev/null; exit 1; }
+grep -q "obs rows but no '# observer=" "$OUT/driver.log" || { echo 'missing observer directive not named'; cat "$OUT/driver.log"; exit 1; }
+[[ ! -e $OUT/timeline.tsv ]] || { echo 'client step ran on an obs plan with no observer directive'; exit 1; }
+echo 'PASS: B1192 obsnoobs -- obs rows without # observer= are refused 64 and named before the client step'

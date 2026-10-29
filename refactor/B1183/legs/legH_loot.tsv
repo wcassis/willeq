@@ -19,7 +19,22 @@
 # CHARACTER was empty and legH3 died at the (then-silent) account_id check.
 # This file is the same plan with real tabs.
 #
+# B1192 (run 2, 2026-10-29): B1183's plan was ALSO missing the two observer
+# directives the `obs` rows require -- `# observer=<Character>` (the
+# session/remote parse it from the plan; oracle_session.sh:244,
+# oracle_remote.sh:876) and `# obs-ini-set=Defaults.LastCharSel=1` (the
+# observer account holds two characters, Darkshadow slot 0 / Oraclewatch
+# slot 1; without it `obs zone` clicks slot 0 and the WRONG character
+# enters). Without `# observer=`, every obs row died at
+# oracle_remote.sh's `[[ -n $OBSERVER ]] || exit 65` -- again silently
+# (empty remote.log, timeline stuck at 01_char_select). Run 2 measured
+# exactly that; the session now refuses the shape before the client
+# (oracle_session.sh, B1192 guard). Both directives are added below, in
+# B1176's canonical form (refactor/B1176/leg/o_human.tsv:32-38).
+#
 #   action   target                 hold_ms  still_name
+# observer=Oraclewatch
+# obs-ini-set=Defaults.LastCharSel=1
 login	Testcaster	0	char_select
 obs	login	Oraclewatch	0	obs_char_select
 zone	qeynos2	0	in_world
