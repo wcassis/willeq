@@ -128,8 +128,8 @@ def main():
     if not PID:
         log("FAIL no eqgame.exe found")
         return 2
-    log("START pid=%d via=%s class=%s tmax=%.0fs poll=%.0fms" % (
-        PID, how, elf_class(f"/proc/{PID}/exe"), TMAX, POLL * 1000))
+    log("START epoch=%.3f pid=%d via=%s class=%s tmax=%.0fs poll=%.0fms" % (
+        t0, PID, how, elf_class(f"/proc/{PID}/exe"), TMAX, POLL * 1000))
     FD = open_mem(PID)
 
     if not BASE:
