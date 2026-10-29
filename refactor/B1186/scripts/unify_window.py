@@ -8,7 +8,7 @@ the two sides of that comparison used DIFFERENT windows:
 
   TOUR (b1118 rig):
     willeq side: the b1118 rig's OWN rendered-caster height, 235 px --
-      refactor/B1155/scripts/b1123_summary.py:15 (`MPX = 235.0`), the rig
+      review/B1132/scripts/b1123_summary.py:15 (`MPX = 235.0`), the rig
       solving the camera until its rendered caster silhouette is exactly that
       (tools/model_viewer/model_viewer_fx_harness.cpp:820-824, "the B1118
       tour's own numbers are row 605 / 235 px"); crop 170,0,1060,650
@@ -21,7 +21,7 @@ the two sides of that comparison used DIFFERENT windows:
   B1130: BOTH sides already share the capture's own window, 209 px (the
       oracle capture's caster at the fixed rig, review/B1130/geom/r51.json
       fixed_npc / r131.json fixed_self; willeq side
-      refactor/B1155/scripts/harness_measure_b1130.py:53-55 GEOM dict, oracle
+      refactor/B1155/scripts/harness_measure_b1130.py:49-53 GEOM dict, oracle
       side review/B1130/scripts/cast_measure.py reading the same files).
 
 WILL'S RULE (the issue): like with like -- the window on both sides must be
@@ -36,7 +36,7 @@ per-row geom provenance.
 The re-derivation mirrors the committed instrument EXACTLY and changes only
 the divisor:
   tour: peak of the same lit80.tsv series b123 uses (t_rel >= +1.0 s;
-    refactor/B1155/scripts/b1123_summary.py:28-29) -- / 235^2 before,
+    review/B1132/scripts/b1123_summary.py:28-29) -- / 235^2 before,
     / <oracle leg's model px>^2 after (parsed from that leg's v3 timing file).
   b1130: the committed landing_cov column (RISE coverage at mpx^2;
     refactor/B1155/scripts/harness_measure_b1130.py:94-104) -- identical at
@@ -59,7 +59,7 @@ import argparse, json, os, re, sys
 import numpy as np
 
 # the BEFORE tour window: the constant the committed instrument divides by
-# (refactor/B1155/scripts/b1123_summary.py:15).  Cited, not tuned.
+# (review/B1132/scripts/b1123_summary.py:15).  Cited, not tuned.
 WIN_BEFORE_TOUR = 235.0
 # the B1178 v3 leg each tour spell was captured in (measure-v3-r3 dir names).
 TOUR_LEGS = {93: 'dru5', 38: 'wiz5', 54: 'wiz5', 656: 'wiz5',
@@ -75,7 +75,7 @@ def verdict(cov, oracle):
     return 'short' if r < 1.0 else 'over'
 
 def load_lit80(d):
-    # b123's exact read: refactor/B1155/scripts/b1123_summary.py:28-29
+    # b123's exact read: review/B1132/scripts/b1123_summary.py:28-29
     a = np.loadtxt(f'{d}/lit80.tsv', skiprows=1)
     return a[:, 2], a[:, 3]
 
@@ -133,7 +133,7 @@ def tour_rows(measure, b1178):
 def b1130_rows(measure, b1130, wt):
     # the reference table (committed; B1178 regenerated) + the per-kind geom
     # provenance (review/B1130/geom/r51.json fixed_npc, r131.json fixed_self,
-    # as harness_measure_b1130.py:53-55 names them).
+    # as harness_measure_b1130.py:49-53 names them).
     tab = [l.rstrip('\n').split('\t') for l in open(f'{wt}/refactor/B1153/tables/gate_c.tsv') if l.strip()]
     hdr = tab[0]
     gi, oi, li, ei, ki = (hdr.index(c) for c in

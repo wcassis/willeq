@@ -235,14 +235,14 @@ Owners, every remaining red row:
   (`refactor/B1180/README.md:206`); the fixed_npc rows carry a second,
   smaller body/ROI term — the harness human target is 238 px where the
   oracle's is 288 px (`refactor/B1171/README.md:129`,
-  `refactor/B1178/README.md:211`) — tracked in the p90_land column, not in
+  `refactor/B1178/README.md:9`, `:274-275`) — tracked in the p90_land column, not in
   `landing_cov`.
 - **r31 (1.133× over)** — B1164/B1172 chain: fable's landing exceeds the
   oracle's (4.155 vs 3.668); the next FX unit decomposes it; the overshoot,
   like the shortfall, is area in the same window.
 - **r40 (5.777× over)** — the committed harness-scene row: the oracle caster
   zones out mid-cast (`--caster-despawn 0.80`, B1171's committed owner,
-  `refactor/B1171/README.md:129-131`); the oracle's 0.157 is the degenerate
+  `refactor/B1171/README.md:142-145`, FOLLOW-UP `:216-218`; the phrase at `refactor/B1184/README.md:142`); the oracle's 0.157 is the degenerate
   reading of that zone-out. Kept as committed; not a sim gap.
 
 Net: tour 7/7 red before → 6/7 red after (spell 41 flips to PASS; every flip
@@ -283,7 +283,7 @@ sides:
    "landing_cov short (38 rows): B1164 (#483), the landing's pixel area ...
    the shortfall is not the target body: a fixed_self landing is on the
    caster, whose height is fitted"
-   (`refactor/B1171/README.md:125-130`). The "fitted height" phrase there is
+   (`refactor/B1171/README.md:124-128`). The "fitted height" phrase there is
    the BODY term (the lit pixels of the landing host), which B1171 rules out
    as the shortfall — not a claim about the `landing_cov` divisor.
 
