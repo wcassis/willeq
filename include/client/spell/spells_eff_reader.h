@@ -203,12 +203,10 @@ struct SpellsEffRecord {
     // (record 255 among them) -- see T70 Review for the exact count.
     bool hasContent() const;
 
-    // B1190 (#509): true if any slot in any emitter carries a drawable
-    // effect type (0..5). This is the "does the legacy dispatcher draw
-    // anything for this record" signal the stage select rule keys on
-    // (0x49ab78). Distinct from hasContent(): a record can name sprites
-    // whose slots are all -1, and vice versa.
-    bool hasDrawableContent() const;
+    // B1190: per-slot drawable-ness is the select rule itself
+    // (legacyStageDrawnSlots in spell_visual_selection.h); a record-level
+    // "any slot drawable" aggregate has no production caller, so it is not
+    // declared -- the per-slot effectType() is the observation window.
 };
 
 // ============================================================================

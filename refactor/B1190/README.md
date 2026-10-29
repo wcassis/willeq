@@ -121,8 +121,8 @@ sees") it is **out of scope**.
 
 - **Record decode.** `SpellsEffReader` decodes the three per-slot effect types at
   block offset `0x8C` (`SpellsEffEmitter::effect_types`,
-  `include/client/spell/spells_eff_reader.h`); `SpellsEffRecord::hasDrawableContent()`
-  is true when any slot is 0..5. Pinned by `test_spell_visual_selection.cpp`
+  `include/client/spell/spells_eff_reader.h`); a slot is drawable iff its type is
+  0..5 (the select rule, section 5). Pinned by `test_spell_visual_selection.cpp`
   (`LegacyRecordEffectTypesAt0x8C`, `PaddingRecordHasNoDrawableContent`).
 - **Select rule.** `legacyStageDrawnSlots(stage, level, types)`
   (`include/client/graphics/spell_visual_selection.h`) encodes the `0x49ab78` rule:

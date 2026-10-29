@@ -341,7 +341,6 @@ TEST_F(SpellVisualSelectorFileTest, LegacyRecordEffectTypesAt0x8C) {
     EXPECT_EQ(t5.effectType(0), 1);
     EXPECT_EQ(t5.effectType(1), 1);
     EXPECT_EQ(t5.effectType(2), 2);
-    EXPECT_TRUE(r5->hasDrawableContent());
 
     // record 31 (Enraged Shout): Source [4,2,4], Target [5,5,2]
     const SpellsEffRecord* r31 = reader.getRecord(31);
@@ -354,14 +353,13 @@ TEST_F(SpellVisualSelectorFileTest, LegacyRecordEffectTypesAt0x8C) {
     EXPECT_EQ(t31.effectType(0), 5);
     EXPECT_EQ(t31.effectType(1), 5);
     EXPECT_EQ(t31.effectType(2), 2);
-    EXPECT_TRUE(r31->hasDrawableContent());
 }
 
 TEST_F(SpellVisualSelectorFileTest, PaddingRecordHasNoDrawableContent) {
     // record 255 is T70's known padding record: no slots draw.
     const SpellsEffRecord* r255 = reader.getRecord(255);
     ASSERT_NE(r255, nullptr);
-    EXPECT_FALSE(r255->hasDrawableContent());
+    // Every slot in every emitter is -1 (no drawable 0..5 type).
     for (int em = 0; em < 3; ++em)
         for (int s = 0; s < 3; ++s)
             EXPECT_LT(r255->emitter(static_cast<SpellsEffEmitterRole>(em)).effectType(s), 0);
