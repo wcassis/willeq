@@ -10,45 +10,59 @@
 #     (the Down release = stand). The measured crouch key is Down (VK_DOWN),
 #     the client's live keymap -- fable's own duck key is C; the keys differ
 #     between the two clients, the BYTES are what must match.
-#   legA3_discovery (legs/legA3_discovery/poll/poll.log): INIT byte = 100,
-#     and the byte NEVER left 100 through all of the SIT/USE probes -- the
-#     one value-changing write was WR t=116.923 100->111 (step 35_use_space):
-#     SPACE is crouch in the live keymap, not sit, not loot. So none of the
-#     probed keys produces 110 (sit) or 105 (loot).
+#   legA3_discovery: the byte NEVER left 100 through all of the letter-key
+#     SIT/USE probes; the one write was WR 100->111 (SPACE = crouch). So no
+#     probed LETTER key produces 110 (sit) or 105 (loot).
 #
-# KEY DISCOVERY (legC3b, the corrected 267-slot live keymap dump): the pending
-# rows' keys are MEASURED, not guessed. The decode is anchored three ways:
-# DUCK slot 12 high byte 0xD0 = "DOWN" in the namemap AND the oracle INI's
-# KEYMAPPING_DUCK_1=208 (0xD0) AND the measured duck byte 111. With that:
-#   SIT_STAND (action 138) k0 = 0x1F000100 -> high byte 0x1F = charmap 's'
-#       (the low16 0x100 is the command-type flag the CMD_*/RTARGET slots
-#       share -- it is not a key; the old legA3 poller misread the slot and
-#       reported SIT_STAND "unbound", which is what this legC3b dump corrects)
-#   USE (action 16) k0 = 0x16000000 -> high byte 0x16 = charmap 'u'
-#   DUCK (action 12) k0 = 0xD0000000 -> high byte 0xD0 = "DOWN" (the crouch key)
-# CAVEAT (config-specific, measured): the oracle INI sets KEYMAPPING_BACK_2=31
-# (0x1F='s') for WASD movement, so 's' is bound to BOTH BACK (k1) and SIT_STAND
-# (k0). The client fires every matching action (FUN_004ccd32: no early-break),
-# so a 's' tap is expected to sit AND nudge backward; the +0x251 byte is the
-# measurement either way. USE='u' has no conflict.
+# FINDING 1 -- LETTER KEYS GO TO CHAT INPUT, NOT GAME ACTIONS (legA-fix5 is
+# the controlled proof): in one leg, probe_down (Down arrow) produced WR
+# 100->111 (duck) and, on release, 111->100, while probe_c / probe_x /
+# probe_z (letter keys) produced NO byte write at all. The official client
+# routes letter keys to the chat box; only arrow/special keys fire keydown
+# actions. Consequence: the live-keymap bindings SIT_STAND k0='s' and USE
+# k0='u' (below) are EFFECTIVELY DEAD as keydown triggers -- a 's'/'u' tap is
+# typed into chat, not fired as an action (legE's opcode-confirmed 's'/'u'
+# presses produced zero C->S movement/use packets). The official client's
+# OWN sit/stand path is therefore the /sit and /stand CHAT COMMANDS (and the
+# UI Sit/Walk buttons), which is what legF drove. (The card sanctions the
+# /sit command; this states which method the client actually uses, measured.)
 #
-# The client's sit is a plain 100<->110 toggle in the setter 0x00483556 (the
-# decompile shows no chair gate on the byte), so an open field is fine.
+# FINDING 2 -- THE +0x251 BYTE IS A POSE BYTE; STUN DOES NOT CHANGE IT. The
+# measured values are all poses: stand=100, sit=110, duck=111, loot=105.
+# When the character is STUNNED, +0x251 HOLDS the current pose (100). legF
+# proved the stun was genuinely applied server-side (S->C OP_Stun 0x1e51
+# PLUS OP_PlayerStateAdd -- the stunned state flag -- PLUS a 60-byte
+# OP_SpecialMesg), yet the byte held 100 through the whole 8 s window. So
+# the official client tracks "stunned" as a separate state flag, NOT as a
+# value in the stand/pose byte. FABLE writes 102 into the stand byte on the
+# stun message (0x3050/0x3013), a value the official client's +0x251 never
+# takes. This is the one measured FABLE-side difference (row below).
 #
-# PENDING rows: cast/stunned/stun-end are key-free (GM-command driven) and are
-# measured by legC4.tsv (which adds a #set-time-23-0 GM-path verification so a
-# dead GM path cannot masquerade as "stun not applied" -- legC3b's
-# opcode-confirmed #stun 8000 produced no server chat confirmation, which the
-# handler in zone/gm_commands/stun.cpp always sends). sit/stand/loot are
-# measured by legD_sit_loot.tsv with the keys above.
+# FINDING 3 -- BENEATH-THE-WORLD LIMBO (environmental, since B1130). The
+# zone now snaps the caster to z=3.875, BELOW the ground at -74,428 (the
+# ground/heightmap data changed since B1127/B1130 ran fine at the same pose).
+# In that "moving to safe point" state the character cannot enter
+# stun/sit/loot states (legE: GM commands got opcode responses but the
+# effects did not apply; the frame showed the character standing un-stunned).
+# The POSE z is ignored by the snap; the escape is a SERVER-SIDE
+# `#goto -74 428 10` (sets z=10 directly, above the ground), which legF used
+# to get the caster into a valid, controllable state (sit/stand then worked).
+#
+# KEY DISCOVERY (legC3b, the corrected 267-slot live keymap dump) -- kept for
+# the record; the decode is anchored three ways (DUCK 0xD0="DOWN"=INI
+# KEYMAPPING_DUCK_1=208=the measured duck 111): SIT_STAND (action 138) k0
+# high byte 0x1F='s'; USE (action 16) k0 high byte 0x16='u'; DUCK (action 12)
+# k0 0xD0="DOWN". Per FINDING 1 the two letter bindings are dead keydown
+# triggers; DUCK (Down) is the live one. The oracle INI sets BACK_2='s', so
+# 's' is bound to both BACK and SIT_STAND (moot, since 's' is chat).
 
 step	fable_feed	eqgame.exe.c	fable_byte	oracle_byte	oracle_evidence
 stand	zone-in / local default	128478	100	100	legA3 INIT byte +0x251 = 100
 duck	pose key (fable: C) / live crouch key Down	setter 104878	111	111	legA-fix5 WR t+28.573 100->111 (Down press)
 stand	pose key (release)	setter 104878	100	100	legA-fix5 WR t+61.497 111->100 (Down release)
-sit	pose key	setter 104878	110	PENDING	legD: 's' (SIT_STAND k0, live keymap); 's' also = BACK_2 in the oracle INI (see KEY DISCOVERY caveat)
-stand	pose key (rise)	setter 104878	100	PENDING	legD: second 's' (SIT_STAND toggle)
-cast	cast start	71254	100	PENDING	legC4: #castspell 93 0 (GM path verified by #set time 23 0 first)
-stunned	stun message 0x3050 / 0x25aa / 0x3013	80377 / 80459	102	PENDING	legC4: #stun 8000
-stun end	stun-end message 0x25aa	80336	100	PENDING	legC4: #stun 0
-loot	loot open (28061 gate) / direct 105797	28061 / 105797	105	PENDING	legD: 'u' (USE k0, live keymap, no conflict) on a targeted TrollF corpse
+sit	/sit chat command (letter 's' is chat, not an action -- FINDING 1)	setter 104878	110	110	legF WR t+49.858 100->110 (the /sit command)
+stand	/stand chat command	setter 104878	100	100	legF WR t+59.258 110->100 (the /stand command)
+cast	cast start	71254	100	100	legF: #castspell 93 0 (S->C OP_BeginCast x2 + OP_ManaChange = the cast really started); the byte held 100 through the cast (SNAPs t=20..45)
+stunned	stun message 0x3050 / 0x25aa / 0x3013	80377 / 80459	102	100	legF: #stun 8000 (S->C OP_Stun 0x1e51 + OP_PlayerStateAdd + OP_SpecialMesg = the stun genuinely applied); the byte HELD 100. DIFFERS from fable's 102 -- FINDING 2, a FABLE-side difference (the official client's +0x251 pose byte is not written by the stun opcode)
+stun end	stun-end message 0x25aa	80336	100	100	legF: the 8 s GM stun expired naturally; the byte held 100 through and after (SNAPs t=40..56)
+loot	loot open (28061 gate) / direct 105797	28061 / 105797	105	PENDING	BLOCKED: the eqemu server DELETES the corpse ~1.03 s after OP_Death (B1133, measured on both clients); the oracle's USE trigger is a click on the live corpse (letter 'u' is chat -- FINDING 1), but the rig's click step ran 6.4 s (jclick + client_focus overhead), so the mousedown lands AFTER the despawn. legF (click ~12 s late) and legG (immediate click, still outside the ~1 s window): at click time the corpse is gone and the target empty, so the 100 reading is CONFOUNDED, not a loot measurement. NEXT COMMAND: extend corpse persistence (server setting / GM) or a sub-1 s click on a fixed-position corpse, then re-run legG.
