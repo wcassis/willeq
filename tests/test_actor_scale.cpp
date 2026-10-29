@@ -16,7 +16,9 @@
 #include "client/graphics/actor_scale.h"
 
 using EQT::Graphics::clientActorScale;
+using EQT::Graphics::clientCameraHeightAbovePlayerZ;
 using EQT::Graphics::clientDefaultActorSize;
+using EQT::Graphics::clientPlayerZOffsetFromGround;
 using EQT::Graphics::clientRaceForcedActorScale;
 using EQT::Graphics::clientRaceUsesSixthScale;
 using EQT::Graphics::clientSizeToActorScale;
@@ -92,4 +94,30 @@ TEST(ClientActorScale, ForcedScales) {
     for (uint16_t race : {49, 73, 114, 141, 142, 143, 158, 196, 252, 404}) {
         EXPECT_FLOAT_EQ(clientActorScale(race, 0, 12.0f), 1.0f) << "race " << race;
     }
+}
+
+// B1176 (#495): the player's own camera heights, derived exactly as the
+// client derives them (the trace is refactor/B1176/README.md sec. 2): the
+// first-person eye and the third-person orbit centre sit 0x234 - 0x238 =
+// (6.2 - 3.125) x s above the client's own z, and the client settles the
+// player at ground + 0x238 = 3.125 x s.
+TEST(ClientActorScale, TheB1176CameraHeights) {
+    // Human male, size 6 (s = 1.2): the figures of the B1176 live leg.
+    EXPECT_FLOAT_EQ(clientPlayerZOffsetFromGround(1, 0, 6.0f), 3.125f * 1.2f);
+    EXPECT_FLOAT_EQ(clientCameraHeightAbovePlayerZ(1, 0, 6.0f), 3.075f * 1.2f);
+    // Dark elf, default 5 (s = 1.0): unscaled -- the first-person view does
+    // not move for her (acceptance C).
+    EXPECT_FLOAT_EQ(clientPlayerZOffsetFromGround(6, 1, 0.0f), 3.125f);
+    EXPECT_FLOAT_EQ(clientCameraHeightAbovePlayerZ(6, 1, 0.0f), 3.075f);
+    // The wire equivalence: for the standard races 3.125 x s == 0.625 x the
+    // resolved size, so the settled z IS the B1172 wire z (T311 Leg A's
+    // measured 3.75 for the size-6 human).
+    EXPECT_FLOAT_EQ(clientPlayerZOffsetFromGround(1, 0, 6.0f), 0.625f * 6.0f);
+    EXPECT_FLOAT_EQ(clientPlayerZOffsetFromGround(6, 1, 0.0f), 0.625f * 5.0f);
+    // Eye/centre above the ground: 6.2 x s.
+    EXPECT_FLOAT_EQ(clientPlayerZOffsetFromGround(1, 0, 6.0f) +
+                        clientCameraHeightAbovePlayerZ(1, 0, 6.0f),
+                    6.2f * 1.2f);
+    // A shrink follows the scale.
+    EXPECT_FLOAT_EQ(clientCameraHeightAbovePlayerZ(1, 0, 3.0f), 3.075f * 0.6f);
 }

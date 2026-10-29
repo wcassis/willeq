@@ -842,6 +842,14 @@ EXEMPT_GROUPS = {
 }
 
 EXEMPT_TESTS_GROUPS = {
+    # B1176 (#495): the client's first- and third-person camera height above
+    # the player's z, (6.2 - 3.125) x s (005701c0:284524 via FUN_00489bf5;
+    # actor_scale.h:149). The player eye code implements the same rule inline
+    # from the NODE SCALE (animated_mesh_eye.cpp:128,169) -- it applies the
+    # fable posture drop in model space before the scale, so it cannot call
+    # the (race, gender, size) overload; test_actor_scale's
+    # TheB1176CameraHeights is the rule's observation window.
+    ("(free)", "clientCameraHeightAbovePlayerZ"): "observer",
     ("(free)", "ComputeHelpCoverage"): "seam",
     # B1138 (#458): tools/model_viewer was the one non-test caller of
     # getSpellColorForSpell and now runs the client's own cast sequence

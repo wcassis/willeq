@@ -1,0 +1,39 @@
+# action	target	hold_ms	still_name
+# B1176 O-D: the live-leg DARK-ELF row (acceptance C). Identical to o_human.tsv
+# except A = Darkshadow (the created dark-elf: the size-5 race, scale 1.0,
+# wire z 3.125) instead of Oraclewatch, with A's z seed 3.125. B is
+# the same standing reference (Testcaster, 67, size 5, scale 1.0).
+# Expected (sec. 2 of the README): the dark-elf first-person is UNCHANGED by
+# the fix (scale 1.0, so 3.125 s and 3.075 s are the same before and after);
+# this leg is the oracle half of that row.
+# fps=30
+# pose=-64.4,451.1,3.125,448
+# observer=Darkshadow
+# observer-pose=-74,428,3.125,0
+# B1176: the observer account holds two characters (Darkshadow slot 0,
+# Oraclewatch slot 1); Defaults.LastCharSel pre-selects DARKSHADOW (slot 0)
+# and the zone action clicks that slot, so the observer enters DARKSHADOW.
+# obs-ini-set=Defaults.LastCharSel=0
+login	Testcaster	0	char_select
+obs	login	Darkshadow	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+click	1229,555	0	close_tip
+obs	click	1229,555	0	obs_close_tip
+obs	press	Escape	0	obs_clean
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+# B1176 (#495) re-run 2: stills capture the CURRENT role's display; the
+# measurement stills are obs steps so they capture A's (:99) screen.
+obs	wait	6000	0	a_fp1
+obs	wait	2000	0	a_fp2
+obs	press	F9	0	a_cam1
+obs	press	F9	0	a_cam2
+obs	press	F9	0	a_cam3
+obs	wait	4000	0	a_chase_settle
+obs	wait	4000	0	a_chase1
+obs	wait	2000	0	a_chase2
+obs	command	/q	0	obs_quit
+command	/q	0	quit

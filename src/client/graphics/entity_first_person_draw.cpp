@@ -346,22 +346,25 @@ EntityRenderer::getPlayerFirstPersonEyeOffset() const {
     // ANY NUMBER HERE.
     //
     // The offset is measured from the player NODE ORIGIN, which is where
-    // createEntity() puts the node and which equals the server's Z for this
-    // entity. The origin is INSIDE the body -- the Human male base mesh spans
-    // Y = [-3.05, +3.65] about it -- but it is the MESH'S OWN ORIGIN, not the
-    // model's centre: 3.05 below it and 3.65 above (see entity_renderer.h).
+    // createEntity() puts the node. B1176 (#495) moved that origin onto the
+    // client's own placement -- ground + ROffset x scale, 3.125 x s
+    // (entityNodeCollisionZOffset, actor_scale.h) -- so the node origin is
+    // the z the client draws and transmits, and the offset below is added
+    // to exactly that z.
     //
-    // T300 returned bbox.MaxEdge.Y (3.65 for a Human male) -- the crown of
-    // the skull, ~6.70 above the mesh's own feet -- on the reasoning that
-    // T298 A3 measured the official client's eye 6.75 +/- 0.20 above the
-    // player's server z and 3.65-above-origin == 6.70-above-feet. The
-    // ARITHMETIC was right and the KIND was wrong: 6.75 was measured to an
-    // EYE and 3.65 is a BOUNDING-BOX CROWN. They are not the same point, and
-    // the difference is exactly the two live failures T300 Leg C recorded.
-    //
-    // The eye now comes from the head bone's own vertex cluster, per race,
-    // via EQAnimatedMeshSceneNode::getFirstPersonEyeOffset(). No hand-written
-    // per-race table exists anywhere in this path and none may be added.
+    // B1176 (#495) -- THE VERTICAL IS THE CLIENT'S OWN DERIVATION. The eye
+    // HEIGHT is no longer the head cluster's: it is 0x234 - 0x238 =
+    // 6.2 - 3.125 model units above the node origin, scaled by the actor
+    // scale -- the client's first-person camera (005701c0:284515-284524 via
+    // FUN_00489bf5; the third-person orbit centre is the same number,
+    // 005703a0:284622-284641). Standing eye = ground + 6.2 x s, as in the
+    // client. The node (EQAnimatedMeshSceneNode::getFirstPersonEyeOffset)
+    // computes it; the HEAD BONE cluster still supplies the HORIZONTAL
+    // component (the client's unmounted first-person camera is on the
+    // player's own axis -- 005701c0 -- and fable keeps its small measured
+    // head-centroid offset; the live leg measures the effect). The T301/T431
+    // cluster-height history in first_person_eye.h applies to the fallback
+    // paths below, not to the player's standing eye any more.
     //
     // T76's getBoneIndexByName("HEAD") is gone for a better reason than T300
     // gave: NO EQ SKELETON HAS EVER CONTAINED A BONE CALLED "HEAD". The head

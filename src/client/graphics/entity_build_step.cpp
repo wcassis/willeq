@@ -337,7 +337,7 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion, uint16_t priori
                 return true;
             }
 
-            scale = entityNodeScale(vis.isPlayer, raceId, gender, vis.serverSize);  // B1172: actor_scale.h
+            scale = entityNodeScale(raceId, gender, vis.serverSize);  // B1172/B1176: actor_scale.h, player included
 
             // Temporarily clear weapon equipment IDs so createAnimatedNodeWithEquipment
             // doesn't bake weapon geometry — weapons are attached in EquipmentAttach phase
@@ -384,10 +384,12 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion, uint16_t priori
                 }
                 animNode->forceAnimationUpdate();
 
-                // Collision offset: origin-to-feet, not half the bbox height
+                // Collision offset: origin-to-feet, not half the bbox height;
+                // the local player takes the client's ROffset placement (B1176)
                 vis.modelYOffset = 0;
                 vis.collisionZOffset =
-                    collisionZOffsetFromBounds(animNode->getBoundingBox(), scale);
+                    entityNodeCollisionZOffset(vis.isPlayer, animNode->getBoundingBox(), scale,
+                                               raceId, gender, vis.serverSize);
 
                 // Position, rotation, scale
                 animNode->setPosition(irr::core::vector3df(vis.lastX, vis.lastZ + vis.modelYOffset, vis.lastY));
@@ -416,10 +418,12 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion, uint16_t priori
                 vis.sceneNode->grab();
                 vis.inSceneGraph = true;
 
-                // Collision offset: origin-to-feet, not half the bbox height
+                // Collision offset: origin-to-feet, not half the bbox height;
+                // the local player takes the client's ROffset placement (B1176)
                 vis.modelYOffset = 0;
                 vis.collisionZOffset =
-                    collisionZOffsetFromBounds(mesh->getBoundingBox(), scale);
+                    entityNodeCollisionZOffset(vis.isPlayer, mesh->getBoundingBox(), scale,
+                                               raceId, gender, vis.serverSize);
 
                 // Position, rotation, scale
                 vis.meshNode->setPosition(irr::core::vector3df(vis.lastX, vis.lastZ + vis.modelYOffset, vis.lastY));

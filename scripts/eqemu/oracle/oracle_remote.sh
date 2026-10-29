@@ -1068,9 +1068,21 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6 arg7; do
             fi ;;
         zone)
             # Seeded by the host before login; enter the selected character here.
+            # B1176 (#495): click the slot the INTENDED character actually
+            # occupies, not a hardcoded 0. The main (caster) client is the only
+            # character on its account (slot 0). The observer account has two
+            # (Darkshadow slot 0, Oraclewatch slot 1) and the client pre-selects
+            # via Defaults.LastCharSel, which each leg seeds with
+            # `# obs-ini-set=Defaults.LastCharSel=N` -- so read it back and
+            # click that slot (35px per slot, slot 0 at y=315).
+            slot_y=315
+            if [[ $ROLE == observer ]]; then
+                slot_idx=$(grep -h '^LastCharSel=' "$OBS_CLIENT/eqclient.ini" 2>/dev/null | head -1 | cut -d= -f2 | tr -d ' \r\n')
+                [[ $slot_idx =~ ^[0-9]+$ ]] && slot_y=$((315 + 35 * slot_idx))
+            fi
             entered=0
             for attempt in 1 2 3 4; do
-                jclick 123 315; sleep 3; jclick 180 640; sleep 25
+                jclick 123 "$slot_y"; sleep 3; jclick 180 640; sleep 25
                 if ! screen_text | grep -qiE 'Character Select|Create a New Character'; then
                     entered=1
                     break

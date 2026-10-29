@@ -110,4 +110,50 @@ constexpr float clientActorScale(uint16_t race, uint8_t gender, float size, bool
     return clientSizeToActorScale(race, s, zoneScaleFlag, flag923798);
 }
 
+// -------------------------------------------------------------------------
+// B1176 (#495): the player's own camera heights, derived exactly as eqgame
+// derives them (the full trace is refactor/B1176/README.md sec. 2).
+//
+// The per-spawn initialiser FUN_0047fa9e (eqgame.exe.c:102153) sets
+//   0x234 = 6.2          (0x40c66666 at :102202, then multiplied by the actor
+//                         scale at :102209-102210: 0x234 = 6.2 x s)
+//   0x238 = ini "ROffset" (read at :102200-102201 via FUN_004b6d42, whose
+//                         default is DAT_0064b86c = 3.125 at :138498;
+//                         then multiplied by the actor scale at :102205-102206:
+//                         0x238 = 3.125 x s)
+// The first-person camera (005701c0, :284515-284524) and the third-person
+// orbit centre (005703a0, :284622-284641) both place the camera at
+//   z + (0x234 - 0x238)   (FUN_00489bf5, :109359-109390; the mounted variants
+//                         add their own terms and are out of scope here),
+// and a corpse ('o' at +0x251) at z with no offset. z (0x38) is the client's
+// own settled position, ground + 0x238 (z-settle FUN_00479e37, :97464-97466)
+// -- the same number the client transmits on the wire (measured, T311 Leg A:
+// ground + 0.625 x the resolved size, identical to 3.125 x s for the
+// standard races) -- so the eye and the orbit centre sit at ground + 6.2 x s.
+// FUN_0047a239 (the race override, :97743) touches neither 0x234 nor 0x238
+// below race 26 (:97765-97766 return before any write), so every playable
+// race here follows the rule above. The ini "FPCOffset" (default 0.0,
+// FUN_004b6d29, :138483-138485) is not applied in the unmounted first-person
+// branch, and the oracle's ini does not set it.
+// -------------------------------------------------------------------------
+
+// 0x234's un-scaled value (0x40c66666, eqgame.exe.c:102202).
+constexpr float kClientEyeModelHeight = 6.2f;
+// The ini "ROffset" default, DAT_0064b86c (0x40480000; eqgame.exe.c:138498):
+// the client model's origin-to-feet distance.
+constexpr float kClientROffsetModelHeight = 3.125f;
+
+// 0x234 - 0x238 at the resolved scale: (6.2 - 3.125) x s = 3.075 x s -- the
+// first-person eye height and the third-person orbit centre's height above
+// the client's own z (0x38).
+constexpr float clientCameraHeightAbovePlayerZ(uint16_t race, uint8_t gender, float size) {
+    return (kClientEyeModelHeight - kClientROffsetModelHeight) * clientActorScale(race, gender, size);
+}
+
+// The z the client settles the player at (and draws and transmits it at):
+// ground + 0x238 = ground + 3.125 x s (FUN_00479e37, eqgame.exe.c:97464-97466).
+constexpr float clientPlayerZOffsetFromGround(uint16_t race, uint8_t gender, float size) {
+    return kClientROffsetModelHeight * clientActorScale(race, gender, size);
+}
+
 }  // namespace EQT::Graphics
