@@ -341,6 +341,49 @@ legs `archery`..`archery6` (all six `capture.pcap`s scanned, `all4033.py`)
 and every fable leg's archery window (r4 `/autofire` tour, r7 `/range`
 tour). The measured conditions, newest first:
 
+- **Runs 9-10 (2026-10-29 07:41-08:32 UTC): the gate is `IsAttackAllowed`,
+  not the skill gate.**
+  - **Run 9** (archery, the run-8 skill fix in effect — archery=25
+    verified live; clean stack) sent all three `/range` packets (B.log
+    07:46:36/44/52; zone log 02:46:36/44/52 has the three
+    `[OP_CombatAbility]` receipts) and still drew zero `0x4033`. The
+    `MaxSkill` gate was passed (cap 280, archery 25 > 0) — something
+    deeper dropped the packet.
+  - **Run 10** switched to a **thrown item** (knife, item 8001, DB slot
+    11; `m_skill=51` Throwing, class-12 cap 280 — `MaxSkill` passes on
+    any reading): 3× `0x5ee8` sent (B.log 08:27:43/51/59) and received
+    (zone log 03:27:43/51/59), zero `0x4033`. The slot mapping was
+    verified against the server's own `titanium_limits.h`:
+    `slotRange=11`, `slotAmmo=21` — no slot mismatch; the DB-seeded
+    knife lands in `m_inv[slotRange]` the way the bow did (run 7).
+  - **The decisive zone-log fact**: for every one of those six shots the
+    zone log has the C->S receipt and **zero `LogCombat` lines** — so
+    neither `ThrowingAttack`'s cancel path ("Throwing attack canceled.
+    Timer not up") nor `RangedAttack`'s log lines were ever reached. The
+    packet dies in the dispatch *before* the attack function. The only
+    silent dispatch gate left after the skill check is
+    `if (!IsAttackAllowed(GetTarget())) return;`.
+  - `Mob::IsAttackAllowed` (`aggro.cpp:722`, client-vs-client branch at
+    838-853) returns true for a client-vs-client attack **only when both
+    sides have `GetPVP()` set (or they are dueling)**. The leg sets B
+    (`/say #set pvp on`, applied — B.log "You are now player kill and
+    follow the ways of Discord.") but **A (Oraclewatch) has
+    `pvp_status=0`** (measured live in `character_data`: 67→1, 103→0),
+    so every ranged packet from B was dropped at that gate — for both
+    archery (runs 9) and the throw (run 10). The bolt's damage reached A
+    because the GM `#castspell` path does not consult this gate. This
+    gate also explains runs 4-7's archery failures independent of the
+    skill row (the skill row was absent then — two stacked gates, only
+    the outer one ever observable).
+  - **Fix (run 11, this commit):** the leg seeds A's `pvp_status=1` in
+    the pre-SQL (the zone reads `pvp_status` at login, `zonedb.cpp`)
+    and restores it in the post-SQL (as-found snapshot and post query
+    now carry the column); with both sides PVP the gate passes and the
+    throw should reach `ThrowingAttack` → `SendItemAnimation` → `0x4033`
+    model **IT10650** (the knife's `IDFile`; extracted live in A.log run
+    9, so the model IS in the client's archives — unlike the bolt's
+    IT11504).
+
 - **Fable leg r7 (`fable/fable-b1181-7/`, 2026-10-29 04:54-05:00 UTC, the
   clean run)** — the client side is proven correct end to end:
   - B.log 04:56:11/.19/.27: three `[COMBAT] RangedAttack: target=263,
@@ -442,8 +485,12 @@ this rig, so it will be willeq-side + the payload replay as the reference).
 
 **Scope-down decision (the card's clause: state what was not captured
 and why — measured, never guessed):** the bolt (5.1) is captured on BOTH
-sides with flight numbers; the archery shot's root cause is identified and
-measured (the dispatch `MaxSkill` gate, char 67 archery=0) and fixed in-tree
-(run 8, `a04324608`) — the archery capture itself is one **clean-stack
-lane-5 re-run** away (run 8 failed on an adopted/churning stack, not the
-archery), and that re-run is the immediate NEXT, not an open unknown.
+sides with flight numbers; the thrown-item shot's root cause is identified
+and measured — the dispatch `IsAttackAllowed` gate requires BOTH clients
+PVP (5.2, runs 9-10: three zone-log receipts, zero `LogCombat`, A
+`pvp_status=0`) — and fixed in-tree (the leg now seeds A's `pvp_status=1`
+pre-SQL, restores it post-SQL). The capture itself is run 11, in flight
+at the time of writing; if it lands, the `0x4033` IT10650 throw is the
+acceptance-C shot (the card allows "one archery or thrown-item shot";
+there is no oracle archery/throw reference on this rig, so the ledger
+clip is willeq-side + the payload replay as reference, as planned in 5.1).
