@@ -10,7 +10,8 @@
 //   0    uninitialized -- the spawn constructor (eqgame.exe.c:103347)
 //   100  'd' standing   (zone-in 75121/75215/76903/119126/128478, cast path
 //                        71254, stun end 80336, new spawn 106109)
-//   102  'f' frozen      (stun start 80377/80459, the 0x25aa/0x3050 messages)
+//   102  'f' frozen      (the 0x25aa case 80377, the 0x3013 case 80459;
+//                        the 0x1e51 case 79576-79581 writes NO +0x251 -- B1199)
 //   105  'i' looting     (loot start 105797, direct)
 //   110  'n' sitting     (the setter, sit key)
 //   111  'o' crouching   (the setter, duck key)
@@ -21,8 +22,8 @@
 //
 //  * DIRECT writes -- no gate: spawn init/appearance (103347/103463), the
 //    local player's zone-in 100 (75121/75215/76903/119126/128478), the cast
-//    path's 100 (71254), stun 100/102 (80336/80377/80459), loot start 105
-//    (105797), new spawn 100 (106109), death 120 (105881/111059).
+//    path's 100 (71254), the stun feed's 100/102 (onStunFeed below), loot
+//    start 105 (105797), new spawn 100 (106109), death 120 (105881/111059).
 //      -> apply() / onAppearanceAnim()
 //
 //  * THE SETTER FUN_00483556 (decompiled inside the FUN_0048236e listing,
@@ -71,6 +72,30 @@ enum class StandValue : uint8_t {
     Corpse        = 120, // 'x'
 };
 
+// B1199 (#518): the stun message feed -- one input per client opcode case.
+// The client's stun-related +0x251 writers (eqgame.exe.c, the message
+// handler family):
+//   0x1e51 case (79576-79581: `if (DAT_00905d00 != 0) FUN_00417839();`)
+//       -- writes NO +0x251: the byte holds whatever pose it had. Measured
+//       on lane 5 (B1183 legF): the oracle held 100 through the whole GM
+//       #stun window. This is fable's OP_Stun feed (the B1183 port wrongly
+//       wrote 102 here -- the measured fable/oracle difference this enum
+//       removes).
+//   0x25aa case (80377) -- DIRECT write 102 (0x66, frozen).
+//   0x3013 case (80459) -- DIRECT write 102.
+//   0x210b case (80326-80340) -- the stun end: DIRECT write 100 (80336)
+//       and the stun-flag clear (80337).
+// Fable parses the 0x1e51 (OP_Stun) and the 0x210b (stun end) feeds; the
+// 0x25aa / 0x3013 writers have no fable feed (fable does not process those
+// opcodes), but the machine keeps them so its vocabulary is the client's,
+// byte for byte.
+enum class StunFeed {
+    OpStun0x1e51,  // the stun the server applies (the GM #stun): no write
+    StunEnd0x210b, // stun end: 100 (80336)
+    Frozen0x25aa,  // 102 (80377)
+    Frozen0x3013   // 102 (80459)
+};
+
 // The inputs FUN_00483556 consults, the ones fable can know (README sec. 3
 // names each client line and its fable source). The client's local-only half
 // (the 0x48359c-0x4835c3 chair/message cleanup, the 0x4836a5-0x4836f0 UI
@@ -105,7 +130,7 @@ public:
     bool operator!=(StandValue v) const { return state_ != static_cast<uint8_t>(v); }
 
     // The DIRECT writes (the census lines in the banner): spawn init,
-    // zone-in 100, cast path 100, stun 100/102, loot start 105, death 120.
+    // zone-in 100, cast path 100, loot start 105, death 120.
     void apply(StandValue v) { state_ = static_cast<uint8_t>(v); }
 
     // The server's AT_Anim stand value for this spawn (appearance packets),
@@ -115,6 +140,26 @@ public:
     void onAppearanceAnim(uint32_t animParam)
     {
         state_ = EQ::SpawnStandStateAfterAppearance(state_, animParam);
+    }
+
+    // B1199 (#518): the stun feed (the banner's stun cases, one entry point
+    // per client opcode). 0x1e51 is the documented no-op: the client's
+    // case (79576-79581) writes no +0x251, so the pose byte holds whatever
+    // it had. 0x25aa / 0x3013 are the client's 102 direct writes
+    // (80377 / 80459). Stun end (0x210b) is the 100 direct write (80336).
+    void onStunFeed(StunFeed feed)
+    {
+        switch (feed) {
+            case StunFeed::OpStun0x1e51:
+                break;  // 79576-79581: no +0x251 write -- the pose holds
+            case StunFeed::Frozen0x25aa:
+            case StunFeed::Frozen0x3013:
+                apply(StandValue::Frozen);  // 80377 / 80459: direct 102
+                break;
+            case StunFeed::StunEnd0x210b:
+                apply(StandValue::Standing);  // 80336: direct 100
+                break;
+        }
     }
 
     // THE SETTER (FUN_00483556): the user-initiated transition. Returns

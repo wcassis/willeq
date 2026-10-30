@@ -8,8 +8,9 @@
 //
 //  * DIRECT writes (apply / onAppearanceAnim): spawn init, the server's
 //    AT_Anim stand value (103463), the local zone-in 100, the cast path's 100
-//    (71254), stun 100/102 (80336/80377/80459), loot start 105 (28061/105797),
-//    death 120 (105881/111059). No gate.
+//    (71254), the stun feed's 100/102 (onStunFeed; 80336/80377/80459, the
+//    0x1e51 case writes nothing), loot start 105 (28061/105797), death 120
+//    (105881/111059). No gate.
 //
 //  * THE SETTER FUN_00483556 (transition): the user-initiated transitions,
 //    gated -- the no-op (104742), the mid-cast sit (104768, model +0x15c),
@@ -29,6 +30,7 @@
 using eqt::state::StandState;
 using eqt::state::StandStateContext;
 using eqt::state::StandValue;
+using eqt::state::StunFeed;
 
 namespace {
 
@@ -290,19 +292,76 @@ TEST(StandState, TheLane5FullSequenceTable) {
     s.apply(StandValue::Standing);
     EXPECT_EQ(static_cast<int>(s), 100);
     step("cast", "cast start (71254)");
-    // stun start (80377: frozen)
-    s.apply(StandValue::Frozen);
-    EXPECT_EQ(static_cast<int>(s), 102);
-    step("stunned", "stun msg 0x3050 (80377)");
-    // stun end (80336: back to standing)
-    s.apply(StandValue::Standing);
+    // stun start (B1199: fable's feed is the 0x1e51 OP_Stun opcode, whose
+    // client case 79576-79581 writes NO +0x251 -- the pose holds 100)
+    s.onStunFeed(StunFeed::OpStun0x1e51);
     EXPECT_EQ(static_cast<int>(s), 100);
-    step("stun end", "stun end (80336)");
+    step("stunned", "OP_Stun 0x1e51 (79576-79581: no +0x251 write)");
+    // stun end (80336: back to standing, the 0x210b case)
+    s.onStunFeed(StunFeed::StunEnd0x210b);
+    EXPECT_EQ(static_cast<int>(s), 100);
+    step("stun end", "stun end 0x210b (80336)");
     // loot start (28061 gate: standing -> looting, via the setter)
     ASSERT_TRUE(s.transition(StandValue::Looting, ctx));
     EXPECT_EQ(static_cast<int>(s), 105);
     step("loot", "loot open (28061)");
     std::cout << out.str() << std::flush;
+}
+
+// B1199 (#518): the stun feed, byte for byte as the client writes it
+// (eqgame.exe.c, the message handler family).
+//
+// 0x1e51 (OP_Stun -- the stun the server applies, the GM #stun): the
+// client's case (79576-79581: `if (DAT_00905d00 != 0) FUN_00417839();`)
+// writes NO +0x251, so the pose byte HOLDS whatever it had. Fable's B1183
+// port wrote 102 on this feed -- the measured fable/oracle difference
+// (B1183 legF: oracle 100 vs fable 102 on GM #stun); the write is removed.
+TEST(StandState, TheOpStunFeed0x1e51WritesNoStandByte) {
+    StandState s;  // 100 (the measured lane-5 pose: standing)
+    s.onStunFeed(StunFeed::OpStun0x1e51);
+    EXPECT_EQ(static_cast<uint8_t>(s), 100);  // unchanged, stays 100
+
+    // the byte holds ANY pose it had, not just 100: the client writes
+    // nothing, so a sitting or crouching actor keeps its pose byte
+    s.apply(StandValue::Sitting);  // 110
+    s.onStunFeed(StunFeed::OpStun0x1e51);
+    EXPECT_EQ(static_cast<uint8_t>(s), 110);
+    s.apply(StandValue::Crouching);  // 111
+    s.onStunFeed(StunFeed::OpStun0x1e51);
+    EXPECT_EQ(static_cast<uint8_t>(s), 111);
+}
+
+// The client's 102 (0x66, frozen) writer #1: the 0x25aa case
+// (eqgame.exe.c:80377). A direct write -- 102 lands from whatever pose the
+// spawn had. (Fable does not process 0x25aa; the feed is kept in the
+// machine so its vocabulary is the client's, byte for byte.)
+TEST(StandState, TheFrozenFeed0x25aaWrites102) {
+    StandState s;  // 100
+    s.onStunFeed(StunFeed::Frozen0x25aa);
+    EXPECT_EQ(static_cast<uint8_t>(s), 102);
+    // direct: it lands even from sitting (110)
+    s.apply(StandValue::Sitting);
+    s.onStunFeed(StunFeed::Frozen0x25aa);
+    EXPECT_EQ(static_cast<uint8_t>(s), 102);
+}
+
+// The client's 102 writer #2: the 0x3013 case (eqgame.exe.c:80459) -- the
+// same direct 102 write.
+TEST(StandState, TheFrozenFeed0x3013Writes102) {
+    StandState s;  // 100
+    s.onStunFeed(StunFeed::Frozen0x3013);
+    EXPECT_EQ(static_cast<uint8_t>(s), 102);
+}
+
+// The stun end (the 0x210b case, eqgame.exe.c:80326-80340: 100 at 80336,
+// the stun-flag clear at 80337) is the direct 100 write -- it lands from
+// any pose, including the 102 a frozen feed would have left.
+TEST(StandState, TheStunEndFeed0x210bWrites100) {
+    StandState s;
+    s.onStunFeed(StunFeed::Frozen0x25aa);
+    ASSERT_EQ(static_cast<uint8_t>(s), 102);
+    s.onStunFeed(StunFeed::StunEnd0x210b);
+    EXPECT_EQ(static_cast<uint8_t>(s), 100);
 }
 
 }  // namespace
