@@ -1,0 +1,36 @@
+spell	column	oracle	thinkpad	thinkpad_v	rock4d	rock4d_v	d_rock_minus_think	band_width	in_band
+93	land_cov	4.479	5.553	over	5.534	over	-0.019	0.134	yes
+93	end	4.994	6.6	over	6.6	over	+0.000	0.1	yes
+93	roi_l	0.054-0.074	0.168	over	0.165	over	-0.003		same-side
+93	roi_s	0.068-0.092	0.075	PASS	0.08	PASS	+0.005		same-side
+93	src_cov		0.152	n-a	0.147	n-a	-0.005		info
+38	land_cov	5.138	5.553	over	5.534	over	-0.019	0.154	yes
+38	end	6.566	6.6	PASS	6.6	PASS	+0.000	0.1	yes
+38	roi_l	0.055-0.075	0.168	over	0.165	over	-0.003		same-side
+38	roi_s	0.051-0.069	0.075	over	0.08	over	+0.005		same-side
+38	src_cov		0.152	n-a	0.147	n-a	-0.005		info
+54	land_cov	2.002	1.486	short	1.47	short	-0.016	0.06	yes
+54	end	5.045	6.367	over	6.367	over	+0.000	0.1	yes
+54	roi_l	0.036-0.048	0.049	over	0.053	over	+0.004		same-side
+54	roi_s	0.028-0.038	0.031	PASS	0.034	PASS	+0.003		same-side
+54	src_cov		0.334	n-a	0.332	n-a	-0.002		info
+656	land_cov	2.004	1.486	short	1.47	short	-0.016	0.06	yes
+656	end	6.033	6.367	over	6.367	over	+0.000	0.1	yes
+656	roi_l	0.028-0.038	0.049	over	0.053	over	+0.004		same-side
+656	roi_s	0.025-0.034	0.031	PASS	0.034	PASS	+0.003		same-side
+656	src_cov		0.334	n-a	0.332	n-a	-0.002		info
+41	land_cov	4.088	1.663	short	1.613	short	-0.050	0.123	yes
+41	end	6.637	5.567	short	5.667	short	+0.100	0.1	yes
+41	roi_l	0.088-0.118	0.065	short	0.068	short	+0.003		same-side
+41	roi_s	0.081-0.109	0.043	short	0.043	short	+0.000		same-side
+41	src_cov		0.523	n-a	0.482	n-a	-0.041		info
+253	land_cov	4.791	3.479	short	3.466	short	-0.013	0.144	yes
+253	end	6.35		n-a		n-a		0.1	n-a
+253	roi_l	0.079-0.107	0.107	PASS	0.117	over	+0.010		DIFFERENT
+253	roi_s	0.097-0.131	0.104	PASS	0.116	PASS	+0.012		same-side
+253	src_cov		2.859	n-a	2.863	n-a	+0.004		info
+458	land_cov	1.261	1.8	over	1.79	over	-0.010	0.038	yes
+458	end	4.697	5.117	over	5.183	over	+0.066	0.1	yes
+458	roi_l	0.075-0.101	0.113	over	0.122	over	+0.009		same-side
+458	roi_s	0.036-0.048	0.067	over	0.071	over	+0.004		same-side
+458	src_cov		0.131	n-a	0.126	n-a	-0.005		info
