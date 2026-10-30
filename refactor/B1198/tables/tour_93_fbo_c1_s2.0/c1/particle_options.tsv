@@ -1,0 +1,6 @@
+key	value
+SpellParticleDensity	1
+SpellParticleOpacity	1
+SpellParticleNearClipPlane	2
+SpellParticleCastFilter	24
+ShowSpellEffects	1

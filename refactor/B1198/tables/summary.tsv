@@ -1,0 +1,11 @@
+tag	readback	conc	frames	wall_s	render_ms_median	readback_ms_median	load_at_end	load_at_start
+tour_93	driver	1	60	4.75	0.30	53.30	0.25
+b1130_r2	driver	1	60	5.37	0.30	53.72	0.39
+tour_93	glread	1	60	3.17	0.29	29.73	0.39
+b1130_r2	glread	1	60	4.02	0.27	29.83	0.44
+tour_93	pbo	1	60	3.10	0.29	26.17	0.56
+b1130_r2	pbo	1	60	3.93	0.28	27.00	0.68
+tour_93	fbo	1	60	2.18	5.68	10.68	0.68
+b1130_r2	fbo	1	60	3.00	6.50	9.84	0.71
+tour_93	dirty	1	26	3.33	0.28	56.81	0.71
+b1130_r2	dirty	1	26	4.41	0.27	60.35	0.73
