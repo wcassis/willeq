@@ -180,7 +180,16 @@ cleanup() {
                 say "SERVER DATA MISMATCH: server-data-before.tsv vs server-data-after.tsv"; STATUS=66
             fi
         fi
-        bash "$REPO/scripts/eqemu/down.sh" >>"$OUT/driver.log" 2>&1 || STATUS=66
+        # B1206 (#525): ORACLE_KEEP_STACK=1 leaves the lane stack UP for the
+        # next leg (up.sh then adopts the running fleet in ~10 s instead of
+        # recreating the containers). The post-SQL restore already ran above
+        # with both clients logged out, so there is no in-memory character to
+        # write back. The lease is still released; only the containers stay.
+        if [[ ${ORACLE_KEEP_STACK:-0} == 1 ]]; then
+            say "keep-stack: leaving the lane stack up for the next leg"
+        else
+            bash "$REPO/scripts/eqemu/down.sh" >>"$OUT/driver.log" 2>&1 || STATUS=66
+        fi
         eqemu_lease_stop_renewer
         # B1089 review (finding 1): eqemu_lock_release is already owner-checked
         # by the lease's identity (card/run/pid; a takeover is refused with
@@ -189,7 +198,9 @@ cleanup() {
         # lease's key=value record never matched) and redundant. A genuine
         # takeover still surfaces through the release's own refusal.
         eqemu_lock_release || STATUS=66
-        if eqemu_lock_show >/dev/null 2>&1 || eqemu_stack_ready; then STATUS=66; fi
+        if eqemu_lock_show >/dev/null 2>&1; then STATUS=66; fi
+        # B1206: with ORACLE_KEEP_STACK=1 the stack stays up by design.
+        if [[ ${ORACLE_KEEP_STACK:-0} != 1 ]] && eqemu_stack_ready; then STATUS=66; fi
     fi
     # B1192 (legH3): an early exit (the client step never completed) stays the
     # leg's reported code -- a cleanup failure CAUSED by the early exit (the
