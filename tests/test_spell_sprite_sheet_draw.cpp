@@ -60,6 +60,32 @@ void cellColour(int cell, uint8_t& r, uint8_t& g, uint8_t& b) {
     b = 128;
 }
 
+// B1188: a frame that stores MORE than one cell (storedSpan >= 2) owns a
+// span x span cell region. The cell palette above cannot name one -- a frame
+// region reads as its top-left cell. Its slot palette instead encodes the
+// FRAME NUMBER in blue on a 14-level pitch (16 frames: 12..236, no two within
+// the +/-3 read-back tolerance, and no level collides with the base palette's
+// flat 128 by more than the tolerance either).
+void slotColour(int frame, uint8_t& r, uint8_t& g, uint8_t& b) {
+    r = 4;
+    g = 4;
+    b = static_cast<uint8_t>(12 + frame * 14);
+}
+
+// Names the (frame) slot whose palette this colour is. -1 if none.
+int identifySlot(const irr::video::SColor& c) {
+    for (int f = 0; f < SpellSpriteAtlas::kFramesPerSprite; ++f) {
+        uint8_t r = 0, g = 0, b = 0;
+        slotColour(f, r, g, b);
+        if (std::abs(static_cast<int>(c.getRed()) - r) <= 3 &&
+            std::abs(static_cast<int>(c.getGreen()) - g) <= 3 &&
+            std::abs(static_cast<int>(c.getBlue()) - b) <= 3) {
+            return f;
+        }
+    }
+    return -1;
+}
+
 int slotOf(const char* file) { return SpellSpriteAtlas::slotForFile(file); }
 
 }  // namespace
@@ -118,6 +144,26 @@ protected:
             for (int y = 0; y < SpellSpriteAtlas::kCellSize; ++y) {
                 for (int x = 0; x < SpellSpriteAtlas::kCellSize; ++x) {
                     img->setPixel(ox + x, oy + y, irr::video::SColor(255, r, g, b));
+                }
+            }
+        }
+
+        // B1188: a frame that stores more than one cell gets its SLOT palette
+        // (frame number in blue) over its whole stored region, so the probe
+        // can tell which frame -- not just which cell -- was sampled.
+        for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
+            const int span = SpellSpriteAtlas::storedSpan(sprite);
+            if (span < 2) continue;
+            for (int f = 0; f < SpellSpriteAtlas::framesFor(sprite); ++f) {
+                int fx = 0, fy = 0;
+                SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::cellFor(sprite, f), fx, fy);
+                uint8_t r = 0, g = 0, b = 0;
+                slotColour(f, r, g, b);
+                const int px = span * SpellSpriteAtlas::kCellSize;
+                for (int y = 0; y < px; ++y) {
+                    for (int x = 0; x < px; ++x) {
+                        img->setPixel(fx + x, fy + y, irr::video::SColor(255, r, g, b));
+                    }
                 }
             }
         }
@@ -323,13 +369,22 @@ TEST_F(SpellSpriteSheetDrawTest, EveryShippedSpriteDrawsItsOwnPixels) {
             static_cast<uint16_t>(SpellSpriteAtlas::kBase + sprite);
         for (float age : {0.0f, 0.5f, 0.999f}) {
             // B1127: a 2x2 sheet walks its 4 frames, a single image holds 0.
-            const int want = SpellSpriteAtlas::cellFor(
-                sprite, SpellSpriteAtlas::frameForNormalizedAge(age, SpellSpriteAtlas::framesFor(sprite)));
+            const int frame =
+                SpellSpriteAtlas::frameForNormalizedAge(age, SpellSpriteAtlas::framesFor(sprite));
             const irr::video::SColor c = drawOne(index, age);
-            EXPECT_EQ(identifyCell(c), want)
-                << "sprite " << sprite << " (" << SpellSpriteAtlas::kFiles[sprite]
-                << ") at age " << age << " read back " << c.getRed() << ","
-                << c.getGreen() << "," << c.getBlue();
+            if (SpellSpriteAtlas::storedSpan(sprite) >= 2) {
+                // B1188: a stored frame spans several cells and wears its
+                // slot palette -- the read-back must name the FRAME.
+                EXPECT_EQ(identifySlot(c), frame)
+                    << "sprite " << sprite << " (" << SpellSpriteAtlas::kFiles[sprite]
+                    << ") at age " << age << " read back " << c.getRed() << ","
+                    << c.getGreen() << "," << c.getBlue();
+            } else {
+                EXPECT_EQ(identifyCell(c), SpellSpriteAtlas::cellFor(sprite, frame))
+                    << "sprite " << sprite << " (" << SpellSpriteAtlas::kFiles[sprite]
+                    << ") at age " << age << " read back " << c.getRed() << ","
+                    << c.getGreen() << "," << c.getBlue();
+            }
         }
     }
 }
@@ -345,8 +400,19 @@ TEST_F(SpellSpriteSheetDrawTest, ASingleImageSpriteDrawsItsOnePictureForItsWhole
         const uint16_t index = static_cast<uint16_t>(SpellSpriteAtlas::kBase + sprite);
         const int first = SpellSpriteAtlas::cellFor(sprite, 0);
         for (float age : {0.0f, 0.3f, 0.5f, 0.999f, 3.7f}) {
-            EXPECT_EQ(identifyCell(drawOne(index, age)), first)
-                << file << " at age " << age << " did not hold its one picture";
+            const irr::video::SColor c = drawOne(index, age);
+            if (SpellSpriteAtlas::storedSpan(sprite) >= 2) {
+                // B1188: the 64x64 picture is stored 1:1 in its 2x2 sub-block
+                // and the particle's span covers it whole; the read-back must
+                // name frame 0 at every age.
+                EXPECT_EQ(identifySlot(c), 0)
+                    << file << " at age " << age << " did not hold its one picture"
+                    << " (read back " << c.getRed() << "," << c.getGreen() << ","
+                    << c.getBlue() << ")";
+            } else {
+                EXPECT_EQ(identifyCell(c), first)
+                    << file << " at age " << age << " did not hold its one picture";
+            }
         }
     }
 }

@@ -1,0 +1,28 @@
+table
+column
+rows
+in_band_yes
+in_band_same_side
+in_band_out
+in_band_na
+thinkpad_PASS
+thinkpad_short
+thinkpad_over
+thinkpad_n-a
+rock4d_PASS
+rock4d_short
+rock4d_over
+rock4d_n-a
+tour	land_cov	7	7	0	0	0	0	4	3	0	0	4	3	0
+tour	end	7	6	0	0	1	1	1	4	1	1	1	4	1
+tour	roi_l	7	0	6	1	0	1	1	5	0	0	1	6	0
+tour	roi_s	7	0	7	0	0	4	1	2	0	4	1	2	0
+b1130	source_cov	10	6	0	4	0	1	5	4	0	2	5	3	0
+b1130	landing_cov	10	8	0	0	2	0	7	1	2	0	7	1	2
+b1130	landing_end_s	10	4	0	4	2	1	6	1	2	1	6	1	2
+b1130	p90_src	10	8	0	2	0	0	5	5	0	1	4	5	0
+b1130	p90_land	10	5	0	3	2	3	1	4	2	4	0	4	2
+b1130	source_onset_s	10	10	0	0	0	9	1	0	0	9	1	0	0
+b1130	source_centroid	10	10	0	0	0	6	0	4	0	6	0	4	0
+b1130	src_h_lo	10	10	0	0	0	8	1	1	0	9	0	1	0
+b1130	src_h_hi	10	10	0	0	0	4	1	5	0	4	1	5	0

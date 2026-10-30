@@ -506,7 +506,7 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (53 tests: B1171's `FxCaptureLevel`, B1134's `OracleLoginPatch`, B1093's `ArmContainerGuard`, `FacePickXmlGeometry`, `FileSizeCeiling`, `DocCitations` (+ B1020's
+`hygiene` (54 tests: B1208's `RbuildTestTargets`, B1171's `FxCaptureLevel`, B1134's `OracleLoginPatch`, B1093's `ArmContainerGuard`, `FacePickXmlGeometry`, `FileSizeCeiling`, `DocCitations` (+ B1020's
 `DocCitationsSelfTest`, the anchored-citation probes), B1094's
 `InstalledPackMatchesPin` (the installed shared pack vs the pin, hard only
 on fable) + `PackCheckContract` (the `--check`-is-pin-only /

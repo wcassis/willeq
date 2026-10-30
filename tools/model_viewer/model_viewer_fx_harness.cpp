@@ -5,6 +5,9 @@
 #include "model_viewer_state.h"
 #include "fx_target_anchor.h"
 #include "fx_target_fit.h"  // B1172 FIX leg: the b1130 target fit split out (pure move)
+#include "frame_writer.h"  // B1193: the frame output off the render thread
+#include "readback_candidates.h"  // B1198: the frame-capture readback candidates
+#include "readback_probe.h"  // B1198: the dirty-gate probe rectangle (the candidates' Dirty mode)
 
 #include "client/bridge/spell_cast_fx.h"
 #include "client/graphics/eqe1_loader.h"
@@ -21,6 +24,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -30,6 +34,7 @@
 #include <iterator>
 #include <iomanip>
 #include <unordered_map>
+#include <vector>
 
 HarnessOptions harnessOpts;
 
@@ -54,43 +59,7 @@ eqt::bridge::CastGlowRoute fxRoute;
 video::ITexture* fxBackdrop = nullptr;
 scene::IMeshSceneNode* fxGroundNode = nullptr;  // addGroundPlane(); B1169 draws it first
 
-std::vector<std::string> splitTabs(const std::string& line) {
-    std::vector<std::string> out;
-    std::string cur;
-    for (char c : line) {
-        if (c == '\t') { out.push_back(cur); cur.clear(); } else if (c != '\r') { cur += c; }
-    }
-    out.push_back(cur);
-    return out;
-}
-
-// The pinhole Irrlicht's buildProjectionMatrixPerspectiveFovLH draws: the
-// pixel a world point lands on for a camera at `eye` looking at `look`.
-struct Pinhole {
-    core::vector3df eye, right, up, fwd;
-    float fovY, aspect, w, h;
-    core::vector2df project(const core::vector3df& p) const {
-        const core::vector3df d = p - eye;
-        const float zc = d.dotProduct(fwd);
-        const float t = std::tan(fovY * 0.5f);
-        return {w * 0.5f + d.dotProduct(right) / zc * (w * 0.5f) / (t * aspect),
-                h * 0.5f - d.dotProduct(up) / zc * (h * 0.5f) / t};
-    }
-};
-
-Pinhole makePinhole(const core::vector3df& eye, const core::vector3df& look, float fovY, float aspect,
-                    float w, float h) {
-    Pinhole ph;
-    ph.eye = eye;
-    ph.fwd = (look - eye).normalize();
-    ph.right = core::vector3df(0, 1, 0).crossProduct(ph.fwd).normalize();  // left-handed
-    ph.up = ph.fwd.crossProduct(ph.right).normalize();
-    ph.fovY = fovY;
-    ph.aspect = aspect;
-    ph.w = w;
-    ph.h = h;
-    return ph;
-}
+// (Pinhole and makePinhole moved to fx_target_fit.h for B1198's readback_probe.cpp)
 
 // The caster's facing in the scripted presets (kHarnessFaceOnRotY): +Z, so
 // the camera of a face-on preset sits on +Z looking back along -Z.
@@ -309,118 +278,6 @@ video::IImage* scaleImageTo(video::IVideoDriver* drv, video::IImage* src, u32 tw
 
 }  // namespace
 
-bool parseHarnessPlan(const std::string& path, std::vector<HarnessCast>& out, std::string& err) {
-    std::ifstream f(path);
-    if (!f) { err = "cannot open plan " + path; return false; }
-    std::string line;
-    int n = 0;
-    while (std::getline(f, line)) {
-        ++n;
-        if (line.empty() || line[0] == '#') continue;
-        const auto c = splitTabs(line);
-        if (c.size() < 4 || c.size() > 7) {
-            err = path + ":" + std::to_string(n) +
-                  ": want t_begin_s, spell_id, self|other, distance_units[, cast_ms[, caster_level[, begincast|action]]]";
-            return false;
-        }
-        if (c[0] == "t_begin_s") continue;  // header row
-        HarnessCast hc;
-        try {
-            hc.tBegin = std::stod(c[0]);
-            hc.spellId = static_cast<uint32_t>(std::stoul(c[1]));
-            if (c[2] != "self" && c[2] != "other") throw std::invalid_argument("target");
-            hc.self = c[2] == "self";
-            hc.distance = std::stof(c[3]);
-            if (c.size() >= 5 && !c[4].empty() && c[4] != "-") hc.castMsOverride = std::stoi(c[4]);
-            if (c.size() >= 6 && !c[5].empty() && c[5] != "-") hc.casterLevel = std::stoi(c[5]);
-            if (c.size() >= 7) {
-                if (c[6] != "begincast" && c[6] != "action") throw std::invalid_argument("packets");
-                hc.beginCast = c[6] == "begincast";
-            }
-        } catch (const std::exception&) {
-            err = path + ":" + std::to_string(n) + ": unparseable row '" + line + "'";
-            return false;
-        }
-        out.push_back(hc);
-    }
-    if (out.empty()) { err = path + ": no casts"; return false; }
-    return true;
-}
-
-void applyHarnessPresetDefaults() {
-    if (harnessOpts.cameraPreset != "b1118" && harnessOpts.cameraPreset != "b1130" &&
-        harnessOpts.cameraPreset != "b1130-self")
-        return;
-    const bool b1130 = harnessOpts.cameraPreset == "b1130" || harnessOpts.cameraPreset == "b1130-self";
-    harnessOpts.width = 1280;
-    harnessOpts.height = 800;
-    // All three presets share the b1118 char-67 caster: char 67 Testcaster
-    // (lane 5): race 6 dark elf, gender 1 (fable.log
-    // "Updating appearance for entity 258 (Testcaster) to race 6 gender 1").
-    // B1172: size 0 -- her S->C OP_ZoneEntry Spawn_Struct carries size 0.000
-    // in the oracle captures (r51, B1118 oracle_druid) and in fable's lane
-    // legs (B1118 fable_A, B1142 fable_N93), and no AT_Size names her; the
-    // client then draws its race/gender default 5.0 x 0.2 = 1.0
-    // (actor_scale.h). The 6.0 here before was fable's own zone_entry
-    // default, not a wire value.
-    if (!harnessOpts.casterGiven) {
-        harnessOpts.casterRace = 6;
-        harnessOpts.casterGender = 1;
-        harnessOpts.casterSize = 0.0f;
-        // B1139: her Spawn_Struct appearance in that leg's OP_ZoneEntry (S->C):
-        // face 3, TextureProfile {0, 10, 1, 23, 1, 1, 1, 0, 72} -- the red robe
-        // (chest 10) and IT72, the orb her left hand holds. equip_chest2 reads
-        // 255 there; the client passes it through as appearance.texture.
-        harnessOpts.casterAppearanceSet = true;
-        harnessOpts.casterFace = 3;
-        harnessOpts.casterTexture = 255;
-        const uint32_t equip[9] = {0, 10, 1, 23, 1, 1, 1, 0, 72};
-        std::copy(equip, equip + 9, harnessOpts.casterEquipment);
-    }
-    if (!harnessOpts.targetGiven) {
-        if (b1130) {
-            // b1130 / b1130-self: B1130's target is `#spawn TrollF 1 1 0 30000`.
-            // eqemu's #spawn arg order is [name][race][level][texture][health]
-            // [gender]... (command.cpp :229; npc.cpp SpawnNPC), so that command
-            // is race=1 (HUMAN), level=1, texture=0, hp=30000 with the GENDER
-            // ARG ABSENT -- filled by Mob::GetDefaultGender(1) = MALE (the
-            // PC-race default, mob.cpp :4033). The "TrollF" name is only a
-            // label: the oracle spawned the SAME level-1 human male as b1118's
-            // target (the settle still r51/21_stun_settle shows a clothed,
-            // standing human male), NOT a race-9 troll -- r51's own OP_NewSpawn
-            // reads race 1, gender 0, size 6.000 (refactor/B1166/README.md
-            // sec. 1). b1130 renders that human male and lets the solver find
-            // its depth from the two feet pixels (288 px in the oracle; 238 px in
-            // FABLE at 1.0 (B1166), 285 px at the client's actor scale 1.2, B1172).
-            harnessOpts.targetRace = 1;
-            harnessOpts.targetGender = 0;
-            harnessOpts.targetSize = 6.0f;
-        } else {
-            // b1118: `#spawn TrollF`: eqemu's default #spawn is a level-1
-            // human male (the leg's chat: "Race | Human (1)", "Gender | Male
-            // (0)").
-            harnessOpts.targetRace = 1;
-            harnessOpts.targetGender = 0;
-            harnessOpts.targetSize = 6.0f;
-        }
-    }
-    // B1142 (#462): no UI occluder by default. B1139 drew the fable Tip of the
-    // Day window (920,243..1280,543) here because every lane-5 leg up to B1127
-    // left it open over the particles; the lane rig now starts the client
-    // with [Tips] ShowTOTD=0 (review/B1142/scripts/fable_leg_remote.sh), so
-    // the FX field is unoccluded on lane 5 as on the oracle (whose rig closes
-    // its window with a click before the first cast). `--ui-occluder
-    // 920,243,1280,543` reproduces a pre-B1142 capture.
-    // B1139: the lane client simulates at its 60 fps and the grab keeps every
-    // 2nd frame (B1138 measured +2.6 % landing coverage for it), and in leg B
-    // Testcaster stands 228 px head top to feet (rows 377..605 of that leg's
-    // tail frame, review/B1138/backdrop/), not B1118's 235.
-    if (harnessOpts.simHz <= 0) harnessOpts.simHz = 60;
-    if (!harnessOpts.casterPxGiven)
-        harnessOpts.casterPx =
-            (harnessOpts.cameraPreset == "b1130" || harnessOpts.cameraPreset == "b1130-self") ? 209.0f : 228.0f;
-}
-
 bool initHarnessTextureCache() {
     // The renderer's ConstrainedTextureCache: willeq.eqe1 (the two particle
     // atlases, ParticleManager::loadParticleAtlas -- without it the manager
@@ -538,6 +395,10 @@ bool initHarnessParticles() {
         out.height = box.MaxEdge.Y - box.MinEdge.Y;
         return true;
     });
+    // B1181 (#500): a type != 9 missile object draws its +0x65 IT model
+    // through the equipment model loader (the gequip archives, already
+    // loaded for the characters' equipment).
+    spellVisualFX->setEquipmentModelLoader(equipmentModelLoader.get());
     spellVisualFX->setEntityPositionCallback([nodeFor](uint16_t id, core::vector3df& out) -> bool {
         if (isSpellFxBoneId(id))
             return resolveSpellFxBonePosition(nodeFor(EQ::SpellVisualFX::realEntityId(id)), id, out);
@@ -1077,6 +938,22 @@ int runScriptedHarness() {
     // B1171 (#490): caster_level (last column, so the index readers keep
     // working) = the slot-gate level each packet was drawn at.
     timing << "frame\tt\tevent\tspell\ttarget\tdistance\tcast_ms\tt_event\tcaster_level\n";
+    // B1193 (#512): the frame output. Default: the readback (createScreenShot)
+    // stays on the render thread and ONE writer thread does the downscale +
+    // the encode (PNG at zlib level 0, filter 0; the P6 PPM dump with
+    // --frames-raw) + the file write, so the render thread never waits on the
+    // disk. --frames-sync keeps the pre-B1193 render-thread path (the driver's
+    // libpng writer, default level). frame_cost.tsv holds the per-phase split
+    // either way; the written pixels are the sync path's pixels (the
+    // byte-identity test in tests/test_fx_harness.cpp).
+    eqt::fxharness::FrameWriter frameWriter(harnessOpts.framesDir, harnessOpts.framesRaw);
+    if (!harnessOpts.framesSync) frameWriter.start();
+    const auto msSince = [](const std::chrono::steady_clock::time_point& t0) {
+        return (double)std::chrono::duration_cast<std::chrono::nanoseconds>(
+                   std::chrono::steady_clock::now() - t0)
+                   .count() /
+               1e6;
+    };
     // B1165 (#484): the Spell page the run drew with, for the gate scripts
     // (scripts/tools/fx_particle_options.py pins it to the capture's ini).
     {
@@ -1161,6 +1038,38 @@ int runScriptedHarness() {
     placeHarnessTarget(plan[0].self, plan[0].distance);
     fixHarnessSolidOrder();  // B1169 (#488)
     device->getTimer()->stop();  // (already stopped by setupSpellTestCamera)
+    // B1198 (#517): the frame-capture readback candidate (--readback-mode).
+    // driver (the default) runs the current path untouched, so a default run
+    // is byte-identical to the pre-B1198 harness; the other modes replace the
+    // createScreenShot call with the candidate's capture (readback_candidates.h)
+    // and log their sub-phases to readback_cost.tsv.
+    eqt::fxharness::readback::Mode rbMode = eqt::fxharness::readback::Mode::Driver;
+    std::unique_ptr<eqt::fxharness::readback::ReadbackContext> rbCtx;
+    if (!harnessOpts.readbackMode.empty() && harnessOpts.readbackMode != "driver") {
+        if (!eqt::fxharness::readback::parseMode(harnessOpts.readbackMode, rbMode)) {
+            std::fprintf(stderr, "[fx-harness] --readback-mode: unknown mode '%s' "
+                                 "(driver|glread|pbo|fbo|dirty)\n",
+                         harnessOpts.readbackMode.c_str());
+            return 2;
+        }
+        const auto screen = driver->getScreenSize();
+        eqt::fxharness::readback::ProbeRect probe = eqt::fxharness::readback::ProbeRect();
+        if (rbMode == eqt::fxharness::readback::Mode::Dirty)
+            probe = readbackProbeForPlan(plan, screen.Width, screen.Height);
+        rbCtx = eqt::fxharness::readback::ReadbackContext::create(
+            driver, rbMode, screen.Width, screen.Height, static_cast<uint32_t>(harnessOpts.width),
+            static_cast<uint32_t>(harnessOpts.height), probe, harnessOpts.framesDir);
+        if (!rbCtx) return 2;  // create() printed the reason
+        std::printf("[fx-harness] readback mode %s: surface %ux%u, requested frame %dx%d%s\n",
+                    eqt::fxharness::readback::modeName(rbMode), screen.Width, screen.Height,
+                    static_cast<int>(harnessOpts.width), static_cast<int>(harnessOpts.height),
+                    probe.valid
+                        ? (" (probe " + std::to_string(probe.x0) + "," + std::to_string(probe.y0) +
+                           ".." + std::to_string(probe.x1) + "," + std::to_string(probe.y1) +
+                           " surface px)").c_str()
+                        : "");
+        std::fflush(stdout);
+    }
     // Step g runs at t = g / simHz; every sub-th step is drawn and written as
     // frame g / sub (with sub = 2, exactly review/B1138/scripts/decimate.py's
     // even frames of a 60 fps run).
@@ -1377,6 +1286,7 @@ int runScriptedHarness() {
         uploadHarnessTextures();
         if (g % sub != 0) continue;  // simulated, not drawn
 
+        const auto tRenderStart = std::chrono::steady_clock::now();  // B1193: the render phase
         driver->beginScene(true, true, video::SColor(255, 50, 50, 80));
         if (fxBackdrop) {
             const auto ts = fxBackdrop->getOriginalSize();
@@ -1390,40 +1300,117 @@ int runScriptedHarness() {
         for (const auto& r : harnessOpts.uiOccluders)  // the lane client's UI, drawn last
             driver->draw2DRectangle(video::SColor(255, 24, 24, 30), core::rect<s32>(r.x0, r.y0, r.x1, r.y1));
         driver->endScene();
+        const double renderMs = msSince(tRenderStart);
 
-        video::IImage* shot = driver->createScreenShot();
-        // The surfaceless EGL surface can be another size than the REQUESTED
-        // frame (the ThinkPad's virtual display gave 3840x2160 for a 1280x800
-        // request): downscale so the written PNG IS the requested frame, where
-        // the preset's recorded pixels (and the scene.tsv boxes) hold.
-        if (shot) {
-            const auto dim = shot->getDimension();
-            if (dim.Width != static_cast<u32>(harnessOpts.width) ||
-                dim.Height != static_cast<u32>(harnessOpts.height)) {
-                video::IImage* scaled =
-                    scaleImageTo(driver, shot, static_cast<u32>(harnessOpts.width),
-                                 static_cast<u32>(harnessOpts.height));
-                shot->drop();
-                shot = scaled;
-            }
+        // B1193 (#512): the readback stays on the render thread (the GPU has
+        // to hand the pixels over once); everything after it leaves the
+        // thread unless --frames-sync says the pre-B1193 way.
+        // B1198 (#517): --readback-mode replaces createScreenShot with the
+        // candidate being measured (readback_candidates.h); the default run
+        // (rbCtx null) is the pre-B1198 path itself, byte for byte.
+        const auto tReadbackStart = std::chrono::steady_clock::now();
+        video::IImage* shot = nullptr;
+        bool rbSkipped = false;
+        if (rbCtx) {
+            const eqt::fxharness::readback::Capture cap = rbCtx->capture(f);
+            rbCtx->logCost(f, cap);
+            shot = cap.image;
+            rbSkipped = cap.skipped;
+        } else {
+            shot = driver->createScreenShot();
         }
-        char name[64];
-        std::snprintf(name, sizeof(name), "/frame_%05d.png", f);
-        const bool ok = shot && driver->writeImageToFile(shot, (harnessOpts.framesDir + name).c_str());
-        // B1166 (#485): the b1130 target self-check on the WRITTEN frame 0 (pre-cast:
-        // caster + target on the clear colour), against the one anchor the solve
-        // used (fx_target_anchor.h), so a fit that places another body than the
-        // oracle's cannot silently pass again.
-        if (ok && f == 0 && harnessOpts.cameraPreset == "b1130" && !b1130TargetSelfCheck(shot)) {
-            shot->drop();
-            return 5;
-        }
-        if (shot) shot->drop();
-        if (ok && f == 0) writeSceneBoxes(harnessOpts.framesDir + "/scene.tsv");
-        if (!ok) {
-            std::fprintf(stderr, "[fx-harness] frame %d did not write\n", f);
+        const double readbackMs = msSince(tReadbackStart);
+        if (!rbSkipped && !shot) {
+            std::fprintf(stderr, "[fx-harness] frame %d: the readback failed\n", f);
             return 4;
         }
+        if (rbSkipped) {
+            // The dirty gate judged the frame clean: no pixels, no write. The
+            // frame row below keeps the probe's cost; readback_cost.tsv marks
+            // the frame skipped.
+        }
+        if (!rbSkipped) {
+        const auto dim = shot->getDimension();
+        const u32 tw = static_cast<u32>(harnessOpts.width), th = static_cast<u32>(harnessOpts.height);
+        if (harnessOpts.framesSync) {
+            // The pre-B1193 path, kept for the A/B timing and the
+            // byte-identity test: the per-pixel downscale and the driver's
+            // PNG writer (libpng, the default level) on the render thread.
+            video::IImage* out = shot;
+            double downMs = 0.0;
+            if (dim.Width != tw || dim.Height != th) {
+                // The surfaceless EGL surface can be another size than the
+                // REQUESTED frame (the ThinkPad's virtual display gave
+                // 3840x2160 for a 1280x800 request): downscale so the written
+                // frame IS the requested frame, where the preset's recorded
+                // pixels (and the scene.tsv boxes) hold.
+                const auto t0 = std::chrono::steady_clock::now();
+                video::IImage* scaled = scaleImageTo(driver, shot, tw, th);
+                downMs = msSince(t0);
+                shot->drop();
+                shot = out = scaled;
+            }
+            char name[64];
+            std::snprintf(name, sizeof(name), "/frame_%05d.%s", f, harnessOpts.framesRaw ? "ppm" : "png");
+            const auto t0 = std::chrono::steady_clock::now();
+            bool ok;
+            if (harnessOpts.framesRaw) {
+                // The P6 dump, same bytes the writer thread writes (the
+                // driver's own PPM writer is the P3 text one).
+                const auto* px = static_cast<const uint8_t*>(out->lock());
+                std::vector<uint8_t> rawBytes;
+                ok = eqt::fxharness::encodePpm(tw, th, px, rawBytes);
+                out->unlock();
+                if (ok) {
+                    std::ofstream pf(harnessOpts.framesDir + name, std::ios::binary | std::ios::trunc);
+                    ok = pf.write((const char*)rawBytes.data(), (std::streamsize)rawBytes.size()).good();
+                }
+            } else {
+                ok = driver->writeImageToFile(shot, (harnessOpts.framesDir + name).c_str());
+            }
+            const double writeMs = msSince(t0);
+            // B1166 (#485): the b1130 target self-check on the frame 0 that
+            // the run wrote (pre-cast: caster + target on the clear colour),
+            // against the one anchor the solve used (fx_target_anchor.h), so a
+            // fit that places another body than the oracle's cannot silently
+            // pass again.
+            if (ok && f == 0 && harnessOpts.cameraPreset == "b1130" && !b1130TargetSelfCheck(out)) {
+                out->drop();
+                return 5;
+            }
+            out->drop();
+            frameWriter.logSync(f, renderMs, readbackMs, downMs, 0.0, writeMs);
+            if (ok && f == 0) writeSceneBoxes(harnessOpts.framesDir + "/scene.tsv");
+            if (!ok) {
+                std::fprintf(stderr, "[fx-harness] frame %d did not write\n", f);
+                return 4;
+            }
+        } else {
+            // The B1193 default: the readback goes to the writer thread, which
+            // runs the downscale (the same bilinear) + the PNG encode (zlib
+            // level 0, filter 0) -- or the P6 PPM dump with --frames-raw --
+            // and the write. The written pixels are this path's pixels
+            // (tests/test_fx_harness.cpp,
+            // FrameWriterOutputIsPixelIdenticalToTheSyncPath); only the PNG
+            // container bytes differ (a different zlib level and filter).
+            if (f == 0 && harnessOpts.cameraPreset == "b1130") {
+                // B1166 (#485), once, on the render thread (the writer thread
+                // cannot build an IImage): the same scaled pixels the writer
+                // thread writes, against the one anchor the solve used.
+                video::IImage* check = shot;
+                if (dim.Width != tw || dim.Height != th) {
+                    video::IImage* scaled = scaleImageTo(driver, shot, tw, th);
+                    check = scaled;
+                }
+                const bool pass = b1130TargetSelfCheck(check);
+                if (check != shot) check->drop();
+                if (!pass) return 5;
+            }
+            frameWriter.push(f, shot, tw, th, renderMs, readbackMs);  // takes the queue's ref
+            shot->drop();  // createScreenShot's ref; the queue keeps its own
+            if (f == 0) writeSceneBoxes(harnessOpts.framesDir + "/scene.tsv");
+        }
+        }  // !rbSkipped
         char row[96];
         std::snprintf(row, sizeof(row), "%d\t%.6f\t-\t-\t-\t-\t-\t-\t-\n", f, t);
         timing << row;
@@ -1473,6 +1460,13 @@ int runScriptedHarness() {
                            << '\t' << std::setprecision(1) << s.X << '\t' << s.Y << '\n';
             }
         }
+    }
+    // B1193: the writer thread drains the queue (every frame is written before
+    // the run reports); a failed write is a failed run.
+    if (!frameWriter.finish()) {
+        std::fprintf(stderr, "[fx-harness] a frame did not write (see %s/frame_cost.tsv)\n",
+                     harnessOpts.framesDir.c_str());
+        return 4;
     }
     std::printf("[fx-harness] wrote %d frames at %d fps (simulated at %d Hz) to %s\n", frames, harnessOpts.fps,
                 simHz, harnessOpts.framesDir.c_str());

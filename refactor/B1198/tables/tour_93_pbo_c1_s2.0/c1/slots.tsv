@@ -1,0 +1,5 @@
+t_event	event	spell	anim	level	stage	slot	emitter	min_level	anchor	attach	texture
+1.5	BeginCast	93	80	60	Source	0	276	0	1	4	spelcb.png
+1.5	BeginCast	93	80	60	Source	1	276	0	1	5	spelcb.png
+1.5	BeginCast	93	80	60	Source	2	277	39	1	1	spelcb.png
+1.5	BeginCast	93	80	60	Source	3	278	24	1	1	spelce.png

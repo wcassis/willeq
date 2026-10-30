@@ -306,34 +306,85 @@ TEST(SpellSpriteAtlasLayout, CellOriginsAreOnTheCellPitch) {
 // T420 (board B355) -- the animation's addressing, as pure arithmetic.
 // ---------------------------------------------------------------------------
 
-TEST(SpellSpriteAnimation, EveryFrameOfEverySpriteHasItsOwnCell) {
-    std::vector<bool> seen(SpellSpriteAtlas::kCapacity, false);
+TEST(SpellSpriteAnimation, EveryFrameOfEverySpriteTilesItsBlockRowMajor) {
+    // B1188 (#507): a sprite owns one 4x4 CELL BLOCK (128x128 px) of the
+    // sheet, and its frames tile that block row-major in the source sheet's
+    // own display order -- frame f at block column (f % cols), row (f / cols),
+    // each frame occupying its stored-frame sub-block (storedSpan cells on a
+    // side). Frames never overlap and never leave the block.
     for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
-        for (int f = 0; f < SpellSpriteAtlas::kFramesPerSprite; ++f) {
-            const int cell = SpellSpriteAtlas::cellFor(sprite, f);
-            ASSERT_GE(cell, 0);
-            ASSERT_LT(cell, SpellSpriteAtlas::kUsedCells)
+        const int frames = SpellSpriteAtlas::framesFor(sprite);
+        const int cols = frames == SpellSpriteAtlas::kFramesPerSprite
+                             ? SpellSpriteAtlas::kSheetGrid
+                             : frames == SpellSpriteAtlas::kTwoByTwo ? 2 : 1;
+        const int span = SpellSpriteAtlas::storedSpan(sprite);
+        int bx = 0, by = 0;
+        SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::blockBase(sprite), bx, by);
+        for (int f = 0; f < frames; ++f) {
+            int cx = 0, cy = 0;
+            SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::cellFor(sprite, f), cx, cy);
+            const int wantX = bx + (f % cols) * span * SpellSpriteAtlas::kCellSize;
+            const int wantY = by + (f / cols) * span * SpellSpriteAtlas::kCellSize;
+            EXPECT_EQ(cx, wantX) << SpellSpriteAtlas::kFiles[sprite] << " frame " << f;
+            EXPECT_EQ(cy, wantY) << SpellSpriteAtlas::kFiles[sprite] << " frame " << f;
+            // The whole stored frame stays inside the 128x128 block (a frame
+            // flush with the block's far edge ends exactly at bx + 128).
+            EXPECT_LE(cx + span * SpellSpriteAtlas::kCellSize, bx + 4 * SpellSpriteAtlas::kCellSize)
                 << SpellSpriteAtlas::kFiles[sprite] << " frame " << f;
-            ASSERT_FALSE(seen[cell]) << "cell " << cell << " is claimed twice";
-            seen[cell] = true;
+            EXPECT_LE(cy + span * SpellSpriteAtlas::kCellSize, by + 4 * SpellSpriteAtlas::kCellSize)
+                << SpellSpriteAtlas::kFiles[sprite] << " frame " << f;
         }
     }
 }
 
-TEST(SpellSpriteAnimation, ASpriteAnimationIsContiguousAndOnOneRow) {
-    // Sixteen frames, 32 columns: a sprite occupies exactly half a row, so a
-    // contact sheet reads each animation left to right without wrapping.
+TEST(SpellSpriteAnimation, TheSpriteBlocksTileTheSheetWithoutOverlap) {
+    // B1188: the 60 sprites tile an 8x8 grid of blocks (8 per row); no two
+    // blocks share a cell, and the last four blocks stay unused.
+    std::vector<bool> seen(SpellSpriteAtlas::kCapacity, false);
     for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
-        int x0 = 0, y0 = 0, x15 = 0, y15 = 0;
-        SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::cellFor(sprite, 0), x0, y0);
-        SpellSpriteAtlas::cellOrigin(
-            SpellSpriteAtlas::cellFor(sprite, SpellSpriteAtlas::kFramesPerSprite - 1),
-            x15, y15);
-        EXPECT_EQ(y0, y15) << SpellSpriteAtlas::kFiles[sprite]
-                           << " straddles a row boundary";
-        EXPECT_EQ(x15 - x0,
-                  (SpellSpriteAtlas::kFramesPerSprite - 1) * SpellSpriteAtlas::kCellSize)
-            << SpellSpriteAtlas::kFiles[sprite] << " is not contiguous";
+        int bx = 0, by = 0;
+        SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::blockBase(sprite), bx, by);
+        const int bcx = bx / SpellSpriteAtlas::kCellSize;
+        const int bcy = by / SpellSpriteAtlas::kCellSize;
+        for (int dy = 0; dy < SpellSpriteAtlas::kSheetGrid; ++dy) {
+            for (int dx = 0; dx < SpellSpriteAtlas::kSheetGrid; ++dx) {
+                const int cell = bcx + dx + SpellSpriteAtlas::kColumns * (bcy + dy);
+                ASSERT_LT(cell, SpellSpriteAtlas::kCapacity)
+                    << SpellSpriteAtlas::kFiles[sprite] << " block out of the sheet";
+                ASSERT_FALSE(seen[cell]) << "cell " << cell << " is in two blocks";
+                seen[cell] = true;
+            }
+        }
+    }
+    int unused = 0;
+    for (int cell = 0; cell < SpellSpriteAtlas::kCapacity; ++cell)
+        if (!seen[cell]) ++unused;
+    EXPECT_EQ(unused, SpellSpriteAtlas::kCapacity - SpellSpriteAtlas::kUsedCells);
+}
+
+TEST(SpellSpriteAnimation, TheStoredFrameMatchesTheSheetKind) {
+    // B1188: the stored frame edge derives from the sheet's kind -- a 4x4
+    // grid keeps its 32 px cell (sixteen native frames would not fit the
+    // block), a 2x2 sheet keeps its 64 px frames, a single image keeps its
+    // native resolution capped at the whole block (64 -> 2x2 sub-block,
+    // glowflare02's 256 -> 128 = the block 2:1).
+    for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
+        const int frames = SpellSpriteAtlas::framesFor(sprite);
+        const int stored = SpellSpriteAtlas::storedFramePx(sprite);
+        const int span = SpellSpriteAtlas::storedSpan(sprite);
+        EXPECT_EQ(stored, span * SpellSpriteAtlas::kCellSize)
+            << SpellSpriteAtlas::kFiles[sprite];
+        if (frames == SpellSpriteAtlas::kFramesPerSprite) {
+            EXPECT_EQ(stored, SpellSpriteAtlas::kCellSize)
+                << SpellSpriteAtlas::kFiles[sprite] << " grid frame";
+        } else if (frames == SpellSpriteAtlas::kTwoByTwo) {
+            EXPECT_EQ(stored, 2 * SpellSpriteAtlas::kCellSize)
+                << SpellSpriteAtlas::kFiles[sprite] << " 2x2 frame";
+        } else {
+            EXPECT_GE(stored, 2 * SpellSpriteAtlas::kCellSize)
+                << SpellSpriteAtlas::kFiles[sprite]
+                << ": a single image must keep at least its 2x2 sub-block";
+        }
     }
 }
 

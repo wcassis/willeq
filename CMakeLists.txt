@@ -1316,6 +1316,10 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         tools/model_viewer/model_viewer_equipment.cpp
         tools/model_viewer/model_viewer_spell_test.cpp
         tools/model_viewer/model_viewer_fx_harness.cpp  # B1138: the scripted FX harness
+        tools/model_viewer/model_viewer_fx_plan.cpp  # B1193: the --plan parser (split out, pure move)
+        tools/model_viewer/frame_writer.cpp  # B1193: the frame output off the render thread
+        tools/model_viewer/readback_candidates.cpp  # B1198: the frame-capture readback candidates
+        tools/model_viewer/readback_probe.cpp  # B1198: the dirty-gate probe rectangle
         tools/model_viewer/fx_target_fit.cpp  # B1172 FIX leg: the b1130 target fit (split out, pure move)
         tools/tool_race_db.cpp
         src/client/graphics/eq/pfs.cpp

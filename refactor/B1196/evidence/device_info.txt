@@ -1,0 +1,66 @@
+(committed copy: the NUL terminator after the model name in the raw
+`cat /proc/device-tree/model` capture is stripped so the file is git-text;
+the raw bytes are the ~/kb-evidence copy)
+
+== date
+Thu Oct 29 11:00:25 PM UTC 2026
+== model
+Radxa ROCK 4D
+== kernel
+7.1.8-edge-rockchip64
+Linux version 7.1.8-edge-rockchip64 (build@armbian) (aarch64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0, GNU ld (GNU Binutils for Debian) 2.44) #2 SMP PREEMPT Sun Aug  9 18:26:58 UTC 2026
+== os
+PRETTY_NAME="Armbian 26.8.2 resolute"
+NAME="Ubuntu"
+== cpuinfo (first 8)
+processor	: 0
+BogoMIPS	: 48.00
+Features	: fp asimd evtstrm aes pmull sha1 sha2 crc32 cpuid
+CPU implementer	: 0x41
+CPU architecture: 8
+CPU variant	: 0x0
+CPU part	: 0xd03
+CPU revision	: 4
+== panfrost module
+filename:       /lib/modules/7.1.8-edge-rockchip64/kernel/drivers/gpu/drm/panfrost/panfrost.ko
+== mesa
+panel-mipi-dbi_dri.so
+panfrost_dri.so
+panthor_dri.so
+ii  libegl-dev:arm64                     1.7.0-3                            arm64        Vendor neutral GL dispatch library -- EGL development files
+ii  libegl-mesa0:arm64                   26.0.8-1ubuntu0.3                  arm64        free implementation of the EGL API -- Mesa vendor library
+ii  libegl1:arm64                        1.7.0-3                            arm64        Vendor neutral GL dispatch library -- EGL support
+ii  libgl1:arm64                         1.7.0-3                            arm64        Vendor neutral GL dispatch library -- legacy GL support
+ii  libgl1-mesa-dri:arm64                26.0.8-1ubuntu0.3                  arm64        free implementation of the OpenGL API -- DRI modules
+== eglinfo
+/usr/bin/eglinfo
+/usr/bin/glxinfo
+== cpufreq
+cpu0: 2016000
+cpu4: 2208000
+cpu7: 2208000
+== drm
+by-path
+card0
+card1
+renderD128
+== uptime/load
+0.08 0.03 0.01 1/176 164827
+ 19:00:26 up 15 days,  7:30,  1 user,  load average: 0.08, 0.03, 0.01
+== diff -rq (byte-identity of the ci-arm64 publish's config/ and data/)
+re-run 2026-10-30 04:15 UTC by the B1196 FIX leg: the record the README
+claims ("diff -rq clean, recorded in device_info.txt") was missing from this
+file (MR !356 review, finding 1). A plain filesystem diff; no render.
+tree A (the ci-arm64 publish on the NFS share):
+  /mnt/projects/fable/ci-arm64/8c2bfe7c2daa45360c57003a9e15971b77507bfc/{config,data}
+  (its BUILD_INFO: sha=8c2bfe7c2daa45360c57003a9e15971b77507bfc branch=fable
+  built=2026-10-29T09:44:49+00:00 on gitlab-runner-2)
+tree B (the worktree tree at that sha, from committed bytes):
+  git archive 8c2bfe7c2daa45360c57003a9e15971b77507bfc config data | tar -x -C <B>
+  (config/: 13 files; data/: 205 files)
+invocations and results:
+  $ diff -rq <B>/config <A>/config   -> empty output, exit 0
+  $ diff -rq <B>/data   <A>/data     -> empty output, exit 0
+tree digests (find . -type f | sort | xargs sha256sum | sha256sum), equal per dir:
+  config  ec1192ef73323d108180556f6762d4cd4f50de3bacf3be1705b4d4605b95275c
+  data    cb1e8615034596e081c1e2aa97e34788667a61420068e13a20559081ea173cc4

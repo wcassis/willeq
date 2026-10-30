@@ -51,6 +51,22 @@ struct HarnessCast {
 struct HarnessOptions {
     std::string planPath;
     std::string framesDir;
+    // B1193 (#512): the frame-output mode. Default (both false): the readback
+    // (createScreenShot) stays on the render thread and one writer thread
+    // does the downscale + PNG encode (zlib level 0, filter 0) + file write
+    // (frame_writer.h) -- the pre-B1193 code ran all four on the render
+    // thread (0.15 s/frame surfaceless). framesSync = the old path, kept for
+    // the byte-identity test and A/B timing. framesRaw = P6 PPM dump
+    // (frame_%05d.ppm, RGB24) with no encode step; the measure scripts read
+    // it (refactor/B1193/README.md names the taught readers).
+    bool framesSync = false;
+    bool framesRaw = false;
+    // B1198 (#517): the frame-capture READBACK candidate (--readback-mode
+    // driver|glread|pbo|fbo|dirty, default driver = the current
+    // createScreenShot path). Measurement tooling only: the default run is
+    // byte-identical to the pre-B1198-mode harness (refactor/B1198/README.md,
+    // tools/model_viewer/readback_candidates.h).
+    std::string readbackMode;
     std::string cameraPreset;          // "" (the interactive framing) or "b1118", or B1155's "b1130" / "b1130-self"
     std::string backdropPath;          // optional image drawn behind the scene
     std::string eqe1Path = "/mnt/projects/EverQuest_ETC1/willeq.eqe1";

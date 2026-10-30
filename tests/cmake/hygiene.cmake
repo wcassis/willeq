@@ -499,6 +499,13 @@ ADD_TEST(NAME CiQueueRules
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_ci_queue_rules.py)
 SET_TESTS_PROPERTIES(CiQueueRules PROPERTIES LABELS "hygiene")
 
+# B1208 (#527): `rbuild --via ci <wt> test -R <re>` builds only the executables
+# that declare a matching gtest case (RBUILD_TARGET=auto in the CI `rbuild`
+# job); pins the regex -> target resolver over a fake file-API reply.
+ADD_TEST(NAME RbuildTestTargets
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_rbuild_test_targets.py)
+SET_TESTS_PROPERTIES(RbuildTestTargets PROPERTIES LABELS "hygiene")
+
 # B1093 (#413): the ARM cross-build container dies with the shell that started
 # it -- both build scripts run it named + labelled under a kill trap, and both
 # CI ARM jobs sweep this host's orphans (a cancelled/timed-out job's SIGKILL

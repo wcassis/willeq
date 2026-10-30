@@ -1,0 +1,2 @@
+t_begin_s	spell_id	target	distance_units	cast_ms	caster_level	packets
+1.5	4499	self	0	0	60	action

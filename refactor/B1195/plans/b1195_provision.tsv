@@ -1,0 +1,14 @@
+# action	target	hold_ms	still_name
+# B1195 leg: provision the observer on LANE 2 (the r540 lane) -- B1134's P1 plan verbatim,
+# the one-time leg that MAKES the observer. Account willeqwatch is auto-created by the
+# loginserver at its first login; the character is made through the official client's own
+# creation screen (template clicks). The caster (Testcaster) logs in on the session Xvfb as
+# the probe of the caster display.
+# observer=Oraclewatch
+# provision=Oraclewatch
+# create-clicks=template
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+obs	wait-template	charselect_create_new	30000	obs_charselect_ready
+obs	create	Oraclewatch	Human	Warrior	Male	obs_created
+obs	still	after_create	0	obs_after_create

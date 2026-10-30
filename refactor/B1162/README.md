@@ -746,3 +746,109 @@ zone-in or field-121 claim and stay as they are.
 `scripts/refactor/cite_check.py` over this README = `checked 14 cites,
 0 problems, 0 address warnings`, and every `eqgame.exe.c` line cited in the
 rewritten text was read by hand.
+
+## The /disc record leg (card t_a74670e3, 2026-10-30): the records-325/326 harness rows at the current tip + the /disc ledger clip
+
+The /disc visual half landed on the real client path in the previous leg;
+the combat-ability half awaits the ruling on #481. This leg is the
+remaining /disc RECORD only (report-only; "Relates to #481", no Closes; no
+combat-ability change): the /disc harness rows for records 325/326 measured
+at the CURRENT fable tip, and the /disc ledger clip rebuilt with this tip's
+willeq side.
+
+**Why a fresh render.** Four legs touched the render/FX path after the
+previous legs' measurements (B1176 #495 player scaling, B1181 #500, B1185
+#504, B1188 #507, all between B1174's measurement and this tip), so the
+pre-B1174 numbers are untrusted. Concretely: the 8604 harness RISE coverage
+is 0.104 at this tip against B1174's 0.065 (the player scale moved the lit
+box), and the harness now ANIMATES the caster -- the line-638 statement
+"The harness does not animate the caster" was true at that leg's tip and is
+superseded: the FX harness plays the record's CastingAnim (record 325 -> 44
+= t06, record 326 -> 27 = s01, eqgame's table, `refactor/B1148`), as B1174
+measured for 8604 and this leg measures for both.
+
+**The committed rows.** `refactor/B1162/rows/disc325_326_harness.tsv`, the
+B1143 item-3 row shape (`refactor/B1143/rows/p3_disc325_325.tsv`), from
+`~/kb-evidence/kb-b1162-disc-record/measure/<tag>/` (the committed
+B1132-instrument fork `refactor/B1162/scripts/harness_measure_b1162_anchor.py`
+at the preset and the rendered anchors; action-only self-cast, level 60,
+b1130-self camera, the previous legs' plans
+`refactor/B1162/plans/harness_{8604,4499}.plan`: `1.5 <spell> self 0 0 60
+action`):
+
+| record | spell | stage | anchor | onset (Act+) | end (Act+) | peak | rise cov | run cov | cen_h | h p5..p95 | ground |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 325 | 8604 | SOURCE | both | none | -- | -- | -- | -- | -- | -- | -- |
+| 325 | 8604 | LANDING | rendered | +0.100 (f48) | +3.967 (f164) | f111 Act+2.200 | 0.104 | 0.064 | 0.61 | 0.15..0.91 | 0.06 |
+| 325 | 8604 | LANDING | preset   | +0.100 (f48) | +3.967 (f164) | f111 Act+2.200 | 0.104 | 0.065 | 0.62 | 0.15..0.92 | 0.06 |
+| 326 | 4499 | SOURCE | both | none | -- | -- | -- | -- | -- | -- | -- |
+| 326 | 4499 | LANDING | rendered | +0.200 (f51) | +2.867 (f131) | f96 Act+1.700 | 0.049 | 0.039 | 0.72 | 0.13..1.03 | 0.07 |
+| 326 | 4499 | LANDING | preset   | +0.200 (f51) | +2.867 (f131) | f96 Act+1.700 | 0.049 | 0.039 | 0.72 | 0.13..1.04 | 0.07 |
+
+SOURCE is "none above thr (max 101px = 0.0023 model^2)" in both runs, like
+the oracle: no `OP_BeginCast` on the real `/disc`, so no Source (this
+README's /disc landing leg). The swing track (the runs' `fx_activity.tsv`):
+8604 plays t06 over f45..f167 (123 frames, 4.1 s -- the t06 track length,
+`refactor/B1148`) and 4499 plays s01 over f45..f134 (90 frames, 3.0 s), each
+starting at the Action packet (f45, t_event 1.5). Both runs draw no
+spellsnew.eff slot (`slots.tsv` empty), max 0 active effects and 0 missiles.
+The lit run IS the caster's CastingAnim: no sprite, matching the oracle's
+sprite content on both records.
+
+**The oracle side (no re-capture).** The card re-captures on lane 5 only if
+the existing capture is unfit; it is not -- the clip's verdicts are packet
+facts plus the lit-run anatomy, both already measured for it, and the
+capture carries the S->C `OP_Action` epoch the clip windows on. Record 325:
+the B1174 lane-5 leg (`refactor/B1174/README.md` sec. 4: lit +0.422..+4.355, peak
+cov 0.066, run cov 0.052, no sprite). Record 326: this README's /disc
+landing leg (line 623: lit +0.454..+1.120, peak cov 0.067, run cov 0.054 =
+the caster's arm animation, no sprite), capture
+`review/B1162/worker/oracle/b1162_disc4499_v3` (byte-identical to
+`~/kb-evidence/kb-b1162-combat-fx/oracle/b1162_disc4499_v3`, md5-checked).
+
+**The ledger clip.** `review/B1162/worker/ledger/clips/b1162_disc4499_defensive.mp4`
+(+ `_strip.png`), rebuilt by `refactor/B1162/scripts/make_disc_clip_4499.py`
+on the B1158 clip builder: oracle f14078 (BC=Act) @ 30 fps (t0
+1793106624.361, the capture's `video.calibration.tsv`), willeq f45 (BC=Act)
+@ 30 fps, window BC-1.0..Act+8.0 (270 frames). Verdicts: `Source none
+(both)=PASS; Landing sprite none (both)=PASS; caster s01 swing at the
+packet (both)=PASS; swing anatomy: different cameras=n/a` (the observer rig
+vs the b1130-self preset -- the B1174 convention). The other two alignment
+lines (`b1162_fear229_intimidation`, `b1162_disc8604_leechcurse`) are
+untouched; the index is regenerated, and `ledger/index.tsv` + `index.html`
+-- never generated before this leg -- now exist (3 rows).
+
+**Commands** (repo root; the render runs on the ThinkPad, the measure here,
+per the 2026-10-29 rule):
+
+```bash
+bash refactor/B1162/scripts/disc_harness_rows.sh <worktree> kb-b1162-disc-record \
+    ~/kb-evidence/kb-b1162-disc-record
+python3 refactor/B1162/scripts/disc_rows_tsv.py ~/kb-evidence/kb-b1162-disc-record \
+    refactor/B1162/rows/disc325_326_harness.tsv
+python3 refactor/B1162/scripts/make_disc_clip_4499.py \
+    /mnt/projects/fable/review/B1162/worker/ledger \
+    /mnt/projects/fable/review/B1162/worker/oracle/b1162_disc4499_v3 \
+    ~/kb-evidence/kb-b1162-disc-record/frames/disc326_4499
+```
+
+**Gates.** The diff touches no C++ -- the targeted ctest is the hygiene
+label plus the FxHarness/Discipline pins. On this branch (cut at
+cdf6fbb67, 27 commits behind origin/fable 62fff22ec at the final
+re-check): hygiene = 48/49 (`rbuild hygiene` at the tip,
+`review/B1162/worker/hygiene_record_20261030b.log`), the one FAIL is
+`DocCitations` on three anchored cites in `refactor/B1189/README.md`
+(the createCastGlow / createLanding / createLandingFromSlots lines of
+`src/client/graphics/spell_visual_fx.cpp`, 526 / 844 / 933 there) --
+stale BASE cites from the red tip the branch was cut at (fable pipeline
+2583), fixed on fable by 5c9cde90e (fable pipeline 2627 green). They are
+not in this diff and disappear in the MR's merged tree: MR pipeline 2617
+(merge ref, 01:17 UTC) failed on exactly those three cites and nothing
+else -- `2347 citation(s): 2187 ok, 3 fail, 157 skip`, every cite in this
+leg's README among the ok -- so the MR re-run created by the final push
+against 62fff22ec is the gate
+(`~/kb-evidence/kb-b1162-disc-record/pipeline_state_20261030b.txt`, the
+2617 hygiene job trace on GitLab). `rbuild test -R 'Discipline|FxHarness'`
+= 12/12 passed (`review/B1162/worker/ctest_record_20261030.log`);
+`scripts/refactor/cite_check.py` over this README: 0 problems (re-run at
+the final commit of this leg).

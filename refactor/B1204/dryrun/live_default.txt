@@ -1,0 +1,12 @@
+CODEX NO -- verdict STOP (used 0.0% line 0.3%)
+CENSUS thinkpad load1=6.39 runq/core=0.25 model_viewer=1 eqgame=0 measure=2 leases=1:FREE,2:FREE,3:FREE,4:FREE,5:EXPIRED
+RUNNING 4: t_3d392c18@hermes-a t_1e04932f@hermes-a t_36bce0df@hermes-a t_86c81d8e@hermes-a
+hold   t_a74670e3 p4  ready     heavy  strong   -       NO_MANIFEST            cpu-build (4/2 used)
+         action: schedule t_a74670e3 'awaiting cpu-build'
+hold   t_a35f1f1e p3  ready     heavy  strong   -       NO_MANIFEST            cpu-build (4/2 used)
+         action: schedule t_a35f1f1e 'awaiting cpu-build'
+hold   t_a24d468e p3  ready     heavy  strong   -       NO_MANIFEST            cpu-build (4/2 used)
+         action: schedule t_a24d468e 'awaiting cpu-build'
+hold   t_d404af6b p3  ready     heavy  strong   -       NO_MANIFEST            cpu-build (4/2 used)
+         action: schedule t_d404af6b 'awaiting cpu-build'
+ALLOC mode=dry-run candidates=4 admit=0 queue=0 hold=4 -> /mnt/scratch/ledger/alloc_decisions.tsv
