@@ -1,0 +1,24 @@
+row_index	char	class	items	t_start_s	t_end_s	hold_start_s	hold_end_s	hold_s
+0	FxR01	Paladin	Fiery Avenger(11050)	375.0	416.7	394.7	416.7	22.0
+1	FxR02	Warrior	Blade of Tactics(66176); Blade of Strategy(66177)	417.7	449.8	427.8	449.8	22.0
+2	FxR03	Warrior	Jagged Blade of War(66175)	450.8	482.9	460.8	482.9	22.0
+3	FxR04	Ranger	Swiftwind(20487); Earthcaller(20488)	483.8	515.8	493.8	515.8	22.0
+4	FxR05	Paladin	Fiery Defender(10099)	516.7	548.7	526.7	548.7	22.0
+5	FxR06	Wizard	Staff of the Four(14341)	549.5	581.5	559.5	581.5	22.0
+6	FxR07	Rogue	Ragebringer(11057)	582.4	614.4	592.3	614.4	22.0
+7	FxR08	Bard	Singing Short Sword(20542)	615.2	647.0	625.0	647.0	22.0
+8	FxR09	Necromancer	Scythe of the Shadowed Soul(20544)	647.8	679.7	657.6	679.7	22.0
+9	FxR10	Monk	Celestial Fists(10652)	680.4	712.2	690.2	712.2	22.0
+10	FxR11	Enchanter	Staff of the Serpent(10650)	712.9	744.6	722.5	744.6	22.0
+11	FxR12	ShadowKnight	Innoruuk's Curse(14383)	745.3	777.0	754.9	777.0	22.0
+12	FxR13	Cleric	Water Sprinkler of Nem Ankh(5532)	777.7	809.4	787.4	809.4	22.0
+13	FxR14	Magician	Orb of Mastery(28034)	810.1	841.8	819.8	841.8	22.0
+14	FxR15	Shaman	Spear of Fate(10651)	842.5	874.3	852.2	874.3	22.0
+15	FxR16	Druid	Nature Walkers Scimitar(20490)	875.0	906.7	884.7	906.7	22.0
+16	FxR17	Paladin	SoulFire(5504)	907.4	939.1	917.1	939.1	22.0
+17	FxR18	Paladin	Ghoulbane(5403)	939.8	971.5	949.5	971.5	22.0
+18	FxR19	Paladin	Blade of Carnage(25210)	972.2	1003.9	981.9	1003.9	22.0
+19	FxR20	Warrior	Jade Mace(6612)	1004.7	1036.5	1014.5	1036.5	22.0
+20	FxR21	Warrior	Red Dragon Scale(50949)	1037.4	1069.1	1047.0	1069.1	22.0
+21	FxR22	Rogue	Jaded Electrum Bracelet(14649)	1069.8	1101.5	1079.5	1101.5	22.0
+22	FxR23	Rogue	Jaded Electrum Bracelet(16698)	1102.2	1133.9	1111.9	1133.9	22.0

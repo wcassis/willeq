@@ -852,6 +852,15 @@ stop_capture() {
 if [[ $ACTION == stop ]]; then stop_capture; exit $?; fi
 if [[ $ACTION == broker ]]; then broker_exchange "${3:-}" "${4:-}"; exit $?; fi
 [[ $ACTION == run ]] || exit 65
+# B1206 (#525): any exit path of `run` (set -e abort, an `exit 65`, a failed
+# login) stops the captures and the clients. Without it a failed run deadlocks
+# the local driver: the lane-5 ssh session stays open until every background
+# process holding its pipe exits, and ffmpeg (on lane 5's long-lived Xorg) and
+# tcpdump (under sudo, unredirected) run forever -- the 2026-10-30 g1 re-run
+# sat 22 min behind a driver that had already exited. `stop` stays the full
+# cleanup and is idempotent against this trap (pid files removed, restores
+# marker-guarded).
+trap '[[ $ACTION == run ]] && stop_capture >/dev/null 2>&1 || :' EXIT
 mkdir -p "$DIR"
 if ! xdpyinfo -display :99 >/dev/null 2>&1; then
     Xvfb :99 -screen 0 1280x1024x24 +extension GLX +render -noreset >"$DIR/xvfb.log" 2>&1 &
@@ -1023,6 +1032,33 @@ wait "$marker_pid" 2>/dev/null || :
 cd "$CLIENT" || exit 65
 nohup wine eqgame.exe patchme >"$DIR/wine.log" 2>&1 </dev/null &
 echo $! >"$DIR/wine.pid"
+# B1206 (#525): `# parallel-login=1` starts the observer's client AND its
+# login helper here, so the two logins (separate displays :99/:98, separate
+# prefixes) overlap instead of serialising -- the observer's wine launch,
+# EULA, intro and credential typing all hide behind the caster's login. The
+# plan's `obs login` row then only waits for the early job's verdict.
+PARALLEL_LOGIN=$(sed -n 's/^# parallel-login=//p' "$DIR/plan.tsv" | head -1)
+if [[ $PARALLEL_LOGIN == 1 && -n $OBSERVER ]]; then
+    # B1206 fix 5: the parallel block runs BEFORE any `use_role`, so a bare
+    # `nohup wine` inherits the CASTER's env (WINEPREFIX=CASTER_PREFIX,
+    # DISPLAY=:98) set at the caster launch above -- the 2026-10-30 g1 runs
+    # started BOTH clients on the caster's display with ONE wine prefix,
+    # :99 stayed black, and the doubled GLX load kept the caster Xvfb's
+    # XGetImage (import) in 15 s timeouts so neither helper's OCR ever saw
+    # the EULA that was on screen. Launch with the observer's own env,
+    # mirroring `use_role observer` (lane 5 = nvidia GLX vendor).
+    obs_env="DISPLAY=$OBS_DISPLAY WINEPREFIX=$OBS_PREFIX LP_NUM_THREADS=1"
+    if [[ $ORACLE_LANE == 5 ]]; then obs_env+=" __GLX_VENDOR_LIBRARY_NAME=nvidia"; else obs_env+=" __GLX_VENDOR_LIBRARY_NAME=mesa"; fi
+    ( cd "$OBS_CLIENT" && env $obs_env nohup wine eqgame.exe patchme >"$DIR/observer-wine.log" 2>&1 </dev/null & echo $! >"$DIR/observer-wine.pid" )
+    python3 /home/user/eq-oracle/uigap-scripts/oracle_login_patch.py \
+        /home/user/eq-oracle/drive-login.sh "$DIR/drive-login-observer.sh" \
+        --display "$OBS_DISPLAY" --credentials "/home/user/eq-oracle/observer-$OBSERVER.cred" || exit 65
+    # B1206: the helper's X grabs are timeout-protected, and this caps the
+    # whole login at 10 min so a stuck screen fails the leg fast (the
+    # 2026-10-30 g1 run sat 55 min behind one that never landed).
+    timeout 600 bash "$DIR/drive-login-observer.sh" >"$DIR/login-observer.log" 2>&1 &
+    echo $! >"$DIR/login-observer.pid"
+fi
 step=0
 while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6 arg7; do
     [[ -z $verb || $verb == \#* ]] && continue
@@ -1052,19 +1088,25 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6 arg7; do
                 # B1134: the observer's own Wine (prefix + client copy) starts
                 # here; its login helper is the VM helper with this display
                 # and the observer's credentials file sourced, never copied.
+                # B1206: with `# parallel-login=1` it already started at
+                # session start -- wait for that job instead.
                 [[ $target == "$OBSERVER" ]] || exit 65
-                if [[ ! -e $DIR/observer-wine.pid ]]; then
-                    ( cd "$CLIENT" && nohup wine eqgame.exe patchme >"$DIR/observer-wine.log" 2>&1 </dev/null & echo $! >"$DIR/observer-wine.pid" )
+                if [[ -e $DIR/login-observer.pid ]]; then
+                    wait "$(cat "$DIR/login-observer.pid")" || exit 65
+                else
+                    if [[ ! -e $DIR/observer-wine.pid ]]; then
+                        ( cd "$CLIENT" && nohup wine eqgame.exe patchme >"$DIR/observer-wine.log" 2>&1 </dev/null & echo $! >"$DIR/observer-wine.pid" )
+                    fi
+                    python3 /home/user/eq-oracle/uigap-scripts/oracle_login_patch.py \
+                        /home/user/eq-oracle/drive-login.sh "$DIR/drive-login-observer.sh" \
+                        --display "$DISPLAY" --credentials "/home/user/eq-oracle/observer-$OBSERVER.cred" || exit 65
+                    timeout 600 bash "$DIR/drive-login-observer.sh" >"$DIR/login-observer.log" 2>&1 || exit 65
                 fi
-                python3 /home/user/eq-oracle/uigap-scripts/oracle_login_patch.py \
-                    /home/user/eq-oracle/drive-login.sh "$DIR/drive-login-observer.sh" \
-                    --display "$DISPLAY" --credentials "/home/user/eq-oracle/observer-$OBSERVER.cred" || exit 65
-                bash "$DIR/drive-login-observer.sh" >"$DIR/login-observer.log" 2>&1 || exit 65
             else
                 python3 /home/user/eq-oracle/uigap-scripts/oracle_login_patch.py \
                     /home/user/eq-oracle/drive-login.sh "$DIR/drive-login.sh" \
                     ${OBSERVER:+--display "$DISPLAY"} || exit 65
-                bash "$DIR/drive-login.sh" >"$DIR/login.log" 2>&1 || exit 65
+                timeout 600 bash "$DIR/drive-login.sh" >"$DIR/login.log" 2>&1 || exit 65
             fi ;;
         zone)
             # Seeded by the host before login; enter the selected character here.

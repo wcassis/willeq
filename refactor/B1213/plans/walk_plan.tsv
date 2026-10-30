@@ -1,0 +1,88 @@
+# action	target	hold_ms	still_name
+# B1213 row walk: observer (Oraclewatch, GM) walks 23 characters,
+# each at target+(1.5,1.5) heading 320, F9 x3 fixed camera, 20 s hold.
+# fps=30
+# observer=Oraclewatch
+# obs-ini-set=Defaults.LastCharSel=1
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#goto -300 250 3 160	0	tgt_far
+obs	command	#goto -72.5 421.5 3.128 320	0	goto_00
+obs	wait	3000	0	settle_00
+obs	press	F9	0	cam_a
+obs	press	F9	0	cam_b
+obs	press	F9	0	cam_c
+obs	wait	20000	0	still_00
+obs	command	#goto -72.5 413.5 3.128 320	0	goto_01
+obs	wait	3000	0	settle_01
+obs	wait	20000	0	still_01
+obs	command	#goto -72.5 405.5 3.128 320	0	goto_02
+obs	wait	3000	0	settle_02
+obs	wait	20000	0	still_02
+obs	command	#goto -72.5 397.5 3.128 320	0	goto_03
+obs	wait	3000	0	settle_03
+obs	wait	20000	0	still_03
+obs	command	#goto -72.5 389.5 3.128 320	0	goto_04
+obs	wait	3000	0	settle_04
+obs	wait	20000	0	still_04
+obs	command	#goto -72.5 381.5 3.128 320	0	goto_05
+obs	wait	3000	0	settle_05
+obs	wait	20000	0	still_05
+obs	command	#goto -72.5 373.5 3.128 320	0	goto_06
+obs	wait	3000	0	settle_06
+obs	wait	20000	0	still_06
+obs	command	#goto -72.5 365.5 3.128 320	0	goto_07
+obs	wait	3000	0	settle_07
+obs	wait	20000	0	still_07
+obs	command	#goto -72.5 357.5 3.128 320	0	goto_08
+obs	wait	3000	0	settle_08
+obs	wait	20000	0	still_08
+obs	command	#goto -72.5 349.5 3.128 320	0	goto_09
+obs	wait	3000	0	settle_09
+obs	wait	20000	0	still_09
+obs	command	#goto -72.5 341.5 3.128 320	0	goto_10
+obs	wait	3000	0	settle_10
+obs	wait	20000	0	still_10
+obs	command	#goto -72.5 333.5 3.128 320	0	goto_11
+obs	wait	3000	0	settle_11
+obs	wait	20000	0	still_11
+obs	command	#goto -72.5 325.5 3.128 320	0	goto_12
+obs	wait	3000	0	settle_12
+obs	wait	20000	0	still_12
+obs	command	#goto -72.5 317.5 3.128 320	0	goto_13
+obs	wait	3000	0	settle_13
+obs	wait	20000	0	still_13
+obs	command	#goto -72.5 309.5 3.128 320	0	goto_14
+obs	wait	3000	0	settle_14
+obs	wait	20000	0	still_14
+obs	command	#goto -72.5 301.5 3.128 320	0	goto_15
+obs	wait	3000	0	settle_15
+obs	wait	20000	0	still_15
+obs	command	#goto -72.5 293.5 3.128 320	0	goto_16
+obs	wait	3000	0	settle_16
+obs	wait	20000	0	still_16
+obs	command	#goto -72.5 285.5 3.128 320	0	goto_17
+obs	wait	3000	0	settle_17
+obs	wait	20000	0	still_17
+obs	command	#goto -72.5 277.5 3.128 320	0	goto_18
+obs	wait	3000	0	settle_18
+obs	wait	20000	0	still_18
+obs	command	#goto -72.5 269.5 3.128 320	0	goto_19
+obs	wait	3000	0	settle_19
+obs	wait	20000	0	still_19
+obs	command	#goto -72.5 261.5 3.128 320	0	goto_20
+obs	wait	3000	0	settle_20
+obs	wait	20000	0	still_20
+obs	command	#goto -72.5 253.5 3.128 320	0	goto_21
+obs	wait	3000	0	settle_21
+obs	wait	20000	0	still_21
+obs	command	#goto -72.5 245.5 3.128 320	0	goto_22
+obs	wait	3000	0	settle_22
+obs	wait	20000	0	still_22
+obs	command	/q	0	obs_quit
+command	/q	0	quit

@@ -1,0 +1,13 @@
+{
+  "clients": [
+    {
+      "host": "127.0.0.1",
+      "port": 5998,
+      "user": "fxrow_fxr21",
+      "pass": "WillEqH03Pass",
+      "server": "WillEQ",
+      "character": "FxR21",
+      "eq_client_path": "/mnt/projects/EverQuestP1999"
+    }
+  ]
+}

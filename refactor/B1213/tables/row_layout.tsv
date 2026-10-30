@@ -1,0 +1,24 @@
+row_index	char	class	items	slots	x	y	note
+0	FxR01	Paladin	Fiery Avenger(11050)	13	-74.0	420.000	POSITIVE CONTROL (head of row)
+1	FxR02	Warrior	Blade of Tactics(66176); Blade of Strategy(66177)	13; 14	-74.0	412.000	warrior A 1hs pair (expect red + blue)
+2	FxR03	Warrior	Jagged Blade of War(66175)	13	-74.0	404.000	warrior B 2hs (expect dual-colour)
+3	FxR04	Ranger	Swiftwind(20487); Earthcaller(20488)	14; 13	-74.0	396.000	ranger pair (expect lightning)
+4	FxR05	Paladin	Fiery Defender(10099)	13	-74.0	388.000	paladin epic
+5	FxR06	Wizard	Staff of the Four(14341)	13	-74.0	380.000	wizard epic
+6	FxR07	Rogue	Ragebringer(11057)	13	-74.0	372.000	rogue epic
+7	FxR08	Bard	Singing Short Sword(20542)	14	-74.0	364.000	bard epic
+8	FxR09	Necromancer	Scythe of the Shadowed Soul(20544)	13	-74.0	356.000	necromancer epic
+9	FxR10	Monk	Celestial Fists(10652)	12	-74.0	348.000	monk epic
+10	FxR11	Enchanter	Staff of the Serpent(10650)	13	-74.0	340.000	enchanter epic
+11	FxR12	ShadowKnight	Innoruuk's Curse(14383)	13	-74.0	332.000	shadow knight epic
+12	FxR13	Cleric	Water Sprinkler of Nem Ankh(5532)	13	-74.0	324.000	cleric epic
+13	FxR14	Magician	Orb of Mastery(28034)	13	-74.0	316.000	magician epic
+14	FxR15	Shaman	Spear of Fate(10651)	13	-74.0	308.000	shaman epic
+15	FxR16	Druid	Nature Walkers Scimitar(20490)	13	-74.0	300.000	druid epic
+16	FxR17	Paladin	SoulFire(5504)	13	-74.0	292.000	non-epic effect item
+17	FxR18	Paladin	Ghoulbane(5403)	13	-74.0	284.000	non-epic effect item
+18	FxR19	Paladin	Blade of Carnage(25210)	14	-74.0	276.000	non-epic effect item
+19	FxR20	Warrior	Jade Mace(6612)	14	-74.0	268.000	non-epic (no FX expected)
+20	FxR21	Warrior	Red Dragon Scale(50949)	9	-74.0	260.000	non-epic (no FX expected)
+21	FxR22	Rogue	Jaded Electrum Bracelet(14649)	9	-74.0	252.000	non-epic (no FX expected), items.tsv row 14649
+22	FxR23	Rogue	Jaded Electrum Bracelet(16698)	9	-74.0	244.000	non-epic (no FX expected), items.tsv row 16698
