@@ -21,7 +21,7 @@
 #
 # B1192 (run 2, 2026-10-29): B1183's plan was ALSO missing the two observer
 # directives the `obs` rows require -- `# observer=<Character>` (the
-# session/remote parse it from the plan; oracle_session.sh:244,
+# session/remote parse it from the plan; oracle_session.sh:266,
 # oracle_remote.sh:876) and `# obs-ini-set=Defaults.LastCharSel=1` (the
 # observer account holds two characters, Darkshadow slot 0 / Oraclewatch
 # slot 1; without it `obs zone` clicks slot 0 and the WRONG character
@@ -34,9 +34,13 @@
 #
 # B1192 v3 (run 7, 2026-10-29): run 6's /loot never opened the loot window
 # (no loot/target packet at loot_open, corpse byte held 120 -- poll.log,
-# 29_use_check.png: target frame still on Oraclewatch). Root cause: the
-# official client has NO name-based corpse targeting. /target TrollF set
-# the live troll; OP_Death cleared HoTT (XCORPSE at t=5.559, poll.log),
+# 29_use_check.png: target frame still on Oraclewatch). The v3 claim that
+# the official client has no name-based corpse targeting is RETRACTED:
+# run 9's post-kill /target TrollF (37_retarget) resolved the corpse,
+# OP_TargetCommand target=260 was server-acknowledged, and /loot opened
+# the loot window (refactor/B1192/README.md, measured row). Run 6's
+# /target TrollF set the live troll BEFORE death, with no post-kill retarget;
+# OP_Death cleared HoTT (XCORPSE at t=5.559, poll.log),
 # and the loot gate (decompile 18431: DAT_00905d04 = the corpse getter,
 # case '\x06': corpse must exist and +0x244 == 0) found no corpse target.
 # The poller's dec_slot had ALSO mis-decoded the keymap (it read the

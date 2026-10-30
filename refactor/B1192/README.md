@@ -45,7 +45,7 @@ character name — and died at the (then silent) account-id check.**
    cleanup.
 3. The cleanup's post-SQL restore then ran unconditionally even though the
    pre-SQL (which creates the `oracle_save_*` tables) never ran: its
-   `DELETE FROM character_skills ...; INSERT INTO oracle_save_character_skills_67 SELECT ...`
+   `DELETE FROM character_skills WHERE id=67; INSERT INTO character_skills SELECT * FROM oracle_save_character_skills_67;`
    hit `ERROR 1146 (table doesn't exist)` on the INSERT, and **that 1146 set
    the leg's exit code to 66** — the code legH3 reported. The 65 that actually
    stopped the leg was masked by the 66 of the restore that followed it.
@@ -104,12 +104,15 @@ bash 5.2.21 outside the driver's three-word shape).
 
 The tests — `scripts/eqemu/oracle/tests/session_safety.sh` gains a faithful
 `eqemu_sql` stub (splits on `;`, stops at the first error, like
-`mysql -B -N -e`) and four cases: **early66** (a named early exit stays 65;
+`mysql -B -N -e`) and seven cases: **early66** (a named early exit stays 65;
 the orphaned post-SQL neither masks it nor deletes live rows), **timeline0**
 (a completed step leaves its timeline), **notimeline** (a remote rc 0
 without a timeline is refused 65), **spaceplan** (a space-delimited plan
-is refused 64, named, no client step), and **obsnoobs** (obs rows without
-a `# observer=` directive are refused 64, named, before the client step).
+is refused 64, named, no client step), **obsnoobs** (obs rows without
+a `# observer=` directive are refused 64, named, before the client step),
+**srvernoop** (the corpse-hold rule is already 300000: apply is a no-op,
+undo is not run), and **srveff** (the rule starts at 0: apply changes it
+and undo runs).
 `tests/class_leg_safety.sh` asserts the probe-before-DELETE order per save
 table. All 13 oracle safety tests pass:
 `bash scripts/eqemu/oracle/tests/{session,class_leg}_safety.sh`.
@@ -197,19 +200,21 @@ The kill loop's pattern `b1183_poll[.]sh` is a regex matching the text
 shell's own PID, `kill` SIGHUP'd it mid-script, and it died before `mkdir`:
 no poll dir, no poller, and the ssh client reported exit-signal = rc=255.
 The bracket trick only stops matching the *pattern text*; it cannot stop
-matching the real path elsewhere in the same command line. Proven by the X2
-probe (scratch `selfmatch2.sh`: rc=255, only the marker written BEFORE the
-kill loop survives; the same shape without the real path survives).
+matching the real path elsewhere in the same command line. The committed
+`refactor/B1192/scripts/arm_poll.sh --selftest` reproduces the self-match
+condition in the old combined command and checks its absence in the fixed
+KILL command; the missing scratch probe is not the evidentiary basis.
 
-**Defect 2 — a foreground arm hangs on the channel (probes 2/3).**
+**Defect 2 — a foreground arm hangs on the channel.**
 Backgrounding a `cd X && VAR=... setsid nohup bash ...` LIST runs it in a
 subshell whose stdout stays on the ssh channel pipe for the list's whole
 lifetime (the poller waits ~10-20 min for the `gdb_arm` step), so a
 foreground ssh client never sees EOF and hangs. A SIMPLE backgrounded
 command (`nohup setsid bash -c '...' > log 2>&1 < /dev/null &`) is
 fork+exec'd directly with all three fds redirected, so nothing holds the
-pipe and ssh returns in ~1 s (probe 4: rc=0 in 1 s, poller alive,
-`poll/` created).
+pipe. The committed `arm_poll.sh --selftest` checks the fixed command's
+pipe closure and that its stub poller remains alive after the arm returns;
+it requires no ThinkPad or scratch probe records.
 
 **The fix (`refactor/B1192/scripts/arm_poll.sh`, e4d8c2e7b, final form in
 4d932621c):** two separate ssh calls — (1) a KILL call whose command
@@ -226,7 +231,7 @@ time (the run-7 failure mode).
 it cannot self-match — while the old combined form does contain it (the
 Defect-1 reproduction); (b) the ARM command's channel closes promptly over
 a pipe (the local analog of the ssh channel: EOF only when no process holds
-the pipe; the old `&&`-LIST form demonstrably does not); (c) the arm starts
+the pipe); (c) the arm starts
 a stub poller that survives the session ending, leaving
 `poll/poll.started`.
 
@@ -252,10 +257,12 @@ t=140); the local player (`0x0f06f100`, the caster) is the one that went
 100→105→100. This corrects B1183's plan-header assumption ("the oracle
 writes 105 to the CORPSE's +0x251, not the looter's" —
 `refactor/B1183/legs/legH_loot.tsv` header): the measured value is the
-value, and the decompile agrees — the 105 write site (105797) sits in
-FUN_004849b2, the same per-spawn writer that does death (105881, the 120
-run 9 measured on the corpse) and new-spawn (106109): it writes whatever
-spawn it is handed, and the loot-window event hands it the looter.
+value, and the decompile agrees — in `eqgame.exe.c`, the 105 write site
+(105797) sits in FUN_00484d8d (105772-105804). The death write (105881,
+the 120 run 9 measured on the corpse) is in FUN_00484e79 (105842-105908),
+and the new-spawn write (106109) is in FUN_004850a0 (105942-106271): three
+different functions. FUN_00484d8d writes the +0x251 of whatever spawn it
+is handed; run 9 pins the loot-window write to the looter.
 
 Both v4 mechanisms worked (run 9 opcodes):
 
@@ -302,9 +309,14 @@ BLOCKED reading for that MR's own tip.
   opcodes (`31_click_a`: `OP_TargetMouse target=260`; `37_retarget`:
   `OP_TargetCommand target=260`; `40_loot_open`: `OP_LootRequest
   corpse_id=260` + `OP_MoneyOnCorpse`), timeline (46 steps), and the stills
-  (`42_use_check.png`: the open "Loot — TrollF's corpse" window);
-- probe records (scratch): `selfmatch2.sh` X1/X2 (the Defect-1 proof),
-  arm probes 2-4 (the Defect-2 proof + the fixed pattern on the ThinkPad).
+  (`42_use_check.png`: the open "Loot — TrollF's corpse" window).
+
+The reproducible basis for the arm-command properties in §4 is committed:
+`bash refactor/B1192/scripts/arm_poll.sh --selftest` (ctest `B1192ArmPoll`),
+which checks the old command's self-match condition, the fixed KILL
+command's absence of it, and the fixed ARM command's pipe closure and
+surviving stub poller. No unavailable scratch probe records are cited as
+evidence.
 
 The decompile and client help are read-only references on this host:
 `/mnt/projects/fable/review/B1141/ghidra/out/eqgame.exe.c` (the 105-write
