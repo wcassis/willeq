@@ -125,6 +125,27 @@ protected:
             if (c.type == EQT::Graphics::ParticleCommand::CreateSpellEffect) out.push_back(c);
         return out;
     }
+    // B1170 (#489): a 0x4033 spell missile object kOther -> kCaster (the
+    // entities in EQ (y, x, z) as the renderer hands them over).
+    void SpawnMissile(uint32_t spell, const EQ::SpellFxActor& casterFx = {}, const EQ::SpellFxActor& targetFx = {}) {
+        fx_->setMissileEntityCallback([](uint16_t id, SpellVisualFX::MissileEntityState& out) -> bool {
+            if (id != kCaster && id != kOther) return false;
+            const glm::vec3 c = id == kOther ? kOtherCenter : kCenter;
+            out = SpellVisualFX::MissileEntityState{};
+            out.eqPos[0] = c.z;
+            out.eqPos[1] = c.x;
+            out.eqPos[2] = c.y;
+            return true;
+        });
+        EQ::SpellMissile::Wire w;
+        w.word = 1.5f;
+        w.damped = 1;
+        w.type = EQ::SpellMissile::kTypeSpell;
+        w.spellId = spell;
+        w.sourceId = kOther;
+        w.targetId = kCaster;
+        fx_->spawnMissileObject(w, 60, casterFx, targetFx);
+    }
     static uint16_t On(const EQT::Graphics::ParticleCommandData& c) {
         return c.casterID != 0 ? c.casterID : c.targetID;
     }
@@ -297,6 +318,100 @@ TEST(SlotRulesSim, TheEmitterEmitsTheBurstThenTicksAndDrawsTheFilesSize) {
         EXPECT_GE(p.height, 4.0f);
         EXPECT_LE(p.height, 6.0f);
     }
+}
+
+// B1167 (#486): an ATTACHED record emitter takes its actor's frame.
+// EQGraphicsDX9's CParticleSystem::Render (0x100605b0) builds every attached
+// emitter's axes from the actor -- with +0x60 on a model point from the
+// point's world matrix (axis 2 = row 0, the model's facing), otherwise from
+// the actor's own matrix; only an unattached emitter keeps a fixed frame. RED
+// before B1167: the record slots were created with useDynamicDir = false, so
+// the sim never resolved the actor's direction and every record emitter drew
+// in the WORLD frame (axis 2 = world +X) whatever the actor faced.
+TEST_F(SlotRules, AnAttachedSlotOrientsToItsActor) {
+    Note(kBurstOfFlame);
+    fx_->createCastGlow(kCaster, 93, 1500, 60);
+    const auto source = Created();
+    ASSERT_FALSE(source.empty());
+    for (const auto& c : source) EXPECT_TRUE(c.useDynamicDir) << "Source slot on " << On(c);
+    fx_->createLanding(kCaster, kOther, 93, 60);
+    const auto landing = Created();
+    ASSERT_EQ(landing.size(), 8u);
+    for (const auto& c : landing) EXPECT_TRUE(c.useDynamicDir) << "landing slot on " << On(c);
+}
+
+namespace {
+// One record emitter with a single shape-0 point offset 5 units along EDD axis
+// 2 (+0xBC), attached to entity 7 at the origin facing `facing`; the spawned
+// sprites' positions after three 60 Hz frames.
+std::vector<glm::vec3> SpawnedAlongAxis2(const glm::vec3& facing, bool orient) {
+    EQT::Graphics::Environment::SpellEffectDef def;
+    EQT::Graphics::Environment::SpellEmitterDef ed;
+    ed.attach = EQT::Graphics::Environment::SpellAttach::CASTER;
+    auto& c = ed.config;
+    c.spawnRate = 0.0f;
+    c.burstCount = 4;
+    c.ticksPerSecond = 0.0f;
+    c.emitterLifetime = 0.1f;
+    c.lifetimeMin = c.lifetimeMax = 5.0f;
+    c.velocityBase = glm::vec3(0.0f);
+    c.velocitySpread = glm::vec3(0.0f);
+    c.eddShape.active = true;
+    c.eddShape.shape = 0;
+    c.eddShape.offY = 5.0f;
+    c.eddMotion.active = true;
+    def.emitters.push_back(ed);
+    EQT::Graphics::SimulationWorker worker;
+    EQT::Graphics::SimulationOutput output;
+    std::vector<glm::vec3> out;
+    for (int f = 0; f < 3; ++f) {
+        EQT::Graphics::SimulationInput input;
+        auto& pi = input.particleInput;
+        pi.deltaTime = 1.0f / 60.0f;
+        pi.unifiedRendererInitialized = true;
+        pi.rngSeed = particle_test::kSeed;
+        pi.poolSize = 64;
+        pi.entityPositions[7] = glm::vec3(0.0f);
+        pi.entityDirections[7] = facing;
+        if (f == 0) {
+            EQT::Graphics::ParticleCommandData cmd;
+            cmd.type = EQT::Graphics::ParticleCommand::CreateSpellEffect;
+            cmd.spellDef = def;
+            cmd.casterID = 7;
+            cmd.useDynamicDir = orient;
+            cmd.preAssignedEffectID = 1;
+            pi.commands.push_back(cmd);
+        }
+        worker.computeOnce(input, output);
+        if (output.particleOutput.valid) {
+            out.clear();
+            for (const auto& p : output.particleOutput.renderBuffer) out.push_back(p.position);
+        }
+    }
+    return out;
+}
+}  // namespace
+
+TEST(SlotRulesSim, AnAttachedRecordEmitterSpawnsInItsActorsFrame) {
+    // The actor faces +Z: axis 2 is +Z, the offset lands at (0, 0, 5).
+    const auto turned = SpawnedAlongAxis2(glm::vec3(0.0f, 0.0f, 1.0f), true);
+    ASSERT_EQ(turned.size(), 4u);
+    for (const auto& p : turned) {
+        EXPECT_NEAR(p.x, 0.0f, 1e-4f);
+        EXPECT_NEAR(p.z, 5.0f, 1e-4f);
+    }
+    // Facing +X: (5, 0, 0).
+    const auto east = SpawnedAlongAxis2(glm::vec3(1.0f, 0.0f, 0.0f), true);
+    ASSERT_EQ(east.size(), 4u);
+    for (const auto& p : east) {
+        EXPECT_NEAR(p.x, 5.0f, 1e-4f);
+        EXPECT_NEAR(p.z, 0.0f, 1e-4f);
+    }
+    // The pre-B1167 command (no direction requested) ignores the facing: the
+    // world frame, axis 2 = +X, whatever the actor faces.
+    const auto world = SpawnedAlongAxis2(glm::vec3(0.0f, 0.0f, 1.0f), false);
+    ASSERT_EQ(world.size(), 4u);
+    for (const auto& p : world) EXPECT_NEAR(p.x, 5.0f, 1e-4f);
 }
 
 // Record 112 (201 Flash of Light, B1131's head row): HEAD at 24 and 0, DEFAULT
@@ -579,7 +694,7 @@ EQ::SpellFxOptions Density(float d) {
 
 // Each stage's emitters are created with the Spell page's density applied to
 // the record's counts as CreateEmitter applies it -- Source (createCastGlow),
-// Middle (the missile's launch) and Target (createLanding) of 93's record 80
+// Middle (the 0x4033 object's spawn, B1170) and Target (createLanding) of 93's record 80
 // at level 60 -- and the worker does not scale them again (densityAtCreate).
 TEST_F(SlotRules, TheSpellPagesDensityScalesEveryStageAtCreation) {
     Note(kBurstOfFlame);
@@ -589,11 +704,10 @@ TEST_F(SlotRules, TheSpellPagesDensityScalesEveryStageAtCreation) {
         fx_->createCastGlow(kCaster, 93, 1500, 60);
         const auto src = Created();
         for (size_t i = 0; i < src.size(); ++i) out[0].push_back(Sum(src, i, 1));
-        // A missile kOther -> kCaster (keyed on its own caster, so kCaster's
-        // createLanding below is not deferred to it).
-        fx_->createCastGlow(kOther, 93, 1500, 60, 0, kCaster);
-        Created();  // its Source
-        for (int f = 0; f < 40 && fx_->missileCount() > 0; ++f) {
+        // B1170 (#489): the Middle comes only from a 0x4033 missile object
+        // kOther -> kCaster (its stage 1 fires at the spawn).
+        SpawnMissile(93);
+        for (int f = 0; f < 40 && fx_->missileObjectCount() > 0; ++f) {
             fx_->update(0.05f);
             for (const auto& c : Created())
                 if (c.spellDef.name == "MissileMiddle") out[1].push_back(Sum({c}, 0, 1));
@@ -642,7 +756,7 @@ TEST_F(SlotRules, TheSpellPagesDensityScalesEveryStageAtCreation) {
 }
 
 // "On For:" per stage: the Source on (caster, caster), the Middle on
-// (caster, none), the missile's arrival and createLanding on (caster, target).
+// (caster, none) (the 0x4033 object, B1170), createLanding on (caster, target).
 TEST_F(SlotRules, TheOnForFilterGatesEachStage) {
     Note(kBurstOfFlame);
     EQ::SpellFxActor other;
@@ -654,16 +768,20 @@ TEST_F(SlotRules, TheOnForFilterGatesEachStage) {
     mine.castFilter = 1;  // My spells
     fx_->setSpellFxOptions(mine);
     // Another PC's bolt at me: no Source, no Middle -- the landing on me draws.
-    fx_->createCastGlow(kOther, 93, 1500, 60, 0, kCaster, other, me);
+    fx_->createCastGlow(kOther, 93, 1500, 60, 0, other);
     EXPECT_TRUE(Created().empty()) << "My spells: another PC's Source is hidden";
-    ASSERT_EQ(fx_->missileCount(), 1u) << "the missile still flies (its landing has its own gate)";
+    // B1170 (#489): its 0x4033 object still flies; the Middle it fires at the
+    // spawn is (caster, none) and hidden, and a 93 object fires no Target
+    // stage of its own (only 54 / 859 do, at removal).
+    SpawnMissile(93, other, me);
+    ASSERT_EQ(fx_->missileObjectCount(), 1u) << "the object exists whatever the filter";
     size_t middle = 0, landing = 0;
-    for (int f = 0; f < 60 && fx_->missileCount() > 0; ++f) {
+    for (int f = 0; f < 60 && fx_->missileObjectCount() > 0; ++f) {
         fx_->update(0.05f);
         for (const auto& c : Created()) (c.spellDef.name == "MissileMiddle" ? middle : landing)++;
     }
     EXPECT_EQ(middle, 0u) << "the Middle is (caster, none): hidden";
-    EXPECT_EQ(landing, 8u) << "the arrival on me is shown: record 80's four Target slots x 2 halves";
+    EXPECT_EQ(landing, 0u) << "no Target stage from a 93 object";
     // Another PC's spell on another PC: nothing; on me: the landing.
     fx_->createLanding(kCaster, kOther, 93, 60, other, other);
     EXPECT_TRUE(Created().empty());
@@ -671,13 +789,13 @@ TEST_F(SlotRules, TheOnForFilterGatesEachStage) {
     EXPECT_EQ(Created().size(), 8u);
     // All spells (the default and every capture's 24): everything draws.
     fx_->setSpellFxOptions(EQ::SpellFxOptions{});
-    fx_->createCastGlow(kCaster, 93, 1500, 60, 0, 0, other, other);
+    fx_->createCastGlow(kCaster, 93, 1500, 60, 0, other);
     EXPECT_EQ(Created().size(), 4u);
     // ShowSpellEffects 0: no record stage draws (0x49b331).
     EQ::SpellFxOptions hidden;
     hidden.showSpellEffects = false;
     fx_->setSpellFxOptions(hidden);
-    fx_->createCastGlow(kCaster, 93, 1500, 60, 0, 0, me, me);
+    fx_->createCastGlow(kCaster, 93, 1500, 60, 0, me);
     fx_->createLanding(kCaster, kOther, 93, 60, me, me);
     EXPECT_TRUE(Created().empty()) << "/showspelleffects off draws no spell particles";
 }

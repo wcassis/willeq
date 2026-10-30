@@ -89,6 +89,21 @@ def sh(args, env=None):
 
 log = open(f'{root}/measure_b1130.txt', 'w')
 out = []
+# B1185 (#504): the Source stage's particle onset (the client's createCastGlow
+# Source branch: sourceLatency + the slot's +0x8C start, spell_visual_fx.cpp:684),
+# emitted by the harness to source_onset.tsv. This is the FIRST VISIBLE
+# PARTICLE frame, not the cast-anim's first-lit frame (B1157's CastingAnim),
+# which the anchor.py's pixel measure shadowed.
+src_onset = {}
+src_onset_file = fd + '/source_onset.tsv'
+if os.path.exists(src_onset_file):
+    for l in open(src_onset_file):
+        parts = l.rstrip('\n').split('\t')
+        if len(parts) >= 5 and parts[1] == 'Source':
+            try:
+                src_onset[int(parts[0])] = float(parts[4])
+            except ValueError:
+                pass
 for s, tbc, tact in casts:
     d = f'{root}/fable_{s}'
     tend = min(tact + 12.0, vend - 0.05)  # B1130's Act+13 window minus the 1 s the RISE tail baseline needs
@@ -103,7 +118,11 @@ for s, tbc, tact in casts:
     r = re.search(r'RISE onset f(\d+) Act([+-]\d+\.\d+)s end f(\d+) Act([+-]\d+\.\d+)s peak f(\d+) Act([+-]\d+\.\d+)s coverage ([\d.]+)', rise)
     lon, lend, lcov = (float(r.group(2)), float(r.group(4)), float(r.group(7))) if r else (float('nan'),) * 3
     m = re.search(r'SOURCE onset f(\d+) BC([+-]\d+\.\d+);', src)
-    son = float(m.group(2)) if m else float('nan')
+    son_pixel = float(m.group(2)) if m else float('nan')
+    # B1185 (#504): the Source stage's particle onset (the client's rule) is
+    # the reported source_onset_s. The pixel measure (anchor.py's first-lit
+    # frame) is kept as son_pixel for the log (diagnostic only).
+    son = src_onset.get(s, son_pixel)
     m = re.search(r'peak\(cast\) f\d+ BC[+-]\d+\.\d+ cov ([\d.]+)', src)
     scov = float(m.group(1)) if m else float('nan')
     m = re.search(r'CAST f\d+-f\d+ \(\d+ frames\): cov [\d.]+ cen_h ([\d.]+) cen_dx [+-][\d.]+ dx_p5\.\.p95 [+-][\d.]+\.\.[+-][\d.]+ h_p5\.\.p95 ([\d.]+)\.\.([\d.]+)', src)

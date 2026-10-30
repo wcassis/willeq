@@ -7,6 +7,7 @@
 #include "client/graphics/ui/eqclient_ini.h"
 
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <optional>
@@ -48,27 +49,61 @@ bool IsEqClientRow(int i) {
            OL::isEqClientIniSetting(static_cast<OL::Setting>(i));
 }
 
-// One value, the same rules ui_preferences.cpp applies to its own keys
-// (B995 / B1165): a float keeps its clamped value as the APPLIED one, a bool
-// takes TRUE/FALSE too, anything the table refuses keeps the default.
+// B1182 (#501): the client's int reader -- FUN_004ae64c (eqgame.exe.c
+// 132167-132176) is GetPrivateProfileInt on ".\defaults.ini" then
+// ".\eqclient.ini", and its atoi is eqgame 0x60e31b (0x60e3a3 is its thunk;
+// _atol is the same body): skip leading whitespace, take one optional
+// sign, accumulate the decimal digits in 32 bits (WRAPPING), negate the
+// result when signed. A value with no digit prefix gives 0.
+int IniAtoi(const std::string& s) {
+    size_t i = 0;
+    while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) ++i;
+    bool neg = false;
+    if (i < s.size() && (s[i] == '-' || s[i] == '+')) {
+        neg = (s[i] == '-');
+        ++i;
+    }
+    uint32_t acc = 0;
+    while (i < s.size() && s[i] >= '0' && s[i] <= '9') {
+        acc = acc * 10u + static_cast<uint32_t>(s[i] - '0');
+        ++i;
+    }
+    return static_cast<int>(neg ? 0u - acc : acc);
+}
+
+// One value, the client's own per-key reader (B995 / B1165 / B1182):
+//  * a float (FUN_004ae67a, eqgame.exe.c 132182-132197) keeps its clamped
+//    value as the APPLIED one; junk gives the DEFAULT -- the sscanf at
+//    0x4ae705 misses and the pre-seeded float (0x4ae698) is returned, then
+//    the loader clamp (132608-132637) -- which is what
+//    parseSettingIniFloat does too;
+//  * an int (FUN_004ae64c) is IniAtoi: junk -> 0, kept RAW -- the
+//    cast-filter loader validates nothing (132638);
+//  * ShowSpellEffects has its own path (126006-126011), NOT the bool
+//    reader: atol (junk -> 0) kept when it is 0/1, and an ABSENT (the
+//    "*NULL*" default) or out-of-range value is set to 1 and written back
+//    to the file (showSpellEffectsRewrite). atol("TRUE") is 0 there.
 void ParseValue(int i, const std::string& value, EqClientIni& p) {
     const auto& info = OL::allSettings()[i];
     const std::string t = Trim(value);
-    int v = 0;
     if (OL::isIniFloatSetting(info.setting)) {
+        int v = 0;
         std::optional<float> applied;
         if (!OL::parseSettingIniFloat(info.setting, t, v, applied)) return;
         p.optionValues[i] = v;
         p.optionIniFloats[i] = applied;
         return;
     }
-    if (info.kind == OL::ValueKind::Bool &&
-        (t == "TRUE" || t == "true" || t == "FALSE" || t == "false")) {
-        v = (t == "TRUE" || t == "true") ? 1 : 0;
-    } else if (!OL::parseSettingIniText(info.setting, t, v)) {
+    if (info.setting == OL::Setting::ShowSpellEffects) {
+        int v = IniAtoi(t);
+        if (v < 0 || v > 1) {
+            v = 1;
+            p.showSpellEffectsRewrite = true;
+        }
+        p.optionValues[i] = v;
         return;
     }
-    if (OL::isValidSettingValue(info.setting, v)) p.optionValues[i] = v;
+    p.optionValues[i] = IniAtoi(t);
 }
 
 // A line split that remembers the file's own line ending.
@@ -114,6 +149,61 @@ std::optional<std::string> KeyOf(const std::string& line) {
     const size_t eq = t.find('=');
     if (eq == std::string::npos) return std::nullopt;
     return Trim(t.substr(0, eq));
+}
+
+// B1182 (#501): update exactly ONE key in place (replace the value if present,
+// append to the end of its section if not), leaving every other line
+// byte-identical. This is the client's single-key WritePrivateProfileString
+// (eqgame.exe.c 126010-126011): at load, the client rewrites ONLY
+// ShowSpellEffects and leaves the other keys untouched -- a junk density
+// stays junk in the file (the live oracle's after-ini still reads
+// "SpellParticleDensity=banana"). The full UpdateEqClientIniText below chains
+// this for every row, which is what the save/shutdown path (SaveEqClientIni)
+// does; the load path must use this single-key form, or it would normalise
+// junk values the client never touches.
+std::string UpdateEqClientIniTextKey(const std::string& existing, int i, const EqClientIni& p) {
+    Lines lines = SplitLines(existing);
+    const auto& info = OL::allSettings()[i];
+    const auto setting = static_cast<OL::Setting>(i);
+    const std::string value =
+        OL::settingIniText(setting, p.optionValues[i], p.optionIniFloats[i]);
+    int sectionAt = -1;
+    int insertAt = -1;
+    int keyAt = -1;
+    for (int n = 0; n < static_cast<int>(lines.lines.size()); ++n) {
+        if (auto name = SectionOf(lines.lines[n])) {
+            if (sectionAt >= 0) break;  // left the first matching section
+            if (SameName(*name, info.eqclientSection)) {
+                sectionAt = n;
+                insertAt = n + 1;
+            }
+            continue;
+        }
+        if (sectionAt < 0) continue;
+        if (!Trim(lines.lines[n]).empty()) insertAt = n + 1;
+        const auto key = KeyOf(lines.lines[n]);
+        if (key && SameName(*key, info.iniKey)) {
+            keyAt = n;
+            break;
+        }
+    }
+    if (keyAt >= 0) {
+        // Keep the key's own spelling, replace the value.
+        const std::string& old = lines.lines[keyAt];
+        const size_t eq = old.find('=');
+        lines.lines[keyAt] = Trim(old.substr(0, eq)) + "=" + value;
+    } else if (sectionAt >= 0) {
+        lines.lines.insert(lines.lines.begin() + insertAt, std::string(info.iniKey) + "=" + value);
+    } else {
+        lines.lines.push_back(std::string("[") + info.eqclientSection + "]");
+        lines.lines.push_back(std::string(info.iniKey) + "=" + value);
+    }
+    std::string out;
+    for (size_t n = 0; n < lines.lines.size(); ++n) {
+        out += lines.lines[n];
+        if (n + 1 < lines.lines.size() || lines.endsWithEol) out += lines.eol;
+    }
+    return out;
 }
 
 }  // namespace
@@ -182,54 +272,23 @@ EqClientIni ParseEqClientIni(const std::string& text, const EqClientIni& default
             break;
         }
     }
+    // B1182 (#501): the client's ShowSpellEffects read (126006-126011) rewrites
+    // the file when the key is ABSENT (the "*NULL*" default) or out of range;
+    // an absent key never reaches ParseValue, so the absent half is set here.
+    const int sse = static_cast<int>(OL::Setting::ShowSpellEffects);
+    if (!seenKey[sse]) p.showSpellEffectsRewrite = true;
     return p;
 }
 
 std::string UpdateEqClientIniText(const std::string& existing, const EqClientIni& p) {
-    Lines lines = SplitLines(existing);
+    // The save/shutdown path (SaveEqClientIni) rewrites every row, each via
+    // the single-key updater -- a junk value is normalised on save. The load
+    // path uses UpdateEqClientIniTextKey directly for ShowSpellEffects only
+    // (B1182: the client's load-time rewrite is that one key, not the file).
+    std::string out = existing;
     for (int i = 0; i < OL::kSettingCount; ++i) {
         if (!IsEqClientRow(i)) continue;
-        const auto& info = OL::allSettings()[i];
-        const auto setting = static_cast<OL::Setting>(i);
-        const std::string value =
-            OL::settingIniText(setting, p.optionValues[i], p.optionIniFloats[i]);
-        // The first section of that name, and the line after its last entry.
-        int sectionAt = -1;
-        int insertAt = -1;
-        int keyAt = -1;
-        for (int n = 0; n < static_cast<int>(lines.lines.size()); ++n) {
-            if (auto name = SectionOf(lines.lines[n])) {
-                if (sectionAt >= 0) break;  // left the first matching section
-                if (SameName(*name, info.eqclientSection)) {
-                    sectionAt = n;
-                    insertAt = n + 1;
-                }
-                continue;
-            }
-            if (sectionAt < 0) continue;
-            if (!Trim(lines.lines[n]).empty()) insertAt = n + 1;
-            const auto key = KeyOf(lines.lines[n]);
-            if (key && SameName(*key, info.iniKey)) {
-                keyAt = n;
-                break;
-            }
-        }
-        if (keyAt >= 0) {
-            // Keep the key's own spelling, replace the value.
-            const std::string& old = lines.lines[keyAt];
-            const size_t eq = old.find('=');
-            lines.lines[keyAt] = Trim(old.substr(0, eq)) + "=" + value;
-        } else if (sectionAt >= 0) {
-            lines.lines.insert(lines.lines.begin() + insertAt, std::string(info.iniKey) + "=" + value);
-        } else {
-            lines.lines.push_back(std::string("[") + info.eqclientSection + "]");
-            lines.lines.push_back(std::string(info.iniKey) + "=" + value);
-        }
-    }
-    std::string out;
-    for (size_t n = 0; n < lines.lines.size(); ++n) {
-        out += lines.lines[n];
-        if (n + 1 < lines.lines.size() || lines.endsWithEol) out += lines.eol;
+        out = UpdateEqClientIniTextKey(out, i, p);
     }
     return out;
 }
@@ -280,6 +339,56 @@ bool SaveEqClientIni(const EqClientIni& p) {
         return false;
     }
     LOG_DEBUG(MOD_UI, "eqclient.ini saved to {}", path);
+    return true;
+}
+
+// B1182 (#501): the load-time ShowSpellEffects rewrite, as a pure text
+// transform. The client rewrites ONLY that key (WritePrivateProfileString,
+// eqgame.exe.c 126010-126011) and leaves every other key in the file
+// untouched -- a junk density stays junk until the full shutdown save (the
+// live oracle's after-ini still reads "SpellParticleDensity=banana" with
+// "ShowSpellEffects=1" appended). This applies the single-key update
+// (UpdateEqClientIniTextKey) to ShowSpellEffects and nothing else.
+std::string RewriteShowSpellEffectsInText(const std::string& existing, const EqClientIni& p) {
+    const int sse = static_cast<int>(OL::Setting::ShowSpellEffects);
+    return UpdateEqClientIniTextKey(existing, sse, p);
+}
+
+// B1182 (#501): file wrapper -- read the cache file, apply the pure-text
+// rewrite, write it back (temp + rename). The load path uses this, NOT
+// SaveEqClientIni, which would rewrite every key and normalise the junk.
+bool RewriteShowSpellEffectsInFile(const EqClientIni& p) {
+    const std::string path = eqt::ResolveCachePathForWrite(kEqClientIniCacheName);
+    if (path.empty()) {
+        LOG_DEBUG(MOD_UI, "eqclient.ini: no writable cache file");
+        return false;
+    }
+    std::string existing;
+    {
+        std::ifstream in(path, std::ios::binary);
+        if (in) {
+            std::ostringstream buf;
+            buf << in.rdbuf();
+            existing = buf.str();
+        }
+    }
+    const std::string tmp = path + ".tmp";
+    {
+        std::ofstream outFile(tmp, std::ios::binary | std::ios::trunc);
+        if (!outFile) {
+            LOG_WARN(MOD_UI, "eqclient.ini: could not write {}", tmp);
+            return false;
+        }
+        outFile << RewriteShowSpellEffectsInText(existing, p);
+        if (!outFile) return false;
+    }
+    if (std::rename(tmp.c_str(), path.c_str()) != 0) {
+        LOG_WARN(MOD_UI, "eqclient.ini: could not rename {} -> {}", tmp, path);
+        std::remove(tmp.c_str());
+        return false;
+    }
+    const int sse = static_cast<int>(OL::Setting::ShowSpellEffects);
+    LOG_DEBUG(MOD_UI, "eqclient.ini: ShowSpellEffects rewritten to {}", p.optionValues[sse]);
     return true;
 }
 

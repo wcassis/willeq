@@ -271,6 +271,24 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_source_anchors DISCOVERY_TIMEOUT 120)
 
+# B1185 (#504): the Source stage's particle onset (the client's createCastGlow
+# Source branch: sourceLatency + the slot's +0x8C start). The b1130 sweep's
+# source_onset_s is this value (the first visible particle frame), not the
+# pixel measure's first-lit frame (B1157's CastingAnim shadowed it).
+ADD_EXECUTABLE(test_b1185_source_onset
+    test_b1185_source_onset.cpp
+)
+TARGET_LINK_LIBRARIES(test_b1185_source_onset GTest::gtest_main willeq_core)
+IF(NOT EQT_GRAPHICS)
+    TARGET_SOURCES(test_b1185_source_onset PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_effects_config.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/spell/spells_new_edd_reader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_b1185_source_onset ${FMT_LIB} ${JSONCPP_LIBRARIES} dl)
+ENDIF()
+GTEST_DISCOVER_TESTS(test_b1185_source_onset DISCOVERY_TIMEOUT 120)
+
 # B1132 (#452): the Target (landing) stage per spells.eff record -- anchor
 # class and shape from the B1130 survey, and no landing on the caster of an
 # other-target cast. Same layout as test_spell_source_anchors.
@@ -317,6 +335,14 @@ ADD_EXECUTABLE(test_b1163_missile_rules
 )
 TARGET_LINK_LIBRARIES(test_b1163_missile_rules GTest::gtest_main willeq_core)
 GTEST_DISCOVER_TESTS(test_b1163_missile_rules DISCOVERY_TIMEOUT 120)
+
+# B1170 (#489): the server's 0x4033 missile object (decode, spawn, homing,
+# physics, removal), device-free -- client/spell/spell_missile_object.h.
+ADD_EXECUTABLE(test_b1170_missile_object
+    test_b1170_missile_object.cpp
+)
+TARGET_LINK_LIBRARIES(test_b1170_missile_object GTest::gtest_main willeq_core)
+GTEST_DISCOVER_TESTS(test_b1170_missile_object DISCOVERY_TIMEOUT 120)
 
 # B1137 (#457): the measured Source/Target row is chosen by the spell's
 # spellsnew.eff record (field 145), not its spells.eff record (field 123).
@@ -377,6 +403,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_caster_own_landing PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_caster_own_landing GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_caster_own_landing DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1180 (#499): the EDD sprite's attach scale is the anchor entity's rendered
+# scale (the client's s6C word), not the constant 1.0 (B1149's ruling). Same
+# seam as test_caster_own_landing (real SpellVisualFX -> ParticleManager ->
+# SimulationWorker); the readout is the particle's sizeStart, so a landing on
+# a 1.2x entity draws its Target sprites 1.2x a unit-scale entity's (the
+# pinned TrollF s6C = 1.2).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_b1180_attach_scale
+        test_b1180_attach_scale.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_b1180_attach_scale PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_b1180_attach_scale GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_b1180_attach_scale DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # B1106 (#426, from B1104 #424 F2): a spell landing's command must not be

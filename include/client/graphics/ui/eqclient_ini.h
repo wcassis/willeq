@@ -64,6 +64,11 @@ constexpr const char* kEqClientIniCacheName = "eqclient.ini";
 struct EqClientIni {
     OptionsLayout::OptionValues optionValues = OptionsLayout::defaultOptionValues();
     OptionsLayout::OptionIniFloats optionIniFloats{};
+    // B1182 (#501): the client rewrites an absent or out-of-[0,1]
+    // ShowSpellEffects as 1 IN THE FILE at load (eqgame.exe.c 126006-126011).
+    // Set by ParseEqClientIni when the rewrite fires; the load path saves
+    // immediately so the file matches the client's, not only the next diff.
+    bool showSpellEffectsRewrite = false;
 
     bool operator==(const EqClientIni& o) const;
     bool operator!=(const EqClientIni& o) const { return !(*this == o); }
@@ -86,6 +91,27 @@ bool LoadEqClientIni(EqClientIni& out);
 
 /** Update `<cache dir>/eqclient.ini` (temp file + rename); false when nothing is writable. */
 bool SaveEqClientIni(const EqClientIni& p);
+
+/** B1182 (#501): the load-time ShowSpellEffects rewrite, as a pure text
+ * transform — the testable core. Updates ONLY the ShowSpellEffects key
+ * (replace the value if present, append to the end of its `[Defaults]`
+ * section if not); every other line is byte-identical, so a junk density
+ * stays junk (the client's single-key WritePrivateProfileString,
+ * eqgame.exe.c 126010-126011; the live oracle's after-ini still reads
+ * "SpellParticleDensity=banana" with "ShowSpellEffects=1" appended).
+ * @param[in] existing current file text.
+ * @param[in] p parsed/rewritten state; only ShowSpellEffects is written.
+ * @return the new file text.
+ */
+std::string RewriteShowSpellEffectsInText(const std::string& existing, const EqClientIni& p);
+
+/** B1182 (#501): file wrapper for the load-time rewrite — read the cache
+ * file, apply RewriteShowSpellEffectsInText, write it back (temp + rename).
+ * The load path uses this, NOT SaveEqClientIni.
+ * @param[in] p parsed/rewritten state; only ShowSpellEffects is written.
+ * @return true on success (including a no-op); false if not writable.
+ */
+bool RewriteShowSpellEffectsInFile(const EqClientIni& p);
 
 }  // namespace Graphics
 }  // namespace EQT

@@ -2,9 +2,12 @@
  * B1163 (#482): the missile path follow-ups from B1152, pinned as pure rules.
  *
  * This header is deliberately device-free (no <irrlicht.h>): it holds the
- * missile speed word, the calibrated flight timing and the oracle's spell-859
- * removal gate, so test_b1163_missile_rules can pin them without a display,
- * and so SpellVisualFX has exactly one source of truth for them. Every
+ * missile object's thrust word and update constants and the oracle's
+ * spell-859 removal gate, so test_b1163_missile_rules can pin them without a
+ * display. B1170 (#489) removed the B1152 record-80 calibration (30 u/s,
+ * 0.302 s) that lived here: the client draws a Middle stage only on the
+ * 0x4033 missile object (refactor/B1170/README.md), whose motion is
+ * client/spell/spell_missile_object.h. Every
  * address below is an instruction start in review/B1141/ghidra/out/eqgame.dis;
  * line numbers are in review/B1141/ghidra/out/eqgame.exe.c.
  *
@@ -36,11 +39,11 @@
  *      00445583 jb), so the per-pass damping makes the flight depend on the
  *      pass rate. The missile is removed when the XY distance stored at the
  *      PREVIOUS pass is below 2.0 (00476743 fcomp [0x6410b4], 00476769).
- *      MissilePassesToHit() in tests/test_b1163_missile_rules.cpp is that model. It does NOT reproduce B1152's
- *      measurement, for a reason in the captures: the B1152 and B1159 oracle
- *      captures hold no 0x4033 message, so in those legs the observer's client
- *      built no missile object at all. kMissileSpeed = 30 u/s therefore stays
- *      the B1152 record-80 CALIBRATION (refactor/B1163/README.md (A)).
+ *      MissilePassesToHit() in tests/test_b1163_missile_rules.cpp is that model
+ *      (refactor/B1163/scripts/missile_model.py prints the same table). The
+ *      B1152 and B1159 oracle captures hold no 0x4033 message, so in those
+ *      legs the observer's client built no missile object and drew no Middle
+ *      stage (refactor/B1168/README.md).
  *      Spell 859 never flies: FUN_00476b12 zeroes the word and the velocity
  *      for target types 8 / 0x15..0x17 / 0x1c and puts the missile on its
  *      [+0x50] entity (00476be6 .. 00476d6b); 859's target type is 8.
@@ -93,10 +96,8 @@ namespace SpellMissileRules {
 inline constexpr uint32_t kSpell859 = 0x35b;
 
 // (A) The thrust word [missile+0x28] the constructor's local branch writes
-// for a type-9 (spell) missile. Facts of the code, not speeds. The update
-// model and the no-flight target types are pinned in
-// tests/test_b1163_missile_rules.cpp (and refactor/B1163/scripts/
-// missile_model.py); fable does not run them (README (A)).
+// for a type-9 (spell) missile. Facts of the code, not speeds; a RECEIVED
+// missile copies its word from the 0x4033 message (004770eb / 004770ee).
 inline constexpr float kMissileThrustWordSpell = 1.5f;  // 00477514 0x3fc00000
 inline constexpr float kMissileThrustWord859   = 0.8f;  // 0047751d 0x3f4ccccd
 
@@ -108,30 +109,6 @@ inline constexpr float kMissileDtPerUnit     = 0.02f;   // [0x6410b8], 004c0033
 inline constexpr int   kMissileMinPassUnits  = 33;      // 00445580 cmp ecx, 0x21
 inline constexpr float kMissileHitDistance   = 2.0f;    // [0x6410b4], 00476743
 inline constexpr float kMissileInitialStored = 2000.0f; // 00476eef 0x44fa0000
-
-// The record-80 CALIBRATION (B1152, refactor/B1152/TRACE.md sec. 8, spell 38):
-// 9.05 units in 0.30 s. NOT derived from the word: see (A) above.
-inline constexpr float kMissileSpeed = 30.0f;  // units / second
-
-// The calibrated flight geometry and clock (refactor/B1152/TRACE.md sec. 8,
-// record 80): the oracle's caster->target gap, the flight end before the
-// OP_Action, and the Target stage after the flight end. BLESS-ONLY.
-inline constexpr float kMissileFlightDistance  = 9.05f;  // units
-inline constexpr float kMissileFlightEndOffset = 0.184f; // s before OP_Action
-inline constexpr float kMissileLandingDelay    = 0.30f;  // s after the flight end
-
-// Flight time of every missile fable builds: the calibrated gap over the
-// calibrated speed, 9.05 / 30 = 0.302 s.
-inline float MissileFlightTime() {
-    return kMissileFlightDistance / kMissileSpeed;
-}
-
-// FX-time (s) the missile reaches the target: kMissileFlightEndOffset before
-// the hit (the OP_Action).
-inline double MissileReachAt(double hitAt) { return hitAt - kMissileFlightEndOffset; }
-
-// FX-time (s) the Target stage fires: kMissileLandingDelay after the flight end.
-inline double MissileLandAt(double reachAt) { return reachAt + kMissileLandingDelay; }
 
 // (C) The 859 removal gate.
 inline constexpr float kSpell859GateDistance = 40.0f;  // [0x645ec0]

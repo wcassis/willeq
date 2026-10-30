@@ -842,22 +842,36 @@ EXEMPT_GROUPS = {
 }
 
 EXEMPT_TESTS_GROUPS = {
+    # B1176 (#495): the client's first- and third-person camera height above
+    # the player's z, (6.2 - 3.125) x s (005701c0:284524 via FUN_00489bf5;
+    # actor_scale.h:149). The player eye code implements the same rule inline
+    # from the NODE SCALE (animated_mesh_eye.cpp:128,169) -- it applies the
+    # fable posture drop in model space before the scale, so it cannot call
+    # the (race, gender, size) overload; test_actor_scale's
+    # TheB1176CameraHeights is the rule's observation window.
+    ("(free)", "clientCameraHeightAbovePlayerZ"): "observer",
     ("(free)", "ComputeHelpCoverage"): "seam",
     # B1138 (#458): tools/model_viewer was the one non-test caller of
     # getSpellColorForSpell and now runs the client's own cast sequence
     # (spell_cast_fx.cpp); getSpellColorForSpell is T381's test window on the
     # noted vocabulary's fallback colour (test_spell_visual_vocabulary).
     # B1152 (#472): createProjectile is GONE -- the missile actor replaced it,
-    # so its exemption (boarded as B1128, which was to wire it) is retired.
-    # missileCount was the test's observation window on the missile actor;
-    # B1174 (#493) gave it a non-test caller (the FX harness's per-frame
-    # fx_activity.tsv), so its exemption is retired. The
-    # travel-stage Projectile preset lost its production caller to the missile
-    # (which builds its Middle emitter directly, SourceForSpell +
-    # PROJECTILE_PATH), but test_spell_landing_volume still exercises the
-    # PROJECTILE_PATH emitter it defines.
+    # and B1170 (#489) removed that record-driven missile too, so its exemption
+    # (boarded as B1128, which was to wire it) is retired. missileCount was the
+    # test's observation window on the missile actor; B1174 (#493) gave it a
+    # non-test caller (the FX harness's per-frame fx_activity.tsv), so its
+    # exemption is retired. The travel-stage Projectile preset has no production
+    # caller (the 0x4033 missile object builds its Middle emitter directly,
+    # SourceForSpell + PROJECTILE_PATH), but test_spell_landing_volume still
+    # exercises the PROJECTILE_PATH emitter it defines.
     ("(free)", "Projectile"): "seam",
     ("SpellVisualFX", "getSpellColorForSpell"): "observer",
+    # B1181 (#500): whether the i-th missile object is drawing its +0x65 IT
+    # model (type != 9 with a found IT mesh, never a type-9 object). The
+    # production path reads m_missile_objects directly; test_b1181_item_missile
+    # is the rule's observation window (drawn per frame, gone at the
+    # +0x68 lifetime, absent for a type-9 object and for a non-IT name).
+    ("SpellVisualFX", "missileModelDrawn"): "observer",
     # B1150 (#470): the census test's observation window onto every file entry
     # (zero-based, entry 0 included -- a real shape-0 point that the 1-based
     # slot accessors reject by design, since spellsnew.eff's slot numbers are

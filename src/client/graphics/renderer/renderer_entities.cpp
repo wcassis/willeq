@@ -298,6 +298,39 @@ void IrrlichtRenderer::initDeferredGraphics() {
             }
         );
 
+        // B1170 (#489): the 0x4033 missile object reads spawns in EQ
+        // coordinates (y, x, z) and their model height (eqgame actor +0x238;
+        // here the node's bounding box), and fires spell 859's removal at the
+        // local player.
+        SimBridge().spellVisualFX()->setMissileEntityCallback(
+            [this](uint16_t entity_id, EQ::SpellVisualFX::MissileEntityState& out) -> bool {
+                if (!entityRenderer_) return false;
+                const auto& entities = entityRenderer_->getEntities();
+                auto it = entities.find(entity_id);
+                if (it == entities.end()) return false;
+                const auto& v = it->second;
+                out.eqPos[0] = v.lastY;
+                out.eqPos[1] = v.lastX;
+                out.eqPos[2] = v.lastZ;
+                out.height = 0.0f;
+                if (v.animatedNode) {
+                    const auto box = v.animatedNode->getTransformedBoundingBox();
+                    out.height = box.MaxEdge.Y - box.MinEdge.Y;
+                } else if (v.meshNode) {
+                    const auto box = v.meshNode->getTransformedBoundingBox();
+                    out.height = box.MaxEdge.Y - box.MinEdge.Y;
+                }
+                return true;
+            });
+        SimBridge().spellVisualFX()->setLocalPlayerIdCallback(
+            [this]() -> uint16_t { return entityRenderer_ ? entityRenderer_->getPlayerSpawnId() : 0; });
+
+        // B1181 (#500): a type != 9 missile object draws its +0x65 IT model
+        // through the equipment model loader (the one that indexes the
+        // gequip archives for the characters' equipment).
+        if (entityRenderer_)
+            SimBridge().spellVisualFX()->setEquipmentModelLoader(entityRenderer_->getEquipmentModelLoader());
+
         // B1148 (#468): the caster model's track for a CastingAnim code
         // (eqgame 0x47ddd4 reads the actor's own animation table).
         SimBridge().spellVisualFX()->setCastAnimationLengthCallback(
@@ -308,10 +341,6 @@ void IrrlichtRenderer::initDeferredGraphics() {
                 if (it == entities.end() || !it->second.animatedNode) return -1;
                 return CastAnimationTrackMs(it->second.animatedNode, code);
             });
-
-        // B1163 (#482): the local player, for spell 859's removal gate.
-        SimBridge().spellVisualFX()->setLocalPlayerIdCallback(
-            [this]() -> uint16_t { return entityRenderer_ ? entityRenderer_->getPlayerSpawnId() : 0; });
 
         // B1164 (#483): the attach scale s of an entity's spell slots = the
         // client's actor scale from its race and Spawn_Struct size
@@ -359,13 +388,16 @@ void IrrlichtRenderer::initDeferredGraphics() {
             );
             particleManager_->setEntityDirectionCallback(
                 [this](uint16_t entity_id, glm::vec3& out_dir) -> bool {
-                    if (!EQ::SpellVisualFX::isHandBoneId(entity_id)) return false;
+                    // B1167 (#486): a hand id is its bone's direction (the
+                    // spray), every other id its entity's facing -- the frame
+                    // an attached spellsnew.edd emitter orients to
+                    // (resolveSpellFxAttachDirection).
                     if (!entityRenderer_) return false;
                     const auto& entities = entityRenderer_->getEntities();
                     auto it = entities.find(EQ::SpellVisualFX::realEntityId(entity_id));
                     if (it == entities.end() || !it->second.isAnimated || !it->second.animatedNode) return false;
                     irr::core::vector3df dir;
-                    if (!resolveSpellFxBoneDirection(it->second.animatedNode, entity_id, dir)) return false;
+                    if (!resolveSpellFxAttachDirection(it->second.animatedNode, entity_id, dir)) return false;
                     out_dir = glm::vec3(dir.X, dir.Y, dir.Z);
                     return true;
                 }

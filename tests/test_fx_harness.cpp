@@ -33,6 +33,7 @@
 #include "client/graphics/spell_cast_animation.h"
 #include "client/willeq_database.h"
 #include "../tools/model_viewer/fx_target_anchor.h"
+#include "../tools/model_viewer/fx_capture_pose.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -395,8 +396,9 @@ TEST_F(FxHarness, ThePlanLevelAndItsSourceAreLogged) {
 // fx_target_anchor.h -- B1130's 652/325 began at the name label). Its height
 // is the model's own at that spot (two feet pixels fix x, z): the harness's
 // self-check asserts it equals the solved standing height and the MEASURED
-// standing height 285 +-3 px (0.990x the oracle's 288 at the client's actor
-// scale 1.2, B1172; fx_target_anchor.h kStandingPx), and prints PASS in run.log.
+// standing height 294 +-3 px (1.021x the oracle's 288 at the capture-heading pose, the
+// merge with B1172's actor scale 1.2; fx_target_anchor.h kStandingPx, re-measured on the
+// merged binary), and prints PASS in run.log.
 struct Silhouette {
     int top = -1, bottom = -1, n = 0;
     double col = 0;
@@ -458,8 +460,7 @@ void checkB1130Frame(const fs::path& frames, bool expectTarget, irr::video::IVid
         EXPECT_NEAR(t.bottom, a.feetY, fxharness::kFeetTolPx) << "target feet row (the oracle's measured feet)";
         EXPECT_NEAR(t.col, a.feetX, fxharness::kColumnTolPx) << "target column centroid";
         EXPECT_NEAR(t.bottom - t.top + 1, fxharness::kStandingPx, fxharness::kStandingTolPx)
-            << "target pixel height: not the measured standing human (285 px at the actor scale 1.2, B1172; "
-               "the B1155 rest-pose strip was 50 px, a dark-elf female at the spot 261)";
+            << "target pixel height: not the measured standing human (294 px back-turned at the client's actor scale 1.2, the B1167/B1172 merge; the B1155 rest-pose strip was 50 px)";
     }
     img->drop();
 }
@@ -482,8 +483,12 @@ TEST_F(FxHarness, B1130PresetSolvesTheFixedNpcGeometry) {
 // harness's own self-check, and the run must exit non-zero (5) with a FAIL
 // line. B1172: the wrong body is the human male at size 5 -- actor scale
 // 5 x 0.2 = 1.0, i.e. the human exactly as fable drew it before B1172 --
-// which renders 238 px (review/B1172/worker/wrong_model/r1_1_0_5.log), inside
-// the earlier +-25 %-of-288 bound. (B1166 used the dark-elf female 6:1:6; at the
+// which rendered 238 px face-on (review/B1172/worker/wrong_model/r1_1_0_5.log),
+// inside the earlier +-25 %-of-288 bound. B1167/B1172 merge: the preset now
+// turns the target to its capture heading, where the same body renders 246 px
+// (setme_b1130_wrong, /mnt/projects/fable/review/B1167/continuation/merge/
+// measure/) -- still inside the old bound, still outside the 294 +-3 ratchet.
+// (B1166 used the dark-elf female 6:1:6; at the
 // client's actor scale her solve does not converge on every renderer -- it
 // exits "did not solve" on gitlab-runner-1, r1_6_1_6.log -- so it no longer
 // reaches the self-check everywhere.)
@@ -496,8 +501,8 @@ TEST_F(FxHarness, B1130SelfCheckRejectsAWrongTargetModel) {
         if (line.find("b1130 target self-check") != std::string::npos) check = line;
     std::printf("%s\n", check.c_str());
     EXPECT_NE(check.find(": FAIL"), std::string::npos) << "no FAILing self-check line for the wrong model";
-    // Its height (238 px, fable's pre-B1172 drawing): outside the ratchet,
-    // inside the old bound.
+    // Its height (246 px back-turned at scale 1.0; 238 px face-on before the
+    // turn): outside the ratchet, inside the old bound.
     int px = 0;
     const auto at = check.find("px, feet row");
     ASSERT_NE(at, std::string::npos) << check;
@@ -714,27 +719,29 @@ TEST(B1166TargetAnchor, AStandingBodyOnTheAnchorPasses) {
     const auto& a = fxharness::kB1130TargetAnchor;
     SynthFrame f;
     f.box(620, 389, 660, 598);  // the caster, outside the window
-    f.box(920, 331, 960, 615);  // 285 px, feet 615, centroid 940
+    f.box(920, 616 - 294, 960, 615);  // 294 px, feet 615, centroid 940 (the back-turned target)
     const auto s = f.measure(a);
-    EXPECT_EQ(s.top, 331);
+    EXPECT_EQ(s.top, 616 - 294);
     EXPECT_EQ(s.bottom, 615);
-    EXPECT_EQ(s.height(), 285);
+    EXPECT_EQ(s.height(), 294);
     EXPECT_DOUBLE_EQ(s.col, 940.0);
-    const auto c = fxharness::checkTargetAnchor(s, a, 285.0f);
+    const auto c = fxharness::checkTargetAnchor(s, a, 294.0f);
     EXPECT_TRUE(c.ok());
-    EXPECT_NEAR(c.ratio, 285.0f / 288.0f, 1e-6f);
+    EXPECT_NEAR(c.ratio, 294 / 288.0, 1e-6f);
 }
 
-// The standing-height ratchet (fx_target_anchor.h kStandingPx 285 +-3, B1172):
-// the heights other bodies rendered at the anchor with `--target` at the
-// client's actor scale (review/B1172/worker/wrong_model/*.log) fail it, though
-// every one of them passes the earlier +-25 %-of-288 bound (216..360 px);
-// 282..288 passes. (The barbarian 2:0:6, 284 px, is a same-height body.) Each body is fitted to itself (fitPx = its own height), so
-// only the ratchet can reject it.
+// The standing-height ratchet (fx_target_anchor.h kStandingPx 294 +-3, the back-turned target at
+// the client's actor scale 1.2, the B1167/B1172 merge): the heights other bodies rendered at the
+// anchor with `--target` -- B1166's at scale 1.0 face-on
+// (review/B1166/worker/wrong_model/wrong_model_heights.tsv) and B1172's at scale 1.2 face-on
+// (review/B1172/worker/wrong_model/*.log) -- all fail it, though every one of them passed the
+// earlier +-25 %-of-288 bound (216..360 px); 291..297 passes. (The barbarian 2:0:6,
+// 284 px face-on, is the same-height body.) Each body is fitted to itself (fitPx = its own
+// height), so only the ratchet can reject it.
 TEST(B1166TargetAnchor, TheStandingHeightRatchetRejectsOtherBodies) {
     const auto& a = fxharness::kB1130TargetAnchor;
-    EXPECT_FLOAT_EQ(fxharness::kStandingPx, 285.0f);
-    EXPECT_NEAR(fxharness::kStandingPx / a.px, 0.990f, 0.001f);
+    EXPECT_FLOAT_EQ(fxharness::kStandingPx, 294.0f);
+    EXPECT_NEAR(fxharness::kStandingPx / a.px, 1.021f, 0.001f);
     struct Body { const char* what; int px; };
     for (const Body b : {Body{"human female 1:1:6", 260}, Body{"dark-elf female 6:1:6 (the caster model)", 261},
                          Body{"human male at size 7", 332}, Body{"troll male 9:0:6", 280},
@@ -749,7 +756,7 @@ TEST(B1166TargetAnchor, TheStandingHeightRatchetRejectsOtherBodies) {
         EXPECT_FALSE(c.standOk) << b.what << " passed the standing-height ratchet";
         EXPECT_FALSE(c.ok()) << b.what;
     }
-    for (int px : {282, 285, 288}) {
+    for (int px : {291, 294, 297}) {
         SynthFrame f;
         f.box(920, 616 - px, 960, 615);
         EXPECT_TRUE(fxharness::checkTargetAnchor(f.measure(a), a, static_cast<float>(px)).ok()) << px << " px";
@@ -763,7 +770,7 @@ TEST(B1166TargetAnchor, TheRestPoseStripAndAnOffsetBodyFail) {
         f.box(930, 566, 950, 615);
         const auto c = fxharness::checkTargetAnchor(f.measure(a), a, 50.0f);
         EXPECT_TRUE(c.feetOk && c.colOk && c.pxOk);
-        EXPECT_FALSE(c.standOk) << "a 50 px body is not the measured 285 px standing human";
+        EXPECT_FALSE(c.standOk) << "a 50 px body is not the measured 294 px standing human";
         EXPECT_FALSE(c.ok());
     }
     {   // ... and its running frames: the standing body 316 px with feet at 782
@@ -784,6 +791,76 @@ TEST(B1166TargetAnchor, TheRestPoseStripAndAnOffsetBodyFail) {
     {   // nothing in the window
         SynthFrame f;
         EXPECT_FALSE(fxharness::checkTargetAnchor(f.measure(a), a, 285.0f).ok());
+    }
+}
+
+// B1167 (#486): the presets' world yaw from the capture facts
+// (fx_capture_pose.h; refactor/B1167/README.md sec. 2 and 7).
+TEST(B1167CapturePose, TheRigYawPutsTheCameraAtTheCapturesDirHeading) {
+    EXPECT_FLOAT_EQ(fxharness::rigYawDeg(fxharness::kB1130NpcPose), 45.0f);    // heading 0 + 135 - 90
+    EXPECT_FLOAT_EQ(fxharness::rigYawDeg(fxharness::kB1130SelfPose), 157.5f);  // heading 160 (112.5) + 135 - 90
+    EXPECT_FLOAT_EQ(fxharness::rigYawDeg(fxharness::kB1118Pose), 202.5f);      // heading 112.5 + 180 - 90
+    // The fitted camera sits on +Z of the caster (angle 90); turned, it sits
+    // at the capture's caster heading + its DirHeading (135 deg for B1130's
+    // user camera 1, 180 deg for B1118's pinned chase camera).
+    for (const auto* pose : {&fxharness::kB1130NpcPose, &fxharness::kB1130SelfPose, &fxharness::kB1118Pose}) {
+        float x = 0.0f, z = 30.0f;
+        fxharness::turnXZ(fxharness::rigYawDeg(*pose), x, z);
+        const float at = std::atan2(z, x) * 180.0f / 3.14159265f;
+        const float want = fxharness::headingDeg(pose->casterHeading512 + pose->cameraDirHeading512);
+        EXPECT_NEAR(std::remainder(at - want, 360.0f), 0.0f, 1e-3f);
+    }
+    // The client's heading rule: rotation Y = -heading deg.
+    EXPECT_FLOAT_EQ(fxharness::rotYForHeading(160.0f), -112.5f);
+}
+
+// B1167's continuation: the actors' fit-frame rotations -- after the rig turn
+// subtracts psi, each actor sits at rotYForHeading(its capture heading).
+TEST(B1167CapturePose, TheActorsFitOnTheirCaptureHeadingsAndEndAtThem) {
+    for (const auto* pose : {&fxharness::kB1130NpcPose, &fxharness::kB1130SelfPose, &fxharness::kB1118Pose}) {
+        const float psi = fxharness::rigYawDeg(*pose);
+        for (const float h : {pose->casterHeading512, pose->targetHeading512}) {
+            const float r0 = fxharness::presetRotYDeg(*pose, h);
+            EXPECT_NEAR(std::remainder(r0 - psi - fxharness::rotYForHeading(h), 360.0f), 0.0f, 1e-4f)
+                << "the turn does not leave the actor at its capture heading";
+        }
+    }
+    // b1130: the caster three-quarters back (45 deg), the target 22.5 deg off
+    // face-on (-67.5); b1118: both fully back to the chase camera (90).
+    EXPECT_FLOAT_EQ(fxharness::presetRotYDeg(fxharness::kB1130NpcPose, 0.0f), 45.0f);
+    EXPECT_FLOAT_EQ(fxharness::presetRotYDeg(fxharness::kB1130NpcPose, 160.0f), -67.5f);
+    EXPECT_FLOAT_EQ(fxharness::presetRotYDeg(fxharness::kB1118Pose, 160.0f), 90.0f);
+}
+
+TEST(B1167CapturePose, TheTurnedTargetStandsOnTheCapturesBearing) {
+    // B1166's solved target offset (review/B1166/worker/probe/after.log:125:
+    // x -8.888, z 0.924, the face-on target), turned by the npc yaw, against
+    // the capture's offset from the caster: #spawn at (-74, 428), caster
+    // #goto (-67.6, 434.4) in server x/y, i.e. (zone x, zone y) = (server y,
+    // server x) = (-6.4, -6.4) -> Irrlicht (x, z) = (-6.4, -6.4). The continuation
+    // re-measured the solve on the turned target (heading 160,
+    // 22.5 deg off face-on): x -8.685, z 0.272 (review/B1167/worker/settle5/
+    // settle5_b1130/run.log, tgt fit 2; post-turn target -6.334/-5.949 in the
+    // same log's rig line).
+    struct Probe { const char* what; float x, z; float tolAfterDeg; float tolUnits; };
+    // The face-on solve lands 5.9 deg / 0.94 units from the capture; the
+    // turned solve 1.6 deg / 0.49 units. The face-on probe is the case that
+    // proves the turn is doing the work: 50.9 deg off the bearing pre-turn.
+    // The turned probe sits 47.0 deg off pre-turn (its heading is already
+    // 22.5 deg off face-on), so it does not claim the >50 deg bound.
+    for (const Probe& p : {Probe{"face-on (B1166)", -8.888f, 0.924f, 6.0f, 1.0f},
+                           Probe{"turned (B1167 cont.)", -8.685f, 0.272f, 3.0f, 0.6f}}) {
+        const float cx = -6.4f, cz = -6.4f;
+        float x = p.x, z = p.z;
+        const float before = std::atan2(z, x) - std::atan2(cz, cx);
+        fxharness::turnXZ(fxharness::rigYawDeg(fxharness::kB1130NpcPose), x, z);
+        const float after = std::atan2(z, x) - std::atan2(cz, cx);
+        const float d = std::fabs(std::remainder(after * 180.0f / 3.14159265f, 360.0f));
+        EXPECT_LT(d, p.tolAfterDeg) << p.what << ": turned target bearing off the capture's by " << d << " deg";
+        EXPECT_LT(std::hypot(x - cx, z - cz), p.tolUnits) << p.what << ": turned target " << x << "/" << z;
+        if (p.what[0] == 'f')
+            EXPECT_GT(std::fabs(std::remainder(before * 180.0f / 3.14159265f, 360.0f)), 50.0f)
+                << "the un-turned rig already matched the capture";
     }
 }
 
@@ -847,4 +924,96 @@ TEST(B1177TargetSolve, AStallOrAnApproachIsNotACycle) {
     at.col = 940.4f;
     EXPECT_TRUE(fxharness::fitSampleSolves(at, fxharness::kB1130TargetAnchor));
     EXPECT_EQ(fxharness::kExitPresetDidNotSolve, 2);
+}
+
+// ---------------------------------------------------------------------------
+// B1193 (#512): the writer-thread frame output is the sync path's pixels.
+// ---------------------------------------------------------------------------
+
+// frame_writer.cpp's --frames-raw dump (P6 PPM, RGB24): the pixel array.
+std::vector<unsigned char> readPpmP6(const fs::path& p, int& w, int& h) {
+    std::ifstream f(p, std::ios::binary);
+    std::string magic;
+    w = h = 0;
+    if (!(f >> magic) || magic != "P6" || !(f >> w >> h)) return {};
+    int maxval = 0;
+    if (!(f >> maxval) || maxval != 255) return {};
+    f.get();  // the one whitespace after the maxval
+    std::vector<unsigned char> px((size_t)w * h * 3);
+    f.read((char*)px.data(), (std::streamsize)px.size());
+    return f.gcount() == (std::streamsize)px.size() ? px : std::vector<unsigned char>();
+}
+
+// The frame_*.png in `dir`, sorted by name.
+std::vector<fs::path> pngFrames(const fs::path& dir) {
+    std::vector<fs::path> out;
+    for (auto& e : fs::directory_iterator(dir))
+        if (e.path().extension() == ".png" && e.path().filename().string().rfind("frame_", 0) == 0)
+            out.push_back(e.path());
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+TEST_F(FxHarness, FrameWriterOutputIsPixelIdenticalToTheSyncPath) {
+    // 0.2 s at 30 fps = 6 frames, the same plan/seed/camera three ways:
+    // --frames-sync (the pre-B1193 render-thread path: scaleImageTo + the
+    // driver's libpng writer), the default (the B1193 writer thread: the same
+    // bilinear, the PNG at zlib level 0 / filter 0) and --frames-raw (the
+    // writer thread's P6 PPM dump). The PNG CONTAINER bytes differ (a
+    // different zlib level and filter), so the identity is on the decoded
+    // pixels -- which is what every measure reads (cv2's imread), and keeps
+    // the gate like with like. The runs are separate processes, so this also
+    // rides on B1169's fixed-seed frame identity.
+    const auto rows = std::to_string(kBegin) + "\t201\tother\t14\n";
+    const fs::path sync = runPlan("b1193sync", rows, 0.2, "--frames-sync");
+    ASSERT_FALSE(sync.empty()) << "the sync run failed (see its run.log)";
+    const fs::path write = runPlan("b1193write", rows, 0.2, "");
+    ASSERT_FALSE(write.empty()) << "the writer-thread run failed (see its run.log)";
+    const fs::path raw = runPlan("b1193raw", rows, 0.2, "--frames-raw");
+    ASSERT_FALSE(raw.empty()) << "the raw run failed (see its run.log)";
+    const auto aFrames = pngFrames(sync);
+    const auto bFrames = pngFrames(write);
+    ASSERT_EQ(aFrames.size(), bFrames.size());
+    ASSERT_GE(aFrames.size(), 6u) << "0.2 s at 30 fps is 6 frames";
+    for (size_t i = 0; i < aFrames.size(); ++i) {
+        irr::video::IImage* a = load(aFrames[i]);
+        irr::video::IImage* b = load(bFrames[i]);
+        ASSERT_NE(a, nullptr) << aFrames[i];
+        ASSERT_NE(b, nullptr) << bFrames[i];
+        ASSERT_EQ(a->getDimension(), b->getDimension()) << aFrames[i];
+        const auto d = a->getDimension();
+        int firstDiff = -1;
+        for (int y = 0; y < d.Height && firstDiff < 0; ++y)
+            for (int x = 0; x < d.Width; ++x) {
+                const auto ca = a->getPixel(x, y), cb = b->getPixel(x, y);
+                if (ca.getRed() != cb.getRed() || ca.getGreen() != cb.getGreen() ||
+                    ca.getBlue() != cb.getBlue() || ca.getAlpha() != cb.getAlpha()) {
+                    firstDiff = y * d.Width + x;
+                    break;
+                }
+            }
+        EXPECT_EQ(firstDiff, -1) << aFrames[i].filename() << ": pixel " << firstDiff
+                                 << " differs from the sync path";
+        // The raw dump: the same pixels with the alpha dropped.
+        std::string ppmName = bFrames[i].filename().string();
+        ppmName.replace(ppmName.size() - 4, 4, ".ppm");
+        int pw = 0, ph = 0;
+        const auto px = readPpmP6(raw / ppmName, pw, ph);
+        ASSERT_EQ(px.size(), (size_t)pw * ph * 3) << raw / ppmName;
+        ASSERT_EQ(pw, (int)d.Width) << ppmName;
+        ASSERT_EQ(ph, (int)d.Height) << ppmName;
+        int ppmDiff = -1;
+        for (int y = 0; y < d.Height && ppmDiff < 0; ++y)
+            for (int x = 0; x < d.Width; ++x) {
+                const auto c = a->getPixel(x, y);
+                const size_t o = ((size_t)y * d.Width + x) * 3;
+                if (px[o] != c.getRed() || px[o + 1] != c.getGreen() || px[o + 2] != c.getBlue()) {
+                    ppmDiff = y * d.Width + x;
+                    break;
+                }
+            }
+        EXPECT_EQ(ppmDiff, -1) << ppmName << ": pixel " << ppmDiff << " differs from the PNG";
+        a->drop();
+        b->drop();
+    }
 }

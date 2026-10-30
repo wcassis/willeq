@@ -5,6 +5,7 @@
 #include "model_viewer_state.h"
 #include "fx_target_anchor.h"
 #include "fx_target_fit.h"  // B1172 FIX leg: the b1130 target fit split out (pure move)
+#include "frame_writer.h"  // B1193: the frame output off the render thread
 
 #include "client/bridge/spell_cast_fx.h"
 #include "client/graphics/eqe1_loader.h"
@@ -21,13 +22,17 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <iomanip>
 #include <unordered_map>
+#include <vector>
 
 HarnessOptions harnessOpts;
 
@@ -51,16 +56,6 @@ std::unordered_map<uint16_t, glm::vec3> fxPendingDirections;
 eqt::bridge::CastGlowRoute fxRoute;
 video::ITexture* fxBackdrop = nullptr;
 scene::IMeshSceneNode* fxGroundNode = nullptr;  // addGroundPlane(); B1169 draws it first
-
-std::vector<std::string> splitTabs(const std::string& line) {
-    std::vector<std::string> out;
-    std::string cur;
-    for (char c : line) {
-        if (c == '\t') { out.push_back(cur); cur.clear(); } else if (c != '\r') { cur += c; }
-    }
-    out.push_back(cur);
-    return out;
-}
 
 // The pinhole Irrlicht's buildProjectionMatrixPerspectiveFovLH draws: the
 // pixel a world point lands on for a camera at `eye` looking at `look`.
@@ -307,118 +302,6 @@ video::IImage* scaleImageTo(video::IVideoDriver* drv, video::IImage* src, u32 tw
 
 }  // namespace
 
-bool parseHarnessPlan(const std::string& path, std::vector<HarnessCast>& out, std::string& err) {
-    std::ifstream f(path);
-    if (!f) { err = "cannot open plan " + path; return false; }
-    std::string line;
-    int n = 0;
-    while (std::getline(f, line)) {
-        ++n;
-        if (line.empty() || line[0] == '#') continue;
-        const auto c = splitTabs(line);
-        if (c.size() < 4 || c.size() > 7) {
-            err = path + ":" + std::to_string(n) +
-                  ": want t_begin_s, spell_id, self|other, distance_units[, cast_ms[, caster_level[, begincast|action]]]";
-            return false;
-        }
-        if (c[0] == "t_begin_s") continue;  // header row
-        HarnessCast hc;
-        try {
-            hc.tBegin = std::stod(c[0]);
-            hc.spellId = static_cast<uint32_t>(std::stoul(c[1]));
-            if (c[2] != "self" && c[2] != "other") throw std::invalid_argument("target");
-            hc.self = c[2] == "self";
-            hc.distance = std::stof(c[3]);
-            if (c.size() >= 5 && !c[4].empty() && c[4] != "-") hc.castMsOverride = std::stoi(c[4]);
-            if (c.size() >= 6 && !c[5].empty() && c[5] != "-") hc.casterLevel = std::stoi(c[5]);
-            if (c.size() >= 7) {
-                if (c[6] != "begincast" && c[6] != "action") throw std::invalid_argument("packets");
-                hc.beginCast = c[6] == "begincast";
-            }
-        } catch (const std::exception&) {
-            err = path + ":" + std::to_string(n) + ": unparseable row '" + line + "'";
-            return false;
-        }
-        out.push_back(hc);
-    }
-    if (out.empty()) { err = path + ": no casts"; return false; }
-    return true;
-}
-
-void applyHarnessPresetDefaults() {
-    if (harnessOpts.cameraPreset != "b1118" && harnessOpts.cameraPreset != "b1130" &&
-        harnessOpts.cameraPreset != "b1130-self")
-        return;
-    const bool b1130 = harnessOpts.cameraPreset == "b1130" || harnessOpts.cameraPreset == "b1130-self";
-    harnessOpts.width = 1280;
-    harnessOpts.height = 800;
-    // All three presets share the b1118 char-67 caster: char 67 Testcaster
-    // (lane 5): race 6 dark elf, gender 1 (fable.log
-    // "Updating appearance for entity 258 (Testcaster) to race 6 gender 1").
-    // B1172: size 0 -- her S->C OP_ZoneEntry Spawn_Struct carries size 0.000
-    // in the oracle captures (r51, B1118 oracle_druid) and in fable's lane
-    // legs (B1118 fable_A, B1142 fable_N93), and no AT_Size names her; the
-    // client then draws its race/gender default 5.0 x 0.2 = 1.0
-    // (actor_scale.h). The 6.0 here before was fable's own zone_entry
-    // default, not a wire value.
-    if (!harnessOpts.casterGiven) {
-        harnessOpts.casterRace = 6;
-        harnessOpts.casterGender = 1;
-        harnessOpts.casterSize = 0.0f;
-        // B1139: her Spawn_Struct appearance in that leg's OP_ZoneEntry (S->C):
-        // face 3, TextureProfile {0, 10, 1, 23, 1, 1, 1, 0, 72} -- the red robe
-        // (chest 10) and IT72, the orb her left hand holds. equip_chest2 reads
-        // 255 there; the client passes it through as appearance.texture.
-        harnessOpts.casterAppearanceSet = true;
-        harnessOpts.casterFace = 3;
-        harnessOpts.casterTexture = 255;
-        const uint32_t equip[9] = {0, 10, 1, 23, 1, 1, 1, 0, 72};
-        std::copy(equip, equip + 9, harnessOpts.casterEquipment);
-    }
-    if (!harnessOpts.targetGiven) {
-        if (b1130) {
-            // b1130 / b1130-self: B1130's target is `#spawn TrollF 1 1 0 30000`.
-            // eqemu's #spawn arg order is [name][race][level][texture][health]
-            // [gender]... (command.cpp :229; npc.cpp SpawnNPC), so that command
-            // is race=1 (HUMAN), level=1, texture=0, hp=30000 with the GENDER
-            // ARG ABSENT -- filled by Mob::GetDefaultGender(1) = MALE (the
-            // PC-race default, mob.cpp :4033). The "TrollF" name is only a
-            // label: the oracle spawned the SAME level-1 human male as b1118's
-            // target (the settle still r51/21_stun_settle shows a clothed,
-            // standing human male), NOT a race-9 troll -- r51's own OP_NewSpawn
-            // reads race 1, gender 0, size 6.000 (refactor/B1166/README.md
-            // sec. 1). b1130 renders that human male and lets the solver find
-            // its depth from the two feet pixels (288 px in the oracle; 238 px in
-            // FABLE at 1.0 (B1166), 285 px at the client's actor scale 1.2, B1172).
-            harnessOpts.targetRace = 1;
-            harnessOpts.targetGender = 0;
-            harnessOpts.targetSize = 6.0f;
-        } else {
-            // b1118: `#spawn TrollF`: eqemu's default #spawn is a level-1
-            // human male (the leg's chat: "Race | Human (1)", "Gender | Male
-            // (0)").
-            harnessOpts.targetRace = 1;
-            harnessOpts.targetGender = 0;
-            harnessOpts.targetSize = 6.0f;
-        }
-    }
-    // B1142 (#462): no UI occluder by default. B1139 drew the fable Tip of the
-    // Day window (920,243..1280,543) here because every lane-5 leg up to B1127
-    // left it open over the particles; the lane rig now starts the client
-    // with [Tips] ShowTOTD=0 (review/B1142/scripts/fable_leg_remote.sh), so
-    // the FX field is unoccluded on lane 5 as on the oracle (whose rig closes
-    // its window with a click before the first cast). `--ui-occluder
-    // 920,243,1280,543` reproduces a pre-B1142 capture.
-    // B1139: the lane client simulates at its 60 fps and the grab keeps every
-    // 2nd frame (B1138 measured +2.6 % landing coverage for it), and in leg B
-    // Testcaster stands 228 px head top to feet (rows 377..605 of that leg's
-    // tail frame, review/B1138/backdrop/), not B1118's 235.
-    if (harnessOpts.simHz <= 0) harnessOpts.simHz = 60;
-    if (!harnessOpts.casterPxGiven)
-        harnessOpts.casterPx =
-            (harnessOpts.cameraPreset == "b1130" || harnessOpts.cameraPreset == "b1130-self") ? 209.0f : 228.0f;
-}
-
 bool initHarnessTextureCache() {
     // The renderer's ConstrainedTextureCache: willeq.eqe1 (the two particle
     // atlases, ParticleManager::loadParticleAtlas -- without it the manager
@@ -519,10 +402,27 @@ bool initHarnessParticles() {
     });
     particleManager->setEntityDirectionCallback([nodeFor](uint16_t id, glm::vec3& out) -> bool {
         core::vector3df d;
-        if (!resolveSpellFxBoneDirection(nodeFor(EQ::SpellVisualFX::realEntityId(id)), id, d)) return false;
+        if (!resolveSpellFxAttachDirection(nodeFor(EQ::SpellVisualFX::realEntityId(id)), id, d)) return false;
         out = glm::vec3(d.X, d.Y, d.Z);
         return true;
     });
+    // B1170 (#489): the missile object reads entities in EQ coordinates
+    // (y, x, z) with the model height: the node origin and its bounding box.
+    spellVisualFX->setMissileEntityCallback([nodeFor](uint16_t id, EQ::SpellVisualFX::MissileEntityState& out) -> bool {
+        EQAnimatedMeshSceneNode* n = nodeFor(id);
+        if (!n) return false;
+        const auto p = n->getAbsolutePosition();
+        out.eqPos[0] = p.Z;
+        out.eqPos[1] = p.X;
+        out.eqPos[2] = p.Y;
+        const auto box = n->getTransformedBoundingBox();
+        out.height = box.MaxEdge.Y - box.MinEdge.Y;
+        return true;
+    });
+    // B1181 (#500): a type != 9 missile object draws its +0x65 IT model
+    // through the equipment model loader (the gequip archives, already
+    // loaded for the characters' equipment).
+    spellVisualFX->setEquipmentModelLoader(equipmentModelLoader.get());
     spellVisualFX->setEntityPositionCallback([nodeFor](uint16_t id, core::vector3df& out) -> bool {
         if (isSpellFxBoneId(id))
             return resolveSpellFxBonePosition(nodeFor(EQ::SpellVisualFX::realEntityId(id)), id, out);
@@ -543,9 +443,9 @@ bool initHarnessParticles() {
         if (id == targetEntityId) return EQ::SpellFxAttachScale(harnessOpts.targetRace, harnessOpts.targetGender, harnessOpts.targetSize);
         return 0.0f;
     });
-    // B1152 (#472): the missile gate reads the launch/arrival times from the
-    // SPELL module's log, so un-filter it (the model_viewer does not InitLogging,
-    // so the module is at the default NONE).
+    // The gates read the FX lines (createCastGlow / createLanding, B1170's
+    // missile-object lines) from the SPELL module's log, so un-filter it (the
+    // model_viewer does not InitLogging, so the module is at the default NONE).
     SetModuleLogLevel(MOD_SPELL, LOG_INFO);
     std::printf("[fx-harness] SpellVisualFX -> ParticleManager -> SimulationWorker ready\n");
     std::fflush(stdout);
@@ -624,11 +524,6 @@ void harnessBeginCast(const EQ::SpellData& spell, bool self, uint32_t castMs, in
     d.isTargetCast = false;
     d.spellVisual = spell.visualVocabulary();
     d.castAnim = spell.cast_anim;  // B1148
-    // B1152 (#472): the missile flies to the spell's target (the NPC target
-    // for an 'other' cast, the caster for a 'self' one) -- the same target
-    // harnessAction() lands on. A Middle-stage spell then spawns a missile
-    // here that flies to this id and fires the Target stage on arrival.
-    d.targetId = self ? casterEntityId : targetEntityId;
     (void)self;
     eqt::bridge::ApplySpellCastStartedFx(fxRoute, spellVisualFX.get(), d, now);
 }
@@ -676,8 +571,13 @@ void placeHarnessTarget(bool self, float distance) {
     if (harnessOpts.cameraPreset == "b1130") {
         targetAnimatedNode->setPosition(core::vector3df(b1130TargetX, b1130TargetY, b1130TargetZ));
     } else {
-        const core::vector3df right = harnessOpts.cameraPreset.empty() ? core::vector3df(1, 0, 0)
-                                                                       : targetRightOfCaster();
+        core::vector3df right = harnessOpts.cameraPreset.empty() ? core::vector3df(1, 0, 0)
+                                                                 : targetRightOfCaster();
+        // B1167 (#486): the offset is in the FITTED frame (screen right) but the rig has
+        // turned by the capture's yaw (turnB1130Rig) -- turn it or a distance-14 target
+        // lands 90 deg wrong (b1118).
+        if (const fxharness::CapturePose* pose = fxharness::poseForPreset(harnessOpts.cameraPreset.c_str()))
+            fxharness::turnXZ(fxharness::rigYawDeg(*pose), right.X, right.Z);
         core::vector3df pos = animatedNode->getPosition() + right * distance;
         if (!harnessOpts.cameraPreset.empty()) {
             // B1172 (#491): stand the target on the caster's ground, the rule
@@ -748,6 +648,48 @@ void addGroundPlane() {
     std::fflush(stdout);
 }
 
+// B1167 (#486): turn the fitted preset rig -- camera, caster, target -- about
+// the caster's vertical axis by the capture's rig yaw (fx_capture_pose.h), so
+// the world axes sit where the capture's did: spellsnew.edd +0x12C drifts
+// along world +X (EQGraphicsDX9 0x10062917). The turn is rigid, so every
+// pixel fact the fit solved holds. The actors' capture headings are applied
+// by fitting on them (presetRotYDeg; the b1130 fit runs on the back-turned
+// caster so B1130's caster box 209 px / feet 598 holds, camera at 30.28 vs
+// the capture's 30) and the turn leaves exactly rotYForHeading(heading)
+// (refactor/B1167/README.md sec. 2 and 7; ratchet: fx_target_anchor.h).
+void turnB1130Rig(const fxharness::CapturePose& pose) {
+    const float psi = fxharness::rigYawDeg(pose);
+    const core::vector3df pivot = animatedNode ? animatedNode->getAbsolutePosition() : core::vector3df(0, 0, 0);
+    auto turn = [&](core::vector3df p) {
+        float x = p.X - pivot.X, z = p.Z - pivot.Z;
+        fxharness::turnXZ(psi, x, z);
+        return core::vector3df(pivot.X + x, p.Y, pivot.Z + z);
+    };
+    const core::vector3df eye = turn(camera->getAbsolutePosition()), look = turn(camera->getTarget());
+    camera->setPosition(eye);
+    camera->setTarget(look);
+    camera->updateAbsolutePosition();
+    if (animatedNode) {
+        animatedNode->setRotation(animatedNode->getRotation() - core::vector3df(0, psi, 0));
+        animatedNode->updateAbsolutePosition();
+    }
+    if (targetAnimatedNode) {
+        const core::vector3df t = turn(core::vector3df(b1130TargetX, b1130TargetY, b1130TargetZ));
+        b1130TargetX = t.X;
+        b1130TargetZ = t.Z;
+        targetAnimatedNode->setRotation(targetAnimatedNode->getRotation() - core::vector3df(0, psi, 0));
+        targetAnimatedNode->updateAbsolutePosition();
+    }
+    std::printf("[fx-harness] %s: rig turned %.2f deg about the caster (capture headings caster %.1f / target %.1f, "
+                "Camera1-DirHeading %.1f, 512ths): caster rotY %.2f, target rotY %.2f at (x %.3f, z %.3f), "
+                "camera eye (%.3f, %.3f, %.3f)\n",
+                harnessOpts.cameraPreset.c_str(), psi, pose.casterHeading512, pose.targetHeading512,
+                pose.cameraDirHeading512, animatedNode ? animatedNode->getRotation().Y : 0.0f,
+                targetAnimatedNode ? targetAnimatedNode->getRotation().Y : 0.0f, b1130TargetX, b1130TargetZ, eye.X,
+                eye.Y, eye.Z);
+    std::fflush(stdout);
+}
+
 bool setupSpellTestCamera() {
     // Scripted mode freezes the scene clock BEFORE the preset's fit renders
     // anything: drawAll() animates every node off the device timer, and a
@@ -776,6 +718,7 @@ bool setupSpellTestCamera() {
             g.targetPx = fxharness::kB1130TargetAnchor.px;
             if (!fitFixedNpcTarget(g)) return false;
         }
+        if (const fxharness::CapturePose* pose = fxharness::poseForPreset(harnessOpts.cameraPreset.c_str())) turnB1130Rig(*pose);
         if (harnessOpts.ground) addGroundPlane();
         return true;
     }
@@ -1019,6 +962,22 @@ int runScriptedHarness() {
     // B1171 (#490): caster_level (last column, so the index readers keep
     // working) = the slot-gate level each packet was drawn at.
     timing << "frame\tt\tevent\tspell\ttarget\tdistance\tcast_ms\tt_event\tcaster_level\n";
+    // B1193 (#512): the frame output. Default: the readback (createScreenShot)
+    // stays on the render thread and ONE writer thread does the downscale +
+    // the encode (PNG at zlib level 0, filter 0; the P6 PPM dump with
+    // --frames-raw) + the file write, so the render thread never waits on the
+    // disk. --frames-sync keeps the pre-B1193 render-thread path (the driver's
+    // libpng writer, default level). frame_cost.tsv holds the per-phase split
+    // either way; the written pixels are the sync path's pixels (the
+    // byte-identity test in tests/test_fx_harness.cpp).
+    eqt::fxharness::FrameWriter frameWriter(harnessOpts.framesDir, harnessOpts.framesRaw);
+    if (!harnessOpts.framesSync) frameWriter.start();
+    const auto msSince = [](const std::chrono::steady_clock::time_point& t0) {
+        return (double)std::chrono::duration_cast<std::chrono::nanoseconds>(
+                   std::chrono::steady_clock::now() - t0)
+                   .count() /
+               1e6;
+    };
     // B1165 (#484): the Spell page the run drew with, for the gate scripts
     // (scripts/tools/fx_particle_options.py pins it to the capture's ini).
     {
@@ -1043,7 +1002,14 @@ int runScriptedHarness() {
     // the cast pose, so it shows the origin tracking the hand bone through
     // the raised pose.
     std::ofstream emitterOut(harnessOpts.framesDir + "/emitter_origin.tsv");
-    emitterOut << "frame\tt\tfxid\tkind\twx\tyw\twz\tsx\tsy\n";
+    emitterOut << "frame\tt\tfxid\tkind\twx\twy\twz\tsx\tsy\n";
+    // B1185 (#504): the Source stage's particle onset (the client's own rule:
+    // createCastGlow's Source branch = sourceLatency + the slot's +0x8C start,
+    // spell_visual_fx.cpp:684), one row per cast. The b1130 sweep reads it as
+    // its source_onset_s, restoring the Source-stage onset the cast-anim's
+    // first-lit frame (B1157's CastingAnim) shadowed in the pixel measure.
+    std::ofstream sourceOnsetOut(harnessOpts.framesDir + "/source_onset.tsv");
+    sourceOnsetOut << "spellId\tstage\tsourceLatencyS\tslotStartS\tparticleOnsetS\n";
     // B1174 (#493): per written frame, the live spell effects and missiles
     // (SpellVisualFX's own lists) and the caster's track -- what a /disc
     // draws is the caster's CastingAnim and no effect, which a whole-frame
@@ -1086,6 +1052,10 @@ int runScriptedHarness() {
     // own CastingAnim request (B1174, actionCastTrack below).
     std::vector<uint16_t> activeSourceEmitters;
     std::string activeCastTrack;
+    // B1170 (#489): the 0x4033 payload to inject (--missile-payload / --missile-at).
+    bool missileInjected = harnessOpts.missilePayloadPath.empty() || harnessOpts.missileAt < 0.0;
+    std::ofstream missileOut(harnessOpts.framesDir + "/missile.tsv");
+    missileOut << "frame\tt\tobjects\ty\tx\tz\tsx\tsy\n";
     // B1174 (#493): the track an OP_Action started with no cast in progress
     // (a /disc; EntityRenderer::actionEntityCastAnim's rule), "" = none.
     std::string actionCastTrack;
@@ -1130,6 +1100,34 @@ int runScriptedHarness() {
                         activeSourceEmitters.end())
                         activeSourceEmitters.push_back(fxId);
                 }
+                // B1185 (#504): the Source stage's particle onset = the client's
+                // createCastGlow Source branch (sourceLatency + the slot's +0x8C
+                // start, spell_visual_fx.cpp:684). The earliest onset over the
+                // drawn Source slots is the first visible particle frame.
+                {
+                    const float sourceLatency =
+                        EQT::Graphics::Environment::SpellEffectsConfig::instance().sourceStageLatency();
+                    // The Source stage's particle onset = sourceLatency + the
+                    // earliest slot's +0x8C start. No drawn slot -> the default
+                    // row's onset (sourceLatency alone).
+                    float minSlotStart = 0.0f;
+                    bool anySlot = false;
+                    const auto srcSlots = spellVisualFX->stageSlots(c.spellId, EQ::kSpellsNewEffSource, level);
+                    const int32_t sourceCallerMs = 10000;  // window only; start is independent
+                    for (const auto& d : srcSlots.drawn) {
+                        EQ::SpellFxSlotTiming timing;
+                        if (spellVisualFX->slotTiming(d.slot.emitter, sourceCallerMs, timing)) {
+                            if (!anySlot) { minSlotStart = timing.start; anySlot = true; }
+                            else minSlotStart = std::min(minSlotStart, timing.start);
+                        }
+                    }
+                    const float particleOnset = anySlot ? sourceLatency + minSlotStart : sourceLatency;
+                    sourceOnsetOut << c.spellId
+                                   << '\t' << "Source"
+                                   << '\t' << std::fixed << std::setprecision(4) << sourceLatency
+                                   << '\t' << (particleOnset - sourceLatency)
+                                   << '\t' << particleOnset << '\n';
+                }
             } else {
                 if (!c.beginCast) placeHarnessTarget(c.self, c.distance);
                 harnessAction(sp, c.self, level, now);
@@ -1169,6 +1167,40 @@ int runScriptedHarness() {
                           e.action ? "Action" : "BeginCast", c.spellId, c.self ? "self" : "other",
                           c.distance, e.castMs, e.t, level);
             timing << row;
+        }
+        if (!missileInjected && t + 1e-9 >= harnessOpts.missileAt) {
+            missileInjected = true;
+            std::ifstream pf(harnessOpts.missilePayloadPath, std::ios::binary);
+            const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(pf)), std::istreambuf_iterator<char>());
+            EQ::SpellMissile::Wire w;
+            if (!EQ::SpellMissile::DecodeWire(bytes.data(), bytes.size(), w)) {
+                std::fprintf(stderr, "[fx-harness] %s: %zu bytes, not a 0x4033 payload\n",
+                             harnessOpts.missilePayloadPath.c_str(), bytes.size());
+                return 2;
+            }
+            const auto cp = animatedNode->getAbsolutePosition();
+            const auto tp = targetAnimatedNode ? targetAnimatedNode->getAbsolutePosition() : cp;
+            std::printf("[fx-harness] 0x4033 injected at t %.3f: captured source %u target %u pos (%.3f,%.3f,%.3f) "
+                        "heading %.3f -> harness caster %u target %u\n",
+                        t, w.sourceId, w.targetId, w.pos[0], w.pos[1], w.pos[2], w.heading,
+                        static_cast<unsigned>(casterEntityId), static_cast<unsigned>(targetEntityId));
+            w.sourceId = casterEntityId;
+            w.targetId = targetEntityId;
+            w.pos[0] = cp.Z;
+            w.pos[1] = cp.X;
+            w.pos[2] = cp.Y;
+            w.heading = EQ::SpellMissile::Bearing(cp.Z, cp.X, tp.Z, tp.X);
+            float th = 0.0f;
+            if (targetAnimatedNode) {
+                const auto box = targetAnimatedNode->getTransformedBoundingBox();
+                th = box.MaxEdge.Y - box.MinEdge.Y;
+            }
+            // %.9g: every float exactly, so missile_flight_model.py starts from the same bits.
+            std::printf("[fx-harness] 0x4033 geometry: source (y,x,z) %.9g %.9g %.9g target %.9g %.9g %.9g "
+                        "height %.9g heading %.9g word %.9g +0x62 %d sim_hz %d\n",
+                        cp.Z, cp.X, cp.Y, tp.Z, tp.X, tp.Y, th, w.heading, w.word, static_cast<int>(w.damped),
+                        simHz);
+            spellVisualFX->spawnMissileObject(w, harnessOpts.casterLevel);
         }
         if (!actionCastTrack.empty() && actionCastAnimEnded(animatedNode, actionCastTrack)) {
             const bool playedOut = animatedNode->getAnimator().getCurrentAnimation() == actionCastTrack;
@@ -1246,6 +1278,7 @@ int runScriptedHarness() {
         uploadHarnessTextures();
         if (g % sub != 0) continue;  // simulated, not drawn
 
+        const auto tRenderStart = std::chrono::steady_clock::now();  // B1193: the render phase
         driver->beginScene(true, true, video::SColor(255, 50, 50, 80));
         if (fxBackdrop) {
             const auto ts = fxBackdrop->getOriginalSize();
@@ -1259,46 +1292,121 @@ int runScriptedHarness() {
         for (const auto& r : harnessOpts.uiOccluders)  // the lane client's UI, drawn last
             driver->draw2DRectangle(video::SColor(255, 24, 24, 30), core::rect<s32>(r.x0, r.y0, r.x1, r.y1));
         driver->endScene();
+        const double renderMs = msSince(tRenderStart);
 
+        // B1193 (#512): the readback stays on the render thread (the GPU has
+        // to hand the pixels over once); everything after it leaves the
+        // thread unless --frames-sync says the pre-B1193 way.
+        const auto tReadbackStart = std::chrono::steady_clock::now();
         video::IImage* shot = driver->createScreenShot();
-        // The surfaceless EGL surface can be another size than the REQUESTED
-        // frame (the ThinkPad's virtual display gave 3840x2160 for a 1280x800
-        // request): downscale so the written PNG IS the requested frame, where
-        // the preset's recorded pixels (and the scene.tsv boxes) hold.
-        if (shot) {
-            const auto dim = shot->getDimension();
-            if (dim.Width != static_cast<u32>(harnessOpts.width) ||
-                dim.Height != static_cast<u32>(harnessOpts.height)) {
-                video::IImage* scaled =
-                    scaleImageTo(driver, shot, static_cast<u32>(harnessOpts.width),
-                                 static_cast<u32>(harnessOpts.height));
-                shot->drop();
-                shot = scaled;
-            }
-        }
-        char name[64];
-        std::snprintf(name, sizeof(name), "/frame_%05d.png", f);
-        const bool ok = shot && driver->writeImageToFile(shot, (harnessOpts.framesDir + name).c_str());
-        // B1166 (#485): the b1130 target self-check on the WRITTEN frame 0 (pre-cast:
-        // caster + target on the clear colour), against the one anchor the solve
-        // used (fx_target_anchor.h), so a fit that places another body than the
-        // oracle's cannot silently pass again.
-        if (ok && f == 0 && harnessOpts.cameraPreset == "b1130" && !b1130TargetSelfCheck(shot)) {
-            shot->drop();
-            return 5;
-        }
-        if (shot) shot->drop();
-        if (ok && f == 0) writeSceneBoxes(harnessOpts.framesDir + "/scene.tsv");
-        if (!ok) {
-            std::fprintf(stderr, "[fx-harness] frame %d did not write\n", f);
+        const double readbackMs = msSince(tReadbackStart);
+        if (!shot) {
+            std::fprintf(stderr, "[fx-harness] frame %d: the readback failed\n", f);
             return 4;
+        }
+        const auto dim = shot->getDimension();
+        const u32 tw = static_cast<u32>(harnessOpts.width), th = static_cast<u32>(harnessOpts.height);
+        if (harnessOpts.framesSync) {
+            // The pre-B1193 path, kept for the A/B timing and the
+            // byte-identity test: the per-pixel downscale and the driver's
+            // PNG writer (libpng, the default level) on the render thread.
+            video::IImage* out = shot;
+            double downMs = 0.0;
+            if (dim.Width != tw || dim.Height != th) {
+                // The surfaceless EGL surface can be another size than the
+                // REQUESTED frame (the ThinkPad's virtual display gave
+                // 3840x2160 for a 1280x800 request): downscale so the written
+                // frame IS the requested frame, where the preset's recorded
+                // pixels (and the scene.tsv boxes) hold.
+                const auto t0 = std::chrono::steady_clock::now();
+                video::IImage* scaled = scaleImageTo(driver, shot, tw, th);
+                downMs = msSince(t0);
+                shot->drop();
+                shot = out = scaled;
+            }
+            char name[64];
+            std::snprintf(name, sizeof(name), "/frame_%05d.%s", f, harnessOpts.framesRaw ? "ppm" : "png");
+            const auto t0 = std::chrono::steady_clock::now();
+            bool ok;
+            if (harnessOpts.framesRaw) {
+                // The P6 dump, same bytes the writer thread writes (the
+                // driver's own PPM writer is the P3 text one).
+                const auto* px = static_cast<const uint8_t*>(out->lock());
+                std::vector<uint8_t> rawBytes;
+                ok = eqt::fxharness::encodePpm(tw, th, px, rawBytes);
+                out->unlock();
+                if (ok) {
+                    std::ofstream pf(harnessOpts.framesDir + name, std::ios::binary | std::ios::trunc);
+                    ok = pf.write((const char*)rawBytes.data(), (std::streamsize)rawBytes.size()).good();
+                }
+            } else {
+                ok = driver->writeImageToFile(shot, (harnessOpts.framesDir + name).c_str());
+            }
+            const double writeMs = msSince(t0);
+            // B1166 (#485): the b1130 target self-check on the frame 0 that
+            // the run wrote (pre-cast: caster + target on the clear colour),
+            // against the one anchor the solve used (fx_target_anchor.h), so a
+            // fit that places another body than the oracle's cannot silently
+            // pass again.
+            if (ok && f == 0 && harnessOpts.cameraPreset == "b1130" && !b1130TargetSelfCheck(out)) {
+                out->drop();
+                return 5;
+            }
+            out->drop();
+            frameWriter.logSync(f, renderMs, readbackMs, downMs, 0.0, writeMs);
+            if (ok && f == 0) writeSceneBoxes(harnessOpts.framesDir + "/scene.tsv");
+            if (!ok) {
+                std::fprintf(stderr, "[fx-harness] frame %d did not write\n", f);
+                return 4;
+            }
+        } else {
+            // The B1193 default: the readback goes to the writer thread, which
+            // runs the downscale (the same bilinear) + the PNG encode (zlib
+            // level 0, filter 0) -- or the P6 PPM dump with --frames-raw --
+            // and the write. The written pixels are this path's pixels
+            // (tests/test_fx_harness.cpp,
+            // FrameWriterOutputIsPixelIdenticalToTheSyncPath); only the PNG
+            // container bytes differ (a different zlib level and filter).
+            if (f == 0 && harnessOpts.cameraPreset == "b1130") {
+                // B1166 (#485), once, on the render thread (the writer thread
+                // cannot build an IImage): the same scaled pixels the writer
+                // thread writes, against the one anchor the solve used.
+                video::IImage* check = shot;
+                if (dim.Width != tw || dim.Height != th) {
+                    video::IImage* scaled = scaleImageTo(driver, shot, tw, th);
+                    check = scaled;
+                }
+                const bool pass = b1130TargetSelfCheck(check);
+                if (check != shot) check->drop();
+                if (!pass) return 5;
+            }
+            frameWriter.push(f, shot, tw, th, renderMs, readbackMs);  // takes the queue's ref
+            shot->drop();  // createScreenShot's ref; the queue keeps its own
+            if (f == 0) writeSceneBoxes(harnessOpts.framesDir + "/scene.tsv");
         }
         char row[96];
         std::snprintf(row, sizeof(row), "%d\t%.6f\t-\t-\t-\t-\t-\t-\t-\n", f, t);
         timing << row;
         activityOut << f << '\t' << std::fixed << std::setprecision(6) << t << '\t'
-                    << spellVisualFX->getActiveEffectCount() << '\t' << spellVisualFX->missileCount() << '\t'
+                    << spellVisualFX->getActiveEffectCount() << '\t' << spellVisualFX->missileObjectCount() << '\t'
                     << animatedNode->getAnimator().getCurrentAnimation() << '\n';
+        if (!harnessOpts.missilePayloadPath.empty()) {
+            // B1170: the first missile object's position (EQ y, x, z) and its
+            // screen point, through the scene.tsv pinhole.
+            float mp[3];
+            if (spellVisualFX->missileObjectPosition(0, mp)) {
+                const Pinhole ph = makePinhole(camera->getPosition(), camera->getTarget(), camera->getFOV(),
+                                               camera->getAspectRatio(),
+                                               static_cast<float>(harnessOpts.width),
+                                               static_cast<float>(harnessOpts.height));
+                const core::vector2df s = ph.project(core::vector3df(mp[1], mp[2], mp[0]));
+                missileOut << f << '\t' << std::fixed << std::setprecision(6) << t << '\t'
+                           << spellVisualFX->missileObjectCount() << '\t' << std::setprecision(4) << mp[0] << '\t'
+                           << mp[1] << '\t' << mp[2] << '\t' << std::setprecision(1) << s.X << '\t' << s.Y << '\n';
+            } else {
+                missileOut << f << '\t' << std::fixed << std::setprecision(6) << t << "\t0\t-\t-\t-\t-\t-\n";
+            }
+        }
         if (!activeSourceEmitters.empty()) {
             // The emitter origin = the slot's attach point on the caster:
             // the hand/head bone for a pseudo-id (B1144), the node origin for
@@ -1325,6 +1433,13 @@ int runScriptedHarness() {
                            << '\t' << std::setprecision(1) << s.X << '\t' << s.Y << '\n';
             }
         }
+    }
+    // B1193: the writer thread drains the queue (every frame is written before
+    // the run reports); a failed write is a failed run.
+    if (!frameWriter.finish()) {
+        std::fprintf(stderr, "[fx-harness] a frame did not write (see %s/frame_cost.tsv)\n",
+                     harnessOpts.framesDir.c_str());
+        return 4;
     }
     std::printf("[fx-harness] wrote %d frames at %d fps (simulated at %d Hz) to %s\n", frames, harnessOpts.fps,
                 simHz, harnessOpts.framesDir.c_str());

@@ -199,6 +199,8 @@ public:
 	void ZoneProcessDzCompass(const EQ::Net::Packet &p);
 	void ZoneProcessDzExpeditionLockoutTimers(const EQ::Net::Packet &p);
 	void ZoneProcessBeginCast(const EQ::Net::Packet &p);
+	// B1170 (#489): OP_SomeItemPacketMaybe (0x4033), the missile object.
+	void ZoneProcessSomeItemPacketMaybe(const EQ::Net::Packet &p);
 	void ZoneProcessManaChange(const EQ::Net::Packet &p);
 	void ZoneProcessBuff(const EQ::Net::Packet &p);
 	// T277: click off a buff. RequestCancelBuff() resolves a user-facing

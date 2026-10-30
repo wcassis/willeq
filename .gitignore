@@ -164,3 +164,6 @@ scripts/scenario_configs/*.local.json
 !tests/goldens/pi/**/*.png
 # B1044: the Mac golden set (blessed by Will 2026-10-19) lives beside the Pi set
 !tests/goldens/mac/**/*.png
+
+# B1208: `rbuild --via ci` downloads the CI job's artifacts here
+.rbuild-ci/

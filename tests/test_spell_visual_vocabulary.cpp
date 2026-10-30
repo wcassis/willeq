@@ -290,13 +290,15 @@ TEST_F(SpellVisualVocabularyTest, ASpellWithAnAffectIndexReachesResolved) {
 }
 
 #ifdef EQT_HAS_GLES2
-// B1152 (#472): createProjectile() is gone, so its old witness (the travel-stage
-// gate returning before the position callback) is replaced by the missile
-// actor's own qualification rule: a spell whose spellsnew.eff record has a
-// Middle stage drawn at the caster's level spawns a missile in createCastGlow,
-// and only when the caster has a target to fly to (targetId != 0). Summon
-// Corpse's record 83 has no Middle stage; Burst of Flame's record 80 has one.
-TEST_F(SpellVisualVocabularyTest, AMiddleStageRecordSpawnsAMissile) {
+// B1170 (#489): the official client draws a record's Middle stage only on a
+// missile OBJECT (eqgame 00495d8e / 00495d93: an anchor-2 slot with no object
+// is skipped), and only a server 0x4033 message builds one (00460737). So a
+// cast draws no Middle and its Target stage lands on OP_Action, even for a
+// record WITH a Middle stage (Burst of Flame, record 80: EDD 279, anchor 2).
+// Before B1170 the record-driven B1152 missile deferred that landing to its
+// own arrival (createLanding returned 0, "deferring to the in-flight
+// missile"); now the landing is drawn on OP_Action for both records.
+TEST_F(SpellVisualVocabularyTest, ACastDrawsNoMiddleStageWithoutAMissileObject) {
     if (!std::filesystem::exists(eqClientPath() + "/spells.eff")) {
         GTEST_SKIP() << "spells.eff not present under " << eqClientPath();
     }
@@ -317,24 +319,73 @@ TEST_F(SpellVisualVocabularyTest, AMiddleStageRecordSpawnsAMissile) {
     ASSERT_FALSE(fx_->resolveVisual(kSummonCorpse).hasTravelStage());
     ASSERT_TRUE(fx_->resolveVisual(kBurstOfFlame).hasTravelStage());
 
-    ASSERT_EQ(fx_->missileCount(), 0u);
+    // A record WITH a Middle stage: the cast builds no missile object, and its
+    // landing is not deferred -- it is drawn on OP_Action, on the target (2).
+    fx_->createCastGlow(1, kBurstOfFlame, 1000, 60, 0);
+    EXPECT_EQ(fx_->missileObjectCount(), 0u)
+        << "only a server 0x4033 message builds a missile object";
+    EXPECT_NE(fx_->createLanding(1, 2, kBurstOfFlame, 60), 0u)
+        << "no missile object: the Target stage lands on OP_Action";
 
-    // A record WITH a Middle stage, given a target: a missile spawns.
-    fx_->createCastGlow(1, kBurstOfFlame, 1000, 60, 0, /*targetId=*/2);
-    EXPECT_EQ(fx_->missileCount(), 1u)
-        << "a record WITH a Middle stage must spawn a missile";
+    // A record with NO Middle stage: the same.
+    fx_->createCastGlow(1, kSummonCorpse, 1000, 60, 0);
+    EXPECT_NE(fx_->createLanding(1, 2, kSummonCorpse, 60), 0u);
 
-    // A record with NO Middle stage: no missile, even with a target.
-    fx_->createCastGlow(1, kSummonCorpse, 1000, 60, 0, /*targetId=*/2);
-    EXPECT_EQ(fx_->missileCount(), 1u)
-        << "a record with NO Middle stage must not spawn a missile";
+    fx_->setParticleManager(nullptr);
+}
 
-    // A Middle-stage spell with no target (targetId == 0): no destination,
-    // so no missile.
-    fx_->createCastGlow(1, kBurstOfFlame, 1000, 60, 0, /*targetId=*/0);
-    EXPECT_EQ(fx_->missileCount(), 1u)
-        << "a Middle-stage spell with no target must not spawn a missile";
-
+// B1170 (#489): a server 0x4033 object for a type-9 spell missile flies from
+// its source to its target on the FX clock and is removed at the hit; the
+// harness and the renderer feed it the same way (spawnMissileObject).
+TEST_F(SpellVisualVocabularyTest, AMissileObjectFliesAndIsRemovedAtTheHit) {
+    if (!std::filesystem::exists(eqClientPath() + "/spells_us.txt")) {
+        GTEST_SKIP() << "spells_us.txt not present under " << eqClientPath();
+    }
+    EQT::Graphics::Environment::ParticleManager pm(device_->getSceneManager(),
+                                                   device_->getVideoDriver());
+    fx_->setParticleManager(&pm);
+    // Source 1 at the origin, target 2 twenty units north (EQ y).
+    fx_->setMissileEntityCallback([](uint16_t id, SpellVisualFX::MissileEntityState& out) -> bool {
+        if (id != 1 && id != 2) return false;
+        out = SpellVisualFX::MissileEntityState{};
+        out.eqPos[0] = id == 2 ? 20.0f : 0.0f;
+        out.eqPos[1] = id == 2 ? 0.0001f : 0.0f;
+        return true;
+    });
+    // Spell 38 (field 98 = 1, travel 3: a 30000-unit life) closes the gap and
+    // is removed at the hit; spell 93 (field 18 = 0, travel 0) lives 50 units,
+    // so the lifetime removes it on its first pass (refactor/B1163/README.md
+    // (A), "Lifetime").
+    struct Case { uint32_t spell; bool hits; };
+    for (const Case c : {Case{38, true}, Case{kBurstOfFlame, false}}) {
+        EQ::SpellMissile::Wire w;
+        w.word = 1.5f;
+        w.damped = 1;
+        w.type = EQ::SpellMissile::kTypeSpell;
+        w.spellId = c.spell;
+        w.sourceId = 1;
+        w.targetId = 2;
+        fx_->spawnMissileObject(w, 60);
+        ASSERT_EQ(fx_->missileObjectCount(), 1u);
+        float pos[3] = {0, 0, 0};
+        float lastY = 0.0f;
+        int frames = 0;
+        while (fx_->missileObjectCount() == 1 && frames < 300) {
+            fx_->update(1.0f / 30.0f);
+            ++frames;
+            if (fx_->missileObjectPosition(0, pos)) {
+                EXPECT_GE(pos[0], lastY) << "spell " << c.spell << " frame " << frames;  // toward +y
+                lastY = pos[0];
+            }
+        }
+        EXPECT_EQ(fx_->missileObjectCount(), 0u) << "spell " << c.spell;
+        if (c.hits) {
+            EXPECT_GT(lastY, 15.0f) << "spell 38 closes most of the 20-unit gap before the hit";
+            EXPECT_GT(frames, 4);
+        } else {
+            EXPECT_LE(frames, 3);
+        }
+    }
     fx_->setParticleManager(nullptr);
 }
 #endif  // EQT_HAS_GLES2

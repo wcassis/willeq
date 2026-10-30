@@ -156,6 +156,7 @@ std::string eqt::strings::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_CancelTrade: return "HC_OP_CancelTrade";
 		case HC_OP_TradeRequest: return "HC_OP_TradeRequest";
 		case HC_OP_TradeRequestAck: return "HC_OP_TradeRequestAck";
+		case HC_OP_SomeItemPacketMaybe: return "HC_OP_SomeItemPacketMaybe";
 		case HC_OP_TradeCoins: return "HC_OP_TradeCoins";
 		case HC_OP_MoveCoin: return "HC_OP_MoveCoin";
 		case HC_OP_TradeAcceptClick: return "HC_OP_TradeAcceptClick";

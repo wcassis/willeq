@@ -242,17 +242,21 @@ Rgb spriteArtColour(const Sheet& sheet, const EmitterConfig& cfg,
         if (ordinal < SpellSpriteAtlas::kBase) continue;  // procedural tile
         const int sprite = ordinal - SpellSpriteAtlas::kBase;
         // B1124: a single image's one frame is on screen for the whole life,
-        // i.e. sixteen grid frames' worth of time.
+        // i.e. sixteen grid frames' worth of time. B1188: a frame occupies
+        // its STORED frame (span cells on a side) -- a native 64x64 picture,
+        // not one 32x32 cell -- so the colour averages over the whole
+        // stored frame, uniform per frame.
         const int frames = SpellSpriteAtlas::framesFor(sprite);
-        const double hold = static_cast<double>(SpellSpriteAtlas::kFramesPerSprite) / frames;
+        const int span = SpellSpriteAtlas::storedSpan(sprite);
+        const int px = span * SpellSpriteAtlas::kCellSize;
         for (int frame = 0; frame < frames; ++frame) {
             int cx = 0, cy = 0;
             SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::cellFor(sprite, frame), cx, cy);
-            for (int y = cy; y < cy + SpellSpriteAtlas::kCellSize; ++y) {
-                for (int x = cx; x < cx + SpellSpriteAtlas::kCellSize; ++x) {
+            for (int y = cy; y < cy + px; ++y) {
+                for (int x = cx; x < cx + px; ++x) {
                     int r = 0, g = 0, b = 0, a = 0;
                     sheet.texel(x, y, r, g, b, a);
-                    const double w = hold * a / 255.0;
+                    const double w = a / 255.0;
                     sum.r += r * w;
                     sum.g += g * w;
                     sum.b += b * w;

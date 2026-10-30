@@ -26,6 +26,7 @@
 
 #include "client/bridge/cast_glow_route.h"
 #include "client/spell/spell_fx_options.h"
+#include "fx_capture_pose.h"
 #include "fx_target_anchor.h"
 
 namespace EQ { struct SpellData; }
@@ -50,6 +51,16 @@ struct HarnessCast {
 struct HarnessOptions {
     std::string planPath;
     std::string framesDir;
+    // B1193 (#512): the frame-output mode. Default (both false): the readback
+    // (createScreenShot) stays on the render thread and one writer thread
+    // does the downscale + PNG encode (zlib level 0, filter 0) + file write
+    // (frame_writer.h) -- the pre-B1193 code ran all four on the render
+    // thread (0.15 s/frame surfaceless). framesSync = the old path, kept for
+    // the byte-identity test and A/B timing. framesRaw = P6 PPM dump
+    // (frame_%05d.ppm, RGB24) with no encode step; the measure scripts read
+    // it (refactor/B1193/README.md names the taught readers).
+    bool framesSync = false;
+    bool framesRaw = false;
     std::string cameraPreset;          // "" (the interactive framing) or "b1118", or B1155's "b1130" / "b1130-self"
     std::string backdropPath;          // optional image drawn behind the scene
     std::string eqe1Path = "/mnt/projects/EverQuest_ETC1/willeq.eqe1";
@@ -110,6 +121,15 @@ struct HarnessOptions {
     // the frame before (renderer_frame.cpp: applySimulationResults, then
     // postSimulationInput), the synchronous harness by default the same frame.
     int workerLatency = 0;
+    // B1170 (#489): a server 0x4033 missile message fed to the FX at a
+    // scripted time (--missile-payload <file> --missile-at <s>): the raw
+    // payload after the opcode (>= 0x88 bytes), its source / target ids
+    // remapped to the harness caster / target, its position put on the
+    // caster and its heading on the bearing to the target (what the server's
+    // ProjectileAnimation sends, zone/special_attacks.cpp); every other field
+    // as captured. Per frame the object's position goes to missile.tsv.
+    std::string missilePayloadPath;
+    double missileAt = -1.0;
     // The caster's Spawn_Struct appearance (--caster-appearance
     // face,texture:e0,..,e8 -- the TextureProfile at offset 197: head, chest,
     // arms, wrist, hands, legs, feet, primary, secondary). The b1118 preset
@@ -142,6 +162,10 @@ extern HarnessOptions harnessOpts;
 // camera: the models' rest facing at rotation 0 is +X (seen on the first
 // harness frames: a profile view from a +Z camera).
 constexpr float kHarnessFaceOnRotY = -90.0f;
+
+// B1167 (#486): the preset's capture pose is fxharness::poseForPreset in
+// fx_capture_pose.h (non-null for all three presets b1118, b1130, b1130-self;
+// null for the interactive framing, which keeps kHarnessFaceOnRotY).
 
 // Parses a plan; false (with `err`) on a malformed row. '#' lines are comments.
 bool parseHarnessPlan(const std::string& path, std::vector<HarnessCast>& out, std::string& err);

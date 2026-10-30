@@ -1,12 +1,12 @@
 record	kind	b1155_source_cov	b1157_source_cov	delta_source_cov	v55_source_cov	v57_source_cov	b1155_landing_cov	b1157_landing_cov	delta_landing_cov	v55_landing_cov	v57_landing_cov	b1155_landing_end_s	b1157_landing_end_s	delta_landing_end_s	v55_landing_end_s	v57_landing_end_s	owner
-0	fixed_npc	0.055	0.210	+0.155	short	over	1.070	0.358	-0.712	short	short	4.367	4.700	+0.333	short	short	model/animation (cast pose owns the Source window)
-1	fixed_npc	0.052	0.090	+0.038	short	short	0.422	0.237	-0.185	short	short	5.300	3.533	-1.767	short	short	model/animation (cast pose owns the Source window)
-2	fixed_npc	0.153	0.274	+0.121	over	over	0.399	0.356	-0.043	short	short	4.967	5.067	+0.100	short	short	model/animation (cast pose owns the Source window)
+0	fixed_npc	0.055	0.176	RETIRED	short	over	1.070	0.552	RETIRED	short	short	4.367	4.667	RETIRED	short	short	model/animation (cast pose owns the Source window)
+1	fixed_npc	0.052	0.092	RETIRED	short	short	0.422	0.252	RETIRED	short	short	5.300	3.300	RETIRED	short	short	model/animation (cast pose owns the Source window)
+2	fixed_npc	0.153	0.272	RETIRED	over	over	0.399	0.316	RETIRED	short	short	4.967	5.067	RETIRED	short	short	model/animation (cast pose owns the Source window)
 3	fixed_npc	0.044	0.077	+0.033	short	PASS	6.652	6.605	-0.047	short	short	6.400	4.000	-2.400	short	short	unattributed
 4	fixed_self	0.096	0.123	+0.027	short	short	0.075	nan		short	n-a	4.433	nan		short	n-a	cast-anim (B1157), residual: source_cov
 5	fixed_npc	0.087	0.137	+0.050	short	short	0.094	nan		short	n-a	4.500	nan		PASS	n-a	cast-anim (B1157), residual: source_cov
-6	fixed_self	0.100	0.098	-0.002	short	short	0.188	0.142	-0.046	short	short	4.967	1.200	-3.767	short	short	model/animation (cast pose owns the Source window)
-7	fixed_npc	0.122	0.231	+0.109	short	short	2.423	0.358	-2.065	short	short	6.767	4.467	-2.300	PASS	short	model/animation (cast pose owns the Source window)
+6	fixed_self	0.100	0.098	RETIRED	short	short	0.188	0.145	RETIRED	short	short	4.967	1.167	RETIRED	short	short	model/animation (cast pose owns the Source window)
+7	fixed_npc	0.122	0.144	RETIRED	short	short	2.423	0.529	RETIRED	short	short	6.767	5.333	RETIRED	PASS	short	model/animation (cast pose owns the Source window)
 8	fixed_self	0.044	0.083	+0.039	short	short	0.939	0.885	-0.054	short	short	3.567	3.600	+0.033	short	short	model/animation (cast pose owns the Source window)
 9	fixed_self	0.362	0.536	+0.174	short	short	0.718	0.709	-0.009	short	short	5.333	4.833	-0.500	short	short	model/animation (cast pose owns the Source window)
 10	fixed_self	0.440	0.379	-0.061	short	short	1.972	0.177	-1.795	short	short	5.267	3.900	-1.367	short	short	model/animation (cast pose owns the Source window)
@@ -24,8 +24,8 @@ record	kind	b1155_source_cov	b1157_source_cov	delta_source_cov	v55_source_cov	v5
 22	fixed_npc	0.085	0.140	+0.055	short	short	0.348	nan		short	n-a	4.633	nan		short	n-a	cast-anim (B1157), residual: source_cov
 23	fixed_npc	0.132	0.152	+0.020	short	short	0.450	nan		short	n-a	4.700	nan		short	n-a	cast-anim (B1157), residual: source_cov
 24	fixed_npc	0.840	0.865	+0.025	over	over	2.259	1.504	-0.755	short	short	5.350	5.050	-0.300	short	short	model/animation (cast pose owns the Source window)
-25	fixed_npc	0.022	0.119	+0.097	short	short	1.311	0.674	-0.637	short	short	4.200	4.467	+0.267	short	short	model/animation (cast pose owns the Source window)
-26	fixed_npc	0.305	0.199	-0.106	short	short	5.697	nan		short	n-a	5.667	nan		over	n-a	model/animation (cast pose owns the Source window)
+25	fixed_npc	0.022	0.122	RETIRED	short	short	1.311	0.846	RETIRED	short	short	4.200	4.433	RETIRED	short	short	model/animation (cast pose owns the Source window)
+26	fixed_npc	0.305	0.195	RETIRED	short	short	5.697	nan		short	n-a	5.667	nan		over	n-a	model/animation (cast pose owns the Source window)
 27	fixed_npc	0.144	0.168	+0.024	short	short	0.182	nan		short	n-a	4.433	nan		short	n-a	cast-anim (B1157), residual: source_cov
 28	fixed_npc	1.149	0.798	-0.351	over	over	1.344	1.524	+0.180	short	short	6.433	6.033	-0.400	short	short	model/animation (cast pose owns the Source window)
 29	fixed_npc	0.006	0.091	+0.085	short	short	0.214	0.095	-0.119	short	short	7.567	7.267	-0.300	over	PASS	model/animation (cast pose owns the Source window)

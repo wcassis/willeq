@@ -26,8 +26,9 @@
 #   casts; t_video/frame use ITS calibration. death1 is "-" on the b-rows (0 OP_Death for the
 #   observer in the whole leg; pcap census in refactor/B1159/README.md). The original M1_38
 #   row stays as the death-on-landing reference (note column). M3b_93: spell 93 (Burst of
+# RETIRED (B1170/#489, MR !330, 2026-10-28): the flight_*/middle_* columns tracked a flight the oracle never drew -- B1168 (refactor/B1168/README.md A5) proved the client draws record 80's Middle stage only on a 0x4033 missile object the lane-5 server never sends, so the per-frame census was tracking the stationary Source sparkle. The columns are struck (headers suffixed _RETIRED), not deleted; the arrival_* columns are unaffected.
 #   Flame) shares record 80 with 38 (B1152 sec. 9: it renders the identical flight).
-leg	spell	travel	rec	middle_edd	middle_name	middle_minLvl	middle_anchor	middle_life_s	bc1_v	bc1_frame	act1_v	act1_frame	death1_v	death1_frame	flight_start_v	flight_start_frame	flight_end_v	flight_end_frame	middle_onset_v	middle_onset_frame	middle_end_v	middle_end_frame	arrival_onset_v	arrival_onset_frame	note
+leg	spell	travel	rec	middle_edd	middle_name	middle_minLvl	middle_anchor	middle_life_s	bc1_v	bc1_frame	act1_v	act1_frame	death1_v	death1_frame	flight_start_v_RETIRED	flight_start_frame_RETIRED	flight_end_v_RETIRED	flight_end_frame_RETIRED	middle_onset_v_RETIRED	middle_onset_frame_RETIRED	middle_end_v_RETIRED	middle_end_frame_RETIRED	arrival_onset_v	arrival_onset_frame	note
 M1_38	Lightning Bolt	3	80	279	SFofSeukor_S2-1	0	2	0.250	470.285	14109	472.817	14185	472.817	14185	472.333	14170	472.633	14179	472.333	14170	472.583	14177	472.933	14188	death-on-landing (level-1 target)
 M2_54	Frost Bolt	3	82	-	-	-	-	-	456.133	13684	457.175	13715	-	-	-	-	-	-	-	-	-	-	457.633	13729	-
 M1b_38	Lightning Bolt	3	80	279	SFofSeukor_S2-1	0	2	0.250	482.278	14468	484.777	14543	-	-	483.633	14509	484.933	14548	483.633	14509	483.883	14516	485.367	14561	B1159 surviving observer (level 60)

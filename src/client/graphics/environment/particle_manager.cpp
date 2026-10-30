@@ -938,6 +938,11 @@ void ParticleManager::deactivateWeatherParticles() {
 // spawnWeatherParticle moved to SimulationWorker
 
 bool ParticleManager::resolveEntityPosition(uint16_t entityID, glm::vec3& outPos) const {
+    const auto anchor = fxAnchors_.find(entityID);
+    if (anchor != fxAnchors_.end()) {
+        outPos = anchor->second;
+        return true;
+    }
     if (entityPosCallback_) return entityPosCallback_(entityID, outPos);
     return false;
 }

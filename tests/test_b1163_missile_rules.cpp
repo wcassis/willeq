@@ -7,10 +7,10 @@
 //      0.8 for spell 0x35b, 0047750d cmp / 0047751d mov) in a damped velocity
 //      (FUN_004bfe0f: v = 0.625 v + 0.8 x word, 004c04c1 / 004c04cd; pos +=
 //      0.02 x elapsed x v, 004c0033), not a distance per tick. The flight it
-//      gives depends on the pass rate, and the B1152/B1159 oracle captures
-//      hold no 0x4033 message (no missile object was built in those legs), so
-//      30 u/s stays the B1152 record-80 CALIBRATION. Spell 859's target type
-//      8 zeroes its word (FUN_00476b12, 00476bec .. 00476d6b): no flight.
+//      gives depends on the pass rate. The B1152 record-80 calibration
+//      (30 u/s) was removed by B1170 (#489): the client draws a Middle stage
+//      only on a 0x4033 missile object. Spell 859's target type 8 zeroes its
+//      word (FUN_00476b12, 00476bec .. 00476d6b): no flight.
 //
 //  (C) Spell 859's removal gate (FUN_0047789d): 00477962 cmp eax, 0x35b, the
 //      XY distance to the local player (004779c6 call 0x439c41) against
@@ -63,8 +63,7 @@ bool TargetTypeHasNoFlight(uint8_t t) {
     return t == 8 || (t > 0x14 && t <= 0x17) || t == 0x1c;
 }
 
-// (A) The thrust word and the damped update are the code's; the speed is the
-// B1152 calibration.
+// (A) The thrust word and the damped update are the code's.
 TEST(B1163MissileRules, ThrustWordIsNotASpeed) {
     EXPECT_EQ(R::kSpell859, 0x35bu);
     EXPECT_FLOAT_EQ(R::kMissileThrustWordSpell, 1.5f);  // 0x3fc00000
@@ -81,10 +80,6 @@ TEST(B1163MissileRules, ThrustWordIsNotASpeed) {
     EXPECT_FLOAT_EQ(R::kMissileThrustScale * R::kMissileThrustWordSpell /
                         (1.0f - R::kMissileDamping), 3.2f);
 
-    // The calibrated speed and flight every fable missile flies.
-    EXPECT_FLOAT_EQ(R::kMissileSpeed, 30.0f);
-    EXPECT_FLOAT_EQ(R::kMissileFlightDistance, 9.05f);
-    EXPECT_NEAR(R::MissileFlightTime(), 9.05f / 30.0f, 1e-6);
 }
 
 // (A) The model's closing pass over the 9.05-unit gap depends on the pass
@@ -111,17 +106,6 @@ TEST(B1163MissileRules, TargetTypesWithNoFlight) {
     EXPECT_FALSE(TargetTypeHasNoFlight(5));    // spell 93's
     EXPECT_FALSE(TargetTypeHasNoFlight(0x14));
     EXPECT_FALSE(TargetTypeHasNoFlight(0x18));
-}
-
-// (A) The record-80 clock is unchanged (missile_oracle.tsv
-// M1_38: OP_Action 472.817 s, flight 472.333-472.633 s, arrival 472.933 s).
-TEST(B1163MissileRules, Record80ClockUnchanged) {
-    const double hitAt   = 472.817;
-    const double reachAt = R::MissileReachAt(hitAt);
-    const double landAt  = R::MissileLandAt(reachAt);
-    EXPECT_NEAR(reachAt, 472.633, 0.005);
-    EXPECT_NEAR(landAt, 472.933, 0.005);
-    EXPECT_NEAR(reachAt - R::MissileFlightTime(), 472.333, 0.02);
 }
 
 // (C) The 859 removal gate: spell 0x35b AND XY distance <= 40.0.

@@ -149,7 +149,7 @@ the gate (they are covered by unit tests only).
     The retirement removed 54's shape words, so the slots draw where the
     file puts them (eqgame 0x495cc3, docs/spellsnew_format.md): the test is
     now `SlotRules.ARetiredOverrideSpellDrawsItsFileSlotsOnTheirAttachPoints`
-    (tests/test_spell_slot_rules.cpp:507): record 82 (ElemMastery V2) draws
+    (tests/test_spell_slot_rules.cpp:528): record 82 (ElemMastery V2) draws
     its level-1-gate Source at the two minLevel-0 hands (test:510
     `EXPECT_EQ(Points(Created()), (std::vector<uint16_t>{kL, kR}))`), and a
     level-60 landing draws the target's chest/chest/default slots on the

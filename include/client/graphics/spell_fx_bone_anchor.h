@@ -48,6 +48,30 @@ inline bool resolveSpellFxBoneDirection(const EQAnimatedMeshSceneNode* node, uin
     return bone >= 0 && node->getBoneWorldDirection(bone, out);
 }
 
+// B1167 (#486): the direction an ATTACHED spellsnew.edd emitter orients to.
+// EQGraphicsDX9's CParticleSystem::Render (0x100605b0) gives every emitter
+// attached to an actor that actor's frame: +0x60 == 1 on a model point takes
+// the point's world matrix (axis 1 = row 2, axis 2 = row 0, axis 3 = -row 1,
+// each / s19c: decompile FUN_100605b0, the `+0x60 == 1 && point` block after
+// LAB_10060b82, 0x10060b8d..), otherwise an attached actor's own matrix (the
+// last `else`, actor vtable +0x234: rows +0x20 / +0x00 / -+0x10); only an
+// unattached emitter keeps a fixed frame. Row 0 of a model's matrix is its
+// rest facing (+X for every race model, kHarnessFaceOnRotY's note), so the
+// direction is the node's +X in world space; a hand pseudo-id keeps the hand
+// bone's direction (the same row of the hand point). The sim builds the
+// emitter frame from it (sim_particles.cpp: axis 2 = this direction made
+// horizontal, axis 1 = world up, axis 3 = their cross).
+inline bool resolveSpellFxAttachDirection(const EQAnimatedMeshSceneNode* node, uint16_t fxId,
+                                          irr::core::vector3df& out) {
+    if (!node) return false;
+    if (EQ::SpellVisualFX::isHandBoneId(fxId)) return resolveSpellFxBoneDirection(node, fxId, out);
+    irr::core::vector3df d(1.0f, 0.0f, 0.0f);
+    node->getAbsoluteTransformation().rotateVect(d);
+    if (d.getLengthSQ() < 1e-12f) return false;
+    out = d.normalize();
+    return true;
+}
+
 // B1148 (#468): the length in ms of `node`'s animation track `code` (the
 // skeleton's own, donor tracks included: frames x frame ms,
 // s3d_loader_skinning.cpp) -- what eqgame 0x47ddd4 reads off the caster
