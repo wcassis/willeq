@@ -1,0 +1,15 @@
+fact	value
+baseline_n_px_max	293
+first_lit_frame	14196
+first_lit_t_act	+0.422
+frames_with_fx	348
+last_lit_frame	14543
+last_lit_t_act	+11.989
+lit_threshold	1000
+peak_bbox	91,95,797,529
+peak_centroid	394,390
+peak_frame	14305
+peak_hue	33
+peak_n_px	7735
+peak_t_act	+4.055
+total_frames	396

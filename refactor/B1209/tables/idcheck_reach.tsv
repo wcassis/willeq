@@ -1,0 +1,5 @@
+kind	count	note
+spells_total	8066	rows in spells_us.txt
+id_in_range_1_9999	8066	FUN_0044d0d0 returns 1 for them (eqgame.exe.c:68316: 1 <= id <= 9999)
+id_out_of_range	0	ids none; every call site treats them as invalid
+call_sites	90	full list: call_sites.tsv (call_sites.py)

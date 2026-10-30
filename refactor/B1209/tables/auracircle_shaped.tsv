@@ -1,0 +1,149 @@
+record	stage	slot	edd_idx	edd_name	shape	attach	anchor	texture	lifetime_s	frames	fps
+1	Source	1	360	BreezeV2 S1-2	random ring	CHEST	caster	gena20.bmp	1.625	1	16.0
+1	Source	2	361	BreezeV2 S1-3	random ring	CHEST	caster	gena20.bmp	1.625	1	16.0
+1	Target	0	366	BreezeV2 S3-4	random ring	CHEST	target	spelab.tga	2.000	16	16.0
+1	Target	2	365	BreezeV2 S3-3	random ring	DEFAULT	target	gena30.bmp	1.750	1	16.0
+1	Target	3	363	BreezeV2 S3-1	random ring	CHEST	target	gena30.bmp	1.750	1	16.0
+72	Source	0	244	ChokingV2 S1-1	random ring	LHAND	caster	spelcb.png	1.000	16	16.0
+72	Source	1	244	ChokingV2 S1-1	random ring	RHAND	caster	spelcb.png	1.000	16	16.0
+72	Source	2	245	ChokingV2 S1-2	random ring	DEFAULT	caster	spelcc.png	2.000	1	1.0
+72	Source	3	246	ChokingV2 S1-3	random ring	HEAD	caster	spelcc.png	2.500	1	1.0
+72	Target	1	248	ChokingV2 S3-2	random ring	HEAD	target	spelcb.png	2.000	16	16.0
+72	Target	2	256	ChokingV2 S3-3	random ring	DEFAULT	target	spelcb.png	2.000	16	16.0
+73	Source	2	5	Healing	random ring	DEFAULT	caster	spelab.tga	3.000	16	16.0
+73	Middle	0	5	Healing	random ring	CHEST	fixed world position	spelab.tga	3.000	16	16.0
+73	Middle	1	5	Healing	random ring	CHEST	fixed world position	spelab.tga	3.000	16	16.0
+73	Middle	2	5	Healing	random ring	CHEST	fixed world position	spelab.tga	3.000	16	16.0
+73	Middle	3	5	Healing	random ring	DEFAULT	fixed world position	spelab.tga	3.000	16	16.0
+73	Target	0	250	VengeanceV2 S1-2	random ring	DEFAULT	target	gena20.bmp	1.250	1	16.0
+73	Target	1	6	Healingfl2	random ring	DEFAULT	target	gena20.bmp	1.250	1	16.0
+74	Target	0	252	Special_SightV2 S1-1	disc	HEAD	target	spelyd.png	0.750	1	16.0
+78	Source	2	269	BTouch2V2 S1-3	disc	CHEST	caster	spelab.tga	0.200	16	16.0
+78	Source	3	270	BTouch2V2 S1-4	disc	RFOOT	caster	spelab.tga	0.200	16	16.0
+78	Target	1	25	Btouchending	random ring	CHEST	caster	spelab.tga	0.200	16	16.0
+78	Target	2	28	Btouchfloor1	random ring	DEFAULT	caster	spelab.tga	0.200	16	16.0
+80	Source	0	276	SFofSeukor S1-1	disc	LHAND	caster	spelcb.png	1.000	16	16.0
+80	Source	1	276	SFofSeukor S1-1	disc	RHAND	caster	spelcb.png	1.000	16	16.0
+80	Target	2	282	SFofSeukor S3-3	disc	DEFAULT	target	spelcf.png	1.500	1	1.0
+81	Source	1	284	Z AnimV2 S1-2	random ring	CHEST	caster	speloa.png	1.000	16	12.0
+81	Source	2	285	Z AnimV2 S1-3	disc	CHEST	caster	speloa.png	1.000	16	12.0
+81	Source	3	286	Z AnimV2 S1-4	disc	DEFAULT	caster	speloa.png	1.000	16	12.0
+81	Target	1	288	Z AnimV2 S3-2	random ring	CHEST	caster	speloa.png	1.000	16	12.0
+81	Target	2	289	Z AnimV2 S3-3	random ring	CHEST	caster	speloa.png	0.562	16	12.0
+82	Target	1	295	ElemMastV2 S3-2	random ring	CHEST	target	spelub.png	0.500	16	256.0
+82	Target	2	296	ElemMastV2 S3-3	random ring	DEFAULT	target	spelub.png	0.500	16	256.0
+83	Source	1	299	VocEarthV2 S1-2	random ring	DEFAULT	caster	genb20.bmp	2.500	1	1.0
+83	Source	2	300	VocEarthV2 S1-3	random ring	HEAD	caster	genb20.bmp	1.500	1	1.0
+83	Target	0	302	VocEarthV2 S3-1	random ring	CHEST	target	genb20.bmp	2.000	1	1.0
+83	Target	1	303	VocEarthV2 S3-2	random ring	DEFAULT	target	genb20.bmp	1.750	1	1.0
+83	Target	2	304	VocEarthV2 S3-3	random ring	CHEST	target	genb20.bmp	1.750	1	1.0
+83	Target	3	32	VOC2ndringwai	random ring	CHEST	target	genb20.bmp	2.000	1	1.0
+84	Source	1	306	Calefaction1-2	disc	RHAND	caster	spelcb.png	1.000	16	16.0
+84	Source	2	306	Calefaction1-2	disc	LHAND	caster	spelcb.png	1.000	16	16.0
+84	Source	3	307	Calefaction1-3	random ring	CHEST	caster	spelce.png	0.750	1	1.0
+84	Middle	0	307	Calefaction1-3	random ring	DEFAULT	missile	spelce.png	0.750	1	1.0
+84	Target	1	309	Calefaction3-2	random ring	CHEST	target	spelcf.png	1.000	1	16.0
+84	Target	2	310	Calefaction3-3	random ring	CHEST	target	spelcb.png	1.500	16	16.0
+84	Target	3	311	Calefaction3-4	disc	DEFAULT	target	spelce.png	1.500	1	1.0
+85	Source	0	314	FlameSongRo1-3	even ring	DEFAULT	caster	spelcf.png	3.000	1	1.0
+85	Source	1	313	FlameSongRo1-2	disc	DEFAULT	caster	spelcc.png	2.250	1	16.0
+85	Source	2	4	Light	disc	DEFAULT	caster	spelcf.png	0.750	1	1.0
+85	Source	3	3	InvokeLig03	disc	DEFAULT	caster	spelcc.png	2.250	1	16.0
+85	Target	0	13	landsmall	disc	DEFAULT	target	spelcc.png	3.000	1	16.0
+85	Target	2	315	FlameSongRo1-4	disc	DEFAULT	target	spelcf.png	1.000	1	1.0
+85	Target	3	312	FlameSongRo1-1	disc	DEFAULT	target	spelcc.png	2.250	1	16.0
+87	Source	2	324	RestDeadV2 S1-3	random ring	DEFAULT	caster	flare_blsp50a.png	3.000	4	12.0
+87	Source	3	325	RestDeadV2 S1-4	random ring	DEFAULT	caster	flare_blsp50a.png	3.000	4	12.0
+87	Target	1	327	RestDeadV2 S3-2	random ring	HEAD	target	flare_blsp50a.png	4.000	4	12.0
+87	Target	2	328	RestDeadV2 S3-3	random ring	DEFAULT	target	flare_blsp50a.png	3.000	4	12.0
+88	Source	2	332	ResEffectsV2 S1-3	even ring	CHEST	caster	flare_blsp50a.png	2.500	4	12.0
+88	Middle	0	333	ResEffectsV2 S3-1	random ring	CHEST	missile	flare_blsp50a.png	2.000	4	12.0
+88	Middle	1	333	ResEffectsV2 S3-1	random ring	CHEST	caster	flare_blsp50a.png	2.000	4	12.0
+88	Middle	2	333	ResEffectsV2 S3-1	random ring	CHEST	target	flare_blsp50a.png	2.000	4	12.0
+88	Middle	3	333	ResEffectsV2 S3-1	random ring	DEFAULT	missile	flare_blsp50a.png	2.000	4	12.0
+88	Target	0	333	ResEffectsV2 S3-1	random ring	HEAD	target	flare_blsp50a.png	2.000	4	12.0
+88	Target	2	335	ResEffectsV2 S3-3	random ring	CHEST	target	flare_blsp50a.png	1.500	4	12.0
+88	Target	3	336	ResEffectsV2 S3-4	random ring	DEFAULT	target	flare_blsp50a.png	2.000	4	12.0
+89	Target	2	343	LifeDrawV2 S3-3	random ring	CHEST	target	spelna.png	1.200	16	12.0
+90	Target	0	346	TorofIceV2 S3-1	disc	HEAD	target	spelcf.png	1.400	1	1.0
+90	Target	1	347	TorofIceV2 S3-2	disc	HEAD	target	spelce.png	1.400	1	1.0
+90	Target	2	348	TorofIceV2 S3-3	disc	HEAD	target	spelcf.png	1.400	1	1.0
+91	Source	2	351	DisSummon1-3	disc	CHEST	caster	flare_blsp50a.png	1.500	4	12.0
+91	Source	3	352	DisSummon1-4	disc	CHEST	caster	flare_blsp50a.png	1.500	4	12.0
+91	Target	1	354	DisSummon3-2	random ring	DEFAULT	target	flare_blsp50a.png	2.000	4	12.0
+91	Target	2	355	DisSummon3-3	disc	HEAD	target	flare_blsp50a.png	1.500	4	12.0
+91	Target	3	356	DisSummon3-4	random ring	CHEST	target	flare_blsp50a.png	2.000	4	12.0
+94	Source	2	370	Grim AuraV2 S1-3	random ring	DEFAULT	caster	spelcb.png	0.750	16	16.0
+94	Source	3	371	Grim AuraV2 S1-4	random ring	DEFAULT	caster	spelcb.png	0.750	16	16.0
+95	Source	3	377	CallofAlarmV2 S1-4	even ring	DEFAULT	caster	spelja.png	3.000	16	16.0
+96	Source	2	382	IllusionIksarV2 S1-2	random ring	CHEST	caster	spelna.png	1.250	16	16.0
+96	Target	0	384	IllusionIksarV2 S3-1	random ring	DEFAULT	target	spelna.png	2.000	16	16.0
+98	Source	3	394	SeloChain1-3	random ring	CHEST	caster	flare_blsp50a.png	2.000	4	12.0
+98	Target	1	396	SeloChain3-2	random ring	CHEST	target	flare_whsp50a.png	0.500	4	12.0
+98	Target	2	397	SeloChain3-3	random ring	DEFAULT	target	flare_whsp50a.png	0.500	4	12.0
+99	Target	1	401	SongDeepSea1-4	disc	DEFAULT	target	spelyc.png	0.250	1	16.0
+100	Target	1	406	DenonDiscord3-2	random ring	CHEST	target	spelcc.png	0.500	1	1.0
+100	Target	2	407	DenonDiscord3-2	random ring	DEFAULT	target	spelcc.png	0.500	1	1.0
+101	Source	0	408	FearorV2 S1-1	random ring	HEAD	caster	spelkb.png	1.000	16	10.0
+101	Source	1	409	CofCorV2 S1-2	random ring	DEFAULT	caster	spelkb.png	0.750	16	16.0
+101	Source	3	411	CofCorV2 S1-4	random ring	DEFAULT	caster	spelkb.png	3.000	16	16.0
+101	Target	0	412	CofCorV2 S3-1	random ring	HEAD	target	spelkb.png	1.000	16	10.0
+101	Target	1	413	CofCorV2 S3-2	random ring	DEFAULT	target	spelkb.png	1.000	16	10.0
+101	Target	2	414	CofCorV2 S3-3	disc	DEFAULT	target	spelcb.png	1.500	16	16.0
+101	Target	3	415	CofCorV2 S3-4	disc	DEFAULT	target	spelcb.png	1.500	16	16.0
+102	Source	1	417	Vision V2 S1-2	random ring	DEFAULT	caster	flare_blsp50a.png	0.200	4	12.0
+102	Target	0	418	Vision V2 S3-1	disc	DEFAULT	target	flare_blsp50a.png	3.000	4	12.0
+102	Target	1	419	Vision V2 S3-2	random ring	DEFAULT	target	flare_blsp50a.png	2.500	4	12.0
+102	Target	2	420	Vision V2 S3-3	random ring	CHEST	target	flare_blsp50a.png	2.500	4	12.0
+103	Target	2	426	ForceV2 S3-3	random ring	CHEST	target	spella.png	2.000	16	12.0
+103	Target	3	427	ForceV2 S3-4	random ring	CHEST	target	spella.png	2.000	16	12.0
+104	Source	0	428	GlowGlyphs1-1	random ring	CHEST	caster	spelab.tga	1.000	16	12.0
+104	Source	1	429	GlowGlyphs1-2	random ring	CHEST	caster	spelab.tga	1.000	16	12.0
+104	Source	2	430	GlowGlyphs1-3	random ring	CHEST	caster	spelab.tga	1.500	16	12.0
+104	Source	3	431	GlowGlyphs1-4	random ring	CHEST	caster	spelab.tga	1.750	16	12.0
+105	Source	3	438	TorrentPoison1-4	disc	DEFAULT	caster	genb20.bmp	2.500	1	16.0
+105	Target	1	440	TorrentPoison3-2	disc	HEAD	target	spelba.png	2.250	16	16.0
+106	Source	0	442	ChillUnlife1-1	random ring	CHEST	caster	spelub.png	1.500	16	12.0
+106	Source	1	443	ChillUnlife1-2	random ring	DEFAULT	caster	speldc.png	1.000	1	16.0
+106	Source	2	444	ChillUnlife1-3	random ring	DEFAULT	caster	spelub.png	1.500	16	12.0
+106	Source	3	445	ChillUnlife1-4	random ring	DEFAULT	caster	speldc.png	1.000	1	16.0
+106	Target	0	446	ChillUnlife3-1	random ring	DEFAULT	target	spelub.png	2.000	16	16.0
+106	Target	1	447	ChillUnlife3-2	random ring	DEFAULT	target	speldc.png	3.000	1	16.0
+106	Target	2	448	ChillUnlife3-3	random ring	CHEST	target	spelub.png	1.000	16	16.0
+107	Target	1	2	Bond_leac02	disc	HEAD	target	spelan.png	1.500	16	16.0
+107	Target	2	1	Bond_Leac01	random ring	CHEST	target	spelan.png	1.625	16	16.0
+107	Target	3	27	Leachfloor	random ring	DEFAULT	target	spelan.png	1.625	16	16.0
+108	Source	1	454	InvertGravity1-3	random ring	DEFAULT	caster	spelbb.tga	1.750	16	16.0
+108	Source	2	455	InvertGravity1-4	random ring	DEFAULT	caster	spelbb.tga	1.500	16	16.0
+108	Source	3	453	InvertGravity1-2	random ring	DEFAULT	caster	spelbb.tga	1.500	16	16.0
+108	Target	0	456	InvertGravity3-1	random ring	CHEST	target	spelbb.tga	1.500	16	16.0
+108	Target	1	457	InvertGravity3-2	random ring	DEFAULT	target	spelbb.tga	1.500	16	16.0
+108	Target	2	458	InvertGravity3-3	random ring	DEFAULT	target	spelbb.tga	1.000	16	16.0
+108	Target	3	16	Lev01num16	random ring	DEFAULT	target	spelbb.tga	1.000	16	16.0
+109	Source	2	460	DynsDruaghtV2 S1-2	random ring	DEFAULT	caster	genb20.bmp	2.000	1	1.0
+109	Target	2	26	Rootfloor	random ring	DEFAULT	target	spelpa.png	1.000	16	8.0
+109	Target	3	464	DynsDruaghtV2 S3-3	random ring	CHEST	target	spelpa.png	1.000	16	8.0
+111	Target	1	475	DemiLichV2 S3-2	random ring	CHEST	target	spelma.png	1.000	16	12.0
+111	Target	2	476	DemiLichV2 S3-3	random ring	DEFAULT	target	spelma.png	1.000	16	12.0
+112	Source	0	477	BlindPoisonV2 S1-1	random ring	HEAD	caster	flare_whsp50a.png	1.000	4	16.0
+112	Source	1	478	BlindPoisonV2 S1-2	random ring	HEAD	caster	flare_whsp50a.png	1.000	4	16.0
+112	Source	2	480	BlindPoisonV2 S1-4	random ring	DEFAULT	caster	flare_whsp50a.png	1.000	4	16.0
+112	Source	3	479	BlindPoisonV2 S1-3	random ring	DEFAULT	caster	flare_whsp50a.png	1.000	4	16.0
+112	Target	0	481	BlindPoisonV2 S3-1	random ring	CHEST	target	flare_whsp50a.png	2.500	4	64.0
+113	Target	0	491	HorrifyingApp3-1	disc	DEFAULT	caster	spelab.tga	0.750	16	16.0
+113	Target	1	492	HorrifyingApp3-2	disc	DEFAULT	caster	spelbb.tga	0.375	16	16.0
+114	Source	1	494	Flare1-2	random ring	CHEST	caster	flare_blsp50a.png	2.000	4	12.0
+114	Source	2	495	Flare1-3	random ring	RFOOT	caster	flare_blsp50a.png	1.000	4	12.0
+114	Target	1	499	Flare3-2	random ring	RFOOT	caster	flare_blsp50a.png	2.000	4	16.0
+114	Target	2	500	Flare3-3	random ring	CHEST	caster	flare_blsp50a.png	2.000	4	16.0
+114	Target	3	501	Flare3-4	disc	RFOOT	caster	flare_blsp50a.png	1.000	4	16.0
+115	Target	1	505	LightningShock3-2	random ring	CHEST	target	spelra.png	1.500	16	16.0
+115	Target	2	506	LightningShock3-3	random ring	DEFAULT	target	spelra.png	1.000	16	16.0
+116	Source	0	507	EnvenomBreath1-1	disc	DEFAULT	caster	genb20.bmp	0.500	1	16.0
+116	Source	2	513	EnvenomBreath3-3	random ring	DEFAULT	caster	spelbb.tga	1.500	16	16.0
+116	Target	2	509	EnvenomBreath1-3	random ring	HEAD	target	spelbb.tga	1.750	16	16.0
+116	Target	3	514	EnvenomBreath3-4	random ring	DEFAULT	target	spelbb.tga	2.250	16	16.0
+137	Target	0	602	MindRead	disc	HEAD	target	blueglobesp501.dds	6.000	1	16.0
+137	Target	2	604	MindReadReceive	disc	HEAD	caster	blueglobesp501.dds	5.000	1	16.0
+326	Source	0	1818	Discipline - Blue02	even ring	CHEST	caster	glowflare02.tga	2.000	1	16.0
+326	Source	1	1817	Discipline - Blue01	even ring	CHEST	caster	glowflare02.tga	2.000	1	16.0

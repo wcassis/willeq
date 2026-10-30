@@ -1,0 +1,49 @@
+# action	target	hold_ms	still_name
+# B1209 (#528): the aura / ground-circle leg, watched by the OBSERVER (char 103
+# Oraclewatch, the B1134 rig). Testcaster casts, in order:
+#   1. #castspell 4499 0  -- Defensive Discipline, spellsnew.eff record 326,
+#      Source even-ring glowflare02.tga (auracircle_shaped.tsv): the ground
+#      ring already measured by B1134 (review/B1134/measure/p4b_discs_4499_1.txt,
+#      "a ring/curtain of blue-white flames on the ground round the feet").
+#      CONTROL: proves the record-path ring still draws on the leg and the
+#      rig's numbers sit in B1134's bands.
+#   2. #castspell 6127 0  -- Pyrilen Aura: NO spellsnew record (legacy,
+#      effect 100, effect_column.tsv). The only aura mechanism that does not
+#      go through the record path is the P8 per-frame buff tick
+#      (eqgame.exe.c:49746; the +0x22=='5' gate at :49805) into the 0x49ab78
+#      legacy draw. Whether the oracle draws anything depends on the buff
+#      words the server sends -- the pcap (one file, both clients) is the
+#      evidence either way.
+# fps=30
+# pose=-74,428,3.75,160
+# observer=Oraclewatch
+# observer-pose=-67.6,434.4,3.75,160
+# The observer account holds two characters (Darkshadow slot 0, Oraclewatch
+# slot 1); the client pre-selects via Defaults.LastCharSel, seeded per leg
+# (oracle_remote.sh, B1176). First run omitted this and Darkshadow zoned
+# into Nobles' Causeway -- the casts reached the observer stream 0 times.
+# obs-ini-set=Defaults.LastCharSel=1
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+obs	press	F9	0	obs_cam1
+obs	press	F9	0	obs_cam2
+obs	press	F9	0	obs_cam3
+obs	wait	3000	0	obs_cam_settle
+command	#nukebuffs	0	nuke_0
+wait	36000	0	time_settle
+command	#castspell 4499 0	0	cast_ring_4499
+wait	13000	0	fx_ring
+command	#nukebuffs	0	nuke_1
+wait	6000	0	reset_1
+command	#castspell 6127 0	0	cast_aura_6127
+wait	13000	0	fx_aura
+obs	command	/q	0	obs_quit
+command	/q	0	quit
