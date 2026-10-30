@@ -63,8 +63,11 @@ def med(xs):
 def summary(d):
     """c1/summary.tsv is data-only (one tab-separated row per run, no
     header): tag readback conc frames wall_s render_ms_median
-    readback_ms_median load_at_start."""
-    wall = load = float("nan")
+    readback_ms_median load_at_end [load_at_start]. Field 8 is the load
+    sampled AFTER the run (run_readback_ab.sh's post-run sample); field 9
+    (the load sampled at run start) exists only in runs made with the
+    updated script -- earlier runs carry no committed start load."""
+    wall = load_end = load_start = float("nan")
     p = os.path.join(d, "summary.tsv")
     if os.path.exists(p):
         with open(p) as f:
@@ -72,10 +75,15 @@ def summary(d):
                 c = line.rstrip("\n").split("\t")
                 if len(c) > 7:
                     try:
-                        wall, load = float(c[4]), float(c[7])
+                        wall, load_end = float(c[4]), float(c[7])
                     except ValueError:
                         pass
-    return wall, load
+                    if len(c) > 8:
+                        try:
+                            load_start = float(c[8])
+                        except ValueError:
+                            pass
+    return wall, load_end, load_start
 
 
 def main(ev):
@@ -90,8 +98,8 @@ def main(ev):
         row, mode = head.rsplit("_", 1)
         byrow.setdefault(row, {})[mode] = os.path.join(d, "c1")
 
-    print("| row | candidate | frames | captured | skipped | render ms/f | readback ms/f (amortized) | readback median (captured) | clean-frame probe ms | fps ceiling | wall s | load at start |")
-    print("|---|---|---|---|---|---|---|---|---|---|---|---|")
+    print("| row | candidate | frames | captured | skipped | render ms/f (mean) | readback ms/f (amortized, mean) | readback median (captured) | clean-frame probe ms (median) | fps ceiling | wall s | load at start | load at end |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for row in sorted(byrow):
         for mode in ["driver", "glread", "pbo", "fbo", "dirty"]:
             d = byrow[row].get(mode)
@@ -117,12 +125,13 @@ def main(ev):
                 amortized, clean_probe = readback, []
                 n_frames = n_captured = len(fc)
                 n_skipped = 0
-            wall, load = summary(d)
+            wall, load_end, load_start = summary(d)
             fps = 1000.0 / (mean(render) + mean(amortized))
             clean = f"{med(clean_probe):.2f}" if clean_probe else "-"
+            start = f"{load_start:.2f}" if load_start == load_start else "-"
             print(f"| {row} | {mode} | {n_frames} | {n_captured} | {n_skipped} | "
                   f"{mean(render):.2f} | {mean(amortized):.2f} | {med(readback):.2f} | "
-                  f"{clean} | {fps:.1f} | {wall:.2f} | {load:.2f} |")
+                  f"{clean} | {fps:.1f} | {wall:.2f} | {start} | {load_end:.2f} |")
 
 
 if __name__ == "__main__":

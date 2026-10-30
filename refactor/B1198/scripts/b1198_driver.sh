@@ -9,7 +9,8 @@
 # Every run starts under quiet conditions (load1 < 6 AND no other
 # model_viewer --spell-test running) -- a run measured under contention is
 # not a number (Will: measured, never argued). The load at every run start
-# is recorded (run_readback_ab.sh's summary line).
+# AND end is recorded (run_readback_ab.sh's summary line: field 8 = end,
+# field 9 = start).
 #
 # Run it on the render host:
 #   ssh thinkpad 'bash /mnt/projects/fable/refactor/B1198/scripts/b1198_driver.sh'
@@ -24,7 +25,7 @@ SUM=$EV/summary.tsv
 AB=$WT/refactor/B1198/scripts/run_readback_ab.sh
 ROWS_DIR=$WT/refactor/B1193/rows  # the card's rows, B1193's committed plans
 mkdir -p "$EV"
-printf 'tag\treadback\tconc\tframes\twall_s\trender_ms_median\treadback_ms_median\tload_at_start\n' > "$SUM"
+printf 'tag\treadback\tconc\tframes\twall_s\trender_ms_median\treadback_ms_median\tload_at_end\tload_at_start\n' > "$SUM"
 
 quiet() {
     local load n

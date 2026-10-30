@@ -1,4 +1,4 @@
-tag	readback	conc	frames	wall_s	render_ms_median	readback_ms_median	load_at_start
+tag	readback	conc	frames	wall_s	render_ms_median	readback_ms_median	load_at_end	load_at_start
 tour_93	driver	1	60	4.75	0.30	53.30	0.25
 b1130_r2	driver	1	60	5.37	0.30	53.72	0.39
 tour_93	glread	1	60	3.17	0.29	29.73	0.39
