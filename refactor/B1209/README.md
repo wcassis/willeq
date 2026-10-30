@@ -78,13 +78,13 @@ Inputs read (every read cited; there are no others in the function):
 | word | line | use |
 |---|---|---|
 | `DAT_0098581c` (`[Defaults] SpellParticleCastFilter`) | 115177 (`& 0x10`), 115181 (`& 8`), 115183 (`& 4`), 115184 (`& 2`) | the option bit decode |
-| `source + 0x244` (death-state char) | 115210 (`== '\x01'`), 115213 (`== '\0'`) | source corpse / alive |
+| `source + 0x244` (death-state char) | 115211 (`== '\x01'`), 115214 (`== '\0'`) | source corpse / alive |
 | `target + 0x244` | 115206 (`!= '\0'` → dead target never draws) | target alive |
 | `FUN_004303a6(target + 0x120)` | 115207 | "target in the player list" |
 | `FUN_00485df1(target + 0x120)` | 115208 | "target name matches" |
-| `FUN_004303a6(source + 0x120)` | 115214 | "source in the player list" |
-| `FUN_00485df1(source + 0x120)` | 115215 | "source name matches" |
-| `DAT_00905ce4` (local player) | 115208, 115216 | the "my own" exemption |
+| `FUN_004303a6(source + 0x120)` | 115215 | "source in the player list" |
+| `FUN_00485df1(source + 0x120)` | 115216 | "source name matches" |
+| `DAT_00905ce4` (local player) | 115209, 115217 | the "my own" exemption |
 
 The helpers: `FUN_004303a6` (review/B1141/ghidra/out/eqgame.exe.c:44069) calls `FUN_00430366`
 (review/B1141/ghidra/out/eqgame.exe.c:44045), which scans the 72-name slots at `+0x19c`, stride
@@ -96,10 +96,10 @@ Option-bit decode (115181-115192): with the option byte `O`,
 
 | O & 0x08 | O & 0x04 | O & 0x02 | resulting flags |
 |---|---|---|---|
-| set | – | – | all filter flags **off** (115181 skipped) |
+| set | – | – | all filter flags **on** (`bVar3`=`bVar4`=`bVar1`=`bVar5`=`bVar2` true, 115186-115194) |
 | clear | set | – | list+name checks on (115186-115192: `bVar3=bVar6` false, list/name true) |
 | clear | clear | set | name check on only (115190-115192) |
-| clear | clear | clear | all flags **on** (115185-115192) |
+| clear | clear | clear | all filter flags **off** (115185 fall-through) |
 
 (`bVar3` = skip the source check; the list flag calls `FUN_004303a6`;
 the name flag calls `FUN_00485df1`; `bVar8 = !(O & 0x10)` reads
@@ -109,17 +109,17 @@ Behavior per value (from the common path, review/B1141/ghidra/out/eqgame.exe.c:1
 
 | value | draws |
 |---|---|
-| `0x00`, `0x10` | everything (115200: all-flags + `bVar8` ⇒ immediate draw) |
-| `0x18` (**the default**) | only effects whose **target is the local player**; a corpse source (`+0x244 == 1`) draws unconditionally (115210-115211 with `bVar8` false) |
-| `0x08` | only target-local, strict (a corpse source is subject to the target check, 115211) |
+| `0x00`, `0x10` | local-centric (source local, or target alive+local; `0x10` adds the corpse-source exemption, 115211-115212 — `O&8` clear ⇒ `bVar3` false ⇒ 115200 can never fire for them) |
+| `0x18` (**the default**) | everything (115200-115201: `bVar3 && !bVar8` ⇒ immediate draw) |
+| `0x08` | live sources draw unconditionally; only a corpse/null source takes the target check (115211-115212) |
 | `0x04`, `0x06` | target alive and (local, or in the player list, or name-matched) (115206-115208) |
 | `0x02` | target alive and (local or name-matched) (115206-115208) |
-| `0x12`, `0x14` | as `0x04`/`0x02` but the corpse-source exemption applies (115210-115211) |
+| `0x12`, `0x14` | as `0x04`/`0x02` but the corpse-source exemption applies (115211-115212) |
 
 The option byte's other sites: read with default `0x18` at
 review/B1141/ghidra/out/eqgame.exe.c:132638 (`FUN_004ae64c("Defaults","SpellParticleCastFilter",0x18)`),
 written at 132533, reset to `0x18` at 125621 (alongside its siblings
-`DAT_0098582c`, `DAT_0098583c`, 125622-125623), and the UI dropdown names the
+`DAT_0098582c`, `DAT_0098583c`, 125622, 125624), and the UI dropdown names the
 key at 245183.
 
 The sole caller, in the stage dispatcher `FUN_0049b260`
@@ -139,12 +139,12 @@ words, passes the visibility gate and dispatches to the draw:
 | line | word | meaning |
 |---|---|---|
 | 121998-122001 | guard | `target==0`, `EDDrecord==0`, or both record words empty (`+0x22c` and `+0x234`), or `stage` outside 0..2 → no FX |
-| 122004 | `*(int*)(stage*0x3a0 + 0x224 + EDD[+0x22c])` | the stage's EDD slot index (the word the B1189 census and `review/B1141/edd_fields_from_code.tsv` read) |
-| 122006 | `*(int*)(stage*0x44 + 0x40 + EDD[+0x234])` | the alternate array's stage word |
-| 122008-122016 | `stage != 1` and slot != -1 | `FUN_00479ee8(slot)` (review/B1141/ghidra/out/eqgame.exe.c:122016) on the stage's own actor — the previous-stage handle bookkeeping |
+| 122004 | `*(int*)(stage*0x3a0 + 0x224 + EDD[+0x22c])` | the legacy `spells.eff` EDD slot index (the `EDD[+0x234]==0` side) |
+| 122007 | `*(int*)(stage*0x44 + 0x40 + EDD[+0x234])` | the `spellsnew.eff` record's stage word — the word the B1189 census and `review/B1141/edd_fields_from_code.tsv` read |
+| 122008-122016 | `stage != 1` and slot != -1 | `FUN_00479ee8(slot)` (review/B1141/ghidra/out/eqgame.exe.c:122015) on the stage's own actor — the previous-stage handle bookkeeping |
 | 122018 | — | the visibility gate, §1.1 |
-| 122021-122024 | EDD path (`EDD[+0x234]==0`) | draw iff `DAT_0092484c != 0` **or** `stage == 1` **or** `FUN_0044ced9() == 1` (review/B1141/ghidra/out/eqgame.exe.c:122021-122023) → `FUN_0049ab78(stage, EDD[+0x22c], *EDD, source, target, 0, pos, offset, ...)` (122024). `DAT_0092484c` is the P12 global FX-flag family (card B1205); `FUN_0044ced9` (review/B1141/ghidra/out/eqgame.exe.c:68131) is the FX-toggling check |
-| 122026-122028 | alternate path | draw iff `DAT_0063f4cc < _DAT_00985810` and `< _DAT_00985814` and `DAT_0092484c != 0` → `FUN_00495cc3(*EDD, stage, EDD[+0x234], source, target, pos, offset, 0)` |
+| 122020-122024 | legacy `spells.eff` fallback arm (`EDD[+0x234]==0`) | draw iff `DAT_0092484c != 0` **or** `stage == 1` **or** `FUN_0044ced9() == 1` (review/B1141/ghidra/out/eqgame.exe.c:122021) → `FUN_0049ab78(stage, EDD[+0x22c], *EDD, source, target, 0, pos, offset, ...)` (122022). `DAT_0092484c` is the P12 global FX-flag family (card B1205); `FUN_0044ced9` (review/B1141/ghidra/out/eqgame.exe.c:68131) is the FX-toggling check |
+| 122025-122028 | `spellsnew.eff` record path (`EDD[+0x234]!=0`) | draw iff `DAT_0063f4cc < _DAT_00985810` and `< _DAT_00985814` and `DAT_0092484c != 0` (review/B1141/ghidra/out/eqgame.exe.c:122025-122026) → `FUN_00495cc3(*EDD, stage, EDD[+0x234], source, target, pos, offset, 0)` (122028) |
 
 `*EDD` (`+0x000` of the record) is the spell ID — the same ID `0x44d0d0`
 validates at the entry points below.
@@ -156,7 +156,7 @@ validates at the entry points below.
 | review/B1141/ghidra/out/eqgame.exe.c:122270 | `FUN_0049b39d` (122037) | the OP_BeginCast trigger: the dispatcher's `uVar20 == 0x3990` arm, review/B1141/ghidra/out/eqgame.exe.c:80566-80568; spell ID read from `+2` and validated by `0x44d0d0` at 122117 |
 | review/B1141/ghidra/out/eqgame.exe.c:95153 | `FUN_00476b12` (94981) | the `0x4033` missile-object path (B1189 P4): stage from local_10, actor `+0xfe4` |
 | review/B1141/ghidra/out/eqgame.exe.c:95672 | `FUN_0047789d` (95588) | the spell-complete/target path (B1189 P3): `stage 2`, the `0x36` value compare at 95659 |
-| review/B1141/ghidra/out/eqgame.exe.c:101960 | `FUN_0047f4af` (101890) | the magic-affect path (B1189 P15/B1211's `0x525d` neighbour): spell ID at `+0x1b`, validated by 0x44d0d0 at 101912; the `SPA` flag at `+0x180` (101914) |
+| review/B1141/ghidra/out/eqgame.exe.c:101960 | `FUN_0047f4af` (101890) | the magic-affect path (B1189 P15/B1211's `0x525d` neighbour): spell ID at `+0x1b`, validated by 0x44d0d0 at 101912; the `SPA` flag at `+0x180` (101920) |
 | review/B1141/ghidra/out/eqgame.exe.c:146701 | the dispatcher call inside `FUN_004bfe0f` (def 146548) | the deferred-source path on NPC spawn (B1189 P6): `stage 0`, ID validated at 146694 |
 
 `0x411f3d` (review/B1141/ghidra/out/eqgame.exe.c:18097, B1189 P15's `0x304b` cast-start) also calls
@@ -223,7 +223,7 @@ All tables regenerate from the two committed scripts (commands in §6):
 | `tables/call_sites.tsv` | every call site of `0x44d0d0` (90), `0x491cff` (1: review/B1141/ghidra/out/eqgame.exe.c:122018) and the dispatcher `0x49b260` (5: review/B1141/ghidra/out/eqgame.exe.c:95153, 95672, 101960, 122270, 146701), with enclosing function and line |
 | `tables/gate_reach.tsv` | 8,066 spells in `spells_us.txt`; **7,909** carry a spellsnew.eff record (their stage FX all pass the gate at review/B1141/ghidra/out/eqgame.exe.c:122018, the dispatcher's `FUN_00491cff` call); **157** have no record (their stage FX go the `0x49ab78` legacy arm, still gated at review/B1141/ghidra/out/eqgame.exe.c:122021-122024); the 41 pinned `anim` values of `tests/spell_anim_rows.h` resolve to **42 distinct measured records**; the 7 tour spells of `refactor/B1184/tables/tour.tsv` resolve to records 80, 82, 104, 121, 137 |
 | `tables/gate_reach_measured.tsv` | the 42 measured records, one row each: **39 of the 42** carry ring/disc EDD entries (**148** slot lines total, the `edd_ring_disc_entries` column), and 5 have a mounted spell naming the record (80 ← 38, 93; 82 ← 54, 656; 104 ← 253; 121 ← 458; 137 ← 41) |
-| `tables/auracircle_shaped.tsv` | those 148 slot lines in full: record, stage, slot, EDD index/name, shape (1=even ring, 4=disc, 9=random ring), attach, anchor, texture, lifetime, frames, fps — the read of `spellsnew.eff` × `spellsnew.edd` the client's dispatcher does at review/B1141/ghidra/out/eqgame.exe.c:122004 |
+| `tables/auracircle_shaped.tsv` | those 148 slot lines in full: record, stage, slot, EDD index/name, shape (1=even ring, 4=disc, 9=random ring), attach, anchor, texture, lifetime, frames, fps — the read of `spellsnew.eff` × `spellsnew.edd` the client's dispatcher does at review/B1141/ghidra/out/eqgame.exe.c:122007 |
 | `tables/idcheck_reach.tsv` | all **8,066** mounted spell IDs are inside `0x44d0d0`'s range (1..9999); **0** outside; 90 call sites |
 | `tables/effect_column.tsv` | the P8 buff-tick class: **213** of 8,066 mounted spells carry effect value `5` in the spells column the server's buff `+0x22` char is set from (column 11 on the 209-field rows, 12 on the 211-field rows); split: **211 with** a spellsnew record, **2 without — 4728, 6096** |
 | `tables/aura_candidates.tsv` | 353 rows: **all 157 legacy spells** plus **196** spellsnew spells whose text mentions "aura"; of the 196, 168 carry a ring/disc EDD entry in their own record and 28 do not |
@@ -335,11 +335,12 @@ for 6127; the threshold separates the effect from the cast animation):
 
 Findings, per row:
 
-- **4499 reproduces the B1134 P4b band**
-  (`/mnt/projects/fable/review/B1134/measure/p4b_discs_4499_1.txt`: "a
-  ring/curtain of blue-white flames on the ground round the feet, lit
-  through Act+8.04-8.28"): the measured peak is blue (hue 233), floor-level
-  (bbox to y=529), and the effect is still LIT at the window's end (+12.0 s)
+- **4499 reproduces the B1134 P4b band** (band data:
+  `/mnt/projects/fable/review/B1134/measure/p4b_discs_4499_1.txt`; the
+  description is `review/B1134/README.md:96`: "a ring/curtain of blue-white
+  flames on the ground round the feet", lit to Act+8.04-8.28): the measured
+  peak is blue (hue 233), floor-level (bbox to y=529), and the effect is
+  still LIT at the window's end (+12.0 s)
   — the 2.0-s `glowflare02.tga` ring entries of record 326
   (`tables/auracircle_shaped.tsv`) re-fire on the sustained discipline buff,
   which is why the ring does not decay inside the window.
@@ -389,7 +390,7 @@ simply not in the zone to receive them.
   review/B1141/ghidra/out/eqgame.exe.c:115163-115330; the dispatcher's call is
   at 122018) at willeq's FX dispatch
   (`spell_cast_fx.cpp`), with the `[Defaults] SpellParticleCastFilter`-equivalent
-  option (default `0x18` = target-local; review/B1141/ghidra/out/eqgame.exe.c:132638).
+  option (default `0x18` = draw everything; review/B1141/ghidra/out/eqgame.exe.c:132638).
 - **B1209-G2 — the P8 legacy buff-tick aura.** A per-frame buff walk in the
   game thread drawing the `spells.eff` stage-2 record for buff-class-`'5'`
   auras (create on `+0x23=='\x01'`, release on `'\0'`,
@@ -426,6 +427,10 @@ simply not in the zone to receive them.
   refactor/B1209/README.md --tree . --extra /mnt/projects/fable
   --dis /mnt/projects/fable/review/B1141/ghidra/out/eqgame.dis
   --dis /mnt/projects/fable/review/B1141/ghidra/out/EQGraphicsDX9.dis`
-  → `checked 94 cites, 0 problems, 0 address warnings`.
+  → `checked 96 cites, 0 problems, 0 address warnings`. The same command over
+  the plan → `checked 3 cites, 0 problems, 0 address warnings`:
+  `python3 -I scripts/refactor/cite_check.py refactor/B1209/plan_b1209.tsv --tree . --extra /mnt/projects/fable
+  --dis /mnt/projects/fable/review/B1141/ghidra/out/eqgame.dis
+  --dis /mnt/projects/fable/review/B1141/ghidra/out/EQGraphicsDX9.dis`.
 - no C++ change: the MR touches `refactor/B1209/**` only (README, scripts,
   tables, plan); the hygiene label is green on a docs+scripts-only diff.

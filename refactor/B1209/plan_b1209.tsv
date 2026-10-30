@@ -3,14 +3,16 @@
 # Oraclewatch, the B1134 rig). Testcaster casts, in order:
 #   1. #castspell 4499 0  -- Defensive Discipline, spellsnew.eff record 326,
 #      Source even-ring glowflare02.tga (auracircle_shaped.tsv): the ground
-#      ring already measured by B1134 (review/B1134/measure/p4b_discs_4499_1.txt,
-#      "a ring/curtain of blue-white flames on the ground round the feet").
+#      ring already measured by B1134 (band data:
+#      review/B1134/measure/p4b_discs_4499_1.txt; the description is
+#      review/B1134/README.md:96, "a ring/curtain of blue-white flames on the
+#      ground round the feet").
 #      CONTROL: proves the record-path ring still draws on the leg and the
 #      rig's numbers sit in B1134's bands.
 #   2. #castspell 6127 0  -- Pyrilen Aura: NO spellsnew record (legacy,
 #      effect 100, effect_column.tsv). The only aura mechanism that does not
 #      go through the record path is the P8 per-frame buff tick
-#      (eqgame.exe.c:49746; the +0x22=='5' gate at :49805) into the 0x49ab78
+#      (review/B1141/ghidra/out/eqgame.exe.c:49746; the +0x22=='5' gate at :49805) into the 0x49ab78
 #      legacy draw. Whether the oracle draws anything depends on the buff
 #      words the server sends -- the pcap (one file, both clients) is the
 #      evidence either way.
