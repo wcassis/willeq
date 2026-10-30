@@ -20,6 +20,14 @@ GitLab-only tag) and asserts:
      does. GitLab adds a job when ANY changed path matches.
   4. build+test are one job: no top-level `build:` or `test:` job, no `test`
      stage, and client-ledger-live needs `build-test`.
+  5. B1208 (#527) rbuild pipelines: `.not_rbuild` is `if: $RBUILD_TARGET` +
+     `when: never`; EVERY job but `rbuild` (this file and the B1194 include)
+     starts its rules with it, directly or through `.code_rules`; `hygiene`'s
+     rules are exactly that reference + an unconditional `when: on_success`;
+     the `rbuild` job runs only on an RBUILD_TARGET push off `fable`, keeps
+     its artifacts 2 days and runs ctest only when RBUILD_TEST is set; the
+     workflow admits the RBUILD_TARGET push ABOVE the open-MR suppression and
+     drops the MR pipeline of an `rbuild: ci build` commit.
 
 A self-test then breaks each rule group and requires a failure.
 """
@@ -30,6 +38,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CI = ROOT / ".gitlab-ci.yml"
 GLES2 = ROOT / "scripts" / "build-gles2-x86.sh"
+B1194_INCLUDE = ROOT / "refactor" / "B1194" / "ci" / "b1194.yml"
+RESERVED = {"stages", "variables", "workflow", "include", "default"}
+NOT_RBUILD = "- !reference [.not_rbuild, rules]"
 
 
 def job_body(text, name):
@@ -41,7 +52,7 @@ def job_body(text, name):
     return [l for l in (rest[: nxt.start()] if nxt else rest).splitlines() if not l.strip().startswith("#")]
 
 
-def check(text, gles2_text):
+def check(text, gles2_text, include_text=""):
     fails = []
 
     def expect(cond, msg):
@@ -69,9 +80,18 @@ def check(text, gles2_text):
     expect("CMAKE_CXX_COMPILER_LAUNCHER" in gles2_text and "IRR_CXX" in gles2_text,
            "scripts/build-gles2-x86.sh must honour CMAKE_CXX_COMPILER_LAUNCHER (configure + Irrlicht make)")
 
-    # 2. rules
-    hyg = job_body(text, "hygiene") or []
-    expect(not any(l.strip().startswith("rules:") for l in hyg), "`hygiene` must have no rules (it always runs)")
+    # 2. rules (B1208: hygiene's only rule beyond "always" is the rbuild exclusion)
+    hyg = [l.strip() for l in (job_body(text, "hygiene") or [])]
+    expect(not any(l.startswith("rules: ") for l in hyg), "`hygiene` must not take another job's rules (it always runs)")
+    if "rules:" in hyg:
+        i = hyg.index("rules:")
+        rules = hyg[i + 1:i + 3]
+        tail = hyg[i + 3] if len(hyg) > i + 3 else ""
+        expect(rules == [NOT_RBUILD, "- when: on_success"] and not tail.startswith("-"),
+               "`hygiene` must always run: its rules are exactly the .not_rbuild reference + `- when: on_success`")
+    else:
+        expect(not any(l.startswith("rules:") for l in hyg), "`hygiene` must always run")
+        expect(False, "`hygiene` must carry the .not_rbuild reference (B1208)")
     code = job_body(text, ".code_rules") or []
     ctext = "\n".join(code)
     regexps = re.findall(r"regexp: (?:&\w+ )?'([^']*)'", ctext)
@@ -110,13 +130,51 @@ def check(text, gles2_text):
     stages = re.search(r"^stages:\n((?:\s+.*\n)+?)\S", text, re.M)
     expect(stages is not None and not re.search(r"^\s+- test\s*$", stages.group(1), re.M), "the `test` stage is back")
     expect("needs: [build-test]" in cll, "client-ledger-live must need build-test")
+    # 5. B1208 rbuild pipelines
+    nr = "\n".join(l.strip() for l in (job_body(text, ".not_rbuild") or []))
+    expect("- if: $RBUILD_TARGET\nwhen: never" in nr, "`.not_rbuild` must be `- if: $RBUILD_TARGET` + `when: never`")
+    expect([l.strip() for l in code if l.strip().startswith("- ")][:1] == [NOT_RBUILD],
+           "`.code_rules` must start with the .not_rbuild reference")
+    for src, t in (("CI", text), ("B1194 include", include_text)):
+        for name in re.findall(r"^([A-Za-z0-9][\w-]*):\s*$", t, re.M):
+            if name in RESERVED or name == "rbuild":
+                continue
+            body = [l.strip() for l in (job_body(t, name) or [])]
+            if "rules: !reference [.code_rules, rules]" in body:
+                continue
+            ext = [l for l in body if l.startswith("extends:")]
+            if ext and ".b1194_" in ext[0]:
+                continue  # inherits .b1194_rules, checked below
+            ok = "rules:" in body and body[body.index("rules:") + 1] == NOT_RBUILD
+            expect(ok, f"{src}: job `{name}` must start its rules with the .not_rbuild reference (B1208)")
+    b = [l.strip() for l in (job_body(include_text, ".b1194_rules") or [])]
+    expect("rules:" in b and b[b.index("rules:") + 1] == NOT_RBUILD,
+           "`.b1194_rules` must start with the .not_rbuild reference (B1208)")
+    rb = [l.strip() for l in (job_body(text, "rbuild") or [])]
+    rbt = "\n".join(rb)
+    expect(bool(rb), "the `rbuild` job is missing (B1208)")
+    expect('- if: $RBUILD_TARGET && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "fable"' in rb,
+           "`rbuild` must run only on an RBUILD_TARGET push off fable")
+    expect(sum(1 for l in rb if l.startswith("- if:") or l.startswith("- when:")) == 1, "`rbuild` must have exactly one rule")
+    expect("extends: .goldfarm" in rb and "expire_in: 2 days" in rbt and "junit: rbuild-junit.xml" in rbt,
+           "`rbuild` extends .goldfarm (x86-build, interruptible) and keeps ctest log + junit for 2 days")
+    expect("- !reference [.build_tree, script]" in rb and "willeq_build_tree" in rbt,
+           "`rbuild` must reuse the shared willeq_build_tree, not a copy")
+    expect('if [ -n "${RBUILD_TEST:-}" ]; then' in rb, "`rbuild` runs ctest only when RBUILD_TEST is set")
+    wf = [l.strip() for l in (job_body(text, "workflow") or [])]
+    i_rb = next((i for i, l in enumerate(wf) if l.startswith("- if: $RBUILD_TARGET")), None)
+    i_mr = next((i for i, l in enumerate(wf) if "$CI_OPEN_MERGE_REQUESTS" in l), None)
+    expect(i_rb is not None and i_mr is not None and i_rb < i_mr,
+           "workflow: the RBUILD_TARGET push rule must sit above the open-MR suppression")
+    expect(any("/^rbuild: ci build/" in l for l in wf), "workflow: an `rbuild: ci build` commit must not start an MR pipeline")
     return fails
 
 
 def main():
     text = CI.read_text()
     gles2 = GLES2.read_text()
-    fails = check(text, gles2)
+    inc = B1194_INCLUDE.read_text() if B1194_INCLUDE.exists() else ""
+    fails = check(text, gles2, inc)
 
     breaks = {
         "no ccache guard": (text.replace("command -v ccache", "true"), gles2),
@@ -128,9 +186,19 @@ def main():
         "regexp that matches md": (text.replace("(?!.*\\.md\\z)", "(?!.*\\.txt\\z)"), gles2),
         "test job back": (text + "\ntest:\n  stage: build\n", gles2),
         "gles2 script without launcher": (text, gles2.replace("IRR_CXX", "IRR_X")),
+        "build-arm without the rbuild exclusion": (text.replace(
+            "  rules:\n    - !reference [.not_rbuild, rules]\n    - if: $CI_COMMIT_BRANCH == \"fable\"\n    - when: manual\n      allow_failure: true\n  script:\n    - set -o pipefail",
+            "  rules:\n    - if: $CI_COMMIT_BRANCH == \"fable\"\n    - when: manual\n      allow_failure: true\n  script:\n    - set -o pipefail", 1), gles2),
+        "hygiene without the rbuild exclusion": (text.replace(
+            "  rules:\n    - !reference [.not_rbuild, rules]\n    - when: on_success\n", ""), gles2),
+        "rbuild rule below the open-MR rule": (text.replace(
+            "    - if: $RBUILD_TARGET && $CI_PIPELINE_SOURCE", "    - if: $XRBUILD_TARGET && $CI_PIPELINE_SOURCE"), gles2),
+        "rbuild job gone": (text.replace("\nrbuild:\n", "\nrbuildx:\n"), gles2),
     }
     for what, (t, g) in breaks.items():
-        if not check(t, g):
+        if t == text and g == gles2:
+            fails.append(f"self-test: '{what}' changed nothing (the break no longer applies)")
+        elif not check(t, g, inc):
             fails.append(f"self-test: '{what}' still passes")
 
     for f in fails:
@@ -138,7 +206,8 @@ def main():
     if fails:
         return 1
     print("OK: ccache launcher guarded on every configure + reported after every build; "
-          "docs-only diffs skip build-test/gate/client-ledger-live; hygiene always runs; build+test are one job")
+          "docs-only diffs skip build-test/gate/client-ledger-live; hygiene always runs; build+test are one job; "
+          "an rbuild pipeline (B1208) runs the rbuild job alone")
     return 0
 
 

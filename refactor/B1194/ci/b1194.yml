@@ -18,6 +18,7 @@
 
 .b1194_rules:
   rules:
+    - !reference [.not_rbuild, rules]
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "task/kb-b1194-rbuild-runner-vms"
 
 # --- inventory: the README's table (toolchain, deps, NFS, ccache, concurrency)

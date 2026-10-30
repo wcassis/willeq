@@ -92,6 +92,15 @@ workflow:
   rules:
     - if: $CI_COMMIT_TAG
       when: never
+    # B1208 (#527): `rbuild --via ci` pushes a WIP commit titled "rbuild: ci build
+    # <target>" with the push option ci.variable=RBUILD_TARGET=<t>. Its push
+    # pipeline is created even when the branch has an open MR (this rule sits
+    # above the CI_OPEN_MERGE_REQUESTS one) and carries ONLY the `rbuild` job
+    # (`.not_rbuild` on every other job); the MR pipeline the same push would
+    # trigger is suppressed by the title, so a worker build never runs the suite.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_COMMIT_TITLE =~ /^rbuild: ci build/'
+      when: never
+    - if: $RBUILD_TARGET && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "fable"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
@@ -155,10 +164,18 @@ workflow:
       fi
       echo "ccache: ${CCACHE_CMAKE_ARGS}"
 
+# B1208 (#527): an `rbuild --via ci` pipeline ($RBUILD_TARGET set) runs the
+# `rbuild` job and NOTHING else. Every other job's rules start with this
+# reference (directly, or through `.code_rules`); pinned by CiQueueRules.
+.not_rbuild:
+  rules:
+    - if: $RBUILD_TARGET
+      when: never
+
 # B1042 (#362): DOCS-ONLY DIFFS SKIP THE C++ JOBS. A job carrying these rules
 # (build-test, gate, zone-budget-census, client-ledger-live) is added only when
 # at least one
-# changed path does NOT end in `.md`; `hygiene` has no rules and always runs,
+# changed path does NOT end in `.md`; `hygiene` has no code rule and always runs,
 # so a docs-only pipeline is hygiene alone and still ends `success` (what the
 # merge gate reads). "Docs-only" is deliberately just `*.md`, anywhere
 # (review/ and refactor/ notes included): a change that also carries a .tsv,
@@ -175,6 +192,7 @@ workflow:
 # changed". Pinned by the hygiene test CiQueueRules.
 .code_rules:
   rules:
+    - !reference [.not_rbuild, rules]
     - if: $WILLEQ_FULL_PIPELINE == "1"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
@@ -200,6 +218,7 @@ prune-build-trees:
   stage: hygiene
   needs: []
   rules:
+    - !reference [.not_rbuild, rules]
     - if: $CI_COMMIT_BRANCH == "fable"
     - when: manual
       allow_failure: true
@@ -219,13 +238,17 @@ prune-build-trees:
 
 # Stage 1: pure source/doc scans (ctest label `hygiene`). No C++ compile, so it
 # fails a bad doc/file-size/citation change in ~a minute instead of after a
-# 30-minute build. NO `rules:` on purpose (B1042): it runs on every pipeline,
+# 30-minute build. no condition of its own (B1042; its one rule is B1208's
+# `.not_rbuild`: an rbuild pipeline runs only `rbuild`): it runs on every pipeline,
 # docs-only ones included -- for those it is the whole pipeline. Configured with EQT_GRAPHICS=OFF into build/hygiene -- a
 # subdirectory of the preserved `build` tree, so its CMake cache (and the
 # googletest FetchContent clone) also survives between pipelines.
 hygiene:
   extends: .goldfarm
   stage: hygiene
+  rules:
+    - !reference [.not_rbuild, rules]
+    - when: on_success
   script:
     - nice -n 10 cmake -S . -B build/hygiene -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DEQT_GRAPHICS=OFF -DEQT_BUILD_TESTS=ON $CCACHE_CMAKE_ARGS
     - nice -n 10 ctest --test-dir build/hygiene -L hygiene -j $CTEST_JOBS --output-on-failure 2>&1 | tee hygiene-ctest.log
@@ -282,9 +305,17 @@ hygiene:
         # reconfigure above (so the graph is current) and before the build, using
         # the exact discovery check_build_tree_orphans uses read-only.
         nice -n 10 python3 scripts/ci/check_build_tree_orphans.py --prune "$BUILD_TREE"
-        nice -n 10 cmake --build "$BUILD_TREE" -j $JOBS 2>&1 | tail -n 200
+        # B1208 (#527): WILLEQ_BUILD_TARGETS (the `rbuild` job) builds named
+        # targets only; `auto` derives them from $RBUILD_TEST through the
+        # file-API codemodel (scripts/ci/rbuild_test_targets.py).
+        if [ "${WILLEQ_BUILD_TARGETS:-}" = auto ]; then
+          WILLEQ_BUILD_TARGETS=$(python3 scripts/ci/rbuild_test_targets.py --tree "$BUILD_TREE" --regex "$RBUILD_TEST")
+        fi
+        nice -n 10 cmake --build "$BUILD_TREE" -j $JOBS ${WILLEQ_BUILD_TARGETS:+--target $WILLEQ_BUILD_TARGETS} 2>&1 | tail -n 200
         ccache_report "$BUILD_TREE"
-        python3 scripts/ci/prune_ref_build_trees.py --stamp "$BUILD_TREE" --ref "$CI_COMMIT_REF_NAME" --host "$(hostname)" --sha "$CI_COMMIT_SHA"
+        # A partial (--target) build leaves only the ref-only stamp: it never
+        # claims the tree for this host+sha (B1026's verify then rebuilds).
+        if [ -z "${WILLEQ_BUILD_TARGETS:-}" ]; then python3 scripts/ci/prune_ref_build_trees.py --stamp "$BUILD_TREE" --ref "$CI_COMMIT_REF_NAME" --host "$(hostname)" --sha "$CI_COMMIT_SHA"; fi
       }
 
 # B1026: verify the tree this job landed on; on a mismatch say so loudly,
@@ -373,6 +404,59 @@ build-test:
       - ctest.log
       - ctest-LastTest.log
 
+# B1208 (#527): the worker build job. `scripts/hermes/rbuild --via ci <wt> ...`
+# commits the worktree as a WIP commit on its task branch and pushes it with
+# `-o ci.variable=RBUILD_TARGET=<t>` (+ RBUILD_TEST=<regex> for `test -R`), so
+# a kanban worker's build lands on an x86-build runner (gitlab-runner-1/2 or
+# the ThinkPad) over GitLab's own job queue -- the runner VMs answer no inbound
+# ssh (refactor/B1194/README.md). The pipeline holds this job alone
+# (`.not_rbuild` + the workflow rule). The build steps are the shared
+# willeq_build_tree in this ref's warm tree, the build-test configure exactly:
+#   RBUILD_TARGET=<t...>  cmake --build --target <t...>; then, when RBUILD_TEST
+#                         is set, ctest -R "$RBUILD_TEST" on that tree;
+#   RBUILD_TARGET=auto    the targets that declare a test matching RBUILD_TEST
+#                         (scripts/ci/rbuild_test_targets.py), then that ctest;
+#   RBUILD_TARGET=hygiene the hygiene job's configure + ctest -L hygiene.
+# rbuild streams this job's trace and downloads the artifacts into
+# <worktree>/.rbuild-ci/<pipeline id>/ (docs/ci.md, "The rbuild job").
+rbuild:
+  extends: .goldfarm
+  stage: build
+  rules:
+    - if: $RBUILD_TARGET && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "fable"
+  variables:
+    # As in build-test: CI has the assets, so their absence is a FAIL (B815).
+    WILLEQ_REQUIRE_ASSETS: "1"
+  script:
+    - !reference [.build_tree, script]
+    - |
+      echo "rbuild: RBUILD_TARGET='$RBUILD_TARGET' RBUILD_TEST='${RBUILD_TEST:-}' on $(hostname) at $CI_COMMIT_SHA"
+      if [ "$RBUILD_TARGET" = hygiene ]; then
+        nice -n 10 cmake -S . -B build/hygiene -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DEQT_GRAPHICS=OFF -DEQT_BUILD_TESTS=ON $CCACHE_CMAKE_ARGS
+        nice -n 10 ctest --test-dir build/hygiene -L hygiene -j $CTEST_JOBS --output-on-failure --output-junit "$CI_PROJECT_DIR/rbuild-junit.xml" 2>&1 | tee rbuild-ctest.log
+      else
+        if [ "$RBUILD_TARGET" = auto ]; then
+          [ -n "${RBUILD_TEST:-}" ] || { echo "rbuild: RBUILD_TARGET=auto needs RBUILD_TEST"; exit 2; }
+          python3 scripts/ci/rbuild_test_targets.py --write-query "$BUILD_TREE"
+        fi
+        export WILLEQ_BUILD_TARGETS="$RBUILD_TARGET"
+        willeq_build_tree
+        if [ -n "${RBUILD_TEST:-}" ]; then
+          nice -n 10 ctest --test-dir "$BUILD_TREE" -R "$RBUILD_TEST" --no-tests=error -j $CTEST_JOBS --output-on-failure --output-junit "$CI_PROJECT_DIR/rbuild-junit.xml" 2>&1 | tee rbuild-ctest.log
+        fi
+      fi
+  after_script:
+    - cp "build/ref/$CI_COMMIT_REF_SLUG/Testing/Temporary/LastTest.log" rbuild-LastTest.log 2>/dev/null || cp build/hygiene/Testing/Temporary/LastTest.log rbuild-LastTest.log 2>/dev/null || true
+  artifacts:
+    when: always
+    expire_in: 2 days
+    paths:
+      - rbuild-ctest.log
+      - rbuild-junit.xml
+      - rbuild-LastTest.log
+    reports:
+      junit: rbuild-junit.xml
+
 # T503 -- ARM cross-build for the Orange Pi, on the SECOND runner
 # (dev-u24-arm-nfs: user-mode shell runner on the dev host, tag arm-nfs; it has
 # docker, the willeq-arm-noble image and the NFS share the Pi also mounts).
@@ -404,6 +488,7 @@ build-arm:
     # Prometheus 2026-10-18) while every x86 job left >= 7.5 GB free.
     BUILD_JOBS: "8"
   rules:
+    - !reference [.not_rbuild, rules]
     - if: $CI_COMMIT_BRANCH == "fable"
     - when: manual
       allow_failure: true
@@ -448,6 +533,7 @@ build-arm64:
     BUILD_JOBS: "8"
     ARM_CCACHE_DIR: /var/cache/ccache-ci-arm
   rules:
+    - !reference [.not_rbuild, rules]
     - if: $CI_COMMIT_BRANCH == "fable"
     - when: manual
       allow_failure: true
@@ -556,6 +642,7 @@ client-ledger-live:
   needs: [build-test]
   dependencies: [build-test]
   rules:
+    - !reference [.not_rbuild, rules]
     - if: $WILLEQ_FULL_PIPELINE == "1"
       when: manual
       allow_failure: true
