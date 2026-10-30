@@ -1,0 +1,3 @@
+profile	model	n	med_turns	p90_turns	med_tool_calls	p90_tool_calls	med_prompt_tokens	p90_prompt_tokens	med_completion_tokens	p90_completion_tokens	med_wall_s	p90_wall_s	med_model_s	p90_model_s	med_noninference_s	p90_noninference_s	med_inference_frac	p90_inference_frac	seat_h	wait_seat_h	pooled_inference_frac	n_completed	n_blocked	n_crashed	n_wall_timeout	n_iter_budget	timeout_rate	iter_budget_rate
+dev	hermes-a	115	230	464	248	495	28881420	60237899	197668	386481	8426	14406	5057	9934	2276	6357	0.769	1	255	75	0.706	63	15	19	11	4	0.096	0.035
+review	hermes-a	77	56	152	74	162	7088607	19334287	74522	174432	1841	4583	1726	4167	391	991	0.938	1	50	5.464	0.891	72	2	3	0	0	0	0

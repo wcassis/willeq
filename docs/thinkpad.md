@@ -117,9 +117,14 @@ script header) runs the step here over ssh and passes the output and exit code
 back.
 
 - **Source over NFS, build tree local.** hermes-ext exports
-  `/home/user/src/willeq-wt` to this box only (`/etc/exports.d/willeq-wt.exports`,
-  `all_squash` to uid/gid 1000, which is `user` on both hosts); the fstab mount
-  here uses the SAME path (NFSv4.2, `soft`, `actimeo=1`, systemd automount). The
+  `/home/user/src/willeq-wt` to this box and (since B1194, 2026-10-29) the two
+  gitlab-runner VMs (`/etc/exports.d/willeq-wt.exports`,
+  `all_squash` to uid/gid 1000, which is `user` on each host); the fstab
+  mount on this box uses the SAME path (NFSv4.2, `soft`, `actimeo=1`,
+  systemd automount). The identical line for each runner VM is staged in
+  `refactor/B1194/scripts/setup_rbuild_host.sh`, pending the one-time root
+  run (the VMs answer no inbound ssh from either lab200 host and the CI
+  user cannot `sudo -n`; B1194's README, RULING REQUEST). The
   attribute cache was `actimeo=0` until 2026-10-19 (Will): every stat was a
   GETATTR round trip to hermes-ext, and a worker build drove it to tens of
   thousands a second (the Build Workflow & Contention dashboard, NFS panels).
@@ -132,6 +137,18 @@ back.
   tree is `/home/user/willeq-builds/<slug>/build` on the NVMe, never in the
   worktree. The patched Irrlicht is built once per
   `irrlicht_input_stamp.sh` digest into `/home/user/willeq-builds/_irrlicht/`.
+- **Host selection (B1194, #513).** The same script can target the two idle
+  gitlab-runner VMs for hygiene and non-GL targets: `--host <name|auto>`
+  (or `RBUILD_HOSTS` / `RBUILD_HOST`; default stays this box). `auto` picks
+  the least-loaded REACHABLE host, probing `/proc/loadavg` over ssh; a
+  filtered host is skipped, never waited on. GL/visual targets
+  (`model_viewer`, `gles2_zone_benchmark`, `visual_gate`) and the oracle stay
+  pinned to this box by name — the script refuses them elsewhere. The
+  runners answer no inbound port from lab200 (measured), so until the
+  firewall opens, steps that must land there run as self-selecting CI jobs
+  (`refactor/B1194/ci/b1194.yml`, teed to the NAS share); the README under
+  `refactor/B1194/` carries the inventory, the verbatim export/fstab lines
+  and the proof timings.
 - **Resource control.** Each step is a transient SYSTEM scope in
   `ci.slice/ci-worker.slice`, beside CI's `ci-build.slice` under the weight-30
   parent `ci.slice`, so worker builds yield to the lane-5 oracle exactly as CI

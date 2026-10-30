@@ -16,7 +16,7 @@ one writer thread. Per frame:
 |---|---|
 | render + endScene | render |
 | createScreenShot (GPU→CPU blit, unavoidable) | render |
-| push into the bounded queue (back-pressure at 8 ≈ 33 MB at 1280×800) | render |
+| push into the bounded queue (back-pressure at 8 ≈ 265 MB at 3840×2160 — the pre-downscale readback the queue holds; 33 MB is its post-downscale size) | render |
 | bilinear downscale (same algorithm as the old path) | writer |
 | PNG encode (raw DEFLATE, windowBits 15, level 0, filter 0 — zlib level 0) **or** P6 PPM RGB24 behind `--frames-raw` | writer |
 | file write | writer |
@@ -46,8 +46,8 @@ Render host: the ThinkPad (the renders are CPU-bound, one core each, GPU 0 %).
 Every run starts under quiet conditions (load1 < 6 and no other
 `model_viewer --spell-test` running) — the gate baseline renders share the box,
 and a run measured under contention is not a number. The two rows are the
-gate's: `tour_93` (14.5 s, camera b1118, 437 frames) and `b1130_r2` (17.0 s,
-camera b1130, 512 frames); the row plans are committed under
+gate's: `tour_93` (14.5 s, camera b1118, 435 frames) and `b1130_r2` (17.0 s,
+camera b1130, 510 frames); the row plans are committed under
 `refactor/B1193/rows/`.
 
 Committed tooling (`refactor/B1193/scripts/`):
@@ -109,11 +109,11 @@ CPU-bound, GPU 0 %), not a threading one.
 | b1130_r2 | writer | 2 | 510 | 38.78 | 13.15/row | 2.28→2.68 |
 
 Wall (CONC=1): tour_93 72.64 → 29.05 s (**2.50×**), b1130_r2 75.44 → 32.33 s
-(**2.33×**). Throughput at CONC=2 (rows/minute, two rows in parallel):
+(**2.33×**). Throughput at CONC=2 (frames/s, two rows in parallel):
 tour_93 10.8 → 24.6 (**2.28×**), b1130_r2 12.2 → 26.3 (**2.15×**). The 47-row
 gate's render leg at CONC=2: ≈32 min (`--frames-sync`) → ≈14 min (writer).
 The per-row fps at CONC=2 is the contested figure (each row sees its sibling);
-the wall and the rows/minute are what the gate pays.
+the wall and the frames/s are what the gate pays.
 
 Load at each run's start and end is in the table (the quiet gate held: every
 run started under load 2.75, most under 1.6; the CONC=2 rows run with their
