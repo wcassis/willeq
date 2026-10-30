@@ -23,6 +23,11 @@ for thr in (0, 16, 80, 150, 220):
 contrib = rgb * (a[:, :, None] / 255.0)
 m = mx > 80  # the lit80-ish set
 print('lit80 texels: R/G/B drawn contribution =', contrib[m].mean(axis=0).round(2) if m.any() else 'n/a')
+# R-channel extremes (the F4 hue-gap input): how much red does the file carry?
+r = rgb[:, :, 0]
+print(f'R max = {r.max():.0f} | R<1 frac (all texels) = {float((r < 1).mean()):.4f} '
+      f'| R>48 frac (all texels) = {float((r > 48).mean()):.4f} | '
+      f'lit80 R mean = {r[m].mean():.2f} (of {int(m.sum())} lit80 texels)')
 # downsampled to 20.5 px (a 1.8 unit sprite at ~11.4 px/unit) - box average
 small = cv2 = None
 import cv2 as _cv2
