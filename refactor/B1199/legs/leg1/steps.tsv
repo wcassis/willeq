@@ -1,0 +1,17 @@
+step	begin_epoch	end_epoch	action	target	still	frame	opcodes	ini_diff	packet_rows
+01_char_select	1793352116.346	1793352245.593	login	Testcaster	01_char_select.png	01_char_select.frame.png	01_char_select.opcodes.tsv	01_char_select.ini.diff	25
+02_in_world	1793352246.026	1793352280.368	zone	qeynos2	02_in_world.png	02_in_world.frame.png	02_in_world.opcodes.tsv	02_in_world.ini.diff	1137
+03_settle	1793352281.335	1793352292.365	wait	9000	03_settle.png	03_settle.frame.png	03_settle.opcodes.tsv	03_settle.ini.diff	199
+04_close_tip	1793352293.334	1793352296.675	click	1229,555	04_close_tip.png	04_close_tip.frame.png	04_close_tip.opcodes.tsv	04_close_tip.ini.diff	96
+05_goto_up	1793352297.781	1793352300.493	command	#goto -74 428 10	05_goto_up.png	05_goto_up.frame.png	05_goto_up.opcodes.tsv	05_goto_up.ini.diff	91
+06_goto_settle	1793352301.224	1793352309.255	wait	6000	06_goto_settle.png	06_goto_settle.frame.png	06_goto_settle.opcodes.tsv	06_goto_settle.ini.diff	320
+07_level	1793352309.984	1793352312.409	command	#level 60	07_level.png	07_level.frame.png	07_level.opcodes.tsv	07_level.ini.diff	127
+08_level_settle	1793352313.144	1793352317.175	wait	2000	08_level_settle.png	08_level_settle.frame.png	08_level_settle.opcodes.tsv	08_level_settle.ini.diff	162
+09_gdb_arm	1793352317.932	1793352322.962	wait	3000	09_gdb_arm.png	09_gdb_arm.frame.png	09_gdb_arm.opcodes.tsv	09_gdb_arm.ini.diff	214
+10_gdb_dump	1793352323.735	1793352335.766	wait	10000	10_gdb_dump.png	10_gdb_dump.frame.png	10_gdb_dump.opcodes.tsv	10_gdb_dump.ini.diff	460
+11_stand0	1793352336.604	1793352338.630	still	0	11_stand0.png	11_stand0.frame.png	11_stand0.opcodes.tsv	11_stand0.ini.diff	90
+12_stun_start	1793352339.385	1793352341.852	command	#stun 8000	12_stun_start.png	12_stun_start.frame.png	12_stun_start.opcodes.tsv	12_stun_start.ini.diff	113
+13_stunned	1793352342.627	1793352347.157	wait	2500	13_stunned.png	13_stunned.frame.png	13_stunned.opcodes.tsv	13_stunned.ini.diff	242
+14_stun_end	1793352347.903	1793352356.934	wait	7000	14_stun_end.png	14_stun_end.frame.png	14_stun_end.opcodes.tsv	14_stun_end.ini.diff	447
+15_post_stun	1793352357.685	1793352362.715	wait	3000	15_post_stun.png	15_post_stun.frame.png	15_post_stun.opcodes.tsv	15_post_stun.ini.diff	214
+16_quit	1793352363.461	1793352365.638	command	/q	16_quit.png	16_quit.frame.png	16_quit.opcodes.tsv	16_quit.ini.diff	15

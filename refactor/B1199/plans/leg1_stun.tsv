@@ -1,0 +1,35 @@
+# action	target	hold_ms	still_name
+# B1199 (#518) leg 1 -- the stunned row, oracle side: GM #stun on the
+# caster (char 67 Testcaster). legF's stun half (refactor/B1183/plans/
+# legF_final.tsv), minus the sit/stand/loot rows this card does not carry.
+# The +0x251 poller (b1199_poll.sh, armed at the gdb_arm still, the
+# b1183_poll.py /proc/pid/mem reader) logs every value-changing write of
+# the caster spawn's +0x251 through the whole stun window.
+#
+# EXPECTED (the client's 0x1e51 case, eqgame.exe.c:79576-79581, writes no
+# +0x251 -- the pose byte holds whatever it had): INIT 100, HOLD 100
+# through the 8 s #stun window and after it. The 0x25aa/0x3013 102 writers
+# (80377/80459) never fire for a GM stun (B1183 FINDING 2, measured the
+# same way on legF).
+#
+# FINDING 3 escape (B1183): the zone snaps the caster below the ground at
+# -74,428 and in that state the stun does not apply; the SERVER-SIDE
+# #goto -74 428 10 (z=10, above the ground) is what legF used.
+#
+# pose=-74,428,3.75,160
+login	Testcaster	0	char_select
+zone	qeynos2	0	in_world
+wait	9000	0	settle
+click	1229,555	0	close_tip
+command	#goto -74 428 10	0	goto_up
+wait	6000	0	goto_settle
+command	#level 60	0	level
+wait	2000	0	level_settle
+wait	3000	0	gdb_arm
+wait	10000	0	gdb_dump
+still	0	0	stand0
+command	#stun 8000	0	stun_start
+wait	2500	0	stunned
+wait	7000	0	stun_end
+wait	3000	0	post_stun
+command	/q	0	quit
