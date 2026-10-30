@@ -50,6 +50,13 @@ bool SpellsEffReader::parseRecord(const std::vector<uint8_t>& data, size_t recor
         }
         emitter.attach_tag = readFixedString32(data, block_base + 3 * 32);
 
+        // B1190: the three per-slot effect types (block offset 0x8C + s*4).
+        for (size_t s = 0; s < kSpellsEffEffectTypeSlots; ++s) {
+            std::memcpy(&emitter.effect_types[s],
+                        &data[block_base + kSpellsEffEmitterEffectTypeOffset + s * 4],
+                        sizeof(int32_t));
+        }
+
         std::memcpy(emitter.unknown_bytes.data(),
                     &data[block_base + kSpellsEffEmitterStringBytes],
                     kSpellsEffEmitterUnknownBytes);

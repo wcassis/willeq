@@ -112,6 +112,22 @@ constexpr size_t kSpellsEffEmitterUnknownBytes =
     kSpellsEffEmitterSize - kSpellsEffEmitterStringBytes;  // 800
 constexpr size_t kSpellsEffEmittersPerRecord = 3;
 constexpr size_t kSpellsEffRecordHeaderBytes = 8;
+
+// B1190 (#509): the per-slot effect-type integers. The oracle's legacy
+// dispatcher (0x49ab78, review/B1141/ghidra/out/eqgame.exe.c:121698) reads
+// slot `s` of stage `st` at byte (st*0xe8 + 0x25 + s)*4 of the RUNTIME record
+// (:121738) -- and 0xe8*4 == 0x3a0 == 928, the emitter-block size, so the
+// runtime and the raw file share the 928-byte block stride. The loader
+// (0x44d773, :68688) is a plain _fread(&DAT_008513b8, 0xae8, 0x100) (:68705)
+// -- no re-layout: the runtime table IS the raw file, so the record-relative
+// 0x94 + s*4 the dispatcher reads (0x94 = the 8-byte record header + 0x8C)
+// are exactly the bytes at block offset 0x8C + s*4 (140/144/148) in the raw
+// file (verified against /mnt/projects/EverQuestP1999/spells.eff,
+// review/B1190). Each is 0..7 (the type that 0x49ab78 dispatches: 0
+// hand-glow, 1 attached, 2 world, 3/4 ground, 5 ground + second attached,
+// 6/7 skip) or -1 (no slot). See refactor/B1190/README.md.
+constexpr size_t kSpellsEffEmitterEffectTypeOffset = 0x8C;
+constexpr size_t kSpellsEffEffectTypeSlots = 3;
 constexpr size_t kSpellsEffRecordSize =
     kSpellsEffRecordHeaderBytes +
     kSpellsEffEmittersPerRecord * kSpellsEffEmitterSize;  // 2792
@@ -144,6 +160,17 @@ struct SpellsEffEmitter {
     // rather than an enum because "Sprite" would not fit a Source/Target
     // dichotomy.
     std::string attach_tag;
+
+    // B1190 (#509): the three per-slot effect-type ints at block offset
+    // kSpellsEffEmitterEffectTypeOffset + s*4. 0..7 dispatch in 0x49ab78;
+    // -1 means "no slot" (the common case for padding emitters). This is
+    // the ONE field in the unknown region whose meaning is demonstrated by
+    // the oracle decompile, so it is named here (the rest stay raw).
+    std::array<int32_t, kSpellsEffEffectTypeSlots> effect_types{ -1, -1, -1 };
+
+    int32_t effectType(size_t slot) const {
+        return slot < kSpellsEffEffectTypeSlots ? effect_types[slot] : -1;
+    }
 
     // Bytes 128..928 of the block, raw. See the header comment: this
     // region's structure is not understood and is not guessed at here.
@@ -178,6 +205,11 @@ struct SpellsEffRecord {
     // False for the ~164 padding records that round the file out to 256
     // (record 255 among them) -- see T70 Review for the exact count.
     bool hasContent() const;
+
+    // B1190: per-slot drawable-ness is the select rule itself
+    // (legacyStageDrawnSlots in spell_visual_selection.h); a record-level
+    // "any slot drawable" aggregate has no production caller, so it is not
+    // declared -- the per-slot effectType() is the observation window.
 };
 
 // ============================================================================
