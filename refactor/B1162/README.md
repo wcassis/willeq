@@ -834,13 +834,21 @@ python3 refactor/B1162/scripts/make_disc_clip_4499.py \
 
 **Gates.** The diff touches no C++ -- the targeted ctest is the hygiene
 label plus the FxHarness/Discipline pins. On this branch (cut at
-cdf6fbb67, 23 commits behind origin/fable): hygiene = 48/49, the one FAIL
-is `DocCitations` on three anchored cites in `refactor/B1189/README.md`
+cdf6fbb67, 27 commits behind origin/fable 62fff22ec at the final
+re-check): hygiene = 48/49 (`rbuild hygiene` at the tip,
+`review/B1162/worker/hygiene_record_20261030b.log`), the one FAIL is
+`DocCitations` on three anchored cites in `refactor/B1189/README.md`
 (the createCastGlow / createLanding / createLandingFromSlots lines of
-`src/client/graphics/spell_visual_fx.cpp`, 526 / 844 / 933 there) -- stale
-BASE cites, already fixed on origin/fable (the same symbols at 533 / 851 /
-971; verified against `git show origin/fable` of that file). They are not
-in this diff and disappear in the MR's merged tree. `rbuild test -R
-'Discipline|FxHarness'` = 12/12 passed
-(`review/B1162/worker/ctest_record_20261030.log`);
-`scripts/refactor/cite_check.py` over this README: 0 problems.
+`src/client/graphics/spell_visual_fx.cpp`, 526 / 844 / 933 there) --
+stale BASE cites from the red tip the branch was cut at (fable pipeline
+2583), fixed on fable by 5c9cde90e (fable pipeline 2627 green). They are
+not in this diff and disappear in the MR's merged tree: MR pipeline 2617
+(merge ref, 01:17 UTC) failed on exactly those three cites and nothing
+else -- `2347 citation(s): 2187 ok, 3 fail, 157 skip`, every cite in this
+leg's README among the ok -- so the MR re-run created by the final push
+against 62fff22ec is the gate
+(`~/kb-evidence/kb-b1162-disc-record/pipeline_state_20261030b.txt`, the
+2617 hygiene job trace on GitLab). `rbuild test -R 'Discipline|FxHarness'`
+= 12/12 passed (`review/B1162/worker/ctest_record_20261030.log`);
+`scripts/refactor/cite_check.py` over this README: 0 problems (re-run at
+the final commit of this leg).
