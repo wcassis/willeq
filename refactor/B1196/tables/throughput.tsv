@@ -1,0 +1,44 @@
+tag
+host
+frames
+render_s
+fps
+ms_per_frame_wall
+cpu_s
+ms_cpu_per_frame
+load_before
+note
+tour_93	thinkpad	437	61	7.16	139.6				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+tour_93	rock4d	435	135.6	3.21	311.7	131.97	303.4	2.74	
+tour_38	thinkpad	437	62	7.05	141.9				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+tour_38	rock4d	435	135.6	3.21	311.7	131.7	302.8	2.74	
+tour_54	thinkpad	437	60	7.28	137.3				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+tour_54	rock4d	435	136.4	3.19	313.6	132.92	305.6	2.76	
+tour_656	thinkpad	437	59	7.41	135				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+tour_656	rock4d	435	136.9	3.18	314.7	133.3	306.4	2.77	
+tour_41	thinkpad	437	34	12.85	77.8				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+tour_41	rock4d	435	128.6	3.38	295.6	126.26	290.3	2.77	
+tour_253	thinkpad	446	61	7.31	136.8				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+tour_253	rock4d	444	186	2.39	418.9	182.9	411.9	1.87	
+tour_458	thinkpad	485	40	12.12	82.5				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+tour_458	rock4d	483	142	3.4	294	138.67	287.1	2.63	
+b1130_r0	thinkpad	497	34	14.62	68.4				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+b1130_r0	rock4d	495	150.6	3.29	304.2	147.34	297.7	2.53	
+b1130_r1	thinkpad	482	36	13.39	74.7				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+b1130_r1	rock4d	480	154.7	3.1	322.3	150.69	313.9	1.45	
+b1130_r2	thinkpad	512	27	18.96	52.7				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+b1130_r2	rock4d	510	139.8	3.65	274.1	136.27	267.2	2.43	
+b1130_r3	thinkpad	506	31	16.32	61.3				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+b1130_r3	rock4d	504	145.6	3.46	288.9	142.4	282.5	2.25	
+b1130_r4	thinkpad	572	29	19.72	50.7				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+b1130_r4	rock4d	570	146.8	3.88	257.5	143.14	251.1	1.71	
+b1130_r5	thinkpad	512	27	18.96	52.7				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+b1130_r5	rock4d	510	137.3	3.71	269.2	133.99	262.7	2.41	
+b1130_r6	thinkpad	542	29	18.69	53.5				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+b1130_r6	rock4d	540	145.4	3.71	269.3	143.16	265.1	2.23	
+b1130_r7	thinkpad	512	30	17.07	58.6				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+b1130_r7	rock4d	510	150.9	3.38	295.9	147.65	289.5	1.74	
+b1130_r9	thinkpad	482	28	17.21	58.1				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+b1130_r9	rock4d	480	136.2	3.52	283.8	133.25	277.6	1.89	
+b1130_r10	thinkpad	542	28	19.36	51.7				no per-row CPU captured by the baseline runner (render_s is the ssh call wall)
+b1130_r10	rock4d	540	142.3	3.79	263.5	139.98	259.2	1.42	

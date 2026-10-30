@@ -17,16 +17,30 @@
 #   RUN_CWD  = the publish root: its config/ and data/ are byte-identical to
 #              the worktree at <sha> (diff -rq, device_info.txt), so the run
 #              reads the same config bytes as the baseline run.
+#   RENDER PATH (the card's surfaceless requirement is UNMET on lane 3 at
+#              8c2bfe7c2 -- measured, see README): the arm64 device
+#              (docker/irrlicht-drm/) has NO surfaceless fallback (the x86
+#              fork only does, docker/irrlicht-drm-x86/CIrrDeviceFB.cpp:321);
+#              WILLEQ_DRM_DEVICE=/dev/dri/no-such-card exits 1 with "card does
+#              not open (explicit override, no fallback)" (surfaceless_attempt.log).
+#              The only path is KMS on card0 with the HDMI connector forced on
+#              (pi_hdmi_force_on): the kernel offers 1024x768 (preferred) /
+#              800x600 / 848x480 / 640x480 with no monitor, so the harness
+#              renders a 1024x768 surface (16-bit depth) and upscales to the
+#              requested 1280x800 (scale 0.800x0.960, non-uniform).
 #   TPF      = /tmp on the device (5.9 G tmpfs; the lane env.sh I/O rule: all
 #              timed-run output goes to tmpfs, never NFS/SD/eMMC).
 #   time.txt = per-row T0/T1 (date +%s.%N), loadavg before/after, and bash
 #              `time` real/user/sys for the render process (the CPU-per-frame
-#              input; render_gate.sh only times the ssh call).
+#              line; render_gate.sh only times the ssh call). NOTE: the device
+#              bash 5.3 does not parse "VAR=x time cmd" (127, measured), so
+#              the env var rides on `time env VAR=x cmd`.
 #   CONC     = 3, matching the baseline's row_times.tsv conc column.
 #   measure  = $EVHOME/measure (~/kb-evidence/<slug>/, per the card).
+#   device   = the connector is forced on for the run and pi_hdmi_restore'd
+#              after (leave the device as found: it was "disconnected").
 # Everything else (plan bytes, --fps 30 --sim-hz 60 --seed 1 --headless,
-# camera, the seconds formula, WILLEQ_DRM_DEVICE=/dev/dri/no-such-card
-# surfaceless on every row, the level check, the measure invocations) is
+# camera, the seconds formula, the level check, the measure invocations) is
 # render_gate.sh's.
 #
 # usage: PI_LANE=3 render_gate_rock4d.sh   (from the worktree)
@@ -58,6 +72,14 @@ LOG=${LOG:-$EVHOME/logs/gate.rock4d.log}
 mkdir -p "$EV/plans" "$EVHOME/measure" "$EVHOME/logs" "$LF"
 echo "render_gate_rock4d tree=$WT bin=$BIN conc=$CONC $(date -u +%FT%T) tip=$(git -C "$WT" rev-parse HEAD)" >> "$LOG"
 
+# The KMS path needs the connector forced on (it was "disconnected");
+# pi_hdmi_force_on records the pre-force status on the device and
+# pi_hdmi_restore writes it back ("detect") -- the leave-as-found half.
+export PI_HDMI_CONN=/sys/class/drm/card0-HDMI-A-1
+export PI_HDMI_OWNER="$SLUG"
+pi_hdmi_force_on || { echo "FATAL: could not force $PI_HDMI_CONN on" >&2; exit 1; }
+pi_remote "cat $PI_HDMI_CONN/modes | tr '\n' ' '" | sed "s|^|connector modes: |" >> "$LOG"
+
 row_job() {
   local tag=$1 cam=$2 secs=$3 mk=$4 kind=$5 lvlcheck=$6 olevel=$7 sid=$8
   local plan="$EV/plans/$tag.plan" m="$EVHOME/measure/$tag" tfd="$TPF/frames/$tag"
@@ -82,7 +104,7 @@ row_job() {
   local rc
   rc=$(pi_remote "mkdir -p '$tfd' && cd '$PUB' && ( { echo T0=\$(date +%s.%N); \
     echo LOAD=\$(cat /proc/loadavg); \
-    WILLEQ_DRM_DEVICE=/dev/dri/no-such-card time '$BIN' --spell-test --client '$CLIENT' --eqe1 '$PACK' \
+    time env WILLEQ_DRM_DEVICE=/dev/dri/card0 '$BIN' --spell-test --client '$CLIENT' --eqe1 '$PACK' \
       --plan '$TPF/plans/$tag.plan' --frames-dir '$tfd' --fps 30 --seconds $secs \
       --sim-hz 60 --seed 1 --headless --camera $cam > '$tfd/run.log' 2>&1; \
     echo EXIT=\$?; echo T1=\$(date +%s.%N); echo LOAD=\$(cat /proc/loadavg); \
@@ -158,6 +180,7 @@ echo "gate.rock4d: $nrows rows, concurrency $CONC, $(date -u +%FT%T)" >> "$LOG"
 T0=$(date +%s)
 xargs -P "$CONC" -n 8 -a "$ROWS" bash -c 'row_job "$@"' _ >> "$LOG" 2>&1
 ok=$(find "$EVHOME/measure" -maxdepth 2 \( -name summary.tsv -o -name b1130_rows.tsv \) | wc -l)
-pi_remote "rm -rf '$TPF'" < /dev/null   # leave the device as found
+pi_remote "rm -rf '$TPF'" < /dev/null   # leave the device as found (frames)
+pi_hdmi_restore                                # leave the device as found (connector)
 echo "gate.rock4d finished $(date -u +%FT%T): rows=$nrows measured_total=$ok wall=$(( $(date +%s) - T0 )) s" >> "$LOG"
 tail -1 "$LOG"

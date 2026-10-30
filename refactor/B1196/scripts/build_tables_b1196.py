@@ -1,47 +1,62 @@
 #!/usr/bin/env python3
-"""B1196 (#515): Rock 4D (lane 3) vs the ThinkPad surfaceless baseline, the 17
-gate rows (tour-7 + b1130 r0-r7,r9,r10), same fable tip (8c2bfe7c2), same
-plans/seed/sim-hz/camera (render_gate_rock4d.sh; plans verified byte-identical
-to the baseline's).
+"""B1196 (#515): Rock 4D (lane 3, arm64 build, the ci-arm64 publish for tip
+8c2bfe7c2) vs the ThinkPad SURFACELESS baseline for the SAME tip, the 17 gate
+rows (tour-7 + b1130 r0-r7,r9,r10), same plans (byte-identical, verified),
+same seed/sim-hz/camera/fps.
+
+The card names the baseline as /mnt/scratch/gate-baseline/<sha>-sl (the
+surfaceless baseline; the README there: "every card from now on judges its
+AFTER against a surfaceless baseline (<sha>-sl)"). 8c2bfe7c2-sl did not exist
+when this card started (the 8c2bfe7c2 dir predates the 2026-10-29 12:45Z
+render-path change -- its b1130 rows are on the old i915 3840x2160 path), so
+the 17 baseline rows were rendered on the ThinkPad by this card with the
+canonical runner (/mnt/projects/fable/review/GATE-BASELINE/render_gate.sh,
+CONC=2, B1130_DRM=1 default) into /mnt/scratch/gate-baseline/8c2bfe7c2-sl/.
 
 Inputs (every number read from a file, nothing retyped):
-  BASE = /mnt/scratch/gate-baseline/8c2bfe7c-sl
-         tables/tour.tsv + tables/b1130.tsv   (the ThinkPad surfaceless values
-                 "mine_*" and their band verdicts "v_*", oracle refs "oracle_*")
-         logs/row_times.tsv                   (ThinkPad frames/render_s, CONC=3)
-         measure/<tag>/run.log                (ThinkPad EGL/driver/surface facts)
   ROCK = /home/user/kb-evidence/kb-b1196-rock4d-render
-         measure/<tag>/summary.tsv            (tour rows, harness_measure.py)
-         measure/<tag>/b1130_rows.tsv         (b1130 rows, harness_measure_b1130.py)
-         measure/<tag>/time.txt               (rock4d T0/T1/load + bash time user/sys)
-         measure/<tag>/run.log                (rock4d EGL/driver/surface facts)
-         logs/row_times.tsv                   (rock4d frames/render_s, CONC=3)
+         measure/<tag>/summary.tsv      (tour rows, B1139 harness_measure.py)
+         measure/<tag>/b1130_rows.tsv   (b1130 rows, B1155 harness_measure_b1130.py)
+         measure/<tag>/time.txt         (rock4d T0/T1/load + bash time user/sys)
+         measure/<tag>/run.log          (rock4d EGL/driver/surface facts)
+         logs/row_times.tsv             (rock4d frames/render_s)
+  BASE = /mnt/scratch/gate-baseline/8c2bfe7c2-sl
+         measure/<tag>/summary.tsv + b1130_rows.tsv + run.log, logs/row_times.tsv
+  refs = the worktree at 8c2bfe7c2 (this table's repo):
+         tests/spell_fx_population_oracle.h  (kTour: oracle land/end + roi windows)
+         refactor/B1153/tables/gate_c.tsv    (b1130 oracle_* reference columns)
+         /mnt/projects/fable/review/B1130/record_table.tsv (record -> spell)
 
-Band/verdict rules: copied VERBATIM from /mnt/scratch/gate-baseline/8c2bfe7c-sl/
-tables/judge.py (itself verbatim from refactor/B1178/scripts/gate_after.py):
-  cov +-3 % of oracle, p90 +-15 %, times +-0.10 s, other b1130 metrics +-0.15;
-  tour roi_l/roi_s absolute windows (the baseline's band_roi_* columns).
+Band/verdict rules: copied VERBATIM from refactor/B1178/scripts/gate_after.py
+(as carried in refactor/B1188/scripts/build_tables_b1188.py band()/verdict()):
+  source_cov / landing_cov: +-3 % of the oracle reference
+  p90_src / p90_land:       +-15 % of the oracle reference
+  landing_end_s / source_onset_s: +-0.10 s
+  source_centroid / src_h_lo / src_h_hi: +-0.15
+  tour land_cov: +-3 % of kTour oracle_land; tour end: +-0.10 s;
+  tour roi_l/roi_s: the absolute kTour windows.
 
 "Within band" for a host-pair delta: |rock - thinkpad| <= the column's band
 width at the oracle (the gate's own tolerance for that column). For the tour
 roi columns (absolute windows, no band width) the hosts are within band when
 both land on the same side (same verdict).
 
-Outputs (out dir, default the repo's refactor/B1196/tables):
+Outputs (out dir, default refactor/B1196/tables in this repo):
   delta_tour.tsv  delta_b1130.tsv  counts.tsv  throughput.tsv  egl.tsv  verdict.txt
 """
-import os, re, sys
+import math, os, re, sys
 
-BASE = '/mnt/scratch/gate-baseline/8c2bfe7c-sl'
+REPO = os.environ.get('B1196_REPO', '/home/user/src/willeq-wt/kb-b1196-rock4d-render')
 ROCK = os.path.expanduser('~/kb-evidence/kb-b1196-rock4d-render')
-OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), '..', 'tables')
+BASE = '/mnt/scratch/gate-baseline/8c2bfe7c2-sl'
+OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, 'refactor/B1196/tables')
 os.makedirs(OUT, exist_ok=True)
 
 ROWS = ['tour_93', 'tour_38', 'tour_54', 'tour_656', 'tour_41', 'tour_253', 'tour_458',
         'b1130_r0', 'b1130_r1', 'b1130_r2', 'b1130_r3', 'b1130_r4', 'b1130_r5',
         'b1130_r6', 'b1130_r7', 'b1130_r9', 'b1130_r10']
 
-# ---------------- band rules: verbatim from the baseline's judge.py
+# ---------------- band rules: verbatim from refactor/B1178/scripts/gate_after.py
 def band(metric, o):
     if metric in ('source_cov', 'landing_cov'): return 0.03 * o
     if metric in ('p90_src', 'p90_land'):       return 0.15 * o
@@ -49,7 +64,8 @@ def band(metric, o):
     return 0.15
 
 def verdict(m, o, h):
-    if o is None or h is None: return 'n-a'
+    import math
+    if o is None or h is None or (isinstance(h, float) and math.isnan(h)): return 'n-a'
     b = band(m, o)
     if abs(h - o) <= b: return 'PASS'
     return 'short' if h < o - b else 'over'
@@ -70,76 +86,106 @@ def readtsv(p):
     return [dict(zip(hdr, l.split('\t'))) for l in lines[1:]]
 
 def fmt(x, nd=3):
+    import math
     if x is None or x == '':
         return ''
+    if isinstance(x, float) and math.isnan(x):
+        return 'nan'
+    if isinstance(x, str):
+        return x
     return f'{x:.{nd}f}'.rstrip('0').rstrip('.') if nd else str(int(x))
 
-# ---------------- baseline (ThinkPad surfaceless) tables
-bt = {r['spell']: r for r in readtsv(os.path.join(BASE, 'tables/tour.tsv'))}
-bb = {int(r['record']): r for r in readtsv(os.path.join(BASE, 'tables/b1130.tsv'))}
+# ---------------- references (committed at 8c2bfe7c2, this tree)
+def parse_ktour():
+    txt = open(os.path.join(REPO, 'tests/spell_fx_population_oracle.h')).read()
+    m = re.search(r'kTour\[\]\s*=\s*\{(.*?)\};', txt, re.S)
+    if m is None:
+        raise SystemExit('kTour not found in tests/spell_fx_population_oracle.h')
+    out = {}
+    for r in re.finditer(
+            r'\{\s*(\d+),\s*(-?[\d.]+)f,\s*(-?[\d.]+)f,\s*(-?[\d.]+)f,\s*(-?[\d.]+)f,'
+            r'\s*(-?[\d.]+)f,\s*(-?[\d.]+)f,\s*(-?[\d.]+)f,\s*(-?[\d.]+)f\s*\}', m.group(1)):
+        g = [float(x) for x in r.groups()[1:]]
+        out[int(r.group(1))] = dict(oracle_land=g[0], oracle_end=g[1],
+                                    roi_l_lo=g[4], roi_l_hi=g[5], roi_s_lo=g[6], roi_s_hi=g[7])
+    return out
 
-def rock_summary(tag):
-    p = os.path.join(ROCK, 'measure', tag, 'summary.tsv')
+kTour = parse_ktour()
+gate_c = {int(r['record']): r for r in readtsv(os.path.join(REPO, 'refactor/B1153/tables/gate_c.tsv'))}
+rec_table = {int(r['record']): r for r in readtsv('/mnt/projects/fable/review/B1130/record_table.tsv')}
+spell_of_record = {k: v['spell_id'] for k, v in rec_table.items()}
+
+# ---------------- measured values, both hosts
+def host_summary(root, tag):
+    p = os.path.join(root, 'measure', tag, 'summary.tsv')
     if not os.path.exists(p): return None
     rows = readtsv(p)
     return rows[0] if rows else None
 
-def rock_b1130(tag):
-    p = os.path.join(ROCK, 'measure', tag, 'b1130_rows.tsv')
+def host_b1130(root, tag):
+    p = os.path.join(root, 'measure', tag, 'b1130_rows.tsv')
     if not os.path.exists(p): return None
     rows = readtsv(p)
     return rows[0] if rows else None
 
-def w(x):  # band width for a delta test
-    return x
+def delta_inband(d, bw, tv, rv, kind):
+    """host-pair within-band decision for one cell."""
+    import math
+    if d is None or (isinstance(d, float) and math.isnan(d)):
+        return 'n-a'
+    if kind == 'window':
+        return 'same-side' if (tv and rv and tv == rv) else 'DIFFERENT'
+    if bw is None:
+        return 'info'
+    return 'yes' if abs(d) <= bw else 'no'
 
 # ================= delta_tour.tsv
-TOUR_COLS = [  # name, baseline mine-col, baseline v-col, rock summary key, metric (band key), kind
-    ('land_cov', 'mine_land_cov', 'v_land_cov', 'land_cov', 'landing_cov', 'band'),
-    ('end',      'mine_end',      'v_end',      'end',      'landing_end_s', 'band'),
-    ('roi_l',    'mine_roi_l',    'v_roi_l',    'roi_l',    None, 'window'),
-    ('roi_s',    'mine_roi_s',    'v_roi_s',    'roi_s',    None, 'window'),
-    ('src_cov',  'mine_src_cov',  None,         'src_cov',  None, 'plain'),
+TOUR_COLS = [  # name, summary key, oracle field, kind (band | window | plain)
+    ('land_cov', 'land_cov', 'oracle_land', 'band'),
+    ('end',      'end',      'oracle_end',  'band'),
+    ('roi_l',    'roi_l',    None,          'window'),
+    ('roi_s',    'roi_s',    None,          'window'),
+    ('src_cov',  'src_cov',  None,          'plain'),
 ]
+TOUR_METRIC = {'land_cov': 'landing_cov', 'end': 'landing_end_s'}
 lines = ['\t'.join(['spell', 'column', 'oracle', 'thinkpad', 'thinkpad_v', 'rock4d', 'rock4d_v',
                     'd_rock_minus_think', 'band_width', 'in_band'])]
 tour_inband = {}
 for tag in [t for t in ROWS if t.startswith('tour_')]:
-    spell = tag.split('_')[1]
-    br = bt[spell]
-    rk = rock_summary(tag)
-    for name, bmc, bvc, rkey, metric, kind in TOUR_COLS:
+    spell = int(tag.split('_')[1])
+    k = kTour[spell]
+    t = host_summary(BASE, tag)
+    r = host_summary(ROCK, tag)
+    for name, skey, ofield, kind in TOUR_COLS:
+        o = k.get(ofield)
         if kind == 'window':
-            o = br.get(f'band_{name}', '')
+            lo, hi = k[f'roi_{"l" if name == "roi_l" else "s"}_lo'], k[f'roi_{"l" if name == "roi_l" else "s"}_hi']
+            o_out = f'{lo}-{hi}'
         else:
-            o = f(br.get(f'oracle_{name}', ''))
-        t = f(br.get(bmc))
-        tv = br.get(bvc, '') if bvc else ''
-        r = None if rk is None else f(rk.get(rkey))
+            o = k.get(ofield)
+            o_out = fmt(o)
+        tv_ = None if t is None else f(t.get(skey))
+        rv_ = None if r is None else f(r.get(skey))
         if kind == 'window':
-            m = re.match(r'([\d.]+)-([\d.]+)', br.get(f'band_{name}', ''))
-            rv = 'n-a'
-            if m is not None and r is not None:
-                lo, hi = float(m.group(1)), float(m.group(2))
-                rv = 'PASS' if lo <= r <= hi else ('short' if r < lo else 'over')
-            d = None if (t is None or r is None) else r - t
-            ib = 'same-side' if (tv and rv and (tv == rv)) else ('n-a' if (t is None or r is None) else 'DIFFERENT')
-            bw = ''
-        elif kind == 'plain':
-            rv = 'n-a'
-            d = None if (t is None or r is None) else r - t
+            def wv(x):
+                return 'n-a' if x is None else ('PASS' if lo <= x <= hi else ('short' if x < lo else 'over'))
+            tv, rv = wv(tv_), wv(rv_)
             bw = None
-            ib = 'info'
+        elif kind == 'plain':
+            tv = rv = 'n-a'
+            bw = None
         else:
-            rv = verdict(metric, o, r) if metric else 'n-a'
-            d = None if (t is None or r is None) else r - t
-            bw = band(metric, o) if (metric and o is not None) else None
-            ib = ('yes' if abs(d) <= bw else 'no') if (d is not None and bw is not None) else ('n-a' if (t is None or r is None) else 'no')
+            m = TOUR_METRIC[name]
+            tv = verdict(m, o, tv_)
+            rv = verdict(m, o, rv_)
+            bw = band(m, o) if o is not None else None
+        d = None if (tv_ is None or rv_ is None) else rv_ - tv_
+        ib = delta_inband(d, bw, tv, rv, kind)
         if name in ('land_cov', 'end', 'roi_l', 'roi_s'):
             tour_inband.setdefault(name, []).append(ib)
-        o_out = o if isinstance(o, str) else fmt(o)
-        lines.append('\t'.join([spell, name, o_out, fmt(t), tv, fmt(r), rv,
-                                f'{d:+.3f}' if d is not None else '', fmt(bw), ib]))
+        d_out = '' if (d is None or math.isnan(d)) else f'{d:+.3f}'
+        lines.append('\t'.join([str(spell), name, o_out, fmt(tv_), tv, fmt(rv_), rv,
+                                d_out, fmt(bw), ib]))
 open(os.path.join(OUT, 'delta_tour.tsv'), 'w').write('\n'.join(lines) + '\n')
 
 # ================= delta_b1130.tsv
@@ -150,61 +196,75 @@ lines = ['\t'.join(['record', 'kind', 'spell', 'column', 'oracle', 'thinkpad', '
 b1130_inband = {}
 for tag in [t for t in ROWS if t.startswith('b1130_')]:
     rec = int(tag.split('_r')[1])
-    br = bb[rec]
-    rk = rock_b1130(tag)
+    gc = gate_c[rec]
+    t = host_b1130(BASE, tag)
+    r = host_b1130(ROCK, tag)
     for mname in METRICS:
-        o = f(br.get('oracle_' + mname))
-        t = f(br.get('mine_' + mname))
-        tv = br.get('v_' + mname, '')
-        r = None if rk is None else f(rk.get(mname))
-        rv = verdict(mname, o, r)
-        d = None if (t is None or r is None) else r - t
-        bw = band(mname, o)
-        ib = ('yes' if abs(d) <= bw else 'no') if (d is not None and bw is not None) else ('n-a' if (t is None or r is None) else 'no')
+        o = f(gc.get('oracle_' + mname))
+        tv_ = None if t is None else f(t.get(mname))
+        rv_ = None if r is None else f(r.get(mname))
+        tv = verdict(mname, o, tv_)
+        rv = verdict(mname, o, rv_)
+        bw = band(mname, o) if o is not None else None
+        d = None if (tv_ is None or rv_ is None) else rv_ - tv_
+        ib = delta_inband(d, bw, tv, rv, 'band')
         b1130_inband.setdefault(mname, []).append(ib)
-        lines.append('\t'.join([str(rec), br.get('kind', ''), br.get('spell', ''), mname,
-                                fmt(o), fmt(t), tv, fmt(r), rv,
-                                f'{d:+.3f}' if d is not None else '', fmt(bw), ib]))
+        d_out = '' if (d is None or math.isnan(d)) else f'{d:+.3f}'
+        lines.append('\t'.join([str(rec), gc.get('kind', ''), spell_of_record.get(rec, ''), mname,
+                                fmt(o), fmt(tv_), tv, fmt(rv_), rv, d_out, fmt(bw), ib]))
 open(os.path.join(OUT, 'delta_b1130.tsv'), 'w').write('\n'.join(lines) + '\n')
 
 # ================= counts.tsv
-lines = ['table', 'column', 'rows', 'in_band_yes', 'in_band_no', 'in_band_na',
+lines = ['table', 'column', 'rows', 'in_band_yes', 'in_band_same_side', 'in_band_out',
+         'in_band_na',
+         'thinkpad_PASS', 'thinkpad_short', 'thinkpad_over', 'thinkpad_n-a',
          'rock4d_PASS', 'rock4d_short', 'rock4d_over', 'rock4d_n-a']
-def count_row(table, name, ibs):
-    yes = ibs.count('yes'); no = ibs.count('no'); na = len(ibs) - yes - no
-    # rock4d verdicts: re-read from the delta table's rock4d_v
-    d = [l for l in open(os.path.join(OUT, f'delta_{table}.tsv')).read().splitlines()[1:]
-         if l.split('\t')[1] == name]
-    v = [l.split('\t')[6] for l in d]
-    lines.append('\t'.join([table, name, str(len(ibs)), str(yes), str(no), str(na),
-                            str(v.count('PASS')), str(v.count('short')), str(v.count('over')), str(v.count('n-a'))]))
+def count_row(table, name, ibs, tcol, rcol, delta_cols):
+    d = [l.split('\t') for l in open(os.path.join(OUT, f'delta_{table}.tsv')).read().splitlines()[1:]
+         if l.split('\t')[delta_cols[0]] == name]
+    tv = [l[tcol] for l in d]
+    rv = [l[rcol] for l in d]
+    yes = ibs.count('yes'); ss = ibs.count('same-side'); na = ibs.count('n-a')
+    out = len(ibs) - yes - ss - na
+    lines.append('\t'.join([table, name, str(len(ibs)), str(yes), str(ss), str(out), str(na),
+                            str(tv.count('PASS')), str(tv.count('short')), str(tv.count('over')), str(tv.count('n-a')),
+                            str(rv.count('PASS')), str(rv.count('short')), str(rv.count('over')), str(rv.count('n-a'))]))
 for name in [c[0] for c in TOUR_COLS]:
     if name in tour_inband:
-        count_row('tour', name, tour_inband[name])
+        count_row('tour', name, tour_inband[name], 4, 6, (1,))
 for mname in METRICS:
-    count_row('b1130', mname, b1130_inband[mname])
+    count_row('b1130', mname, b1130_inband[mname], 6, 8, (3,))
 open(os.path.join(OUT, 'counts.tsv'), 'w').write('\n'.join(lines) + '\n')
 
 # ================= throughput.tsv
 def rowtimes(p):
+    if not os.path.exists(p): return {}
     return {r['tag']: r for r in readtsv(p) if 'tag' in r}
 tp_rt = rowtimes(os.path.join(BASE, 'logs/row_times.tsv'))
 rk_rt = rowtimes(os.path.join(ROCK, 'logs/row_times.tsv'))
 
-def cpus(t):
-    # bash `time` output: user/sys as MmSs or Ss
-    def sec(v):
-        m = re.match(r'(\d+)m([\d.]+)s', v)
-        if m: return int(m.group(1)) * 60 + float(m.group(2))
-        m = re.match(r'([\d.]+)s', v)
-        return float(m.group(1)) if m else None
-    out = {}
-    for ln in open(os.path.join(ROCK, 'measure', t, 'time.txt')):
-        mm = re.match(r'\s*(real|user|sys)\s+([\dm\.:s]+)', ln)
-        if mm: out[mm.group(1)] = sec(mm.group(2))
-    return out
+def bash_time_secs(v):
+    v = v.strip()
+    m = re.match(r'(\d+)m([\d.]+)s', v)
+    if m: return int(m.group(1)) * 60 + float(m.group(2))
+    m = re.match(r'([\d.]+)s', v)
+    return float(m.group(1)) if m else None
 
-lines = ['tag', 'host', 'frames', 'render_s', 'fps', 'ms_per_frame_wall', 'cpu_s', 'ms_cpu_per_frame', 'load_before']
+def rock_cpu(tag):
+    p = os.path.join(ROCK, 'measure', tag, 'time.txt')
+    if not os.path.exists(p): return None, ''
+    cpu, load = None, ''
+    for ln in open(p):
+        mm = re.match(r'\s*(user|sys)\s+([\dm\.:s]+)', ln)
+        if mm:
+            s = bash_time_secs(mm.group(2))
+            if s is not None: cpu = (cpu or 0.0) + s
+        if ln.startswith('LOAD='):
+            load = ln.split('LOAD=')[1].split()[0]
+    return cpu, load
+
+lines = ['tag', 'host', 'frames', 'render_s', 'fps', 'ms_per_frame_wall', 'cpu_s',
+         'ms_cpu_per_frame', 'load_before', 'note']
 for tag in ROWS:
     for host, rt in (('thinkpad', tp_rt), ('rock4d', rk_rt)):
         r = rt.get(tag)
@@ -214,20 +274,14 @@ for tag in ROWS:
         rend = f(r.get('render_s'))
         fps = None if (nfr is None or rend in (None, 0)) else nfr / rend
         mwf = None if (nfr is None or rend in (None, 0)) else 1000.0 * rend / nfr
-        cpu = None; mcpf = None; load = ''
+        cpu, mcpf, load, note = None, None, '', ''
         if host == 'rock4d':
-            c = cpus(tag)
-            u, s = c.get('user'), c.get('sys')
-            if u is not None and s is not None:
-                cpu = u + s
-                mcpf = None if nfr in (None, 0) else 1000.0 * cpu / nfr
-            try:
-                load = [l for l in open(os.path.join(ROCK, 'measure', tag, 'time.txt'))
-                        if l.startswith('LOAD=')][0].split('LOAD=')[1].split()[0]
-            except Exception:
-                pass
+            cpu, load = rock_cpu(tag)
+            mcpf = None if (cpu is None or not nfr) else 1000.0 * cpu / nfr
+        else:
+            note = 'no per-row CPU captured by the baseline runner (render_s is the ssh call wall)'
         lines.append('\t'.join([tag, host, fmt(nfr, 0), fmt(rend, 1), fmt(fps, 2), fmt(mwf, 1),
-                                fmt(cpu, 2), fmt(mcpf, 1), load]))
+                                fmt(cpu, 2), fmt(mcpf, 1), load, note]))
 open(os.path.join(OUT, 'throughput.tsv'), 'w').write('\n'.join(lines) + '\n')
 
 # ================= egl.tsv
@@ -235,9 +289,9 @@ def eglfacts_from(path):
     out = {}
     if not os.path.exists(path): return out
     for ln in open(path, errors='replace'):
-        if 'EGL (surfaceless): Version' in ln:
+        if re.search(r'EGL(?: \(surfaceless\))?: Version', ln):
             out['egl'] = ln.strip()
-        elif 'EGL (surfaceless): Config' in ln:
+        elif re.search(r'EGL(?: \(surfaceless\))?: Config', ln):
             out['config'] = ln.strip()
         elif ln.startswith('GLES2 Driver:'):
             out['driver'] = ln.strip()
@@ -260,18 +314,21 @@ open(os.path.join(OUT, 'egl.tsv'), 'w').write('\n'.join(lines) + '\n')
 def all_ib(ibs):
     ok = ('yes', 'n-a', 'same-side')
     return ('yes' if all(i in ok for i in ibs) else 'NO',
-            sum(i == 'yes' or i == 'same-side' for i in ibs), sum(i == 'no' or i == 'DIFFERENT' for i in ibs), sum(i == 'n-a' for i in ibs))
+            sum(i in ('yes', 'same-side') for i in ibs), sum(i in ('no', 'DIFFERENT') for i in ibs),
+            sum(i == 'n-a' for i in ibs))
 t = all_ib([i for v in tour_inband.values() for i in v])
 b = all_ib([i for v in b1130_inband.values() for i in v])
 comparable = (t[0] == 'yes' and b[0] == 'yes')
 with open(os.path.join(OUT, 'verdict.txt'), 'w') as fh:
-    fh.write('B1196 verdict: Rock 4D (lane 3) vs ThinkPad surfaceless, tip 8c2bfe7c2, 17 rows, CONC=3 both hosts\n')
-    fh.write(f"tour   columns within band: {'yes' if comparable else 'NO'}  (in-band {t[1]}, out {t[2]}, n-a {t[3]})\n")
-    fh.write(f"b1130  columns within band: {'yes' if comparable else 'NO'}  (in-band {b[1]}, out {b[2]}, n-a {b[3]})\n")
+    fh.write('B1196 verdict: Rock 4D (lane 3, ci-arm64 build of 8c2bfe7c2, KMS 1024x768 Panfrost '
+             'path -- the arm64 device has no surfaceless fallback, see README) vs ThinkPad '
+             'surfaceless NVIDIA 1280x800, same tip 8c2bfe7c2, 17 rows, CONC=3 (rock4d) / CONC=2 (thinkpad baseline)\n')
+    fh.write(f"tour   columns within band: {'yes' if t[0] == 'yes' else 'NO'}  (in-band {t[1]}, out {t[2]}, n-a {t[3]})\n")
+    fh.write(f"b1130  columns within band: {'yes' if b[0] == 'yes' else 'NO'}  (in-band {b[1]}, out {b[2]}, n-a {b[3]})\n")
     fh.write(f"VERDICT: {'COMPARABLE -- every measured column within its B1178 band' if comparable else 'NOT comparable -- see counts.tsv / delta_*.tsv for the out-of-band cells'}\n")
     for tname in ('tour', 'b1130'):
         for name, ibs in (tour_inband if tname == 'tour' else b1130_inband).items():
-            if 'no' in ibs:
-                fh.write(f"  OUT {tname}/{name}: {ibs.count('no')} of {len(ibs)} rows\n")
+            if 'no' in ibs or 'DIFFERENT' in ibs:
+                fh.write(f"  OUT {tname}/{name}: {ibs.count('no') + ibs.count('DIFFERENT')} of {len(ibs)} rows\n")
 print('wrote', os.path.abspath(OUT))
 print(open(os.path.join(OUT, 'verdict.txt')).read())

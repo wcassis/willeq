@@ -1,0 +1,9 @@
+B1196 verdict: Rock 4D (lane 3, ci-arm64 build of 8c2bfe7c2, KMS 1024x768 Panfrost path -- the arm64 device has no surfaceless fallback, see README) vs ThinkPad surfaceless NVIDIA 1280x800, same tip 8c2bfe7c2, 17 rows, CONC=3 (rock4d) / CONC=2 (thinkpad baseline)
+tour   columns within band: NO  (in-band 26, out 1, n-a 1)
+b1130  columns within band: NO  (in-band 71, out 13, n-a 6)
+VERDICT: NOT comparable -- see counts.tsv / delta_*.tsv for the out-of-band cells
+  OUT tour/roi_l: 1 of 7 rows
+  OUT b1130/source_cov: 4 of 10 rows
+  OUT b1130/landing_end_s: 4 of 10 rows
+  OUT b1130/p90_src: 2 of 10 rows
+  OUT b1130/p90_land: 3 of 10 rows
