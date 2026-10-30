@@ -601,8 +601,9 @@ void eqt::commands::CommandsComponent::ZoneProcessStun(uint32_t duration_ms)
 		}
 		m_stunned_until = {};
 		// B1183 (#502): the stun-end message's direct write of 100
-		// (standing) on the local player (eqgame.exe.c:80336, the 0x1cee
-		// handler).
+		// (standing) on the local player (eqgame.exe.c:80336, the 0x210b
+		// case at 80326-80340: clears the stun flag and stands the
+		// player up).
 		{
 			auto self = ctx_.entities.find(ctx_.self.MySpawnId());
 			if (self != ctx_.entities.end()) {
@@ -619,9 +620,13 @@ void eqt::commands::CommandsComponent::ZoneProcessStun(uint32_t duration_ms)
 	}
 	if (!was_stunned) {
 		ctx_.out.System(ctx_.strings.GetStringMessage(12479));  // You are stunned!
-		// B1183 (#502): the stun message's direct write of 0x66 (102,
-		// frozen) on the local player (eqgame.exe.c:80377/80459, the
-		// 0x25aa "You are stunned" handler -- message 0x3050's writer).
+		// B1183 (#502): the client's 102 (0x66, frozen) writers are the
+		// 0x25aa case (eqgame.exe.c:80377) and the 0x3013 case (80459);
+		// 0x3050 is a message-string ID, not an opcode. NOTE (B1199,
+		// #518): this feed is the 0x1e51 OP_Stun opcode, whose client
+		// case (79576-79581) writes NO +0x251 -- fable's 102 write here
+		// is the measured fable/oracle difference (legF: oracle held
+		// 100 through the stun), fixed by B1199.
 		auto self = ctx_.entities.find(ctx_.self.MySpawnId());
 		if (self != ctx_.entities.end()) {
 			self->second.stand_state.apply(eqt::state::StandValue::Frozen);

@@ -32,11 +32,17 @@
 # When the character is STUNNED, +0x251 HOLDS the current pose (100). legF
 # proved the stun was genuinely applied server-side (S->C OP_Stun 0x1e51
 # PLUS OP_PlayerStateAdd -- the stunned state flag -- PLUS a 60-byte
-# OP_SpecialMesg), yet the byte held 100 through the whole 8 s window. So
-# the official client tracks "stunned" as a separate state flag, NOT as a
-# value in the stand/pose byte. FABLE writes 102 into the stand byte on the
-# stun message (0x3050/0x3013), a value the official client's +0x251 never
-# takes. This is the one measured FABLE-side difference (row below).
+# OP_SpecialMesg), yet the byte held 100 through the whole 8 s window (the
+# poller log, legs/legF/poll/poll.log: SNAPs t=30.4/35.4 in-window = 100).
+# The client's own 0x1e51 case (eqgame.exe.c:79576-79581) writes NO +0x251;
+# the 102 writers are the 0x25aa (80377) and 0x3013 (80459) cases, which
+# never fired for the GM stun. So the official client tracks "stunned" as
+# a separate state flag, NOT as a value in the stand/pose byte. FABLE
+# writes 102 into the stand byte on its stun feed (the 0x1e51 OP_Stun
+# opcode). This is the one measured FABLE-side difference (row below) and
+# a DEFECT, not an open ruling: B1199 (#518) carries the fix (the machine
+# must not write 102 on the 0x1e51 feed; 102 stays only for the
+# 0x25aa/0x3013 feeds).
 #
 # FINDING 3 -- BENEATH-THE-WORLD LIMBO (environmental, since B1130). The
 # zone now snaps the caster to z=3.875, BELOW the ground at -74,428 (the
@@ -60,9 +66,9 @@ step	fable_feed	eqgame.exe.c	fable_byte	oracle_byte	oracle_evidence
 stand	zone-in / local default	128478	100	100	legA3 INIT byte +0x251 = 100
 duck	pose key (fable: C) / live crouch key Down	setter 104878	111	111	legA-fix5 WR t+28.573 100->111 (Down press)
 stand	pose key (release)	setter 104878	100	100	legA-fix5 WR t+61.497 111->100 (Down release)
-sit	/sit chat command (letter 's' is chat, not an action -- FINDING 1)	setter 104878	110	110	legF WR t+49.858 100->110 (the /sit command)
-stand	/stand chat command	setter 104878	100	100	legF WR t+59.258 110->100 (the /stand command)
-cast	cast start	71254	100	100	legF: #castspell 93 0 (S->C OP_BeginCast x2 + OP_ManaChange = the cast really started); the byte held 100 through the cast (SNAPs t=20..45)
-stunned	stun message 0x3050 / 0x25aa / 0x3013	80377 / 80459	102	100	legF: #stun 8000 (S->C OP_Stun 0x1e51 + OP_PlayerStateAdd + OP_SpecialMesg = the stun genuinely applied); the byte HELD 100. DIFFERS from fable's 102 -- FINDING 2, a FABLE-side difference (the official client's +0x251 pose byte is not written by the stun opcode)
-stun end	stun-end message 0x25aa	80336	100	100	legF: the 8 s GM stun expired naturally; the byte held 100 through and after (SNAPs t=40..56)
-loot	loot open (28061 gate) / direct 105797	28061 / 105797	105	PENDING	BLOCKED: the eqemu server DELETES the corpse ~1.03 s after OP_Death (B1133, measured on both clients); the oracle's USE trigger is a click on the live corpse (letter 'u' is chat -- FINDING 1), but the rig's click step ran 6.4 s (jclick + client_focus overhead), so the mousedown lands AFTER the despawn. legF (click ~12 s late) and legG (immediate click, still outside the ~1 s window): at click time the corpse is gone and the target empty, so the 100 reading is CONFOUNDED, not a loot measurement. CORPSE-PERSISTENCE FIX IN PLACE (this run): the lane-5 DB rule NPC:EmptyNPCCorpseDecayTime is 300000 (5 min) and the zone fleet was restarted to read it (docker restart is blocked; the spire-launcher respawns the killed zone/world with the new rule), so a spawned corpse now HOLDS ~5 min; b1183_poll.py tracks the corpse's +0x251 (XNEW/XWR tags, +0x244==2 = the corpse, the looter stays 100). The re-run (legs/legH3) still did not measure it: the oracle leg infrastructure failed (exit 66 -- the oracle_class_leg.sh after-census found char 67 not restored to its home class; the client step produced no timeline). NEXT COMMAND: root-cause the legH3 exit 66 (char-state-after.tsv / the after-census at oracle_class_leg.sh:120), then re-run the loot leg (legs/legH) into a fresh OUT dir with the corpse-persistence fix in place; the poller arms on the gdb_arm step and reads the corpse's +0x251 (expect 105 on the click, the looter stays 100).
+sit	/sit chat command (letter 's' is chat, not an action -- FINDING 1)	setter 104878	110	110	legF poll.log WR t=49.858 100 -> 110 (the /sit command, steps.tsv 24_sit_cmd t=49.6)
+stand	/stand chat command	setter 104878	100	100	legF poll.log WR t=59.258 110 -> 100 (the /stand command, steps.tsv 26_stand_cmd t=59.0)
+cast	cast start	71254	100	100	legF: #castspell 93 0 (S->C OP_BeginCast x2 + OP_ManaChange = the cast really started); the byte held 100 through the cast (legF poll.log SNAPs t=20.2..45.5 all 100)
+stunned	the stun opcode 0x1e51 OP_Stun (fable's feed; the client's 0x1e51 case, eqgame.exe.c:79576-79581, writes NO +0x251 -- the B1199 difference; the client's 102 writers are the 0x25aa (80377) / 0x3013 (80459) cases, and 0x3050 is a message-string ID, not an opcode)	80377 / 80459	102	100	legF: #stun 8000 (S->C OP_Stun 0x1e51 + OP_PlayerStateAdd + OP_SpecialMesg = the stun genuinely applied); the byte HELD 100 (legF poll.log SNAPs t=30.4/35.4 in-window = 100). DIFFERS from fable's 102 -- FINDING 2, a FABLE-side DEFECT (B1199, #518)
+stun end	the stun-end case 0x210b (eqgame.exe.c:80326-80340: clears the stun flag, stands the player up)	80336	100	100	legF: the 8 s GM stun expired at t=37.4 (21_stun_start t=29.4 + 8 s); the byte held 100 through and after (legF poll.log SNAPs t=40.5/45.5 = 100)
+loot	loot open (the 28061 gate, standing -> looting via the setter); the other direct 0x69 write (105797, FUN_00484d8d) is a transient on the loot-close / stand-up path (re-100'd at 105798), not a second loot-open path	28061 (105797 = transient, not loot-open)	105	PENDING	BLOCKED: the eqemu server DELETES the corpse ~1.03 s after OP_Death (B1133, measured on both clients); the oracle's USE trigger is a click on the live corpse (letter 'u' is chat -- FINDING 1), but the rig's click step ran 6.4 s (jclick + client_focus overhead), so the mousedown lands AFTER the despawn. legF (click ~12 s late) and legG (immediate click, still outside the ~1 s window): at click time the corpse is gone and the target empty, so the 100 reading is CONFOUNDED, not a loot measurement. CORPSE-PERSISTENCE FIX IN PLACE (this run): the lane-5 DB rule NPC:EmptyNPCCorpseDecayTime is 300000 (5 min) and the zone fleet was restarted to read it (docker restart is blocked; the spire-launcher respawns the killed zone/world with the new rule), so a spawned corpse now HOLDS ~5 min; b1183_poll.py tracks the corpse's +0x251 (XNEW/XWR tags, +0x244==2 = the corpse, the looter stays 100). The re-run (legs/legH3) still did not measure it: the oracle leg infrastructure failed (exit 66 -- the oracle_class_leg.sh after-census found char 67 not restored to its home class; the client step produced no timeline). NEXT COMMAND: root-cause the legH3 exit 66 (char-state-after.tsv / the after-census at oracle_class_leg.sh:120), then re-run the loot leg (legs/legH) into a fresh OUT dir with the corpse-persistence fix in place; the poller arms on the gdb_arm step and reads the corpse's +0x251 (expect 105 on the click, the looter stays 100).

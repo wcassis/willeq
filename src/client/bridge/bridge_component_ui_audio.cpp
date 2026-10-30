@@ -206,10 +206,13 @@ void eqt::bridge::BridgeComponent::RequestLootCorpse(uint16_t corpseId) {
 	ctx_.game_state.player().setLootingCorpse(corpseId);  // Phase 7.7
 	LOG_TRACE(MOD_INVENTORY, "Set lootingCorpseId={}", ctx_.game_state.player().lootingCorpseId());
 
-	// B1183 (#502): the client's loot-start puts the looter into looting (0x69
-	// = 105) through the SETTER, and only from standing (the 28061 gate,
-	// 'd' -> FUN_00483556(0x69)). A direct 0x69 write also appears at
-	// 105797 (FUN_004849b2); lane-5 arbitrates which path a real loot takes.
+	// B1183 (#502): the client's loot-OPEN path is this 28061 gate, the
+	// SETTER standing -> looting ('d' -> FUN_00483556(0x69)). The other
+	// direct 0x69 write (eqgame.exe.c:105797, FUN_00484d8d) is
+	// immediately re-100'd at 105798 (its tail is `*(param_1+0x251)=0x69;
+	// FUN_00483556(100);`): a transient 105 on the loot-close / stand-up
+	// path, not a second loot-open path — the gate below is the settled
+	// loot-open mechanism.
 	{
 		auto self = ctx_.entities.find(ctx_.self.MySpawnId());
 		if (self != ctx_.entities.end()) {
