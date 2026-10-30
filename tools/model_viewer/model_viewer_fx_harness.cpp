@@ -6,6 +6,8 @@
 #include "fx_target_anchor.h"
 #include "fx_target_fit.h"  // B1172 FIX leg: the b1130 target fit split out (pure move)
 #include "frame_writer.h"  // B1193: the frame output off the render thread
+#include "readback_candidates.h"  // B1198: the frame-capture readback candidates
+#include "readback_probe.h"  // B1198: the dirty-gate probe rectangle (the candidates' Dirty mode)
 
 #include "client/bridge/spell_cast_fx.h"
 #include "client/graphics/eqe1_loader.h"
@@ -57,33 +59,7 @@ eqt::bridge::CastGlowRoute fxRoute;
 video::ITexture* fxBackdrop = nullptr;
 scene::IMeshSceneNode* fxGroundNode = nullptr;  // addGroundPlane(); B1169 draws it first
 
-// The pinhole Irrlicht's buildProjectionMatrixPerspectiveFovLH draws: the
-// pixel a world point lands on for a camera at `eye` looking at `look`.
-struct Pinhole {
-    core::vector3df eye, right, up, fwd;
-    float fovY, aspect, w, h;
-    core::vector2df project(const core::vector3df& p) const {
-        const core::vector3df d = p - eye;
-        const float zc = d.dotProduct(fwd);
-        const float t = std::tan(fovY * 0.5f);
-        return {w * 0.5f + d.dotProduct(right) / zc * (w * 0.5f) / (t * aspect),
-                h * 0.5f - d.dotProduct(up) / zc * (h * 0.5f) / t};
-    }
-};
-
-Pinhole makePinhole(const core::vector3df& eye, const core::vector3df& look, float fovY, float aspect,
-                    float w, float h) {
-    Pinhole ph;
-    ph.eye = eye;
-    ph.fwd = (look - eye).normalize();
-    ph.right = core::vector3df(0, 1, 0).crossProduct(ph.fwd).normalize();  // left-handed
-    ph.up = ph.fwd.crossProduct(ph.right).normalize();
-    ph.fovY = fovY;
-    ph.aspect = aspect;
-    ph.w = w;
-    ph.h = h;
-    return ph;
-}
+// (Pinhole and makePinhole moved to fx_target_fit.h for B1198's readback_probe.cpp)
 
 // The caster's facing in the scripted presets (kHarnessFaceOnRotY): +Z, so
 // the camera of a face-on preset sits on +Z looking back along -Z.
@@ -1062,6 +1038,38 @@ int runScriptedHarness() {
     placeHarnessTarget(plan[0].self, plan[0].distance);
     fixHarnessSolidOrder();  // B1169 (#488)
     device->getTimer()->stop();  // (already stopped by setupSpellTestCamera)
+    // B1198 (#517): the frame-capture readback candidate (--readback-mode).
+    // driver (the default) runs the current path untouched, so a default run
+    // is byte-identical to the pre-B1198 harness; the other modes replace the
+    // createScreenShot call with the candidate's capture (readback_candidates.h)
+    // and log their sub-phases to readback_cost.tsv.
+    eqt::fxharness::readback::Mode rbMode = eqt::fxharness::readback::Mode::Driver;
+    std::unique_ptr<eqt::fxharness::readback::ReadbackContext> rbCtx;
+    if (!harnessOpts.readbackMode.empty() && harnessOpts.readbackMode != "driver") {
+        if (!eqt::fxharness::readback::parseMode(harnessOpts.readbackMode, rbMode)) {
+            std::fprintf(stderr, "[fx-harness] --readback-mode: unknown mode '%s' "
+                                 "(driver|glread|pbo|fbo|dirty)\n",
+                         harnessOpts.readbackMode.c_str());
+            return 2;
+        }
+        const auto screen = driver->getScreenSize();
+        eqt::fxharness::readback::ProbeRect probe = eqt::fxharness::readback::ProbeRect();
+        if (rbMode == eqt::fxharness::readback::Mode::Dirty)
+            probe = readbackProbeForPlan(plan, screen.Width, screen.Height);
+        rbCtx = eqt::fxharness::readback::ReadbackContext::create(
+            driver, rbMode, screen.Width, screen.Height, static_cast<uint32_t>(harnessOpts.width),
+            static_cast<uint32_t>(harnessOpts.height), probe, harnessOpts.framesDir);
+        if (!rbCtx) return 2;  // create() printed the reason
+        std::printf("[fx-harness] readback mode %s: surface %ux%u, requested frame %dx%d%s\n",
+                    eqt::fxharness::readback::modeName(rbMode), screen.Width, screen.Height,
+                    static_cast<int>(harnessOpts.width), static_cast<int>(harnessOpts.height),
+                    probe.valid
+                        ? (" (probe " + std::to_string(probe.x0) + "," + std::to_string(probe.y0) +
+                           ".." + std::to_string(probe.x1) + "," + std::to_string(probe.y1) +
+                           " surface px)").c_str()
+                        : "");
+        std::fflush(stdout);
+    }
     // Step g runs at t = g / simHz; every sub-th step is drawn and written as
     // frame g / sub (with sub = 2, exactly review/B1138/scripts/decimate.py's
     // even frames of a 60 fps run).
@@ -1297,13 +1305,31 @@ int runScriptedHarness() {
         // B1193 (#512): the readback stays on the render thread (the GPU has
         // to hand the pixels over once); everything after it leaves the
         // thread unless --frames-sync says the pre-B1193 way.
+        // B1198 (#517): --readback-mode replaces createScreenShot with the
+        // candidate being measured (readback_candidates.h); the default run
+        // (rbCtx null) is the pre-B1198 path itself, byte for byte.
         const auto tReadbackStart = std::chrono::steady_clock::now();
-        video::IImage* shot = driver->createScreenShot();
+        video::IImage* shot = nullptr;
+        bool rbSkipped = false;
+        if (rbCtx) {
+            const eqt::fxharness::readback::Capture cap = rbCtx->capture(f);
+            rbCtx->logCost(f, cap);
+            shot = cap.image;
+            rbSkipped = cap.skipped;
+        } else {
+            shot = driver->createScreenShot();
+        }
         const double readbackMs = msSince(tReadbackStart);
-        if (!shot) {
+        if (!rbSkipped && !shot) {
             std::fprintf(stderr, "[fx-harness] frame %d: the readback failed\n", f);
             return 4;
         }
+        if (rbSkipped) {
+            // The dirty gate judged the frame clean: no pixels, no write. The
+            // frame row below keeps the probe's cost; readback_cost.tsv marks
+            // the frame skipped.
+        }
+        if (!rbSkipped) {
         const auto dim = shot->getDimension();
         const u32 tw = static_cast<u32>(harnessOpts.width), th = static_cast<u32>(harnessOpts.height);
         if (harnessOpts.framesSync) {
@@ -1384,6 +1410,7 @@ int runScriptedHarness() {
             shot->drop();  // createScreenShot's ref; the queue keeps its own
             if (f == 0) writeSceneBoxes(harnessOpts.framesDir + "/scene.tsv");
         }
+        }  // !rbSkipped
         char row[96];
         std::snprintf(row, sizeof(row), "%d\t%.6f\t-\t-\t-\t-\t-\t-\t-\n", f, t);
         timing << row;
