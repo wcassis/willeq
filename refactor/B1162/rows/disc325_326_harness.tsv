@@ -1,0 +1,40 @@
+# B1162 /disc record leg (card t_a74670e3): the /disc harness rows for records
+# 325/326 -- the two disciplines that LANDED on the real /disc path (C->S
+# OP_CastSpell slot 10 -> S->C OP_Action, no OP_BeginCast): 8604 Leechcurse
+# Discipline (record 325, CastingAnim 44 = t06) and 4499 Defensive Discipline
+# (record 326, CastingAnim 27 = s01), action-only self-cast at level 60 on the
+# FX harness (model_viewer --spell-test), b1130-self camera, the previous legs'
+# plans (refactor/B1162/plans/harness_8604.plan, harness_4499.plan):
+#   1.5 <sid> self 0 0 60 action
+#
+# Measured at fable tip 04a42a418573257110fe7cec879322d3e7887c2c (render_env.tsv). Render (ThinkPad, surfaceless
+# Quadro at 1280x800, the render_gate.sh b1130 path, Will 2026-10-29) and
+# measure (here, the committed B1132 instruments via
+# refactor/B1162/scripts/harness_measure_b1162_anchor.py, preset + rendered
+# anchors) with:
+#   bash refactor/B1162/scripts/disc_harness_rows.sh <worktree> <slug> <out_root> disc325_8604
+#   bash refactor/B1162/scripts/disc_harness_rows.sh <worktree> <slug> <out_root> disc326_4499
+#
+# Row shape: refactor/B1143/rows/p3_disc325_325.tsv (the B1132 18 columns +
+# stage/target/target_id). LANDING rows are at the rendered anchor (the caster
+# box the harness actually drew, the B1174 convention); the preset anchor's
+# numbers (harness_measure_b1162_anchor.py's anchor_table.tsv, both anchors) are:
+#   8604 325 preset: +0.100 (f48) (crop 150,60,900,540, tfeet 640,598 / 209 px) onset +0.100 (f48) end +3.967 (f164) peak f111 Act+2.200 rise_cov 0.104 run_cov 0.065 cen_h 0.62 h 0.15..0.92 ground 0.06
+#   8604 325 rendered: +0.100 (f48) (crop 150,60,900,740, tfeet 640,598 / 210 px) onset +0.100 (f48) end +3.967 (f164) peak f111 Act+2.200 rise_cov 0.104 run_cov 0.064 cen_h 0.61 h 0.15..0.91 ground 0.06
+#   4499 326 preset: +0.200 (f51) (crop 150,60,900,540, tfeet 640,598 / 209 px) onset +0.200 (f51) end +2.867 (f131) peak f96 Act+1.700 rise_cov 0.049 run_cov 0.039 cen_h 0.72 h 0.13..1.04 ground 0.07
+#   4499 326 rendered: +0.200 (f51) (crop 150,60,900,740, tfeet 640,598 / 210 px) onset +0.200 (f51) end +2.867 (f131) peak f96 Act+1.700 rise_cov 0.049 run_cov 0.039 cen_h 0.72 h 0.13..1.03 ground 0.07
+#
+# Oracle references (the existing lane-5 captures, no re-capture): record 325 ->
+# B1174 leg b1174_disc8604 (refactor/B1174/README.md sec. 4: lit +0.422..+4.355,
+# run cov 0.052, peak cov 0.066, no sprite); record 326 -> B1162 leg
+# b1162_disc4499_v3 (refactor/B1162/README.md:623: lit +0.454..+1.120, run cov
+# 0.054, peak cov 0.067 = the caster's arm animation, no sprite).
+#
+# Ledger clip: review/B1162/worker/ledger/index.tsv (b1162_disc4499_defensive),
+# rebuilt with refactor/B1162/scripts/make_disc_clip_4499.py (this tip's willeq
+# side; oracle side = the existing capture).
+record	spell	rep	stage	target	target_id	who	onset_act	centroid	h_p5	h_p95	dx_p5	dx_p95	cov	ground	legs	torso	shoulders	head	above	verdict
+325	8604	1	SOURCE	SELF	0	fable	none	-	-	-	-	-	-	-	-	-	-	-	action-only: no OP_BeginCast, max 101px = 0.0023 model^2
+325	8604	1	LANDING	SELF	0	fable	+0.100 (f48)	0.61	0.15	0.91	-0.28	+0.09	0.104	0.06	0.23	0.31	0.32	0.08	0.00	no slot (0 rows), no effect, no missile (fx_activity 480 rows); the lit run is the caster t06 swing f45..f167 (30 fps); no sprite -- record 325 has an empty Target stage and no OP_BeginCast here
+326	4499	1	SOURCE	SELF	0	fable	none	-	-	-	-	-	-	-	-	-	-	-	action-only: no OP_BeginCast, max 101px = 0.0023 model^2
+326	4499	1	LANDING	SELF	0	fable	+0.200 (f51)	0.72	0.13	1.03	-0.20	+0.16	0.049	0.07	0.15	0.18	0.29	0.29	0.02	no slot (0 rows), no effect, no missile (fx_activity 480 rows); the lit run is the caster s01 swing f45..f134 (30 fps); no sprite -- record 326 has an empty Target stage and no OP_BeginCast here

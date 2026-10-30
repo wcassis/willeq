@@ -81,7 +81,8 @@ def slots(root, tag):
 
 def main():
     root, out = sys.argv[1], sys.argv[2]
-    env = dict(l.split("\t") for l in read(os.path.join(root, "render_env.tsv")).split())
+    tok = read(os.path.join(root, "render_env.tsv")).strip().split("\t")
+    env = {tok[i]: tok[i + 1] for i in range(0, len(tok) - 1, 2)}
     tip = env["tip"]
 
     tables = []
@@ -130,7 +131,7 @@ def main():
         "# 325/326 -- the two disciplines that LANDED on the real /disc path (C->S",
         "# OP_CastSpell slot 10 -> S->C OP_Action, no OP_BeginCast): 8604 Leechcurse",
         "# Discipline (record 325, CastingAnim 44 = t06) and 4499 Defensive Discipline",
-        "# (record 326, CastingAnim 27 = s11), action-only self-cast at level 60 on the",
+        "# (record 326, CastingAnim 27 = s01), action-only self-cast at level 60 on the",
         "# FX harness (model_viewer --spell-test), b1130-self camera, the previous legs'",
         "# plans (refactor/B1162/plans/harness_8604.plan, harness_4499.plan):",
         "#   1.5 <sid> self 0 0 60 action",
@@ -162,7 +163,7 @@ def main():
     hdr += [
         "#",
         "# Oracle references (the existing lane-5 captures, no re-capture): record 325 ->",
-        "# B1174 leg b1174_disc8604 (review/B1174/README.md sec. 4: lit +0.422..+4.355,",
+        "# B1174 leg b1174_disc8604 (refactor/B1174/README.md sec. 4: lit +0.422..+4.355,",
         "# run cov 0.052, peak cov 0.066, no sprite); record 326 -> B1162 leg",
         "# b1162_disc4499_v3 (refactor/B1162/README.md:623: lit +0.454..+1.120, run cov",
         "# 0.054, peak cov 0.067 = the caster's arm animation, no sprite).",
@@ -178,6 +179,7 @@ def main():
     for t in tables:
         lines.append("\t".join(map(str, t["land"])))
         lines.append("\t".join(map(str, t["land2"])))
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     with open(out, "w") as f:
         f.write("\n".join(lines) + "\n")
     print("\n".join(lines[len(hdr) + 1:]))
