@@ -12,7 +12,7 @@ behaviour change.
 This fix leg (review note 8761): the first leg committed the i915-DRM runs
 only; the gate's surfaceless path the issue specifies was missing, and the
 recommendation was i915-path-only as written. This leg merges `origin/fable`
-(tip 7d1af0d9, which also carries !344's corrected B1193 docs — the branch's
+(tip 62fff22ec, which also carries !344's corrected B1193 docs — the branch's
 pre-merge copy was the pre-!344 state; post-merge `refactor/B1193/README.md`
 is byte-identical to the fable tip), commits the gate-path table with its raw
 TSVs (`tables/surf/`, the reviewer's recheck runs), and makes the
@@ -230,7 +230,7 @@ i915 fbo 0/60 is the downscale filter disagreement above.
   render 0.34/0.36 ms, blit 0.01–0.45 ms per frame
   (`tables/surf/*_fbo_c1_s2.0/c1/readback_cost.tsv`) — so it is a property
   of the i915 display path's queue, not of the blit. It is real per frame
-  (mean, both rows), so the fbo total there is 15.4–16.2 ms, not 10–11.
+  (mean, both rows), so the fbo total there is 16.1–16.2 ms, not 10–11.
 - **`dirty` is bounded by the probe, not by the gate.** On the i915 path the
   probe rectangle spans the full surface height (both pose boxes reach it,
   +100 % growth), so a "clean" frame still reads back up to ~30 MB —
@@ -277,7 +277,7 @@ names does not bind, so no adoption is forced.
 - **Cheapest overall: `fbo`, at the price of the measured downscale delta**
   (1.28–3.62 % of pixels on tour_93, max channel delta 255; 1.86–2.11 % /
   247 on b1130_r2 — the GPU LINEAR blit vs the CPU bilinear, "Correctness"
-  above). Its total 15.4–16.2 ms → ~62 fps, and the gate's measures read
+  above). Its total 16.1–16.2 ms → ~62 fps, and the gate's measures read
   pixels through `cv2` — a filter change of that magnitude is a RE-BASELINE
   of every measure against the oracle, not a readback swap. Will's ruling to
   board; if it lands, the i915 `beginScene` queue cost above is the next
