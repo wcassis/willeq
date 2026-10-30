@@ -1,0 +1,4 @@
+fact	value
+spells.eff_bytes	714752
+records_of_stride_0x2ba	1024	0x2ba is the stride the client loads with (eqgame.exe.c:49813: &DAT_008513b8 + idx*0x2ba)
+division_exact	True

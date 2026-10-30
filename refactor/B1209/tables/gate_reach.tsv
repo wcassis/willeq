@@ -1,0 +1,6 @@
+kind	count	note
+spells_total	8066	rows in spells_us.txt
+spellsnew_record	7909	carry a non-empty spellsnew.eff record; every stage FX goes FUN_0049b260 -> FUN_00491cff (eqgame.exe.c:122018) on their draw
+legacy_spells	157	NO spellsnew record; their stage FX goes FUN_0049b260 -> the 0x49ab78 legacy arm, still gated by FUN_00491cff (eqgame.exe.c:122022)
+measured_records	41	the 41 pinned `anim` values of tests/spell_anim_rows.h (42 distinct records after dedupe; see auracircle_shaped.tsv for the record list)
+measured_tour	7	refactor/B1184/tables/tour.tsv spells (records 80, 80, 82, 82, 104, 121, 137)
