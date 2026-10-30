@@ -1,9 +1,11 @@
 # B1200 (#519) live leg (oracle side): measure the WORN-equipment effect on the
 # official client, lane 5, B1134 observer rig. Steady-state (not a cast).
 #
-# The epic 1.0s are NOT in the P1999 lane-5 DB (census_worn.sh: every item has
-# minstatus=0; Jagged Blade of War = -1), so this measures the MECHANISM on an
-# item that IS in the DB and carries a visible worn effect (spellanim<>0).
+# The epic 1.0s ARE in the P1999 lane-5 DB (census_worn.sh: Jagged Blade
+# of War ids 10908/66175 read worneffect = -1), so field 144 is not (only)
+# the epic mechanism; THIS leg measures the MECHANISM on a non-epic item
+# that IS in the DB and carries a visible worn effect (spellanim<>0). The
+# epic-glow measurement is B1206 (#525).
 #
 #   # ITEM = the worn item to summon. Default 8364 (Talisman of Vah Kerrath,
 #   all-class, worneffect=2247 -> spells_new.spellanim 73). Alternative: 10877

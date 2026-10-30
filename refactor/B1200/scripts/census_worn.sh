@@ -29,8 +29,9 @@ run "SELECT COUNT(*) AS sentinel_minus1 FROM items WHERE worneffect = -1;"
 
 echo
 echo "## 2. the epic-1.0 question (the issue's premise)"
-echo "No P1999 item has minstatus > 0, so the Kunark epic 1.0s are not flagged"
-echo "by status in this DB; the issue's example item reads -1 (no worn effect):"
+echo "The issue's example epics ARE in the P1999 DB (Jagged Blade of War:"
+echo "ids 10908, 66175) and read worneffect = -1, so field 144 is not (only)"
+echo "the epic mechanism; the real dispatch is measured by B1206 (#525):"
 run "SELECT MAX(minstatus) AS max_minstatus, COUNT(*) AS n FROM items;"
 run "SELECT id, Name, worneffect, worntype, minstatus, classes, artifactflag FROM items WHERE Name = 'Jagged Blade of War'\G"
 
