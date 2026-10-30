@@ -169,3 +169,4 @@ scripts/scenario_configs/*.local.json
 
 # B1208: `rbuild --via ci` downloads the CI job's artifacts here
 .rbuild-ci/
+.spike-downloads/

@@ -1,0 +1,25 @@
+| B1214 proof (b): a scripted walk with a timestamped position log.
+| Leg 1: hold FORWARD for 4 s at a fixed heading, sampling every 0.5 s.
+| Leg 2: MQ2MoveUtils /moveto back to the start loc (a /nav-like point move).
+Sub Main
+  /declare i int local
+  /declare sy float local ${Me.Y}
+  /declare sx float local ${Me.X}
+  /echo B1214B start y=${Me.Y} x=${Me.X} z=${Me.Z} h=${Me.Heading.Degrees}
+  /face fast heading ${Param0}
+  /delay 5
+  /keypress FORWARD hold
+  /for i 1 to 8
+    /delay 5
+    /echo B1214B fwd ${i} y=${Me.Y} x=${Me.X} z=${Me.Z} h=${Me.Heading.Degrees} speed=${Me.Speed}
+  /next i
+  /keypress FORWARD
+  /delay 10
+  /echo B1214B stop y=${Me.Y} x=${Me.X} z=${Me.Z}
+  /moveto loc ${sy} ${sx}
+  /for i 1 to 16
+    /delay 5
+    /echo B1214B moveto ${i} y=${Me.Y} x=${Me.X} z=${Me.Z} h=${Me.Heading.Degrees} speed=${Me.Speed}
+  /next i
+  /echo B1214B end y=${Me.Y} x=${Me.X} z=${Me.Z} dist_to_start=${Math.Distance[${sy},${sx}]}
+/return
