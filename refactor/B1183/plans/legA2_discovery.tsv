@@ -1,0 +1,58 @@
+# action	target	hold_ms	still_name
+# B1183 (#502) leg A2 -- SIT + USE key discovery (the client's OWN behaviour,
+# never inferred). The /proc/pid/mem poller (b1183_poll.py) attaches at
+# `gdb_arm` and logs every value-changing write of the caster spawn +0x251.
+#
+# SIT half (from STAND=100): press each candidate, settle, press again to
+# return. The candidate that produces 100->110 (sit) then 110->100 is the
+# sit/stand key. Candidates: z (EQ default), x, c -- the c/x/z that did
+# nothing in leg A were pressed FROM CROUCH (the sit branch is camera-gated
+# there), so from STAND they are the honest probe.
+#
+# USE half: spawn TrollF at the caster, target it, #damage 999999 one-shots
+# the HP-50 troll into a corpse, then press each candidate -- the one that
+# produces 100->105 (loot) on the targeted corpse is the use key. Candidates:
+# e, f, space, g.
+# pose=-74,428,3.75,160
+# observer=Oraclewatch
+# observer-pose=-67.6,434.4,3.75,160
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+wait	3000	0	gdb_arm
+wait	12000	0	gdb_dump
+still	0	0	stand0
+press	z	0	sit_z
+wait	2500	0	sit_z_settle
+press	z	0	sit_z_off
+wait	2000	0	sit_z_off_settle
+press	x	0	sit_x
+wait	2500	0	sit_x_settle
+press	x	0	sit_x_off
+wait	2000	0	sit_x_off_settle
+press	c	0	sit_c
+wait	2500	0	sit_c_settle
+press	c	0	sit_c_off
+wait	2000	0	sit_c_off_settle
+command	#spawn TrollF 1 1 0 50	0	spawn
+wait	4000	0	spawn_settle
+command	/target TrollF	0	tgt_troll
+command	#damage 999999	0	kill
+wait	4000	0	corpse
+press	e	0	use_e
+wait	2500	0	use_e_settle
+press	f	0	use_f
+wait	2500	0	use_f_settle
+press	space	0	use_space
+wait	2500	0	use_space_settle
+press	g	0	use_g
+wait	2500	0	use_g_settle
+command	/q	0	quit
+obs	command	/q	0	obs_quit

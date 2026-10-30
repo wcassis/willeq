@@ -248,6 +248,21 @@ CastResult SpellManager::beginCastFromGem(uint8_t gem_slot, uint16_t target_id)
     m_cast_duration_ms = spell->cast_time_ms;
     m_waiting_for_server_confirm = true;
 
+    // B1183 (#502): the client's cast-start path (the actor's animation-set,
+    // FUN_00450c2f eqgame.exe.c:71181-71618) puts the actor into the cast
+    // state -- a DIRECT write of 100 (standing) on the actor's +0x251
+    // (71254), gated: a lying ('s') or corpse ('x') actor is left alone
+    // (71225). This is the write the B1174 cast-anim gate relies on (a
+    // casting already is already in its BeginCast state, byte 100).
+    {
+        auto& entities = m_eq->GetEntities();
+        auto self = entities.find(m_eq->GetEntityID());
+        if (self != entities.end() && self->second.stand_state != 115 &&
+            self->second.stand_state != 120) {
+            self->second.stand_state.apply(eqt::state::StandValue::Standing);
+        }
+    }
+
     // Update gem state
     m_gem_states[gem_slot] = GemState::Casting;
     publishGemChanged(gem_slot);

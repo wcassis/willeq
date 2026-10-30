@@ -559,6 +559,22 @@ SET_TESTS_PROPERTIES(OracleLoginPatch PROPERTIES LABELS "hygiene")
 ADD_TEST(NAME OracleGemCastPlanCheck
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/oracle_plan_check_test.py)
 SET_TESTS_PROPERTIES(OracleGemCastPlanCheck PROPERTIES LABELS "hygiene")
+# B1192 (#511): the LOOT row's nets -- the plan's /loot corpse-targeting guard
+# (the run-6 shape refused before the client) is exercised by
+# OracleGemCastPlanCheck above; the poller's spawn-list walk and the keymap
+# slot decode (the F8 = TARGETNPC binding the plan relies on) are device-free;
+# and arm_poll's selftest proves the poller arm's channel-close property over
+# a pipe (the run-7 defect: the old `& sleep 4; kill` form held the ssh
+# channel open and the 4 s kill aborted the remote command before mkdir).
+ADD_TEST(NAME B1192PollWalk
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/refactor/B1192/scripts/test_poll_walk.py)
+SET_TESTS_PROPERTIES(B1192PollWalk PROPERTIES LABELS "hygiene")
+ADD_TEST(NAME B1192PollDecode
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/refactor/B1192/scripts/test_poll_decode.py)
+SET_TESTS_PROPERTIES(B1192PollDecode PROPERTIES LABELS "hygiene")
+ADD_TEST(NAME B1192ArmPoll
+    COMMAND bash ${CMAKE_SOURCE_DIR}/refactor/B1192/scripts/arm_poll.sh --selftest)
+SET_TESTS_PROPERTIES(B1192ArmPoll PROPERTIES LABELS "hygiene")
 ADD_TEST(NAME OracleClassLegSafety
     COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/class_leg_safety.sh)
 SET_TESTS_PROPERTIES(OracleClassLegSafety PROPERTIES LABELS "hygiene")

@@ -206,6 +206,12 @@ public:
 	void ResetLevitation() { m_levitation = EQ::LevitationState::NotLevitating; }
 
 private:
+	// B1183 (#502): the shared body (state write, stand byte, bridge event,
+	// movement stop) and the stand-byte store (stand_state.h): server-forced
+	// callers store the client's direct value; the user path goes through
+	// the setter (FUN_00483556's port).
+	void applyPositionStateCore(PositionState state, bool userInitiated);
+	void storeStandByte(PositionState state, bool userInitiated);
 	// Reached only from inside this family (measured by the compiler, K07).
 	void UpdateCombatMovement();
 	void Face(float x, float y, float z);

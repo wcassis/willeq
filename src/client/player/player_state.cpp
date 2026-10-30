@@ -147,6 +147,11 @@ void eqt::player::PlayerComponent::ZoneProcessDeath(const EQ::Net::Packet &p)
 		// Mark entity as dead (0 HP)
 		victim_it->second.hp_percent = 0;
 		victim_it->second.is_corpse = true;  // Mark as corpse
+		// B1183 (#502): the client's death handler writes the corpse stand byte
+		// 0x78 (120) on the dying spawn (eqgame.exe.c:105881/111059) -- the
+		// local player's own byte already lands here via POS_DEAD, so this is
+		// the NPC/other-player half (same value either way).
+		victim_it->second.stand_state.apply(eqt::state::StandValue::Corpse);
 
 		// T185: rename a PLAYER corpse ourselves. eqemu broadcasts
 		// OP_MobRename for NPC corpses only (NPC::Death, attack.cpp), so

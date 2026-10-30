@@ -349,6 +349,9 @@ public:
 	eqt::inventory::InventoryManager* GetInventoryManager() { return m_inventory_manager.get(); }
 
 	const std::map<uint16_t, Entity>& GetEntities() const { return m_entities; }
+	// B1183 (#502): the non-const overload -- a writer into the local player's
+	// own stand byte (the client's cast path, spell_manager.cpp beginCastFromGem).
+	std::map<uint16_t, Entity>& GetEntities() { return m_entities; }
 	uint16_t GetEntityID() const { return m_player_facade.GetEntityID(); }
 
 	// D20c4: Quit signaling — Application checks this flag

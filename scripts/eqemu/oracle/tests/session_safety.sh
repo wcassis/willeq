@@ -39,20 +39,53 @@ eqemu_restore_snapshot() { cp "$1" "$2"; }
 eqemu_inventory_restore() { :; }
 eqemu_roster_zone_seed() { printf 'roster_zone_seed\n' >>"$OUT/sql.log"; }
 eqemu_sql() {
-    printf '%s\n' "$1" >>"$OUT/sql.log"
-    case "$1" in
-        "SELECT id FROM character_data WHERE name IN"*) echo 1 ;;
-        "SELECT account_id FROM character_data"*) echo 7 ;;
-        "SELECT id FROM character_data WHERE name='Testchar';")
-            if [[ $PROBE_CASE == query_failure ]]; then return 1; fi
-            echo 1 ;;
-        "SELECT id,name FROM character_data WHERE name='Testchar' AND account_id="*)
-            printf '1\tTestchar\n' ;;
-        "SELECT id,name FROM account"*) printf '7\ttest\n' ;;
-        "SELECT id,account_name FROM login_accounts"*) printf '7\ttest\n' ;;
-        "SELECT class,level FROM character_data WHERE name='Testcaster'"*) printf '%s\t60\n' "$PROBE_CLASS" ;;
-        "SELECT spell_id FROM character_spells"*) printf '93\n253\n' ;;
-    esac
+    # B1192: a faithful mini-mysql. Like the real eqemu_sql (restore_lib.sh,
+    # `mysql -B -N -e`) it executes the '; '-separated statements in order
+    # and STOPS at the first failure; only statements that actually ran are
+    # logged -- the distinction legH3's post-SQL proved (the DELETEs before
+    # its failing INSERT were real).
+    local sql="$1" s old
+    old=$IFS; IFS=';'
+    local -a parts
+    read -ra parts <<<"${sql//; /;}"
+    IFS=$old
+    for s in "${parts[@]}"; do
+        [[ -n $s ]] || continue
+        printf '%s\n' "$s" >>"$OUT/sql.log"
+        case "$s" in
+            "SELECT id FROM character_data WHERE name IN"*) echo 1 ;;
+            "SELECT account_id FROM character_data"*)
+                # B1192 early66: the login-character lookup returns nothing.
+                [[ $PROBE_CASE == early66 ]] || echo 7 ;;
+            "SELECT id FROM character_data WHERE name='Testchar'"*)
+                if [[ $PROBE_CASE == query_failure ]]; then return 1; fi
+                echo 1 ;;
+            "SELECT id FROM character_data WHERE name='Testcaster'"*) echo 1 ;;
+            "SELECT id,name FROM character_data WHERE name='Testchar' AND account_id="*)
+                printf '1\tTestchar\n' ;;
+            "SELECT id,name FROM account"*) printf '7\ttest\n' ;;
+            "SELECT id,account_name FROM login_accounts"*) printf '7\ttest\n' ;;
+            "SELECT class,level FROM character_data WHERE name='Testcaster'"*) printf '%s\t60\n' "$PROBE_CLASS" ;;
+            "SELECT spell_id FROM character_spells"*) printf '93\n253\n' ;;
+            # The class-leg's save-copy probe: absent in the early66 run
+            # (the pre-SQL never ran), so it fails BEFORE the DELETE.
+            "SELECT COUNT(*) FROM oracle_save_character_skills_67")
+                if [[ $PROBE_CASE == early66 ]]; then return 1; fi
+                echo 1 ;;
+            # B1192 (#511) srvernoop/srveff: the corpse-hold rule as a
+            # one-cell database; absent $OUT/ruleval means "table not
+            # created" and the statement fails like real mysql would.
+            "SELECT id,name,value FROM rule_values WHERE name='NPC:EmptyNPCCorpseDecayTime'")
+                [[ -f $OUT/ruleval ]] || return 1
+                printf '1\tNPC:EmptyNPCCorpseDecayTime\t%s\n' "$(cat "$OUT/ruleval")" ;;
+            "UPDATE rule_values SET value=300000 WHERE name='NPC:EmptyNPCCorpseDecayTime'")
+                [[ -f $OUT/ruleval ]] || return 1
+                printf '300000' >"$OUT/ruleval" ;;
+            "UPDATE rule_values SET value=0 WHERE name='NPC:EmptyNPCCorpseDecayTime'")
+                [[ -f $OUT/ruleval ]] || return 1
+                printf '0' >"$OUT/ruleval" ;;
+        esac
+    done
 }
 EOF
 printf 'exit 0\n' >"$FIXTURE/scripts/eqemu/up.sh"
@@ -125,10 +158,10 @@ for PROBE_CLASS in 12 6; do
         [[ $rc == 65 && -e $OUT/ssh.called ]] || { echo "castable plan returned $rc without reaching the oracle host"; exit 1; }
         grep -q '^OK .*DRU (class 6)' "$OUT/plan-check.txt" || { echo 'castable gem cast not checked OK'; exit 1; }
     fi
-    grep -q '^PRE_HOOK_SQL;$' "$OUT/sql.log" || { echo 'pre-SQL did not run'; exit 1; }
-    post=$(grep -n '^POST_HOOK_SQL;$' "$OUT/sql.log" | cut -d: -f1); stop=$(grep -n '^WORLD_STOP$' "$OUT/sql.log" | head -1 | cut -d: -f1)
+    grep -q '^PRE_HOOK_SQL$' "$OUT/sql.log" || { echo 'pre-SQL did not run'; exit 1; }
+    post=$(grep -n '^POST_HOOK_SQL$' "$OUT/sql.log" | cut -d: -f1); stop=$(grep -n '^WORLD_STOP$' "$OUT/sql.log" | head -1 | cut -d: -f1)
     [[ -n $post && -n $stop && $stop -lt $post ]] || { echo 'post-SQL did not run with the world down'; exit 1; }
-    grep -q 'DELETE FROM character_spells WHERE id=67 AND spell_id NOT IN (93,253);' "$OUT/sql.log" || { echo 'spellbook not restored'; exit 1; }
+    grep -q 'DELETE FROM character_spells WHERE id=67 AND spell_id NOT IN (93,253)' "$OUT/sql.log" || { echo 'spellbook not restored'; exit 1; }
     [[ -e $OUT/released && -e $OUT/char-state-after.tsv ]] || { echo 'lock not released or no after-census'; exit 1; }
 done
 unset ORACLE_STATE_CHAR ORACLE_PRE_SQL ORACLE_POST_SQL
@@ -143,3 +176,172 @@ set -e
 [[ $rc == 65 ]] || { echo "an unbound-variable abort returned $rc, expected 65"; exit 1; }
 echo 'PASS: gem cast refused for a class that cannot use it (spell + class named), castable one passes; hooks run locked, post-SQL with the world down; an abort is never exit 0'
 echo 'PASS: held lock untouched; existing and failed-query names never arm cleanup or DELETE; lane 5 accepted, lanes 0/6 refused'
+
+# ---------------------------------------------------------------------------
+# B1192 (#511, the legH3 leg): three nets for the failure class that left
+# B1183's loot row unmeasured for a day:
+#   1. early66    -- an orphaned post-SQL (no pre-SQL armed it, exactly
+#                    legH3's scratch wrapper) must not turn a NAMED early
+#                    exit into a 66, and its restore half must not delete
+#                    live rows it cannot restore.
+#   2. timeline0  -- a completed client step must leave its non-empty
+#                    timeline.tsv (the measurement the poller's arm and the
+#                    merge consume).
+#   3. notimeline -- a remote rc 0 without a timeline.tsv is refused and
+#                    named (65), never a silent pass.
+# The working remote: a fake oracle host that produces what oracle_remote.sh
+# produces (timeline + pcap), plus a stub oracle_report.py.
+cat >"$FIXTURE/bin/ssh" <<'EOF'
+#!/bin/bash
+# $*: -n -o... user@oracle.invalid <command>; the last arg is the command.
+cmd="${@: -1}"
+case "$cmd" in
+    "bash ~/eq-oracle/uigap-scripts/oracle_remote.sh run "*)
+        d="${cmd#*run }"; d="${d% *}"; d="${d//\'/}"
+        local_dir="$REMOTE_ROOT/${d#/home/user/}"
+        mkdir -p "$local_dir"
+        if [[ ${PROBE_NO_TIMELINE:-0} != 1 ]]; then
+            printf '0\tBEGIN\t1_login\n0\tEND\t1_login\n' >"$local_dir/timeline.tsv"
+        fi
+        head -c 64 /dev/zero >"$local_dir/capture.pcap"
+        exit 0 ;;
+    "mkdir -p "*)
+        d=$(printf '%s' "$cmd" | tr -d "'" | awk '{print $NF}')
+        [[ -n $d ]] && mkdir -p "$REMOTE_ROOT/${d#/home/user/}"
+        exit 0 ;;
+    *) exit 0 ;;
+esac
+EOF
+cat >"$FIXTURE/bin/scp" <<'EOF'
+#!/bin/bash
+src="${@: -2:1}"
+if [[ $src == user@oracle.invalid:* ]]; then
+    p="${src#user@oracle.invalid:}"
+    cp -r "$REMOTE_ROOT/${p#/home/user/}/." "${@: -1}/" 2>/dev/null || :
+fi
+exit 0
+EOF
+chmod +x "$FIXTURE/bin/ssh" "$FIXTURE/bin/scp"
+printf 'import sys\nsys.exit(0)\n' >"$FIXTURE/scripts/eqemu/oracle/oracle_report.py"
+export REMOTE_ROOT="$FIXTURE/remote"
+mkdir -p "$REMOTE_ROOT"
+printf 'login\tTestcaster\t0\tselect\nwait\t100\t0\tw1\n' >"$FIXTURE/logplan.tsv"
+echo 'EQEMU_ORACLE_HOST=oracle.invalid' >>"$FIXTURE/scripts/eqemu/env.sh"
+
+# 1. early66: legH3's shape -- no pre-SQL, an orphaned post-SQL (the
+# class-leg's undo, save-table half included), and the login-character
+# lookup returns nothing.
+export PROBE_CASE=early66 ORACLE_OWNER=b1192_early66 PROBE_CLASS=12 PROBE_NO_TIMELINE=0
+unset ORACLE_STATE_CHAR
+export ORACLE_PRE_SQL=""
+export ORACLE_POST_SQL="UPDATE character_data SET class=12 WHERE id=67; SELECT COUNT(*) FROM oracle_save_character_skills_67; DELETE FROM character_skills WHERE id=67;"
+OUT="$FIXTURE/early66"; export OUT
+set +e
+PATH="$FIXTURE/bin:$PATH" bash "$FIXTURE/scripts/eqemu/oracle/oracle_session.sh" 5 "$FIXTURE/gemplan.tsv" "$OUT" >"$FIXTURE/early66.log" 2>&1
+rc=$?
+set -e
+[[ $rc == 65 ]] || { echo "early exit + orphaned post-SQL returned $rc, expected 65 (66 was legH3's misreport)"; cat "$OUT/driver.log" 2>/dev/null; exit 1; }
+grep -q 'has no account_id' "$OUT/driver.log" || { echo 'early exit not named in driver.log'; cat "$OUT/driver.log"; exit 1; }
+grep -q 'post-SQL failed on a leg that already failed' "$OUT/driver.log" || { echo 'orphaned post-SQL failure not named'; exit 1; }
+grep -q '^SELECT COUNT(\*) FROM oracle_save_character_skills_67$' "$OUT/sql.log" || { echo 'save-table probe did not run'; cat "$OUT/sql.log"; exit 1; }
+! grep -q 'DELETE FROM character_skills' "$OUT/sql.log" || { echo 'live rows deleted without a restore source'; exit 1; }
+[[ ! -e $OUT/timeline.tsv && -e $OUT/released ]] || { echo 'client ran or lease not released'; exit 1; }
+echo 'PASS: B1192 early66 -- a named early exit stays 65; the orphaned post-SQL cannot delete live rows'
+
+# 2. timeline0: a completed client step leaves its non-empty timeline.
+export PROBE_CASE=timeline ORACLE_OWNER=b1192_timeline ORACLE_STATE_CHAR=67
+export ORACLE_PRE_SQL="PRE_B1192_SQL;" ORACLE_POST_SQL="POST_B1192_SQL;"
+OUT="$FIXTURE/timeline0"; export OUT
+set +e
+PATH="$FIXTURE/bin:$PATH" bash "$FIXTURE/scripts/eqemu/oracle/oracle_session.sh" 5 "$FIXTURE/logplan.tsv" "$OUT" >"$FIXTURE/timeline0.log" 2>&1
+rc=$?
+set -e
+[[ $rc == 0 ]] || { echo "completed leg returned $rc, expected 0"; cat "$OUT/driver.log" "$FIXTURE/timeline0.log" 2>/dev/null; exit 1; }
+[[ -s $OUT/timeline.tsv ]] || { echo 'no timeline.tsv from a completed client step'; exit 1; }
+[[ -e $OUT/released ]] || { echo 'lease not released'; exit 1; }
+echo 'PASS: B1192 timeline0 -- a completed client step leaves its timeline'
+
+# 3. notimeline: a remote rc 0 without a timeline.tsv is a refused leg.
+export PROBE_OWNER=b1192_notimeline ORACLE_OWNER=b1192_notimeline PROBE_NO_TIMELINE=1
+OUT="$FIXTURE/notimeline"; export OUT
+set +e
+PATH="$FIXTURE/bin:$PATH" bash "$FIXTURE/scripts/eqemu/oracle/oracle_session.sh" 5 "$FIXTURE/logplan.tsv" "$OUT" >"$FIXTURE/notimeline.log" 2>&1
+rc=$?
+set -e
+[[ $rc == 65 ]] || { echo "rc-0 leg without a timeline returned $rc, expected 65"; cat "$OUT/driver.log" 2>/dev/null; exit 1; }
+grep -q 'produced no timeline.tsv' "$OUT/driver.log" || { echo 'missing timeline not named'; cat "$OUT/driver.log"; exit 1; }
+echo 'PASS: B1192 notimeline -- a remote rc 0 without timeline.tsv is refused, never a silent pass'
+
+# 4. spaceplan: legH3's plan was SPACE-delimited; the login row must parse
+# (tab-separated) or the leg is refused NAMED before the client step.
+export PROBE_CASE=spaceplan ORACLE_OWNER=b1192_spaceplan PROBE_NO_TIMELINE=0
+printf 'login Testcaster 0 char_select\n' >"$FIXTURE/spaceplan.tsv"
+OUT="$FIXTURE/spaceplan"; export OUT
+set +e
+PATH="$FIXTURE/bin:$PATH" bash "$FIXTURE/scripts/eqemu/oracle/oracle_session.sh" 5 "$FIXTURE/spaceplan.tsv" "$OUT" >"$FIXTURE/spaceplan.log" 2>&1
+rc=$?
+set -e
+[[ $rc == 64 ]] || { echo "space-delimited plan returned $rc, expected 64"; cat "$OUT/driver.log" 2>/dev/null; exit 1; }
+grep -q 'no parseable TAB-delimited login row' "$OUT/driver.log" || { echo 'unparseable plan not named'; cat "$OUT/driver.log"; exit 1; }
+[[ ! -e $OUT/timeline.tsv ]] || { echo 'client step ran on an unparseable plan'; exit 1; }
+echo 'PASS: B1192 spaceplan -- a space-delimited plan (legH3) is refused 64 and named, no client step'
+
+# 5. obsnoobs: B1192 run 2 -- obs rows without a `# observer=` directive
+# die silently at the first obs row in oracle_remote.sh; the session must
+# refuse the shape BEFORE the client step.
+export PROBE_CASE=obsnoobs ORACLE_OWNER=b1192_obsnoobs PROBE_NO_TIMELINE=0
+printf 'login\tTestcaster\t0\tselect\nobs\tlogin\tOraclewatch\t0\tobs_select\n' >"$FIXTURE/obsnoobs.tsv"
+OUT="$FIXTURE/obsnoobs"; export OUT
+set +e
+PATH="$FIXTURE/bin:$PATH" bash "$FIXTURE/scripts/eqemu/oracle/oracle_session.sh" 5 "$FIXTURE/obsnoobs.tsv" "$OUT" >"$FIXTURE/obsnoobs.log" 2>&1
+rc=$?
+set -e
+[[ $rc == 64 ]] || { echo "obs-without-directive plan returned $rc, expected 64"; cat "$OUT/driver.log" 2>/dev/null; exit 1; }
+grep -q "obs rows but no '# observer=" "$OUT/driver.log" || { echo 'missing observer directive not named'; cat "$OUT/driver.log"; exit 1; }
+[[ ! -e $OUT/timeline.tsv ]] || { echo 'client step ran on an obs plan with no observer directive'; exit 1; }
+echo 'PASS: B1192 obsnoobs -- obs rows without # observer= are refused 64 and named before the client step'
+
+# 6. srvernoop / srveff: B1192 (#511), legH-run5 -- the lane-5 corpse-hold
+# rule was FOUND in leg state (300000, B1183's hold), so the leg's
+# server-SQL was a no-op, but the cleanup still ran the hard-coded undo
+# (restore-to-0) and the before/after dump comparison failed with a false
+# 66. The no-op apply must suppress the undo and leave the lane as found.
+#   srvernoop -- found 300000: apply is a no-op, undo NOT run, rc 0.
+#   srveff    -- found 0 (stock): apply effective, undo runs, rc 0.
+# The stubs: a rule-value file ($OUT/ruleval) that the SQL statements move.
+cat >>"$FIXTURE/scripts/eqemu/env.sh" <<'EOF'
+compose() { :; }
+EOF
+# the server-data block down.sh's and up.sh's the stack around the SQL; the
+# up stub must bring the stack back up (clear the down marker).
+cat >"$FIXTURE/scripts/eqemu/up.sh" <<'EOF'
+rm -f "$OUT/down"; exit 0
+EOF
+export EQT_RULE_SQL=1
+export ORACLE_SERVER_SQL="UPDATE rule_values SET value=300000 WHERE name='NPC:EmptyNPCCorpseDecayTime';"
+export ORACLE_SERVER_UNDO_SQL="UPDATE rule_values SET value=0 WHERE name='NPC:EmptyNPCCorpseDecayTime';"
+export ORACLE_SERVER_DUMP_SQL="SELECT id,name,value FROM rule_values WHERE name='NPC:EmptyNPCCorpseDecayTime';"
+for PROBE_RULEVAL in 300000 0; do
+    tag=srveff; [[ $PROBE_RULEVAL == 300000 ]] && tag=srvernoop
+    export PROBE_CASE=$tag ORACLE_OWNER=b1192_$tag PROBE_CLASS=12 PROBE_NO_TIMELINE=0
+    OUT="$FIXTURE/$tag"; export OUT
+    mkdir -p "$OUT"
+    printf '%s' "$PROBE_RULEVAL" >"$OUT/ruleval"
+    set +e
+    PATH="$FIXTURE/bin:$PATH" bash "$FIXTURE/scripts/eqemu/oracle/oracle_session.sh" 5 "$FIXTURE/logplan.tsv" "$OUT" >"$FIXTURE/$tag.log" 2>&1
+    rc=$?
+    set -e
+    [[ $rc == 0 ]] || { echo "$tag returned $rc, expected 0"; cat "$OUT/driver.log" 2>/dev/null; exit 1; }
+    cmp -s "$OUT/server-data-before.tsv" "$OUT/server-data-after.tsv" || { echo "$tag: server data not left as found"; exit 1; }
+    if [[ $PROBE_RULEVAL == 300000 ]]; then
+        grep -q 'undo suppressed' "$OUT/driver.log" || { echo 'no-op apply did not suppress the undo'; cat "$OUT/driver.log"; exit 1; }
+        ! grep -q 'UPDATE rule_values SET value=0' "$OUT/sql.log" || { echo 'hard-coded undo ran on a no-op apply (legH-run5 defect)'; exit 1; }
+    else
+        grep -q 'UPDATE rule_values SET value=0' "$OUT/sql.log" || { echo 'effective apply did not run the undo'; cat "$OUT/sql.log"; exit 1; }
+        v=$(cat "$OUT/ruleval")
+        [[ $v == 0 ]] || { echo "stock lane not restored to 0 (holds $v)"; exit 1; }
+    fi
+    [[ -e $OUT/released ]] || { echo "$tag: lease not released"; exit 1; }
+    echo "PASS: B1192 $tag -- found $(cat "$OUT/server-data-before.tsv" | cut -f3): undo $(grep -q 'UPDATE rule_values SET value=0' "$OUT/sql.log" && echo ran || echo suppressed), lane left as found"
+done
+unset ORACLE_SERVER_SQL ORACLE_SERVER_UNDO_SQL ORACLE_SERVER_DUMP_SQL EQT_RULE_SQL

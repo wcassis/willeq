@@ -19,7 +19,7 @@ source "$REPO/scripts/eqemu/env.sh"
 source "$REPO/scripts/eqemu/restore_lib.sh"
 OWNER="${ORACLE_OWNER:-oracle_session}_$(date -u +%Y%m%dT%H%M%S)_$$"
 [[ $OWNER =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid ORACLE_OWNER" >&2; exit 64; }
-STATUS=0 LOCKED=0 SNAPSHOT=0 SERVER_DATA=0 REMOTE_STARTED=0 CREATE_ACCOUNT_ID= BROKER_PID= STATE_CHAR= OBS_ID= VITALS_IDS= PROVISION= PROV_ACC= PROV_LOGIN_ID=
+STATUS=0 LOCKED=0 SNAPSHOT=0 SERVER_DATA=0 REMOTE_STARTED=0 CREATE_ACCOUNT_ID= BROKER_PID= STATE_CHAR= OBS_ID= VITALS_IDS= PROVISION= PROV_ACC= PROV_LOGIN_ID= PRE_SQL_RAN=0
 REMOTE_DIR="/home/user/eq-oracle/sessions/$OWNER"
 say() { printf '%s\n' "$*" | tee -a "$OUT/driver.log"; }
 remote() { ssh -n -o BatchMode=yes -o ConnectTimeout=10 "user@$EQEMU_ORACLE_HOST" "$@"; }
@@ -97,7 +97,18 @@ cleanup() {
             fi
             if [[ -n ${ORACLE_POST_SQL:-} ]]; then
                 say "post-SQL (world down): $ORACLE_POST_SQL"
-                eqemu_sql "$ORACLE_POST_SQL" >>"$OUT/driver.log" 2>&1 || STATUS=66
+                eqemu_sql "$ORACLE_POST_SQL" >>"$OUT/driver.log" 2>&1 || {
+                    STATUS=66
+                    if [[ $prior != 0 && $prior != 66 ]]; then
+                        # B1192 (legH3): the post-SQL restores what the pre-SQL
+                        # armed (the oracle_save_* tables above all); when the
+                        # leg died before the client step, that state never
+                        # existed and this failure is a CONSEQUENCE of the
+                        # early exit, not a restore failure of a finished leg.
+                        # It is named here and the early-exit code wins below.
+                        say "post-SQL failed on a leg that already failed (early exit $prior); the state it restores may never have existed -- the early-exit cause is logged above"
+                    fi
+                }
             fi
             if [[ -n $STATE_CHAR ]]; then
                 book=$(paste -sd, - <"$OUT/char-book-before.txt")
@@ -151,9 +162,17 @@ cleanup() {
         # change was armed (a failed login or capture included), with the
         # world down, then the dump must equal the one taken before the change.
         if (( SERVER_DATA )); then
-            eqemu_world_stop >>"$OUT/driver.log" 2>&1 || STATUS=66
-            say "server-data undo (world down): $ORACLE_SERVER_UNDO_SQL"
-            eqemu_sql "$ORACLE_SERVER_UNDO_SQL" >>"$OUT/driver.log" 2>&1 || STATUS=66
+            if (( ${SERVER_SQL_EFFECTIVE:-1} )); then
+                eqemu_world_stop >>"$OUT/driver.log" 2>&1 || STATUS=66
+                say "server-data undo (world down): $ORACLE_SERVER_UNDO_SQL"
+                eqemu_sql "$ORACLE_SERVER_UNDO_SQL" >>"$OUT/driver.log" 2>&1 || STATUS=66
+            else
+                # B1192 (#511): no-op apply -- the lane was found in leg
+                # state, so the undo (which restores the STOCK value) is
+                # suppressed: "leave as found" wins, and the dump below
+                # proves the leg left the state it found.
+                say "server-data undo suppressed (no-op apply; lane left as found)"
+            fi
             eqemu_sql "$ORACLE_SERVER_DUMP_SQL" >"$OUT/server-data-after.tsv" 2>>"$OUT/driver.log" || STATUS=66
             if cmp -s "$OUT/server-data-before.tsv" "$OUT/server-data-after.tsv"; then
                 say "server data restored BYTE-IDENTICALLY ($(wc -l <"$OUT/server-data-after.tsv") dump lines)"
@@ -172,6 +191,12 @@ cleanup() {
         eqemu_lock_release || STATUS=66
         if eqemu_lock_show >/dev/null 2>&1 || eqemu_stack_ready; then STATUS=66; fi
     fi
+    # B1192 (legH3): an early exit (the client step never completed) stays the
+    # leg's reported code -- a cleanup failure CAUSED by the early exit (the
+    # orphaned post-SQL over save tables the pre-SQL never created) must not
+    # masquerade as the primary failure with 66. A cleanup failure on a leg
+    # that reached its client step (prior 0) stays 66.
+    if (( prior != 0 && prior != 66 && STATUS == 66 )); then STATUS=$prior; fi
     if (( prior == 67 && STATUS != 66 )); then STATUS=67; fi
     say "cleanup exit=$STATUS lane=$LANE lock=$(eqemu_lock_show 2>/dev/null || echo free)"
     trap - EXIT
@@ -205,6 +230,20 @@ if [[ -n ${ORACLE_SERVER_SQL:-}${ORACLE_SERVER_UNDO_SQL:-}${ORACLE_SERVER_DUMP_S
     say "server-data SQL (stack down): $ORACLE_SERVER_SQL"
     eqemu_sql "$ORACLE_SERVER_SQL" >>"$OUT/driver.log" 2>&1 || { STATUS=65; exit "$STATUS"; }
     eqemu_sql "$ORACLE_SERVER_DUMP_SQL" >"$OUT/server-data-leg.tsv" 2>>"$OUT/driver.log" || { STATUS=65; exit "$STATUS"; }
+    # B1192 (#511): if the lane ALREADY holds the leg state, the apply was a
+    # no-op (before-dump == leg-dump) and the hard-coded undo must NOT run:
+    # the undo restores the STOCK value, not the value the lane was found
+    # in, so on a lane found in leg state it would flip the state the leg
+    # exists to preserve and the before/after comparison would fail with a
+    # false 66 -- legH-run5 (lane 5, 2026-10-29): the corpse-hold rule was
+    # found at 300000 (B1183's hold), the apply was a no-op, and the undo's
+    # hard-coded 0 produced the "SERVER DATA MISMATCH" exit 66.
+    if cmp -s "$OUT/server-data-before.tsv" "$OUT/server-data-leg.tsv"; then
+        SERVER_SQL_EFFECTIVE=0
+        say "server-data SQL was a no-op (lane already in leg state); undo suppressed"
+    else
+        SERVER_SQL_EFFECTIVE=1
+    fi
 fi
 if ! bash "$REPO/scripts/eqemu/up.sh" >>"$OUT/driver.log" 2>&1 || ! eqemu_stack_ready; then STATUS=65; exit "$STATUS"; fi
 # B1047 (#367): keep the roster out of timorous, BEFORE the snapshot so the
@@ -246,13 +285,32 @@ SNAPSHOT=1
 # A plan's zone row is an explicit pre-login seed, never a persistent change.
 ZONE=$(awk -F'\t' '$1=="zone" {print $2; exit}' "$PLAN")
 CHARACTER=$(awk -F'\t' '$1=="login" {print $2; exit}' "$PLAN")
+# B1192 (legH3): the plan is TAB-delimited (action/target/hold_ms/still_name).
+# B1183's legH_loot.tsv was hand-written SPACE-delimited: this awk found no
+# login row, CHARACTER was empty, and the leg died at the account_id check --
+# silently, pre-fix -- so the reported failure was the orphaned post-SQL's 66.
+# Name the empty/illegal name here, at the only place it is detectable.
+[[ $CHARACTER =~ ^[A-Za-z]+$ ]] || { say "plan has no parseable TAB-delimited login row (got '$CHARACTER'); the plan columns are action/target/hold_ms/still_name, tab-separated (legH3's plan was space-delimited)"; STATUS=64; exit "$STATUS"; }
+# B1192 (run 2): a plan with `obs` rows but no `# observer=<Character>`
+# directive passes every session-side check and then dies at the FIRST obs
+# row in oracle_remote.sh's `[[ -n $OBSERVER ]] || exit 65` -- silently,
+# with an empty remote.log and a timeline stuck on the last caster step
+# (B1183's legH plan had exactly this shape). Name it here, where both
+# facts (the obs rows and the missing directive) are visible.
+if grep -qE $'^obs\t' "$PLAN" && [[ -z ${OBSERVER:-} ]]; then
+    say "the plan has obs rows but no '# observer=<Character>' directive (obs rows also need '# obs-ini-set=Defaults.LastCharSel=N' on a two-character account); the remote step would die at the first obs row with no log; see refactor/B1176/leg/o_human.tsv:32-38 for the canonical form"; STATUS=64; exit "$STATUS"; fi
 awk -F'\t' '$1=="create" {print $2}' "$PLAN" >"$OUT/plan-names.tsv"
 : >"$OUT/absent-names.tsv"
 : >"$OUT/validated-names.tsv"
 CREATE_ACCOUNT_ID=$(eqemu_sql "SELECT account_id FROM character_data WHERE name='$CHARACTER' LIMIT 1;")
-[[ $CREATE_ACCOUNT_ID =~ ^[0-9]+$ ]] || { STATUS=65; exit "$STATUS"; }
+# B1192 (legH3): these exits used to be SILENT -- no log line, no file, so
+# the leg died in this stretch (between the snapshot and the first remote
+# artifact) invisibly: legH3's driver.log has no pre-SQL line, no remote
+# artifacts, and the only failure recorded is the post-SQL 66 from cleanup.
+# Every early exit below the snapshot now names itself in driver.log.
+[[ $CREATE_ACCOUNT_ID =~ ^[0-9]+$ ]] || { say "login character '$CHARACTER' has no account_id row (or the lookup failed); refusing before the client starts"; STATUS=65; exit "$STATUS"; }
 while IFS= read -r name; do
-    [[ $name =~ ^[A-Za-z]{3,15}$ ]] || { STATUS=65; exit "$STATUS"; }
+    [[ $name =~ ^[A-Za-z]{3,15}$ ]] || { say "plan create name '$name' is not a legal character name; refusing"; STATUS=65; exit "$STATUS"; }
     if ! existing_id=$(eqemu_sql "SELECT id FROM character_data WHERE name='$name';"); then
         say "name lookup failed for $name; refusing to arm cleanup"
         STATUS=65; exit "$STATUS"
@@ -267,32 +325,37 @@ cp "$OUT/validated-names.tsv" "$OUT/absent-names.tsv"
 # spellbook and buffs before ORACLE_PRE_SQL (e.g. a class switch) and again
 # after the world-down undo; oracle_class_leg.sh sets all four variables.
 if [[ -n ${ORACLE_STATE_CHAR:-} ]]; then
-    [[ $ORACLE_STATE_CHAR =~ ^[0-9]+$ ]] || { STATUS=64; exit "$STATUS"; }
-    char_state "$ORACLE_STATE_CHAR" before || { STATUS=65; exit "$STATUS"; }
+    [[ $ORACLE_STATE_CHAR =~ ^[0-9]+$ ]] || { say "ORACLE_STATE_CHAR '$ORACLE_STATE_CHAR' is not a character id; refusing"; STATUS=64; exit "$STATUS"; }
+    char_state "$ORACLE_STATE_CHAR" before || { say "char_state before-census failed for char $ORACLE_STATE_CHAR"; STATUS=65; exit "$STATUS"; }
     STATE_CHAR=$ORACLE_STATE_CHAR
 fi
 if [[ -n $OBS_ID ]]; then
-    char_state "$OBS_ID" observer-before || { STATUS=65; exit "$STATUS"; }
+    char_state "$OBS_ID" observer-before || { say "observer before-census failed for char $OBS_ID"; STATUS=65; exit "$STATUS"; }
     [[ $(cat "$OUT/char-buffs-observer-before.txt") == 0 ]] || { say "observer $OBSERVER has buffs; refusing"; STATUS=65; exit "$STATUS"; }
     LOGIN_ID=$(eqemu_sql "SELECT id FROM character_data WHERE name='$CHARACTER';")
-    [[ $LOGIN_ID =~ ^[0-9]+$ && $LOGIN_ID != "$OBS_ID" ]] || { STATUS=65; exit "$STATUS"; }
+    [[ $LOGIN_ID =~ ^[0-9]+$ && $LOGIN_ID != "$OBS_ID" ]] || { say "login character '$CHARACTER' has no usable id (got '$LOGIN_ID', observer is $OBS_ID)"; STATUS=65; exit "$STATUS"; }
     VITALS_IDS="$LOGIN_ID,$OBS_ID"
-    eqemu_sql "SELECT id,cur_hp,mana,endurance,pvp_status FROM character_data WHERE id IN ($VITALS_IDS) ORDER BY id;" >"$OUT/vitals-before.tsv" || { STATUS=65; exit "$STATUS"; }
+    eqemu_sql "SELECT id,cur_hp,mana,endurance,pvp_status FROM character_data WHERE id IN ($VITALS_IDS) ORDER BY id;" >"$OUT/vitals-before.tsv" || { say "vitals before-census failed for $VITALS_IDS"; STATUS=65; exit "$STATUS"; }
 fi
 if [[ -n ${ORACLE_PRE_SQL:-} ]]; then
     say "pre-SQL: $ORACLE_PRE_SQL"
-    eqemu_sql "$ORACLE_PRE_SQL" >>"$OUT/driver.log" 2>&1 || { STATUS=65; exit "$STATUS"; }
+    # B1192: the pre-SQL is armed NOW (before it runs): the cleanup's
+    # post-SQL/after-census decisions key off this flag, and the save tables
+    # the post-SQL's restore half references only exist once the pre-SQL has
+    # started (oracle_class_leg.sh builds both halves).
+    PRE_SQL_RAN=1
+    eqemu_sql "$ORACLE_PRE_SQL" >>"$OUT/driver.log" 2>&1 || { say "pre-SQL failed (see driver.log above)"; STATUS=65; exit "$STATUS"; }
 fi
 # B1129 (#449): the official client refuses a gem cast its class cannot use
 # ("You are not high enough level to cast this spell!", no OP_CastSpell);
 # check every gem cast against the login character's REAL class, level and
 # gems now, before Wine starts (oracle_plan_check.py; exit 64 = refused).
 if [[ -n $CHARACTER ]]; then
-    [[ $CHARACTER =~ ^[A-Za-z]+$ ]] || { STATUS=65; exit "$STATUS"; }
-    eqemu_sql "SELECT class,level FROM character_data WHERE name='$CHARACTER' LIMIT 1;" >"$OUT/plan-character.tsv" || { STATUS=65; exit "$STATUS"; }
-    eqemu_sql "SELECT m.slot_id,m.spell_id FROM character_memmed_spells m JOIN character_data c ON c.id=m.id WHERE c.name='$CHARACTER' ORDER BY m.slot_id;" >"$OUT/plan-memmed.tsv" || { STATUS=65; exit "$STATUS"; }
+    [[ $CHARACTER =~ ^[A-Za-z]+$ ]] || { say "plan login name '$CHARACTER' is not a legal character name; refusing"; STATUS=65; exit "$STATUS"; }
+    eqemu_sql "SELECT class,level FROM character_data WHERE name='$CHARACTER' LIMIT 1;" >"$OUT/plan-character.tsv" || { say "plan-character lookup failed for '$CHARACTER'"; STATUS=65; exit "$STATUS"; }
+    eqemu_sql "SELECT m.slot_id,m.spell_id FROM character_memmed_spells m JOIN character_data c ON c.id=m.id WHERE c.name='$CHARACTER' ORDER BY m.slot_id;" >"$OUT/plan-memmed.tsv" || { say "plan-memmed lookup failed for '$CHARACTER'"; STATUS=65; exit "$STATUS"; }
     read -r CHAR_CLASS CHAR_LEVEL <"$OUT/plan-character.tsv"
-    [[ $CHAR_CLASS =~ ^[0-9]+$ && $CHAR_LEVEL =~ ^[0-9]+$ ]] || { STATUS=65; exit "$STATUS"; }
+    [[ $CHAR_CLASS =~ ^[0-9]+$ && $CHAR_LEVEL =~ ^[0-9]+$ ]] || { say "character '$CHARACTER' class/level unreadable ('$CHAR_CLASS' '$CHAR_LEVEL')"; STATUS=65; exit "$STATUS"; }
     if [[ -n ${ORACLE_EXPECT_CLASS:-} && $CHAR_CLASS != "$ORACLE_EXPECT_CLASS" ]]; then
         say "$CHARACTER is class $CHAR_CLASS after the pre-SQL, expected $ORACLE_EXPECT_CLASS; refusing"
         STATUS=65; exit "$STATUS"
@@ -308,10 +371,10 @@ if [[ -n $CHARACTER ]]; then
     fi
 fi
 if [[ -n $ZONE && -n $CHARACTER ]]; then
-    [[ $ZONE =~ ^[a-z0-9_]+$ && $CHARACTER =~ ^[A-Za-z]+$ ]] || { STATUS=65; exit "$STATUS"; }
+    [[ $ZONE =~ ^[a-z0-9_]+$ && $CHARACTER =~ ^[A-Za-z]+$ ]] || { say "plan zone '$ZONE' / character '$CHARACTER' is not legal; refusing"; STATUS=65; exit "$STATUS"; }
     ZONE_ID=$(eqemu_sql "SELECT zoneidnumber FROM zone WHERE short_name='$ZONE' LIMIT 1;")
-    [[ $ZONE_ID =~ ^[0-9]+$ ]] || { STATUS=65; exit "$STATUS"; }
-    eqemu_sql "UPDATE character_data SET zone_id=$ZONE_ID WHERE name='$CHARACTER';" >/dev/null || { STATUS=65; exit "$STATUS"; }
+    [[ $ZONE_ID =~ ^[0-9]+$ ]] || { say "zone '$ZONE' has no zoneidnumber row (got '$ZONE_ID')"; STATUS=65; exit "$STATUS"; }
+    eqemu_sql "UPDATE character_data SET zone_id=$ZONE_ID WHERE name='$CHARACTER';" >/dev/null || { say "zone seed update for '$CHARACTER' failed"; STATUS=65; exit "$STATUS"; }
     # B1065: `# pose=x,y,z,heading` (heading in EQ units, 0-512) seeds the
     # login character's position with the zone, so a still is taken from a
     # pose willeq can be put at byte-for-byte. x/y/z/heading are in
@@ -320,25 +383,25 @@ if [[ -n $ZONE && -n $CHARACTER ]]; then
     if [[ -n $POSE ]]; then
         [[ $POSE =~ ^-?[0-9.]+,-?[0-9.]+,-?[0-9.]+,[0-9.]+$ ]] || { STATUS=64; exit "$STATUS"; }
         IFS=, read -r PX PY PZ PH <<<"$POSE"
-        eqemu_sql "UPDATE character_data SET x=$PX, y=$PY, z=$PZ, heading=$PH WHERE name='$CHARACTER';" >/dev/null || { STATUS=65; exit "$STATUS"; }
+        eqemu_sql "UPDATE character_data SET x=$PX, y=$PY, z=$PZ, heading=$PH WHERE name='$CHARACTER';" >/dev/null || { say "pose seed update for '$CHARACTER' failed"; STATUS=65; exit "$STATUS"; }
     fi
     # B1134: the observer stands in the same zone at its own pose.
     if [[ -n $OBS_ID ]]; then
-        eqemu_sql "UPDATE character_data SET zone_id=$ZONE_ID WHERE id=$OBS_ID;" >/dev/null || { STATUS=65; exit "$STATUS"; }
+        eqemu_sql "UPDATE character_data SET zone_id=$ZONE_ID WHERE id=$OBS_ID;" >/dev/null || { say "observer zone seed update for char $OBS_ID failed"; STATUS=65; exit "$STATUS"; }
         OPOSE=$(awk '/^# observer-pose=/ {sub(/^# observer-pose=/, ""); print; exit}' "$PLAN")
         if [[ -n $OPOSE ]]; then
             [[ $OPOSE =~ ^-?[0-9.]+,-?[0-9.]+,-?[0-9.]+,[0-9.]+$ ]] || { STATUS=64; exit "$STATUS"; }
             IFS=, read -r PX PY PZ PH <<<"$OPOSE"
-            eqemu_sql "UPDATE character_data SET x=$PX, y=$PY, z=$PZ, heading=$PH WHERE id=$OBS_ID;" >/dev/null || { STATUS=65; exit "$STATUS"; }
+            eqemu_sql "UPDATE character_data SET x=$PX, y=$PY, z=$PZ, heading=$PH WHERE id=$OBS_ID;" >/dev/null || { say "observer pose seed update for char $OBS_ID failed"; STATUS=65; exit "$STATUS"; }
         fi
     fi
 fi
-remote "mkdir -p ~/eq-oracle/uigap-scripts '$REMOTE_DIR'" || { STATUS=65; exit "$STATUS"; }
-scp -q "$REPO/scripts/eqemu/oracle/oracle_remote.sh" "user@$EQEMU_ORACLE_HOST:/home/user/eq-oracle/uigap-scripts/oracle_remote.sh" || { STATUS=65; exit "$STATUS"; }
-scp -q "$REPO/scripts/eqemu/oracle/oracle_login_patch.py" "user@$EQEMU_ORACLE_HOST:/home/user/eq-oracle/uigap-scripts/oracle_login_patch.py" || { STATUS=65; exit "$STATUS"; }
-scp -q "$REPO/scripts/eqemu/oracle/oracle_ini_seed.py" "user@$EQEMU_ORACLE_HOST:/home/user/eq-oracle/uigap-scripts/oracle_ini_seed.py" || { STATUS=65; exit "$STATUS"; }
-scp -q "$REPO/scripts/eqemu/oracle/set_facepick_luclin.py" "user@$EQEMU_ORACLE_HOST:/home/user/eq-oracle/uigap-scripts/set_facepick_luclin.py" || { STATUS=65; exit "$STATUS"; }
-scp -q "$PLAN" "user@$EQEMU_ORACLE_HOST:$REMOTE_DIR/plan.tsv" || { STATUS=65; exit "$STATUS"; }
+remote "mkdir -p ~/eq-oracle/uigap-scripts '$REMOTE_DIR'" || { say "remote mkdir of $REMOTE_DIR failed"; STATUS=65; exit "$STATUS"; }
+scp -q "$REPO/scripts/eqemu/oracle/oracle_remote.sh" "user@$EQEMU_ORACLE_HOST:/home/user/eq-oracle/uigap-scripts/oracle_remote.sh" || { say "scp of oracle_remote.sh failed"; STATUS=65; exit "$STATUS"; }
+scp -q "$REPO/scripts/eqemu/oracle/oracle_login_patch.py" "user@$EQEMU_ORACLE_HOST:/home/user/eq-oracle/uigap-scripts/oracle_login_patch.py" || { say "scp of oracle_login_patch.py failed"; STATUS=65; exit "$STATUS"; }
+scp -q "$REPO/scripts/eqemu/oracle/oracle_ini_seed.py" "user@$EQEMU_ORACLE_HOST:/home/user/eq-oracle/uigap-scripts/oracle_ini_seed.py" || { say "scp of oracle_ini_seed.py failed"; STATUS=65; exit "$STATUS"; }
+scp -q "$REPO/scripts/eqemu/oracle/set_facepick_luclin.py" "user@$EQEMU_ORACLE_HOST:/home/user/eq-oracle/uigap-scripts/set_facepick_luclin.py" || { say "scp of set_facepick_luclin.py failed"; STATUS=65; exit "$STATUS"; }
+scp -q "$PLAN" "user@$EQEMU_ORACLE_HOST:$REMOTE_DIR/plan.tsv" || { say "scp of the plan failed"; STATUS=65; exit "$STATUS"; }
 REMOTE_STARTED=1
 # B1058: a plan with template clicks needs the locate broker on THIS host (the
 # oracle box has no NumPy/OpenCV): one ssh exchange per locate, shots and the
@@ -357,6 +420,15 @@ if (( RC == 67 )); then STATUS=67; else STATUS=$RC; fi
 remote "bash ~/eq-oracle/uigap-scripts/oracle_remote.sh stop '$REMOTE_DIR'" >>"$OUT/remote.log" 2>&1 || STATUS=65
 scp -q -r "user@$EQEMU_ORACLE_HOST:$REMOTE_DIR/." "$OUT/" 2>>"$OUT/driver.log" || STATUS=65
 REMOTE_STARTED=0
+# B1192 (legH3): a completed client step MUST have produced its timeline --
+# the per-step measurement every downstream step (the poller's arm line, the
+# merge, the report) consumes. A remote rc 0 with no timeline.tsv is the
+# legH3 failure class ("the client step never produced a timeline") wearing a
+# success code: refuse it.
+if [[ $STATUS -eq 0 && ! -s $OUT/timeline.tsv ]]; then
+    say "the client step completed (remote rc 0) but produced no timeline.tsv; refusing a leg with no measurement"
+    STATUS=65
+fi
 if (( STATUS == 67 )); then
     printf '# Official-client disconnect\n\nPlan: `%s`. Partial timeline: [timeline.tsv](timeline.tsv).\nRaw capture: [capture.pcap](capture.pcap); video: [video.mp4](video.mp4).\n' "$PLAN" >"$OUT/summary.md"
 elif [[ -s $OUT/capture.pcap ]]; then

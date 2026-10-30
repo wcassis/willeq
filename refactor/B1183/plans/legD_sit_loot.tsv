@@ -1,0 +1,62 @@
+# action	target	hold_ms	still_name
+# B1183 (#502) leg D -- the three key rows: sit / stand-after-sit / loot.
+#
+# The method is the MEASURED live keymap, not a guess. legC3b's poller dumped
+# the client's complete keymap (267 slots + the charmap/namemap) and the decode
+# is anchored three ways: DUCK slot 12 high byte 0xD0 = "DOWN" in the namemap,
+# and the oracle INI has KEYMAPPING_DUCK_1=208 (=0xD0), and the measured duck
+# byte is 111. With that anchor the pending-row keys read directly:
+#
+#   SIT_STAND (action 138) k0 = 0x1F000100 -> high byte 0x1F = charmap 's'
+#                                  (low16 0x100 = the command-type flag the
+#                                  CMD_*/RTARGET slots share; it is not a key)
+#   USE       (action 16)   k0 = 0x16000000 -> high byte 0x16 = charmap 'u'
+#
+# So SIT/STAND toggles on 's' and USE (loot) on 'u'. NOTE: the oracle INI also
+# sets KEYMAPPING_BACK_2=31 (0x1F='s') for WASD movement, so 's' is bound to
+# BOTH BACK (k1, continuous movement) and SIT_STAND (k0, keydown action). The
+# client's key dispatch fires every matching action (FUN_004ccd32 has no
+# early-break) and movement keys are polled continuously while action keys fire
+# on keydown, so a single 's' tap is expected to sit AND nudge backward. The
+# byte at +0x251 is the measurement either way:
+#
+#   sit      expect 100 -> 110   (the setter 0x00483556; a plain 100<->110
+#                                 toggle -- the decompile shows NO chair gate
+#                                 on the byte, so an open field is fine)
+#   stand    expect 110 -> 100   (the same setter, second 's')
+#   loot     expect 100 -> 105   (USE on a targeted corpse -> loot open,
+#                                 the direct 105797 write)
+#
+# The corpse reuses the proven legA2 recipe: #spawn TrollF, /target, #damage.
+# The /proc/pid/mem poller (b1183_poll.py) attaches at gdb_arm and logs every
+# value-changing write of the caster spawn +0x251.
+#
+# pose=-74,428,3.75,160
+# observer=Oraclewatch
+# observer-pose=-67.6,434.4,3.75,160
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+wait	3000	0	gdb_arm
+wait	12000	0	gdb_dump
+still	0	0	stand0
+press	s	0	sit_s
+wait	2500	0	sit_s_settle
+press	s	0	stand_s
+wait	2000	0	stand_s_settle
+command	#spawn TrollF 1 1 0 50	0	spawn
+wait	4000	0	spawn_settle
+command	/target TrollF	0	tgt_troll
+command	#damage 999999	0	kill
+wait	4000	0	corpse
+press	u	0	use_u
+wait	2500	0	use_u_settle
+command	/q	0	quit
+obs	command	/q	0	obs_quit

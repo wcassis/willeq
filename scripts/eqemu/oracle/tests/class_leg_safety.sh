@@ -53,6 +53,13 @@ for t in character_skills:id character_disciplines:id timers:char_id; do
     grep -q "^PRE=.*CREATE TABLE oracle_save_${tb}_67 AS SELECT \* FROM $tb WHERE $col=67;.*UPDATE character_data SET class=6" "$H" || { echo "pre-SQL does not save $tb before the switch"; exit 1; }
     grep -q "^POST=.*DELETE FROM $tb WHERE $col=67; INSERT INTO $tb SELECT \* FROM oracle_save_${tb}_67; DROP TABLE oracle_save_${tb}_67;" "$H" || { echo "post-SQL does not restore $tb"; exit 1; }
 done
+# B1192 (legH3): the restore half probes the copy before deleting the live
+# rows (mysql stops at the first error), so an early-exit leg's orphaned
+# post-SQL -- save tables never created -- fails at the probe and can never
+# delete the character's live rows without a restore source.
+for tb in character_skills character_disciplines timers; do
+    grep -q "SELECT COUNT(\*) FROM oracle_save_${tb}_67; DELETE FROM $tb" "$H" || { echo "post-SQL does not probe oracle_save_${tb}_67 before deleting $tb"; exit 1; }
+done
 grep -qx 'STATE=67' "$H" && grep -qx 'EXPECT=6' "$H" && grep -qx 'OWNER=oracle_class_c6' "$H" || { echo 'state/expect/owner wrong'; exit 1; }
 
 # 3. an after-census that does not show the home class is a restore failure.

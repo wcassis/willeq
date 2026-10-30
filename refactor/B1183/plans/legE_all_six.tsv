@@ -1,0 +1,70 @@
+# action	target	hold_ms	still_name
+# B1183 (#502) leg E -- all SIX pending rows in one run, with the beneath-
+# the-world fix.
+#
+# WHY THE FIX: legC3b/legC4 zone-in'd Testcaster at the standard pose
+# (-74,428,3.75) and the client reported "Player is beneath the world in
+# Nobles' Causeway ... moving to safe point" -- the character sat BELOW the
+# zone ground at that spot (the ground/heightmap changed since B1127/B1130,
+# which ran fine at the same pose a week ago). In that limbo the zone DROPS
+# GM commands: legC4's opcode-confirmed '#stun 8000'/'#castspell 93 0'
+# (chan=8, sender=Testcaster, the exact form B1130 used successfully) got NO
+# server response and no chat confirmation (the eqemu #stun handler ALWAYS
+# sends one). The poller therefore only caught the client-side duck writes.
+# Starting the character at z=10 (above the ground) lets it settle ON the
+# surface, so it never enters the beneath-the-world state and GM commands
+# process normally.
+#
+# THE SIX ROWS (oracle = the caster spawn's +0x251, read live by
+# b1183_poll.py, never inferred):
+#   cast      #castspell 93 0            expect 100 (the cast path writes 100)
+#   stunned   #stun 8000 (NO target -> the eqemu handler stuns SELF) expect 102
+#   stun end  the stun wears off at 8 s  expect 100
+#   sit       press 's' (SIT_STAND k0, the measured live keymap) expect 110
+#   stand     press 's' (SIT_STAND toggle)                 expect 100
+#   loot      press 'u' (USE k0) on a targeted TrollF corpse expect 105
+#
+# Key provenance (refactor/B1183/tables/step_table.tsv "KEY DISCOVERY"):
+# SIT_STAND (action 138) k0 high byte 0x1F = 's'; USE (action 16) k0 high
+# byte 0x16 = 'u'; decode anchored by DUCK 0xD0 = "DOWN" = INI DUCK_1=208.
+# The oracle INI also binds BACK_2='s', so a 's' tap also nudges backward;
+# the +0x251 byte is the measurement either way.
+# Corpse recipe: the proven legA2/B1130 #spawn TrollF + /target + #damage.
+#
+# pose=-74,428,10,160
+# observer=Oraclewatch
+# observer-pose=-67.6,434.4,10,160
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	9000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#level 60	0	level
+command	#mana	0	mana
+wait	2000	0	mana_settle
+wait	3000	0	gdb_arm
+wait	10000	0	gdb_dump
+still	0	0	stand0
+command	#castspell 93 0	0	cast
+wait	4000	0	cast_settle
+command	#stun 8000	0	stun_start
+wait	2500	0	stunned
+wait	7000	0	stun_end
+press	s	0	sit_s
+wait	2500	0	sit_settle
+press	s	0	stand_s
+wait	2000	0	stand_settle
+command	#spawn TrollF 1 1 0 50	0	spawn
+wait	4000	0	spawn_settle
+command	/target TrollF	0	tgt_troll
+command	#damage 999999	0	kill
+wait	4000	0	corpse
+press	u	0	use_u
+wait	2500	0	use_settle
+command	/q	0	quit
+obs	command	/q	0	obs_quit

@@ -1,0 +1,55 @@
+# action	target	hold_ms	still_name
+# B1183 (#502) leg C -- the KEY-FREE half of the nine-step sequence:
+# stand, duck, stand, cast, stunned, stun-end. These need no SIT/USE keys
+# (duck=Down is the measured crouch key; cast/stun/stun-end are GM-command
+# driven), so this leg runs even though SIT_STAND is unbound in the live
+# keymap and the USE key is unidentified (the discovery leg found none of
+# z/x/c/e/f/space/g produce 110/105 -- space is crouch).
+#
+# The /proc/pid/mem poller (b1183_poll.py) attaches at `gdb_arm` and logs
+# every value-changing write of the caster spawn +0x251. The merge script
+# (merge_poll.py) turns poll.log + steps.tsv into the per-step oracle table.
+#
+# Cast: #castspell 93 (Burst of Flame). The leg runs the char as the class
+# oracle_class_leg.sh selects; whether or not the spell validates, the cast
+# path writes 100 (71254) -- a rejected cast leaves the byte at its stand 100,
+# so the measured oracle value is 100 either way (the fable cast row).
+#
+# Stun: #stun 8000 stuns the CASTER (stun.cpp: no target -> c->Stun), the
+# 1300 ms still lands inside the 8 s stun (byte 102, the 0x25aa/0x3013 handler
+# 80377/80459); #stun 0 (still untargeted) un-stuns self -- the stun-END
+# message the client's handler turns back into 100 (80336).
+#
+# Everything runs in the default chase camera -- the gate context the fable
+# column was measured in.
+# pose=-74,428,3.75,160
+# observer=Oraclewatch
+# observer-pose=-67.6,434.4,3.75,160
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#level 60	0	level
+command	#mana	0	mana
+wait	2000	0	mana_settle
+wait	3000	0	gdb_arm
+wait	12000	0	gdb_dump
+still	0	0	stand
+press	Down	0	duck
+wait	2000	0	duck_settle
+press	Down	0	stand1
+wait	2000	0	stand1_settle
+command	#castspell 93 0	0	cast
+wait	4000	0	cast_settle
+command	#stun 8000	0	stun_start
+wait	1300	0	stunned
+command	#stun 0	0	stun_end
+wait	1300	0	stunend_settle
+command	/q	0	quit
+obs	command	/q	0	obs_quit
