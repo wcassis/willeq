@@ -45,6 +45,7 @@ for TAG in "${TAGS[@]}"; do
   PLAN="$WT/refactor/B1162/plans/harness_$SID.plan"
   F="$OUT/frames/$TAG"; M="$OUT/measure/$TAG"
   if [ -s "$M/anchor_table.tsv" ]; then echo "[$TAG] already measured"; continue; fi
+  ssh -n "$TP" "mkdir -p '$TPF'" < /dev/null
   rsync -a "$PLAN" "$TP:$TPF/${TAG}.plan" < /dev/null
   # The b1130-camera rows render SURFACELESS on the Quadro at the native
   # 1280x800 (render_gate.sh, Will 2026-10-29): WILLEQ_DRM_DEVICE points at a
