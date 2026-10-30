@@ -600,14 +600,15 @@ void eqt::commands::CommandsComponent::ZoneProcessStun(uint32_t duration_ms)
 			ctx_.out.System(ctx_.strings.GetStringMessage(12480));  // You are no longer stunned.
 		}
 		m_stunned_until = {};
-		// B1183 (#502): the stun-end message's direct write of 100
-		// (standing) on the local player (eqgame.exe.c:80336, the 0x210b
-		// case at 80326-80340: clears the stun flag and stands the
-		// player up).
+		// B1183 (#502) / B1199 (#518): the stun-end message's direct
+		// write of 100 (standing) on the local player (eqgame.exe.c:
+		// 80326-80340, the 0x210b case: 100 at 80336, the stun-flag
+		// clear at 80337). The feed goes through the machine's stun
+		// entry point (onStunFeed).
 		{
 			auto self = ctx_.entities.find(ctx_.self.MySpawnId());
 			if (self != ctx_.entities.end()) {
-				self->second.stand_state.apply(eqt::state::StandValue::Standing);
+				self->second.stand_state.onStunFeed(eqt::state::StunFeed::StunEnd0x210b);
 			}
 		}
 		LOG_INFO(MOD_COMBAT, "OP_Stun: unstunned");
@@ -620,16 +621,21 @@ void eqt::commands::CommandsComponent::ZoneProcessStun(uint32_t duration_ms)
 	}
 	if (!was_stunned) {
 		ctx_.out.System(ctx_.strings.GetStringMessage(12479));  // You are stunned!
-		// B1183 (#502): the client's 102 (0x66, frozen) writers are the
-		// 0x25aa case (eqgame.exe.c:80377) and the 0x3013 case (80459);
-		// 0x3050 is a message-string ID, not an opcode. NOTE (B1199,
-		// #518): this feed is the 0x1e51 OP_Stun opcode, whose client
-		// case (79576-79581) writes NO +0x251 -- fable's 102 write here
-		// is the measured fable/oracle difference (legF: oracle held
-		// 100 through the stun), fixed by B1199.
-		auto self = ctx_.entities.find(ctx_.self.MySpawnId());
-		if (self != ctx_.entities.end()) {
-			self->second.stand_state.apply(eqt::state::StandValue::Frozen);
+		// B1199 (#518): this feed is the 0x1e51 OP_Stun opcode, whose
+		// client case (eqgame.exe.c:79576-79581: `if (DAT_00905d00 != 0)
+		// FUN_00417839();`) writes NO +0x251 -- the pose byte holds.
+		// The client's 102 (0x66, frozen) writers are the 0x25aa case
+		// (80377) and the 0x3013 case (80459), which fable does not
+		// process; onStunFeed keeps them in the machine so its
+		// vocabulary is the client's, byte for byte. The 102 write the
+		// B1183 port had here was the measured fable/oracle difference
+		// (B1183 legF: oracle 100 vs fable 102 on GM #stun) and is
+		// removed: OpStun0x1e51 is the documented no-op.
+		{
+			auto self = ctx_.entities.find(ctx_.self.MySpawnId());
+			if (self != ctx_.entities.end()) {
+				self->second.stand_state.onStunFeed(eqt::state::StunFeed::OpStun0x1e51);
+			}
 		}
 	}
 	LOG_INFO(MOD_COMBAT, "OP_Stun: stunned for {} ms", duration_ms);

@@ -54,6 +54,8 @@ tests/*_tests.cmake
 *.log
 # B1183 measured poller evidence, cited by refactor/B1183/README.md sec. 7
 !refactor/B1183/legs/*/poll/poll.log
+# B1199 measured poller evidence, cited by refactor/B1199/README.md sec. 4
+!refactor/B1199/legs/*/poll/poll.log
 
 # Images (screenshots, dumps)
 *.png

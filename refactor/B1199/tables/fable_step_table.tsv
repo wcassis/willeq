@@ -1,0 +1,22 @@
+Running main() from _deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = StandState.TheLane5FullSequenceTable
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from StandState
+[ RUN      ] StandState.TheLane5FullSequenceTable
+step	feed	fable_byte
+stand	zone-in default (128478)	100
+duck	key C (setter 104878)	111
+stand	key (setter 104878)	100
+sit	key (setter 104878)	110
+stand	key (setter 104878)	100
+cast	cast start (71254)	100
+stunned	OP_Stun 0x1e51 (79576-79581: no +0x251 write)	100
+stun end	stun end 0x210b (80336)	100
+loot	loot open (28061)	105
+[       OK ] StandState.TheLane5FullSequenceTable (0 ms)
+[----------] 1 test from StandState (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 1 test.

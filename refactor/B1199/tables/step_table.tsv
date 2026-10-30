@@ -1,0 +1,24 @@
+# B1199 (#518) -- the stunned row, POST-FIX, both sides.
+#
+# FABLE column: the ported StandState machine driven through its real feed
+# points, measured by tests/test_stand_state.cpp TheLane5FullSequenceTable
+# (the output of that test at this tip is refactor/B1199/tables/
+# fable_step_table.tsv). The 0x1e51 feed is now the documented no-op
+# (onStunFeed(OpStun0x1e51)); the 102 writes live only on the 0x25aa /
+# 0x3013 feeds.
+#
+# ORACLE column: the official client's +0x251 of the caster spawn, char 67,
+# read live on lane 5 by the /proc/pid/mem poller (refactor/B1183/scripts/
+# b1183_poll.py driven by refactor/B1199/scripts/b1199_poll.sh, armed at
+# the leg's gdb_arm still) -- never inferred. The committed poll log is
+# refactor/B1199/legs/leg2/poll/poll.log (run #2, 2026-10-30 09:55 UTC; the
+# run #1 at legs/leg1 ran the steps and the wire but lost its poller to a
+# launch-ssh self-kill, see README section 4).
+#
+# B1183's pre-fix table (refactor/B1183/tables/step_table.tsv, the stunned
+# row fable_byte 102) is the historical record of that MR's measurement;
+# this table supersedes the stunned row.
+
+step	fable_feed	eqgame.exe.c	fable_byte	oracle_byte	oracle_evidence
+stunned	the stun opcode 0x1e51 OP_Stun (fable's feed; the client's 0x1e51 case, 79576-79581, writes NO +0x251 -- the no-op feed); the 102 writers are the 0x25aa (80377) / 0x3013 (80459) cases, which fable does not process	79576-79581 (no write); 80377 / 80459 (the 102 writers, not this feed)	100	100	legs/leg2/poll/poll.log: SNAPs at poll t=15.158 (0.65 s after the 0x1e51 x2) and t=20.214 (inside the 13_stunned window) byte=100; zero WR lines in the log
+stun end	the stun-end case 0x210b (80326-80340: 100 at 80336 + the stun-flag clear at 80337)	80336	100	100	legs/leg2/poll/poll.log: SNAPs at poll t=25.269 / t=30.323 (the 14_stun_end step) and t=35.376 (15_post_stun) byte=100; zero WR lines in the log
