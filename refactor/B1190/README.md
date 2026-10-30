@@ -333,9 +333,10 @@ particle cloud, which is willeq's standing approximation for **every** legacy
 ground-type emitter (type 3/4 draw the same way), a separate fidelity gap from
 this finding's emitter count and out of scope here.
 
-The ledger clip `leg8080/ledger_8080.mp4` (oracle caster LEFT / willeq harness
-RIGHT, 3 s, hstack of `video-caster.mp4` 502.4-505.4 s and `frames/b1190_8080/`
-frames 42-131 at 30 fps) shows the caster and the effect on both sides.
+The ledger clip `review/VISUAL-FX/B1190/b1190_8080_necrotic_cry.mp4`
+(oracle caster LEFT / willeq harness RIGHT, 3 s, hstack of
+`leg8080/video-caster.mp4` 502.4-505.4 s and `frames/b1190_8080/` frames
+42-131 at 30 fps) shows the caster and the effect on both sides.
 
 **The 47-row gate is unaffected by the type-5 change**: the type-5 branch is
 only reached from the legacy block (section 7), which none of the 47
