@@ -314,10 +314,12 @@ therefore draws six. The oracle leg is lane 5 on the caster's **own** client
 (`leg8080/video-caster.mp4`; Testcaster char 67, level 60, `#castspell 8080 0`,
 begin-cast 502.6 s / action 503.1 s); the willeq side is the `--spell-test`
 harness on this tip (`frames/b1190_8080/`, 405 PNGs;
-`measure/b1190_8080/measure_harness.txt`). The observer rig was not usable for
-this leg (the second client died during the leg), so the oracle side is the
-caster's own view rather than the B1132 observer crop; both emitters are
-nonetheless plainly visible in it.
+`measure/b1190_8080/measure_harness.txt`). The observer's own video
+(`leg8080/video.mp4`) is live through the cast window and its B1132 crop
+(`measure_oracle/leg8080_8080_1`, 352 frames) was extracted, but the effect is
+not visible in the observer's frame (no ring, no glow in the crop), so the
+oracle side is the caster's own view rather than the observer crop; both
+emitters are plainly visible in it.
 
 | emitter | oracle (8080, caster view) | willeq (8080, harness) |
 |---|---|---|
