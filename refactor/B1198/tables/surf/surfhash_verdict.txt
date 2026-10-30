@@ -1,0 +1,11 @@
+B1198 recheck: frame-hash byte identity (review t_b6a6f793, 2026-10-30)
+sha256[:16] of every frame_*.ppm, compared to the driver-path frames at the same index.
+surf = surfaceless 1280x800 (WILLEQ_DRM_DEVICE=/dev/dri/no-such-card) = the gate path
+drm  = i915 3840x2160 virtual surface (the README's path)
+matrix: /mnt/projects/fable/review/B1198-recheck/matrix.sh (20 runs, 60 frames each, CONC=1, load recorded)
+
+path  row        mode     frames  identical_to_driver
+surf  tour_93   driver:60/60 glread:60/60 pbo:60/60 fbo:60/60 dirty:26/26
+surf  b1130_r2  driver:60/60 glread:60/60 pbo:60/60 fbo:60/60 dirty:26/26
+drm   tour_93   driver:60/60 glread:60/60 pbo:60/60 fbo:0/60 dirty:26/26
+drm   b1130_r2  driver:60/60 glread:60/60 pbo:60/60 fbo:0/60 dirty:26/26
