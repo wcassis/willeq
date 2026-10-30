@@ -19,12 +19,15 @@ SCRIPT="$(cd "$(dirname "$0")" && pwd)/b1183_poll.py"
 
 # 1. Wait for the arm line in a session dir NEWER than this poller's start
 #    (a stale dir from a previous leg must not consume the poller).
+#    B1192 (#511): the owner prefix is env-overridable -- B1183's poller is
+#    kb-b1183-stand-state-a_*, a different card must arm with its own
+#    ORACLE_OWNER (legH-run5's poller watched the wrong prefix and timed
+#    out with an empty poll dir while the leg completed).
+POLL_OWNER_PREFIX="${B1192_POLL_OWNER:-kb-b1183-stand-state-a}"
 touch "$OUT/poll.started"
 LATEST=""
 for _ in $(seq 1 240); do
-    # Only our own sessions (ORACLE_OWNER prefix kb-b1183-stand-state-a_):
-    # a sibling task's oracle session must not consume this poller.
-    d="$(ls -td /home/user/eq-oracle/sessions/kb-b1183-stand-state-a_* 2>/dev/null | head -1 || true)"
+    d="$(ls -td /home/user/eq-oracle/sessions/${POLL_OWNER_PREFIX}_* 2>/dev/null | head -1 || true)"
     if [[ -n $d && -f $d/timeline.tsv ]] \
             && [[ "$d" -nt "$OUT/poll.started" ]] \
             && grep -qP '\tEND\t[0-9]+_gdb_arm$' "$d/timeline.tsv"; then
