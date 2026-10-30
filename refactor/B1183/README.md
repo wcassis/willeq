@@ -13,11 +13,12 @@ fed by the same events the client uses, with the existing readers
 Every line below is `review/B1141/ghidra/out/eqgame.exe.c`, the Ghidra
 decompile of the lane-5 client binary (the same MD5 B1162/B1174 cite).
 `+0x251` has **143 raw references in `eqgame.dis`** (the number B1174 sec. 5
-quotes) and **140 unique logical references in the decompiled C** (150 raw
-lines; two lines carry two references each). The C census is the table in
-sec. 2: **23 distinct writes** (the state machine, sec. 3) across 8 writer
-functions, and **116 reads** across 48 reader functions (the gates, the
-renderer, the movement code). The census scripts and raw dump are
+quotes) and **140 lines (150 references) in the decompiled C** (10 lines
+carry two references each). The C census is the table in
+sec. 2: **23 distinct write lines (24 references)** (the state machine, sec. 3)
+across 15 writer functions, and **117 read lines (126 references)** across 61
+reader functions (the gates, the renderer, the movement code). The census scripts
+and raw dump are
 `/home/user/kb-evidence/kb-b1183-stand-state/census_{parse,ctx}.py` +
 `census_raw.tsv` (attached).
 
@@ -40,43 +41,47 @@ server wrote; the enum is the named vocabulary for the writer side only.
 
 ## 2. The census
 
-### 2.1 The writers (23 distinct, 8 functions) — this IS the state machine
+### 2.1 The writers (23 distinct, 15 functions) — this IS the state machine
 
 | eqgame.exe.c | function | value | kind | trigger |
 |---|---|---|---|---|
-| 103347 | FUN_004805e9 | 0 | direct | the spawn constructor (uninitialized) |
-| 103463 | FUN_004805e9 | `puVar1[0x57]` | direct | the server's appearance blob (AT_Anim stand value) |
+| 103347 | FUN_004814d4 | 0 | direct | the spawn constructor (uninitialized) |
+| 103463 | FUN_004816d7 | `puVar1[0x57]` | direct | the server's appearance blob (AT_Anim stand value) |
 | 75121 | FUN_004554e5 | 100 | direct | zone-in (GetZoneInfo) |
 | 75215 | FUN_00455710 | 100 | direct | zone-in (name match) |
 | 76903 | FUN_00457f32 | 100 | direct | zone-in (name match) |
 | 119126 | FUN_00496b5a | 100 | direct | zone-in / local re-spawn |
-| 128478 | FUN_004a7356 | 100 | direct | the local player (DAT_00905ce4) |
-| 106109 | FUN_004849b2 | 100 | direct | a newly added spawn |
-| 79422 | FUN_0045afdc | `param_2[0x251]` | copy | a spawn is duplicated (the byte is copied) |
-| 80336 | FUN_0045b8f0 | 100 | direct | the stun-END message (0x25aa handler) |
-| 80377 | FUN_0045b8f0 | 0x66 (102) | direct | the stun-START message (0x25aa) |
-| 80459 | FUN_0045b8f0 | 0x66 (102) | direct | the stun-START message (0x3013) |
+| 128478 | FUN_004a8193 | 100 | direct | the local player (DAT_00905ce4) |
+| 106109 | FUN_004850a0 | 100 | direct | a newly added spawn |
+| 79422 | FUN_0045b393 | `param_2[0x251]` | copy | a spawn is duplicated (the byte is copied) |
+| 80336 | FUN_0045b8f0 | 100 | direct | the stun-END case (0x210b, 80326-80340: clears DAT_0092478c and stands the player up; 0x25aa is the stun-START writer, 80377) |
+| 80377 | FUN_0045b8f0 | 0x66 (102) | direct | the stun-START case (0x25aa, 80373-80384) |
+| 80459 | FUN_0045b8f0 | 0x66 (102) | direct | the stun-START case (0x3013, 80455-80465) |
 | 71254 | FUN_00450c2f | 100 | direct, gated | the cast path (the gate at 71254: a lying 's' / corpse 'x' actor, 71225, is left alone) |
-| 105797 | FUN_004849b2 | 0x69 (105) | direct | loot (see also the 28061 gate, via the setter) |
-| 105881 | FUN_004849b2 | 0x78 (120) | direct | death |
-| 111059 | FUN_0048bb7b | 0x78 (120) | direct | death |
-| 104775-104807 | FUN_0048236e | 0x6f / 100 | transient | the setter's crouch camera branch (unobservable — the final write reinstates; see sec. 3) |
-| 104799, 104878 | FUN_0048236e | `param_2` | THE SETTER | the user-initiated transition (the duck/sit/stand/feign keys, loot open/close) |
+| 105797 | FUN_00484d8d | 0x69 (105) | direct, transient | loot-close / stand-up: the function's tail is 105797 -> 105798 (`FUN_00483556(100)`), so the byte holds 105 for no observable interval; the loot-OPEN path is the 28061 gate, via the setter |
+| 105881 | FUN_00484e79 | 0x78 (120) | direct | death |
+| 111059 | FUN_0048bf35 | 0x78 (120) | direct | death |
+| 104775-104807 | FUN_00483556 | 0x6f / 100 | transient | the setter's crouch camera branch (unobservable — the final write reinstates; see sec. 3) |
+| 104799, 104878 | FUN_00483556 | `param_2` | THE SETTER | the user-initiated transition (the duck/sit/stand/feign keys, loot open/close) |
 
-`FUN_0048236e` is the listing that contains **THE SETTER `FUN_00483556`**
-(0x00483556-0x00483955 in `eqgame.dis`). Its two kinds of write are kept
-apart in the port: the direct writes go through `StandState::apply()` /
-`onAppearanceAnim()`, and the setter goes through `StandState::transition()`.
+**THE SETTER is `FUN_00483556` itself** (0x00483556-0x00483955 in
+`eqgame.dis`, its own prologue in the dis): an independent function, and
+every setter write above (the transient 0x6f/100 at 104775-104807, the
+final `param_2` write at 104799/104878) sits in its body, as do the gates
+(104742/104768/104774/104798, sec. 3). `FUN_0048236e` contains no +0x251
+reference at all. The two kinds of write are kept apart in the port: the
+direct writes go through `StandState::apply()` / `onAppearanceAnim()`, and
+the setter goes through `StandState::transition()`.
 
-### 2.2 The readers (116, 48 functions) — the gates marked
+### 2.2 The readers (117 lines, 126 references, 61 functions) — the gates marked
 
 The readers the card calls out for spell FX / combat:
 
 | eqgame.exe.c | function | reads | the gate |
 |---|---|---|---|
-| 101927 | FUN_0047f01e | 'd' or 'f' | **the B1174 cast-anim gate** — the OP_Action handler asks the standing/frozen source for the CastingAnim (B1174 sec. 3) |
-| 28061 | FUN_0041edac | 'd' | **the B1162 ability gate** — the Intimidation caster must be standing (B1162 sec. 34); 27630/28621 read 'f' (the frozen veto) |
-| 28456 | FUN_0041edac | 'd' | the Intimidation G-key (local) |
+| 101927 | FUN_0047f4af | 'd' or 'f' | **the B1174 cast-anim gate** — the OP_Action handler asks the standing/frozen source for the CastingAnim (B1174 sec. 3) |
+| 28061 | FUN_0041f4a0 | 'd' | **the B1162 ability gate** — the Intimidation caster must be standing (B1162 sec. 34); 27630 (also FUN_0041f4a0) and 28621 (FUN_00420f51) read 'f' (the frozen veto) |
+| 28456 | FUN_0041f4a0 | 'd' | the Intimidation G-key (local) |
 | 71225 | FUN_00450c2f | 's' or 'x' | **the cast path's gate** — a lying/corpse actor is not put into the cast state (71254) |
 | 71370 | FUN_00450c2f | 'd' (negated) | the cast path's standing check |
 | 80231, 83078, 86507, 88291, 92438 | FUN_0045b8f0 / 004619cd / 00466244 / 00469215 / 00472313 | 'f' | **the frozen checks** — a stunned (frozen) player is vetoed from acting |
@@ -86,25 +91,32 @@ plays), grouped by function:
 
 | function | reads | what it is |
 |---|---|---|
-| FUN_004a1d74 (12) | 'o','n','d','x','s' | the model's pose selection (the largest reader) |
-| FUN_0048236e (9) | the setter's own gates (104421/104430/104768/104774/104798) | the setter reading its input |
-| FUN_004ab7f1 (8) | pose | the per-frame model update |
-| FUN_0044fa37 (6) | 'o' | the crouch check (movement / ground) |
-| FUN_0041edac (6) | 'd','f','n' | the Intimidation / ability gates (above) |
-| FUN_005709c2 (5) | pose | animation |
-| FUN_00488974 (5) | 'o' | the crouch check |
-| FUN_0056fc86 (4) | pose | animation |
-| FUN_004619cd (4) | 'd','f','o' | the stun / pose (83238/83243/83291) |
-| FUN_00411f3d (4) | 'd','f' | the action gate (18166/18191/18199/20137) |
-| FUN_0049dda6 (3) | pose | animation |
-| FUN_0048605d (3) | 'x','n','o' | corpse / sit / crouch (106941/107132/107233) |
-| FUN_00450c2f (3) | 's','x','n','d' | the cast path (71225/71289/71370) |
-| FUN_0047b5ef (2) | 's','x' | 99108 the lying/corpse check |
-| FUN_0048bb7b (2) | the death handler's reads | 111059 area |
-| FUN_004805e9 (2) | 'd','s' | 103958/103963 the appearance's pose |
-| FUN_00472313 (2) | 'f','d' | 92438/92443 the stun / standing |
-| FUN_0045b8f0 (2) | 'f' | 80231 the stun handler's read |
-| (22 single-read functions) | 1 each | the long tail (pose, corpse, crouch, the 0x244 corpse-flag pairs) |
+| FUN_004a1d74 (12 lines, 14 refs) | 'f','d','o','n' (124764-125167) | the model's pose selection (the largest reader) |
+| FUN_004aba14 (8) | 'f' (131083/131093), 'd','o' (131195-131277) | the per-frame model update; 131277 calls the setter `FUN_00483556(0x6f)` |
+| FUN_0044fa8f (6) | 'o' (70263-70424) | the crouch check (movement / ground) |
+| FUN_00483556 (5) | the setter's own gates (104742/104768/104774/104798/104819) | the setter reading its input |
+| FUN_00488cb6 (5) | 'o' (108539-108585) | the crouch check |
+| FUN_004619cd (4 lines, 5 refs) | 'f','d','o' (83078/83238/83243/83291) | the frozen / stun checks |
+| FUN_0048297b (4) | 'd','f' + 2 copies (104421/104430/104461/104546) | stand/frozen reads |
+| FUN_004a56e3 (2 lines, 4 refs) | 'd','f' (126982), 'n','i' (127492) | the pose checks |
+| FUN_00411f3d (3) | 'd','f' (18166/18191/18199) | the action gate (20137 is a 'd' read in FUN_00414913) |
+| FUN_0041f4a0 (3) | 'd','f' (27630/28061/28456) | the Intimidation / ability gates (above); 28621 ('f') is in FUN_00420f51 |
+| FUN_0049dda6 (3) | 'f' (123685), 'n' (123691/123698) | the frozen / sit checks |
+| FUN_00450c2f (3 lines, 4 refs) | 's','x','n','d' (71225/71289/71370) | the cast path |
+| FUN_00422198 (2) | 'd' (29621), 'n' (29916) | the pose checks |
+| FUN_0045b8f0 (2) | 'f' (80231), 'i' (80715) | the stun handler's read + 80715 |
+| FUN_00472313 (2) | 'f','d' (92438/92443) | the stun / standing |
+| FUN_0047b940 (1 line, 2 refs) | 's','x' (99108) | the lying/corpse check |
+| FUN_0047f4af (1 line, 2 refs) | 'd','f' (101927) | the B1174 cast-anim gate (above) |
+| FUN_00481f2c (2) | 'd','s' (103958/103963) | the appearance's pose |
+| FUN_00489a32 (1 line, 2 refs) | 'o','x' (109290) | the crouch / feign check |
+| FUN_0048bb83 (2) | 'o' (110951), 'd' (110983) | the pose checks |
+| FUN_0049908d (2) | 'd','n' (120779/120782) | the stand / sit checks |
+| FUN_004d362c (2) | 'n' (163771/163790) | the sit checks |
+| FUN_0051415b (2) | 'f' (214375), 'i' (214513) | the frozen checks; 214513 is the loot-close read |
+| FUN_005709db (2) | 'o' (284916), 'n' (284951) | the pose checks |
+| FUN_00570fca (2) | 'o' (285132), 'n' (285175) | the pose checks |
+| (36 single-read functions) | 1 each | the long tail (pose, corpse, crouch, sit; e.g. FUN_004860a3 / 004868a4 / 004868ee at 106941/107132/107233, the corpse/sit/crouch 'x','n','o'; FUN_0052b026 at 230933, a 'i' loot read) |
 
 Every read is a pure read of the byte (or a copy at 79422); none writes
 outside the 23 writes above. The two that the port MUST satisfy are the B1174
@@ -159,16 +171,17 @@ readers keep reading exactly the byte they read.
 | F2 | the local player's zone-in | `entities_component.cpp` (the ZoneSpawns add) | `apply(Standing)` |
 | F3 | the local player's pose (duck/sit/stand/feign keys, the camp sit-down) | `src/client/movement/movement_state.cpp` (`storeStandByte`, user half) | `transition()` |
 | F4 | a pose the server forces on us | `movement_state.cpp` (`storeStandByte`, server half) | `apply()` |
-| F5 | the stun message (0x3050 / 0x25aa / 0x3013) | `src/client/commands/combat_actions.cpp` (`ZoneProcessStun`) | `apply(Frozen)` / `apply(Standing)` |
+| F5 | the stun message (the client's 102 writers are the 0x25aa / 0x3013 cases, 80377/80459; 0x3050 is a message-string ID, not an opcode — eqgame.exe.c:123648. fable's feed is the 0x1e51 OP_Stun opcode, whose client case, 79576-79581, writes no +0x251: the B1199 difference) | `src/client/commands/combat_actions.cpp` (`ZoneProcessStun`) | `apply(Frozen)` / `apply(Standing)` |
 | F6 | loot start | `src/client/bridge/bridge_component_ui_audio.cpp` (`RequestLootCorpse`) | `transition(Looting)` (28061 gate) |
 | F7 | loot close | `bridge_component_ui_audio.cpp` (`CloseLootWindow`) | `transition(Standing)` (230933) |
 | F8 | cast start | `src/client/spell/spell_manager.cpp` (`beginCastFromGem`) | `apply(Standing)` (71254, gated) |
 | F9 | death | `src/client/player/player_state.cpp` (`ZoneProcessDeath`) + F4's POS_DEAD | `apply(Corpse)` |
 
-A note on the two loot-start paths: the census shows the 28061 gate (standing
-→ looting, via the setter) and a direct 0x69 write at 105797 (FUN_004849b2).
-The port uses the 28061 gate (setter, standing-only); lane-5 arbitrates which
-path a real loot takes (sec. 7).
+A note on the loot paths: the loot-OPEN path is the **28061 gate** (standing
+→ looting, via the setter), which the port implements. The other direct 0x69
+write (105797, FUN_00484d8d) is immediately re-100'd at 105798 — a transient
+on the loot-close / stand-up path, not a second loot-open path, so there is
+no path question left to arbitrate.
 
 ## 5. The readers, switched
 
@@ -229,8 +242,8 @@ sequence and prints the byte at each step; the output is
 | sit | key (setter 104878) | 110 |
 | stand | key (setter 104878) | 100 |
 | cast | cast start (71254) | 100 |
-| stunned | stun msg 0x3050 (80377) | 102 |
-| stun end | stun end (80336) | 100 |
+| stunned | stun msg (0x25aa/0x3013, 80377/80459; fable's feed is the 0x1e51 OP_Stun opcode, whose client case writes no +0x251 — the B1199 difference) | 102 |
+| stun end | stun end (80336, the 0x210b case) | 100 |
 | loot | loot open (28061) | 105 |
 
 **The oracle column is measured on lane 5, per step, by the `/proc/pid/mem`
@@ -241,7 +254,11 @@ gdb 15.1 has no Python Watchpoint API, and a hardware watchpoint stops the
 inferior on every hit). `refactor/B1183/scripts/merge_poll.py` turns
 `poll.log` + the leg's `steps.tsv` into the per-step table. The full table
 (both columns) is `refactor/B1183/tables/step_table.tsv`; evidence under
-`/home/user/kb-evidence/kb-b1183-stand-state/legs/{legA-fix5,legA3_discovery}/poll/`.
+`/home/user/kb-evidence/kb-b1183-stand-state/legs/{legA-fix5,legA3_discovery,legF}/poll/`,
+and legF's poller log is committed at
+`refactor/B1183/legs/legF/poll/poll.log` (the START line, `INIT byte +0x251 = 100`,
+20 SNAPs and the two value-changing WRs — every oracle byte in the table below
+is a line of that file).
 
 The three POSE rows before sit are measured and identical to fable:
 
@@ -251,17 +268,19 @@ The three POSE rows before sit are measured and identical to fable:
 | duck | 111 | 111 | legA-fix5 `WR t+28.573 100->111` (the **Down** press — the client's live crouch key; fable's is C, the bytes match) |
 | stand | 100 | 100 | legA-fix5 `WR t+61.497 111->100` (the Down release) |
 
-**The six remaining rows are measured** (legs `legC4` / `legE` / `legF` /
-`legG`; the `/proc/pid/mem` poller reading +0x251 live on the caster, char 67).
+**The six remaining rows are measured** by the `/proc/pid/mem` poller reading
++0x251 live on the caster, char 67 (legs `legC4` / `legE` / `legG` ran first
+and were blocked; the values below are `legF`'s, from its poller log attached
+at `refactor/B1183/legs/legF/poll/poll.log`).
 The full two-column table is `refactor/B1183/tables/step_table.tsv`:
 
 | step | fable byte | oracle byte (+0x251) | oracle evidence |
 |---|---|---|---|
-| sit | 110 | 110 | legF `WR t+49.858 100->110` (the `/sit` command) |
-| stand | 100 | 100 | legF `WR t+59.258 110->100` (the `/stand` command) |
-| cast | 100 | 100 | legF `#castspell 93 0` (S->C OP_BeginCast x2 + OP_ManaChange); the byte held 100 through the cast |
-| stunned | 102 | 100 | legF `#stun 8000` (S->C OP_Stun 0x1e51 + OP_PlayerStateAdd + OP_SpecialMesg = genuinely applied); the byte **held 100** — see Finding 2 |
-| stun end | 100 | 100 | legF: the 8 s GM stun expired; the byte held 100 through and after |
+| sit | 110 | 110 | legF poll.log `WR t=49.858 100 -> 110` (the `/sit` command, steps.tsv 24_sit_cmd t=49.6) |
+| stand | 100 | 100 | legF poll.log `WR t=59.258 110 -> 100` (the `/stand` command, steps.tsv 26_stand_cmd t=59.0) |
+| cast | 100 | 100 | legF `#castspell 93 0` (S->C OP_BeginCast x2 + OP_ManaChange); the byte held 100 through the cast (poll.log SNAPs t=20.2/25.3 = 100) |
+| stunned | 102 | 100 | legF `#stun 8000` (S->C OP_Stun 0x1e51 + OP_PlayerStateAdd + OP_SpecialMesg = genuinely applied); the byte **held 100** — poll.log SNAPs t=30.4/35.4 inside the stun window = 100; FINDING 2, a FABLE-side defect (B1199) |
+| stun end | 100 | 100 | legF: the 8 s GM stun expired (stun start t=29.4 + 8 s = t=37.4); poll.log SNAPs t=40.5/45.5 = 100, through and after (before the `/sit` write at t=49.9) |
 | loot | 105 | PENDING | BLOCKED — see the loot row below |
 
 So eight of the nine rows are identical fable-vs-oracle; the **stunned** row is
@@ -285,21 +304,20 @@ section is superseded: the legA3 poller mis-read the slot layout; the
 measured values are all poses (stand 100, sit 110, duck 111, loot 105). When
 stunned, the byte HOLDS the current pose (100): legF's `#stun 8000` was
 genuinely applied server-side (OP_Stun + OP_PlayerStateAdd + OP_SpecialMesg
-all present) yet +0x251 held 100 for the whole 8 s. The GM `#stun` is
-delivered as **OP_Stun 0x1e51 + OP_PlayerStateAdd** — a *different* opcode
-pair from the decompile's 102-writing stun handler (FUN_0045b8f0, the 0x25aa
-/ 0x3013 handlers at 80377/80459), which never fired for the GM stun; the
-official client handles the GM stun with a state flag, leaving the pose byte
-untouched. **FABLE's difference**: fable's F5 feed (`ZoneProcessStun`) writes
-102 into the stand byte on the stun message (the ported machine, matching the
-decompile's 0x25aa/0x3013 handler), so fable shows 102 where the official
-client's +0x251 held 100 for the GM stun. **Ruling requested (not changed
-here)**: whether the stunned row's oracle value (100, measured for GM `#stun`)
-overrides fable's decompile-based 102 depends on whether the GM stun path
-(OP_Stun 0x1e51) is representative of a real stun spell's path (which may use
-the 0x25aa/0x3013 handler and DO write 102). That needs a spell-stun
-measurement, not a ruling from a GM-stun sample; fable's machine is left as
-ported and the measured difference is recorded as-is.
+all present) yet +0x251 held 100 for the whole 8 s (the attached poller log:
+SNAPs t=30.4/35.4 inside the stun window, t=40.5/45.5 after it). The GM
+`#stun` is delivered as **OP_Stun 0x1e51 + OP_PlayerStateAdd** — and the
+client's own 0x1e51 case (eqgame.exe.c:79576-79581,
+`if (DAT_00905d00 != 0) FUN_00417839();`) does NOT touch +0x251; the 102
+writers are the 0x25aa (80377) and 0x3013 (80459) cases, which never fired
+for the GM stun. The measured fable-side difference is therefore a
+**defect, not an open ruling**: fable's F5 feed (`ZoneProcessStun`, fed by
+OP_Stun 0x1e51) writes 102 into the stand byte where the client leaves the
+byte untouched — fable shows 102 where the oracle held 100. **B1199 (#518)
+carries the fix**: the machine must not write 102 on the 0x1e51 feed; 102
+stays only for the 0x25aa / 0x3013 feeds. No machine change in this MR (the
+port is left as ported until B1199 lands); the measured difference is
+recorded here as-is.
 
 **FINDING 3 — beneath-the-world limbo (environmental, since B1130).** The
 zone now snaps the caster to z=3.875, *below* the ground at -74,428 (the
