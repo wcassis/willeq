@@ -2,7 +2,11 @@
 
 DIAGNOSE leg, report only (the card: name the owner with an A/B number, or the two best
 candidates with the separating A/B; a FIX leg is cut on the merge of this MR).
-Branch cut at origin/fable ff782a71f (the B1188 merge). Render on the ThinkPad
+Branch cut at origin/fable ff782a71f (the B1188 merge); the renders and all
+measurements are on that source. The branch also merges the current fable tip
+(bringing B1189's re-anchored spell_visual_fx.cpp citations, which this branch's
+older cut still had stale) -- the merge touches nothing in `refactor/B1197/`.
+Render on the ThinkPad
 (lane data `--client /mnt/projects/EverQuestP1999 --eqe1 /mnt/projects/EverQuest_ETC1/willeq.eqe1`,
 whose sha256 equals this tree's pin in `data/willeq.eqe1.sha256`), measured on
 hermes-ext. WILL'S RULE: a measured gap is a
