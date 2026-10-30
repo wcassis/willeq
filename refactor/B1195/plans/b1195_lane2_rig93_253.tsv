@@ -1,0 +1,69 @@
+# action	target	hold_ms	still_name
+# B1195 (#514) LANE 2: the lane-comparability leg on the r540 (observer = the Xvfb :99, llvmpipe;
+# the x11grab display = the measurement surface). B1134's P2 rig + B1176's observer-slot seed:
+# the CASTER (Testcaster, class 6 for the leg) at B1130's TrollF pose (-74,428,3.75,h160) on the
+# session Xvfb :98 (llvmpipe, also recorded, caster-video=1); the OBSERVER (Oraclewatch, :99) at
+# B1130's caster pose (-67.6,434.4,3.75,h160) with B1130's fixed camera SELECTED by F9 x3 (the
+# Camera1 ini keys 30/192/0/0/5/90 are pinned too -- the keys define the camera, the F9 presses
+# select it; B1134 P2's framing, caster ~933,639 ~212 px).
+# LANE-SPECIFIC LINE (the only difference vs the lane-5 plan): Oraclewatch is slot 0 on lane 2
+# (freshly provisioned, B1134 P1 verbatim); the zone step reads Defaults.LastCharSel.
+# 93 Burst of Flame cast ON THE OBSERVER twice (gem 1), 253 Whirling Wind cast ON SELF twice
+# (gem 5); both #set pvp on; guard faction assist off for the leg (pre/post SQL, applied by
+# #reload rules global). #fps=30 sets the x11grab rate (passthrough, crf 18, 1280x800+0,30).
+# fps=30
+# pose=-74,428,3.75,160
+# observer=Oraclewatch
+# observer-pose=-67.6,434.4,3.75,160
+# caster-video=1
+# obs-ini-set=Defaults.LastCharSel=0
+# obs-ini-set=Options.Camera1-Distance=30.000000
+# obs-ini-set=Options.Camera1-DirHeading=192.000000
+# obs-ini-set=Options.Camera1-Heading=0.000000
+# obs-ini-set=Options.Camera1-Pitch=0.000000
+# obs-ini-set=Options.Camera1-Height=5.000000
+# obs-ini-set=Options.Camera1-Zoom=90.000000
+login	Testcaster	0	char_select
+obs	login	Oraclewatch	0	obs_char_select
+zone	qeynos2	0	in_world
+obs	zone	qeynos2	0	obs_in_world
+wait	8000	0	settle
+obs	click	1229,555	0	obs_close_tip
+click	1229,555	0	close_tip
+command	#set time 11 0 0	0	noon
+wait	1500	0	noon_settle
+command	#weather 0	0	clear
+command	#reload rules global	0	rules
+command	#set level 60	0	lvl
+command	#mana	0	mana
+command	/target Oraclewatch	0	tgt_obs
+command	#set pvp on	0	pvp_obs
+command	/target Testcaster	0	tgt_self
+command	#set pvp on	0	pvp_self
+obs	press	F9	0	obs_cam1
+obs	press	F9	0	obs_cam2
+obs	press	F9	0	obs_cam3
+obs	wait	3000	0	obs_cam_settle
+command	#weather 0	0	clear2
+wait	36000	0	time_settle
+command	/target Oraclewatch	0	tgt93_a
+wait	1500	0	tgt93_a_settle
+command	/cast 1	0	cast93_a
+wait	15500	0	fx93_a
+command	#mana	0	mana93_b
+command	/target Oraclewatch	0	tgt93_b
+wait	1500	0	tgt93_b_settle
+command	/cast 1	0	cast93_b
+wait	15500	0	fx93_b
+command	#mana	0	mana253_a
+command	/target Testcaster	0	tgt253_a
+wait	1500	0	tgt253_a_settle
+command	/cast 5	0	cast253_a
+wait	15500	0	fx253_a
+command	#mana	0	mana253_b
+command	/target Testcaster	0	tgt253_b
+wait	1500	0	tgt253_b_settle
+command	/cast 5	0	cast253_b
+wait	15500	0	fx253_b
+obs	command	/q	0	obs_quit
+command	/q	0	quit
