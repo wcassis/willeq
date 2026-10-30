@@ -152,7 +152,7 @@ def main():
     if not any("test" in f and "verify" in f for f in expect_red) or not any(".goldfarm" in f for f in expect_red):
         failures.append(f"self-test: a pipeline without the verify still passes ({expect_red})")
     # (B1042: the ccache report line may sit between the build and the claim.)
-    stamp_first = re.sub(r"(\n\s*nice -n 10 cmake --build[^\n]*)((?:\n\s*ccache_report[^\n]*)?)(\n\s*python3 scripts/ci/prune_ref_build_trees.py --stamp[^\n]*--sha[^\n]*)",
+    stamp_first = re.sub(r"(\n\s*nice -n 10 cmake --build[^\n]*)((?:\n\s*ccache_report[^\n]*)?)(\n\s*(?:#[^\n]*\n\s*)*(?:if [^\n]*then )?python3 scripts/ci/prune_ref_build_trees.py --stamp[^\n]*--sha[^\n]*)",
                          r"\3\1\2", text)
     if stamp_first == text or not any("before cmake --build" in f for f in check(stamp_first)):
         failures.append("self-test: a claim written before cmake --build still passes")

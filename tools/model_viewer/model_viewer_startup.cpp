@@ -30,6 +30,14 @@ void parseCommandLine(int argc, char* argv[], ViewerArgs& args) {
             harnessOpts.planPath = argv[++i];
         } else if (arg == "--frames-dir" && i + 1 < argc) {
             harnessOpts.framesDir = argv[++i];
+        } else if (arg == "--frames-sync") {
+            // B1193: the pre-B1193 render-thread frame output (the A/B timing
+            // and the byte-identity test's reference).
+            harnessOpts.framesSync = true;
+        } else if (arg == "--frames-raw") {
+            // B1193: the P6 PPM dump (frame_%05d.ppm, RGB24) -- no encode
+            // step; the measures read it (cv2's imread takes P6).
+            harnessOpts.framesRaw = true;
         } else if (arg == "--fps" && i + 1 < argc) {
             harnessOpts.fps = std::atoi(argv[++i]);
         } else if (arg == "--seconds" && i + 1 < argc) {
@@ -152,6 +160,7 @@ void printUsageBanner(const ViewerArgs& args) {
     std::cout << "                    --fps 30 --seconds N --headless [--camera b1118] [--backdrop <png>]" << std::endl;
     std::cout << "                    [--ui-occluder x0,y0,x1,y1]... [--no-ui-occluder] [--target-death <s>]" << std::endl;
     std::cout << "                    [--target-despawn <s>] [--caster-despawn <s>] [--worker-latency 0|1]" << std::endl;
+    std::cout << "                    [--frames-sync] [--frames-raw]  (B1193 frame output)" << std::endl;
     std::cout << "                    [--missile-payload <0x4033 payload file> --missile-at <s>]" << std::endl;
     std::cout << "                    [--caster-appearance face,texture:e0,...,e8] [--sim-hz <hz>]" << std::endl;
     std::cout << "                    [--caster race:gender[:size]] [--target race:gender[:size]]" << std::endl;
