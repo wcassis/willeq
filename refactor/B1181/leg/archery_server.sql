@@ -1,0 +1,19 @@
+-- B1181 leg A server-side (B1174 hook; undo runs on every exit path).
+--
+-- 'Darkshadow' (id 104) sits on the OBSERVER's account (80). The driver's
+-- zone step selects the FIRST character in the select screen and the list is
+-- alphabetical, so Darkshadow (D) shadows Oraclewatch (O): the observer logs
+-- in as a level-1 Darkshadow, not Oraclewatch -- and with no Oraclewatch in
+-- the zone the caster's /target Oraclewatch resolves to target=0 and the
+-- measured click point has nothing to hit (archery4: both legs logged in as
+-- Darkshadow, 0 x 0x4033).
+--
+-- The caster's account (70) already lists Testcaster first (Testcaster <
+-- Testchar < Testmelee), so it is left untouched. Moving 104 to the caster's
+-- account would break the caster the same way (archery4 proved that).
+--
+-- Fix: move 104 to a NEUTRAL account -- 77 ('Wizzy', one character, unused by
+-- this leg) -- so account 70 keeps Testcaster and account 80 lists only
+-- Oraclewatch; both legs then log in as the intended character. The undo
+-- restores 104 to account 80.
+UPDATE character_data SET account_id=77 WHERE id=104 AND name='Darkshadow';

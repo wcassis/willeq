@@ -389,5 +389,30 @@ void RemovalPosition(const Object& o, float out[3]) {
     for (int i = 0; i < 3; ++i) out[i] = o.w.pos[i] - o.w.vel[i];
 }
 
+// --- B1181 (#500): the +0x65 IT model ---------------------------------------
+
+int ParseMissileModelId(const std::string& name) {
+    if (name.size() < 3 || name[0] != 'I' || name[1] != 'T') return -1;
+    size_t i = 2;
+    long id = 0;
+    while (i < name.size()) {
+        if (name[i] < '0' || name[i] > '9') return -1;
+        id = id * 10 + (name[i] - '0');
+        if (id > 1000000) return -1;
+        ++i;
+    }
+    return static_cast<int>(id);
+}
+
+MissileModelAngles MissileModelAnglesFromFlight(float heading512, float aim512) {
+    MissileModelAngles a;
+    // 512 units = 360 degrees (EQGraphicsDX9's tables mask with 0x1ff).
+    const float kDegPerUnit = 360.0f / 512.0f;
+    a.yawDeg = -heading512 * kDegPerUnit;
+    a.pitchDeg = -aim512 * kDegPerUnit;
+    a.rollDeg = 0.0f;  // the spawn's third angle is 0 (00476e30 .. 00476e3b)
+    return a;
+}
+
 }  // namespace SpellMissile
 }  // namespace EQ

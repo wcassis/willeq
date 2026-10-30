@@ -25,6 +25,9 @@
 #include <algorithm>
 #include <vector>
 #include <fstream>
+#include <cstdlib>
+#include <string>
+#include <unordered_set>
 
 #include <fmt/format.h>
 
@@ -233,6 +236,10 @@ SpellVisualResolution SpellVisualFX::resolveVisual(uint32_t spell_id) const
 SpellVisualFX::~SpellVisualFX()
 {
     clearAllEffects();
+    // B1181 (#500): the live missile objects' IT models are scene nodes of
+    // m_smgr; drop them (and the loader's mesh references) before the
+    // scene manager / loader go away.
+    for (auto& m : m_missile_objects) destroyMissileModel(m);
     // Note: texture is managed by the driver, don't delete it
 }
 
@@ -969,6 +976,37 @@ uint16_t SpellVisualFX::createLanding(uint16_t caster_id, uint16_t target_id, ui
 // population; an override's own landing geometry (B1120/B1122) stays on the
 // landing entity. Returns the point the first slot follows (0 when nothing is
 // drawn).
+// B1188 (#507): the landing lit-pixel census knob. WILLEQ_FX_LANDING_EMITTERS
+// (a comma list of spellsnew.edd indexes) restricts the Target stage to those
+// emitters so one render isolates one emitter (record 80's four emitters are
+// all white-coloured, so a single frame's pixels cannot be split by colour).
+// Unset, production draws every drawn slot exactly as before.
+namespace {
+struct LandingEmitterFilter {
+    std::unordered_set<int32_t> ids;
+    bool active = false;
+    LandingEmitterFilter() {
+        const char* v = std::getenv("WILLEQ_FX_LANDING_EMITTERS");
+        if (!v || !*v) return;
+        active = true;
+        size_t start = 0;
+        while (true) {
+            char* end = nullptr;
+            const long id = std::strtol(v + start, &end, 10);
+            if (end == v + start) break;
+            ids.insert(static_cast<int32_t>(id));
+            start += static_cast<size_t>(end - (v + start));
+            if (*end != ',') break;
+            ++start;
+        }
+    }
+};
+const LandingEmitterFilter& landingEmitterFilter() {
+    static const LandingEmitterFilter f;
+    return f;
+}
+}  // namespace
+
 uint16_t SpellVisualFX::createLandingFromSlots(uint16_t caster_id, uint16_t target_id, uint32_t spell_id,
                                                int record, const StageSlots& slots, const StageArgs* args)
 {
@@ -989,7 +1027,9 @@ uint16_t SpellVisualFX::createLandingFromSlots(uint16_t caster_id, uint16_t targ
     std::string made;
     struct Pending { EQT::Graphics::Environment::SpellEffectDef def; uint16_t caster; uint16_t target; bool orient; };
     std::vector<Pending> pending;
+    const LandingEmitterFilter& census = landingEmitterFilter();  // B1188
     for (const auto& d : slots.drawn) {
+        if (census.active && !census.ids.count(d.slot.emitter)) continue;  // B1188 census isolation
         const auto anchor = d.slot.anchorKind();
         uint16_t entity = 0;
         uint16_t follow = 0;

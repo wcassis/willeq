@@ -1,0 +1,15 @@
+flag	value	measured	file_ref	file_all	in_measured
+orient_track	0	39	1312	1728	Y
+orient_track	1	245	343	390	Y
+no_depth	0	0	158	206	N
+no_depth	1	284	1497	1912	Y
+additive_blend	0	2	500	649	Y
+additive_blend	1	282	1155	1469	Y
+attach_scale	0	3	92	105	Y
+attach_scale	1	281	1563	2013	Y
+live_follow	0	274	1507	1900	Y
+live_follow	1	10	148	218	Y
+neg_radius	0	284	1654	2117	Y
+neg_radius	1	0	1	1	N
+shape_scale	0	0	89	102	N
+shape_scale	1	284	1566	2016	Y

@@ -110,14 +110,15 @@ public:
 private:
     ParticleKnobs knobs_ = identityParticleKnobs();  // B995
     glm::vec3 cameraPos_{0.0f};
-    // Point sprite vertex layout: position(3f) + color(4f) + texcoord0(2f) + texcoord1(2f) = 11 floats = 44 bytes
+    // Point sprite vertex layout: position(3f) + color(4f) + texcoord0(2f) + texcoord1(2f) + span(1f) = 12 floats = 48 bytes
     struct PointSpriteVertex {
         float x, y, z;          // World position
         float r, g, b, a;       // Color RGBA
         float pointSize, rotation;  // Point size in aTexCoord0.x, UV rotation angle in .y
         float atlasU, atlasV;   // Atlas UV offset in aTexCoord1
+        float span;             // B1188: the sprite's stored frame, in CELLS (aSpan; 1.0 procedural)
     };
-    static_assert(sizeof(PointSpriteVertex) == 44, "Unexpected vertex size");
+    static_assert(sizeof(PointSpriteVertex) == 48, "Unexpected vertex size");
 
     // Compile a single shader (GL_VERTEX_SHADER or GL_FRAGMENT_SHADER)
     GLuint compileShader(GLenum type, const char* source);

@@ -925,3 +925,95 @@ TEST(B1177TargetSolve, AStallOrAnApproachIsNotACycle) {
     EXPECT_TRUE(fxharness::fitSampleSolves(at, fxharness::kB1130TargetAnchor));
     EXPECT_EQ(fxharness::kExitPresetDidNotSolve, 2);
 }
+
+// ---------------------------------------------------------------------------
+// B1193 (#512): the writer-thread frame output is the sync path's pixels.
+// ---------------------------------------------------------------------------
+
+// frame_writer.cpp's --frames-raw dump (P6 PPM, RGB24): the pixel array.
+std::vector<unsigned char> readPpmP6(const fs::path& p, int& w, int& h) {
+    std::ifstream f(p, std::ios::binary);
+    std::string magic;
+    w = h = 0;
+    if (!(f >> magic) || magic != "P6" || !(f >> w >> h)) return {};
+    int maxval = 0;
+    if (!(f >> maxval) || maxval != 255) return {};
+    f.get();  // the one whitespace after the maxval
+    std::vector<unsigned char> px((size_t)w * h * 3);
+    f.read((char*)px.data(), (std::streamsize)px.size());
+    return f.gcount() == (std::streamsize)px.size() ? px : std::vector<unsigned char>();
+}
+
+// The frame_*.png in `dir`, sorted by name.
+std::vector<fs::path> pngFrames(const fs::path& dir) {
+    std::vector<fs::path> out;
+    for (auto& e : fs::directory_iterator(dir))
+        if (e.path().extension() == ".png" && e.path().filename().string().rfind("frame_", 0) == 0)
+            out.push_back(e.path());
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+TEST_F(FxHarness, FrameWriterOutputIsPixelIdenticalToTheSyncPath) {
+    // 0.2 s at 30 fps = 6 frames, the same plan/seed/camera three ways:
+    // --frames-sync (the pre-B1193 render-thread path: scaleImageTo + the
+    // driver's libpng writer), the default (the B1193 writer thread: the same
+    // bilinear, the PNG at zlib level 0 / filter 0) and --frames-raw (the
+    // writer thread's P6 PPM dump). The PNG CONTAINER bytes differ (a
+    // different zlib level and filter), so the identity is on the decoded
+    // pixels -- which is what every measure reads (cv2's imread), and keeps
+    // the gate like with like. The runs are separate processes, so this also
+    // rides on B1169's fixed-seed frame identity.
+    const auto rows = std::to_string(kBegin) + "\t201\tother\t14\n";
+    const fs::path sync = runPlan("b1193sync", rows, 0.2, "--frames-sync");
+    ASSERT_FALSE(sync.empty()) << "the sync run failed (see its run.log)";
+    const fs::path write = runPlan("b1193write", rows, 0.2, "");
+    ASSERT_FALSE(write.empty()) << "the writer-thread run failed (see its run.log)";
+    const fs::path raw = runPlan("b1193raw", rows, 0.2, "--frames-raw");
+    ASSERT_FALSE(raw.empty()) << "the raw run failed (see its run.log)";
+    const auto aFrames = pngFrames(sync);
+    const auto bFrames = pngFrames(write);
+    ASSERT_EQ(aFrames.size(), bFrames.size());
+    ASSERT_GE(aFrames.size(), 6u) << "0.2 s at 30 fps is 6 frames";
+    for (size_t i = 0; i < aFrames.size(); ++i) {
+        irr::video::IImage* a = load(aFrames[i]);
+        irr::video::IImage* b = load(bFrames[i]);
+        ASSERT_NE(a, nullptr) << aFrames[i];
+        ASSERT_NE(b, nullptr) << bFrames[i];
+        ASSERT_EQ(a->getDimension(), b->getDimension()) << aFrames[i];
+        const auto d = a->getDimension();
+        int firstDiff = -1;
+        for (int y = 0; y < d.Height && firstDiff < 0; ++y)
+            for (int x = 0; x < d.Width; ++x) {
+                const auto ca = a->getPixel(x, y), cb = b->getPixel(x, y);
+                if (ca.getRed() != cb.getRed() || ca.getGreen() != cb.getGreen() ||
+                    ca.getBlue() != cb.getBlue() || ca.getAlpha() != cb.getAlpha()) {
+                    firstDiff = y * d.Width + x;
+                    break;
+                }
+            }
+        EXPECT_EQ(firstDiff, -1) << aFrames[i].filename() << ": pixel " << firstDiff
+                                 << " differs from the sync path";
+        // The raw dump: the same pixels with the alpha dropped.
+        std::string ppmName = bFrames[i].filename().string();
+        ppmName.replace(ppmName.size() - 4, 4, ".ppm");
+        int pw = 0, ph = 0;
+        const auto px = readPpmP6(raw / ppmName, pw, ph);
+        ASSERT_EQ(px.size(), (size_t)pw * ph * 3) << raw / ppmName;
+        ASSERT_EQ(pw, (int)d.Width) << ppmName;
+        ASSERT_EQ(ph, (int)d.Height) << ppmName;
+        int ppmDiff = -1;
+        for (int y = 0; y < d.Height && ppmDiff < 0; ++y)
+            for (int x = 0; x < d.Width; ++x) {
+                const auto c = a->getPixel(x, y);
+                const size_t o = ((size_t)y * d.Width + x) * 3;
+                if (px[o] != c.getRed() || px[o + 1] != c.getGreen() || px[o + 2] != c.getBlue()) {
+                    ppmDiff = y * d.Width + x;
+                    break;
+                }
+            }
+        EXPECT_EQ(ppmDiff, -1) << ppmName << ": pixel " << ppmDiff << " differs from the PNG";
+        a->drop();
+        b->drop();
+    }
+}

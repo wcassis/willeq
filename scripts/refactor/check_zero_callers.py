@@ -866,6 +866,12 @@ EXEMPT_TESTS_GROUPS = {
     # exercises the PROJECTILE_PATH emitter it defines.
     ("(free)", "Projectile"): "seam",
     ("SpellVisualFX", "getSpellColorForSpell"): "observer",
+    # B1181 (#500): whether the i-th missile object is drawing its +0x65 IT
+    # model (type != 9 with a found IT mesh, never a type-9 object). The
+    # production path reads m_missile_objects directly; test_b1181_item_missile
+    # is the rule's observation window (drawn per frame, gone at the
+    # +0x68 lifetime, absent for a type-9 object and for a non-IT name).
+    ("SpellVisualFX", "missileModelDrawn"): "observer",
     # B1150 (#470): the census test's observation window onto every file entry
     # (zero-based, entry 0 included -- a real shape-0 point that the 1-based
     # slot accessors reject by design, since spellsnew.eff's slot numbers are

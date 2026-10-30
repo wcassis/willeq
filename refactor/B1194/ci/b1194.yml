@@ -1,0 +1,121 @@
+# B1194 (#513): inventory + rbuild-equivalent proof on the idle x86 runner VMs.
+#
+# Included from .gitlab-ci.yml. The runner VMs (gitlab-runner-1/2, 10.0.30.81/.82)
+# answer NO inbound port from hermes-ext or the ThinkPad (measured: TCP 22, 9252,
+# 2222 all time out from both, 2026-10-29 -- README "Why a CI job"), so the only
+# way for the board to execute commands on them is a job that lands there.
+#
+# Every job here SELF-SELECTS by hostname and is a fast no-op (exit 0) on any
+# other host, so a single pipeline draws from all three x86-build candidate
+# hosts (thinkpad + the two VMs, each concurrent=1). Several copies per target
+# host make it (near-)certain that each VM executes at least one of its own:
+# a no-op frees its slot in ~10 s, so the queue cycles through the copies.
+#
+# Rules: this task branch, push pipelines only -- after the MR merges nothing
+# here ever runs again. allow_failure everywhere: a missing lottery draw or a
+# failed proof is a finding for the card, never a red pipeline (the real
+# hygiene job carries the gate).
+
+.b1194_rules:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "task/kb-b1194-rbuild-runner-vms"
+
+# --- inventory: the README's table (toolchain, deps, NFS, ccache, concurrency)
+.b1194_inv:
+  extends: [.goldfarm, .b1194_rules]
+  stage: hygiene
+  needs: []
+  allow_failure: true
+  timeout: 15m
+
+b1194-inv-r1-a:
+  extends: .b1194_inv
+  script:
+    - |
+      if [ "$(hostname)" = "gitlab-runner-1" ]; then bash refactor/B1194/scripts/runner_inventory.sh
+      else echo "b1194-inv: landed on $(hostname), not gitlab-runner-1; no-op"; fi
+b1194-inv-r1-b:
+  extends: .b1194_inv
+  script:
+    - |
+      if [ "$(hostname)" = "gitlab-runner-1" ]; then bash refactor/B1194/scripts/runner_inventory.sh
+      else echo "b1194-inv: landed on $(hostname), not gitlab-runner-1; no-op"; fi
+b1194-inv-r1-c:
+  extends: .b1194_inv
+  script:
+    - |
+      if [ "$(hostname)" = "gitlab-runner-1" ]; then bash refactor/B1194/scripts/runner_inventory.sh
+      else echo "b1194-inv: landed on $(hostname), not gitlab-runner-1; no-op"; fi
+b1194-inv-r2-a:
+  extends: .b1194_inv
+  script:
+    - |
+      if [ "$(hostname)" = "gitlab-runner-2" ]; then bash refactor/B1194/scripts/runner_inventory.sh
+      else echo "b1194-inv: landed on $(hostname), not gitlab-runner-2; no-op"; fi
+b1194-inv-r2-b:
+  extends: .b1194_inv
+  script:
+    - |
+      if [ "$(hostname)" = "gitlab-runner-2" ]; then bash refactor/B1194/scripts/runner_inventory.sh
+      else echo "b1194-inv: landed on $(hostname), not gitlab-runner-2; no-op"; fi
+b1194-inv-r2-c:
+  extends: .b1194_inv
+  script:
+    - |
+      if [ "$(hostname)" = "gitlab-runner-2" ]; then bash refactor/B1194/scripts/runner_inventory.sh
+      else echo "b1194-inv: landed on $(hostname), not gitlab-runner-2; no-op"; fi
+
+# --- hygiene proof: rbuild's exact hygiene line (EQT_GRAPHICS=OFF + ctest -L
+# --- hygiene), timed, on each VM. Two copies per host.
+.b1194_hyg:
+  extends: [.goldfarm, .b1194_rules]
+  stage: hygiene
+  needs: []
+  allow_failure: true
+  timeout: 30m
+
+b1194-hyg-r1-a:
+  extends: .b1194_hyg
+  script:
+    - |
+      if [ "$(hostname)" = "gitlab-runner-1" ]; then bash refactor/B1194/scripts/hygiene_proof.sh
+      else echo "b1194-hyg: landed on $(hostname), not gitlab-runner-1; no-op"; fi
+b1194-hyg-r1-b:
+  extends: .b1194_hyg
+  script:
+    - |
+      if [ "$(hostname)" = "gitlab-runner-1" ]; then bash refactor/B1194/scripts/hygiene_proof.sh
+      else echo "b1194-hyg: landed on $(hostname), not gitlab-runner-1; no-op"; fi
+b1194-hyg-r2-a:
+  extends: .b1194_hyg
+  script:
+    - |
+      if [ "$(hostname)" = "gitlab-runner-2" ]; then bash refactor/B1194/scripts/hygiene_proof.sh
+      else echo "b1194-hyg: landed on $(hostname), not gitlab-runner-2; no-op"; fi
+b1194-hyg-r2-b:
+  extends: .b1194_hyg
+  script:
+    - |
+      if [ "$(hostname)" = "gitlab-runner-2" ]; then bash refactor/B1194/scripts/hygiene_proof.sh
+      else echo "b1194-hyg: landed on $(hostname), not gitlab-runner-2; no-op"; fi
+
+# --- build proof: rbuild's exact non-GL target line (GLES2 configure,
+# --- --target test_packet, ctest -R TestPacket), timed, on each VM.
+.b1194_proof:
+  extends: [.goldfarm, .b1194_rules]
+  stage: build
+  allow_failure: true
+  timeout: 2h
+
+b1194-proof-r1:
+  extends: .b1194_proof
+  script:
+    - |
+      if [ "$(hostname)" = "gitlab-runner-1" ]; then bash refactor/B1194/scripts/build_proof.sh
+      else echo "b1194-proof: landed on $(hostname), not gitlab-runner-1; no-op"; fi
+b1194-proof-r2:
+  extends: .b1194_proof
+  script:
+    - |
+      if [ "$(hostname)" = "gitlab-runner-2" ]; then bash refactor/B1194/scripts/build_proof.sh
+      else echo "b1194-proof: landed on $(hostname), not gitlab-runner-2; no-op"; fi

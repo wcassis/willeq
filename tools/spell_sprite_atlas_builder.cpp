@@ -41,18 +41,26 @@
 // get wrong. Duplicate frames within a sheet are packed as duplicates: they
 // are the animation holding, and dropping them would retime it.
 //
-// SCALING. The grid sheets are 256x256 (64x64 frames) and 128x128 (32x32);
-// a single image is packed at its own 64x64. Cells are 32x32 (see the header for why the cell shrank when
-// the frame count went up), so each frame is resampled by an exact integer
-// factor:
+// SCALING. The grid sheets are 256x256 (64x64 frames) and 128x128 (32x32 or
+// 64x64); a single image is 64x64 (glowflare02 at 256x256). Cells are 32x32
+// and the sheet is an 8x8 grid of 4x4 CELL BLOCKS, one block (128x128 px)
+// per sprite (see the header), so each frame is resampled by an exact
+// integer factor into its stored frame (kStoredFramePx, derived and
+// re-checked here):
 //   * 16x16 -> 32x32: magnified 2x by NEAREST-neighbour replication.
 //   * 32x32 -> 32x32: copied.
-//   * 64x64 -> 32x32: reduced 2:1 by an ALPHA-WEIGHTED box average. Plain
-//     RGB averaging is wrong here: a transparent texel's RGB in these files
-//     is arbitrary (often black), and the additive blend samples RGB
-//     directly, so an unweighted average darkens or fringes every sprite
-//     edge. Weighting each texel by its own alpha averages only the colour
-//     that is actually there.
+//   * 64x64 -> 64x64: COPIED 1:1 (B1188: the client draws these native
+//     64x64 textures; a 2:1 box into one cell quartered their alpha and lit
+//     area and was the b1130 landing pixel gap, measured 0.53x).
+//   * 64x64 -> 32x32: reduced 2:1 by an ALPHA-WEIGHTED box average (grids,
+//     where sixteen native frames would not fit their block).
+//   * 256x256 -> 128x128: reduced 2:1 (glowflare02, the whole block).
+// Plain
+// RGB averaging is wrong for a reduction: a transparent texel's RGB in
+// these files is arbitrary (often black), and the additive blend samples RGB
+// directly, so an unweighted average darkens or fringes every sprite
+// edge. Weighting each texel by its own alpha averages only the colour
+// that is actually there.
 // All of it is integer arithmetic on `uint32_t` -- no floating point, no
 // signed overflow -- so the output is bit-identical at every optimisation
 // level (board B268's rule; a shipped asset that depends on
@@ -62,6 +70,7 @@
 // expected size, or contradicts its kSheetFrames declaration is a hard exit 1, never a silently degraded sheet (Will's
 // standing EQE1 rule, and `ui_atlas_builder`'s precedent).
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -83,19 +92,22 @@ namespace {
 // sampled.
 std::vector<uint8_t> g_pixels(static_cast<size_t>(Atlas::kWidth) * Atlas::kHeight * 4, 0);
 
-// Resample one source frame into one 32x32 cell. `frameSize` is the source
-// frame's edge; `src` points at its top-left texel inside `img`, whose row
-// stride is `stride` texels.
-void blitCell(int cell, const uint8_t* src, int stride, int frameSize) {
+// Resample one source frame into its STORED frame region: a `storedPx` x
+// `storedPx` square starting at the top-left pixel of cell `cell` (B1188:
+// single images keep their native 64x64 in a 2x2 sub-block; glowflare02
+// keeps 128x128 in the whole block; grids box-reduce to their 32x32 cell).
+// `frameSize` is the source frame's edge; `src` points at its top-left texel
+// inside `img`, whose row stride is `stride` texels.
+void blitFrame(int cell, const uint8_t* src, int stride, int frameSize, int storedPx) {
     int originX = 0, originY = 0;
     Atlas::cellOrigin(cell, originX, originY);
 
-    if (frameSize <= Atlas::kCellSize) {
+    if (frameSize <= storedPx) {
         // Magnify (or copy) by an exact integer factor, nearest neighbour.
-        const int scale = Atlas::kCellSize / frameSize;
-        for (int y = 0; y < Atlas::kCellSize; ++y) {
+        const int scale = storedPx / frameSize;
+        for (int y = 0; y < storedPx; ++y) {
             const int srcY = y / scale;
-            for (int x = 0; x < Atlas::kCellSize; ++x) {
+            for (int x = 0; x < storedPx; ++x) {
                 const int srcX = x / scale;
                 const size_t s = (static_cast<size_t>(srcY) * stride + srcX) * 4;
                 const size_t d =
@@ -107,9 +119,9 @@ void blitCell(int cell, const uint8_t* src, int stride, int frameSize) {
     }
 
     // Reduce by an exact integer factor with an alpha-weighted box average.
-    const int factor = frameSize / Atlas::kCellSize;
-    for (int y = 0; y < Atlas::kCellSize; ++y) {
-        for (int x = 0; x < Atlas::kCellSize; ++x) {
+    const int factor = frameSize / storedPx;
+    for (int y = 0; y < storedPx; ++y) {
+        for (int x = 0; x < storedPx; ++x) {
             uint32_t sumA = 0, sumR = 0, sumG = 0, sumB = 0;
             for (int by = 0; by < factor; ++by) {
                 for (int bx = 0; bx < factor; ++bx) {
@@ -240,16 +252,34 @@ bool packOneFile(const std::string& spellEffectsDir, int sprite) {
     }
 
     const int frameSize = img.width / grid;
-    const bool integerUp =
-        frameSize > 0 && frameSize <= Atlas::kCellSize &&
-        Atlas::kCellSize % frameSize == 0;
-    const bool integerDown =
-        frameSize > Atlas::kCellSize && frameSize % Atlas::kCellSize == 0;
-    if (!integerUp && !integerDown) {
+
+    // B1188 (#507): the STORED frame size is derived from the sheet's kind --
+    // one block is 4x4 cells (128 px), and
+    //   a 4x4 grid fills it with sixteen frames of ONE cell each (32 px);
+    //   a 2x2 sheet fills it with four frames of a 2x2 sub-block each (64 px);
+    //   a single image fills the largest sub-block the frame fits in at its
+    //   own resolution (64 px -> 2x2, 256 px -> the whole block 2:1) --
+    // so the client's native texture pixels are kept 1:1 wherever they fit,
+    // and the header's kStoredFramePx must agree with the derivation.
+    const int cap = frames == Atlas::kFramesPerSprite ? Atlas::kCellSize
+                   : frames == Atlas::kTwoByTwo ? 2 * Atlas::kCellSize
+                   : 4 * Atlas::kCellSize;
+    const int storedPx = std::min(frameSize, cap);
+    const int declared = Atlas::kStoredFramePx[sprite];
+    if (declared != storedPx) {
         fprintf(stderr,
-                "Error: %s has %dx%d frames, which do not resample to a %d px cell "
-                "by an integer factor\n",
-                path.c_str(), frameSize, frameSize, Atlas::kCellSize);
+                "Error: %s is a %s of %d px frames; the stored frame must be "
+                "%d px, but spell_sprite_atlas.h kStoredFramePx declares %d px\n",
+                path.c_str(), frames == Atlas::kSingleImage ? "SINGLE IMAGE"
+                    : frames == Atlas::kTwoByTwo ? "2X2 SHEET" : "4X4 GRID",
+                frameSize, storedPx, declared);
+        return false;
+    }
+    if (!(storedPx % frameSize == 0 || frameSize % storedPx == 0)) {
+        fprintf(stderr,
+                "Error: %s has %d px frames that do not resample to the %d px "
+                "stored frame by an integer factor\n",
+                path.c_str(), frameSize, storedPx);
         return false;
     }
 
@@ -269,7 +299,7 @@ bool packOneFile(const std::string& spellEffectsDir, int sprite) {
             for (int col = 0; col < frameSize; ++col) sheetAlpha += r[col * 4 + 3];
         }
 
-        blitCell(Atlas::cellFor(sprite, f), src, img.width, frameSize);
+        blitFrame(Atlas::cellFor(sprite, f), src, img.width, frameSize, storedPx);
     }
 
     // A sheet with no alpha anywhere is a decode failure wearing a sprite's
