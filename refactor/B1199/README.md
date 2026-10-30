@@ -51,7 +51,7 @@ byte for byte.
 - `TheStunEndFeed0x210bWrites100` — stun end → 100 (from 102 included).
 
 Plus the existing 14 StandState tests and the B1174 / B1162 device-free
-gates, unchanged. rbuild: `ctest -R 'StandState|CastAnimation'` = 18/18
+gates, unchanged. rbuild: `ctest -R 'StandState|CastAnimation'` = 32/32 in the graphics tree (18 StandState + 12 CastAnimation/CastAnimationEntity + 2 CastAnimationTerm)
 green (the ctest names are the gtest names via GTEST_DISCOVER_TESTS);
 hygiene exit 0.
 
@@ -75,7 +75,7 @@ poller attaching right after the leg's `gdb_arm` still; poll interval 25 ms):
 | poll event | poll t | wall time | leg2 step (timeline.tsv) | byte |
 |---|---|---|---|---|
 | INIT | t=0 | 10:01:15.986 | 10_gdb_dump | 100 |
-| SNAP | t=15.158 | 10:01:31.144 | 12_stun_start — 0.65 s after the 0x1e51 x2 (10:01:30.487/503 in `12_stun_start.opcodes.tsv`) | 100 |
+| SNAP | t=15.158 | 10:01:31.144 | 12_stun_start — 0.64 s after the 0x1e51 x2 (10:01:30.487/503 in `12_stun_start.opcodes.tsv`) | 100 |
 | SNAP | t=20.214 | 10:01:36.200 | 13_stunned (1793354493.163–497.696) — inside the 8 s stun | 100 |
 | SNAP | t=25.269 | 10:01:41.255 | 14_stun_end | 100 |
 | SNAP | t=30.323 | 10:01:46.309 | 14_stun_end | 100 |
