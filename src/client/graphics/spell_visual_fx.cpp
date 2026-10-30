@@ -698,9 +698,10 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         }
         // B1190 (#509): no spellsnew record -> 0x49b260's `param_2[0x8d]==0`
         // arm -> the legacy dispatcher 0x49ab78. The record's Source slots
-        // that the caster's level passes each draw as one emitter on the
-        // slot's type anchor (0 hands, 1 attached, 2 world, 3/4/5 ground)
-        // with the record's own sprite + colour (build/applyStageEddColours).
+        // that the caster's level passes each draw on the slot's type anchor
+        // (0 hands, 1 attached, 2 world, 3/4 ground, 5 ground + a second
+        // attached emitter) with the record's own sprite + colour
+        // (build/applyStageEddColours).
         const std::vector<LegacySlotDraw> legacy = visual.legacySlots(0, casterLevel);
         if (!legacy.empty()) {
             std::string made;
@@ -726,13 +727,33 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
                 } else if (ls.type == 2) {  // world: the caster's entity at its anchor
                     m_particle_manager->createSpellEffect(build(A, 1.0f), caster_id, 0, cap, false);
                     made += fmt::format(" 2@world", ls.type);
-                } else {  // 3/4/5: ground, snapped at the caster's feet
+                } else if (ls.type == 5) {
+                    // B1190 fix (note 8631 f1): the type-5 arm draws TWO
+                    // emitters -- the ground emitter (mode 6 at
+                    // review/B1141/ghidra/out/eqgame.exe.c:121936, z
+                    // ground-adjusted at :121924) and, on a free cast
+                    // (param_8 == 0, :121937), a second mode-6 emitter:
+                    // FUN_004798d7 fills its attach descriptor
+                    // (:121938), uVar10=6, and the shared creation site
+                    // makes it (:121939-:121940 -> :121866-:121867),
+                    // attached to the caster model at :121869
+                    // (FUN_00491c28). The oracle (lane 5, spell 8080,
+                    // caster view) shows that attached emitter as a small
+                    // mid-torso/waist glow, so willeq attaches it at the
+                    // entity anchor height (A = anchorAboveFeet, chest),
+                    // not the head.
+                    m_particle_manager->createSpellEffect(build(0.0f, 1.0f), caster_id, 0, cap, false);
+                    m_particle_manager->createSpellEffect(build(A, 1.0f), caster_id, 0, cap, true);
+                    made += fmt::format(" 5@ground+attached", ls.type);
+                } else {  // 3/4: ground, snapped at the caster's feet
                     m_particle_manager->createSpellEffect(build(0.0f, 1.0f), caster_id, 0, cap, false);
                     made += fmt::format(" {}@ground", ls.type);
                 }
             }
-            LOG_INFO(MOD_SPELL, "createCastGlow: caster={} spell={} rec={} level={} legacy source{}",
-                     caster_id, spell_id, visual.spell_affect_index, casterLevel, made);
+            int emitters = 0;
+            for (const auto& ls : legacy) emitters += legacySlotEmitterCount(ls.type);
+            LOG_INFO(MOD_SPELL, "createCastGlow: caster={} spell={} rec={} level={} legacy source emitters={} [{}]",
+                     caster_id, spell_id, visual.spell_affect_index, casterLevel, emitters, made);
             return 1;
         }
         const Anchor anchor = Presets::SourceAnchorForSpell(spell_id, record, spray);

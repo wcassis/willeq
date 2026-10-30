@@ -114,15 +114,18 @@ constexpr size_t kSpellsEffEmittersPerRecord = 3;
 constexpr size_t kSpellsEffRecordHeaderBytes = 8;
 
 // B1190 (#509): the per-slot effect-type integers. The oracle's legacy
-// dispatcher (0x49ab78, eqgame.exe.c:121711) reads slot `s` of stage `st` at
-// byte (st*0xe8 + 0x25 + s)*4 of the RUNTIME record — and 0xe8*4 == 0x3a0 ==
-// 928, the emitter-block size, so the runtime and the raw file share the
-// 928-byte block stride. In the RAW file (verified against
-// /mnt/projects/EverQuestP1999/spells.eff, review/B1190) the three ints sit
-// at block offset 0x8C + s*4 (140/144/148); the loader (0x44d773) re-lays
-// them at 0x94 + s*4 in the runtime copy. Each is 0..7 (the type that
-// 0x49ab78 dispatches: 0 hand-glow, 1 attached, 2 world, 3/4/5 ground, 6/7
-// skip) or -1 (no slot). See refactor/B1190/README.md.
+// dispatcher (0x49ab78, review/B1141/ghidra/out/eqgame.exe.c:121698) reads
+// slot `s` of stage `st` at byte (st*0xe8 + 0x25 + s)*4 of the RUNTIME record
+// (:121738) -- and 0xe8*4 == 0x3a0 == 928, the emitter-block size, so the
+// runtime and the raw file share the 928-byte block stride. The loader
+// (0x44d773, :68688) is a plain _fread(&DAT_008513b8, 0xae8, 0x100) (:68705)
+// -- no re-layout: the runtime table IS the raw file, so the record-relative
+// 0x94 + s*4 the dispatcher reads (0x94 = the 8-byte record header + 0x8C)
+// are exactly the bytes at block offset 0x8C + s*4 (140/144/148) in the raw
+// file (verified against /mnt/projects/EverQuestP1999/spells.eff,
+// review/B1190). Each is 0..7 (the type that 0x49ab78 dispatches: 0
+// hand-glow, 1 attached, 2 world, 3/4 ground, 5 ground + second attached,
+// 6/7 skip) or -1 (no slot). See refactor/B1190/README.md.
 constexpr size_t kSpellsEffEmitterEffectTypeOffset = 0x8C;
 constexpr size_t kSpellsEffEffectTypeSlots = 3;
 constexpr size_t kSpellsEffRecordSize =

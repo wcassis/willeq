@@ -84,40 +84,72 @@ struct SpellVisualStage {
 // reader, no rendering -- so it is testable in isolation. Given one stage's
 // three effect types and the caster's level, which slots draw.
 //
-// The level gate (eqgame 0x49ab78, the `bVar1 < 0x27` arm) is per-slot, not
-// per-stage:
-//   slot 0 draws if level >= 10   (bVar1 < 10 -> skip)
-//   slot 1 draws if level >= 24   (bVar1 < 0x18 -> skip)
-//   slot 2 draws if level >= 39   (bVar1 < 0x27 -> skip; the gate is bypassed
-//                                   entirely at level >= 39)
-// A slot's type must be 0..5 to draw: -1 is "no slot" (the `!= -1` guard),
-// and 6/7 are parsed but skipped by the type dispatch (the `goto LAB_0049b23f`
-// arm). Types 0..5 are: 0 hand-glow, 1 attached, 2 world, 3/4/5 ground.
+// The level gate (eqgame 0x49ab78). Ground truth is the disassembly
+// (review/B1141/ghidra/out/eqgame.dis 0049abea-0049abfb), read together with
+// the C (review/B1141/ghidra/out/eqgame.exe.c:121740-121754):
+//   level >= 39          -> every slot draws (0049abee, the jge bypass)
+//   slot 1, level < 24   -> skipped in EVERY stage (0049abfd-0049ac01)
+//   slot 0, level < 10   -> skipped ONLY in the Middle stage: the slot-0
+//                           path falls into the shared branch with the
+//                           STAGE in the compared register (set at
+//                           :121742; disasm 0049ac09-0049ac13:
+//                           `cmp level,10; jge draw; cmp stage,1; je skip`)
+//   slot 2, level < 39   -> skipped in EVERY stage. The C shows this as the
+//                           same `if (iVar3 == 1) goto skip` as the slot-0
+//                           stage check (LAB_0049ac13, :121752), but iVar3 is
+//                           REUSED: on the slot-0 path it holds the stage
+//                           (param_1), on the slot-2 path it is the constant
+//                           1 (iVar8-1, :121746) -- so the condition is
+//                           always true there. The disassembly confirms it:
+//                           the slot-2 fall-through `dec eax; dec eax;
+//                           jmp 0x49ac13` (0049abf7-0049abfb) reaches the
+//                           `je 0x49b23f` with ZF = 1, so the skip always
+//                           fires; there is no stage check on that path.
+// Net effect for a caster below level 39: Source and Target draw slot 0
+// from level 1 and slot 2 from level 39; the Middle stage draws slot 0 from
+// level 10; slot 1 draws from level 24 in every stage; slot 2 never.
+// A slot's type must be 0..5 to draw: -1 is "no slot" (the `!= -1` guard,
+// :121739), and 6/7 are parsed but skipped by the type dispatch
+// (the `goto LAB_0049b23f` arm). Types 0..5 are: 0 hand-glow, 1 attached,
+// 2 world, 3/4 ground, 5 ground + a second attached emitter.
 struct LegacySlotDraw {
     int slot;  // 0, 1 or 2 (within the stage)
     int type;  // 0..5
 };
 
-// The per-slot minimum caster level above which the slot is gated in
-// (0x49ab78's three `bVar1 < N` compares).
-inline int legacySlotMinLevel(int slot) {
-    return slot == 0 ? 10 : (slot == 1 ? 24 : 39);
-}
-
 // Which slots of `stage` draw for a caster at `caster_level`, from that
-// stage's three effect types. `stage` names the emitter block the types came
-// from; the gate itself is per-slot.
+// stage's three effect types (the 0x49ab78 gate documented above).
 inline std::vector<LegacySlotDraw>
 legacyStageDrawnSlots(int stage, int caster_level, const std::array<int32_t, 3>& types) {
-    (void)stage;  // the gate is per-slot (0x49ab78); the stage only picked the block
     std::vector<LegacySlotDraw> out;
     for (int s = 0; s < 3; ++s) {
         const int t = types[s];
         if (t < 0 || t > 5) continue;                    // -1 absent; 6,7 skipped
-        if (caster_level < legacySlotMinLevel(s)) continue;
+        if (caster_level < 39) {
+            if (s == 0) {
+                if (caster_level < 10 && stage == 1) continue;  // Middle only
+            } else if (s == 1) {
+                if (caster_level < 24) continue;             // every stage
+            } else {
+                continue;                                    // every stage
+            }
+        }
         out.push_back(LegacySlotDraw{s, t});
     }
     return out;
+}
+
+// B1190 fix (review note 8631 f1): how many emitters the legacy dispatcher
+// draws for one DRAWABLE slot. 0x49ab78's type-0 arm makes two emitters (the
+// L and R hand pair, the two FUN_00495ad4 calls at
+// review/B1141/ghidra/out/eqgame.exe.c:121771/:121785) and its type-5 arm
+// makes a ground emitter (:121936) and, on a free cast (no object), a second
+// mode-6 emitter attached to the anchor model (:121937-:121940 into
+// :121866-:121876); types 1..4 make one each. A non-drawable type (-1/6/7)
+// makes none.
+inline int legacySlotEmitterCount(int type) {
+    if (type == 0 || type == 5) return 2;
+    return (type >= 1 && type <= 4) ? 1 : 0;
 }
 
 // The fully-resolved visual definition for one spell, keyed by its
