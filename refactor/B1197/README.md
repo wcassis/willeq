@@ -43,7 +43,7 @@ convention, `entryBytes` at `src/client/spell/spells_new_edd_reader.cpp:135`),
 ```
 python3 refactor/B1197/scripts/b1197_chan_series.py \
   ~/kb-evidence/kb-b1197-rec35-blue/frames/full ~/kb-evidence/kb-b1197-rec35-blue/frames/oracle_e35 \
-  'frame_*.png' 'f*.png' 30 25 \
+  'frame_*.png' 'f*.png' 30 38 \
   ~/kb-evidence/kb-b1197-rec35-blue/full_vs_oracle.tsv   # table -> full_vs_oracle.txt
 python3 refactor/B1197/scripts/b1197_emitter_delta.py \
   ~/kb-evidence/kb-b1197-rec35-blue/frames/e0 \
@@ -87,9 +87,10 @@ Peak frames are each side's own lit80 peak (willeq f148 t 4.93, oracle f77 t_o 3
 time-aligned offset willeq t - oracle t = +1.85 s). Window means: lit80 per-px
 R 18.0/8.1 = 2.21, G 51.3/59.0 = 0.87, B 151.5/169.6 = 0.89; px150 G 70.7/74.9 = 0.94,
 B 174.5/200.3 = 0.87. The card's green band 0.83-0.91 (B1191's f2 finding, its
-steady-core 0.828-0.912x) is reproduced: per-frame green ratio 0.840-0.990 across
-f104..f232 (the sustained below-1 sub-window; 0.840-1.240 over f58..f269, >1 only in
-the early ramp f58..f103); per-frame blue 0.860-0.880 across f104..f232.
+steady-core 0.828-0.912x) is reproduced: per-frame green ratio 0.845-0.994 across
+f104..f232 (the sustained below-1 sub-window; 0.845-1.244 over f58..f269, >1 in the
+early ramp f58..f102 AND the decay tail f233..f269, max 1.244 at f259); per-frame
+blue 0.862-0.884 across f104..f232.
 ROI split (each side, its own peak px150 centroid; core 209x209 / halo 418x418
 minus-core / ground the rest; window lit80 px): core 2,925,471/4,807,309 (0.61),
 halo 7,832,625/12,905,123 (0.61), ground 24,583,221/31,457,101 (0.78); the oracle's
@@ -103,9 +104,10 @@ minLevel 24/0/39 (all drawn at level 60: `createLanding ... (of 3)`).
 `word_dump.out.txt` (432-434) and `word_dump_280_434.out.txt` (the record-80 contrast,
 280-282). **All three sample the SAME texture, `SpellEffects/spelab.tga`** (the blue
 glyph), additive (+0x68 = 1), white start/end colour (+0xD4..+0xE8 = 255,255,255),
-peak alpha 1.25, size 1.5x1.5 fixed, spawn shape 5 (rX 5, rY 4, h 0, no offsets/tilts),
-radial 1..2, gravity 2, driftX 25, 16 frames @ 12 fps, `+0x19C scale_size` = 1.4e-45
-(denormal; every emitter of both records carries it, so it is not a size scale).
+peak alpha 1.25, spawn shape 5, h 0, no offsets/tilts, 16 frames @ 12 fps,
+`+0x19C scale_size` = 1.4e-45 (denormal; every emitter of both records carries it,
+so it is not a size scale). Those are the words all three share; the size and
+motion words are 432's own -- 433/434 carry their own values (the second table).
 The words that differ:
 
 | EDD | name | run +0x78 | life +0x7C | burst +0x80 | per-tick +0x84 | ticks/s +0x88 | delay +0x8C | fade-in/out +0x90/+0x94 | file population (burst + perTick x tps x min(T,L)) |
@@ -113,6 +115,15 @@ The words that differ:
 | 432 | GlowGlyphs3-1 | -5.0 | 3.5 | 2 | 3 | 75 (225/s) | 0 | 0.1 / 3.25 | 789.5 live |
 | 433 | GlowGlyphs3-2 | -5.0 | 3.0 | 2 | 3 | 25 (75/s) | 0 | 0.1 / 4.0 | 227 |
 | 434 | GlowGlyphs3-3 | -5.0 | 3.0 | 2 | 2 | 25 (50/s) | 0 | 0.1 / 4.0 | 152 |
+
+The geometry words differ too -- the values quoted in the shared-words sentence
+were 432's own:
+
+| EDD | size min/max | spawn rX / rY | radial | gravity | driftX | ax3 min..max |
+|---|---|---|---|---|---|---|
+| 432 | 1.5x1.5 fixed | 5 / 4 | 1..2 | 2 | 25 | 0..0 |
+| 433 | 1.0x1.0 fixed | 9 / 8 | 0..0 | 0.5 | 20 | +15..+25 |
+| 434 | 1.0x1.0 fixed | 9 / 8 | 0..0 | 0.5 | 20 | -15..-25 |
 
 432 is 3x denser (225/s vs 75/50; 789 vs 227/152 peak live). The three together are
 the Target stage's 1168 peak live (the `config/spell_effects.json` landingPopulation
@@ -124,9 +135,10 @@ texels are lit80 (9,188 of 65,536, extent rows 13..242, cols 12..241 -- a full-b
 glyph, not a dot); their mean RGB = **3.9 / 50.1 / 189.6** (B/G = 3.8); **R max = 33,
 96.9% of all texels have R < 1, no texel has R > 48**. The per-pixel added light of
 the ORACLE at its aligned peak, core ROI (10.1, 68.7, 187.0), is this texel census
-times about 1.15 (additive overlap) -- the oracle draws the file's own texels. The
-willeq per-pixel (21.3, 57.7, 153.0) is 2.2x the R of the file's lit80 texels at a
-similar B -- see F4.
+times R 2.59x / G 1.37x / B 0.99x (additive overlap) -- the oracle draws the file's
+own texels. The willeq per-pixel (21.3, 57.7, 153.0) is 5.5x the R of the file's
+lit80 texels (21.3 / 3.9) at a similar B; the 2.2x figure is the
+willeq-vs-oracle window R ratio (18.0 / 8.1, section 2) -- see F4.
 
 Per-emitter isolated renders (B1188's filter, baseline = the e0 scene;
 `b1197_emitter_delta.py`):
@@ -148,8 +160,9 @@ three emitters drawing the same texture.
 ## 4. Findings
 
 **F1. The oracle capture never shows the pre-light scene.** `oracle_base.txt`
-(`b1197_oracle_base.py`): lit80 >= 50 in 178 of 201 frames, first f4 (t 0.16), last
-f196 (t 7.84); the rise above frame 1 is 102,809 px by f10 (t 0.40), peaks at 252,978
+(`b1197_oracle_base.py`): lit80 rise above frame 1 (the script's own baseline) is
+>= 50 px in 200 of 201 frames, first f2 (t 0.04), last f201 (t 8.00); the rise
+above frame 1 is 102,809 px by f10 (t 0.40), peaks at 252,978
 (t 3.00), and is still 17,258 in the last frame (t 8.00). Frame-1 mean R/G/B
 [58.4, 81.2, 94.7]; last-38 mean [58.5, 73.0, 66.2] (delta R +0.1, G -8.2, B -28.4).
 The 8.04 s capture sits entirely inside the light, and the committed tail-38
@@ -199,9 +212,10 @@ record i43's +0x7C word, ab-T 179,842 = +0x78; the reader is 1-based per
 - ab-T (+0x78: -5.0 -> -8.0, the window 5.0 -> 8.0): **all 504 frames bit-identical
   to the baseline** (md5 per frame) -- the window word moves no pixel.
 - ab-L (+0x7C: 3.5 -> 8.0, the particle life): the deviation from baseline spans
-  f141..f267 with signed window integral +364,393 px (+3.8% of 9,630,120); the
-  isolated light's last lit frame is 8.97 vs the baseline's 8.93 (+1 frame) --
-  no end extension, against a +4.5 s documented effect.
+  f141..f267 with signed window integral +364,107 px (the whole-run integral is
+  +364,393; +3.8% of 9,630,120); the isolated light's last lit frame is 8.97 vs
+  the baseline's 8.93 (+1 frame) -- no end extension, against a +4.5 s documented
+  effect.
 Excluded, each by measurement: a stale binary (the ThinkPad build is from this tip:
 md5 of the four critical TUs matches, all object files newer than the source copy,
 full rebuild); the particle pool (`spellParticlePool 8192 (desktop)` in every
@@ -257,7 +271,10 @@ logged def is 8.x and the emitter runs to 8.x, the rise metric hides the extensi
 (already disfavoured: ab-T's pixels are bit-identical).
 
 **C2: the placement/footprint scatters willeq's sprites while the oracle's merge
-into one core** (F2: shape 5, rX 5 / rY 4, radial 1..2, gravity 2, driftX 25). C2
+into one core** (F2: spawn shape 5, h 0, no offsets/tilts, shared by all three;
+the 432 geometry words rX 5 / rY 4, radial 1..2, gravity 2, driftX 25 are not
+433/434's: rX 9 / rY 8, radial 0..0, gravity 0.5, driftX 20, ax3 +15..+25 /
+-15..-25). C2
 owns the structure gap and (with F4) the per-px mix, NOT the timing (F3).
 SEPARATING A/B: patch 432's +0xA8 spawn_shape 5 -> 0 (a point) on the isolated e432
 render; if C2 owns the structure gap the component census collapses toward fewer,
