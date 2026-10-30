@@ -88,8 +88,8 @@ time-aligned offset willeq t - oracle t = +1.85 s). Window means: lit80 per-px
 R 18.0/8.1 = 2.21, G 51.3/59.0 = 0.87, B 151.5/169.6 = 0.89; px150 G 70.7/74.9 = 0.94,
 B 174.5/200.3 = 0.87. The card's green band 0.83-0.91 (B1191's f2 finding, its
 steady-core 0.828-0.912x) is reproduced: per-frame green ratio 0.845-0.994 across
-f104..f232 (the sustained below-1 sub-window; 0.845-1.244 over f58..f269, >1 in the
-early ramp f58..f102 AND the decay tail f233..f269, max 1.244 at f259); per-frame
+f104..f232 (the sustained below-1 sub-window; 0.845-1.242 over f58..f269, >1 in the
+early ramp f58..f102 AND the decay tail f233..f269, max 1.242 at f257); per-frame
 blue 0.862-0.884 across f104..f232.
 ROI split (each side, its own peak px150 centroid; core 209x209 / halo 418x418
 minus-core / ground the rest; window lit80 px): core 2,925,471/4,807,309 (0.61),
