@@ -3,9 +3,10 @@
 **Verdict: NOT comparable at tip `8c2bfe7c2`** (the B1189 merge). The arm64
 build has **no surfaceless render path** — the card's required path
 ("surfaceless native 1280x800") exits 1 on lane 3 — so the only render the
-Rock 4D can do is the KMS path, and on that path 13 of the 86 b1130
-host-pair cells and 1 of the 27 tour cells fall outside the gate's own B1178
-band, concentrated in the pixel-tail columns (`p90_land`, `p90_src`,
+Rock 4D can do is the KMS path, and on that path 13 of the 84 measurable
+b1130 host-pair cells (90 cells, 6 n-a) and 1 of the 27 tour cells fall
+outside the gate's own B1178 band, concentrated in the pixel-tail columns
+(`p90_land`, `p90_src`,
 `landing_end_s`, `source_cov`). The Rock 4D is also 2.2-3.8x (tour) to 4.3-5.2x (b1130)
 slower per row (throughput below). To make lane 3 a second gate
 host, the arm64 device needs a surfaceless-EGL path (the capability is
@@ -31,8 +32,10 @@ Every one of the 17 rows on each host carries these lines in its
 `measure/<tag>/run.log` (host-pair rows: `tables/egl.tsv`; the per-row values
 dedupe to exactly the two rows above). Device facts (model, kernel 7.1.8-edge-rockchip64,
 Armbian 26.8.2 resolute, CPU parts, Mesa 26.0.8, `EGL_MESA_platform_surfaceless`
-in the eglinfo client extensions): `~/kb-evidence/kb-b1196-rock4d-render/device_info.txt`
-and `device_info_egl.txt`.
+in the eglinfo client extensions, plus the `diff -rq` byte-identity record of
+the ci-arm64 publish): `refactor/B1196/evidence/device_info.txt` (committed;
+the raw copy is `~/kb-evidence/kb-b1196-rock4d-render/device_info.txt`) and
+`~/kb-evidence/kb-b1196-rock4d-render/device_info_egl.txt`.
 
 The 4096-vs-8192 pool is a second host-dependent input (the preset profile
 differs by host). No measured column is explained by pool clipping alone —
@@ -50,17 +53,26 @@ failed - falling back to surfaceless EGL"); the arm64 device
 and published to `ci-arm64/<sha>/`) has no surfaceless fallback, and
 `WILLEQ_DRM_DEVICE` is a strict override. Measured on the device (ci-arm64
 publish of `8c2bfe7c2daa45360c57003a9e15971b77507bfc`, the binary's
-`config/` and `data/` byte-identical to the worktree at that sha, `diff -rq`
-clean — recorded in `device_info.txt`):
+`config/` and `data/` byte-identical to the worktree tree at that sha,
+`diff -rq` clean — the record is in
+`refactor/B1196/evidence/device_info.txt`):
 
 ```
 $ WILLEQ_DRM_DEVICE=/dev/dri/no-such-card .../bin/model_viewer --spell-test ...
 DRM: WILLEQ_DRM_DEVICE=/dev/dri/no-such-card: card does not open (explicit override, no fallback)
 DRM/GBM/EGL initialization failed
-GLES2 Driver: ? (?) [?]            <- exit 1, 0.05 s, zero frames
+GLES2 Driver: ? (?) [?]
+GLES2: Color2D shader FAILED
+GLES2: Shader initialization failed
+[2026-10-29 19:25:59.251] [ERROR] [MAIN] Failed to create Irrlicht device
 ```
 
 full log: `~/kb-evidence/kb-b1196-rock4d-render/logs/surfaceless_attempt.log`.
+The log ends there — zero frames, because the shader init fails before the
+first frame. The exit code is 1 by the code path, not by this log: the error
+leaves the device null in the creation helper, whose `return false` at
+`tools/model_viewer/model_viewer_startup.cpp:426` main turns into `return 1`
+at `tools/model_viewer.cpp:70-71`.
 So the 17 Rock 4D rows below ran on the only path the build has: KMS on
 card0 with the connector forced on (`pi_hdmi_force_on`), 1024x768 surface,
 16-bit depth. This is the same *class* of path the 2026-10-29 render-path
@@ -154,8 +166,9 @@ measured). They disagree, outside the tolerance, in the pixel-tail columns
 (`tables/delta_b1130.tsv`, `d_rock_minus_think` column):
 
 - `landing_end_s` — 4 rows out, all rock4d **later** by +0.133 s (r9),
-  +0.167 s (r1), +0.200 s (r2, r5); both hosts short of the oracle in the
-  same direction (thinkpad_v = rock4d_v = short on all four).
+  +0.167 s (r1), +0.200 s (r2, r5); both hosts on the same side of the
+  oracle on all four (short r9/r1/r2, over r5: oracle 4.53, thinkpad 5.4,
+  rock4d 5.6 — thinkpad_v = rock4d_v on every row).
 - `p90_land` — 3 rows out: r7 +0.020, r9 +0.006, and **r3 +1.665**
   (thinkpad 0.149 → rock4d **1.814**, a 12x outlier on one row — spell 377,
   `record_table` record 3; the 90th-percentile "sprite" in the landing ROI,
@@ -186,16 +199,18 @@ show. The r3 12x `p90_land` outlier is the strongest single symptom.
 thinkpad `cpu_s` column is empty by construction):
 
 - **Rock 4D**: 2.39-3.88 fps (median ~3.6 on b1130, ~3.2 on tour);
-  251-419 ms CPU per frame — one A72 core per row, load 1.4-2.8 at CONC=3
-  (the render is CPU-bound, as the issue says; the GPU idles). Full 17-row
-  gate wall: 1639 s (~27 min) at CONC=3 on an idle device.
-- **ThinkPad**: 7.05-7.41 fps on tour, 13.39-19.72 fps on b1130; 50.7-141.9 ms
-  wall per frame. Full 17-row gate wall: 1490 s (~25 min) at CONC=2, shared box.
+  251-412 ms CPU per frame (251.1-411.9) — one A72 core per row, load 1.4-2.8
+  at CONC=3 (the render is CPU-bound, as the issue says; the GPU idles).
+  Full 17-row gate wall: 1639 s (~27 min) at CONC=3 on an idle device.
+- **ThinkPad**: 7.05-12.85 fps on tour (7.05-7.41 on the five heavy rows;
+  tour_41 12.85, tour_458 12.12), 13.39-19.72 fps on b1130; 50.7-141.9 ms wall
+  per frame. Full 17-row gate wall: 1490 s (~25 min) at CONC=2, shared box.
 
 So lane 3 is 2.2-3.8x (tour: 128.6-186 s per row vs 34-62 s) to 4.3-5.2x
 (b1130: 136.2-154.7 s vs 27-36 s) slower per row in wall time. A 47-row gate
-(tour-7 + b1130 40) would be ~75 min on lane 3 vs ~40 min on the ThinkPad at
-these rates (linear extrapolation of the two measured 17-row walls).
+(tour-7 + b1130 40) would be ~75 min on lane 3 (1639 s x 47/17) vs ~69 min on
+the ThinkPad (1490 s x 47/17 = 4134 s) at these rates (linear extrapolation
+of the two measured 17-row walls).
 
 ## 6. Leaving the hosts as found
 
@@ -221,7 +236,8 @@ these rates (linear extrapolation of the two measured 17-row walls).
 | the one-paragraph verdict | `refactor/B1196/tables/verdict.txt` |
 | the lane-3 runner (port of the canonical one; differences in its header) | `refactor/B1196/scripts/render_gate_rock4d.sh` |
 | the table builder | `refactor/B1196/scripts/build_tables_b1196.py` |
+| device facts + the `diff -rq` byte-identity record (committed) | `refactor/B1196/evidence/device_info.txt` |
 | rock4d raw measure (17 × summary/b1130_rows + time.txt + run.log) | `~/kb-evidence/kb-b1196-rock4d-render/measure/` |
-| rock4d run log, row times, surfaceless-failure log, KMS smoke log, device facts | `~/kb-evidence/kb-b1196-rock4d-render/logs/` (+ `device_info.txt`, `device_info_egl.txt`) |
+| rock4d run log, row times, surfaceless-failure log, KMS smoke log | `~/kb-evidence/kb-b1196-rock4d-render/logs/` (+ `device_info_egl.txt`; the raw `device_info.txt` copy, kept in sync with the committed one) |
 | rock4d plans (byte-identical to the baseline's) | `/mnt/scratch/kb-evidence/kb-b1196-rock4d-render/gate/plans/` |
 | the surfaceless ThinkPad baseline this card rendered (17 rows, CONC=2) | `/mnt/scratch/gate-baseline/8c2bfe7c2-sl/` |
