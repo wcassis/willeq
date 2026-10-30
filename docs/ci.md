@@ -612,13 +612,69 @@ counts (the merge gate reads the MR's head pipeline). Later pushes to a branch
 with an open MR need no option: they only create the MR pipeline. A branch
 that will never get an MR (an experiment you want CI on) is pushed without it.
 
+### The rbuild job: worker builds through CI (B1208, #527)
+
+`scripts/hermes/rbuild --via ci` (or `RBUILD_VIA=ci`) is the worker build path
+that needs no ssh to any build host: the x86 runner VMs answer no inbound port
+from hermes-ext or the ThinkPad (`refactor/B1194/README.md`, "Why the
+inventory and the proof run as CI jobs"), but every runner polls GitLab, so a
+pushed pipeline reaches them. The ssh path (the ThinkPad, `--host`) is
+unchanged and stays the default.
+
+    rbuild --via ci <worktree> --target <t> [<t>...]
+    rbuild --via ci <worktree> test -R <regex> [--target <t>...]
+    rbuild --via ci <worktree> hygiene
+    rbuild --via ci --status
+
+rbuild commits the worktree as a WIP commit `rbuild: ci build <what>` on its
+branch (always a new sha; it stays on the branch; refused on a detached HEAD,
+on `fable`, and on a tree whose `.gitlab-ci.yml` has no `rbuild` job), pushes
+it with `-o ci.variable=RBUILD_TARGET=<t...>` (plus `RBUILD_TEST=<regex>` for
+`test`), finds the pipeline by sha, streams the `rbuild` job's trace, downloads
+its artifacts into `<worktree>/.rbuild-ci/<pipeline id>/` (gitignored) and
+exits 0 on a `success` job, 1 otherwise, 2 when it refused or found no
+pipeline. Ctrl-C (or a killed worker) cancels the job. The header of
+`scripts/hermes/rbuild` lists every variable.
+
+The pipeline such a push creates holds **the `rbuild` job alone**:
+
+- `workflow:rules` admits a push carrying `RBUILD_TARGET` on any branch but
+  `fable`, ABOVE the `$CI_OPEN_MERGE_REQUESTS` suppression (a branch with an
+  open MR still gets its rbuild pipeline), and drops the MR pipeline of a
+  commit titled `rbuild: ci build ...`, so a WIP push never runs the suite;
+- every other job's rules start with `!reference [.not_rbuild, rules]`
+  (`if: $RBUILD_TARGET` -> `when: never`), directly or through `.code_rules`
+  -- `hygiene`, `prune-build-trees`, both ARM jobs, `client-ledger-live` and
+  the B1194 include's jobs included.
+
+The `rbuild` job (stage `build`, `extends: .goldfarm`: tag `x86-build`,
+`interruptible`, the before_script's ccache + asset links) runs the shared
+`willeq_build_tree` into this ref's warm tree (`$BUILD_TREE`, the build-test
+configure: Release, GLES2, tests ON):
+
+| `RBUILD_TARGET` | the job |
+|---|---|
+| `<t> [<t>...]` | `cmake --build --target <t...>`; then `ctest -R "$RBUILD_TEST" --no-tests=error` when `RBUILD_TEST` is set |
+| `auto` (`test` without `--target`) | `scripts/ci/rbuild_test_targets.py` reads the CMake file-API codemodel and builds the executables whose sources declare a gtest case the regex matches (gtest discovery is PRE_TEST, so an unbuilt binary lists only `<target>_NOT_BUILT`); then the ctest |
+| `hygiene` | the hygiene job's configure + `ctest -L hygiene` |
+
+`WILLEQ_BUILD_TARGETS` (the `rbuild` job's targets) makes `willeq_build_tree`
+build named targets only, and a partial build leaves only the ref-only stamp:
+it never claims the tree for B1026's host+sha verify. Artifacts (kept **2
+days**): `rbuild-ctest.log`, `rbuild-junit.xml` (also the job's junit report),
+`rbuild-LastTest.log`. GL targets build on any x86 runner here (build-test
+already builds `model_viewer` on all three); the ThinkPad pin is an ssh-path
+rule. Measured runs, overhead against the ssh path and the runner census:
+`refactor/B1208/README.md`. Pinned by `CiQueueRules` (group 5) and
+`RbuildTestTargets`.
+
 ### Docs-only pipelines run hygiene only (B1042, #362)
 
 `build-test`, `gate`, `zone-budget-census` (B929) and `client-ledger-live`
 (and `build-headless`, B1038)
 carry `rules:` (the `.code_rules` anchor in `.gitlab-ci.yml`) that add the job
 only when **at least one changed path does not end in `.md`**. `hygiene` has no
-rules and always runs, so a pipeline whose diff is only `*.md` files — anywhere,
+code rule and always runs (its one rule is B1208's `.not_rbuild`, below), so a pipeline whose diff is only `*.md` files — anywhere,
 `refactor/` and `review/` notes included — is the hygiene stage alone (plus
 `prune-build-trees` on fable). Anything else in the diff (a `.tsv`, a `.png`, a
 script, `.gitlab-ci.yml`) builds as before. No non-hygiene ctest test reads a
@@ -650,7 +706,8 @@ orchestrator's merge gate (`merge_ok.sh` on hermes-ext) reads only
 passes such an MR exactly as it passes a full one. Proven on a probe MR:
 `review/B1042/README.md`. The hygiene test `CiQueueRules`
 (`scripts/ci/test_ci_queue_rules.py`) pins the rules, the regexp's meaning
-over sample paths, and that `hygiene` carries no rules.
+over sample paths, and that `hygiene`'s rules are only the `.not_rbuild`
+exclusion plus an unconditional `when: on_success`.
 
 ## The warm tree, and its trade-off
 

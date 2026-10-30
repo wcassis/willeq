@@ -447,11 +447,12 @@ CI_HDR=""; CI_JOB=""; CI_DONE=0
 # The token goes into a 0600 header file read by curl (-H @file), so it never
 # appears in argv, the environment of a child, or the output.
 ci_token_init() {
-    local tok=""
+    local tok="" glab
+    glab=$(command -v glab 2>/dev/null || echo "$HOME/.local/bin/glab")
     if [ -r "$RBUILD_CI_TOKEN_FILE" ]; then
         tok=$(tr -d '[:space:]' < "$RBUILD_CI_TOKEN_FILE")
-    elif command -v glab >/dev/null 2>&1; then
-        tok=$(glab config get token --host "$(echo "$RBUILD_CI_API" | sed -E 's#^https?://([^/]+).*#\1#')" 2>/dev/null | tr -d '[:space:]')
+    elif [ -x "$glab" ]; then
+        tok=$("$glab" config get token --host "$(echo "$RBUILD_CI_API" | sed -E 's#^https?://([^/]+).*#\1#')" 2>/dev/null | tr -d '[:space:]')
     fi
     [ -n "$tok" ] || die "--via ci: no GitLab token ($RBUILD_CI_TOKEN_FILE unreadable and no glab token for the API host)"
     CI_HDR=$(mktemp); chmod 600 "$CI_HDR"

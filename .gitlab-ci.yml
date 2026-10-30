@@ -446,7 +446,8 @@ rbuild:
         fi
       fi
   after_script:
-    - cp "build/ref/$CI_COMMIT_REF_SLUG/Testing/Temporary/LastTest.log" rbuild-LastTest.log 2>/dev/null || cp build/hygiene/Testing/Temporary/LastTest.log rbuild-LastTest.log 2>/dev/null || true
+    # Only a job that ran ctest has a LastTest.log of its own (a warm tree may hold an older one).
+    - 'if [ -f rbuild-ctest.log ]; then d="build/ref/$CI_COMMIT_REF_SLUG"; [ "$RBUILD_TARGET" = hygiene ] && d=build/hygiene; cp "$d/Testing/Temporary/LastTest.log" rbuild-LastTest.log || true; fi'
   artifacts:
     when: always
     expire_in: 2 days
