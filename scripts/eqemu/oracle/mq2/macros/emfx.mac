@@ -1,0 +1,15 @@
+| B1214 proof (c): dump the live spell-emitter registry while an effect plays.
+| /macro emfx <spellid> : target self, GM #castspell, then /emdump every 0.5 s.
+Sub Main
+  /declare i int local
+  /target myself
+  /delay 5
+  /echo B1214E cast spell=${Param0} target=${Target.Name} id=${Target.ID}
+  /emdump
+  /say #castspell ${Param0}
+  /for i 1 to 12
+    /delay 5
+    /echo B1214E tick ${i}
+    /emdump
+  /next i
+/return

@@ -1,0 +1,23 @@
+| B1214 proof (a): deterministic facing + camera control from inside the client.
+| Every step /echoes the client state it set; mqtel.py stamps each line (UTC ms).
+Sub Main
+  /echo B1214A begin heading=${Me.Heading.Degrees} look=${Me.Look} loc=${Me.Y},${Me.X},${Me.Z}
+  /face fast heading 90
+  /delay 5
+  /echo B1214A face90 heading=${Me.Heading.Degrees}
+  /face fast heading 270
+  /delay 5
+  /echo B1214A face270 heading=${Me.Heading.Degrees}
+  /look 0
+  /delay 5
+  /echo B1214A look0 look=${Me.Look}
+  /keypress FIRST_PERSON_CAMERA
+  /delay 20
+  /echo B1214A cam=first_person
+  /keypress USER1_CAMERA
+  /delay 20
+  /echo B1214A cam=user1
+  /keypress USER2_CAMERA
+  /delay 20
+  /echo B1214A cam=user2
+/return
