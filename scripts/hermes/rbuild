@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# rbuild -- run a kanban worker's configure / build / ctest on the ThinkPad, not
+# rbuild -- run a kanban worker's configure / build / ctest on the ThinkPad (ssh), or as
+# the GitLab CI `rbuild` job (--via ci, B1208), never
 # inside the worker's own 4 GiB systemd scope on hermes-ext (B1087, #407).
 #
 # WHY: hermes kanban workers run in a transient scope with MemoryMax=4 GiB. A
@@ -53,6 +54,38 @@
 #       build on the ThinkPad (it keeps hardware GL and the oracle): rbuild
 #       refuses them on any other --host.
 #
+#   --via ci  (or RBUILD_VIA=ci; B1208, #527): no ssh at all. The build runs
+#       as the GitLab CI job `rbuild` (.gitlab-ci.yml) on whichever x86-build
+#       runner takes it (gitlab-runner-1/2 or the ThinkPad), reached through
+#       GitLab: the runner VMs answer no inbound ssh (refactor/B1194/README.md).
+#     rbuild --via ci <worktree> --target <t> [<t>...]
+#     rbuild --via ci <worktree> test -R <regex> [--target <t>...]
+#     rbuild --via ci <worktree> hygiene
+#       1. commits the worktree (git add -A, honouring .gitignore) as a WIP
+#          commit "rbuild: ci build <what>" on its branch -- ALWAYS a new
+#          commit (--allow-empty), and it STAYS on the branch; refuses a
+#          detached HEAD, `fable`, and a tree whose .gitlab-ci.yml has no
+#          rbuild job (branch cut before B1208);
+#       2. pushes it with -o ci.variable=RBUILD_TARGET=<t...> (+ RBUILD_TEST=
+#          <regex>; RBUILD_TARGET=auto for `test` without --target = the
+#          executables that declare a matching gtest case,
+#          scripts/ci/rbuild_test_targets.py; RBUILD_TARGET=hygiene). Never
+#          ci.skip. That pipeline holds the rbuild job ALONE, and the MR
+#          pipeline of an "rbuild: ci build" commit is suppressed;
+#       3. finds the pipeline by sha, streams the job's trace (polled every
+#          RBUILD_CI_POLL s, default 5), downloads the artifacts (ctest log,
+#          junit xml, LastTest.log) into <worktree>/.rbuild-ci/<pipeline id>/
+#          (gitignored), and exits 0 when the job succeeded, 1 otherwise
+#          (2 = refused / no pipeline). Ctrl-C or a killed caller CANCELS the job.
+#       GL targets are not pinned to the ThinkPad here: CI builds model_viewer
+#       on every x86 runner already (build-test). `configure` has no ci form;
+#       `--status` lists pending/running rbuild jobs + the project runners.
+#       Token: RBUILD_CI_TOKEN_FILE (default ~/gitlab_token.txt), else glab's
+#       token for the API host; sent from a 0600 header file, never printed.
+#       RBUILD_CI_API (default https://gitlab.goldfarm.local/api/v4),
+#       RBUILD_CI_PROJECT (willeq%2Fwilleq), RBUILD_CI_REMOTE (default the
+#       branch's remote, else origin), RBUILD_CI_PIPELINE_WAIT (180 s).
+#
 # <worktree> must be /home/user/src/willeq-wt/<slug> (or a path inside it);
 # anything else is refused. One rbuild per slug runs at a time (a second one
 # waits on a lock); different slugs run in parallel inside worker-build.slice.
@@ -78,6 +111,8 @@ set -uo pipefail
 # reaches them, `auto` skips them as unreachable and the ThinkPad wins.
 RBUILD_HOSTS="${RBUILD_HOSTS:-thinkpad=user@172.16.200.205:/home/user/willeq-builds,runner-1=user@10.0.30.81:/home/user/willeq-builds,runner-2=user@10.0.30.82:/home/user/willeq-builds}"
 RBUILD_HOST="${RBUILD_HOST:-thinkpad}"
+# B1208 (#527): ssh (the default: the paths above) or ci (the CI `rbuild` job).
+RBUILD_VIA="${RBUILD_VIA:-ssh}"
 RBUILD_JOBS="${RBUILD_JOBS:-6}"
 RBUILD_MEM="${RBUILD_MEM:-16G}"
 RBUILD_BUILDS_ROOT="${RBUILD_BUILDS_ROOT:-/home/user/willeq-builds}"
@@ -397,6 +432,184 @@ remote() {
         < <(while kill -0 $$ 2>/dev/null; do sleep 5; done)
 }
 
+# ---------------------------------------------------------------------------
+# --via ci (B1208, #527): the build runs as the GitLab CI job `rbuild` on an
+# x86-build runner, reached through GitLab itself (the runners poll it over
+# HTTPS; no ssh to any build host). Caller side only; nothing compiles here.
+# ---------------------------------------------------------------------------
+RBUILD_CI_API="${RBUILD_CI_API:-https://gitlab.goldfarm.local/api/v4}"
+RBUILD_CI_PROJECT="${RBUILD_CI_PROJECT:-willeq%2Fwilleq}"
+RBUILD_CI_TOKEN_FILE="${RBUILD_CI_TOKEN_FILE:-$HOME/gitlab_token.txt}"
+RBUILD_CI_POLL="${RBUILD_CI_POLL:-5}"
+RBUILD_CI_PIPELINE_WAIT="${RBUILD_CI_PIPELINE_WAIT:-180}"
+CI_HDR=""; CI_JOB=""; CI_DONE=0
+
+# The token goes into a 0600 header file read by curl (-H @file), so it never
+# appears in argv, the environment of a child, or the output.
+ci_token_init() {
+    local tok="" glab
+    glab=$(command -v glab 2>/dev/null || echo "$HOME/.local/bin/glab")
+    if [ -r "$RBUILD_CI_TOKEN_FILE" ]; then
+        tok=$(tr -d '[:space:]' < "$RBUILD_CI_TOKEN_FILE")
+    elif [ -x "$glab" ]; then
+        tok=$("$glab" config get token --host "$(echo "$RBUILD_CI_API" | sed -E 's#^https?://([^/]+).*#\1#')" 2>/dev/null | tr -d '[:space:]')
+    fi
+    [ -n "$tok" ] || die "--via ci: no GitLab token ($RBUILD_CI_TOKEN_FILE unreadable and no glab token for the API host)"
+    CI_HDR=$(mktemp); chmod 600 "$CI_HDR"
+    printf 'PRIVATE-TOKEN: %s\n' "$tok" > "$CI_HDR"
+}
+ci_api() {  # ci_api [curl args...] <path>; the path is relative to the project
+    local path=${*: -1}; set -- "${@:1:$#-1}"
+    curl -sSk --retry 3 --retry-delay 2 -H @"$CI_HDR" "$@" "$RBUILD_CI_API/projects/$RBUILD_CI_PROJECT/$path"
+}
+ci_json() {  # ci_json <python expr over d>; reads JSON on stdin, prints the value
+    python3 -I -c 'import json,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(1)
+v=eval(sys.argv[1])
+print("" if v is None else v)' "$1"
+}
+ci_cleanup() {
+    if [ -n "$CI_JOB" ] && [ "$CI_DONE" = 0 ]; then
+        echo "rbuild: caller interrupted; cancelling CI job $CI_JOB" >&2
+        ci_api -X POST -o /dev/null "jobs/$CI_JOB/cancel"
+    fi
+    [ -n "$CI_HDR" ] && rm -f "$CI_HDR"
+}
+
+ci_status() {
+    local jobs runners
+    jobs=$(ci_api "jobs?scope%5B%5D=pending&scope%5B%5D=running&per_page=100") || die "--via ci: jobs API failed"
+    echo "== rbuild CI jobs (pending/running) =="
+    echo "$jobs" | ci_json '"\n".join("%s  %-8s %-40s pipeline %s  by %s  runner %s  created %s" % (j["id"], j["status"], j["ref"], j["pipeline"]["id"], (j.get("user") or {}).get("username"), (j.get("runner") or {}).get("description", "-"), j["created_at"]) for j in d if j["name"] == "rbuild") or "(none)"'
+    echo "== all pending/running jobs: $(echo "$jobs" | ci_json 'len(d)') ($(echo "$jobs" | ci_json 'sum(1 for j in d if j["status"]=="pending")') pending) =="
+    runners=$(ci_api "runners?per_page=100") || die "--via ci: runners API failed"
+    echo "== project runners (cpu-build capacity = active x86-build runners x their concurrent) =="
+    local id
+    for id in $(echo "$runners" | ci_json '" ".join(str(r["id"]) for r in d)'); do
+        curl -sSk -H @"$CI_HDR" "$RBUILD_CI_API/runners/$id" | ci_json '"%s %-18s %-7s %-8s tags=%s untagged=%s" % (d["id"], d["description"], "PAUSED" if d.get("paused") else "active", d.get("status"), ",".join(d.get("tag_list") or []), d.get("run_untagged"))'
+    done
+}
+
+# ci_main <worktree> [build args | test -R <re> [--target t] | hygiene]
+ci_main() {
+    case "${1:-}" in
+        -h|--help) usage ;;
+        --status) ci_token_init; trap ci_cleanup EXIT; ci_status; return $? ;;
+        --kill|--setup-host) die "$1 has no --via ci form (cancel a CI job with: glab ci cancel job <id>, or Ctrl-C the rbuild that started it)" ;;
+    esac
+    [ $# -ge 1 ] || usage
+    local wt_in=$1; shift
+    local top; top=$(git -C "$wt_in" rev-parse --show-toplevel 2>/dev/null) || die "--via ci: '$wt_in' is not inside a git worktree"
+    local action=build target="" test_re="" label
+    case "${1:-}" in
+        configure) die "--via ci has no separate configure: every rbuild job configures (the build-test configure) before it builds" ;;
+        test|hygiene) action=$1; shift ;;
+    esac
+    local -a targets=()
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --target|-t)
+                shift
+                [ $# -ge 1 ] || die "--target needs a value"
+                while [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; do targets+=("$1"); shift; done ;;
+            -R|--tests-regex)
+                [ "$action" = test ] || die "-R belongs to the test action"
+                [ $# -ge 2 ] || die "-R needs a regex"
+                test_re=$2; shift 2 ;;
+            *) die "--via ci $action does not take '$1' (only --target <t...>, and -R <regex> for test)" ;;
+        esac
+    done
+    case "$action" in
+        build)
+            [ ${#targets[@]} -ge 1 ] || die "--via ci needs --target <t...> (a whole-tree build is never a worker build)"
+            target="${targets[*]}"; label="--target $target" ;;
+        test)
+            [ -n "$test_re" ] || die "--via ci test needs -R <regex> (the whole suite is the MR pipeline's job)"
+            target="${targets[*]:-auto}"; label="test -R $test_re" ;;
+        hygiene)
+            [ ${#targets[@]} -eq 0 ] || die "hygiene takes no --target"
+            target=hygiene; label=hygiene ;;
+    esac
+    case "$target" in *[!A-Za-z0-9_.+\ -]*) die "refusing target '$target'" ;; esac
+
+    local branch
+    branch=$(git -C "$top" symbolic-ref --short -q HEAD) || die "--via ci: $top is on a detached HEAD; check out the task branch first"
+    [ "$branch" != fable ] || die "--via ci: refusing to build from 'fable' (rbuild commits a WIP commit and pushes it; use a task branch)"
+    grep -q '^rbuild:' "$top/.gitlab-ci.yml" 2>/dev/null \
+        || die "--via ci: $top/.gitlab-ci.yml has no 'rbuild' job (branch cut before B1208); merge or rebase onto fable first"
+    local remote; remote=${RBUILD_CI_REMOTE:-$(git -C "$top" config "branch.$branch.remote" 2>/dev/null)}
+    remote=${remote:-origin}
+    [ "$remote" != . ] || remote=origin
+
+    ci_token_init
+    trap ci_cleanup EXIT
+    trap 'exit 130' INT TERM HUP
+
+    # The WIP commit: the worktree as it stands (tracked + untracked, honouring
+    # .gitignore), always a NEW sha (--allow-empty) so the push starts a pipeline.
+    git -C "$top" add -A || die "--via ci: git add failed"
+    git -C "$top" commit -q --allow-empty --no-verify -m "rbuild: ci build $label" \
+        -m "B1208 rbuild --via ci: RBUILD_TARGET=$target${test_re:+ RBUILD_TEST=$test_re}" || die "--via ci: git commit failed"
+    local sha; sha=$(git -C "$top" rev-parse HEAD)
+    local t0=$SECONDS
+    echo "rbuild: WIP commit ${sha:0:12} on $branch; pushing to $remote with RBUILD_TARGET='$target'${test_re:+ RBUILD_TEST='$test_re'}" >&2
+    local -a popts=(-o "ci.variable=RBUILD_TARGET=$target")
+    [ -n "$test_re" ] && popts+=(-o "ci.variable=RBUILD_TEST=$test_re")
+    git -C "$top" push -q "${popts[@]}" "$remote" "HEAD:refs/heads/$branch" \
+        || die "--via ci: push to $remote $branch failed (diverged? pull --rebase first; the WIP commit ${sha:0:12} stays local)"
+
+    # The pipeline for this sha.
+    local pid="" i
+    for ((i = 0; i < RBUILD_CI_PIPELINE_WAIT; i += 3)); do
+        pid=$(ci_api "pipelines?sha=$sha&per_page=5" | ci_json '" ".join(str(p["id"]) for p in d if p.get("source") == "push")' | awk '{print $1}')
+        [ -n "$pid" ] && break
+        sleep 3
+    done
+    [ -n "$pid" ] || die "--via ci: no push pipeline for ${sha:0:12} after ${RBUILD_CI_PIPELINE_WAIT} s (workflow rules? ci.skip in the push?)"
+    local jobs; jobs=$(ci_api "pipelines/$pid/jobs?per_page=100")
+    CI_JOB=$(echo "$jobs" | ci_json '" ".join(str(j["id"]) for j in d if j["name"] == "rbuild")' | awk '{print $1}')
+    [ -n "$CI_JOB" ] || die "--via ci: pipeline $pid has no rbuild job (jobs: $(echo "$jobs" | ci_json '",".join(j["name"] for j in d)'))"
+    echo "rbuild: pipeline $pid job $CI_JOB $(echo "$jobs" | ci_json '[j["web_url"] for j in d if j["name"] == "rbuild"][0]')" >&2
+
+    # Stream the trace: the API returns the whole log, so print what lies past
+    # the byte offset already printed.
+    local tr; tr=$(mktemp)
+    local off=0 st="" last="" size job
+    while :; do
+        job=$(ci_api "jobs/$CI_JOB")
+        st=$(echo "$job" | ci_json 'd["status"]')
+        if [ "$st" != "$last" ]; then
+            echo "rbuild: job $CI_JOB $st${st:+ }$(echo "$job" | ci_json '("on " + d["runner"]["description"]) if d.get("runner") else ""')" >&2
+            last=$st
+        fi
+        if ci_api -o "$tr" "jobs/$CI_JOB/trace"; then
+            size=$(stat -c %s "$tr")
+            if [ "$size" -gt "$off" ]; then tail -c +$((off + 1)) "$tr"; off=$size; fi
+        fi
+        case "$st" in success|failed|canceled|skipped|manual) break ;; esac
+        sleep "$RBUILD_CI_POLL"
+    done
+    CI_DONE=1
+    rm -f "$tr"
+    local dur runner
+    dur=$(echo "$job" | ci_json 'int(d["duration"] or 0)')
+    runner=$(echo "$job" | ci_json '(d.get("runner") or {}).get("description", "?")')
+
+    # Artifacts (the ctest log + junit; absent for a build-only job that wrote none).
+    local adir="$top/.rbuild-ci/$pid" zip; zip=$(mktemp)
+    mkdir -p "$adir"
+    if [ "$(ci_api -o "$zip" -w '%{http_code}' "jobs/$CI_JOB/artifacts")" = 200 ] \
+        && python3 -I -m zipfile -e "$zip" "$adir" 2>/dev/null; then
+        echo "rbuild: artifacts in $adir: $(cd "$adir" && ls | tr '\n' ' ')" >&2
+    else
+        echo "rbuild: job $CI_JOB has no artifacts" >&2
+    fi
+    rm -f "$zip"
+    echo "rbuild: ci job $CI_JOB (pipeline $pid) $st in $dur s on $runner; wall $((SECONDS - t0)) s from push" >&2
+    [ "$st" = success ]
+}
+
 [ $# -ge 1 ] || usage
 # --host <v> anywhere in the argument list (removed before dispatch; usually
 # first). Everything else passes through in order.
@@ -405,12 +618,20 @@ while [ $# -gt 0 ]; do
     if [ "$1" = "--host" ]; then
         [ $# -ge 2 ] || die "--host needs a value: a RBUILD_HOSTS name, an ssh-target, or auto"
         RBUILD_HOST=$2; shift 2
+    elif [ "$1" = "--via" ]; then
+        [ $# -ge 2 ] || die "--via needs a value: ssh (default) or ci"
+        RBUILD_VIA=$2; shift 2
     else
         _new+=("$1"); shift
     fi
 done
 set -- ${_new[@]+"${_new[@]}"}
 [ $# -ge 1 ] || usage
+case "$RBUILD_VIA" in
+    ci) ci_main "$@"; exit $? ;;
+    ssh) ;;
+    *) die "--via must be ssh or ci, not '$RBUILD_VIA'" ;;
+esac
 resolve_host "$RBUILD_HOST"
 
 case "${1:-}" in
